@@ -21,6 +21,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/txscript/txsparser"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcwallet/chain"
@@ -294,7 +295,7 @@ func jsonError(err error) *btcjson.RPCError {
 // makeMultiSigScript is a helper function to combine common logic for
 // AddMultiSig and CreateMultiSig.
 func makeMultiSigScript(w *wallet.Wallet, keys []string, nRequired int) ([]byte, error) {
-	keysesPrecious := make([]*btcutil.AddressPubKey, len(keys))
+	keysesPrecious := make([]*btcutil.AddressPubKeyHash, len(keys))
 
 	// The address list will made up either of addreseses (pubkey hash), for
 	// which we need to look up the keys in wallet, straight pubkeys, or a
@@ -308,7 +309,7 @@ func makeMultiSigScript(w *wallet.Wallet, keys []string, nRequired int) ([]byte,
 
 		switch addr := a.(type) {
 		case *btcutil.AddressPubKey:
-			keysesPrecious[i] = addr
+			keysesPrecious[i] = addr.AddressPubKeyHash()
 		default:
 			pubKey, err := w.PubKeyForAddress(addr)
 			if err != nil {
@@ -319,7 +320,7 @@ func makeMultiSigScript(w *wallet.Wallet, keys []string, nRequired int) ([]byte,
 			if err != nil {
 				return nil, err
 			}
-			keysesPrecious[i] = pubKeyAddr
+			keysesPrecious[i] = pubKeyAddr.AddressPubKeyHash()
 		}
 	}
 
@@ -522,7 +523,7 @@ func getDB(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 
 			t := token.Token{}
 			r := bytes.NewReader(v)
-			t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+			t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 			val = "TokenType:" + fmt.Sprintf("%d\nValue:", t.TokenType)
 			if (t.TokenType & 1) == 0 {
 				val += fmt.Sprintf("%d\n", t.Value.(*token.NumToken).Val)
@@ -1453,7 +1454,7 @@ func makeOutputs(pairs map[string]btcutil.Amount, chainParams *chaincfg.Params) 
 			return nil, fmt.Errorf("cannot create txout script: %s", err)
 		}
 
-		outputs = append(outputs, wire.NewTxOut(0, &token.NumToken{Val:int64(amt)}, []chainhash.Hash{}, pkScript))
+		outputs = append(outputs, wire.NewTxOut(0, &token.NumToken{Val:int64(amt)}, &chainhash.Hash{}, pkScript))
 	}
 	return outputs, nil
 }
@@ -1822,7 +1823,7 @@ func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.R
 		signErrors = append(signErrors, btcjson.SignRawTransactionError{
 			TxID:      input.PreviousOutPoint.Hash.String(),
 			Vout:      input.PreviousOutPoint.Index,
-			ScriptSig: hex.EncodeToString(input.SignatureScript),
+			ScriptSig: hex.EncodeToString(tx.SignatureScripts[input.SignatureIndex]),
 			Sequence:  input.Sequence,
 			Error:     e.Error.Error(),
 		})
@@ -1894,7 +1895,7 @@ func validateAddress(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 		class, addrs, reqSigs, err := txscript.ExtractPkScriptAddrs(
 			script, w.ChainParams())
 		if err != nil {
-			result.Script = txscript.NonStandardTy.String()
+			result.Script = txsparser.NonStandardTy.String()
 			break
 		}
 
@@ -1907,7 +1908,7 @@ func validateAddress(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 		// Multi-signature scripts also provide the number of required
 		// signatures.
 		result.Script = class.String()
-		if class == txscript.MultiSigTy {
+		if class == txsparser.MultiSigTy {
 			result.SigsRequired = int32(reqSigs)
 		}
 	}

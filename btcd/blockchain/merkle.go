@@ -11,7 +11,6 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcd/txscript/txsparser"
 )
 
 const (
@@ -25,20 +24,6 @@ const (
 	// commitment itself. In order to be a valid candidate for the output
 	// containing the witness commitment
 	CoinbaseWitnessPkScriptLength = 38
-)
-
-var (
-	// WitnessMagicBytes is the prefix marker within the public key script
-	// of a coinbase output to indicate that this output holds the witness
-	// commitment for a block.
-	WitnessMagicBytes = []byte{
-		txsparser.OP_RETURN,
-		txsparser.OP_DATA_36,
-		0xaa,
-		0x21,
-		0xa9,
-		0xed,
-	}
 )
 
 // nextPowerOfTwo returns the next highest power of two from a given number if
@@ -110,21 +95,19 @@ func BuildMerkleTreeStore(transactions []*btcutil.Tx, witness bool) []*chainhash
 
 	// Create the base transaction hashes and populate the array with them.
 	for i, tx := range transactions {
-		// If we're computing a witness merkle root, instead of the
-		// regular txid, we use the modified wtxid which includes a
-		// transaction's witness data within the digest. Additionally,
-		// the coinbase's wtxid is all zeroes.
 		switch {
-		case witness && i == 0:
+		case i == 0:
 			var zeroHash chainhash.Hash
 			merkles[i] = &zeroHash
-		case witness:
-			wSha := tx.MsgTx().WitnessHash()
-			merkles[i] = &wSha
 		default:
-			merkles[i] = tx.Hash()
+			if witness {
+				wSha := tx.MsgTx().SignatureHash()
+				merkles[i] = &wSha
+			} else {
+				wSha := tx.MsgTx().TxHash()
+				merkles[i] = &wSha
+			}
 		}
-
 	}
 
 	// Start the array offset after the last transaction and adjusted to the
@@ -168,6 +151,8 @@ func ExtractWitnessCommitment(tx *btcutil.Tx) ([]byte, bool) {
 	}
 
 	msgTx := tx.MsgTx()
+	return msgTx.SignatureScripts[0], true
+/*
 	for i := len(msgTx.TxOut) - 1; i >= 0; i-- {
 		// The public key script that contains the witness commitment
 		// must shared a prefix with the WitnessMagicBytes, and be at
@@ -187,6 +172,7 @@ func ExtractWitnessCommitment(tx *btcutil.Tx) ([]byte, bool) {
 	}
 
 	return nil, false
+*/
 }
 
 // ValidateWitnessCommitment validates the witness commitment (if any) found
@@ -212,17 +198,9 @@ func ValidateWitnessCommitment(blk *btcutil.Block) error {
 	// outputs, then the block MUST NOT contain any transactions with
 	// witness data.
 	if !witnessFound {
-		for _, tx := range blk.Transactions() {
-			msgTx := tx.MsgTx()
-			if msgTx.HasWitness() {
-				str := fmt.Sprintf("block contains transaction with witness" +
-					" data, yet no witness commitment present")
-				return ruleError(ErrUnexpectedWitness, str)
-			}
-		}
 		return nil
 	}
-
+/*
 	// At this point the block contains a witness commitment, so the
 	// coinbase transaction MUST have exactly one witness element within
 	// its witness data and that element must be exactly
@@ -241,7 +219,7 @@ func ValidateWitnessCommitment(blk *btcutil.Block) error {
 			len(witnessNonce), CoinbaseWitnessDataLen)
 		return ruleError(ErrInvalidWitnessCommitment, str)
 	}
-
+*/
 	// Finally, with the preliminary checks out of the way, we can check if
 	// the extracted witnessCommitment is equal to:
 	// SHA256(witnessMerkleRoot || witnessNonce). Where witnessNonce is the
@@ -249,14 +227,15 @@ func ValidateWitnessCommitment(blk *btcutil.Block) error {
 	witnessMerkleTree := BuildMerkleTreeStore(blk.Transactions(), true)
 	witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
 
-	var witnessPreimage [chainhash.HashSize * 2]byte
-	copy(witnessPreimage[:], witnessMerkleRoot[:])
-	copy(witnessPreimage[chainhash.HashSize:], witnessNonce)
+//	var witnessPreimage [chainhash.HashSize * 2]byte
+//	copy(witnessPreimage[:], witnessMerkleRoot[:])
+//	copy(witnessPreimage[chainhash.HashSize:], witnessNonce)
 
-	computedCommitment := chainhash.DoubleHashB(witnessPreimage[:])
-	if !bytes.Equal(computedCommitment, witnessCommitment) {
+//	computedCommitment := chainhash.DoubleHashB(witnessPreimage[:])
+//	if !bytes.Equal(computedCommitment, witnessCommitment) {
+	if !bytes.Equal((*witnessMerkleRoot)[:], witnessCommitment) {
 		str := fmt.Sprintf("witness commitment does not match: "+
-			"computed %v, coinbase includes %v", computedCommitment,
+			"computed %v, coinbase includes %v", (*witnessMerkleRoot)[:],
 			witnessCommitment)
 		return ruleError(ErrWitnessCommitmentMismatch, str)
 	}

@@ -67,7 +67,6 @@ type Definition struct {
 type Vertex struct {
 	Lat	int32  `json:"lat"`
 	Lng	int32  `json:"lng`
-	Desc	string  `json:"desc"`
 }
 
 type Border struct {
@@ -96,9 +95,7 @@ func (t * Definition) ConvertTo() token.Definition {
 		t := token.VertexDef{
 			Lat: uint32(v.Lat),
 			Lng: uint32(v.Lng),
-			Desc: make([]byte, len(v.Desc)),
 		}
-		copy(t.Desc[:], v.Desc[:])
 		return &t
 		break
 	case token.DefTypeBorder:
@@ -175,21 +172,14 @@ func (t * Definition) ConvertTo() token.Definition {
 type Token struct {
 	TokenType uint64  `json:"tokentype"`
 	Value map[string]interface{} `json:"value"`	// either an numeric amount or a hash value
-	Rights []string `json:"rights"`					// hash of rights
+	Rights string `json:"rights"`					// hash of rights
 }
 
 func (t * Token) ConvertTo(mtx * wire.MsgTx) * wire.TxOut {
 	v := wire.TxOut{}
-	v.Rights = make([]chainhash.Hash, 0)
 	v.TokenType = t.TokenType
-	for _,r := range t.Rights {
-		h,_ := chainhash.NewHashFromStr(r)
-		if h == nil {
-			h = &chainhash.Hash{}
-			copy(h[:], r[:])
-		}
-		v.Rights = append(v.Rights, *h)
-	}
+	v.Rights,_ = chainhash.NewHashFromStr(t.Rights)
+
 	if t.TokenType & 1 == 0 {
 		nm,_ := btcutil.NewAmount((t.Value["value"].(float64)))
 		v.Value = &token.NumToken{Val:int64(nm)}
@@ -211,7 +201,7 @@ func (t * Token) ConvertTo(mtx * wire.MsgTx) * wire.TxOut {
 type CreateRawTransactionCmd struct {
 	Inputs   []TransactionInput
 	Definitions   []Definition
-	Amounts  []map[string]Token `jsonrpcusage:"{\"address\":token,...}"` // In BTC
+	Amounts  []map[string]Token `jsonrpcusage:"{\"address\":token,...}"`
 	LockTime *int64
 }
 

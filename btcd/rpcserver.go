@@ -37,12 +37,12 @@ import (
 	"github.com/btcsuite/btcd/mining"
 	"github.com/btcsuite/btcd/mining/cpuminer"
 	"github.com/btcsuite/btcd/peer"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/websocket"
 	"github.com/btcsuite/omega/token"
 	"github.com/btcsuite/btcd/wire/common"
+	"github.com/btcsuite/omega/ovm"
 )
 
 // API version constants
@@ -92,9 +92,7 @@ var (
 	// overhead of creating a new object on every invocation for constant
 	// data.
 	gbtCoinbaseAux = &btcjson.GetBlockTemplateResultAux{
-		Flags: hex.EncodeToString(builderScript(txscript.
-			NewScriptBuilder().
-			AddData([]byte(mining.CoinbaseFlags)))),
+		Flags: hex.EncodeToString([]byte{}),	// builderScript(txscript.NewScriptBuilder().AddData([]byte(mining.CoinbaseFlags)))),
 	}
 
 	// gbtCapabilities describes additional capabilities returned with a
@@ -284,7 +282,7 @@ var rpcLimited = map[string]struct{}{
 	"verifymessage":         {},
 	"version":               {},
 }
-
+/*
 // builderScript is a convenience function which is used for hard-coded scripts
 // built with the script builder.   Any errors are converted to a panic since it
 // is only, and must only, be used with hard-coded, and therefore, known good,
@@ -296,7 +294,7 @@ func builderScript(builder *txscript.ScriptBuilder) []byte {
 	}
 	return script
 }
-
+*/
 // internalRPCError is a convenience function to convert an internal error to
 // an RPC error with the appropriate code set.  It also logs the error to the
 // RPC server subsystem since internal errors really should not occur.  The
@@ -513,7 +511,7 @@ func peerExists(connMgr rpcserverConnManager, addr string, nodeID int32) bool {
 // latest protocol version and returns a hex-encoded string of the result.
 func messageToHex(msg wire.Message) (string, error) {
 	var buf bytes.Buffer
-	if err := msg.BtcEncode(&buf, maxProtocolVersion, wire.WitnessEncoding); err != nil {
+	if err := msg.BtcEncode(&buf, maxProtocolVersion, wire.SignatureEncoding); err != nil {
 		context := fmt.Sprintf("Failed to encode msg of type %T", msg)
 		return "", internalRPCError(err.Error(), context)
 	}
@@ -537,14 +535,14 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 	// Add all transaction inputs to a new transaction after performing
 	// some validity checks.
 	mtx := wire.NewMsgTx(wire.TxVersion)
-	for _, input := range c.Inputs {
+	for i, input := range c.Inputs {
 		txHash, err := chainhash.NewHashFromStr(input.Txid)
 		if err != nil {
 			return nil, rpcDecodeHexError(input.Txid)
 		}
 
 		prevOut := wire.NewOutPoint(txHash, input.Vout)
-		txIn := wire.NewTxIn(prevOut, []byte{}, nil)
+		txIn := wire.NewTxIn(prevOut, uint32(i))
 		if c.LockTime != nil && *c.LockTime != 0 {
 			txIn.Sequence = wire.MaxTxInSequenceNum - 1
 		}
@@ -571,12 +569,19 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 				}
 			}
 
+			var pkFunc []byte
+
 			// Ensure the address is one of the supported types and that
 			// the network encoded with the address matches the network the
 			// server is currently on.
+
+			// TODO: Other type pkscripts: contract, milti-sig
+
 			switch addr.(type) {
 			case *btcutil.AddressPubKeyHash:
+				pkFunc = []byte{0x41, 0, 0, 0}		// pay2pkh
 			case *btcutil.AddressScriptHash:
+				pkFunc = []byte{0x42, 0, 0, 0}		// pay2scripth
 			default:
 				return nil, &btcjson.RPCError{
 					Code:    btcjson.ErrRPCInvalidAddressOrKey,
@@ -592,12 +597,16 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 			}
 
 			// Create a new script which pays to the provided address.
+			pkScript := make([]byte, 25)
+			pkScript[0] = addr.Version()
+			copy(pkScript[1:], addr.ScriptAddress())
+			copy(pkScript[21:], pkFunc)
+/*
 			pkScript, err := txscript.PayToAddrScript(addr)
 			if err != nil {
 				context := "Failed to generate pay-to-address script"
 				return nil, internalRPCError(err.Error(), context)
 			}
-/*
 			var txOut * wire.TxOut
 
 			// Ensure amount is in the valid range for monetary amounts.
@@ -669,6 +678,7 @@ func handleDebugLevel(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 	return "Done.", nil
 }
 
+/*
 // witnessToHex formats the passed witness stack as a slice of hex-encoded
 // strings to be used in a JSON response.
 func witnessToHex(witness wire.TxWitness) []string {
@@ -685,6 +695,7 @@ func witnessToHex(witness wire.TxWitness) []string {
 
 	return result
 }
+*/
 
 // createVinList returns a slice of JSON objects for the inputs of the passed
 // transaction.
@@ -693,9 +704,9 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 	vinList := make([]btcjson.Vin, len(mtx.TxIn))
 	if blockchain.IsCoinBaseTx(mtx) {
 		txIn := mtx.TxIn[0]
-		vinList[0].Coinbase = hex.EncodeToString(txIn.SignatureScript)
+		vinList[0].Coinbase = true
 		vinList[0].Sequence = txIn.Sequence
-		vinList[0].Witness = witnessToHex(txIn.Witness)
+		vinList[0].SignatureIndex = txIn.SignatureIndex
 		return vinList
 	}
 
@@ -703,23 +714,44 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		// The disassembled string will contain [error] inline
 		// if the script doesn't fully parse, so ignore the
 		// error here.
-		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
-
+//		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
+		disbuf := hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
 		vinEntry := &vinList[i]
 		vinEntry.Txid = txIn.PreviousOutPoint.Hash.String()
 		vinEntry.Vout = txIn.PreviousOutPoint.Index
 		vinEntry.Sequence = txIn.Sequence
 		vinEntry.ScriptSig = &btcjson.ScriptSig{
 			Asm: disbuf,
-			Hex: hex.EncodeToString(txIn.SignatureScript),
+			Hex: hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex]),
 		}
 
-		if mtx.HasWitness() {
-			vinEntry.Witness = witnessToHex(txIn.Witness)
-		}
+		vinEntry.SignatureIndex = txIn.SignatureIndex
 	}
 
 	return vinList
+}
+
+func pubKeyTypes(script []byte) string {
+	if chaincfg.IsContractAddrID(script[0]) {
+		return "contracthash"
+	}
+
+	if script[21] == 0x45 {
+		return "nulldata"
+	}
+	if chaincfg.IsScriptHashAddrID(script[0]) {
+		if script[21] == 0x44 {
+			return "multiscriptsig"
+		}
+		return "scripthash"
+	}
+	if chaincfg.IsPubKeyHashAddrID(script[0]) {
+		if script[21] == 0x43 {
+			return "multipubkeysig"
+		}
+		return "pubkeyhash"
+	}
+	return "unknown"
 }
 
 // createVoutList returns a slice of JSON objects for the outputs of the passed
@@ -729,13 +761,13 @@ func createVoutList(mtx *wire.MsgTx, chainParams *chaincfg.Params, filterAddrMap
 	for i, v := range mtx.TxOut {
 		// The disassembled string will contain [error] inline if the
 		// script doesn't fully parse, so ignore the error here.
-		disbuf, _ := txscript.DisasmString(v.PkScript)
+//		disbuf, _ := txscript.DisasmString(v.PkScript)
+		disbuf := DisasmScript(v.PkScript)
 
 		// Ignore the error here since an error means the script
 		// couldn't parse and there is no additional information about
 		// it anyways.
-		scriptClass, addrs, reqSigs, _ := txscript.ExtractPkScriptAddrs(
-			v.PkScript, chainParams)
+		addrs, reqSigs, _ := indexers.ExtractPkScriptAddrs(v.PkScript, chainParams)
 
 		// Encode the addresses while checking if the address passes the
 		// filter when needed.
@@ -771,14 +803,12 @@ func createVoutList(mtx *wire.MsgTx, chainParams *chaincfg.Params, filterAddrMap
 			}
 		}
 		vout.TokenType = v.TokenType
-		vout.Rights = make([]string, len(v.Rights))
-		for i,r := range v.Rights {
-			vout.Rights[i] = r.String()
-		}
+		vout.Rights = (*v.Rights).String()
+
 		vout.ScriptPubKey.Addresses = encodedAddrs
 		vout.ScriptPubKey.Asm = disbuf
 		vout.ScriptPubKey.Hex = hex.EncodeToString(v.PkScript)
-		vout.ScriptPubKey.Type = scriptClass.String()
+		vout.ScriptPubKey.Type = pubKeyTypes(v.PkScript)
 		vout.ScriptPubKey.ReqSigs = int32(reqSigs)
 
 		voutList = append(voutList, vout)
@@ -801,7 +831,7 @@ func createTxRawResult(chainParams *chaincfg.Params, mtx *wire.MsgTx,
 	txReply := &btcjson.TxRawResult{
 		Hex:      mtxHex,
 		Txid:     txHash,
-		Hash:     mtx.WitnessHash().String(),
+		Hash:     mtx.SignatureHash().String(),
 		Size:     int32(mtx.SerializeSize()),
 		Vsize:    int32(mempool.GetTxVirtualSize(btcutil.NewTx(mtx))),
 		Vin:      createVinList(mtx),
@@ -854,6 +884,32 @@ func handleDecodeRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 	return txReply, nil
 }
 
+func DisasmScript(script []byte) string {
+	switch script[21] {
+	case ovm.OP_PAY2PKH:
+		return "pay2pkh(" + hex.EncodeToString(script[:21]) + ")"
+	case ovm.OP_PAY2SCRIPTH:
+		return "pay2pkh(" + hex.EncodeToString(script[:21]) + ")"
+	case ovm.OP_PAY2MULTIPKH:
+		s := "pay2pkhs" + hex.EncodeToString(script[:21])
+		for p := 25; p < len(script); p += 20 {
+			s += "," + hex.EncodeToString(script[p:p + 20])
+		}
+		return s + ")"
+	case ovm.OP_PAY2MULTISCRIPTH:
+		s := "pay2scripths" + hex.EncodeToString(script[:21])
+		for p := 25; p < len(script); p += 20 {
+			s += "," + hex.EncodeToString(script[p:p + 20])
+		}
+		return s + ")"
+	case ovm.OP_PAY2NONE:
+		return "payreturn"
+	case ovm.OP_PAY2ANY:
+		return "payanyone"
+	}
+	return ""
+}
+
 // handleDecodeScript handles decodescript commands.
 func handleDecodeScript(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.DecodeScriptCmd)
@@ -870,12 +926,12 @@ func handleDecodeScript(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 
 	// The disassembled string will contain [error] inline if the script
 	// doesn't fully parse, so ignore the error here.
-	disbuf, _ := txscript.DisasmString(script)
+	disbuf := DisasmScript(script)
 
 	// Get information about the script.
 	// Ignore the error here since an error means the script couldn't parse
 	// and there is no additinal information about it anyways.
-	scriptClass, addrs, reqSigs, _ := txscript.ExtractPkScriptAddrs(script,
+	addrs, reqSigs, _ := indexers.ExtractPkScriptAddrs(script,
 		s.cfg.ChainParams)
 	addresses := make([]string, len(addrs))
 	for i, addr := range addrs {
@@ -893,12 +949,11 @@ func handleDecodeScript(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	reply := btcjson.DecodeScriptResult{
 		Asm:       disbuf,
 		ReqSigs:   int32(reqSigs),
-		Type:      scriptClass.String(),
+		Type:      pubKeyTypes(script),
 		Addresses: addresses,
 	}
-	if scriptClass != txscript.ScriptHashTy {
-		reply.P2sh = p2sh.EncodeAddress()
-	}
+	reply.P2sh = p2sh.EncodeAddress()
+
 	return reply, nil
 }
 
@@ -1245,58 +1300,23 @@ func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan str
 		Difficulty:    getDifficultyRatio(chainSnapshot.Bits, params),
 		MedianTime:    chainSnapshot.MedianTime.Unix(),
 		Pruned:        false,
-		Bip9SoftForks: make(map[string]*btcjson.Bip9SoftForkDescription),
 	}
 
 	// Next, populate the response with information describing the current
 	// status of soft-forks deployed via the super-majority block
 	// signalling mechanism.
-	height := chainSnapshot.Height
-	chainInfo.SoftForks = []*btcjson.SoftForkDescription{
-		{
-			ID:      "bip34",
-			Version: 2,
-			Reject: struct {
-				Status bool `json:"status"`
-			}{
-				Status: height >= params.BIP0034Height,
-			},
-		},
-		{
-			ID:      "bip66",
-			Version: 3,
-			Reject: struct {
-				Status bool `json:"status"`
-			}{
-				Status: height >= params.BIP0066Height,
-			},
-		},
-		{
-			ID:      "bip65",
-			Version: 4,
-			Reject: struct {
-				Status bool `json:"status"`
-			}{
-				Status: height >= params.BIP0065Height,
-			},
-		},
-	}
+//	height := chainSnapshot.Height
+	chainInfo.SoftForks = []*btcjson.SoftForkDescription{}
 
 	// Finally, query the BIP0009 version bits state for all currently
 	// defined BIP0009 soft-fork deployments.
-	for deployment, deploymentDetails := range params.Deployments {
+	for deployment, _ := range params.Deployments {	// deploymentDetails
 		// Map the integer deployment ID into a human readable
 		// fork-name.
-		var forkName string
+//		var forkName string
 		switch deployment {
 		case chaincfg.DeploymentTestDummy:
-			forkName = "dummy"
-
-		case chaincfg.DeploymentCSV:
-			forkName = "csv"
-
-		case chaincfg.DeploymentSegwit:
-			forkName = "segwit"
+//			forkName = "dummy"
 
 		default:
 			return nil, &btcjson.RPCError{
@@ -1317,22 +1337,13 @@ func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan str
 		// Attempt to convert the current deployment status into a
 		// human readable string. If the status is unrecognized, then a
 		// non-nil error is returned.
-		statusString, err := softForkStatus(deploymentStatus)
+		_, err = softForkStatus(deploymentStatus)	// statusString
 		if err != nil {
 			return nil, &btcjson.RPCError{
 				Code: btcjson.ErrRPCInternal.Code,
 				Message: fmt.Sprintf("unknown deployment status: %v",
 					deploymentStatus),
 			}
-		}
-
-		// Finally, populate the soft-fork description with all the
-		// information gathered above.
-		chainInfo.Bip9SoftForks[forkName] = &btcjson.Bip9SoftForkDescription{
-			Status:    strings.ToLower(statusString),
-			Bit:       deploymentDetails.BitNumber,
-			StartTime: int64(deploymentDetails.StartTime),
-			Timeout:   int64(deploymentDetails.ExpireTime),
 		}
 	}
 
@@ -1671,17 +1682,18 @@ func (state *gbtWorkState) updateBlockTemplate(s *rpcServer, useCoinbaseValue bo
 
 			// Update the block coinbase output of the template to
 			// pay to the randomly selected payment address.
-			pkScript, err := txscript.PayToAddrScript(payToAddr)
-			if err != nil {
-				context := "Failed to create pay-to-addr script"
-				return internalRPCError(err.Error(), context)
-			}
+			pkScript := make([]byte, 25)
+			pkScript[0] = payToAddr.Version()
+			copy(pkScript[1:], payToAddr.ScriptAddress())
+			pkScript[21] = ovm.OP_PAY2PKH
+
 			template.Block.Transactions[0].TxOut[0].PkScript = pkScript
 			template.ValidPayAddress = true
 
 			// Update the merkle root.
 			block := btcutil.NewBlock(template.Block)
 			merkles := blockchain.BuildMerkleTreeStore(block.Transactions(), false)
+
 			template.Block.Header.MerkleRoot = *merkles[len(merkles)-1]
 		}
 
@@ -2719,7 +2731,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	var confirmations int32
 	var value token.TokenValue
 	var pkScript []byte
-	var rights []string
+	var rights string
 	var isCoinbase bool
 	includeMempool := true
 	if c.IncludeMempool != nil {
@@ -2753,10 +2765,11 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		bestBlockHash = best.Hash.String()
 		confirmations = 0
 		value = txOut.Value
-		rights = make([]string, len(txOut.Rights))
-		for i, r := range txOut.Rights {
-			rights[i] = r.String()
+
+		if txOut.Rights != nil {
+			rights = (*txOut.Rights).String()
 		}
+
 		pkScript = txOut.PkScript
 		isCoinbase = blockchain.IsCoinBaseTx(mtx)
 	} else {
@@ -2779,10 +2792,11 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		bestBlockHash = best.Hash.String()
 		confirmations = 1 + best.Height - entry.BlockHeight()
 		value = entry.RawAmount()
-		rights = make([]string, len(entry.Rights))
-		for i, r := range entry.Rights {
-			rights[i] = r.String()
+
+		if entry.Rights != nil {
+			rights = (*entry.Rights).String()
 		}
+
 		pkScript = entry.PkScript()
 		isCoinbase = entry.IsCoinBase()
 	}
@@ -2790,12 +2804,12 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	// Disassemble script into single line printable format.
 	// The disassembled string will contain [error] inline if the script
 	// doesn't fully parse, so ignore the error here.
-	disbuf, _ := txscript.DisasmString(pkScript)
+	disbuf := DisasmScript(pkScript)
 
 	// Get further info about the script.
 	// Ignore the error here since an error means the script couldn't parse
 	// and there is no additional information about it anyways.
-	scriptClass, addrs, reqSigs, _ := txscript.ExtractPkScriptAddrs(pkScript,
+	addrs, reqSigs, _ := indexers.ExtractPkScriptAddrs(pkScript,
 		s.cfg.ChainParams)
 	addresses := make([]string, len(addrs))
 	for i, addr := range addrs {
@@ -2819,7 +2833,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 			Asm:       disbuf,
 			Hex:       hex.EncodeToString(pkScript),
 			ReqSigs:   int32(reqSigs),
-			Type:      scriptClass.String(),
+			Type:      pubKeyTypes(pkScript),
 			Addresses: addresses,
 		},
 		Coinbase: isCoinbase,
@@ -2843,7 +2857,6 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		v := &token.VertexDef{
 			Lng:  entry.Lng,
 			Lat:  entry.Lat,
-			Desc: entry.Desc(),
 		}
 		result[v.Hash().String()] = &btcjson.VertexDefinition{
 			Kind: 0,
@@ -2851,7 +2864,6 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			Lat:  entry.Lat,
 			X: float64(int32(entry.Lng)) / token.CoordPrecision,
 			Y: float64(int32(entry.Lat)) / token.CoordPrecision,
-			Desc: string(entry.Desc()),
 		}
 		reply := &btcjson.GetDefineResult {
 			Definition: result,
@@ -2926,10 +2938,10 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			return nil, rpcDefinitionError(hash.String())
 		}
 		v := &token.PolygonDef{
-			Loops:entry.Loops(),
+			Loops:entry.Loops,
 		}
-		p := make([][]string, len(entry.Loops()))
-		for i, loop := range entry.Loops() {
+		p := make([][]string, len(entry.Loops))
+		for i, loop := range entry.Loops {
 			p[i] = make([]string, len(loop))
 			for j, b := range loop {
 				p[i][j] = b.String()
@@ -2977,9 +2989,9 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			return nil, rpcDefinitionError(hash.String())
 		}
 		v := &token.RightDef{
-			Father:entry.Father(),
-			Desc:entry.Desc(),
-			Attrib:entry.Attrib(),
+			Father:entry.Father,
+			Desc:entry.Desc,
+			Attrib:entry.Attrib,
 		}
 		result := make(map[string]interface{}, 0)
 		(*dup)[v.Hash().String()] = struct{}{}
@@ -2987,8 +2999,8 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		result[v.Hash().String()] = &btcjson.RightDefinition{
 			Kind: 4,
 			Father:entry.Father.String(),
-			Desc:string(entry.Desc()),
-			Attrib:uint32(entry.Attrib()),
+			Desc:string(entry.Desc),
+			Attrib:uint32(entry.Attrib),
 		}
 
 		if !rec {
@@ -3175,7 +3187,7 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 
 		txIn := mtx.TxIn[0]
 		vinList := make([]btcjson.VinPrevOut, 1)
-		vinList[0].Coinbase = hex.EncodeToString(txIn.SignatureScript)
+		vinList[0].Coinbase = true
 		vinList[0].Sequence = txIn.Sequence
 		return vinList, nil
 	}
@@ -3198,7 +3210,7 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 		// The disassembled string will contain [error] inline
 		// if the script doesn't fully parse, so ignore the
 		// error here.
-		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
+		disbuf := ovm.DisasmString(mtx.SignatureScripts[txIn.SignatureIndex])
 
 		// Create the basic input entry without the additional optional
 		// previous output details which will be added later if
@@ -3210,13 +3222,11 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 			Sequence: txIn.Sequence,
 			ScriptSig: &btcjson.ScriptSig{
 				Asm: disbuf,
-				Hex: hex.EncodeToString(txIn.SignatureScript),
+				Hex: hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex]),
 			},
 		}
 
-		if len(txIn.Witness) != 0 {
-			vinEntry.Witness = witnessToHex(txIn.Witness)
-		}
+		vinEntry.SignatureIndex = txIn.SignatureIndex
 
 		// Add the entry to the list now if it already passed the filter
 		// since the previous output might not be available.
@@ -3238,8 +3248,7 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 		// Ignore the error here since an error means the script
 		// couldn't parse and there is no additional information about
 		// it anyways.
-		_, addrs, _, _ := txscript.ExtractPkScriptAddrs(
-			originTxOut.PkScript, chainParams)
+		addrs, _, _ := indexers.ExtractPkScriptAddrs(originTxOut.PkScript, chainParams)
 
 		// Encode the addresses while checking if the address passes the
 		// filter when needed.

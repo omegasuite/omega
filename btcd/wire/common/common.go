@@ -15,6 +15,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"strings"
 	"strconv"
+	"math/big"
 )
 
 const (
@@ -28,6 +29,10 @@ const (
 	// binaryFreeListMaxItems is the number of buffers to keep in the free
 	// list to use for binary serialization and deserialization.
 	BinaryFreeListMaxItems = 1024
+)
+
+const (
+	MaxUint64 = 1<<64 - 1
 )
 
 // MaxMessagePayload is the maximum bytes a message can be regardless of other
@@ -936,4 +941,26 @@ func (n BitcoinNet) String() string {
 	}
 
 	return fmt.Sprintf("Unknown BitcoinNet (%d)", uint32(n))
+}
+
+// HashToBig converts a chainhash.Hash into a big.Int that can be used to
+// perform math comparisons.
+func HashToBig(hash *chainhash.Hash) *big.Int {
+	// A Hash is in little-endian, but the big package wants the bytes in
+	// big-endian, so reverse them.
+	buf := *hash
+	blen := len(buf)
+	for i := 0; i < blen/2; i++ {
+		buf[i], buf[blen-1-i] = buf[blen-1-i], buf[i]
+	}
+
+	return new(big.Int).SetBytes(buf[:])
+}
+
+// SafeMul returns multiplication result and whether overflow occurred.
+func SafeMul(x, y uint64) (uint64, bool) {
+	if x == 0 || y == 0 {
+		return 0, false
+	}
+	return x * y, y > MaxUint64/x
 }

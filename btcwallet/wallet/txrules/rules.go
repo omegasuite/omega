@@ -8,8 +8,9 @@ package txrules
 
 import (
 	"errors"
+	"github.com/btcsuite/omega/ovm"
 
-	"github.com/btcsuite/btcd/txscript"
+	//	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/omega/token"
@@ -36,6 +37,11 @@ func GetDustThreshold(scriptSize int, relayFeePerKb btcutil.Amount) btcutil.Amou
 	return 3 * relayFee
 }
 
+func IsUnspendable(pkScript []byte) bool {
+	return len(pkScript) > 0 && pkScript[21] == ovm.OP_PAY2NONE
+}
+
+
 // IsDustAmount determines whether a transaction output value and script length would
 // cause the output to be considered dust.  Transactions with dust outputs are
 // not standard and are rejected by mempools with default policies.
@@ -47,13 +53,9 @@ func IsDustAmount(amount btcutil.Amount, scriptSize int, relayFeePerKb btcutil.A
 // Transactions with dust outputs are not standard and are rejected by mempools
 // with default policies.
 func IsDustOutput(output *wire.TxOut, relayFeePerKb btcutil.Amount) bool {
-	// Unspendable outputs which solely carry data are not checked for dust.
-	if txscript.GetScriptClass(output.PkScript) == txscript.NullDataTy {
-		return false
-	}
-
 	// All other unspendable outputs are considered dust.
-	if txscript.IsUnspendable(output.PkScript) {
+//	if txscript.IsUnspendable(output.PkScript) {
+	if IsUnspendable(output.PkScript) {
 		return true
 	}
 

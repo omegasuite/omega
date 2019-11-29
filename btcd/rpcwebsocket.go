@@ -23,11 +23,11 @@ import (
 	"golang.org/x/crypto/ripemd160"
 
 	"github.com/btcsuite/btcd/blockchain"
+	"github.com/btcsuite/btcd/blockchain/indexers"
 	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/websocket"
@@ -658,7 +658,7 @@ func (m *wsNotificationManager) subscribedClients(tx *btcutil.Tx,
 	}
 
 	for i, output := range msgTx.TxOut {
-		_, addrs, _, err := txscript.ExtractPkScriptAddrs(
+		addrs, _, err := indexers.ExtractPkScriptAddrs(
 			output.PkScript, m.server.cfg.ChainParams)
 		if err != nil {
 			// Clients are not able to subscribe to
@@ -1001,7 +1001,7 @@ func (m *wsNotificationManager) notifyForTxOuts(ops map[wire.OutPoint]map[chan s
 	txHex := ""
 	wscNotified := make(map[chan struct{}]struct{})
 	for i, txOut := range tx.MsgTx().TxOut {
-		_, txAddrs, _, err := txscript.ExtractPkScriptAddrs(
+		txAddrs, _, err := indexers.ExtractPkScriptAddrs(
 			txOut.PkScript, m.server.cfg.ChainParams)
 		if err != nil {
 			continue
@@ -2050,7 +2050,7 @@ func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
 		}
 
 		for txOutIdx, txout := range tx.MsgTx().TxOut {
-			_, addrs, _, _ := txscript.ExtractPkScriptAddrs(
+			addrs, _, _ := indexers.ExtractPkScriptAddrs(
 				txout.PkScript, wsc.server.cfg.ChainParams)
 
 			for _, addr := range addrs {
@@ -2174,7 +2174,7 @@ func rescanBlockFilter(filter *wsClientFilter, block *btcutil.Block, params *cha
 
 		// Scan outputs.
 		for i, output := range msgTx.TxOut {
-			_, addrs, _, err := txscript.ExtractPkScriptAddrs(
+			addrs, _, err := indexers.ExtractPkScriptAddrs(
 				output.PkScript, params)
 			if err != nil {
 				continue

@@ -70,12 +70,12 @@ const (
 	// WitnessEncoding encodes all messages other than transaction messages
 	// using the default Bitcoin wire protocol specification. For transaction
 	// messages, the new encoding format detailed in BIP0144 will be used.
-	WitnessEncoding
+	SignatureEncoding
 )
 
 // LatestEncoding is the most recently specified encoding for the Bitcoin wire
 // protocol.
-var LatestEncoding = WitnessEncoding
+var LatestEncoding = SignatureEncoding
 
 // Message is an interface that describes a bitcoin message.  A type that
 // implements Message has complete control over the representation of its data
@@ -241,19 +241,19 @@ func discardInput(r io.Reader, n uint32) {
 // WriteMessageN writes a bitcoin Message to w including the necessary header
 // information and returns the number of bytes written.    This function is the
 // same as WriteMessage except it also returns the number of bytes written.
-func WriteMessageN(w io.Writer, msg Message, pver uint32, btcnet common.BitcoinNet) (int, error) {
-	return WriteMessageWithEncodingN(w, msg, pver, btcnet, BaseEncoding)
-}
+//func WriteMessageN(w io.Writer, msg Message, pver uint32, btcnet common.BitcoinNet) (int, error) {
+//	return WriteMessageWithEncodingN(w, msg, pver, btcnet, BaseEncoding)
+//}
 
 // WriteMessage writes a bitcoin Message to w including the necessary header
 // information.  This function is the same as WriteMessageN except it doesn't
 // doesn't return the number of bytes written.  This function is mainly provided
 // for backwards compatibility with the original API, but it's also useful for
 // callers that don't care about byte counts.
-func WriteMessage(w io.Writer, msg Message, pver uint32, btcnet common.BitcoinNet) error {
-	_, err := WriteMessageN(w, msg, pver, btcnet)
-	return err
-}
+//func WriteMessage(w io.Writer, msg Message, pver uint32, btcnet common.BitcoinNet) error {
+//	_, err := WriteMessageN(w, msg, pver, btcnet)
+//	return err
+//}
 
 // WriteMessageWithEncodingN writes a bitcoin Message to w including the
 // necessary header information and returns the number of bytes written.

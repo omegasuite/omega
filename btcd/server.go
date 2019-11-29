@@ -34,7 +34,6 @@ import (
 	"github.com/btcsuite/btcd/mining/cpuminer"
 	"github.com/btcsuite/btcd/netsync"
 	"github.com/btcsuite/btcd/peer"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/bloom"
@@ -210,8 +209,8 @@ type server struct {
 	chainParams          *chaincfg.Params
 	addrManager          *addrmgr.AddrManager
 	connManager          *connmgr.ConnManager
-	sigCache             *txscript.SigCache
-	hashCache            *txscript.HashCache
+//	sigCache             *SigCache
+//	hashCache            *HashCache
 	rpcServer            *rpcServer
 	syncManager          *netsync.SyncManager
 	chain                *blockchain.BlockChain
@@ -441,15 +440,8 @@ func (sp *serverPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 		// After soft-fork activation, only make outbound
 		// connection to peers if they flag that they're segwit
 		// enabled.
-		chain := sp.server.chain
-		segwitActive, err := chain.IsDeploymentActive(chaincfg.DeploymentSegwit)
-		if err != nil {
-			peerLog.Errorf("Unable to query for segwit soft-fork state: %v",
-				err)
-			return nil
-		}
 
-		if segwitActive && !sp.IsWitnessEnabled() {
+		if !sp.IsWitnessEnabled() {
 			peerLog.Infof("Disconnecting non-segwit peer %v, isn't segwit "+
 				"enabled and we need more segwit enabled peers", sp)
 			sp.Disconnect()
@@ -675,15 +667,15 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 		var err error
 		switch iv.Type {
 		case common.InvTypeWitnessTx:
-			err = sp.server.pushTxMsg(sp, &iv.Hash, c, waitChan, wire.WitnessEncoding)
+			err = sp.server.pushTxMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
 		case common.InvTypeTx:
 			err = sp.server.pushTxMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 		case common.InvTypeWitnessBlock:
-			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.WitnessEncoding)
+			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
 		case common.InvTypeBlock:
 			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 		case common.InvTypeFilteredWitnessBlock:
-			err = sp.server.pushMerkleBlockMsg(sp, &iv.Hash, c, waitChan, wire.WitnessEncoding)
+			err = sp.server.pushMerkleBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
 		case common.InvTypeFilteredBlock:
 			err = sp.server.pushMerkleBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 		default:
@@ -2584,8 +2576,8 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 		db:                   db,
 		timeSource:           blockchain.NewMedianTime(),
 		services:             services,
-		sigCache:             txscript.NewSigCache(cfg.SigCacheMaxSize),
-		hashCache:            txscript.NewHashCache(cfg.SigCacheMaxSize),
+//		sigCache:             NewSigCache(cfg.SigCacheMaxSize),
+//		hashCache:            NewHashCache(cfg.SigCacheMaxSize),
 		cfCheckptCaches:      make(map[wire.FilterType][]cfHeaderKV),
 	}
 
@@ -2641,9 +2633,9 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 		ChainParams:  s.chainParams,
 		Checkpoints:  checkpoints,
 		TimeSource:   s.timeSource,
-		SigCache:     s.sigCache,
+//		SigCache:     s.sigCache,
 		IndexManager: indexManager,
-		HashCache:    s.hashCache,
+//		HashCache:    s.hashCache,
 	})
 	if err != nil {
 		return nil, err
@@ -2699,8 +2691,8 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 			return s.chain.CalcSequenceLock(tx, view, true)
 		},
 		IsDeploymentActive: s.chain.IsDeploymentActive,
-		SigCache:           s.sigCache,
-		HashCache:          s.hashCache,
+//		SigCache:           s.sigCache,
+//		HashCache:          s.hashCache,
 		AddrIndex:          s.addrIndex,
 		FeeEstimator:       s.feeEstimator,
 	}
@@ -2733,8 +2725,8 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 		TxMinFreeFee:      cfg.minRelayTxFee,
 	}
 	blockTemplateGenerator := mining.NewBlkTmplGenerator(&policy,
-		s.chainParams, s.txMemPool, s.chain, s.timeSource,
-		s.sigCache, s.hashCache)
+		s.chainParams, s.txMemPool, s.chain, s.timeSource)
+//		s.sigCache, s.hashCache)
 	s.cpuMiner = cpuminer.New(&cpuminer.Config{
 		ChainParams:            chainParams,
 		BlockTemplateGenerator: blockTemplateGenerator,

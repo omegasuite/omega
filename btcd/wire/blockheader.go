@@ -27,12 +27,18 @@ type BlockHeader struct {
 	// Hash of the previous block header in the block chain.
 	PrevBlock chainhash.Hash
 
-	// Merkle tree reference to hash of all transactions for the block.
+	// Merkle tree reference tho hash of all transactions & signatures for the block.
 	MerkleRoot chainhash.Hash
 
 	// Time the block was created.  This is, unfortunately, encoded as a
 	// uint32 on the wire and therefore is limited to 2106.
 	Timestamp time.Time
+
+	// ContractExec the exact number of VM steps taken to execute all contracts (not including signature validation)
+	// This is set by this block's miner, and verified by those who accept the block. The purpose is to prevent
+	// spammer who sends out block containing never ending contracts. It is up to each miner to decide the max number
+	// of steps a contract is allowed to execute.
+	ContractExec uint64
 
 	// Difficulty target for the block.
 	Bits uint32
@@ -106,6 +112,7 @@ func NewBlockHeader(version int32, prevHash, merkleRootHash *chainhash.Hash,
 		PrevBlock:  *prevHash,
 		MerkleRoot: *merkleRootHash,
 		Timestamp:  time.Unix(time.Now().Unix(), 0),
+		ContractExec:       0,
 		Bits:       bits,
 		Nonce:      nonce,
 	}
@@ -116,7 +123,7 @@ func NewBlockHeader(version int32, prevHash, merkleRootHash *chainhash.Hash,
 // decoding from the wire.
 func readBlockHeader(r io.Reader, pver uint32, bh *BlockHeader) error {
 	return common.ReadElements(r, &bh.Version, &bh.PrevBlock, &bh.MerkleRoot,
-		(*common.Uint32Time)(&bh.Timestamp), &bh.Bits, &bh.Nonce)
+		(*common.Uint32Time)(&bh.Timestamp), &bh.ContractExec, &bh.Bits, &bh.Nonce)
 }
 
 // writeBlockHeader writes a bitcoin block header to w.  See Serialize for
@@ -125,5 +132,5 @@ func readBlockHeader(r io.Reader, pver uint32, bh *BlockHeader) error {
 func writeBlockHeader(w io.Writer, pver uint32, bh *BlockHeader) error {
 	sec := uint32(bh.Timestamp.Unix())
 	return common.WriteElements(w, bh.Version, &bh.PrevBlock, &bh.MerkleRoot,
-		sec, bh.Bits, bh.Nonce)
+		sec, bh.ContractExec, bh.Bits, bh.Nonce)
 }

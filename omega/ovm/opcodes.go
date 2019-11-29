@@ -200,21 +200,25 @@ const (
 
 // Omega extension
 const (
-	TXTEMPLATE OpCode = 0xc0 + iota		// get tx template
-	SPEND									// add input to tx template
+	GETTX OpCode = 0xc0 + iota				// get tx
+	SPEND									// spend coins in wallet
+	ADDRIGHTDEF							// add definition to tx template (limited to right definition)
 	ADDTXOUT								// add output to tx template
-	SUBMITTX								// submit tx template to blockchain
-	GETDEFINITION							// get definition (inclding that's in tx template)
+	GETDEFINITION							// get definition (including that's in tx template)
+	GETCOIN								// get tokens from wallet
+	GETUTXO								// get utxo
+	STACKRETURN							// return with data of stack top
+	ADDSIGNTEXT							// Add signature text
 )
 
 const (
 	// 0xf0 range - closures
-	CREATE OpCode = 0xf0 + iota
+	__CREATE OpCode = 0xf0 + iota			// not suported. Don't allow create as an instruction. only as a function call
 	CALL
-	CALLCODE
+	__CALLCODE								// not suported.
 	RETURN
-	DELEGATECALL
-	STATICCALL = 0xfa
+	__DELEGATECALL						// not suported.
+	__STATICCALL = 0xfa					// not suported.
 
 	REVERT       = 0xfd
 	SELFDESTRUCT = 0xff
@@ -370,19 +374,23 @@ var opCodeToString = map[OpCode]string{
 	LOG4:   "LOG4",
 
 	// 0xc0 range
-	TXTEMPLATE: "TXTEMPLATE",
+	GETTX: "GETTX",
 	SPEND: "SPEND",
+	ADDRIGHTDEF: "ADDRIGHTDEF",
 	ADDTXOUT: "ADDTXOUT",
-	SUBMITTX: "SUBMITTX",
 	GETDEFINITION: "GETDEFINITION",
+	GETCOIN: "GETCOIN",
+	GETUTXO: "GETUTXO",
+	STACKRETURN: "STACKRETURN",
+	ADDSIGNTEXT: "ADDSIGNTEXT",
 
 	// 0xf0 range
-	CREATE:       "CREATE",
+//	CREATE:       "CREATE",
 	CALL:         "CALL",
 	RETURN:       "RETURN",
-	CALLCODE:     "CALLCODE",
-	DELEGATECALL: "DELEGATECALL",
-	STATICCALL:   "STATICCALL",
+//	CALLCODE:     "CALLCODE",
+//	DELEGATECALL: "DELEGATECALL",
+//	STATICCALL:   "STATICCALL",
 	REVERT:       "REVERT",
 	SELFDESTRUCT: "SELFDESTRUCT",
 
@@ -436,8 +444,8 @@ var stringToOp = map[string]OpCode{
 	"CALLDATALOAD":   CALLDATALOAD,
 	"CALLDATASIZE":   CALLDATASIZE,
 	"CALLDATACOPY":   CALLDATACOPY,
-	"DELEGATECALL":   DELEGATECALL,
-	"STATICCALL":     STATICCALL,
+//	"DELEGATECALL":   DELEGATECALL,
+//	"STATICCALL":     STATICCALL,
 	"CODESIZE":       CODESIZE,
 	"CODECOPY":       CODECOPY,
 //	"GASPRICE":       GASPRICE,
@@ -534,16 +542,20 @@ var stringToOp = map[string]OpCode{
 	"LOG4":           LOG4,
 
 	// 0xc0 range
-	"TXTEMPLATE": TXTEMPLATE,
+	"GETTX": GETTX,
 	"SPEND": SPEND,
+	"ADDRIGHTDEF": ADDRIGHTDEF,
 	"ADDTXOUT": ADDTXOUT,
-	"SUBMITTX": SUBMITTX,
 	"GETDEFINITION": GETDEFINITION,
+	"GETCOIN": GETCOIN,
+	"GETUTXO": GETUTXO,
+	"STACKRETURN": STACKRETURN,
+	"ADDSIGNTEXT": ADDSIGNTEXT,
 
-	"CREATE":         CREATE,
+//	"CREATE":         CREATE,
 	"CALL":           CALL,
 	"RETURN":         RETURN,
-	"CALLCODE":       CALLCODE,
+//	"CALLCODE":       CALLCODE,
 	"REVERT":         REVERT,
 	"SELFDESTRUCT":   SELFDESTRUCT,
 }

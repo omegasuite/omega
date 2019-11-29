@@ -5,8 +5,6 @@
 package blockchain
 
 import (
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/txscript"
 )
 
 // -----------------------------------------------------------------------------
@@ -171,6 +169,7 @@ const (
 	numSpecialScripts = 6
 )
 
+/*
 // isPubKeyHash returns whether or not the passed public key script is a
 // standard pay-to-pubkey-hash script along with the pubkey hash it is paying to
 // if it is.
@@ -290,7 +289,7 @@ func decodeCompressedScriptSize(serialized []byte) int {
 	scriptSize += uint64(bytesRead)
 	return int(scriptSize)
 }
-
+/*
 // putCompressedScript compresses the passed script according to the domain
 // specific compression algorithm described above directly into the passed
 // target byte slice.  The target byte slice must be at least large enough to
@@ -419,7 +418,7 @@ func decompressScript(compressedPkScript []byte) []byte {
 	copy(pkScript, compressedPkScript[bytesRead:bytesRead+scriptSize])
 	return pkScript
 }
-
+*/
 // -----------------------------------------------------------------------------
 // In order to reduce the size of stored amounts, a domain specific compression
 // algorithm is used which relies on there typically being a lot of zeroes at
@@ -527,6 +526,7 @@ func decompressTxOutAmount(amount uint64) uint64 {
 	return n
 }
 
+/*
 // -----------------------------------------------------------------------------
 // Compressed transaction outputs consist of an amount and a public key script
 // both compressed using the domain specific compression algorithms previously
@@ -559,6 +559,7 @@ func putCompressedTxOut(target []byte, amount uint64, pkScript []byte) int {
 	return offset
 }
 
+
 // decodeCompressedTxOut decodes the passed compressed txout, possibly followed
 // by other data, into its uncompressed amount and script and returns them along
 // with the number of bytes they occupied prior to decompression.
@@ -584,3 +585,4 @@ func decodeCompressedTxOut(serialized []byte) (uint64, []byte, int, error) {
 	script := decompressScript(serialized[bytesRead : bytesRead+scriptSize])
 	return amount, script, bytesRead + scriptSize, nil
 }
+*/

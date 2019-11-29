@@ -120,11 +120,6 @@ const (
 	// purposes.
 	DeploymentTestDummy = iota
 
-	// DeploymentCSV defines the rule change deployment ID for the CSV
-	// soft-fork package. The CSV package includes the deployment of BIPS
-	// 68, 112, and 113.
-	DeploymentCSV
-
 	// DeploymentSegwit defines the rule change deployment ID for the
 	// Segregated Witness (segwit) soft-fork package. The segwit package
 	// includes the deployment of BIPS 141, 142, 144, 145, 147 and 173.
@@ -167,12 +162,6 @@ type Params struct {
 	// PowLimitBits defines the highest allowed proof of work value for a
 	// block in compact form.
 	PowLimitBits uint32
-
-	// These fields define the block heights at which the specified softfork
-	// BIP became active.
-	BIP0034Height int32
-	BIP0065Height int32
-	BIP0066Height int32
 
 	// CoinbaseMaturity is the number of blocks required before newly mined
 	// coins (coinbase transactions) can be spent.
@@ -248,8 +237,8 @@ type Params struct {
 	WitnessScriptHashAddrID byte // First byte of a P2WSH address
 
 	// BIP32 hierarchical deterministic extended key magics
-	HDPrivateKeyID [4]byte
 	HDPublicKeyID  [4]byte
+	HDPrivateKeyID  [4]byte
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
@@ -257,6 +246,9 @@ type Params struct {
 
 	// ContractExecLimit is a policy by each node to limit step a contract may execute
 	ContractExecLimit uint32
+
+	// SigVeriConcurrency is the number of concurrent verifiers for signature veridfication
+	SigVeriConcurrency int
 }
 
 // MainNetParams defines the network parameters for the main Bitcoin network.
@@ -278,9 +270,6 @@ var MainNetParams = Params{
 	GenesisHash:              &genesisHash,
 	PowLimit:                 mainPowLimit,
 	PowLimitBits:             0x1d00ffff,
-	BIP0034Height:            227931, // 000000000000024b89b42a942fe0d9fea3bb44ab7bd1b19115dd6a759c0808b8
-	BIP0065Height:            388381, // 000000000000000004c2b624ed5d7756c508d90fd0da2c7c679febfa6c4735f0
-	BIP0066Height:            363725, // 00000000000000000379eaa19dce8c9b722d46ae6a57c2f1a988119488b50931
 	CoinbaseMaturity:         100,
 	SubsidyReductionInterval: 210000,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
@@ -306,16 +295,6 @@ var MainNetParams = Params{
 			StartTime:  1199145601, // January 1, 2008 UTC
 			ExpireTime: 1230767999, // December 31, 2008 UTC
 		},
-		DeploymentCSV: {
-			BitNumber:  0,
-			StartTime:  1462060800, // May 1st, 2016
-			ExpireTime: 1493596800, // May 1st, 2017
-		},
-		DeploymentSegwit: {
-			BitNumber:  1,
-			StartTime:  1479168000, // November 15, 2016 UTC
-			ExpireTime: 1510704000, // November 15, 2017 UTC.
-		},
 	},
 
 	// Mempool parameters
@@ -333,14 +312,14 @@ var MainNetParams = Params{
 	WitnessPubKeyHashAddrID: 0x06, // starts with p2
 	WitnessScriptHashAddrID: 0x0A, // starts with 7Xh
 
-	// BIP32 hierarchical deterministic extended key magics
-	HDPrivateKeyID: [4]byte{0x04, 0x88, 0xad, 0xe4}, // starts with xprv
-	HDPublicKeyID:  [4]byte{0x04, 0x88, 0xb2, 0x1e}, // starts with xpub
+	HDPublicKeyID:  [4]byte{0x04, 0x88, 0xad, 0xe4},
+	HDPrivateKeyID:  [4]byte{0x04, 0x88, 0xb2, 0x1e},
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 0,
 	ContractExecLimit: 10000,
+	SigVeriConcurrency: 1,
 }
 
 // RegressionNetParams defines the network parameters for the regression test
@@ -358,9 +337,6 @@ var RegressionNetParams = Params{
 	PowLimit:                 regressionPowLimit,
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         100,
-	BIP0034Height:            100000000, // Not active - Permit ver 1 blocks
-	BIP0065Height:            1351,      // Used by regression tests
-	BIP0066Height:            1251,      // Used by regression tests
 	SubsidyReductionInterval: 150,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
@@ -384,16 +360,6 @@ var RegressionNetParams = Params{
 			StartTime:  0,             // Always available for vote
 			ExpireTime: math.MaxInt64, // Never expires
 		},
-		DeploymentCSV: {
-			BitNumber:  0,
-			StartTime:  0,             // Always available for vote
-			ExpireTime: math.MaxInt64, // Never expires
-		},
-		DeploymentSegwit: {
-			BitNumber:  1,
-			StartTime:  0,             // Always available for vote
-			ExpireTime: math.MaxInt64, // Never expires.
-		},
 	},
 
 	// Mempool parameters
@@ -409,15 +375,15 @@ var RegressionNetParams = Params{
 	ContractAddrID:	  0x88, // start with 8
 	PrivateKeyID:     0xef, // starts with 9 (uncompressed) or c (compressed)
 
-	// BIP32 hierarchical deterministic extended key magics
-	HDPrivateKeyID: [4]byte{0x04, 0x35, 0x83, 0x94}, // starts with tprv
-	HDPublicKeyID:  [4]byte{0x04, 0x35, 0x87, 0xcf}, // starts with tpub
+	HDPublicKeyID:  [4]byte{0x04, 0x35, 0x83, 0x94},
+	HDPrivateKeyID:  [4]byte{0x04, 0x35, 0x87, 0xcf},
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 1,
 
 	ContractExecLimit: 10000,
+	SigVeriConcurrency: 1,
 }
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
@@ -439,9 +405,6 @@ var TestNet3Params = Params{
 	GenesisHash:              &testNet3GenesisHash,
 	PowLimit:                 testNet3PowLimit,
 	PowLimitBits:             0x1f00ffff,
-	BIP0034Height:            21111,  // 0000000023b3a96d3484e5abb3755c413e7d41500f8e2a5c3f0dd01299cd8ef8
-	BIP0065Height:            581885, // 00000000007f6655f22f98e72ed80d8b06dc761d5da09df0fa1dc4be4f861eb6
-	BIP0066Height:            330776, // 000000002104c8c45e99a8853285a3b592602a3ccde2b832481da85e9e4ba182
 	CoinbaseMaturity:         100,
 	SubsidyReductionInterval: 210000,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
@@ -467,16 +430,6 @@ var TestNet3Params = Params{
 			StartTime:  1199145601, // January 1, 2008 UTC
 			ExpireTime: 1230767999, // December 31, 2008 UTC
 		},
-		DeploymentCSV: {
-			BitNumber:  0,
-			StartTime:  1456790400, // March 1st, 2016
-			ExpireTime: 1493596800, // May 1st, 2017
-		},
-		DeploymentSegwit: {
-			BitNumber:  1,
-			StartTime:  1462060800, // May 1, 2016 UTC
-			ExpireTime: 1493596800, // May 1, 2017 UTC.
-		},
 	},
 
 	// Mempool parameters
@@ -494,15 +447,15 @@ var TestNet3Params = Params{
 	WitnessScriptHashAddrID: 0x28, // starts with T7n
 	PrivateKeyID:            0xef, // starts with 9 (uncompressed) or c (compressed)
 
-	// BIP32 hierarchical deterministic extended key magics
-	HDPrivateKeyID: [4]byte{0x04, 0x35, 0x83, 0x94}, // starts with tprv
-	HDPublicKeyID:  [4]byte{0x04, 0x35, 0x87, 0xcf}, // starts with tpub
+	HDPublicKeyID:  [4]byte{0x04, 0x35, 0x83, 0x94},
+	HDPrivateKeyID:  [4]byte{0x04, 0x35, 0x87, 0xcf},
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 1,
 
 	ContractExecLimit: 10000,
+	SigVeriConcurrency: 1,
 }
 
 // SimNetParams defines the network parameters for the simulation test Bitcoin
@@ -523,9 +476,6 @@ var SimNetParams = Params{
 	GenesisHash:              &simNetGenesisHash,
 	PowLimit:                 simNetPowLimit,
 	PowLimitBits:             0x207fffff,
-	BIP0034Height:            0, // Always active on simnet
-	BIP0065Height:            0, // Always active on simnet
-	BIP0066Height:            0, // Always active on simnet
 	CoinbaseMaturity:         100,
 	SubsidyReductionInterval: 210000,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
@@ -550,16 +500,6 @@ var SimNetParams = Params{
 			StartTime:  0,             // Always available for vote
 			ExpireTime: math.MaxInt64, // Never expires
 		},
-		DeploymentCSV: {
-			BitNumber:  0,
-			StartTime:  0,             // Always available for vote
-			ExpireTime: math.MaxInt64, // Never expires
-		},
-		DeploymentSegwit: {
-			BitNumber:  1,
-			StartTime:  0,             // Always available for vote
-			ExpireTime: math.MaxInt64, // Never expires.
-		},
 	},
 
 	// Mempool parameters
@@ -577,15 +517,15 @@ var SimNetParams = Params{
 	WitnessPubKeyHashAddrID: 0x19, // starts with Gg
 	WitnessScriptHashAddrID: 0x28, // starts with ?
 
-	// BIP32 hierarchical deterministic extended key magics
-	HDPrivateKeyID: [4]byte{0x04, 0x20, 0xb9, 0x00}, // starts with sprv
-	HDPublicKeyID:  [4]byte{0x04, 0x20, 0xbd, 0x3a}, // starts with spub
+	HDPublicKeyID:  [4]byte{0x04, 0x20, 0xb9, 0x00},
+	HDPrivateKeyID:  [4]byte{0x04, 0x35, 0xbd, 0x3a},
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 115, // ASCII for s
 
 	ContractExecLimit: 10000,
+	SigVeriConcurrency: 1,
 }
 
 var (
@@ -730,3 +670,5 @@ func init() {
 	mustRegister(&RegressionNetParams)
 	mustRegister(&SimNetParams)
 }
+
+var ActiveNetParams * Params

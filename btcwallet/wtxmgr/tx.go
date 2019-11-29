@@ -142,7 +142,7 @@ type Asset struct {
 	TokenType    uint64
 	Value 		 int64
 	VHash 		 string
-	Rights 	     []string
+	Rights 	     string
 	PkScript     []byte
 	Received     time.Time
 	FromCoinBase bool
@@ -1043,10 +1043,10 @@ func (s *Store) UnspentAssets(ns walletdb.ReadBucket, detail bool) ([]Asset, err
 			cred.VHash = txOut.Token.Value.(*token.HashToken).Hash.String()
 		}
 		if txOut.Token.TokenType & 2 != 0 {
-			cred.Rights = make([]string, len(txOut.Token.Rights))
-			for i,r := range txOut.Token.Rights {
-				cred.Rights[i] = r.String()
-			}
+//			cred.Rights = make([]string, len(txOut.Token.Rights))
+//			for i,r := range txOut.Token.Rights {
+				cred.Rights = (*txOut.Token.Rights).String()
+//			}
 		}
 		unspent = append(unspent, cred)
 		return nil
@@ -1110,10 +1110,10 @@ func (s *Store) UnspentAssets(ns walletdb.ReadBucket, detail bool) ([]Asset, err
 			cred.VHash = txOut.Token.Value.(*token.HashToken).Hash.String()
 		}
 		if txOut.Token.TokenType & 2 != 0 {
-			cred.Rights = make([]string, len(txOut.Token.Rights))
-			for i,r := range txOut.Token.Rights {
-				cred.Rights[i] = r.String()
-			}
+//			cred.Rights = make([]string, len(txOut.Token.Rights))
+//			for i,r := range txOut.Token.Rights {
+				cred.Rights = (*txOut.Token.Rights).String()
+//			}
 		}
 		unspent = append(unspent, cred)
 		return nil

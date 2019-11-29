@@ -10,6 +10,7 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/omega/token"
 )
 
 // TxIndexUnknown is the value returned for a transaction index that is unknown.
@@ -24,9 +25,9 @@ const TxIndexUnknown = -1
 type Tx struct {
 	msgTx         *wire.MsgTx     // Underlying MsgTx
 	txHash        *chainhash.Hash // Cached transaction hash
-	txHashWitness *chainhash.Hash // Cached transaction witness hash
-	txHasWitness  *bool           // If the transaction has witness data
+	txHashSignature *chainhash.Hash // Cached transaction witness hash
 	txIndex       int             // Position within a block or TxIndexUnknown
+	Spends 		  []token.Token	  // spendings by contracts. temp data used for validation
 }
 
 // MsgTx returns the underlying wire.MsgTx for the transaction.
@@ -40,14 +41,21 @@ func (t *Tx) IsCoinBase() bool {
 }
 
 func (s *Tx) Copy() *Tx {
-	wit := s.HasWitness()
+	ds := make([]token.Token, len(s.Spends))
+	for i, t := range s.Spends {
+		t.Copy(&ds[i])
+	}
 	return &Tx{
 		msgTx: s.msgTx.Copy(),
 		txHash: s.Hash(),
-		txHashWitness: s.WitnessHash(),
-		txHasWitness: &wit,
+		txHashSignature: s.SignatureHash(),
 		txIndex: s.Index(),
+		Spends: ds,
 	}
+}
+
+func (s *Tx) AddTxIn(t  token.Token) {
+	s.Spends = append(s.Spends, t)
 }
 
 // Hash returns the hash of the transaction.  This is equivalent to
@@ -68,30 +76,16 @@ func (t *Tx) Hash() *chainhash.Hash {
 // WitnessHash returns the witness hash (wtxid) of the transaction.  This is
 // equivalent to calling WitnessHash on the underlying wire.MsgTx, however it
 // caches the result so subsequent calls are more efficient.
-func (t *Tx) WitnessHash() *chainhash.Hash {
+func (t *Tx) SignatureHash() *chainhash.Hash {
 	// Return the cached hash if it has already been generated.
-	if t.txHashWitness != nil {
-		return t.txHashWitness
+	if t.txHashSignature != nil {
+		return t.txHashSignature
 	}
 
 	// Cache the hash and return it.
-	hash := t.msgTx.WitnessHash()
-	t.txHashWitness = &hash
+	hash := t.msgTx.SignatureHash()
+	t.txHashSignature = &hash
 	return &hash
-}
-
-// HasWitness returns false if none of the inputs within the transaction
-// contain witness data, true false otherwise. This equivalent to calling
-// HasWitness on the underlying wire.MsgTx, however it caches the result so
-// subsequent calls are more efficient.
-func (t *Tx) HasWitness() bool {
-	if t.txHashWitness != nil {
-		return *t.txHasWitness
-	}
-
-	hasWitness := t.msgTx.HasWitness()
-	t.txHasWitness = &hasWitness
-	return hasWitness
 }
 
 // Index returns the saved index of the transaction within a block.  This value
@@ -111,6 +105,7 @@ func NewTx(msgTx *wire.MsgTx) *Tx {
 	return &Tx{
 		msgTx:   msgTx,
 		txIndex: TxIndexUnknown,
+		Spends: make([]token.Token, 0),
 	}
 }
 

@@ -14,6 +14,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/btcsuite/btcd/txscript"
+	"github.com/btcsuite/btcd/txscript/txsparser"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -27,7 +29,7 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/txscript"
+//	"github.com/btcsuite/btcd/txscript"
 //	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcwallet/internal/legacy/rename"
@@ -2754,7 +2756,7 @@ func (a *p2SHScript) WriteTo(w io.Writer) (n int64, err error) {
 type scriptAddress struct {
 	store             *Store
 	address           btcutil.Address
-	class             txscript.ScriptClass
+	class             txsparser.ScriptClass
 	addresses         []btcutil.Address
 	reqSigs           int
 	flags             scriptFlags
@@ -2772,7 +2774,7 @@ type ScriptAddress interface {
 	// Returns the script associated with the address.
 	Script() []byte
 	// Returns the class of the script associated with the address.
-	ScriptClass() txscript.ScriptClass
+	ScriptClass() txsparser.ScriptClass
 	// Returns the addresses that are required to sign transactions from the
 	// script address.
 	Addresses() []btcutil.Address
@@ -2962,7 +2964,7 @@ func (sa *scriptAddress) Addresses() []btcutil.Address {
 }
 
 // ScriptClass returns the type of script the address is.
-func (sa *scriptAddress) ScriptClass() txscript.ScriptClass {
+func (sa *scriptAddress) ScriptClass() txsparser.ScriptClass {
 	return sa.class
 }
 

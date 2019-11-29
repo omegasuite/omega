@@ -18,9 +18,38 @@ package ovm
 
 import (
 	"fmt"
-
-	"github.com/ethereum/go-ethereum/params"
 )
+
+const (
+	MaximumExtraDataSize  uint64 = 32    // Maximum size extra data may be after Genesis.
+	QuadCoeffDiv          uint64 = 512   // Divisor for the quadratic particle of the memory cost equation.
+
+	EpochDuration    uint64 = 30000 // Duration between proof-of-work epochs.
+	CallCreateDepth  uint64 = 1024  // Maximum depth of call/create stack.
+	StackLimit       uint64 = 1024  // Maximum size of VM stack allowed.
+
+	MaxCodeSize = 24576 // Maximum bytecode to permit for a contract
+
+	ModExpQuadCoeffDiv      uint64 = 20     // Divisor for the quadratic particle of the big int modular exponentiation
+)
+
+func getCoinStack() stackValidationFunc {
+	return func(stack *Stack) error {
+		if err := stack.require(2); err != nil {
+			return err
+		}
+
+		criteria := stack.Back(1)
+		x := criteria.Uint64() & 1
+		x += (criteria.Uint64() & 2) >> 1
+
+		if err := stack.require(2 + int(x)); err != nil {
+			return err
+		}
+
+		return nil
+	}
+}
 
 func makeStackFunc(pop, push int) stackValidationFunc {
 	return func(stack *Stack) error {
@@ -28,8 +57,8 @@ func makeStackFunc(pop, push int) stackValidationFunc {
 			return err
 		}
 
-		if stack.len()+push-pop > int(params.StackLimit) {
-			return fmt.Errorf("stack limit reached %d (%d)", stack.len(), params.StackLimit)
+		if stack.len()+push-pop > int(StackLimit) {
+			return fmt.Errorf("stack limit reached %d (%d)", stack.len(), StackLimit)
 		}
 		return nil
 	}
@@ -61,8 +90,8 @@ func validateSpendStack (stack *Stack) error {
 		return err
 	}
 
-	if stack.len()+push-pop > int(params.StackLimit) {
-		return fmt.Errorf("stack limit reached %d (%d)", stack.len(), params.StackLimit)
+	if stack.len()+push-pop > int(StackLimit) {
+		return fmt.Errorf("stack limit reached %d (%d)", stack.len(), StackLimit)
 	}
 	return nil
 }
@@ -86,8 +115,8 @@ func validateAddTxOutStack (stack *Stack) error {
 		return err
 	}
 
-	if stack.len()+push-pop > int(params.StackLimit) {
-		return fmt.Errorf("stack limit reached %d (%d)", stack.len(), params.StackLimit)
+	if stack.len()+push-pop > int(StackLimit) {
+		return fmt.Errorf("stack limit reached %d (%d)", stack.len(), StackLimit)
 	}
 	return nil
 }
@@ -109,8 +138,8 @@ func validateAddTxDefStack (stack *Stack) error {
 		return err
 	}
 
-	if stack.len()+push-pop > int(params.StackLimit) {
-		return fmt.Errorf("stack limit reached %d (%d)", stack.len(), params.StackLimit)
+	if stack.len()+push-pop > int(StackLimit) {
+		return fmt.Errorf("stack limit reached %d (%d)", stack.len(), StackLimit)
 	}
 	return nil
 }

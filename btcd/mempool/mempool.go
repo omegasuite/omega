@@ -18,7 +18,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/mining"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/viewpoint"
@@ -84,10 +83,10 @@ type Config struct {
 	IsDeploymentActive func(deploymentID uint32) (bool, error)
 
 	// SigCache defines a signature cache to use.
-	SigCache *txscript.SigCache
+//	SigCache *txscript.SigCache
 
 	// HashCache defines the transaction hash mid-state cache to use.
-	HashCache *txscript.HashCache
+//	HashCache *txscript.HashCache
 
 	// AddrIndex defines the optional address index instance to use for
 	// indexing the unconfirmed transactions in the memory pool.
@@ -610,7 +609,7 @@ func (mp *TxPool) fetchInputUtxos(tx *btcutil.Tx) (*viewpoint.UtxoViewpoint, err
 		if poolTxDesc, exists := mp.pool[prevOut.Hash]; exists {
 			// AddTxOut ignores out of range index values, so it is
 			// safe to call without bounds checking here.
-			utxoView.AddTxOut(poolTxDesc.Tx, prevOut.Index,
+			mp.cfg.Views.AddTxOut(poolTxDesc.Tx, prevOut.Index,
 				mining.UnminedHeight)
 		}
 	}
@@ -643,22 +642,6 @@ func (mp *TxPool) FetchTransaction(txHash *chainhash.Hash) (*btcutil.Tx, error) 
 // This function MUST be called with the mempool lock held (for writes).
 func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejectDupOrphans bool) ([]*chainhash.Hash, *TxDesc, error) {
 	txHash := tx.Hash()
-
-	// If a transaction has iwtness data, and segwit isn't active yet, If
-	// segwit isn't active yet, then we won't accept it into the mempool as
-	// it can't be mined yet.
-	if tx.MsgTx().HasWitness() {
-		segwitActive, err := mp.cfg.IsDeploymentActive(chaincfg.DeploymentSegwit)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		if !segwitActive {
-			str := fmt.Sprintf("transaction %v has witness data, "+
-				"but segwit isn't active yet", txHash)
-			return nil, nil, txRuleError(common.RejectNonstandard, str)
-		}
-	}
 
 	// Don't accept the transaction if it already exists in the pool.  This
 	// applies to orphan transactions as well when the reject duplicate
@@ -797,8 +780,17 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	// rules in blockchain for what transactions are allowed into blocks.
 	// Also returns the fees associated with the transaction which will be
 	// used later.
-	txFee, err := blockchain.CheckTransactionInputs(tx, nextBlockHeight,
-		views, mp.cfg.ChainParams)
+
+	// here we don't do signature, contract execution, integrity check.
+	err = blockchain.CheckTransactionInputs(tx, nextBlockHeight, views, mp.cfg.ChainParams)
+	if err != nil {
+		if cerr, ok := err.(blockchain.RuleError); ok {
+			return nil, nil, chainRuleError(cerr)
+		}
+		return nil, nil, err
+	}
+
+	txFee, err := blockchain.CheckTransactionFeess(tx, nextBlockHeight, views, mp.cfg.ChainParams)
 	if err != nil {
 		if cerr, ok := err.(blockchain.RuleError); ok {
 			return nil, nil, chainRuleError(cerr)
@@ -909,15 +901,16 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 
 	// Verify crypto signatures for each input and reject the transaction if
 	// any don't verify.
-	err = blockchain.ValidateTransactionScripts(tx, utxoView,
-		txscript.StandardVerifyFlags, mp.cfg.SigCache,
-		mp.cfg.HashCache)
+/*	defer until we actually try to add it to a block
+	err = blockchain.ValidateTransactionScripts(tx, utxoView)
+//		txscript.StandardVerifyFlags, mp.cfg.SigCache,		mp.cfg.HashCache)
 	if err != nil {
 		if cerr, ok := err.(blockchain.RuleError); ok {
 			return nil, nil, chainRuleError(cerr)
 		}
 		return nil, nil, err
 	}
+*/
 
 	// Add to transaction pool.
 	txD := mp.addTransaction(utxoView, tx, bestHeight, txFee)

@@ -20,7 +20,6 @@ import (
 	"github.com/btcsuite/btcd/mining/cpuminer"
 	"github.com/btcsuite/btcd/netsync"
 	"github.com/btcsuite/btcd/peer"
-	"github.com/btcsuite/btcd/txscript"
 
 	"github.com/btcsuite/btclog"
 	"github.com/jrick/logrotate/rotator"
@@ -81,7 +80,7 @@ func init() {
 	mining.UseLogger(minrLog)
 	cpuminer.UseLogger(minrLog)
 	peer.UseLogger(peerLog)
-	txscript.UseLogger(scrpLog)
+//	UseLogger(scrpLog)
 	netsync.UseLogger(syncLog)
 	mempool.UseLogger(txmpLog)
 }

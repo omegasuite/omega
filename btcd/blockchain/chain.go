@@ -14,12 +14,11 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/viewpoint"
 	"github.com/btcsuite/btcd/blockchain/bccompress"
-	"github.com/btcsuite/ovm"
+	"github.com/btcsuite/omega/ovm"
 )
 
 const (
@@ -101,9 +100,7 @@ type BlockChain struct {
 	db                  database.DB
 	chainParams         *chaincfg.Params
 	timeSource          MedianTimeSource
-	sigCache            *txscript.SigCache
 	indexManager        IndexManager
-	hashCache           *txscript.HashCache
 
 	// The following fields are calculated based upon the provided chain
 	// parameters.  They are also set when the instance is created and
@@ -375,30 +372,13 @@ func (b *BlockChain) calcSequenceLock(node *blockNode, tx *btcutil.Tx, utxoView 
 	// activated.
 	sequenceLock := &SequenceLock{Seconds: -1, BlockHeight: -1}
 
-	// The sequence locks semantics are always active for transactions
-	// within the mempool.
-	csvSoftforkActive := mempool
-
-	// If we're performing block validation, then we need to query the BIP9
-	// state.
-	if !csvSoftforkActive {
-		// Obtain the latest BIP9 version bits state for the
-		// CSV-package soft-fork deployment. The adherence of sequence
-		// locks depends on the current soft-fork state.
-		csvState, err := b.deploymentState(node.parent, chaincfg.DeploymentCSV)
-		if err != nil {
-			return nil, err
-		}
-		csvSoftforkActive = csvState == ThresholdActive
-	}
-
 	// If the transaction's version is less than 2, and BIP 68 has not yet
 	// been activated then sequence locks are disabled. Additionally,
 	// sequence locks don't apply to coinbase transactions Therefore, we
 	// return sequence lock values of -1 indicating that this transaction
 	// can be included within a block at any given height or time.
 	mTx := tx.MsgTx()
-	sequenceLockActive := mTx.Version >= 2 && csvSoftforkActive
+	sequenceLockActive := mTx.Version >= 2
 	if !sequenceLockActive || IsCoinBase(tx) {
 		return sequenceLock, nil
 	}
@@ -885,7 +865,7 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err = views.Utxo.FetchInputUtxos(b.db, block)
+		err = views.FetchInputUtxos(b.db, block)
 		if err != nil {
 			return err
 		}
@@ -952,27 +932,11 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		// checkConnectBlock gets skipped, we still need to update the UTXO
 		// view.
 		if b.index.NodeStatus(n).KnownValid() {
-			err = views.Utxo.FetchInputUtxos(b.db, block)
+			err = views.FetchInputUtxos(b.db, block)
 			if err != nil {
 				return err
 			}
-			err = views.Utxo.ConnectTransactions(block, nil)
-			if err != nil {
-				return err
-			}
-			err = views.Vertex.ConnectTransactions(block)
-			if err != nil {
-				return err
-			}
-			err = views.Border.ConnectTransactions(block)
-			if err != nil {
-				return err
-			}
-			err = views.Polygon.ConnectTransactions(block)
-			if err != nil {
-				return err
-			}
-			err = views.Rights.ConnectTransactions(block)
+			err = views.ConnectTransactions(block, nil)
 			if err != nil {
 				return err
 			}
@@ -1021,7 +985,7 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err := views.Utxo.FetchInputUtxos(b.db, block)
+		err := views.FetchInputUtxos(b.db, block)
 		if err != nil {
 			return err
 		}
@@ -1047,7 +1011,7 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err := views.Utxo.FetchInputUtxos(b.db, block)
+		err := views.FetchInputUtxos(b.db, block)
 		if err != nil {
 			return err
 		}
@@ -1057,7 +1021,7 @@ func (b *BlockChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		// to it.  Also, provide an stxo slice so the spent txout
 		// details are generated.
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
-		err = views.Utxo.ConnectTransactions(block, &stxos)
+		err = views.ConnectTransactions(block, &stxos)
 		if err != nil {
 			return err
 		}
@@ -1148,11 +1112,11 @@ func (b *BlockChain) connectBestChain(node *blockNode, block *btcutil.Block, fla
 		// utxos, spend them, and add the new utxos being created by
 		// this block.
 		if fastAdd {
-			err := views.Utxo.FetchInputUtxos(b.db, block)
+			err := views.FetchInputUtxos(b.db, block)
 			if err != nil {
 				return false, err
 			}
-			err = views.Utxo.ConnectTransactions(block, &stxos)
+			err = views.ConnectTransactions(block, &stxos)
 			if err != nil {
 				return false, err
 			}
@@ -1714,7 +1678,7 @@ type Config struct {
 	//
 	// This field can be nil if the caller is not interested in using a
 	// signature cache.
-	SigCache *txscript.SigCache
+//	SigCache *txscript.SigCache
 
 	// IndexManager defines an index manager to use when initializing the
 	// chain and connecting and disconnecting blocks.
@@ -1731,7 +1695,7 @@ type Config struct {
 	//
 	// This field can be nil if the caller is not interested in using a
 	// signature cache.
-	HashCache *txscript.HashCache
+//	HashCache *txscript.HashCache
 }
 
 // New returns a BlockChain instance using the provided configuration details.
@@ -1775,13 +1739,11 @@ func New(config *Config) (*BlockChain, error) {
 		db:                  config.DB,
 		chainParams:         params,
 		timeSource:          config.TimeSource,
-		sigCache:            config.SigCache,
 		indexManager:        config.IndexManager,
 		minRetargetTimespan: targetTimespan / adjustmentFactor,
 		maxRetargetTimespan: targetTimespan * adjustmentFactor,
 		blocksPerRetarget:   int32(targetTimespan / targetTimePerBlock),
 		index:               newBlockIndex(config.DB, params),
-		hashCache:           config.HashCache,
 		bestChain:           newChainView(nil),
 		orphans:             make(map[chainhash.Hash]*orphanBlock),
 		prevOrphans:         make(map[chainhash.Hash][]*orphanBlock),
@@ -1821,14 +1783,14 @@ func New(config *Config) (*BlockChain, error) {
 		// Debug enabled debugging Interpreter options
 		Debug: false,
 		// Tracer is the op code logger
-		Tracer: nil,
+//		Tracer: nil,
 		// NoRecursion disabled Interpreter call, callcode,
 		// delegate call and create.
 		NoRecursion: false,
 		// Enable recording of SHA3/keccak preimages
 		EnablePreimageRecording: false,
 	}
-	b.ovm = ovm.NewOVM(ctx, params, vmcfg)
+	b.ovm = ovm.NewOVM(ctx, params, vmcfg, config.DB)
 
 	bestNode := b.bestChain.Tip()
 	log.Infof("Chain state (height %d, hash %v, totaltx %d, work %v)",

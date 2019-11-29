@@ -12,6 +12,7 @@ import (
 //	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/token"
+	"fmt"
 )
 
 var (
@@ -43,7 +44,7 @@ var (
 type txoFlags uint8
 
 type ViewPointSet struct {
-	Db * database.DB
+	Db database.DB
 	Utxo * UtxoViewpoint
 	Vertex * VtxViewpoint
 	Border * BorderViewpoint
@@ -51,7 +52,7 @@ type ViewPointSet struct {
 	Rights * RightViewpoint
 }
 
-func NewViewPointSet(db * database.DB) * ViewPointSet {
+func NewViewPointSet(db database.DB) * ViewPointSet {
 	t := ViewPointSet {}
 	t.Db = db
 	t.Utxo = NewUtxoViewpoint()
@@ -87,7 +88,26 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 	if err != nil {
 		return err
 	}
-	return t.Utxo.disconnectTransactions(db, block, stxos)
+
+	for _,tx := range block.Transactions() {
+		for _, in := range tx.MsgTx().TxIn {
+			entry := t.Utxo.LookupEntry(in.PreviousOutPoint)
+			if entry == nil {
+				return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))
+			}
+
+			if entry.TokenType&3 == 3 {
+				t.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).reference(t)
+			}
+		}
+		for _, out := range tx.MsgTx().TxOut {
+			if out.TokenType&3 == 3 {
+				t.Polygon.LookupEntry(out.Token.Value.(*token.HashToken).Hash).deReference(t)
+			}
+		}
+	}
+
+	return t.disconnectTransactions(db, block, stxos)
 }
 
 func (t * ViewPointSet) Commit() {
@@ -99,12 +119,12 @@ func (t * ViewPointSet) Commit() {
 }
 
 func DbPutViews(dbTx database.Tx,  view * ViewPointSet) error {
-	DbPutVtxView(dbTx, view.Vertex)
-	DbPutBorderView(dbTx, view.Border)
+	DbPutUtxoView(dbTx, view.Utxo)
 	DbPutPolygonView(dbTx, view.Polygon)
-	DbPutRightView(dbTx, view.Rights)
+	DbPutBorderView(dbTx, view.Border)
+	DbPutVtxView(dbTx, view.Vertex)
 
-	return DbPutUtxoView(dbTx, view.Utxo)
+	return DbPutRightView(dbTx, view.Rights)
 }
 
 func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSet) error {
@@ -131,23 +151,30 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 					children[b.Father] = make([]chainhash.Hash, 1)
 					children[b.Father][0] = b.Hash()
 				}
+				view.Border.LookupEntry(b.Father).RefCnt++
 			}
 			break;
 		case *token.PolygonDef:
-			plgview.addPolygon(d.(*token.PolygonDef))
+			view.addPolygon(d.(*token.PolygonDef))
+			for _, loop := range d.(*token.PolygonDef).Loops {
+				for _,b := range loop {
+					view.Border.LookupEntry(b).RefCnt++
+				}
+			}
 			break;
 		case *token.RightDef:
-			rtview.addRight(d.(*token.RightDef))
+			view.addRight(d.(*token.RightDef))
 			break;
 		}
 	}
 
+
 	DbPutVtxView(dbTx, vtxview)
 	DbPutBorderView(dbTx, bdrview)
-	DbPutPolygonView(dbTx, plgview)
 	DbPutRightView(dbTx, rtview)
+	DbPutPolygonView(dbTx, plgview)
 
-	view.Utxo.AddTxOuts(tx, 0)
+	view.AddTxOuts(tx, 0)
 
 	return DbPutUtxoView(dbTx, view.Utxo)
 }
@@ -155,20 +182,40 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 // ConnectTransactions updates the view by adding all new vertices created by all
 // of the transactions in the passed block, and setting the best hash for the view
 // to the passed block.
-func (view * ViewPointSet) ConnectDefTransactions(block *btcutil.Block) error {
+func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut) error {
 	for _, tx := range block.Transactions() {
-		view.AddBorder(tx)
-		view.Polygon.AddPolygon(tx)
-		view.Rights.AddRights(tx)
 		view.Vertex.AddVertices(tx)
+		if !view.AddBorder(tx) {
+			return fmt.Errorf("Attempt to add illegal border.")
+		}
+		if !view.AddRights(tx) {
+			return fmt.Errorf("Attempt to add illegal rights.")
+		}
+		if !view.AddPolygon(tx) {
+			return fmt.Errorf("Attempt to add illegal polygon.")
+		}
+
+		for _, in := range tx.MsgTx().TxIn {
+			entry := view.Utxo.LookupEntry(in.PreviousOutPoint)
+			if entry == nil {
+				return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))
+			}
+
+			if entry.TokenType & 3 == 3 {
+				view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).deReference(view)
+			}
+		}
+		for _, out := range tx.MsgTx().TxOut {
+			if out.TokenType & 3 == 3 {
+				view.Polygon.LookupEntry(out.Token.Value.(*token.HashToken).Hash).reference(view)
+			}
+		}
+		view.ConnectTransaction(tx, block.Height(), stxos)
 	}
 
 	hash := block.Hash()
 
-	view.Vertex.bestHash = *hash
-	view.Rights.bestHash = *hash
-	view.Polygon.bestHash = *hash
-	view.Border.bestHash = *hash
+	view.SetBestHash(hash)
 
 	return nil
 }

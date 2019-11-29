@@ -1942,7 +1942,7 @@ func (p *Peer) readRemoteVersionMsg() error {
 	// prepared for the new transaction format introduced as part of
 	// BIP0144.
 	if p.services&common.SFNodeWitness == common.SFNodeWitness {
-		p.wireEncoding = wire.WitnessEncoding
+		p.wireEncoding = wire.SignatureEncoding
 	}
 
 	// Invoke the callback if specified.

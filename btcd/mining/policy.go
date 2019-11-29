@@ -120,10 +120,13 @@ func CalcPriority(tx *wire.MsgTx, utxoView *viewpoint.UtxoViewpoint, nextBlockHe
 	//
 	// Thus 1 + 73 + 1 + 1 + 33 + 1 = 110
 	overhead := 0
+	overhead += (41 + 25) * len(tx.TxIn)
+/*
 	for _, txIn := range tx.TxIn {
 		// Max inputs + size can't possibly overflow here.
 		overhead += 41 + minInt(110, len(txIn.SignatureScript))
 	}
+*/
 
 	serializedTxSize := tx.SerializeSize()
 	if overhead >= serializedTxSize {

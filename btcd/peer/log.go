@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btclog"
 	"github.com/btcsuite/btcd/wire/common"
+	"github.com/btcsuite/btcd/blockchain"
 )
 
 const (
@@ -71,7 +71,7 @@ func formatLockTime(lockTime uint32) string {
 	// which the transaction is finalized or a timestamp depending on if the
 	// value is before the lockTimeThreshold.  When it is under the
 	// threshold it is a block height.
-	if lockTime < txscript.LockTimeThreshold {
+	if lockTime < blockchain.LockTimeThreshold {
 		return fmt.Sprintf("height %d", lockTime)
 	}
 

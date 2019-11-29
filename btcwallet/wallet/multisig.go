@@ -21,7 +21,7 @@ import (
 //
 // This function only works with pubkeys and P2PKH addresses derived from them.
 func (w *Wallet) MakeMultiSigScript(addrs []btcutil.Address, nRequired int) ([]byte, error) {
-	pubKeys := make([]*btcutil.AddressPubKey, len(addrs))
+	pubKeys := make([]*btcutil.AddressPubKeyHash, len(addrs))
 
 	var dbtx walletdb.ReadTx
 	var addrmgrNs walletdb.ReadBucket
@@ -39,9 +39,6 @@ func (w *Wallet) MakeMultiSigScript(addrs []btcutil.Address, nRequired int) ([]b
 		default:
 			return nil, errors.New("cannot make multisig script for " +
 				"a non-secp256k1 public key or P2PKH address")
-
-		case *btcutil.AddressPubKey:
-			pubKeys[i] = addr
 
 		case *btcutil.AddressPubKeyHash:
 			if dbtx == nil {
@@ -64,7 +61,7 @@ func (w *Wallet) MakeMultiSigScript(addrs []btcutil.Address, nRequired int) ([]b
 			if err != nil {
 				return nil, err
 			}
-			pubKeys[i] = pubKeyAddr
+			pubKeys[i] = pubKeyAddr.AddressPubKeyHash()
 		}
 	}
 

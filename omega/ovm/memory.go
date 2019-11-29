@@ -24,7 +24,6 @@ import (
 // Memory implements a simple memory model for the ethereum virtual machine.
 type Memory struct {
 	store       []byte
-	lastGasCost uint64
 	bigEndian	bool
 }
 

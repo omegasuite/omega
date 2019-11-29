@@ -19,6 +19,7 @@ package ovm
 import (
 	"math/big"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/omega/token"
 )
 
 type Address [20]byte
@@ -46,58 +47,34 @@ type AccountRef Address
 // Address casts AccountRef to a Address
 func (ar AccountRef) Address() Address { return (Address)(ar) }
 
-// Contract represents an ethereum contract in the state database. It contains
+// Contract represents an contract in the state database. It contains
 // the the contract code, calling arguments. Contract implements ContractRef
 type Contract struct {
-	// CallerAddress is the result of the caller which initialised this
-	// contract. However when the "call method" is delegated this value
-	// needs to be initialised to that of the caller's caller.
-	CallerAddress Address
-	caller        ContractRef
-	self          ContractRef
+	self          ContractRef	// contract address = hash160(owner + CodeHash)
+								// note: self is 0x000...000 for system contract.
 
-	jumpdests destinations // result of JUMPDEST analysis.
+	owner Address				// address of owner. for system contract, owner = 0x000...000
+								// contracts with 0 zddress may execute privilege instructions
+
+	jumpdests destinations		// result of JUMPDEST analysis. privilege instructions are handled here
 
 	Code     []byte
 	CodeHash chainhash.Hash
-	CodeAddr *Address
+	CodeAddr []byte				// precompiled code. 4-byte ABI func code. code 0-255 reserved for sys call
 	Input    []byte
 
-	Gas   uint64
-	value *big.Int
-
+	value *token.Token
 	Args []byte
-
-	DelegateCall bool
 }
 
 // NewContract returns a new contract environment for the execution of EVM.
-func NewContract(caller ContractRef, object ContractRef, value *big.Int) *Contract {
-	c := &Contract{CallerAddress: caller.Address(), caller: caller, self: object, Args: nil}
-
-	if parent, ok := caller.(*Contract); ok {
-		// Reuse JUMPDEST analysis from parent context if available.
-		c.jumpdests = parent.jumpdests
-	} else {
-		c.jumpdests = make(destinations)
+func NewContract(object Address, value *token.Token) *Contract {
+	c := &Contract{
+		self: AccountRef(object),
+		Args: nil,
+		jumpdests: make(destinations),
+		value: value,
 	}
-
-	// ensures a value is set
-	c.value = value
-
-	return c
-}
-
-// AsDelegate sets the contract to be a delegate call and returns the current
-// contract (for chaining calls)
-func (c *Contract) AsDelegate() *Contract {
-	c.DelegateCall = true
-	// NOTE: caller must, at all times be a contract. It should never happen
-	// that caller is something other than a Contract.
-	parent := c.caller.(*Contract)
-	c.CallerAddress = parent.CallerAddress
-	c.value = parent.value
-
 	return c
 }
 
@@ -115,42 +92,27 @@ func (c *Contract) GetByte(n uint64) byte {
 	return 0
 }
 
-// Caller returns the caller of the contract.
-//
-// Caller will recursively call caller when the contract is a delegate
-// call, including that of caller's caller.
-func (c *Contract) Caller() Address {
-	return c.CallerAddress
-}
-
-// UseGas attempts the use gas and subtracts it and returns true on success
-func (c *Contract) UseGas(gas uint64) (ok bool) {
-	if c.Gas < gas {
-		return false
-	}
-	c.Gas -= gas
-	return true
-}
-
 // Address returns the contracts address
 func (c *Contract) Address() Address {
 	return c.self.Address()
 }
 
 // Value returns the contracts value (sent to it from it's caller)
-func (c *Contract) Value() *big.Int {
+func (c *Contract) Value() *token.Token {
 	return c.value
 }
 
 // SetCode sets the code to the contract
+/*
 func (self *Contract) SetCode(hash chainhash.Hash, code []byte) {
 	self.Code = code
 	self.CodeHash = hash
 }
+*/
 
 // SetCallCode sets the code of the contract and address of the backing data
 // object
-func (self *Contract) SetCallCode(addr *Address, hash chainhash.Hash, code []byte) {
+func (self *Contract) SetCallCode(addr []byte, hash chainhash.Hash, code []byte) {
 	self.Code = code
 	self.CodeHash = hash
 	self.CodeAddr = addr

@@ -90,16 +90,6 @@ type SoftForkDescription struct {
 	} `json:"reject"`
 }
 
-// Bip9SoftForkDescription describes the current state of a defined BIP0009
-// version bits soft-fork.
-type Bip9SoftForkDescription struct {
-	Status    string `json:"status"`
-	Bit       uint8  `json:"bit"`
-	StartTime int64  `json:"startTime"`
-	Timeout   int64  `json:"timeout"`
-	Since     int32  `json:"since"`
-}
-
 // GetBlockChainInfoResult models the data returned from the getblockchaininfo
 // command.
 type GetBlockChainInfoResult struct {
@@ -114,7 +104,6 @@ type GetBlockChainInfoResult struct {
 	PruneHeight          int32                               `json:"pruneheight,omitempty"`
 	ChainWork            string                              `json:"chainwork,omitempty"`
 	SoftForks            []*SoftForkDescription              `json:"softforks"`
-	Bip9SoftForks        map[string]*Bip9SoftForkDescription `json:"bip9_softforks"`
 }
 
 // GetBlockTemplateResultTx models the transactions field of the
@@ -291,7 +280,7 @@ type GetTxOutResult struct {
 	BestBlock     string             `json:"bestblock"`
 	Confirmations int64              `json:"confirmations"`
 	Value         interface{}      `json:"value"`		// a wire.TokenValue
-	Rights        []string      `json:"rights"`
+	Rights        string      `json:"rights"`
 	ScriptPubKey  ScriptPubKeyResult `json:"scriptPubKey"`
 	Coinbase      bool               `json:"coinbase"`
 }
@@ -345,52 +334,46 @@ type ScriptSig struct {
 // getrawtransaction, decoderawtransaction, and searchrawtransaction use the
 // same structure.
 type Vin struct {
-	Coinbase  string     `json:"coinbase"`
+	Coinbase  bool     `json:"coinbase"`
 	Txid      string     `json:"txid"`
 	Vout      uint32     `json:"vout"`
 	ScriptSig *ScriptSig `json:"scriptSig"`
 	Sequence  uint32     `json:"sequence"`
-	Witness   []string   `json:"txinwitness"`
+	SignatureIndex   uint32   `json:"signatureIndex"`
 }
 
 // IsCoinBase returns a bool to show if a Vin is a Coinbase one or not.
 func (v *Vin) IsCoinBase() bool {
-	return len(v.Coinbase) > 0
-}
-
-// HasWitness returns a bool to show if a Vin has any witness data associated
-// with it or not.
-func (v *Vin) HasWitness() bool {
-	return len(v.Witness) > 0
+	return v.Coinbase
 }
 
 // MarshalJSON provides a custom Marshal method for Vin.
 func (v *Vin) MarshalJSON() ([]byte, error) {
 	if v.IsCoinBase() {
 		coinbaseStruct := struct {
-			Coinbase string   `json:"coinbase"`
+			Coinbase bool   `json:"coinbase"`
 			Sequence uint32   `json:"sequence"`
-			Witness  []string `json:"witness,omitempty"`
+			SignatureIndex  uint32 `json:"signatureIndex,omitempty"`
 		}{
 			Coinbase: v.Coinbase,
 			Sequence: v.Sequence,
-			Witness:  v.Witness,
+			SignatureIndex:  v.SignatureIndex,
 		}
 		return json.Marshal(coinbaseStruct)
 	}
 
-	if v.HasWitness() {
+	if v.SignatureIndex != 0 {
 		txStruct := struct {
 			Txid      string     `json:"txid"`
 			Vout      uint32     `json:"vout"`
 			ScriptSig *ScriptSig `json:"scriptSig"`
-			Witness   []string   `json:"txinwitness"`
+			SignatureIndex   uint32   `json:"signatureIndex"`
 			Sequence  uint32     `json:"sequence"`
 		}{
 			Txid:      v.Txid,
 			Vout:      v.Vout,
 			ScriptSig: v.ScriptSig,
-			Witness:   v.Witness,
+			SignatureIndex:   v.SignatureIndex,
 			Sequence:  v.Sequence,
 		}
 		return json.Marshal(txStruct)
@@ -418,31 +401,25 @@ type PrevOut struct {
 
 // VinPrevOut is like Vin except it includes PrevOut.  It is used by searchrawtransaction
 type VinPrevOut struct {
-	Coinbase  string     `json:"coinbase"`
+	Coinbase  bool     `json:"coinbase"`
 	Txid      string     `json:"txid"`
 	Vout      uint32     `json:"vout"`
 	ScriptSig *ScriptSig `json:"scriptSig"`
-	Witness   []string   `json:"txinwitness"`
+	SignatureIndex   uint32   `json:"signatureIndex"`
 	PrevOut   *PrevOut   `json:"prevOut"`
 	Sequence  uint32     `json:"sequence"`
 }
 
 // IsCoinBase returns a bool to show if a Vin is a Coinbase one or not.
 func (v *VinPrevOut) IsCoinBase() bool {
-	return len(v.Coinbase) > 0
-}
-
-// HasWitness returns a bool to show if a Vin has any witness data associated
-// with it or not.
-func (v *VinPrevOut) HasWitness() bool {
-	return len(v.Witness) > 0
+	return v.Coinbase
 }
 
 // MarshalJSON provides a custom Marshal method for VinPrevOut.
 func (v *VinPrevOut) MarshalJSON() ([]byte, error) {
 	if v.IsCoinBase() {
 		coinbaseStruct := struct {
-			Coinbase string `json:"coinbase"`
+			Coinbase bool `json:"coinbase"`
 			Sequence uint32 `json:"sequence"`
 		}{
 			Coinbase: v.Coinbase,
@@ -451,19 +428,19 @@ func (v *VinPrevOut) MarshalJSON() ([]byte, error) {
 		return json.Marshal(coinbaseStruct)
 	}
 
-	if v.HasWitness() {
+	if v.SignatureIndex != 0 {
 		txStruct := struct {
 			Txid      string     `json:"txid"`
 			Vout      uint32     `json:"vout"`
 			ScriptSig *ScriptSig `json:"scriptSig"`
-			Witness   []string   `json:"txinwitness"`
+			SignatureIndex   uint32   `json:"signatureIndex"`
 			PrevOut   *PrevOut   `json:"prevOut,omitempty"`
 			Sequence  uint32     `json:"sequence"`
 		}{
 			Txid:      v.Txid,
 			Vout:      v.Vout,
 			ScriptSig: v.ScriptSig,
-			Witness:   v.Witness,
+			SignatureIndex:   v.SignatureIndex,
 			PrevOut:   v.PrevOut,
 			Sequence:  v.Sequence,
 		}
@@ -491,7 +468,7 @@ func (v *VinPrevOut) MarshalJSON() ([]byte, error) {
 type Vout struct {
 	TokenType    uint64             `json:"tokentype"`
 	Value        map[string]interface{}            `json:"value"`
-	Rights       []string			`json:"rights"`
+	Rights       string				`json:"rights"`
 	N            uint32             `json:"n"`
 	ScriptPubKey ScriptPubKeyResult `json:"scriptPubKey"`
 }

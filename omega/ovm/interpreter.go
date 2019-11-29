@@ -18,10 +18,10 @@ package ovm
 
 import (
 	"fmt"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/wire/common"
 	"sync/atomic"
-
-	"github.com/ethereum/go-ethereum/common/math"
-	"github.com/ethereum/go-ethereum/params"
+	"encoding/binary"
 )
 
 // Config are the configuration options for the Interpreter
@@ -29,10 +29,12 @@ type Config struct {
 	// Debug enabled debugging Interpreter options
 	Debug bool
 	// Tracer is the op code logger
-	Tracer Tracer
+//	Tracer Tracer
 	// NoRecursion disabled Interpreter call, callcode,
 	// delegate call and create.
 	NoRecursion bool
+	// NoLoop forbids backward jump.
+	NoLoop bool
 	// Enable recording of SHA3/keccak preimages
 	EnablePreimageRecording bool
 	// JumpTable contains the EVM instruction table. This
@@ -48,7 +50,6 @@ type Config struct {
 type Interpreter struct {
 	evm      *OVM
 	cfg      Config
-	gasTable params.GasTable
 	intPool  *intPool
 
 	readOnly   bool   // Whether to throw on stateful modifications
@@ -61,38 +62,49 @@ func NewInterpreter(evm *OVM, cfg Config) *Interpreter {
 	// the jump table was initialised. If it was not
 	// we'll set the default jump table.
 	if !cfg.JumpTable[STOP].valid {
-		switch {
-		case evm.ChainConfig().IsConstantinople(evm.BlockNumber):
-			cfg.JumpTable = constantinopleInstructionSet
-		case true:
-			cfg.JumpTable = byzantiumInstructionSet
-		case true:
-			cfg.JumpTable = homesteadInstructionSet
-		default:
-			cfg.JumpTable = frontierInstructionSet
-		}
+		cfg.JumpTable = omegaInstructionSet
 	}
 
 	return &Interpreter{
 		evm:      evm,
 		cfg:      cfg,
-		gasTable: evm.ChainConfig().GasTable(evm.BlockNumber),
 		intPool:  newIntPool(),
 	}
 }
 
 func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack *Stack) error {
-		if in.readOnly {
-			// If the interpreter is operating in readonly mode, make sure no
-			// state-modifying operation is performed. The 3rd stack item
-			// for a call operation is the value. Transferring value from one
-			// account to the others means the state is modified and should also
-			// return with an error.
-			if operation.writes || (op == CALL && stack.Back(2).BitLen() > 0) {
-				return errWriteProtection
-			}
+	if in.readOnly {
+		// If the interpreter is operating in readonly mode, make sure no
+		// state-modifying operation is performed. The 3rd stack item
+		// for a call operation is the value. Transferring value from one
+		// account to the others means the state is modified and should also
+		// return with an error.
+		if operation.writes || (op == CALL && stack.Back(2).BitLen() > 0) {
+			return errWriteProtection
 		}
+	}
+
 	return nil
+}
+
+func DisasmString(code []byte) string {
+	var (
+		op    OpCode        // current opcode
+		pc   = uint64(0) // program counter
+	)
+	var s string
+
+	for pc < uint64(len(code)) {
+		op = OpCode(code[pc])
+		s += opCodeToString[op] + " "
+
+		if omegaInstructionSet[op].immData == nil {
+			pc++
+		} else {
+			pc = omegaInstructionSet[op].immData(code[pc+1:]) + 1
+		}
+	}
+	return s
 }
 
 // Run loops and evaluates the contract's code with the given input data and returns
@@ -123,33 +135,17 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		// It's theoretically possible to go above 2^64. The YP defines the PC
 		// to be uint256. Practically much less so feasible.
 		pc   = uint64(0) // program counter
-		cost uint64
-		// copies used by tracer
-		pcCopy  uint64 // needed for the deferred Tracer
-		gasCopy uint64 // for Tracer to log gas remaining before execution
-		logged  bool   // deferred Tracer should ignore already logged steps
 	)
 	contract.Input = input
 
-	if in.cfg.Debug {
-		defer func() {
-			if err != nil {
-				if !logged {
-					in.cfg.Tracer.CaptureState(in.evm, pcCopy, op, gasCopy, cost, mem, stack, contract, in.evm.depth, err)
-				} else {
-					in.cfg.Tracer.CaptureFault(in.evm, pcCopy, op, gasCopy, cost, mem, stack, contract, in.evm.depth, err)
-				}
-			}
-		}()
-	}
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the
 	// parent context.
 	for atomic.LoadInt32(&in.evm.abort) == 0 {
-		if in.cfg.Debug {
-			// Capture pre-execution values for tracing.
-			logged, pcCopy, gasCopy = false, pc, contract.Gas
+		in.evm.GasLimit--
+		if in.evm.GasLimit < 0 {
+			return nil, fmt.Errorf("Exceeded operation limit")
 		}
 
 		// Get the operation from the jump table and validate the stack to ensure there are
@@ -162,7 +158,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		if err := operation.validateStack(stack); err != nil {
 			return nil, err
 		}
-		// If the operation is valid, enforce and write restrictions
+		// If the operation is valid, enforce any write restrictions
 		if err := in.enforceRestrictions(op, operation, stack); err != nil {
 			return nil, err
 		}
@@ -173,27 +169,17 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		if operation.memorySize != nil {
 			memSize, overflow := bigUint64(operation.memorySize(stack))
 			if overflow {
-				return nil, errGasUintOverflow
+				return nil, memoryOverflow
 			}
 			// memory is expanded in words of 32 bytes. Gas
 			// is also calculated in words.
-			if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
-				return nil, errGasUintOverflow
+			if memorySize, overflow = common.SafeMul(toWordSize(memSize), 32); overflow {
+				return nil, memoryOverflow
 			}
 		}
 
-		if in.evm.GasLimit <= 0 {
-			return nil, ErrOutOfGas
-		}
-		in.evm.GasLimit--
-
 		if memorySize > 0 {
 			mem.Resize(memorySize)
-		}
-
-		if in.cfg.Debug {
-			in.cfg.Tracer.CaptureState(in.evm, pc, op, gasCopy, cost, mem, stack, contract, in.evm.depth, err)
-			logged = true
 		}
 
 		// execute the operation
@@ -221,4 +207,47 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		}
 	}
 	return nil, nil
+}
+
+func (in *Interpreter) SigVerify(code tbv, rep chan bool) {
+	rep <- in.verifySig(code.txinidx, code.pkScript, code.sigScript)
+}
+
+func (in *Interpreter) VerifySig(txinidx int, pkScript, sigScript []byte) bool {
+	return in.verifySig(txinidx, pkScript, sigScript)
+}
+
+func (in *Interpreter) verifySig(txinidx int, pkScript, sigScript []byte) bool {
+	if pkScript[0] < 0x41 || pkScript[0] > 0x44 {	// check validation function range
+		return false
+	}
+
+	xsig := append(sigScript, byte(STACKRETURN))
+
+	contract := Contract {
+		Code: xsig,
+		CodeHash: chainhash.Hash{},
+		self: nil,
+		jumpdests: make(destinations),
+		Args:make([]byte, 4),
+	}
+
+	binary.LittleEndian.PutUint32(contract.Args[:], uint32(txinidx))
+
+	ret, err := in.Run(&contract, nil)
+	if err != nil {
+		return false
+	}
+
+	ret = append(pkScript[4:], ret[:]...)
+	contract.CodeAddr = []byte{ pkScript[0], 0, 0, 0 }
+	contract.jumpdests = make(destinations)
+
+	ret, err = run(in.evm, &contract, ret)
+
+	if err != nil || len(ret) != 1 || ret[0] != 1{
+		return false
+	} else {
+		return true
+	}
 }

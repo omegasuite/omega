@@ -5,9 +5,6 @@
 package blockchain
 
 import (
-	"fmt"
-
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/viewpoint"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -49,6 +46,8 @@ func GetTransactionWeight(tx *btcutil.Tx) int64 {
 // count for all p2sh inputs scaled by the WitnessScaleFactor, and finally the
 // unscaled sig op count for any inputs spending witness programs.
 func GetSigOpCost(tx *btcutil.Tx, isCoinBaseTx bool, utxoView *viewpoint.UtxoViewpoint, bip16, segWit bool) (int, error) {
+	return 0, nil
+/*
 	numSigOps := CountSigOps(tx) * chaincfg.WitnessScaleFactor
 	if bip16 {
 		numP2SHSigOps, err := CountP2SHSigOps(tx, isCoinBaseTx, utxoView)
@@ -76,10 +75,11 @@ func GetSigOpCost(tx *btcutil.Tx, isCoinBaseTx bool, utxoView *viewpoint.UtxoVie
 			witness := txIn.Witness
 			sigScript := txIn.SignatureScript
 			pkScript := utxo.PkScript()
-			numSigOps += txscript.GetWitnessSigOpCount(sigScript, pkScript, witness)
+			numSigOps += GetWitnessSigOpCount(sigScript, pkScript, witness)
 		}
 
 	}
 
 	return numSigOps, nil
+*/
 }

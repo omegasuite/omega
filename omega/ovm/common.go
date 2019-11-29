@@ -19,14 +19,13 @@ package ovm
 import (
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 )
 
 // calculates the memory size required for a step
 func calcMemSize(off, l *big.Int) *big.Int {
 	if l.Sign() == 0 {
-		return common.Big0
+		return big.NewInt(0)
 	}
 
 	return new(big.Int).Add(off, l)
@@ -43,7 +42,14 @@ func getData(data []byte, start uint64, size uint64) []byte {
 	if end > length {
 		end = length
 	}
-	return common.RightPadBytes(data[start:end], int(size))
+	return RightPadBytes(data[start:end], int(size))
+}
+
+func BigMin(x, y *big.Int) *big.Int {
+	if x.Cmp(y) > 0 {
+		return y
+	}
+	return x
 }
 
 // getDataBig returns a slice from the data based on the start and size and pads
@@ -51,9 +57,9 @@ func getData(data []byte, start uint64, size uint64) []byte {
 func getDataBig(data []byte, start *big.Int, size *big.Int) []byte {
 	dlen := big.NewInt(int64(len(data)))
 
-	s := math.BigMin(start, dlen)
-	e := math.BigMin(new(big.Int).Add(s, size), dlen)
-	return common.RightPadBytes(data[s.Uint64():e.Uint64()], int(size.Uint64()))
+	s := BigMin(start, dlen)
+	e := BigMin(new(big.Int).Add(s, size), dlen)
+	return RightPadBytes(data[s.Uint64():e.Uint64()], int(size.Uint64()))
 }
 
 // bigUint64 returns the integer casted to a uint64 and returns whether it
@@ -64,8 +70,8 @@ func bigUint64(v *big.Int) (uint64, bool) {
 
 // toWordSize returns the ceiled word size required for memory expansion.
 func toWordSize(size uint64) uint64 {
-	if size > math.MaxUint64-31 {
-		return math.MaxUint64/32 + 1
+	if size > (1<<64 - 1) - 31 {
+		return (1<<64 - 1)/32 + 1
 	}
 
 	return (size + 31) / 32
@@ -78,4 +84,30 @@ func allZero(b []byte) bool {
 		}
 	}
 	return true
+}
+
+func BytesToAddress(b []byte) Address {
+	var a Address
+	copy(a[:], b)
+	return a
+}
+
+func BytesToHash(b []byte) chainhash.Hash {
+	var a chainhash.Hash
+	copy(a[:], b)
+	return a
+}
+
+func BigToAddress(b *big.Int) Address  { return BytesToAddress(b.Bytes()) }
+func BigToHash(b *big.Int) chainhash.Hash  { return BytesToHash(b.Bytes()) }
+
+func RightPadBytes(slice []byte, l int) []byte {
+	if l <= len(slice) {
+		return slice
+	}
+
+	padded := make([]byte, l)
+	copy(padded, slice)
+
+	return padded
 }

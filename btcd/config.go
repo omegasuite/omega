@@ -546,6 +546,9 @@ func loadConfig() (*config, []string, error) {
 		activeNetParams = &simNetParams
 		cfg.DisableDNSSeed = true
 	}
+	
+	chaincfg.ActiveNetParams = activeNetParams.Params
+
 	if numNets > 1 {
 		str := "%s: The testnet, regtest, segnet, and simnet params " +
 			"can't be used together -- choose one of the four"

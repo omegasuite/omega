@@ -36,6 +36,8 @@ type BorderEntry struct {
 	End chainhash.Hash
 	Children []chainhash.Hash
 	Bound * BoundingBox
+	RefCnt int32		// reference count. record may be deleted when dropped to 0
+	refChg int32		// change in reference count. not stored.
 
 	// packedFlags contains additional info about vertex. Currently unused.
 	PackedFlags txoFlags
@@ -113,7 +115,7 @@ func (b *BorderEntry) North(view * ViewPointSet) int32 {
 // isModified returns whether or not the output has been modified since it was
 // loaded.
 func (entry * BorderEntry) isModified() bool {
-	return entry.PackedFlags & TfModified == TfModified
+	return entry.PackedFlags & TfModified == TfModified || entry.refChg != 0
 }
 
 func (entry * BorderEntry) toDelete() bool {
@@ -133,6 +135,32 @@ func (entry * BorderEntry) Clone() *BorderEntry {
 		Children: entry.Children,
 		Bound: entry.Bound,
 		PackedFlags: entry.PackedFlags,
+	}
+}
+
+func (entry * BorderEntry) deReference() {
+	entry.refChg--
+}
+
+func (entry * BorderEntry) reference() {
+	entry.refChg++
+}
+
+func (entry * BorderEntry) Anciesters(view * ViewPointSet) map[chainhash.Hash]struct{} {
+	as := make(map[chainhash.Hash]struct{})
+	e := entry
+	for !e.Father.IsEqual(&chainhash.Hash{}) {
+		as[e.Father] = struct{}{}
+		e,_ = view.Border.FetchEntry(view.Db, &e.Father)
+	}
+	return as
+}
+
+func (entry * BorderEntry) ToToken() * token.BorderDef {
+	return &token.BorderDef {
+		Father: entry.Father,
+		Begin: entry.Begin,
+		End: entry.End,
 	}
 }
 
@@ -169,6 +197,62 @@ func (view * BorderViewpoint) LookupEntry(p chainhash.Hash) * BorderEntry {
 	return view.entries[q]
 }
 
+func NewBound(x1, x2, y1, y2 int32) * BoundingBox {
+	b := BoundingBox {	x1, x1, y1, y1	}
+	if x1 < x2 {
+		b.east = x2
+	} else {
+		b.west = x2
+	}
+	if y1 < y2 {
+		b.north = y2
+	} else {
+		b.south = y2
+	}
+	return &b
+}
+
+func (box  * BoundingBox) Clone() * BoundingBox {
+	b := new(BoundingBox)
+	*b = *box
+	return b
+}
+
+func (box  * BoundingBox) Merge(b * BoundingBox) bool {
+	c := false
+	if b.east > box.east {
+		box.east, c = b.east, true
+	}
+	if b.west < box.west {
+		box.west, c = b.west, true
+	}
+	if b.north > box.north {
+		box.north, c = b.north, true
+	}
+	if b.south < box.south {
+		box.south, c = b.south, true
+	}
+	return c
+}
+
+func (fe * BorderEntry) mergeBound(view * ViewPointSet, b * BoundingBox) (* BoundingBox, bool) {
+	var box * BoundingBox
+	if fe.Bound == nil {
+		box = &BoundingBox{
+			east: fe.East(view), west: fe.West(view),south: fe.South(view),north: fe.North(view),
+		}
+	} else {
+		box = fe.Bound
+	}
+	c := box.Merge(b)
+
+	if c {
+		fe.PackedFlags |= TfModified
+		fe.Bound = box
+	}
+	return box, c
+}
+
 // addBorder adds the specified vertex to the view.
 func (view * ViewPointSet) addBorder(b *token.BorderDef) bool {
 	h := b.Hash()
@@ -187,22 +271,7 @@ func (view * ViewPointSet) addBorder(b *token.BorderDef) bool {
 		bg,_ := view.Vertex.FetchEntry(view.Db, &b.Begin)
 		ed,_ := view.Vertex.FetchEntry(view.Db, &b.End)
 
-		var east, west, south, north int32
-
-		if int32(bg.Lng) < int32(ed.Lng) {
-			west = int32(bg.Lng)
-			east = int32(ed.Lng)
-		} else {
-			east = int32(bg.Lng)
-			west = int32(ed.Lng)
-		}
-		if int32(bg.Lat) < int32(ed.Lat) {
-			south = int32(bg.Lat)
-			north = int32(ed.Lat)
-		} else {
-			north  = int32(bg.Lat)
-			south = int32(ed.Lat)
-		}
+		box := NewBound(int32(bg.Lng), int32(ed.Lng), int32(bg.Lat), int32(ed.Lat))
 
 		for !f.IsEqual(&chainhash.Hash{}) {
 			view.Border.FetchEntry(view.Db, &f)
@@ -211,29 +280,12 @@ func (view * ViewPointSet) addBorder(b *token.BorderDef) bool {
 				delete(view.Border.entries, h)
 				return false
 			}
-			if east <= fe.East(view) && west >= fe.West(view) &&
-				south >= fe.South(view) && north <= fe.North(view) {
-					return true
+			var c bool
+			box,c = fe.mergeBound(view, box)
+
+			if !c {
+				return true
 			} else {
-				if fe.Bound == nil {
-					fe.Bound = &BoundingBox{
-						east: fe.East(view), west: fe.West(view),south: fe.South(view),north: fe.North(view),
-					}
-				}
-				if east > fe.East(view) {
-					fe.Bound.east = east
-				}
-				if west < fe.West(view) {
-					fe.Bound.west = west
-				}
-				if north > fe.North(view) {
-					fe.Bound.north = north
-				}
-				if south < fe.South(view) {
-					fe.Bound.south = south
-				}
-				fe.PackedFlags |= TfModified
-				east, west, south, north = fe.Bound.east,fe.Bound.west,fe.Bound.south,fe.Bound.north
 				f = fe.Father
 			}
 		}
@@ -467,8 +519,12 @@ func serializeBorderEntry(entry *BorderEntry) ([]byte, error) {
 		return nil, nil
 	}
 
-	s := chainhash.HashSize * (3 + len(entry.Children))
-	p := s
+	if entry.refChg != 0 {
+		entry.RefCnt += entry.refChg
+		entry.refChg = 0
+	}
+
+	s := 4 + chainhash.HashSize * (3 + len(entry.Children))
 	if entry.Bound != nil {
 		s += 16
 	}
@@ -484,11 +540,13 @@ func serializeBorderEntry(entry *BorderEntry) ([]byte, error) {
 		pos += chainhash.HashSize
 	}
 
+	binary.LittleEndian.PutUint32(serialized[pos:], uint32(entry.RefCnt))
+
 	if entry.Bound != nil {
-		binary.LittleEndian.PutUint32(serialized[p:], uint32(entry.Bound.west))
-		binary.LittleEndian.PutUint32(serialized[p + 4:], uint32(entry.Bound.east))
-		binary.LittleEndian.PutUint32(serialized[p + 8:], uint32(entry.Bound.south))
-		binary.LittleEndian.PutUint32(serialized[p + 12:], uint32(entry.Bound.north))
+		binary.LittleEndian.PutUint32(serialized[pos + 4:], uint32(entry.Bound.west))
+		binary.LittleEndian.PutUint32(serialized[pos + 8:], uint32(entry.Bound.east))
+		binary.LittleEndian.PutUint32(serialized[pos + 12:], uint32(entry.Bound.south))
+		binary.LittleEndian.PutUint32(serialized[pos + 16:], uint32(entry.Bound.north))
 	}
 
 	return serialized, nil
@@ -516,6 +574,9 @@ func DbFetchBorderEntry(dbTx database.Tx, hash *chainhash.Hash) (*BorderEntry, e
 	}
 
 	p := chainhash.HashSize * (len(b.Children) + 3)
+	b.RefCnt = int32(binary.LittleEndian.Uint32(serialized[p:]))
+	p += 4
+
 	if len(serialized) == p {
 		return &b, nil
 	}

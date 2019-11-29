@@ -34,6 +34,8 @@ import (
 	"github.com/btcsuite/btcwallet/wtxmgr"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/btcsuite/omega/token"
+	"github.com/btcsuite/btcd/txscript/txsparser"
+	"github.com/btcsuite/omega/ovm"
 )
 
 const (
@@ -2611,15 +2613,9 @@ func (w *Wallet) ListUnspent(minconf, maxconf int32,
 			var spendable bool
 		scSwitch:
 			switch sc {
-			case txscript.PubKeyHashTy:
+			case txsparser.PubKeyHashTy:
 				spendable = true
-			case txscript.PubKeyTy:
-				spendable = true
-			case txscript.WitnessV0ScriptHashTy:
-				spendable = true
-			case txscript.WitnessV0PubKeyHashTy:
-				spendable = true
-			case txscript.MultiSigTy:
+			case txsparser.MultiSigTy:
 				for _, a := range addrs {
 					_, err := w.Manager.Address(addrmgrNs, a)
 					if err == nil {
@@ -3238,6 +3234,17 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 	additionalKeysByAddress map[string]*btcutil.WIF,
 	p2shRedeemScriptsByAddress map[string][]byte) ([]SignatureError, error) {
 
+	ctx := ovm.Context{}
+	ctx.GetTx = func() *wire.MsgTx {return tx}
+	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
+	ctx.AddRight = func(t *token.RightDef) bool { return false }
+	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
+	ctx.GetHash = ovm.GetHash
+	ctx.BlockNumber = func() uint64 { return 0 }
+
+	intp := ovm.NewInterpreter(ovm.NewOVM(ctx, w.chainParams, ovm.Config{}, nil),
+		ovm.Config{})
+
 	var signErrors []SignatureError
 	err := walletdb.View(w.db, func(dbtx walletdb.ReadTx) error {
 		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
@@ -3317,12 +3324,19 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 			// SigHashSingle inputs can only be signed if there's a
 			// corresponding output. However this could be already signed,
 			// so we always verify the output.
-			if (hashType&txscript.SigHashSingle) !=
-				txscript.SigHashSingle || i < len(tx.TxOut) {
+			if (hashType&txscript.SigHashSingle) != txscript.SigHashSingle {	//  || i < len(tx.TxOut)?
+
+				txIn.SignatureIndex = uint32(i)
+				if tx.SignatureScripts == nil {
+					tx.SignatureScripts = make([][]byte, 0)
+				}
+				if len(tx.SignatureScripts) <= int(txIn.SignatureIndex) {
+					tx.SignatureScripts = append(tx.SignatureScripts, make([][]byte, int(txIn.SignatureIndex) - len(tx.SignatureScripts) + 1)...)
+				}
 
 				script, err := txscript.SignTxOutput(w.ChainParams(),
 					tx, i, prevOutScript, hashType, getKey,
-					getScript, txIn.SignatureScript)
+					getScript, tx.SignatureScripts[txIn.SignatureIndex])
 				// Failure to sign isn't an error, it just means that
 				// the tx isn't complete.
 				if err != nil {
@@ -3332,20 +3346,23 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 					})
 					continue
 				}
-				txIn.SignatureScript = script
+				tx.SignatureScripts[i] = script
+			}
+
+			pkScript := make([]byte, len(prevOutScript) - 1)
+			copy(pkScript, prevOutScript[21:25])
+			copy(pkScript[4:], prevOutScript[1:21])
+
+			if len(pkScript) > 24 {
+				copy(pkScript[24:], prevOutScript[25:])
 			}
 
 			// Either it was already signed or we just signed it.
 			// Find out if it is completely satisfied or still needs more.
-			vm, err := txscript.NewEngine(prevOutScript, tx, i,
-				txscript.StandardVerifyFlags, nil, nil, &token.NumToken{Val:0})
-			if err == nil {
-				err = vm.Execute()
-			}
-			if err != nil {
+			if !intp.VerifySig(i, pkScript, tx.SignatureScripts[i]) {
 				signErrors = append(signErrors, SignatureError{
 					InputIndex: uint32(i),
-					Error:      err,
+					Error:      fmt.Errorf("cannot validate transaction."),
 				})
 			}
 		}

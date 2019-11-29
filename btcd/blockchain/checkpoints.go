@@ -11,7 +11,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcd/txscript/txsparser"
 )
 
 // CheckpointConfirmations is the number of blocks before the end of the current
@@ -171,12 +170,14 @@ func (b *BlockChain) findPreviousCheckpoint() (*blockNode, error) {
 // scripts which are not one of the standard types.
 func isNonstandardTransaction(tx *btcutil.Tx) bool {
 	// Check all of the output public key scripts for non-standard scripts.
+/*
 	for _, txOut := range tx.MsgTx().TxOut {
 		scriptClass := txsparser.GetScriptClass(txOut.PkScript)
 		if scriptClass == txsparser.NonStandardTy {
 			return true
 		}
 	}
+*/
 	return false
 }
 

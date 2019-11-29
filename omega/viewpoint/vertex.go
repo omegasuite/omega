@@ -28,20 +28,20 @@ type VtxEntry struct {
 
 	Lat uint32
 	Lng uint32
-	desc []byte
+//	desc []byte
 
 	// packedFlags contains additional info about vertex. Currently unused.
 	packedFlags txoFlags
 }
 
 func (entry *VtxEntry)  Desc() []byte {
-	return entry.desc;
+	return nil  //.desc;
 }
 
 // isModified returns whether or not the output has been modified since it was
 // loaded.
 func (entry *VtxEntry) isModified() bool {
-	return entry.packedFlags & TfModified == TfModified
+	return entry.packedFlags & TfModified == TfModified	// || entry.refChg != 0
 }
 
 func (entry *VtxEntry) toDelete() bool {
@@ -57,8 +57,16 @@ func (entry *VtxEntry) Clone() *VtxEntry {
 	return &VtxEntry{
 		Lat:      entry.Lat,
 		Lng:	  entry.Lng,
-		desc:	  entry.desc,
+//		desc:	  entry.desc,
 		packedFlags: entry.packedFlags,
+	}
+}
+
+func (entry *VtxEntry) ToToken() *token.VertexDef {
+	return &token.VertexDef{
+		Lat: entry.Lat,
+		Lng: entry.Lng,
+//		entry.desc,
 	}
 }
 
@@ -101,8 +109,8 @@ func (view *VtxViewpoint) addVertex(vertex *token.VertexDef) {
 		view.entries[h] = entry
 		entry.Lat = vertex.Lat
 		entry.Lng = vertex.Lng
-		entry.desc = make([]byte, len(vertex.Desc))
-		copy(entry.desc[:], vertex.Desc[:])
+//		entry.desc = make([]byte, len(vertex.Desc))
+//		copy(entry.desc[:], vertex.Desc[:])
 		entry.packedFlags = TfModified
 	}
 }
@@ -306,11 +314,11 @@ func serializeVtxEntry(entry *VtxEntry) ([]byte, error) {
 		return nil, nil
 	}
 
-	var serialized = make([]byte, 8 + len(entry.desc))
+	var serialized = make([]byte, 8)	// + len(entry.desc))
 
 	byteOrder.PutUint32(serialized[:], entry.Lat)
 	byteOrder.PutUint32(serialized[4:], entry.Lng)
-	copy(serialized[8:], entry.desc[:])
+//	copy(serialized[8:], entry.desc[:])
 
 	return serialized, nil
 }
@@ -327,8 +335,8 @@ func DbFetchVertexEntry(dbTx database.Tx, hash *chainhash.Hash) (*VtxEntry, erro
 	vtx := VtxEntry { }
 	vtx.Lat = byteOrder.Uint32(serialized[:])
 	vtx.Lng = byteOrder.Uint32(serialized[4:])
-	vtx.desc = make([]byte, len(serialized) - 8)
-	copy(vtx.desc[:], serialized[8:])
+//	vtx.desc = make([]byte, len(serialized) - 8)
+//	copy(vtx.desc[:], serialized[8:])
 
 	return &vtx, nil
 }

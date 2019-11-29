@@ -25,9 +25,11 @@ type (
 	executionFunc       func(pc *uint64, env *OVM, contract *Contract, memory *Memory, stack *Stack) ([]byte, error)
 	stackValidationFunc func(*Stack) error
 	memorySizeFunc      func(*Stack) *big.Int
+	immDataFunc		    func([]byte) uint64
 )
 
-var errGasUintOverflow = errors.New("gas uint64 overflow")
+// var errGasUintOverflow = errors.New("gas uint64 overflow")
+var memoryOverflow = errors.New("memory overflow")
 
 type operation struct {
 	// op is the operation function
@@ -44,125 +46,128 @@ type operation struct {
 	valid   bool // indication whether the retrieved operation is valid and known
 	reverts bool // determines whether the operation reverts state (implicitly halts)
 	returns bool // determines whether the operations sets the return data content
+
+	// immediate data size
+	immData	immDataFunc
 }
 
 var (
-	frontierInstructionSet       = NewFrontierInstructionSet()
-	homesteadInstructionSet      = NewHomesteadInstructionSet()
-	byzantiumInstructionSet      = NewByzantiumInstructionSet()
-	constantinopleInstructionSet = NewConstantinopleInstructionSet()
+	omegaInstructionSet = NewOmegaInstructionSet()
 )
 
 // NewOmegaInstructionSet returns the frontier, homestead
 // byzantium, contantinople and Omega instructions.
 func NewOmegaInstructionSet() [256]operation {
 	// instructions that can be executed during the byzantium phase.
-	instructionSet := NewConstantinopleInstructionSet()
-	instructionSet[TXTEMPLATE] = operation{
-		execute:       opTxTemplate,
-		validateStack: makeStackFunc(1, 0),
-		valid:         true,
-	}
-	instructionSet[SPEND] = operation{
-		execute:       opTxTemplate,
-		validateStack: makeStackFunc(2, 1),
-		valid:         true,
-	}
-	instructionSet[ADDTXOUT] = operation{
-		execute:       opTxTemplate,
-		validateStack: makeStackFunc(2, 1),
-		valid:         true,
-	}
-	instructionSet[SUBMITTX] = operation{
-		execute:       opTxTemplate,
-		validateStack: makeStackFunc(2, 1),
-		valid:         true,
-	}
-	instructionSet[GETDEFINITION] = operation{
-		execute:       opTxTemplate,
-		validateStack: makeStackFunc(2, 1),
-		valid:         true,
-	}
-
-	return instructionSet
-}
-
-// NewConstantinopleInstructionSet returns the frontier, homestead
-// byzantium and contantinople instructions.
-func NewConstantinopleInstructionSet() [256]operation {
-	// instructions that can be executed during the byzantium phase.
-	instructionSet := NewByzantiumInstructionSet()
-	instructionSet[SHL] = operation{
-		execute:       opSHL,
-		validateStack: makeStackFunc(2, 1),
-		valid:         true,
-	}
-	instructionSet[SHR] = operation{
-		execute:       opSHR,
-		validateStack: makeStackFunc(2, 1),
-		valid:         true,
-	}
-	instructionSet[SAR] = operation{
-		execute:       opSAR,
-		validateStack: makeStackFunc(2, 1),
-		valid:         true,
-	}
-	return instructionSet
-}
-
-// NewByzantiumInstructionSet returns the frontier, homestead and
-// byzantium instructions.
-func NewByzantiumInstructionSet() [256]operation {
-	// instructions that can be executed during the homestead phase.
-	instructionSet := NewHomesteadInstructionSet()
-	instructionSet[STATICCALL] = operation{
-		execute:       opStaticCall,
-//		gasCost:       gasStaticCall,
-		validateStack: makeStackFunc(6, 1),
-		memorySize:    memoryStaticCall,
-		valid:         true,
-		returns:       true,
-	}
-	instructionSet[RETURNDATASIZE] = operation{
-		execute:       opReturnDataSize,
-		validateStack: makeStackFunc(0, 1),
-		valid:         true,
-	}
-	instructionSet[RETURNDATACOPY] = operation{
-		execute:       opReturnDataCopy,
-		validateStack: makeStackFunc(3, 0),
-		memorySize:    memoryReturnDataCopy,
-		valid:         true,
-	}
-	instructionSet[REVERT] = operation{
-		execute:       opRevert,
-		validateStack: makeStackFunc(2, 0),
-		memorySize:    memoryRevert,
-		valid:         true,
-		reverts:       true,
-		returns:       true,
-	}
-	return instructionSet
-}
-
-// NewHomesteadInstructionSet returns the frontier and homestead
-// instructions that can be executed during the homestead phase.
-func NewHomesteadInstructionSet() [256]operation {
-	instructionSet := NewFrontierInstructionSet()
-	instructionSet[DELEGATECALL] = operation{
-		execute:       opDelegateCall,
-		validateStack: makeStackFunc(6, 1),
-		memorySize:    memoryDelegateCall,
-		valid:         true,
-		returns:       true,
-	}
-	return instructionSet
-}
-
-// NewFrontierInstructionSet returns the frontier instructions
-// that can be executed during the frontier phase.
-func NewFrontierInstructionSet() [256]operation {
 	return [256]operation{
+		GETTX: operation{
+			execute:       opGetTx,
+			validateStack: makeStackFunc(0, 2),
+			memorySize:    memoryReturn,
+			valid:         true,
+		},
+		SPEND: operation{
+			execute:       opSpend,
+			validateStack: makeStackFunc(1, 1),
+			valid:         true,
+			writes:        true,
+		},
+		ADDRIGHTDEF:  operation{
+			execute:       opAddRight,
+			validateStack: makeStackFunc(1, 1),
+			valid:         true,
+			writes:        true,
+		},
+		ADDTXOUT: operation{
+			execute:       opAddTxOut,
+			validateStack: makeStackFunc(1, 1),
+			valid:         true,
+			writes:        true,
+		},
+		GETDEFINITION: operation{
+			execute:       opGetDefinition,
+			validateStack: makeStackFunc(2, 2),
+			memorySize:    memoryReturn,
+			valid:         true,
+		},
+		GETCOIN: operation{
+			execute:       opGetCoin,
+			validateStack: getCoinStack(),
+			memorySize:    memoryReturn,
+			valid:         true,
+		},
+		GETUTXO: operation{
+			execute:       opGetUtxo,
+			validateStack: makeStackFunc(2, 2),
+			memorySize:    memoryReturn,
+			valid:         true,
+		},
+		STACKRETURN: operation{
+			execute:       opStackReturn,
+			validateStack: makeStackFunc(1, 0),
+			halts:         true,
+			valid:         true,
+		},
+		ADDSIGNTEXT: operation{
+			execute:       opAddSignText,
+			validateStack: makeStackFunc(0, 1),
+			valid:         true,
+			immData:	   opAddSignImmData,
+		},
+
+		SHL: operation{
+			execute:       opSHL,
+			validateStack: makeStackFunc(2, 1),
+			valid:         true,
+		},
+		SHR: operation{
+			execute:       opSHR,
+			validateStack: makeStackFunc(2, 1),
+			valid:         true,
+		},
+		SAR: operation{
+			execute:       opSAR,
+			validateStack: makeStackFunc(2, 1),
+			valid:         true,
+		},
+/*
+		STATICCALL: operation{
+			execute: opStaticCall,
+			//		gasCost:       gasStaticCall,
+			validateStack: makeStackFunc(6, 1),
+			memorySize:    memoryStaticCall,
+			valid:         true,
+			returns:       true,
+		},
+*/
+		RETURNDATASIZE: operation{
+			execute:       opReturnDataSize,
+			validateStack: makeStackFunc(0, 1),
+			valid:         true,
+		},
+		RETURNDATACOPY: operation{
+			execute:       opReturnDataCopy,
+			validateStack: makeStackFunc(3, 0),
+			memorySize:    memoryReturnDataCopy,
+			valid:         true,
+		},
+		REVERT: operation{
+			execute:       opRevert,
+			validateStack: makeStackFunc(2, 0),
+			memorySize:    memoryRevert,
+			valid:         true,
+			reverts:       true,
+			returns:       true,
+		},
+/*
+		DELEGATECALL: operation{
+			execute:       opDelegateCall,
+			validateStack: makeStackFunc(6, 1),
+			memorySize:    memoryDelegateCall,
+			valid:         true,
+			returns:       true,
+		},
+*/
 		STOP: {
 			execute:       opStop,
 			validateStack: makeStackFunc(0, 0),
@@ -295,6 +300,7 @@ func NewFrontierInstructionSet() [256]operation {
 			validateStack: makeStackFunc(1, 1),
 			valid:         true,
 		},
+/*
 		ORIGIN: {
 			execute:       opOrigin,
 			gasCost:       constGasFunc(GasQuickStep),
@@ -307,7 +313,6 @@ func NewFrontierInstructionSet() [256]operation {
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
 		},
-/*
 		CALLVALUE: {
 			execute:       opCallValue,
 			gasCost:       constGasFunc(GasQuickStep),
@@ -358,11 +363,13 @@ func NewFrontierInstructionSet() [256]operation {
 			validateStack: makeStackFunc(1, 1),
 			valid:         true,
 		},
+/*
 		COINBASE: {
 			execute:       opCoinbase,
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
 		},
+ */
 		TIMESTAMP: {
 			execute:       opTimestamp,
 			validateStack: makeStackFunc(0, 1),
@@ -404,7 +411,6 @@ func NewFrontierInstructionSet() [256]operation {
 			execute:       opMstore8,
 			memorySize:    memoryMStore8,
 			validateStack: makeStackFunc(2, 0),
-
 			valid: true,
 		},
 		SLOAD: {
@@ -440,11 +446,13 @@ func NewFrontierInstructionSet() [256]operation {
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
 		},
+/*
 		GAS: {
 			execute:       opGas,
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
 		},
+ */
 		JUMPDEST: {
 			execute:       opJumpdest,
 			validateStack: makeStackFunc(0, 0),
@@ -454,161 +462,193 @@ func NewFrontierInstructionSet() [256]operation {
 			execute:       makePush(1, 1),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(1),
 		},
 		PUSH2: {
 			execute:       makePush(2, 2),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(2),
 		},
 		PUSH3: {
 			execute:       makePush(3, 3),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(3),
 		},
 		PUSH4: {
 			execute:       makePush(4, 4),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(4),
 		},
 		PUSH5: {
 			execute:       makePush(5, 5),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(5),
 		},
 		PUSH6: {
 			execute:       makePush(6, 6),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(6),
 		},
 		PUSH7: {
 			execute:       makePush(7, 7),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(7),
 		},
 		PUSH8: {
 			execute:       makePush(8, 8),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(8),
 		},
 		PUSH9: {
 			execute:       makePush(9, 9),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(9),
 		},
 		PUSH10: {
 			execute:       makePush(10, 10),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(10),
 		},
 		PUSH11: {
 			execute:       makePush(11, 11),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(11),
 		},
 		PUSH12: {
 			execute:       makePush(12, 12),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(12),
 		},
 		PUSH13: {
 			execute:       makePush(13, 13),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(13),
 		},
 		PUSH14: {
 			execute:       makePush(14, 14),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(14),
 		},
 		PUSH15: {
 			execute:       makePush(15, 15),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(15),
 		},
 		PUSH16: {
 			execute:       makePush(16, 16),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(16),
 		},
 		PUSH17: {
 			execute:       makePush(17, 17),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(17),
 		},
 		PUSH18: {
 			execute:       makePush(18, 18),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(18),
 		},
 		PUSH19: {
 			execute:       makePush(19, 19),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(19),
 		},
 		PUSH20: {
 			execute:       makePush(20, 20),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(20),
 		},
 		PUSH21: {
 			execute:       makePush(21, 21),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(21),
 		},
 		PUSH22: {
 			execute:       makePush(22, 22),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(22),
 		},
 		PUSH23: {
 			execute:       makePush(23, 23),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(23),
 		},
 		PUSH24: {
 			execute:       makePush(24, 24),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(24),
 		},
 		PUSH25: {
 			execute:       makePush(25, 25),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(25),
 		},
 		PUSH26: {
 			execute:       makePush(26, 26),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(26),
 		},
 		PUSH27: {
 			execute:       makePush(27, 27),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(27),
 		},
 		PUSH28: {
 			execute:       makePush(28, 28),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(28),
 		},
 		PUSH29: {
 			execute:       makePush(29, 29),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(29),
 		},
 		PUSH30: {
 			execute:       makePush(30, 30),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(30),
 		},
 		PUSH31: {
 			execute:       makePush(31, 31),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(31),
 		},
 		PUSH32: {
 			execute:       makePush(32, 32),
 			validateStack: makeStackFunc(0, 1),
 			valid:         true,
+			immData:	   makePushImm(32),
 		},
 		DUP1: {
 			execute:       makeDup(1),
@@ -770,6 +810,7 @@ func NewFrontierInstructionSet() [256]operation {
 			validateStack: makeSwapStackFunc(17),
 			valid:         true,
 		},
+/*
 		LOG0: {
 			execute:       makeLog(0),
 			validateStack: makeStackFunc(2, 0),
@@ -805,39 +846,7 @@ func NewFrontierInstructionSet() [256]operation {
 			valid:         true,
 			writes:        true,
 		},
-
-		// 0xc0 range
-		TXTEMPLATE: {
-			execute:       opGetTxTemplate,
-			validateStack: makeStackFunc(0, 0),
-			valid:         true,
-			writes:        true,
-		},
-		SPEND: {
-			execute:       opSpend,
-			validateStack: validateSpendStack,
-			valid:         true,
-			writes:        true,
-		},
-		ADDTXOUT: {
-			execute:       opAddTxOut,
-			validateStack: validateAddTxOutStack,
-			valid:         true,
-			writes:        true,
-		},
-		SUBMITTX: {
-			execute:       opSubmit,
-			validateStack: makeStackFunc(0, 1),
-			valid:         true,
-			writes:        true,
-		},
-		GETDEFINITION: {
-			execute:       opGetDefinition,
-			validateStack: makeStackFunc(1, 0),
-			valid:         true,
-			writes:        true,
-		},
-
+/*
 		CREATE: {
 			execute:       opCreate,
 			validateStack: makeStackFunc(3, 1),
@@ -846,6 +855,7 @@ func NewFrontierInstructionSet() [256]operation {
 			writes:        true,
 			returns:       true,
 		},
+*/
 		CALL: {
 			execute:       opCall,
 			validateStack: makeStackFunc(7, 1),
@@ -853,6 +863,7 @@ func NewFrontierInstructionSet() [256]operation {
 			valid:         true,
 			returns:       true,
 		},
+/*
 		CALLCODE: {
 			execute:       opCallCode,
 			validateStack: makeStackFunc(7, 1),
@@ -860,6 +871,7 @@ func NewFrontierInstructionSet() [256]operation {
 			valid:         true,
 			returns:       true,
 		},
+*/
 		RETURN: {
 			execute:       opReturn,
 			validateStack: makeStackFunc(2, 0),

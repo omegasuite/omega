@@ -1507,7 +1507,7 @@ type BlockMeta struct {
 type amount struct {
 	TokenType uint64
 	Value map[string]interface{}
-	Rights []chainhash.Hash
+	Rights chainhash.Hash
 }
 
 type asset struct {
@@ -1564,7 +1564,7 @@ func (r FutureGetAssetResult) Receive() ([]Asset, error) {
 			}
 		}
 		if r.Amount.TokenType & 2 != 0 {
-			rassets[i].Amount.Rights = r.Amount.Rights
+			rassets[i].Amount.Rights = &r.Amount.Rights
 		}
 	}
 

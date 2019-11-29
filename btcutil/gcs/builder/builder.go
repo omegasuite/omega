@@ -11,10 +11,9 @@ import (
 	"math"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/omega/ovm"
 	"github.com/btcsuite/btcutil/gcs"
-	"github.com/btcsuite/btcd/txscript/txsparser"
 )
 
 const (
@@ -188,17 +187,6 @@ func (b *GCSBuilder) AddHash(hash *chainhash.Hash) *GCSBuilder {
 	return b.AddEntry(hash.CloneBytes())
 }
 
-// AddWitness adds each item of the passed filter stack to the filter, and then
-// adds each item as a script.
-func (b *GCSBuilder) AddWitness(witness wire.TxWitness) *GCSBuilder {
-	// Do nothing if the builder's already errored out.
-	if b.err != nil {
-		return b
-	}
-
-	return b.AddEntries(witness)
-}
-
 // Build returns a function which builds a GCS filter with the given parameters
 // and data.
 func (b *GCSBuilder) Build() (*gcs.Filter, error) {
@@ -318,11 +306,7 @@ func BuildBasicFilter(block *wire.MsgBlock, prevOutScripts [][]byte) (*gcs.Filte
 				continue
 			}
 
-			// In order to allow the filters to later be committed
-			// to within an OP_RETURN output, we ignore all
-			// OP_RETURNs to avoid a circular dependency.
-			if txOut.PkScript[0] == txsparser.OP_RETURN &&
-				txscript.IsPushOnlyScript(txOut.PkScript[1:]) {
+			if txOut.PkScript[21] == ovm.OP_PAY2NONE {
 				continue
 			}
 

@@ -543,7 +543,7 @@ func valueUnspentCredit(cred *credit) []byte {
 	var txBuf bytes.Buffer
 	txBuf.Grow(cred.amount.SerializeSize() + 1)
 
-	cred.amount.WriteTxOut(&txBuf, 0, int32(wire.WitnessEncoding))
+	cred.amount.WriteTxOut(&txBuf, 0, int32(wire.BaseEncoding))
 
 	if cred.change {
 		txBuf.WriteByte(1 << 1)
@@ -586,7 +586,7 @@ func fetchRawCreditAmount(v []byte) (*token.Token, error) {
 	}
 	t := token.Token{}
 	r := bytes.NewReader(v)
-	t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+	t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 	return &t, nil
 }
 
@@ -600,7 +600,7 @@ func fetchRawCreditAmountSpent(v []byte) (*token.Token, bool, error) {
 	}
 	t := token.Token{}
 	r := bytes.NewReader(v)
-	err := t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+	err := t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 	if err != nil {
 		return nil, false, err
 	}
@@ -618,7 +618,7 @@ func fetchRawCreditAmountChange(v []byte) (*token.Token, bool, error) {
 	}
 	t := token.Token{}
 	r := bytes.NewReader(v)
-	err := t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+	err := t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 	if err != nil {
 		return nil, false, err
 	}
@@ -636,7 +636,7 @@ func fetchRawCreditUnspentValue(k []byte) (*token.Token, error) {
 	}
 	t := token.Token{}
 	r := bytes.NewReader(k)
-	err := t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+	err := t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 	if err != nil {
 		return nil, err
 	}
@@ -652,7 +652,7 @@ func spendCredit(ns walletdb.ReadWriteBucket, k []byte, spender *indexedIncidenc
 
 	t := token.Token{}
 	r := bytes.NewReader(v)
-	t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+	t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 
 	n := t.SerializeSize()
 	newv := make([]byte, n + 73)
@@ -680,7 +680,7 @@ func unspendRawCredit(ns walletdb.ReadWriteBucket, k []byte) (*token.Token, erro
 
 	t := token.Token{}
 	r := bytes.NewReader(v)
-	t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+	t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 
 	newv := make([]byte, t.SerializeSize() + 1)
 	copy(newv, v)
@@ -767,7 +767,7 @@ func (it *creditIterator) readElem() error {
 
 	t := token.Token{}
 	r := bytes.NewReader(it.cv)
-	t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+	t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 
 	it.elem.Amount = t
 
@@ -921,7 +921,7 @@ func putDebit(ns walletdb.ReadWriteBucket, txHash *chainhash.Hash, index uint32,
 	var txBuf bytes.Buffer
 	txBuf.Grow(72 + amount.SerializeSize())
 
-	amount.WriteTxOut(&txBuf, 0, int32(wire.WitnessEncoding))
+	amount.WriteTxOut(&txBuf, 0, int32(wire.BaseEncoding))
 	txBuf.Write(credKey)
 
 	err := ns.NestedReadWriteBucket(bucketDebits).Put(k, txBuf.Bytes())
@@ -1011,7 +1011,7 @@ func (it *debitIterator) readElem() error {
 
 	t := token.Token{}
 	r := bytes.NewReader(it.cv)
-	t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+	t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 
 	it.elem.Amount = t
 	return nil
@@ -1093,7 +1093,7 @@ func deleteRawUnmined(ns walletdb.ReadWriteBucket, k []byte) error {
 func valueUnminedCredit(amount token.Token, change bool) []byte {
 	var txBuf bytes.Buffer
 	txBuf.Grow(amount.SerializeSize() + 1)
-	amount.WriteTxOut(&txBuf, 0, int32(wire.WitnessEncoding))
+	amount.WriteTxOut(&txBuf, 0, int32(wire.BaseEncoding))
 
 	if change {
 		txBuf.WriteByte(1 << 1)
@@ -1125,7 +1125,7 @@ func fetchRawUnminedCreditAmount(v []byte) (*token.Token, error) {
 	}
 	t := token.Token{}
 	r := bytes.NewReader(v)
-	t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+	t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 	return &t, nil
 }
 
@@ -1136,7 +1136,7 @@ func fetchRawUnminedCreditAmountChange(v []byte) (*token.Token, bool, error) {
 	}
 	t := token.Token{}
 	r := bytes.NewReader(v)
-	t.ReadTxOut(r, 0, uint32(wire.WitnessEncoding))
+	t.ReadTxOut(r, 0, uint32(wire.BaseEncoding))
 
 	c, _ := r.ReadByte()
 

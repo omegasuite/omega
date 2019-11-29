@@ -108,12 +108,14 @@ var masterKey = []byte("Bitcoin seed")
 type ExtendedKey struct {
 	key       []byte // This will be the pubkey for extended pub keys
 	pubKey    []byte // This will only be set for extended priv keys
+	isPrivate bool
+
+	// we don't support HD extended key, none of the info below shall be used. keep them here so the code will compile
 	chainCode []byte
 	depth     uint8
 	parentFP  []byte
 	childNum  uint32
 	version   []byte
-	isPrivate bool
 }
 
 // NewExtendedKey returns a new instance of an extended key with the given
@@ -348,6 +350,7 @@ func (k *ExtendedKey) Neuter() (*ExtendedKey, error) {
 	if err != nil {
 		return nil, err
 	}
+//	version := []byte{}
 
 	// Convert it to an extended public key.  The key for the new extended
 	// key will simply be the pubkey of the current extended private key.

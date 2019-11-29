@@ -13,7 +13,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/viewpoint"
@@ -528,7 +527,7 @@ func dbRemoveAddrIndexEntries(bucket internalBucket, addrKey [addrKeySize]byte, 
 
 // addrToKey converts known address types to an addrindex key.  An error is
 // returned for unsupported types.
-func addrToKey(addr btcutil.Address) ([addrKeySize]byte, error) {
+func AddrToKey(addr btcutil.Address) ([addrKeySize]byte, error) {
 	switch addr := addr.(type) {
 	case *btcutil.AddressPubKeyHash:
 		var result [addrKeySize]byte
@@ -546,24 +545,6 @@ func addrToKey(addr btcutil.Address) ([addrKeySize]byte, error) {
 		var result [addrKeySize]byte
 		result[0] = addrKeyTypePubKeyHash
 		copy(result[1:], addr.AddressPubKeyHash().Hash160()[:])
-		return result, nil
-
-	case *btcutil.AddressWitnessScriptHash:
-		var result [addrKeySize]byte
-		result[0] = addrKeyTypeWitnessScriptHash
-
-		// P2WSH outputs utilize a 32-byte data push created by hashing
-		// the script with sha256 instead of hash160. In order to keep
-		// all address entries within the database uniform and compact,
-		// we use a hash160 here to reduce the size of the salient data
-		// push to 20-bytes.
-		copy(result[1:], btcutil.Hash160(addr.ScriptAddress()))
-		return result, nil
-
-	case *btcutil.AddressWitnessPubKeyHash:
-		var result [addrKeySize]byte
-		result[0] = addrKeyTypeWitnessPubKeyHash
-		copy(result[1:], addr.Hash160()[:])
 		return result, nil
 	}
 
@@ -657,20 +638,67 @@ func (idx *AddrIndex) Create(dbTx database.Tx) error {
 // stored in the order they appear in the block.
 type writeIndexData map[[addrKeySize]byte][]int
 
+func IsContract(netid byte) bool {
+	return netid & 64 == 64
+}
+
+// ExtractPkScriptAddrs returns the type of script, addresses and required
+// signatures associated with the passed PkScript.  Note that it only works for
+// 'standard' transaction script types.  Any data such as public keys which are
+// invalid are omitted from the results.
+func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcutil.Address, int, error) {
+	var addrs []btcutil.Address
+	var addr btcutil.Address
+
+	if len(pkScript) < 25 {
+		return nil, 0, fmt.Errorf("Malformed pkScript")
+	}
+
+	if IsContract(pkScript[0]) {
+		// no need to index contract as it is executed immediately
+		return nil, 0, nil
+	} else {
+		switch pkScript[21] {
+		case 0x41, 0x43:
+			addr, _ = btcutil.NewAddressPubKeyHash(pkScript[1:21], chainParams)
+		case 0x42, 0x44:
+			addr, _ = btcutil.NewAddressScriptHash(pkScript[1:21], chainParams)
+		default:
+			return nil, 0, nil
+		}
+	}
+
+	addrs = append(addrs, addr)
+
+	switch pkScript[21] {
+	case 0x43, 0x44:
+		for p := 25; p < len(pkScript); p += 20 {
+			switch pkScript[21] {
+			case 0x41, 0x43:
+				addr, _ = btcutil.NewAddressPubKeyHash(pkScript[p:p+20], chainParams)
+			case 0x42, 0x44:
+				addr, _ = btcutil.NewAddressScriptHash(pkScript[p:p+20], chainParams)
+			}
+			addrs = append(addrs, addr)
+		}
+	}
+
+	return addrs, len(addrs), nil
+}
+
 // indexPkScript extracts all standard addresses from the passed public key
 // script and maps each of them to the associated transaction using the passed
 // map.
 func (idx *AddrIndex) indexPkScript(data writeIndexData, pkScript []byte, txIdx int) {
 	// Nothing to index if the script is non-standard or otherwise doesn't
 	// contain any addresses.
-	_, addrs, _, err := txscript.ExtractPkScriptAddrs(pkScript,
-		idx.chainParams)
+	addrs, _, err := ExtractPkScriptAddrs(pkScript,	idx.chainParams)
 	if err != nil || len(addrs) == 0 {
 		return
 	}
 
 	for _, addr := range addrs {
-		addrKey, err := addrToKey(addr)
+		addrKey, err := AddrToKey(addr)
 		if err != nil {
 			// Ignore unsupported address types.
 			continue
@@ -798,7 +826,7 @@ func (idx *AddrIndex) DisconnectBlock(dbTx database.Tx, block *btcutil.Block,
 //
 // This function is safe for concurrent access.
 func (idx *AddrIndex) TxRegionsForAddress(dbTx database.Tx, addr btcutil.Address, numToSkip, numRequested uint32, reverse bool) ([]database.BlockRegion, uint32, error) {
-	addrKey, err := addrToKey(addr)
+	addrKey, err := AddrToKey(addr)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -833,11 +861,10 @@ func (idx *AddrIndex) indexUnconfirmedAddresses(pkScript []byte, tx *btcutil.Tx)
 	// The error is ignored here since the only reason it can fail is if the
 	// script fails to parse and it was already validated before being
 	// admitted to the mempool.
-	_, addresses, _, _ := txscript.ExtractPkScriptAddrs(pkScript,
-		idx.chainParams)
+	addresses, _, _ := ExtractPkScriptAddrs(pkScript, idx.chainParams)
 	for _, addr := range addresses {
 		// Ignore unsupported address types.
-		addrKey, err := addrToKey(addr)
+		addrKey, err := AddrToKey(addr)
 		if err != nil {
 			continue
 		}
@@ -923,7 +950,7 @@ func (idx *AddrIndex) RemoveUnconfirmedTx(hash *chainhash.Hash) {
 // This function is safe for concurrent access.
 func (idx *AddrIndex) UnconfirmedTxnsForAddress(addr btcutil.Address) []*btcutil.Tx {
 	// Ignore unsupported address types.
-	addrKey, err := addrToKey(addr)
+	addrKey, err := AddrToKey(addr)
 	if err != nil {
 		return nil
 	}

@@ -54,6 +54,29 @@ func (entry * PolygonEntry) Clone() *PolygonEntry {
 	}
 }
 
+func (entry * PolygonEntry) deReference(view * ViewPointSet) {
+	for _, loop := range entry.Loops {
+		for _, b := range loop {
+			fb, _ := view.Border.FetchEntry(view.Db, &b)
+			fb.deReference()
+		}
+	}
+}
+
+func (entry * PolygonEntry) reference(view * ViewPointSet) {
+	for _, loop := range entry.Loops {
+		for _, b := range loop {
+			fb, _ := view.Border.FetchEntry(view.Db, &b)
+			fb.reference()
+		}
+	}
+}
+
+func (entry * PolygonEntry) ToToken() *token.PolygonDef {
+	return &token.PolygonDef{
+		Loops: entry.Loops,
+	}
+}
 // VtxViewpoint represents a view into the set of vertex definition
 // from a specific point of view in the chain.  For example, it could be for
 // the end of the main chain, some point in the history of the main chain, or
@@ -85,32 +108,44 @@ func (view * PolygonViewpoint) LookupEntry(p chainhash.Hash) * PolygonEntry {
 }
 
 // addVertex adds the specified vertex to the view.
-func (view * PolygonViewpoint) addPolygon(b *token.PolygonDef) {
+func (view * ViewPointSet) addPolygon(b *token.PolygonDef) bool {
 	h := b.Hash()
-	entry := view.LookupEntry(h)
+	entry := view.Polygon.LookupEntry(h)
 	if entry == nil {
 		entry = new(PolygonEntry)
 		entry.Loops = b.Loops
+		for _, loop := range b.Loops {
+			for _, b := range loop {
+				d, _ := view.Border.FetchEntry(view.Db, &b)
+				if d == nil {
+					return false
+				}
+			}
+		}
 		entry.PackedFlags = TfModified
-		view.entries[h] = entry
+		view.Polygon.entries[h] = entry
 	}
+	return true
 }
 // addVertex adds the specified vertex to the view.
-func (view * PolygonViewpoint) AddOnePolygon(b *token.PolygonDef) {
-	view.addPolygon(b)
+func (view * ViewPointSet) AddOnePolygon(b *token.PolygonDef) bool {
+	return view.addPolygon(b)
 }
 
 // AddVertices adds all vertex definitions in the passed transaction to the view.
-func (view * PolygonViewpoint) AddPolygon(tx *btcutil.Tx) {
+func (view * ViewPointSet) AddPolygon(tx *btcutil.Tx) bool {
 	// Loop all of the vertex definitions
 
 	for _, txVtx := range tx.MsgTx().TxDef {
 		switch txVtx.(type) {
 			case *token.PolygonDef:
-				view.addPolygon(txVtx.(*token.PolygonDef))
+				if !view.addPolygon(txVtx.(*token.PolygonDef)) {
+					return false
+				}
 			break
 		}
 	}
+	return true
 }
 
 // FetchEntry attempts to find any vertex for the given hash by
@@ -328,31 +363,7 @@ func serializePolygonEntry(entry *PolygonEntry) ([]byte, error) {
 	return serialized, nil
 }
 
-func DbPutPolygon(dbTx database.Tx, p *token.PolygonDef) error {
-	meta := dbTx.Metadata()
-	bkt := meta.Bucket(polygonSetBucketName)
-
-	count := bccompress.SerializeSizeVLQ(uint64(len(p.Loops)))
-	for _, l := range p.Loops {
-		count += bccompress.SerializeSizeVLQ(uint64(len(l))) + len(l) * chainhash.HashSize
-	}
-
-	serialized := make([]byte, count)
-	offset := bccompress.PutVLQ(serialized, uint64(len(p.Loops)))
-	for _, l := range p.Loops {
-		offset += bccompress.PutVLQ(serialized[offset:], uint64(len(l)))
-		for _, b := range l {
-			copy(serialized[offset:], b[:])
-			offset += chainhash.HashSize
-		}
-	}
-
-	h := p.Hash()
-
-	return bkt.Put(h[:], serialized)
-}
-
-func DbFetchPolygon(dbTx database.Tx, hash *chainhash.Hash) (*token.PolygonDef, error) {
+func DbFetchPolygon(dbTx database.Tx, hash *chainhash.Hash) (*PolygonEntry, error) {
 	meta := dbTx.Metadata()
 	hashIndex := meta.Bucket(polygonSetBucketName)
 	serialized := hashIndex.Get(hash[:])
@@ -362,7 +373,7 @@ func DbFetchPolygon(dbTx database.Tx, hash *chainhash.Hash) (*token.PolygonDef, 
 		return nil, bccompress.ErrNotInMainChain(str)
 	}
 
-	b := token.PolygonDef {}
+	b := PolygonEntry {}
 
 	loops, pos := bccompress.DeserializeVLQ(serialized)
 

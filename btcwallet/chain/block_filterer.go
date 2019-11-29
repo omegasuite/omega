@@ -2,10 +2,10 @@ package chain
 
 import (
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcwallet/waddrmgr"
+	"github.com/btcsuite/btcd/txscript"
 )
 
 // BlockFilterer is used to iteratively scan blocks for a set of addresses of
@@ -74,7 +74,9 @@ func NewBlockFilterer(params *chaincfg.Params,
 	nExAddrs := len(req.ExternalAddrs)
 	exReverseFilter := make(map[string]waddrmgr.ScopedIndex, nExAddrs)
 	for scopedIndex, addr := range req.ExternalAddrs {
-		exReverseFilter[addr.EncodeAddress()] = scopedIndex
+		if addr != nil {
+			exReverseFilter[addr.EncodeAddress()] = scopedIndex
+		}
 	}
 
 	// Construct a reverse index by address string for the requested
@@ -82,7 +84,9 @@ func NewBlockFilterer(params *chaincfg.Params,
 	nInAddrs := len(req.InternalAddrs)
 	inReverseFilter := make(map[string]waddrmgr.ScopedIndex, nInAddrs)
 	for scopedIndex, addr := range req.InternalAddrs {
-		inReverseFilter[addr.EncodeAddress()] = scopedIndex
+		if addr != nil {
+			inReverseFilter[addr.EncodeAddress()] = scopedIndex
+		}
 	}
 
 	foundExternal := make(map[waddrmgr.KeyScope]map[uint32]struct{})

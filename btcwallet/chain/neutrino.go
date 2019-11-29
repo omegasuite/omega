@@ -9,7 +9,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/rpcclient"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/gcs"
@@ -18,6 +17,7 @@ import (
 	"github.com/btcsuite/btcwallet/wtxmgr"
 	"github.com/lightninglabs/neutrino"
 	"github.com/lightninglabs/neutrino/headerfs"
+	"github.com/btcsuite/btcd/txscript"
 )
 
 // NeutrinoClient is an implementation of the btcwalet chain.Interface interface.
@@ -267,6 +267,9 @@ func buildFilterBlocksWatchList(req *FilterBlocksRequest) ([][]byte, error) {
 	watchList := make([][]byte, 0, watchListSize)
 
 	for _, addr := range req.ExternalAddrs {
+		if addr == nil {
+			continue
+		}
 		p2shAddr, err := txscript.PayToAddrScript(addr)
 		if err != nil {
 			return nil, err
@@ -276,6 +279,9 @@ func buildFilterBlocksWatchList(req *FilterBlocksRequest) ([][]byte, error) {
 	}
 
 	for _, addr := range req.InternalAddrs {
+		if addr == nil {
+			continue
+		}
 		p2shAddr, err := txscript.PayToAddrScript(addr)
 		if err != nil {
 			return nil, err

@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -122,6 +121,13 @@ type Address interface {
 	// when inserting the address into a txout's script.
 	ScriptAddress() []byte
 
+	// ScriptAddress returns the raw bytes of the address including netid to be used
+	// when inserting the address into a txout's script.
+	ScriptNetAddress() []byte
+
+	// Version returns the version (netID) byte of the address.
+	Version() byte
+
 	// IsForNet returns whether or not the address is associated with the
 	// passed bitcoin network.
 	IsForNet(*chaincfg.Params) bool
@@ -134,40 +140,6 @@ type Address interface {
 // When the address does not encode the network, such as in the case of a raw
 // public key, the address will be associated with the passed defaultNet.
 func DecodeAddress(addr string, defaultNet *chaincfg.Params) (Address, error) {
-	// Bech32 encoded segwit addresses start with a human-readable part
-	// (hrp) followed by '1'. For Bitcoin mainnet the hrp is "bc", and for
-	// testnet it is "tb". If the address string has a prefix that matches
-	// one of the prefixes for the known networks, we try to decode it as
-	// a segwit address.
-	oneIndex := strings.LastIndexByte(addr, '1')
-	if oneIndex > 1 {
-		prefix := addr[:oneIndex+1]
-		if chaincfg.IsBech32SegwitPrefix(prefix) {
-			witnessVer, witnessProg, err := decodeSegWitAddress(addr)
-			if err != nil {
-				return nil, err
-			}
-
-			// We currently only support P2WPKH and P2WSH, which is
-			// witness version 0.
-			if witnessVer != 0 {
-				return nil, UnsupportedWitnessVerError(witnessVer)
-			}
-
-			// The HRP is everything before the found '1'.
-			hrp := prefix[:len(prefix)-1]
-
-			switch len(witnessProg) {
-			case 20:
-				return newAddressWitnessPubKeyHash(hrp, witnessProg)
-			case 32:
-				return newAddressWitnessScriptHash(hrp, witnessProg)
-			default:
-				return nil, UnsupportedWitnessProgLenError(len(witnessProg))
-			}
-		}
-	}
-
 	// Serialized public keys are either 65 bytes (130 hex chars) if
 	// uncompressed/hybrid or 33 bytes (66 hex chars) if compressed.
 	if len(addr) == 130 || len(addr) == 66 {
@@ -297,6 +269,14 @@ func (a *AddressContract) ScriptAddress() []byte {
 	return a.hash[:]
 }
 
+func (a *AddressContract) ScriptNetAddress() []byte {
+	return append([]byte{a.netID}, a.hash[:]...)
+}
+
+func (a *AddressContract) Version() byte {
+	return a.netID
+}
+
 // IsForNet returns whether or not the pay-to-pubkey-hash address is associated
 // with the passed bitcoin network.
 func (a *AddressContract) IsForNet(net *chaincfg.Params) bool {
@@ -359,6 +339,14 @@ func (a *AddressPubKeyHash) EncodeAddress() string {
 // to a pubkey hash.  Part of the Address interface.
 func (a *AddressPubKeyHash) ScriptAddress() []byte {
 	return a.hash[:]
+}
+
+func (a *AddressPubKeyHash) ScriptNetAddress() []byte {
+	return append([]byte{a.netID}, a.hash[:]...)
+}
+
+func (a *AddressPubKeyHash) Version() byte {
+	return a.netID
 }
 
 // IsForNet returns whether or not the pay-to-pubkey-hash address is associated
@@ -426,6 +414,14 @@ func (a *AddressScriptHash) EncodeAddress() string {
 // to a script hash.  Part of the Address interface.
 func (a *AddressScriptHash) ScriptAddress() []byte {
 	return a.hash[:]
+}
+
+func (a *AddressScriptHash) ScriptNetAddress() []byte {
+	return append([]byte{a.netID}, a.hash[:]...)
+}
+
+func (a *AddressScriptHash) Version() byte {
+	return a.netID
 }
 
 // IsForNet returns whether or not the pay-to-script-hash address is associated
@@ -536,6 +532,14 @@ func (a *AddressPubKey) ScriptAddress() []byte {
 	return a.serialize()
 }
 
+func (a *AddressPubKey) ScriptNetAddress() []byte {
+	return a.ScriptAddress()
+}
+
+func (a *AddressPubKey) Version() byte {
+	return a.pubKeyHashID
+}
+
 // IsForNet returns whether or not the pay-to-pubkey address is associated
 // with the passed bitcoin network.
 func (a *AddressPubKey) IsForNet(net *chaincfg.Params) bool {
@@ -575,180 +579,4 @@ func (a *AddressPubKey) AddressPubKeyHash() *AddressPubKeyHash {
 // PubKey returns the underlying public key for the address.
 func (a *AddressPubKey) PubKey() *btcec.PublicKey {
 	return a.pubKey
-}
-
-// AddressWitnessPubKeyHash is an Address for a pay-to-witness-pubkey-hash
-// (P2WPKH) output. See BIP 173 for further details regarding native segregated
-// witness address encoding:
-// https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki
-type AddressWitnessPubKeyHash struct {
-	hrp            string
-	witnessVersion byte
-	witnessProgram [20]byte
-}
-
-// NewAddressWitnessPubKeyHash returns a new AddressWitnessPubKeyHash.
-func NewAddressWitnessPubKeyHash(witnessProg []byte, net *chaincfg.Params) (*AddressWitnessPubKeyHash, error) {
-	return newAddressWitnessPubKeyHash(net.Bech32HRPSegwit, witnessProg)
-}
-
-// newAddressWitnessPubKeyHash is an internal helper function to create an
-// AddressWitnessPubKeyHash with a known human-readable part, rather than
-// looking it up through its parameters.
-func newAddressWitnessPubKeyHash(hrp string, witnessProg []byte) (*AddressWitnessPubKeyHash, error) {
-	// Check for valid program length for witness version 0, which is 20
-	// for P2WPKH.
-	if len(witnessProg) != 20 {
-		return nil, errors.New("witness program must be 20 " +
-			"bytes for p2wpkh")
-	}
-
-	addr := &AddressWitnessPubKeyHash{
-		hrp:            strings.ToLower(hrp),
-		witnessVersion: 0x00,
-	}
-
-	copy(addr.witnessProgram[:], witnessProg)
-
-	return addr, nil
-}
-
-// EncodeAddress returns the bech32 string encoding of an
-// AddressWitnessPubKeyHash.
-// Part of the Address interface.
-func (a *AddressWitnessPubKeyHash) EncodeAddress() string {
-	str, err := encodeSegWitAddress(a.hrp, a.witnessVersion,
-		a.witnessProgram[:])
-	if err != nil {
-		return ""
-	}
-	return str
-}
-
-// ScriptAddress returns the witness program for this address.
-// Part of the Address interface.
-func (a *AddressWitnessPubKeyHash) ScriptAddress() []byte {
-	return a.witnessProgram[:]
-}
-
-// IsForNet returns whether or not the AddressWitnessPubKeyHash is associated
-// with the passed bitcoin network.
-// Part of the Address interface.
-func (a *AddressWitnessPubKeyHash) IsForNet(net *chaincfg.Params) bool {
-	return a.hrp == net.Bech32HRPSegwit
-}
-
-// String returns a human-readable string for the AddressWitnessPubKeyHash.
-// This is equivalent to calling EncodeAddress, but is provided so the type
-// can be used as a fmt.Stringer.
-// Part of the Address interface.
-func (a *AddressWitnessPubKeyHash) String() string {
-	return a.EncodeAddress()
-}
-
-// Hrp returns the human-readable part of the bech32 encoded
-// AddressWitnessPubKeyHash.
-func (a *AddressWitnessPubKeyHash) Hrp() string {
-	return a.hrp
-}
-
-// WitnessVersion returns the witness version of the AddressWitnessPubKeyHash.
-func (a *AddressWitnessPubKeyHash) WitnessVersion() byte {
-	return a.witnessVersion
-}
-
-// WitnessProgram returns the witness program of the AddressWitnessPubKeyHash.
-func (a *AddressWitnessPubKeyHash) WitnessProgram() []byte {
-	return a.witnessProgram[:]
-}
-
-// Hash160 returns the witness program of the AddressWitnessPubKeyHash as a
-// byte array.
-func (a *AddressWitnessPubKeyHash) Hash160() *[20]byte {
-	return &a.witnessProgram
-}
-
-// AddressWitnessScriptHash is an Address for a pay-to-witness-script-hash
-// (P2WSH) output. See BIP 173 for further details regarding native segregated
-// witness address encoding:
-// https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki
-type AddressWitnessScriptHash struct {
-	hrp            string
-	witnessVersion byte
-	witnessProgram [32]byte
-}
-
-// NewAddressWitnessScriptHash returns a new AddressWitnessPubKeyHash.
-func NewAddressWitnessScriptHash(witnessProg []byte, net *chaincfg.Params) (*AddressWitnessScriptHash, error) {
-	return newAddressWitnessScriptHash(net.Bech32HRPSegwit, witnessProg)
-}
-
-// newAddressWitnessScriptHash is an internal helper function to create an
-// AddressWitnessScriptHash with a known human-readable part, rather than
-// looking it up through its parameters.
-func newAddressWitnessScriptHash(hrp string, witnessProg []byte) (*AddressWitnessScriptHash, error) {
-	// Check for valid program length for witness version 0, which is 32
-	// for P2WSH.
-	if len(witnessProg) != 32 {
-		return nil, errors.New("witness program must be 32 " +
-			"bytes for p2wsh")
-	}
-
-	addr := &AddressWitnessScriptHash{
-		hrp:            strings.ToLower(hrp),
-		witnessVersion: 0x00,
-	}
-
-	copy(addr.witnessProgram[:], witnessProg)
-
-	return addr, nil
-}
-
-// EncodeAddress returns the bech32 string encoding of an
-// AddressWitnessScriptHash.
-// Part of the Address interface.
-func (a *AddressWitnessScriptHash) EncodeAddress() string {
-	str, err := encodeSegWitAddress(a.hrp, a.witnessVersion,
-		a.witnessProgram[:])
-	if err != nil {
-		return ""
-	}
-	return str
-}
-
-// ScriptAddress returns the witness program for this address.
-// Part of the Address interface.
-func (a *AddressWitnessScriptHash) ScriptAddress() []byte {
-	return a.witnessProgram[:]
-}
-
-// IsForNet returns whether or not the AddressWitnessScriptHash is associated
-// with the passed bitcoin network.
-// Part of the Address interface.
-func (a *AddressWitnessScriptHash) IsForNet(net *chaincfg.Params) bool {
-	return a.hrp == net.Bech32HRPSegwit
-}
-
-// String returns a human-readable string for the AddressWitnessScriptHash.
-// This is equivalent to calling EncodeAddress, but is provided so the type
-// can be used as a fmt.Stringer.
-// Part of the Address interface.
-func (a *AddressWitnessScriptHash) String() string {
-	return a.EncodeAddress()
-}
-
-// Hrp returns the human-readable part of the bech32 encoded
-// AddressWitnessScriptHash.
-func (a *AddressWitnessScriptHash) Hrp() string {
-	return a.hrp
-}
-
-// WitnessVersion returns the witness version of the AddressWitnessScriptHash.
-func (a *AddressWitnessScriptHash) WitnessVersion() byte {
-	return a.witnessVersion
-}
-
-// WitnessProgram returns the witness program of the AddressWitnessScriptHash.
-func (a *AddressWitnessScriptHash) WitnessProgram() []byte {
-	return a.witnessProgram[:]
 }

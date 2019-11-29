@@ -13,6 +13,7 @@ import (
 //	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/token"
+	"github.com/btcsuite/omega"
 )
 
 type RightEntry struct {
@@ -25,7 +26,7 @@ type RightEntry struct {
 	Father chainhash.Hash
 	Root   chainhash.Hash
 	Depth  int32
-	Desc []byte
+	Desc   []byte
 	Attrib uint8
 
 	// packedFlags contains additional info about vertex. Currently unused.
@@ -62,7 +63,27 @@ func (entry * RightEntry) toRightSet() * token.RightSetDef {
 
 func (entry * RightEntry) Sibling() chainhash.Hash {
 	s := entry.ToToken()
-	s.Attrib ^= 0x1
+	if s.Attrib & (token.Monitor | token.Monitored) == 0 {
+		s.Attrib ^= token.NegativeRight
+	} else if s.Attrib & token.IsMonitorCall != 0 {
+		s.Attrib ^= token.Monitor | token.Monitored | token.NegativeRight
+		if (s.Attrib & token.Monitor) != 0 {
+			s.Attrib |= token.Unsplittable
+		}
+	} else {
+		s.Attrib ^= token.NegativeRight
+	}
+
+	return s.Hash()
+}
+
+func (entry * RightEntry) Monitoring() chainhash.Hash {
+	s := entry.ToToken()
+	if s.Attrib & token.Monitored == 0 || s.Attrib & token.IsMonitorCall == 0 {
+		return chainhash.Hash{}
+	}
+
+	s.Attrib ^= token.Monitor | token.Monitored | token.NegativeRight
 
 	return s.Hash()
 }
@@ -100,7 +121,7 @@ func (entry * RightSetEntry) toDelete() bool {
 	return entry.PackedFlags & TfSpent == TfSpent
 }
 
-func (entry * RightSetEntry) toToken() * token.RightSetDef {
+func (entry * RightSetEntry) ToToken() * token.RightSetDef {
 	t := token.RightSetDef {
 		Rights: entry.Rights,
 	}
@@ -154,7 +175,8 @@ func InSet(view * ViewPointSet, r chainhash.Hash, s *chainhash.Hash) bool {
 	}
 	switch p.(type) {
 	case *RightEntry:
-		return p.(*RightEntry).ToToken().Hash().IsEqual(&r)
+		h := p.(*RightEntry).ToToken().Hash()
+		return h.IsEqual(&r)
 	case *RightSetEntry:
 		for _, t := range p.(*RightSetEntry).Rights {
 			if t.IsEqual(&r) {
@@ -212,11 +234,49 @@ func (view * RightViewpoint) LookupEntry(p chainhash.Hash) interface{} {
 	return view.entries[p]
 }
 
-// addVertex adds the specified right to the view.
-func (view * RightViewpoint) addRight(b *token.RightDef) bool {
+func isContract(netid byte) bool {
+	return netid & 64 == 64
+}
+
+func (view * ViewPointSet) contractExists(contract []byte) bool {
+	err := view.Db.View(func(dbTx database.Tx) error {
+		bucket := dbTx.Metadata().Bucket([]byte("storage" + string(contract[:])))
+
+		if bucket == nil {
+			return omega.ScriptError(omega.ErrInternal, "Bucket not exist.")
+		}
+
+		return nil
+	})
+	return err == nil
+}
+
+// addRight adds the specified right to the view.
+func (view * ViewPointSet) addRight(b *token.RightDef) bool {
 	h := b.Hash()
-	entry := view.LookupRightEntry(h)
+	entry := view.Rights.LookupRightEntry(h)
 	if entry == nil {
+		if b.Attrib & (token.Monitored | token.Monitor) == (token.Monitored | token.Monitor) {
+			// can't be both side, but can be neither
+			return false
+		}
+
+		if b.Attrib & (token.Monitored | token.Monitor | token.IsMonitorCall) == token.IsMonitorCall {
+			// can't be both side, but can be neither
+			return false
+		}
+
+		if b.Attrib & (token.Monitor | token.Unsplittable) == token.Monitor {
+			// a monitor right must not be splittable
+			return false
+		}
+
+		if b.Attrib & token.IsMonitorCall != 0 && (len(b.Desc) < 25 ||
+			!isContract(b.Desc[0]) || !view.contractExists(b.Desc[1:21])) {
+			// right description must be a contract call. check whether the contract exists
+			return false
+		}
+
 		entry = new(RightEntry)
 		entry.Father = b.Father
 		entry.Desc = b.Desc
@@ -227,16 +287,22 @@ func (view * RightViewpoint) addRight(b *token.RightDef) bool {
 			entry.Depth = 0
 			entry.Root = h
 		} else {
-			f := view.LookupEntry(b.Father)
-			entry.Depth = -1
-			entry.Root = chainhash.Hash{}
-			if f != nil {
-				entry.Root = f.(*RightEntry).Root
-				entry.Depth = f.(*RightEntry).Depth + 1
+			f, _ := view.Rights.FetchEntry(view.Db, &b.Father)
+			if f == nil {
+				return false
 			}
+			if f.(*RightEntry).Attrib & token.Unsplittable != 0 {
+				return false
+			}
+			if f.(*RightEntry).Attrib & token.Monitor != 0 && b.Attrib & token.Monitor == 0 {
+				return false
+			}
+
+			entry.Root = f.(*RightEntry).Root
+			entry.Depth = f.(*RightEntry).Depth + 1
 		}
 
-		view.entries[h] = &entry
+		view.Rights.entries[h] = entry
 
 		return true
 	}
@@ -259,19 +325,51 @@ func (view * RightViewpoint) addRightSet(b *token.RightSetDef) bool {
 }
 
 // AddVertices adds all vertex definitions in the passed transaction to the view.
-func (view * RightViewpoint) AddRights(tx *btcutil.Tx) {
+func (view * ViewPointSet) AddRights(tx *btcutil.Tx) bool {
 	// Loop all of the vertex definitions
 
 	for _, txVtx := range tx.MsgTx().TxDef {
 		switch txVtx.(type) {
 		case *token.RightDef:
-			view.addRight(txVtx.(*token.RightDef))
+			if !view.addRight(txVtx.(*token.RightDef)) {
+				return false
+			}
 			break
 		case *token.RightSetDef:
-			view.addRightSet(txVtx.(*token.RightSetDef))
+			view.Rights.addRightSet(txVtx.(*token.RightSetDef))
 			break
 		}
 	}
+	return true
+}
+
+func (views *ViewPointSet) TokenRights(x *UtxoEntry) []chainhash.Hash {
+//	hasneg := []chainhash.Hash{{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+//		0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,},}
+
+	var tokenType uint64
+	var rs * chainhash.Hash
+
+	tokenType = x.TokenType
+	rs = x.Rights
+
+	if rs == nil || rs.IsEqual(&chainhash.Hash{}) {
+		return []chainhash.Hash{}
+	}
+
+	var y []chainhash.Hash
+	if tokenType & 2 == 0 {
+		return []chainhash.Hash{}
+	} else {
+		t, _ := views.Rights.FetchEntry(views.Db, rs)
+		if yy := SetOfRights(views, t); yy != nil {
+			y := make([]chainhash.Hash, 0, len(yy))
+			for _, r := range yy {
+				y = append(y, r.ToToken().Hash())
+			}
+		}
+	}
+	return y
 }
 
 // fetchEntry attempts to find any vertex for the given hash by
@@ -289,7 +387,9 @@ func (view * RightViewpoint) FetchEntry(db database.DB, hash *chainhash.Hash) (i
 	// into the view.
 	err := db.View(func(dbTx database.Tx) error {
 		e, err := DbFetchRight(dbTx, hash)
-		view.entries[*hash] = e
+		if e != nil {
+			view.entries[*hash] = e
+		}
 		return  err
 	})
 	return entry, err
@@ -394,7 +494,7 @@ func (view * RightViewpoint) fetchRightMain(db database.DB, b map[chainhash.Hash
 // fetchVertex loads the vertices for the provided set into the view
 // from the database as needed unless they already exist
 // in the view in which case they are ignored.
-func (view * RightViewpoint) fetchRight(db database.DB, b map[chainhash.Hash]struct{}) error {
+func (view * RightViewpoint) FetchRight(db database.DB, b map[chainhash.Hash]struct{}) error {
 	// Nothing to do if there are no requested vertices.
 	if len(b) == 0 {
 		return nil
@@ -432,12 +532,27 @@ func DbPutRightView(dbTx database.Tx, view *RightViewpoint) error {
 	bucket := dbTx.Metadata().Bucket(rightSetBucketName)
 	for hash, entry := range view.Entries() {
 		// No need to update the database if the entry was not modified.
-		if entry == nil || !entry.(*RightEntry).isModified() {
+		if entry == nil {
+			continue
+		}
+
+		mod := false
+		todel := false
+
+		switch entry.(type) {
+		case *RightSetEntry:
+			mod = entry.(*RightSetEntry).isModified()
+			todel = entry.(*RightSetEntry).toDelete()
+		case *RightEntry:
+			mod = entry.(*RightEntry).isModified()
+			todel = entry.(*RightEntry).toDelete()
+		}
+		if !mod {
 			continue
 		}
 
 		// Remove the utxo entry if it is spent.
-		if entry.(*RightEntry).toDelete() {
+		if  todel {
 			if err := bucket.Delete(hash[:]); err != nil {
 				return err
 			}
@@ -505,7 +620,7 @@ func dbPutRight(dbTx database.Tx, d interface{}) error {
 		h = d.(*RightEntry).ToToken().Hash()
 		break
 	case *RightSetEntry:
-		h = d.(*RightSetEntry).toToken().Hash()
+		h = d.(*RightSetEntry).ToToken().Hash()
 		break
 	}
 
@@ -515,7 +630,7 @@ func dbPutRight(dbTx database.Tx, d interface{}) error {
 func DbFetchRight(dbTx database.Tx, hash *chainhash.Hash) (interface{}, error) {
 	meta := dbTx.Metadata()
 	hashIndex := meta.Bucket(rightSetBucketName)
-	serialized := hashIndex.Get(hash[:])
+	serialized := hashIndex.Get((*hash)[:])
 
 	switch serialized[0] {
 	case 0:

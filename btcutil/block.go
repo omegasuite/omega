@@ -89,7 +89,7 @@ func (b *Block) BytesNoWitness() ([]byte, error) {
 
 	// Serialize the MsgBlock.
 	var w bytes.Buffer
-	err := b.msgBlock.SerializeNoWitness(&w)
+	err := b.msgBlock.SerializeNoSignature(&w)
 	if err != nil {
 		return nil, err
 	}

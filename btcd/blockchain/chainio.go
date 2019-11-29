@@ -185,7 +185,7 @@ func (b *BlockChain) FetchUtxoEntry(outpoint wire.OutPoint) (*viewpoint.UtxoEntr
 
 
 func (b *BlockChain) NewViewPointSet() * viewpoint.ViewPointSet {
-	return viewpoint.NewViewPointSet(&b.db)
+	return viewpoint.NewViewPointSet(b.db)
 }
 
 // -----------------------------------------------------------------------------
@@ -316,15 +316,16 @@ func spentTxOutSerializeSize(stxo *viewpoint.SpentTxOut) int {
 
 	if (stxo.TokenType & 1) == 0 {
 		// regular token
-		size += bccompress.CompressedTxOutSize(uint64(stxo.Amount.(*token.NumToken).Val), stxo.PkScript)
+		size += bccompress.SerializeSizeVLQ(bccompress.CompressTxOutAmount(uint64(stxo.Amount.(*token.NumToken).Val)))
 	} else {
-		size += chainhash.HashSize + bccompress.CompressedScriptSize(stxo.PkScript)
+		size += chainhash.HashSize
 	}
 
 	if (stxo.TokenType & 2) == 2 {
 		// with right
-		size += bccompress.SerializeSizeVLQ(uint64(len(stxo.Rights))) + len(stxo.Rights) * chainhash.HashSize
+		size += chainhash.HashSize
 	}
+	size += len(stxo.PkScript)
 
 	return size
 }
@@ -340,22 +341,19 @@ func putSpentTxOut(target []byte, stxo *viewpoint.SpentTxOut) int {
 
 	if (stxo.TokenType & 1) == 0 {
 		// regular token
-		offset += bccompress.PutCompressedTxOut(target[offset:], uint64(stxo.Amount.(*token.NumToken).Val), stxo.PkScript)
+		offset += bccompress.PutVLQ(target, bccompress.CompressTxOutAmount(uint64(stxo.Amount.(*token.NumToken).Val)))
 	} else {
 		copy(target[offset:], stxo.Amount.(*token.HashToken).Hash[:])
-		offset += chainhash.HashSize + bccompress.PutCompressedScript(target[offset:], stxo.PkScript)
+		offset += chainhash.HashSize
 	}
 
 	if (stxo.TokenType & 2) == 2 {
 		// with right
-		offset += bccompress.PutVLQ(target[offset:], uint64(len(stxo.Rights)))
-		for _,r := range stxo.Rights {
-			copy(target[offset:], r[:])
-			offset += chainhash.HashSize
-		}
+		copy(target[offset:], (*stxo.Rights)[:])
+		offset += chainhash.HashSize
 	}
-
-	return offset
+	copy(target[offset:], stxo.PkScript)
+	return offset + len(stxo.PkScript)
 }
 
 // decodeSpentTxOut decodes the passed serialized stxo entry, possibly followed
@@ -378,6 +376,7 @@ func decodeSpentTxOut(serialized []byte, stxo *viewpoint.SpentTxOut) (int, error
 	//
 	// Bit 0 indicates containing transaction is a coinbase.
 	// Bits 1-x encode height of containing transaction.
+
 	stxo.IsCoinBase = code&0x01 != 0
 	stxo.Height = int32(code >> 1)
 
@@ -387,36 +386,27 @@ func decodeSpentTxOut(serialized []byte, stxo *viewpoint.SpentTxOut) (int, error
 
 	if (stxo.TokenType & 1) == 0 {
 		// regular token
-		var err error
-		code, stxo.PkScript, bytesRead, _ = bccompress.DecodeCompressedTxOut(serialized[offset:])
-		if err != nil {
-			return offset, bccompress.ErrDeserialize(fmt.Sprintf("unable to decode "+
-				"txout: %v", err))
-		}
+		compressedAmount, bytesRead := bccompress.DeserializeVLQ(serialized[offset:])
+		amount := bccompress.DecompressTxOutAmount(compressedAmount)
 		stxo.Amount = &token.NumToken {
-			Val: int64(code),
+			Val: int64(amount),
 		}
 		offset += bytesRead
 	} else {
 		stxo.Amount = &token.HashToken{}
 		copy(stxo.Amount.(*token.HashToken).Hash[:], serialized[offset:offset + chainhash.HashSize])
 		offset += chainhash.HashSize
-		scriptSize := bccompress.DecodeCompressedScriptSize(serialized[offset:])
-		stxo.PkScript = bccompress.DecompressScript(serialized[offset:])
-		offset += scriptSize
 	}
 
-	if (stxo.TokenType & 2) == 2 {
-		// with right
-		code, bytesRead = bccompress.DeserializeVLQ(serialized[offset:])
-		stxo.Rights = make([]chainhash.Hash, code)
-		offset += bytesRead
-		for i := uint64(0); i < code; i++ {
-			copy(stxo.Rights[i][:], serialized[offset:offset + chainhash.HashSize])
-			offset += chainhash.HashSize
-		}
+	if (stxo.TokenType & 2) == 2 && len(serialized) > offset {
+		stxo.Rights = &chainhash.Hash{}
+		copy(stxo.Rights[:], serialized[offset:offset + chainhash.HashSize])
+		offset += chainhash.HashSize
+	} else {
+		stxo.Rights = nil
 	}
 
+	stxo.PkScript = serialized[offset:]
 	return offset, nil
 }
 
@@ -1227,6 +1217,7 @@ func (b *BlockChain) FetchPolygonEntry(hash chainhash.Hash) (*viewpoint.PolygonE
 		}
 		entry = &viewpoint.PolygonEntry{
 			Loops: e.Loops,
+//			RefCnt: e.RefCnt,
 			PackedFlags: 0,
 		}
 		return err
@@ -1257,9 +1248,9 @@ func (b *BlockChain) FetchRightEntry(hash chainhash.Hash) (*viewpoint.RightEntry
 		var err error
 		e, err := viewpoint.DbFetchRight(dbTx, &hash)
 		entry = &viewpoint.RightEntry{
-			Father: e.Father,
-			Desc:e.Desc,
-			Attrib: e.Attrib,
+			Father: e.(*viewpoint.RightEntry).Father,
+			Desc:e.(*viewpoint.RightEntry).Desc,
+			Attrib: e.(*viewpoint.RightEntry).Attrib,
 			PackedFlags: 0,
 		}
 		return err

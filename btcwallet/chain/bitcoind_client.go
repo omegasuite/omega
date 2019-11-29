@@ -12,11 +12,12 @@ import (
 	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcwallet/waddrmgr"
 	"github.com/btcsuite/btcwallet/wtxmgr"
+	"github.com/btcsuite/btcd/blockchain/indexers"
+	"github.com/btcsuite/btcd/txscript"
 )
 
 var (
@@ -601,7 +602,7 @@ func (c *BitcoindClient) ntfnHandler() {
 	for {
 		select {
 		case tx := <-c.zmqTxNtfns:
-			if _, _, err := c.filterTx(tx, nil, true); err != nil {
+			if _, _, err := c.filterTx(tx, nil, true, c.chainParams); err != nil {
 				log.Errorf("Unable to filter transaction %v: %v",
 					tx.TxHash(), err)
 			}
@@ -1184,7 +1185,7 @@ func (c *BitcoindClient) filterBlock(block *wire.MsgBlock, height int32,
 		// Update the index in the block details with the index of this
 		// transaction.
 		blockDetails.Index = i
-		isRelevant, rec, err := c.filterTx(tx, blockDetails, notify)
+		isRelevant, rec, err := c.filterTx(tx, blockDetails, notify, c.chainParams)
 		if err != nil {
 			log.Warnf("Unable to filter transaction %v: %v",
 				tx.TxHash(), err)
@@ -1220,9 +1221,10 @@ func (c *BitcoindClient) filterBlock(block *wire.MsgBlock, height int32,
 
 // filterTx determines whether a transaction is relevant to the client by
 // inspecting the client's different filters.
+
 func (c *BitcoindClient) filterTx(tx *wire.MsgTx,
 	blockDetails *btcjson.BlockDetails,
-	notify bool) (bool, *wtxmgr.TxRecord, error) {
+	notify bool, chainParams *chaincfg.Params) (bool, *wtxmgr.TxRecord, error) {
 
 	txDetails := btcutil.NewTx(tx)
 	if blockDetails != nil {
@@ -1273,7 +1275,7 @@ func (c *BitcoindClient) filterTx(tx *wire.MsgTx,
 		// watch list encoded as an address. To do so, we'll re-derive
 		// the pkScript of the output the input is attempting to spend.
 		pkScript, err := txscript.ComputePkScript(
-			txIn.SignatureScript, txIn.Witness,
+			tx.SignatureScripts[txIn.SignatureIndex], chainParams,
 		)
 		if err != nil {
 			// Non-standard outputs can be safely skipped.
@@ -1294,7 +1296,7 @@ func (c *BitcoindClient) filterTx(tx *wire.MsgTx,
 	// any of the currently watched addresses. If an output matches, we'll
 	// add it to our watch list.
 	for i, txOut := range tx.TxOut {
-		_, addrs, _, err := txscript.ExtractPkScriptAddrs(
+		addrs, _, err := indexers.ExtractPkScriptAddrs(
 			txOut.PkScript, c.chainParams,
 		)
 		if err != nil {

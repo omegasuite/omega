@@ -13,14 +13,12 @@ import (
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/viewpoint"
 	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/omega/token"
-	"github.com/btcsuite/ovm"
-	"github.com/btcsuite/btcd/txscript/txsparser"
+	"encoding/binary"
 )
 
 const (
@@ -244,9 +242,11 @@ func mergeUtxoView(viewA *viewpoint.UtxoViewpoint, viewB *viewpoint.UtxoViewpoin
 // it starts with the block height that is required by version 2 blocks and adds
 // the extra nonce as well as additional coinbase flags.
 func standardCoinbaseScript(nextBlockHeight int32, extraNonce uint64) ([]byte, error) {
-	return txscript.NewScriptBuilder().AddInt64(int64(nextBlockHeight)).
-		AddInt64(int64(extraNonce)).AddData([]byte(CoinbaseFlags)).
-		Script()
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, uint64(nextBlockHeight))
+	binary.Write(&buf, binary.LittleEndian, uint64(extraNonce))
+	buf.Write([]byte(CoinbaseFlags))
+	return buf.Bytes(), nil
 }
 
 // createCoinbaseTx returns a coinbase transaction paying an appropriate subsidy
@@ -259,20 +259,15 @@ func createCoinbaseTx(params *chaincfg.Params, coinbaseScript []byte, nextBlockH
 	// Create the script to pay to the provided payment address if one was
 	// specified.  Otherwise create a script that allows the coinbase to be
 	// redeemable by anyone.
-	var pkScript []byte
+	pkScript := make([]byte, 25)
 	if addr != nil {
-		var err error
-		pkScript, err = txscript.PayToAddrScript(addr)
-		if err != nil {
-			return nil, err
-		}
+		pkScript[0] = addr.Version()
+		copy(pkScript[1:], addr.ScriptAddress())
+		pkScript[21] = 0x41
 	} else {
-		var err error
-		scriptBuilder := txscript.NewScriptBuilder()
-		pkScript, err = scriptBuilder.AddOp(txsparser.OP_TRUE).Script()
-		if err != nil {
-			return nil, err
-		}
+		pkScript[0] = 0x6F
+		pkScript[1] = 1		// anything but 0
+		pkScript[21] = 0x45
 	}
 
 	tx := wire.NewMsgTx(wire.TxVersion)
@@ -281,7 +276,7 @@ func createCoinbaseTx(params *chaincfg.Params, coinbaseScript []byte, nextBlockH
 		// zero hash and max index.
 		PreviousOutPoint: *wire.NewOutPoint(&chainhash.Hash{},
 			wire.MaxPrevOutIndex),
-		SignatureScript: coinbaseScript,
+		SignatureIndex: 0xFFFFFFFF,
 		Sequence:        wire.MaxTxInSequenceNum,
 	})
 
@@ -301,9 +296,9 @@ func createCoinbaseTx(params *chaincfg.Params, coinbaseScript []byte, nextBlockH
 // spendTransaction updates the passed view by marking the inputs to the passed
 // transaction as spent.  It also adds all outputs in the passed transaction
 // which are not provably unspendable as available unspent transaction outputs.
-func spendTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.Tx, height int32) error {
+func spendTransaction(utxoView *viewpoint.ViewPointSet, tx *btcutil.Tx, height int32) error {
 	for _, txIn := range tx.MsgTx().TxIn {
-		entry := utxoView.LookupEntry(txIn.PreviousOutPoint)
+		entry := utxoView.Utxo.LookupEntry(txIn.PreviousOutPoint)
 		if entry != nil {
 			entry.Spend()
 		}
@@ -363,8 +358,8 @@ type BlkTmplGenerator struct {
 	txSource    TxSource
 	chain       *blockchain.BlockChain
 	timeSource  blockchain.MedianTimeSource
-	sigCache    *txscript.SigCache
-	hashCache   *txscript.HashCache
+//	sigCache    *txscript.SigCache
+//	hashCache   *txscript.HashCache
 }
 
 // NewBlkTmplGenerator returns a new block template generator for the given
@@ -375,9 +370,9 @@ type BlkTmplGenerator struct {
 // consensus rules.
 func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 	txSource TxSource, chain *blockchain.BlockChain,
-	timeSource blockchain.MedianTimeSource,
-	sigCache *txscript.SigCache,
-	hashCache *txscript.HashCache) *BlkTmplGenerator {
+	timeSource blockchain.MedianTimeSource) *BlkTmplGenerator {
+//	sigCache *txscript.SigCache,
+//	hashCache *txscript.HashCache) *BlkTmplGenerator {
 
 	return &BlkTmplGenerator{
 		policy:      policy,
@@ -385,8 +380,8 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 		txSource:    txSource,
 		chain:       chain,
 		timeSource:  timeSource,
-		sigCache:    sigCache,
-		hashCache:   hashCache,
+//		sigCache:    sigCache,
+//		hashCache:   hashCache,
 	}
 }
 
@@ -621,63 +616,12 @@ mempoolLoop:
 	blockSigOpCost := coinbaseSigOpCost
 	totalFees := int64(0)
 
-	// Query the version bits state to see if segwit has been activated, if
-	// so then this means that we'll include any transactions with witness
-	// data in the mempool, and also add the witness commitment as an
-	// OP_RETURN output in the coinbase transaction.
-	segwitState, err := g.chain.ThresholdState(chaincfg.DeploymentSegwit)
-	if err != nil {
-		return nil, err
-	}
-	segwitActive := segwitState == blockchain.ThresholdActive
-
-	witnessIncluded := false
-
 	// Choose which transactions make it into the block.
 	for priorityQueue.Len() > 0 {
 		// Grab the highest priority (or highest fee per kilobyte
 		// depending on the sort order) transaction.
 		prioItem := heap.Pop(priorityQueue).(*txPrioItem)
 		tx := prioItem.tx
-
-		switch {
-		// If segregated witness has not been activated yet, then we
-		// shouldn't include any witness transactions in the block.
-		case !segwitActive && tx.HasWitness():
-			continue
-
-		// Otherwise, Keep track of if we've included a transaction
-		// with witness data or not. If so, then we'll need to include
-		// the witness commitment as the last output in the coinbase
-		// transaction.
-		case segwitActive && !witnessIncluded && tx.HasWitness():
-			// If we're about to include a transaction bearing
-			// witness data, then we'll also need to include a
-			// witness commitment in the coinbase transaction.
-			// Therefore, we account for the additional weight
-			// within the block with a model coinbase tx with a
-			// witness commitment.
-			coinbaseCopy := btcutil.NewTx(coinbaseTx.MsgTx().Copy())
-			coinbaseCopy.MsgTx().TxIn[0].Witness = [][]byte{
-				bytes.Repeat([]byte("a"),
-					blockchain.CoinbaseWitnessDataLen),
-			}
-			coinbaseCopy.MsgTx().AddTxOut(&wire.TxOut{
-				PkScript: bytes.Repeat([]byte("a"),
-					blockchain.CoinbaseWitnessPkScriptLength),
-			})
-
-			// In order to accurately account for the weight
-			// addition due to this coinbase transaction, we'll add
-			// the difference of the transaction before and after
-			// the addition of the commitment to the block weight.
-			weightDiff := blockchain.GetTransactionWeight(coinbaseCopy) -
-				blockchain.GetTransactionWeight(coinbaseTx)
-
-			blockWeight += uint32(weightDiff)
-
-			witnessIncluded = true
-		}
 
 		// Grab any transactions which depend on this one.
 		deps := dependers[*tx.Hash()]
@@ -697,7 +641,7 @@ mempoolLoop:
 		// Enforce maximum signature operation cost per block.  Also
 		// check for overflow.
 		sigOpCost, err := blockchain.GetSigOpCost(tx, false,
-			blockUtxos, true, segwitActive)
+			blockUtxos, true, true)
 		if err != nil {
 			log.Tracef("Skipping tx %s due to error in "+
 				"GetSigOpCost: %v", tx.Hash(), err)
@@ -756,9 +700,30 @@ mempoolLoop:
 			}
 		}
 
+		// Ensure the transaction inputs pass all of the necessary
+		// preconditions before allowing it to be added to the block.
+		err = blockchain.CheckTransactionInputs(tx, nextBlockHeight,
+			views, g.chainParams)
+		if err != nil {
+			// we should roll back result of last contract execution here
+			log.Tracef("Skipping tx %s due to error in "+
+				"CheckTransactionInputs: %v", tx.Hash(), err)
+			logSkippedDeps(tx, deps)
+			continue
+		}
+
+		err = g.chain.Ovm().VerifySigs(tx, nextBlockHeight)
+		if err != nil {
+			// we should roll back result of last contract execution here
+			log.Tracef("Skipping tx %s due to error in "+
+				"VerifySigs: %v", tx.Hash(), err)
+			logSkippedDeps(tx, deps)
+			continue
+		}
+
 		// excute contracts if necessary. note, if the execution causes any change in
 		// in transaction, a new copy of tx will be returned.
-		tx, err = ovm.ExecContract(tx, nextBlockHeight, g.chain.Ovm(), g.chainParams)
+		otx, err := g.chain.Ovm().ExecContract(tx, 0, nextBlockHeight, g.chainParams)
 		if err != nil {
 			log.Tracef("Skipping tx %s due to error in "+
 				"checkContract: %v", tx.Hash(), err)
@@ -766,31 +731,44 @@ mempoolLoop:
 			continue
 		}
 
-		// Ensure the transaction inputs pass all of the necessary
-		// preconditions before allowing it to be added to the block.
-		_, err = blockchain.CheckTransactionInputs(tx, nextBlockHeight,
-			views, g.chainParams)
+		if otx != nil {
+			tx = otx
+		}
+
+		err = blockchain.CheckTransactionIntegrity(tx, views)
 		if err != nil {
+			// we should roll back result of last contract execution here
 			log.Tracef("Skipping tx %s due to error in "+
-				"CheckTransactionInputs: %v", tx.Hash(), err)
+				"CheckTransactionIntegrity: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
 		}
-		err = blockchain.ValidateTransactionScripts(tx, blockUtxos,
-			txsparser.StandardVerifyFlags, g.sigCache,
-			g.hashCache)
+
+		fees, err := blockchain.CheckTransactionFeess(tx, nextBlockHeight, views, g.chainParams)
 		if err != nil {
+			// we should roll back result of last contract execution here
 			log.Tracef("Skipping tx %s due to error in "+
-				"ValidateTransactionScripts: %v", tx.Hash(), err)
+				"CheckTransactionFeess: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
 		}
+
+		prioItem.fee = fees
+
+		//		err = blockchain.ValidateTransactionScripts(tx, blockUtxos)
+//			0, g.sigCache,			g.hashCache)
+//		if err != nil {
+//			log.Tracef("Skipping tx %s due to error in "+
+//				"ValidateTransactionScripts: %v", tx.Hash(), err)
+//			logSkippedDeps(tx, deps)
+//			continue
+//		}
 
 		// Spend the transaction inputs in the block utxo view and add
 		// an entry for it to ensure any transactions which reference
 		// this one have it available as an input and can ensure they
 		// aren't double spending.
-		spendTransaction(blockUtxos, tx, nextBlockHeight)
+		spendTransaction(views, tx, nextBlockHeight)
 
 		// Add the transaction to the block, increment counters, and
 		// save the fees and signature operation counts to the block
@@ -827,52 +805,20 @@ mempoolLoop:
 	coinbaseTx.MsgTx().TxOut[0].Value.(*token.NumToken).Val += totalFees
 	txFees[0] = -totalFees
 
-	// If segwit is active and we included transactions with witness data,
-	// then we'll need to include a commitment to the witness data in an
-	// OP_RETURN output within the coinbase transaction.
-	var witnessCommitment []byte
-	if witnessIncluded {
-		// The witness of the coinbase transaction MUST be exactly 32-bytes
-		// of all zeroes.
-		var witnessNonce [blockchain.CoinbaseWitnessDataLen]byte
-		coinbaseTx.MsgTx().TxIn[0].Witness = wire.TxWitness{witnessNonce[:]}
+	// Next, obtain the merkle root of a tree which consists of the
+	// wtxid of all transactions in the block. The coinbase
+	// transaction will have a special wtxid of all zeroes.
+	witnessMerkleTree := blockchain.BuildMerkleTreeStore(blockTxns,true)
+	witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
 
-		// Next, obtain the merkle root of a tree which consists of the
-		// wtxid of all transactions in the block. The coinbase
-		// transaction will have a special wtxid of all zeroes.
-		witnessMerkleTree := blockchain.BuildMerkleTreeStore(blockTxns,
-			true)
-		witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
-
-		// The preimage to the witness commitment is:
-		// witnessRoot || coinbaseWitness
-		var witnessPreimage [64]byte
-		copy(witnessPreimage[:32], witnessMerkleRoot[:])
-		copy(witnessPreimage[32:], witnessNonce[:])
-
-		// The witness commitment itself is the double-sha256 of the
-		// witness preimage generated above. With the commitment
-		// generated, the witness script for the output is: OP_RETURN
-		// OP_DATA_36 {0xaa21a9ed || witnessCommitment}. The leading
-		// prefix is referred to as the "witness magic bytes".
-		witnessCommitment = chainhash.DoubleHashB(witnessPreimage[:])
-		witnessScript := append(blockchain.WitnessMagicBytes, witnessCommitment...)
-
-		// Finally, create the OP_RETURN carrying witness commitment
-		// output as an additional output within the coinbase.
-		t := token.Token{
-			TokenType: 0,
-			Value:    &token.NumToken{
-				Val: 0,
-			},
-		}
-		commitmentOutput := &wire.TxOut{
-			Token: t,
-			PkScript: witnessScript,
-		}
-		coinbaseTx.MsgTx().TxOut = append(coinbaseTx.MsgTx().TxOut,
-			commitmentOutput)
+	msg := coinbaseTx.MsgTx()
+	if msg.SignatureScripts == nil || len(msg.SignatureScripts) == 0 {
+		msg.SignatureScripts = make([][]byte, 1)
 	}
+	if msg.SignatureScripts[0] == nil {
+		msg.SignatureScripts[0] = make([]byte, 0)
+	}
+	msg.SignatureScripts[0] = (*witnessMerkleRoot)[:]
 
 	// Calculate the required difficulty for the block.  The timestamp
 	// is potentially adjusted to ensure it comes after the median time of
@@ -911,7 +857,7 @@ mempoolLoop:
 	// chain with no issues.
 	block := btcutil.NewBlock(&msgBlock)
 	block.SetHeight(nextBlockHeight)
-		if err := g.chain.CheckConnectBlockTemplate(block); err != nil {
+	if err := g.chain.CheckConnectBlockTemplate(block); err != nil {
 		return nil, err
 	}
 
@@ -926,7 +872,7 @@ mempoolLoop:
 		SigOpCosts:        txSigOpCosts,
 		Height:            nextBlockHeight,
 		ValidPayAddress:   payToAddress != nil,
-		WitnessCommitment: witnessCommitment,
+		WitnessCommitment: (*witnessMerkleRoot)[:],
 	}, nil
 }
 
@@ -970,7 +916,14 @@ func (g *BlkTmplGenerator) UpdateExtraNonce(msgBlock *wire.MsgBlock, blockHeight
 			len(coinbaseScript), blockchain.MinCoinbaseScriptLen,
 			blockchain.MaxCoinbaseScriptLen)
 	}
-	msgBlock.Transactions[0].TxIn[0].SignatureScript = coinbaseScript
+	if msgBlock.Transactions[0].SignatureScripts == nil || len(msgBlock.Transactions[0].SignatureScripts) == 0 {
+		msgBlock.Transactions[0].SignatureScripts = make([][]byte, 2)
+		// this is the place we use to stoare merkle root of signatures
+		msgBlock.Transactions[0].SignatureScripts[0] = make([]byte, 32)
+	}
+	msgBlock.Transactions[0].TxIn[0].SignatureIndex = 1
+	msgBlock.Transactions[0].SignatureScripts[1] = coinbaseScript
+//	msgBlock.Transactions[0].TxIn[0].SignatureScript = coinbaseScript
 
 	// TODO(davec): A btcutil.Block should use saved in the state to avoid
 	// recalculating all of the other transaction hashes.

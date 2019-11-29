@@ -5,12 +5,12 @@
 package wire
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire/common"
+	"bytes"
 )
 
 // defaultTransactionAlloc is the default size used for the backing array
@@ -50,7 +50,6 @@ type MsgBlock struct {
 func (msg *MsgBlock) AddTransaction(tx *MsgTx) error {
 	msg.Transactions = append(msg.Transactions, tx)
 	return nil
-
 }
 
 // ClearTransactions removes all transactions from the message.
@@ -92,6 +91,12 @@ func (msg *MsgBlock) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) er
 		msg.Transactions = append(msg.Transactions, &tx)
 	}
 
+	if enc == SignatureEncoding {
+		for _, tx := range msg.Transactions {
+			tx.ReadSignature(r, pver, enc)
+		}
+	}
+
 	return nil
 }
 
@@ -113,13 +118,13 @@ func (msg *MsgBlock) Deserialize(r io.Reader) error {
 	// MessageEncoding parameter indicates that the transactions within the
 	// block are expected to be serialized according to the new
 	// serialization structure defined in BIP0141.
-	return msg.BtcDecode(r, 0, WitnessEncoding)
+	return msg.BtcDecode(r, 0, SignatureEncoding)
 }
 
 // DeserializeNoWitness decodes a block from r into the receiver similar to
 // Deserialize, however DeserializeWitness strips all (if any) witness data
 // from the transactions within the block before encoding them.
-func (msg *MsgBlock) DeserializeNoWitness(r io.Reader) error {
+func (msg *MsgBlock) DeserializeNoSignature(r io.Reader) error {
 	return msg.BtcDecode(r, 0, BaseEncoding)
 }
 
@@ -192,6 +197,12 @@ func (msg *MsgBlock) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) er
 		}
 	}
 
+	if enc == SignatureEncoding {
+		for _, tx := range msg.Transactions {
+			tx.WriteSignature(w, pver, enc)
+		}
+	}
+
 	return nil
 }
 
@@ -212,7 +223,7 @@ func (msg *MsgBlock) Serialize(w io.Writer) error {
 	// Passing WitnessEncoding as the encoding type here indicates that
 	// each of the transactions should be serialized using the witness
 	// serialization structure defined in BIP0141.
-	return msg.BtcEncode(w, 0, WitnessEncoding)
+	return msg.BtcEncode(w, 0, SignatureEncoding)
 }
 
 // SerializeNoWitness encodes a block to w using an identical format to
@@ -220,7 +231,7 @@ func (msg *MsgBlock) Serialize(w io.Writer) error {
 // This method is provided in additon to the regular Serialize, in order to
 // allow one to selectively encode transaction witness data to non-upgraded
 // peers which are unaware of the new encoding.
-func (msg *MsgBlock) SerializeNoWitness(w io.Writer) error {
+func (msg *MsgBlock) SerializeNoSignature(w io.Writer) error {
 	return msg.BtcEncode(w, 0, BaseEncoding)
 }
 
@@ -277,6 +288,14 @@ func (msg *MsgBlock) TxHashes() ([]chainhash.Hash, error) {
 	hashList := make([]chainhash.Hash, 0, len(msg.Transactions))
 	for _, tx := range msg.Transactions {
 		hashList = append(hashList, tx.TxHash())
+	}
+	return hashList, nil
+}
+
+func (msg *MsgBlock) SigHashes() ([]chainhash.Hash, error) {
+	hashList := make([]chainhash.Hash, 0, len(msg.Transactions))
+	for _, tx := range msg.Transactions {
+		hashList = append(hashList, tx.SignatureHash())
 	}
 	return hashList, nil
 }

@@ -23,7 +23,7 @@ const (
 	// definition related consts. to defined a new vertes, border, polygon, rightset, or a right
 	DefTypeVertex = 0
 	DefTypeBorder = 1
-	DefTypePolygon = 2
+	DefTypePolygon = 2		// also a loop, canbe mixed
 	//	DefTypePolyhedron = 3
 	DefTypeRight = 4
 	DefTypeRightSet = 5
@@ -33,19 +33,31 @@ const (
 	MaxDefinitionPerMessage = (MaxMessagePayload / MinDefinitionPayload) + 1
 )
 
+// right flag masks
+const (
+	NegativeRight	=		1		// define whether the desc is positive or nagative
+	Unsplittable =		2		// whether this right may be aplitted futher
+	Monitored	=			4		// whether token with this right is monitored, splitted subrights inherits this flag
+	Monitor =				8		// this is for the monitoring token
+	IsMonitorCall	 =		16		// whether desc defines a coontract call for monitoring
+)
+
 type Definition interface {
 	DefType () uint8
 	Hash () chainhash.Hash
 	SerializeSize() int
-	read(io.Reader, uint32) error
-	write(io.Writer, uint32) error
+	Size() int
+	Read(io.Reader, uint32) error
+	Write(io.Writer, uint32) error
+	MemRead(io.Reader, uint32) error
+	MemWrite(io.Writer, uint32) error
 }
 
 type VertexDef struct {
 	hash *chainhash.Hash
 	Lat uint32
 	Lng uint32
-	Desc []byte
+//	Desc []byte
 }
 
 func (t * VertexDef) DefType() uint8 {
@@ -58,10 +70,10 @@ func (t * VertexDef) Hash() chainhash.Hash {
 //		writeElements(buf, DefTypeVertex, t.Lat, t.Lng, t.Desc)
 //		hash := chainhash.DoubleHashH(buf.Bytes())
 
-		b := make([]byte, 8 + len(t.Desc))
+		b := make([]byte, 8)	// + len(t.Desc))
 		binary.LittleEndian.PutUint32(b[0:], t.Lat)
 		binary.LittleEndian.PutUint32(b[4:], t.Lng)
-		copy(b[8:], t.Desc)
+//		copy(b[8:], t.Desc)
 		hash := chainhash.HashH(b)
 
 		t.hash = &hash
@@ -70,20 +82,24 @@ func (t * VertexDef) Hash() chainhash.Hash {
 }
 
 func (t * VertexDef) SerializeSize() int {
-	return 1 + 4 + 4 + common.VarIntSerializeSize(uint64(len(t.Desc))) + len(t.Desc)
+	return 1 + 4 + 4	// + common.VarIntSerializeSize(uint64(len(t.Desc))) + len(t.Desc)
+}
+
+func (t * VertexDef) Size() int {
+	return 1 + 4 + 4	// + 4	+ len(t.Desc)
 }
 
 func NewVertexDef(lat int32, lng int32, desc []byte) (* VertexDef) {
 	t := VertexDef{}
-	t.Desc = make([]byte, len(desc))
-	copy(t.Desc, desc)
+//	t.Desc = make([]byte, len(desc))
+//	copy(t.Desc, desc)
 	t.Lat = uint32(lat)
 	t.Lng = uint32(lng)
 
 	return &t
 }
 
-func (msg * VertexDef) read(r io.Reader, pver uint32) error {
+func (msg * VertexDef) MemRead(r io.Reader, pver uint32) error {
 	lat, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
 	if err != nil {
 		return err
@@ -96,20 +112,46 @@ func (msg * VertexDef) read(r io.Reader, pver uint32) error {
 	}
 	msg.Lng = uint32(lng)
 
-	count, err := common.ReadVarInt(r, pver)
-	if err != nil {
-		return err
-	}
+//	count, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+//	if err != nil {
+//		return err
+//	}
 
-	msg.Desc = make([]byte, count, count)
-	if _, err = io.ReadFull(r, msg.Desc[:]); err != nil {
-		return err
-	}
+//	msg.Desc = make([]byte, count, count)
+//	if _, err = io.ReadFull(r, msg.Desc[:]); err != nil {
+//		return err
+//	}
 
 	return nil
 }
 
-func (msg * VertexDef) write(w io.Writer, pver uint32) error {
+func (msg * VertexDef) Read(r io.Reader, pver uint32) error {
+	lat, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+	if err != nil {
+		return err
+	}
+	msg.Lat = uint32(lat)
+
+	lng, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+	if err != nil {
+		return err
+	}
+	msg.Lng = uint32(lng)
+
+//	count, err := common.ReadVarInt(r, pver)
+//	if err != nil {
+//		return err
+//	}
+
+//	msg.Desc = make([]byte, count, count)
+//	if _, err = io.ReadFull(r, msg.Desc[:]); err != nil {
+//		return err
+//	}
+
+	return nil
+}
+
+func (msg * VertexDef) Write(w io.Writer, pver uint32) error {
 	err := common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Lat))
 	if err != nil {
 		return err
@@ -119,12 +161,32 @@ func (msg * VertexDef) write(w io.Writer, pver uint32) error {
 		return err
 	}
 
-	count := uint64(len(msg.Desc))
-	err = common.WriteVarInt(w, pver, count)
+//	count := uint64(len(msg.Desc))
+//	err = common.WriteVarInt(w, pver, count)
+//	if err != nil {
+//		return err
+//	}
+//	_, err = w.Write(msg.Desc)
+
+	return err
+}
+
+func (msg * VertexDef) MemWrite(w io.Writer, pver uint32) error {
+	err := common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Lat))
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(msg.Desc)
+	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, msg.Lng)
+	if err != nil {
+		return err
+	}
+
+//	count := uint64(len(msg.Desc))
+//	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(count))
+//	if err != nil {
+//		return err
+//	}
+//	_, err = w.Write(msg.Desc)
 
 	return err
 }
@@ -158,6 +220,10 @@ func (t * BorderDef) SerializeSize() int {
 	return chainhash.HashSize * 3
 }
 
+func (t * BorderDef) Size() int {
+	return chainhash.HashSize * 3
+}
+
 func NewBorderDef(begin chainhash.Hash, end chainhash.Hash, father chainhash.Hash) (* BorderDef) {
 	t := BorderDef{}
 	t.Begin = begin
@@ -166,7 +232,11 @@ func NewBorderDef(begin chainhash.Hash, end chainhash.Hash, father chainhash.Has
 	return &t
 }
 
-func (t * BorderDef) read(r io.Reader, pver uint32) error {
+func (t * BorderDef) MemRead(r io.Reader, pver uint32) error {
+	return t.Read(r, pver)
+}
+
+func (t * BorderDef) Read(r io.Reader, pver uint32) error {
 	io.ReadFull(r, t.Father[:])
 	io.ReadFull(r, t.Begin[:])
 	io.ReadFull(r, t.End[:])
@@ -174,7 +244,11 @@ func (t * BorderDef) read(r io.Reader, pver uint32) error {
 	return nil
 }
 
-func (t * BorderDef) write(w io.Writer, pver uint32) error {
+func (t * BorderDef) MemWrite(w io.Writer, pver uint32) error {
+	return t.Write(w, pver)
+}
+
+func (t * BorderDef) Write(w io.Writer, pver uint32) error {
 	w.Write(t.Father[:])
 	w.Write(t.Begin[:])
 	w.Write(t.End[:])
@@ -182,7 +256,7 @@ func (t * BorderDef) write(w io.Writer, pver uint32) error {
 	return nil
 }
 
-type LoopDef []chainhash.Hash
+type LoopDef []chainhash.Hash		// if the loops has only one item, it is not a border, it is another polygon!!!
 
 type PolygonDef struct {
 	hash * chainhash.Hash
@@ -222,6 +296,15 @@ func (t * PolygonDef) SerializeSize() int {
 	return n
 }
 
+func (t * PolygonDef) Size() int {
+	n := 1 + 4
+	for _,loop := range t.Loops {
+		n += 4 + len(loop) * chainhash.HashSize
+	}
+
+	return n
+}
+
 func NewPolygonDef(loops []LoopDef) (* PolygonDef) {
 	t := PolygonDef{}
 	t.Loops = loops
@@ -229,7 +312,7 @@ func NewPolygonDef(loops []LoopDef) (* PolygonDef) {
 	return &t
 }
 
-func (t * PolygonDef) read(r io.Reader, pver uint32) error {
+func (t * PolygonDef) Read(r io.Reader, pver uint32) error {
 	nloops, err := common.ReadVarInt(r, pver)
 	if err != nil {
 		return err
@@ -256,7 +339,34 @@ func (t * PolygonDef) read(r io.Reader, pver uint32) error {
 	return nil
 }
 
-func (t * PolygonDef) write(w io.Writer, pver uint32) error {
+func (t * PolygonDef) MemRead(r io.Reader, pver uint32) error {
+	nloops, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+	if err != nil {
+		return err
+	}
+
+	t.Loops = make([]LoopDef, 0, nloops)
+
+	for nloops > 0 {
+		borders, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+		if err != nil {
+			return err
+		}
+		loop := make([]chainhash.Hash, 0, borders)
+		for borders > 0 {
+			b := chainhash.Hash{}
+			io.ReadFull(r, b[:])
+			loop = append(loop, b)
+			borders--
+		}
+		t.Loops = append(t.Loops, loop)
+		nloops--
+	}
+
+	return nil
+}
+
+func (t * PolygonDef) Write(w io.Writer, pver uint32) error {
 	err := common.WriteVarInt(w, pver, uint64(len(t.Loops)))
 	if err != nil {
 		return err
@@ -279,11 +389,39 @@ func (t * PolygonDef) write(w io.Writer, pver uint32) error {
 	return nil
 }
 
+func (t * PolygonDef) MemWrite(w io.Writer, pver uint32) error {
+	err := common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(len(t.Loops)))
+
+	if err != nil {
+		return err
+	}
+
+	i := 0
+	for i < len(t.Loops) {
+		err := common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(len(t.Loops[i])))
+		if err != nil {
+			return err
+		}
+		j := 0
+		for j < len(t.Loops[i]) {
+			w.Write(t.Loops[i][j][:])
+			j++
+		}
+		i++
+	}
+
+	return nil
+}
+
 type RightDef struct {
 	hash * chainhash.Hash
 	Father chainhash.Hash
 	Desc []byte
-	Attrib uint8		// bit 0: whether it is affirmative, bit 1: whether it is splittable
+	Attrib uint8		// bit 0: whether it is affirmative, (0 = affirmative, 1 - negativr)
+						// bit 1: whether it is splittable. ( 0 = splittable, 1 - not splittable)
+						// bit 2: whether it is a monitored (only for polygon token). inherited always
+						// bit 3: whether it is a monitor (only for polygon token)
+						// bit 4: whether Desc is a contract call func.
 }
 
 func (t * RightDef) DefType() uint8 {
@@ -307,6 +445,10 @@ func (t * RightDef) SerializeSize() int {
 	return 1 + chainhash.HashSize  + 1 + common.VarIntSerializeSize(uint64(len(t.Desc))) + len(t.Desc)
 }
 
+func (t * RightDef) Size() int {
+	return 1 + chainhash.HashSize  + 1 + 4 + len(t.Desc)
+}
+
 func NewRightDef(father chainhash.Hash, desc []byte, attrib uint8) (* RightDef) {
 	t := RightDef{}
 	t.Father = father
@@ -316,7 +458,7 @@ func NewRightDef(father chainhash.Hash, desc []byte, attrib uint8) (* RightDef) 
 	return &t
 }
 
-func (t * RightDef) read(r io.Reader, pver uint32) error {
+func (t * RightDef) Read(r io.Reader, pver uint32) error {
 	io.ReadFull(r, t.Father[:])
 
 	n, err := common.ReadVarInt(r, pver)
@@ -331,9 +473,40 @@ func (t * RightDef) read(r io.Reader, pver uint32) error {
 	return nil
 }
 
-func (t * RightDef) write(w io.Writer, pver uint32) error {
+func (t * RightDef) MemRead(r io.Reader, pver uint32) error {
+	io.ReadFull(r, t.Father[:])
+
+	n, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+	if err != nil {
+		return err
+	}
+
+	t.Desc = make([]byte, n)
+	io.ReadFull(r, t.Desc[:])
+	t.Attrib, _ = common.BinarySerializer.Uint8(r)
+
+	return nil
+}
+
+func (t * RightDef) Write(w io.Writer, pver uint32) error {
 	w.Write(t.Father[:])
 	err := common.WriteVarInt(w, pver, uint64(len(t.Desc)))
+	if err != nil {
+		return err
+	}
+	w.Write(t.Desc[:])
+
+	err = common.BinarySerializer.PutUint8(w, t.Attrib)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (t * RightDef) MemWrite(w io.Writer, pver uint32) error {
+	w.Write(t.Father[:])
+	err :=  common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(len(t.Desc)))
 	if err != nil {
 		return err
 	}
@@ -370,31 +543,63 @@ func (t * RightSetDef) Hash() chainhash.Hash {
 }
 
 func (t * RightSetDef) SerializeSize() int {
-	return 1 + 32 * len(t.Rights)
+	return common.VarIntSerializeSize(uint64(len(t.Rights))) + 32 * len(t.Rights)
+}
+
+func (t * RightSetDef) Size() int {
+	return 4 + 32 * len(t.Rights)
 }
 
 func NewRightSetDef(rights []chainhash.Hash) (* RightSetDef) {
+	t := RightSetDef{}
 	t.Rights = rights
 
 	return &t
 }
 
-func (t * RightSetDef) read(r io.Reader, pver uint32) error {
+func (t * RightSetDef) Read(r io.Reader, pver uint32) error {
 	n, err := common.ReadVarInt(r, pver)
 	if err != nil {
 		return err
 	}
 
 	t.Rights = make([]chainhash.Hash, n)
-	for i := 0; i < n; i++ {
+	for i := 0; i < int(n); i++ {
 		io.ReadFull(r, t.Rights[i][:])
 	}
 
 	return nil
 }
 
-func (t * RightSetDef) write(w io.Writer, pver uint32) error {
+func (t * RightSetDef) MemRead(r io.Reader, pver uint32) error {
+	n, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+	if err != nil {
+		return err
+	}
+
+	t.Rights = make([]chainhash.Hash, n)
+	for i := 0; i < int(n); i++ {
+		io.ReadFull(r, t.Rights[i][:])
+	}
+
+	return nil
+}
+
+func (t * RightSetDef) Write(w io.Writer, pver uint32) error {
 	err := common.WriteVarInt(w, pver, uint64(len(t.Rights)))
+	if err != nil {
+		return err
+	}
+
+	for _, r := range t.Rights {
+		w.Write(r[:])
+	}
+
+	return nil
+}
+
+func (t * RightSetDef) MemWrite(w io.Writer, pver uint32) error {
+	err :=  common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(len(t.Rights)))
 	if err != nil {
 		return err
 	}
@@ -468,6 +673,21 @@ func (t *Token) SerializeSize() int {
 	return n
 }
 
+func (t *Token) Size() int {
+	// Value 8 bytes + serialized varint size for the length of PkScript +
+	// PkScript bytes.
+	n := 8
+	if (t.TokenType & 1) != 0 {
+		n += chainhash.HashSize
+	} else {
+		n += 8
+	}
+	if (t.TokenType & 2) != 0 {
+		n += chainhash.HashSize
+	}
+	return n
+}
+
 func RemapDef(txDef []Definition, to Definition) Definition {
 	switch to.DefType() {
 	case DefTypeBorder:
@@ -507,8 +727,8 @@ func RemapDef(txDef []Definition, to Definition) Definition {
 		break
 	case DefTypeRightSet:
 		r := to.(*RightSetDef)
-		for i,r := range r.Rights {
-			if t := NeedRemap(r[:]); len(t) > 0 {
+		for i,s := range r.Rights {
+			if t := NeedRemap(s[:]); len(t) > 0 {
 				r.Rights[i] = txDef[Bytetoint(t[1])].Hash()
 			}
 		}
@@ -531,8 +751,8 @@ func CopyDefinitions(defs []Definition) []Definition {
 					Lat: c.Lat,
 					Lng: c.Lng,
 					}
-				newDefinitions.Desc = make([]byte, len(c.Desc))
-				copy(newDefinitions.Desc, c.Desc)
+//				newDefinitions.Desc = make([]byte, len(c.Desc))
+//				copy(newDefinitions.Desc, c.Desc)
 				txdef = append(txdef, &newDefinitions)
 				break;
 			case DefTypeBorder:
@@ -574,7 +794,7 @@ func CopyDefinitions(defs []Definition) []Definition {
 					Rights: make([]chainhash.Hash, len(c.Rights)),
 				}
 				for i,r := range c.Rights {
-					copy(newDefinitions.Rights[i], r)
+					copy(newDefinitions.Rights[i][:], r[:])
 				}
 				txdef = append(txdef, &newDefinitions)
 				break;
@@ -597,27 +817,27 @@ func ReadDefinition(r io.Reader, pver uint32, version int32) (Definition, error)
 	switch t {
 	case DefTypeVertex:
 		c := VertexDef{}
-		err = c.read(r, pver)
+		err = c.Read(r, pver)
 		return &c, err
 		break;
 	case DefTypeBorder:
 		c := BorderDef{}
-		err = c.read(r, pver)
+		err = c.Read(r, pver)
 		return &c, err
 		break;
 	case DefTypePolygon:
 		c := PolygonDef{}
-		err = c.read(r, pver)
+		err = c.Read(r, pver)
 		return &c, err
 		break;
 	case DefTypeRight:
 		c := RightDef{}
-		err = c.read(r, pver)
+		err = c.Read(r, pver)
 		return &c, err
 		break;
 	case DefTypeRightSet:
 		c := RightDef{}
-		err = c.read(r, pver)
+		err = c.Read(r, pver)
 		return &c, err
 		break;
 	}
@@ -633,23 +853,23 @@ func WriteDefinition(w io.Writer, pver uint32, version int32, ti Definition) err
 	switch ti.DefType() {
 	case DefTypeVertex:
 		c := ti.(*VertexDef)
-		err = c.write(w, pver)
+		err = c.Write(w, pver)
 		break;
 	case DefTypeBorder:
 		c := ti.(*BorderDef)
-		err = c.write(w, pver)
+		err = c.Write(w, pver)
 		break;
 	case DefTypePolygon:
 		c := ti.(*PolygonDef)
-		err = c.write(w, pver)
+		err = c.Write(w, pver)
 		break;
 	case DefTypeRight:
 		c := ti.(*RightDef)
-		err = c.write(w, pver)
+		err = c.Write(w, pver)
 		break;
 	case DefTypeRightSet:
 		c := ti.(*RightSetDef)
-		err = c.write(w, pver)
+		err = c.Write(w, pver)
 		break;
 	}
 
@@ -689,7 +909,7 @@ func (to *Token) ReadTxOut(r io.Reader, pver uint32, version uint32) error {
 
 	if (to.TokenType & 2) != 0 {
 		to.Rights = &chainhash.Hash{}
-		err = common.ReadElement(r, &to.Rights)
+		err = common.ReadElement(r, to.Rights)
 		if err != nil {
 			return err
 		}
@@ -715,6 +935,65 @@ func (to * Token) WriteTxOut(w io.Writer, pver uint32, version int32) error {
 	}
 
 	if (to.TokenType & 2) != 0 {
+		if to.Rights == nil {
+			to.Rights = & chainhash.Hash{}
+		}
+		_, err = w.Write((*to.Rights)[:])
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (to * Token) Read(r io.Reader, pver uint32, version int32) error {
+	t, err := common.BinarySerializer.Uint64(r, common.LittleEndian)
+	if err != nil {
+		return err
+	}
+	to.TokenType = t
+
+	if (t & 1) == 1 {
+		h := HashToken{}
+		err = common.ReadElement(r, &h.Hash)
+		to.Value = &h
+	} else {
+		n := NumToken{}
+		err = common.ReadElement(r, &n.Val)
+		to.Value = &n
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if (to.TokenType & 2) != 0 {
+		to.Rights = &chainhash.Hash{}
+		err = common.ReadElement(r, &to.Rights)
+		if err != nil {
+			return err
+		}
+	}
+
+	return err
+}
+
+func (to * Token) Write(w io.Writer, pver uint32, version int32) error {
+	common.BinarySerializer.PutUint64(w, common.LittleEndian, to.TokenType)
+
+	h, v := to.Value.Value()
+	var err error
+	if to.Value.IsNumeric() {
+		err = common.BinarySerializer.PutUint64(w, common.LittleEndian, uint64(v))
+	} else {
+		_,err = w.Write(h[:])
+	}
+	if err != nil {
+		return err
+	}
+
+	if (to.TokenType & 2) != 0 {
 		_,err = w.Write((*to.Rights)[:])
 		if err != nil {
 			return err
@@ -722,6 +1001,20 @@ func (to * Token) WriteTxOut(w io.Writer, pver uint32, version int32) error {
 	}
 
 	return nil
+}
+
+func (to * Token) Copy(s * Token) {
+	s.TokenType = to.TokenType
+	if to.Rights != nil {
+		s.Rights, _ = chainhash.NewHash((*to.Rights)[:])
+	}
+	switch to.Value.(type) {
+	case *NumToken:
+		s.Value = &NumToken{to.Value.(*NumToken).Val}
+	case *HashToken:
+		h, _ := chainhash.NewHash(to.Value.(*HashToken).Hash[:])
+		s.Value = &HashToken{*h}
+	}
 }
 
 func NeedRemap(h []byte) [][]byte {

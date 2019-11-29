@@ -18,6 +18,8 @@ import (
 	"github.com/btcsuite/btcwallet/walletdb"
 	"github.com/btcsuite/btcwallet/wtxmgr"
 	"github.com/btcsuite/omega/token"
+	"github.com/btcsuite/omega/ovm"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 )
 
 // byAmount defines the methods needed to satisify sort.Interface to
@@ -50,11 +52,12 @@ func makeInputSource(eligible []wtxmgr.Credit) txauthor.InputSource {
 
 	return func(target btcutil.Amount) (btcutil.Amount, []*wire.TxIn,
 		[]btcutil.Amount, [][]byte, error) {
-
+		n := uint32(0)
 		for currentTotal < target && len(eligible) != 0 {
 			nextCredit := &eligible[0]
 			eligible = eligible[1:]
-			nextInput := wire.NewTxIn(&nextCredit.OutPoint, nil, nil)
+			nextInput := wire.NewTxIn(&nextCredit.OutPoint, n)
+			n++
 			if nextCredit.Amount.TokenType == 0 {
 				currentTotal += btcutil.Amount(nextCredit.Amount.Value.(*token.NumToken).Val)
 				currentInputs = append(currentInputs, nextInput)
@@ -279,21 +282,23 @@ func (w *Wallet) findEligibleOutputs(dbtx walletdb.ReadTx, account uint32, minco
 	return eligible, nil
 }
 
-// validateMsgTx verifies transaction input scripts for tx.  All previous output
+// validateMsgTx verifies transaction input scripts for tx. All previous output
 // scripts from outputs redeemed by the transaction, in the same order they are
 // spent, must be passed in the prevScripts slice.
 func validateMsgTx(tx *wire.MsgTx, prevScripts [][]byte, inputValues []btcutil.Amount) error {
-	hashCache := txscript.NewTxSigHashes(tx)
-	for i, prevScript := range prevScripts {
-		vm, err := txscript.NewEngine(prevScript, tx, i,
-			txscript.StandardVerifyFlags, nil, hashCache, &token.NumToken{Val:int64(inputValues[i])})
+	ctx := ovm.Context{}
+	ctx.GetTx = func() *wire.MsgTx {return tx}
+	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
+	ctx.AddRight = func(t *token.RightDef) bool { return false }
+	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
+	ctx.GetHash = ovm.GetHash
+	ctx.BlockNumber = func() uint64 { return 0 }
+	intp := ovm.NewInterpreter(ovm.NewOVM(ctx, nil, ovm.Config{}, nil),
+		ovm.Config{})
 
-		if err != nil {
-			return fmt.Errorf("cannot create script engine: %s", err)
-		}
-		err = vm.Execute()
-		if err != nil {
-			return fmt.Errorf("cannot validate transaction: %s", err)
+	for i, prevScript := range prevScripts {
+		if !intp.VerifySig(i, prevScript, tx.SignatureScripts[i]) {
+			return fmt.Errorf("cannot validate transaction.")
 		}
 	}
 	return nil

@@ -10,8 +10,9 @@ import (
 	"sync"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/txscript/txsparser"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/blockchain/indexers"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcd/wire/common"
 )
@@ -257,12 +258,32 @@ func (bf *Filter) maybeAddOutpoint(pkScript []byte, outHash *chainhash.Hash, out
 		outpoint := wire.NewOutPoint(outHash, outIdx)
 		bf.addOutPoint(outpoint)
 	case wire.BloomUpdateP2PubkeyOnly:
-		class := txsparser.GetScriptClass(pkScript)
-		if class == txsparser.PubKeyTy || class == txsparser.MultiSigTy {
-			outpoint := wire.NewOutPoint(outHash, outIdx)
-			bf.addOutPoint(outpoint)
+		if !indexers.IsContract(pkScript[0]) {
+			// no need to index contract as it is executed immediately
+			switch pkScript[21] {
+			case 0x41, 0x43, 0x42, 0x44:
+				outpoint := wire.NewOutPoint(outHash, outIdx)
+				bf.addOutPoint(outpoint)
+			}
 		}
 	}
+}
+
+func pushedAddreses(pkScript []byte) [][]byte {
+	res := make([][]byte, 0)
+	addrs, _, err := indexers.ExtractPkScriptAddrs(pkScript, chaincfg.ActiveNetParams)
+	if err != nil {
+		return res
+	}
+	for _, addr := range addrs {
+		addrKey, err := indexers.AddrToKey(addr)
+		if err != nil {
+			// Ignore unsupported address types.
+			continue
+		}
+		res = append(res, addrKey[:])
+	}
+	return res
 }
 
 // matchTxAndUpdate returns true if the bloom filter matches data within the
@@ -285,10 +306,7 @@ func (bf *Filter) matchTxAndUpdate(tx *btcutil.Tx) bool {
 	// from the client and avoids some potential races that could otherwise
 	// occur.
 	for i, txOut := range tx.MsgTx().TxOut {
-		pushedData, err := txsparser.PushedData(txOut.PkScript)
-		if err != nil {
-			continue
-		}
+		pushedData := pushedAddreses(txOut.PkScript)
 
 		for _, data := range pushedData {
 			if !bf.matches(data) {
@@ -315,7 +333,7 @@ func (bf *Filter) matchTxAndUpdate(tx *btcutil.Tx) bool {
 		if bf.matchesOutPoint(&txin.PreviousOutPoint) {
 			return true
 		}
-
+/*
 		pushedData, err := txsparser.PushedData(txin.SignatureScript)
 		if err != nil {
 			continue
@@ -325,6 +343,7 @@ func (bf *Filter) matchTxAndUpdate(tx *btcutil.Tx) bool {
 				return true
 			}
 		}
+*/
 	}
 
 	return false

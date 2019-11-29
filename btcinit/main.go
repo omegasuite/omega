@@ -15,8 +15,8 @@ import (
 	"fmt"
 	"os"
 	"github.com/vsergeev/btckeygenie/btckey"
-	"github.com/btcsuite/btcd/txscript"
 	"log"
+	"github.com/btcsuite/omega/token"
 )
 
 type geoCoords struct {
@@ -32,20 +32,20 @@ func solveGenesisBlock(msgBlock *wire.MsgBlock) {
 	log.Printf("targetDifficulty = %s\n", targetDifficulty.String())
 
 	for i := uint32(0); true; i++ {
-			// Update the nonce and hash the block header.  Each
-			// hash is actually a double sha256 (two hashes), so
-			// increment the number of hashes completed for each
-			// attempt accordingly.
-			header.Nonce = i
-			hash := header.BlockHash()
+		// Update the nonce and hash the block header.  Each
+		// hash is actually a double sha256 (two hashes), so
+		// increment the number of hashes completed for each
+		// attempt accordingly.
+		header.Nonce = i
+		hash := header.BlockHash()
 
-			log.Printf("%d: solve = %s\n", i, blockchain.HashToBig(&hash).String())
+		log.Printf("%d: solve = %s\n", i, blockchain.HashToBig(&hash).String())
 
-			// The block is solved when the new block hash is less
-			// than the target difficulty.  Yay!
-			if blockchain.HashToBig(&hash).Cmp(targetDifficulty) <= 0 {
-				return
-			}
+		// The block is solved when the new block hash is less
+		// than the target difficulty.  Yay!
+		if blockchain.HashToBig(&hash).Cmp(targetDifficulty) <= 0 {
+			return
+		}
 	}
 }
 
@@ -59,39 +59,39 @@ func main() {
 
 	// generate initial polygon representing the globe
 	var vertices = []geoCoords {	// international date line
-		{ Lat: 90.0000, Lng: 180.0000, },
-		{ Lat: 75.0000, Lng: 180.0000, },
-		{ Lat: 67.7356, Lng: -169.2500, },
-		{ Lat: 65.0189, Lng: -169.2500, },
-		{ Lat: 52.6863, Lng: 170.0500, },
-		{ Lat: 47.8353, Lng: 180.0000, },
-		{ Lat: -0.9000, Lng: 180.0000, },
-		{ Lat: -0.9000, Lng: -159.6500, },
-		{ Lat: 2.9000, Lng: -159.6500, },
-		{ Lat: 2.9000, Lng: -161.8500, },
-		{ Lat: 5.0000, Lng: -161.8500, },
-		{ Lat: 5.0000, Lng: -155.9500, },
-		{ Lat: -7.8000, Lng: -150.6500, },
-		{ Lat: -10.0000, Lng: -150.6500, },
-		{ Lat: -10.0000, Lng: -156.0500, },
-		{ Lat: -7.8000, Lng: -156.0500, },
-		{ Lat: -7.80000, Lng: -178.0500, },
-		{ Lat: -15.0000, Lng: -172.7500, },
-		{ Lat: -45.0000, Lng: -172.7500, },
-		{ Lat: -51.1815, Lng: 180.0000, },
-		{ Lat: -90.0000, Lng: 180.0000, },
+		{ Lat: 90.0000, Lng: 180.0000 },
+		{ Lat: 75.0000, Lng: 180.0000 },
+		{ Lat: 68.2456, Lng: -169. },
+		{ Lat: 65.5189, Lng: -169. },
+		{ Lat: 53.0863, Lng: 170.0500 },
+		{ Lat: 47.8353, Lng: 180.0000 },
+		{ Lat: -1.2, Lng: 180.0000 },
+		{ Lat: -1.2, Lng: -159.6500 },
+		{ Lat: 2.9000, Lng: -159.6500 },
+		{ Lat: 2.9000, Lng: -162.8500 },
+		{ Lat: 6.5000, Lng: -162.8500 },
+		{ Lat: 6.5000, Lng: -155.9500 },
+		{ Lat: -9.5000, Lng: -149.6500 },
+		{ Lat: -11.7000, Lng: -149.6500 },
+		{ Lat: -11.7000, Lng: -154.0500 },
+		{ Lat: -10.7000, Lng: -154.0500 },
+		{ Lat: -10.70000, Lng: -166.5500 },
+		{ Lat: -15.6000, Lng: -172.700 },
+		{ Lat: -45.0000, Lng: -172.700 },
+		{ Lat: -51.1815, Lng: 180.0000 },
+		{ Lat: -90.0000, Lng: 180.0000 },
 	}
 
 	m := len(vertices)
 
-	defs := make([]wire.Definition, 0, 42 + 40 + 4 + 1 + 1)	// 42 vertices, 40 + 4 borders, 1 polygon, 1 right
+	defs := make([]token.Definition, 0, 42 + 40 + 4 + 1 + 1)	// 42 vertices, 40 + 4 borders, 1 polygon, 1 right
 
 	for _, v := range vertices {
 		vl := v.Lng
 		if v.Lng > 0 {
 			vl -= 360.0
 		}
-		v := wire.NewVertexDef(int32(v.Lat * wire.CoordPrecision), int32(vl * wire.CoordPrecision), []byte{})
+		v := token.NewVertexDef(int32(v.Lat * token.CoordPrecision), int32(vl * token.CoordPrecision), []byte{})
 		defs = append(defs, v)
 	}
 
@@ -100,30 +100,30 @@ func main() {
 		if vertices[i].Lng < 0 {
 			vl += 360.0
 		}
-		v := wire.NewVertexDef(int32(vertices[i].Lat * wire.CoordPrecision), int32(vl * wire.CoordPrecision), []byte{})
+		v := token.NewVertexDef(int32(vertices[i].Lat * token.CoordPrecision), int32(vl * token.CoordPrecision), []byte{})
 		defs = append(defs, v)
 	}
 
-	b0 := wire.NewBorderDef(defs[0].Hash(), defs[m-1].Hash(), chainhash.Hash{})
+	b0 := token.NewBorderDef(defs[0].Hash(), defs[m-1].Hash(), chainhash.Hash{})
 	defs = append(defs, b0)
-	b1 := wire.NewBorderDef(defs[m-1].Hash(), defs[m].Hash(), chainhash.Hash{})
+	b1 := token.NewBorderDef(defs[m-1].Hash(), defs[m].Hash(), chainhash.Hash{})
 	defs = append(defs, b1)
-	b2 := wire.NewBorderDef(defs[m].Hash(), defs[2 * m - 1].Hash(), chainhash.Hash{})
+	b2 := token.NewBorderDef(defs[m].Hash(), defs[2 * m - 1].Hash(), chainhash.Hash{})
 	defs = append(defs, b2)
-	b3 := wire.NewBorderDef(defs[2 * m - 1].Hash(), defs[0].Hash(), chainhash.Hash{})
+	b3 := token.NewBorderDef(defs[2 * m - 1].Hash(), defs[0].Hash(), chainhash.Hash{})
 	defs = append(defs, b3)
 
 	for i := 0; i < m - 1; i++ {
 		j := i + 1
-		b := wire.NewBorderDef(defs[i].Hash(), defs[j].Hash(), b0.Hash())
+		b := token.NewBorderDef(defs[i].Hash(), defs[j].Hash(), b0.Hash())
 		defs = append(defs, b)
 
-		b = wire.NewBorderDef(defs[i + m].Hash(), defs[j + m].Hash(), b2.Hash())
+		b = token.NewBorderDef(defs[i + m].Hash(), defs[j + m].Hash(), b2.Hash())
 		defs = append(defs, b)
 	}
-	polygon := wire.NewPolygonDef([]wire.LoopDef{{b0.Hash(), b1.Hash(), b2.Hash(), b3.Hash()}})
+	polygon := token.NewPolygonDef([]token.LoopDef{{b0.Hash(), b1.Hash(), b2.Hash(), b3.Hash()}})
 	defs = append(defs, polygon)
-	uright := wire.NewRightDef(chainhash.Hash{}, []byte("All Rights"), 3)
+	uright := token.NewRightDef(chainhash.Hash{}, []byte("All Rights"), 3)
 	defs = append(defs, uright)
 
 	// genesisCoinbaseTx is the coinbase transaction for the genesis blocks for
@@ -136,7 +136,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	pkScript, err := txscript.PayToAddrScript(addr)
+	pkScript := make([]byte, 25)
+	pkScript[0] = addr.Version()
+	copy(pkScript[1:], addr.ScriptAddress())
+	pkScript[21] = 0x41
+
 	if err != nil {
 		fmt.Printf("Failed to generate pay-to-address script")
 		os.Exit(1)
@@ -144,27 +148,28 @@ func main() {
 
 	var genesisCoinbaseTx = wire.MsgTx{
 		Version: 1,
-		TxDef: []wire.Definition{},
+		TxDef: []token.Definition{},
 		TxIn: []*wire.TxIn{
 			{
 				PreviousOutPoint: wire.OutPoint{
 					Hash:  chainhash.Hash{},
 					Index: 0xffffffff,
 				},
-				SignatureScript: []byte("Omega chain, the final block chain!"),
+				SignatureIndex: 0xffffffff,
 				Sequence: 0xffffffff,
 			},
 		},
 		TxOut: []*wire.TxOut{
 			{
-				TokenType: 0,
-				Value: &wire.NumToken{Val: 0x12a05f200},
-				Rights: []chainhash.Hash{},
-				PkScript: []byte(pkScript),
+				PkScript: pkScript,
 			},
 		},
 		LockTime: 0,
 	}
+	genesisCoinbaseTx.TxOut[0].TokenType = 0
+	genesisCoinbaseTx.TxOut[0].Value = &token.NumToken{Val: 0x12a05f200}
+	genesisCoinbaseTx.TxOut[0].Rights = &chainhash.Hash{}
+	genesisCoinbaseTx.SignatureScripts = nil
 
 	var genesisInitPolygonTx = wire.MsgTx{
 		Version: 1,
@@ -172,14 +177,17 @@ func main() {
 		TxIn: []*wire.TxIn{},
 		TxOut: []*wire.TxOut{
 			{
-				TokenType: 3,
-				Value: &wire.HashToken{Hash: polygon.Hash()},
-				Rights: []chainhash.Hash{uright.Hash()},
-				PkScript: []byte(pkScript),
+				PkScript: pkScript,
 			},
 		},
 		LockTime: 0,
 	}
+
+	genesisInitPolygonTx.TxOut[0].TokenType = 3
+	genesisInitPolygonTx.TxOut[0].Value = &token.HashToken{Hash: polygon.Hash()}
+	uh := uright.Hash()
+	genesisInitPolygonTx.TxOut[0].Rights = &uh
+	genesisInitPolygonTx.SignatureScripts = nil
 
 	t1 := btcutil.NewTx(&genesisCoinbaseTx)
 	t2 := btcutil.NewTx(&genesisInitPolygonTx)
@@ -244,7 +252,7 @@ func main() {
 	// regression test network (genesis block).
 //	var regTestGenesisHash = regTestGenesisBlock.BlockHash()
 	var regTestGenesisHash = regTestGenesisBlock.Header.BlockHash()
-	fmt.Printf("regTestGenesisHash: ")
+	fmt.Printf("\n regTestGenesisHash: ")
 	printhash(regTestGenesisHash)
 
 	// testNet3GenesisMerkleRoot is the hash of the first transaction in the genesis
@@ -272,7 +280,7 @@ func main() {
 	// test network (version 3).
 //	var testNet3GenesisHash = testNet3GenesisBlock.BlockHash()
 	var testNet3GenesisHash = testNet3GenesisBlock.Header.BlockHash()
-	fmt.Printf("testNet3GenesisHash: ")
+	fmt.Printf("\n testNet3GenesisHash: ")
 	printhash(testNet3GenesisHash)
 
 	// simNetGenesisMerkleRoot is the hash of the first transaction in the genesis
@@ -300,19 +308,28 @@ func main() {
 	// simulation test network.
 //	var simNetGenesisHash = simNetGenesisBlock.BlockHash()
 	var simNetGenesisHash = simNetGenesisBlock.Header.BlockHash()
-	fmt.Printf("simNetGenesisHash: ")
+	fmt.Printf("\n simNetGenesisHash: ")
 	printhash(simNetGenesisHash)
 
+	var witnessMerkleTree = blockchain.BuildMerkleTreeStore([]*btcutil.Tx{btcutil.NewTx(&genesisCoinbaseTx), btcutil.NewTx(&genesisInitPolygonTx)}, true)
+	var witnessMerkleRoot = witnessMerkleTree[len(witnessMerkleTree)-1]
+
+	fmt.Printf("\n witnessMerkleRoot\n")
+	printhash(*witnessMerkleRoot)
+
+	fmt.Printf("\n defs\n")
 	printdef(defs)
-	fmt.Printf("\ngenesisBlock\n")
+
+	fmt.Printf("\n genesisBlock\n")
 	printblock(genesisBlock)
-	fmt.Printf("\nregTestGenesisBlock\n")
+	fmt.Printf("\n regTestGenesisBlock\n")
 	printblock(regTestGenesisBlock)
-	fmt.Printf("\ntestNet3GenesisBlock\n")
+	fmt.Printf("\n testNet3GenesisBlock\n")
 	printblock(testNet3GenesisBlock)
-	fmt.Printf("\nsimNetGenesisBlock\n")
+	fmt.Printf("\n simNetGenesisBlock\n")
 	printblock(simNetGenesisBlock)
 }
+
 func printhash(h chainhash.Hash) {
 	fmt.Printf("chainhash.Hash([chainhash.HashSize]byte{")
 	hb := h.CloneBytes()
@@ -343,10 +360,9 @@ func printblock(blk wire.MsgBlock) {
 				printhash(*h)
 			}
 			fmt.Printf("\n\t\t\tRights: ")
-			for _,r := range to.Rights {
-				fmt.Printf("\n\t\t\t")
-				printhash(r)
-			}
+
+			printhash(*to.Rights)
+
 			fmt.Printf("\n\t\t\tPkScript: [")
 			for _,r := range to.PkScript {
 				fmt.Printf("0x%02x, ", r)
@@ -357,18 +373,18 @@ func printblock(blk wire.MsgBlock) {
 	}
 }
 
-func printdef(def []wire.Definition) {
+func printdef(def []token.Definition) {
 	fmt.Printf("Definitions\n")
 	for _,f := range def {
 		switch f.(type) {
-		case *wire.VertexDef:
-			v := f.(*wire.VertexDef)
-			fmt.Printf("&wire.VertexDef {\n\tLat: 0x%x,\n\tLng: 0x%x,\n\tDesc:[]byte{},\n},\n",
+		case *token.VertexDef:
+			v := f.(*token.VertexDef)
+			fmt.Printf("&token.VertexDef {\n\tLat: 0x%x,\n\tLng: 0x%x,\n},\n",
 				uint32(v.Lat), uint32(v.Lng))
 			break
-		case *wire.BorderDef:
-			v := f.(*wire.BorderDef)
-			fmt.Printf("&wire.BorderDef {\n\tFather: ");
+		case *token.BorderDef:
+			v := f.(*token.BorderDef)
+			fmt.Printf("&token.BorderDef {\n\tFather: ");
 			printhash(v.Father)
 			fmt.Printf("\n\tBegin: ")
 			printhash(v.Begin)
@@ -376,9 +392,9 @@ func printdef(def []wire.Definition) {
 			printhash(v.End)
 			fmt.Printf("\n},\n")
 			break
-		case *wire.PolygonDef:
-			v := f.(*wire.PolygonDef)
-			fmt.Printf("&wire.PolygonDef {");
+		case *token.PolygonDef:
+			v := f.(*token.PolygonDef)
+			fmt.Printf("&token.PolygonDef {");
 			for i,l := range v.Loops {
 				fmt.Printf("\tLoops: []wire.LoopDef{{	// Loop %d:\n", i)
 				for _,h := range l {
@@ -388,9 +404,9 @@ func printdef(def []wire.Definition) {
 			}
 			fmt.Printf("},\n},\n")
 			break
-		case *wire.RightDef:
-			v := f.(*wire.RightDef)
-			fmt.Printf("&wire.RightDef {Father: ")
+		case *token.RightDef:
+			v := f.(*token.RightDef)
+			fmt.Printf("&token.RightDef {Father: ")
 			printhash(v.Father)
 			fmt.Printf("\n\tDesc: []byte(\"%s\"),\n\tAttrib: %d,\n},\n", v.Desc, v.Attrib)
 			break

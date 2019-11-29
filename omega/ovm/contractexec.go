@@ -11,15 +11,32 @@ import (
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/token"
 	"github.com/btcsuite/omega/viewpoint"
-	"github.com/btcsuite/btcd/txscript/txsparser"
-	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/btcd/database"
 	"bytes"
-	"time"
-	"encoding/json"
 	"encoding/binary"
+	"crypto/sha256"
+	"golang.org/x/crypto/ripemd160"
+	"github.com/btcsuite/omega"
+	"github.com/btcsuite/omega/validate"
 )
+
+// hash160 returns the RIPEMD160 hash of the SHA-256 HASH of the given data.
+func hash160(data []byte) []byte {
+	h := sha256.Sum256(data)
+	return ripemd160h(h[:])
+}
+
+// ripemd160h returns the RIPEMD160 hash of the given data.
+func ripemd160h(data []byte) []byte {
+	h := ripemd160.New()
+	h.Write(data)
+	return h.Sum(nil)
+}
+
+func Hash160(data []byte) []byte {
+	return hash160(data)
+}
 
 func zeroaddr(addr []byte) bool {
 	for _,t := range addr {
@@ -30,534 +47,388 @@ func zeroaddr(addr []byte) bool {
 	return true
 }
 
-type contractCreation struct {
-	Code 	[]byte			 `json:"code"`
-	Owner	string			 `json:"owner"`
-	Mint	uint64			 `json:"mint"`
-	Rights	* chainhash.Hash	 `json:"right"`
+func parsePkScript(script []byte) (byte, []byte, []byte, []byte) {
+	if len(script) < 25 {
+		return 0, nil, nil, nil
+	}
+
+	return script[0], script[1:21], script[21:25], script[21:]
 }
 
-func (t * contractCreation) serialize() ([]byte, error) {
-	var w bytes.Buffer
-
-	if _,err := w.Write(t.Code); err != nil {
-		return nil, err
-	}
-	if _,err := w.WriteString(t.Owner); err != nil {
-		return nil, err
-	}
-
-	if err := common.WriteElement(&w, t.Mint); err != nil {
-		return nil, err
-	}
-
-	if t.Rights != nil {
-		if _,err := w.Write((*t.Rights)[:]); err != nil {
-			return nil, err
-		}
-	}
-
-	return w.Bytes(), nil
+type tbv struct {
+	txinidx	int
+	sigScript []byte
+	pkScript []byte
 }
 
-type WalletItem struct {
-	Outpoint	wire.OutPoint		 `json:"outpoint"`
-	// whether the item is a collateral (only return to sender upon contract destruction or destruction of coin)
-	Worth	uint64					 `json:"worth"`
-}
-
-func parsePkScript(script []byte) ([]byte, []byte) {
-	var addr [20]byte
-
-	if len(script) < 24 {
-		return nil, nil
+func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int32,
+	chainParams *chaincfg.Params) (chainhash.Hash, error) {
+	// based on partial script (!!!must!!!) for TxIn, calculate signature hash for signing
+	if tx.IsCoinBase() {
+		return chainhash.Hash{}, omega.ScriptError(omega.ErrInternal, "Can not sign a coin base.")
 	}
 
-	return addr[:], script[20:]
+	ctx := Context{}
+
+	ctx.GetTx = func () * wire.MsgTx {	return tx	}
+	ctx.Spend = func(t token.Token) bool { return false }
+	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
+	ctx.GetHash = func(d uint64) *chainhash.Hash { return nil }
+	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
+	ctx.AddRight = func(t *token.RightDef) bool { return false }
+	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
+
+	cfg := Config{}
+	cfg.NoLoop = true
+
+	ovm := NewOVM(ctx, chainParams, cfg, nil)
+	ovm.interpreter = NewInterpreter(ovm, cfg)
+	ovm.interpreter.readOnly = true
+
+	return calcSignatureHash(txinidx, script, ovm)
 }
 
-func VerifySigs(tx *btcutil.Tx, txHeight int32, ovm * OVM, chainParams *chaincfg.Params) error {
+func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, error) {
+	sigScript := append(script, byte(STACKRETURN))
+
+	contract := Contract {
+		Code: sigScript,
+		CodeHash: chainhash.Hash{},
+		self: nil,
+		jumpdests: make(destinations),
+		Args:make([]byte, 4),
+	}
+
+	binary.LittleEndian.PutUint32(contract.Args[:], uint32(txinidx))
+
+	ret, err := vm.Interpreter().Run(&contract, nil)
+	if err != nil {
+		return chainhash.Hash{}, err
+	}
+
+	ret,_ = reformatData(ret)
+
+	return chainhash.DoubleHashH(ret), nil
+}
+
+// there are 2 sig verify methods: one in interpreter, one is here. the differernce is that
+// the one in interpreter is intended for client side. here is for the miner. here, verfivstion
+// is deeper in that it checks monitering status, a tx will be rejected if monitore checing fails
+// while it may pass interpreter verification because only signature verification is done
+func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 	if tx.IsCoinBase() {
 		return nil
 	}
 
-	ovm.GetTxTemplate = func () * wire.MsgTx {	return nil	}
+	ovm.GetTx = func () * wire.MsgTx {	return tx.MsgTx()	}
 	ovm.Spend = func(t token.Token) bool { return false }
 	ovm.AddTxOutput = func(t wire.TxOut) bool { return false	}
-	ovm.SubmitTx = func() chainhash.Hash { return chainhash.Hash{} }
 	ovm.GetHash = func(d uint64) *chainhash.Hash { return nil }
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
-	now := time.Now()
-	ovm.Time        = func() time.Time { return now }
+	ovm.AddRight = func(t *token.RightDef) bool { return false }
+	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
 
-	db := ovm.StateDB[Address{}].DB
-	views := viewpoint.NewViewPointSet(&db)
+	ovm.vmConfig.NoLoop = true
 
-	req := map[wire.OutPoint]struct{}{}
-	for _, txin := range tx.MsgTx().TxIn {
-		req[txin.PreviousOutPoint] = struct{}{}
+	ovm.interpreter.readOnly = true
+
+	// set up for concurrent execution
+	verifiers := make(chan bool, ovm.chainConfig.SigVeriConcurrency)
+	queue := make(chan tbv, ovm.chainConfig.SigVeriConcurrency)
+	result := make(chan bool)
+	final := make(chan bool)
+
+	views := ovm.views
+
+	defer func () {
+		close(queue)
+		close(verifiers)
+		close(result)
+		close(final)
+	} ()
+
+	allrun := false
+
+	for i := 0; i < ovm.chainConfig.SigVeriConcurrency; i++ {
+		verifiers <- true
 	}
-	views.Utxo.FetchUtxosMain(db, req)
 
-	for i, txin := range tx.MsgTx().TxIn {
-		if i >= len(tx.MsgTx().TxIn)-int(tx.MsgTx().ContractIns) {
-			continue
+	go func() {
+		for {
+			select {
+			case code := <-queue:
+				<-verifiers
+				go ovm.Interpreter().SigVerify(code, result)
+			case res, ok := <- result:
+				if !ok {
+					return
+				}
+				verifiers <- true
+				if !res {
+					final <- false
+					return
+				} else if len(verifiers) == ovm.chainConfig.SigVeriConcurrency && len(queue) == 0 && allrun {
+					final <- true
+					return
+				}
+			}
+		}
+	} ()
+
+	// prepare and shoot the real work
+	for txinidx, txin := range tx.MsgTx().TxIn {
+		if tx.MsgTx().SignatureScripts[txin.SignatureIndex] == nil {		// no signature
+			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
 		}
 
 		// get utxo
 		utxo := views.Utxo.LookupEntry(txin.PreviousOutPoint)
 
 		if utxo == nil {
-			return txsparser.ScriptError(txsparser.ErrInternal, "UTXO does not exist.")
+			return omega.ScriptError(omega.ErrInternal, "UTXO does not exist.")
 		}
 
-		addr, _ := parsePkScript(utxo.PkScript())
+		ovm.GetCurrentOutput = func() *wire.TxOut { return utxo.ToTxOut() }
+
+		version, addr, method, excode := parsePkScript(utxo.PkScript())
 
 		if addr == nil {
-			return txsparser.ScriptError(txsparser.ErrInternal, "Incorrect pkScript format.")
+			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 
-		if zeroaddr(addr) || isContract(addr) { // zero address, sys call
-			return txsparser.ScriptError(txsparser.ErrInternal, "Incorrect pkScript format.")
+		if zeroaddr(addr) || isContract(version) { // zero address, sys call
+			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 
-		_, err := syscall(nil, append(utxo.PkScript(), txin.SignatureScript[:]...))
+		// check if it is monitored
+		if utxo.TokenType == 3 {
+			y := validate.TokenRights(views, utxo)
 
-		if err != nil {
-			return err
+			for _, r := range y {
+				e, _ := views.Rights.FetchEntry(views.Db, &r)
+				if e.(*viewpoint.RightEntry).Attrib & token.Monitored != 0 {
+					// all the way up to the right without Monitored flag, on the way find out all IsMonitorCall
+					re := e.(*viewpoint.RightEntry)
+					monitoreds := make([]*viewpoint.RightEntry, 0)
+					for re != nil && re.Attrib & token.Monitored != 0 {
+						if re.Attrib & token.IsMonitorCall != 0 {
+							monitoreds = append(monitoreds, re)
+						}
+						if re.Father.IsEqual(&chainhash.Hash{}) {
+							re = nil
+						} else {
+							te, _ := views.Rights.FetchEntry(views.Db, &re.Father)
+							re = te.(*viewpoint.RightEntry)
+						}
+					}
+
+					for _, re := range monitoreds {
+						monitored := re.Desc
+
+						// a token may subject to multiple monitoring, each could have multiple condition,
+						// the Tx must pass all
+
+						// check if it is under monitoring
+						// 1. find the contract
+						// 2. find owner of the contract
+						// 3. find polygon utxo under the owner for this polygon
+						// 4. if found, plan the contract call
+						var d Address
+						copy(d[:], monitored[1:21])
+
+						existence := true
+
+						if _, ok := ovm.StateDB[d]; !ok {
+							ovm.StateDB[d] = &stateDB{
+								DB:       ovm.views.Db,
+								contract: d,
+							}
+
+							existence = ovm.StateDB[d].Exists()
+							if !existence {
+								delete(ovm.StateDB, d)
+								continue
+							}
+						}
+						if existence {
+							owner := ovm.StateDB[d].GetOwner()
+							m := views.FindMonitor(owner[:], utxo.Amount.(*token.HashToken).Hash) // a utxo entry
+							if m == nil {
+								continue
+							}
+							code := make([]byte, 24)
+
+							copy(code[:], monitored[21:25])
+							copy(code[4:], addr)
+
+							y := validate.TokenRights(views, m)
+
+							// do check only if the sibling right of the monitored right is present
+							param := make([]byte, 0, 100)
+							s := re.Sibling()
+							docheck := false
+							for _, r := range y {
+								if s.IsEqual(&r) {
+									docheck = true
+								} else {
+									e, _ := views.Rights.FetchEntry(views.Db, &r)
+									param = append(param, e.(*viewpoint.RightEntry).Desc...)
+								}
+							}
+
+							if docheck {
+								queue <- tbv{txinidx, param, code}
+							}
+						}
+					}
+				}
+			}
 		}
+
+		pkslen := len(utxo.PkScript())
+		code := make([]byte,  pkslen - 1)
+
+		copy(code[:], method)
+		copy(code[4:], addr)
+		copy(code[4 + len(addr):], excode)
+
+		queue <- tbv { txinidx, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
+	}
+
+	allrun = true
+	res := <- final
+	if !res {
+		return omega.ScriptError(omega.ErrInternal, "Signature incorrect.")
 	}
 
 	return nil
 }
 
-func ExecContract(tx *btcutil.Tx, txHeight int32, ovm * OVM, chainParams *chaincfg.Params) (*btcutil.Tx, uint64, error) {
+func isContract(netid byte) bool {
+	return netid & 0x88 == 0x88
+}
+
+func GetHash(d uint64) *chainhash.Hash {
+	var w bytes.Buffer
+	err := common.BinarySerializer.PutUint64(&w, common.LittleEndian, d)
+	if err != nil {
+		return &chainhash.Hash{}
+	}
+	h, _ := chainhash.NewHash(chainhash.DoubleHashB(w.Bytes()))
+	return h
+}
+
+func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainParams *chaincfg.Params) (*btcutil.Tx, error) {
 	if tx.IsCoinBase() {
-		return tx, 0, nil
+		return tx, nil
 	}
 
 	// Scan outputs.and execute them?
 	outtx := tx.Copy()
-	var spend []token.Token
-	var spendPoint []token.Token
 
-	submitting := (*wire.MsgTx)(nil)
-
-	ovm.GetTxTemplate = func () * wire.MsgTx {
-		return outtx.MsgTx()
+	ovm.GetTx = func () * wire.MsgTx {
+		return tx.MsgTx()
 	}
-
-	ovm.Spend = func(t token.Token) bool {
-		spend = append(spend, t)	// record it, handle later
-		return true	// should check whether we have enough of it
-	}
-
 	ovm.AddTxOutput = func(t wire.TxOut) bool {
-		outtx.MsgTx().AddContractTxOut(&t)
+		outtx.MsgTx().AddTxOut(&t)
 		return true
 	}
-	ovm.SubmitTx = func() chainhash.Hash {
-		submitting := &wire.MsgTx{}
-		*submitting = * outtx.MsgTx()
-		spendPoint = make([]token.Token, len(spend))
-		for i,t := range spend {
-			spendPoint[i] = t
+	ovm.AddRight = func(t *token.RightDef) bool {
+		outtx.MsgTx().AddDef(t)
+		return true
+	}
+	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
+		op := make(map[wire.OutPoint]struct{})
+		p := wire.OutPoint{hash,uint32(seq)}
+		op[p] = struct{}{}
+		if ovm.views.Utxo.FetchUtxosMain(ovm.views.Db, op) != nil {
+			return nil
 		}
-		return submitting.TxHash()
+		e := ovm.views.Utxo.LookupEntry(p)
+		return e.ToTxOut()
 	}
 
-	ovm.GetHash = func(d uint64) *chainhash.Hash {
-		var w bytes.Buffer
-		err := common.BinarySerializer.PutUint64(&w, common.LittleEndian, d)
-		if err != nil {
-			return &chainhash.Hash{}
-		}
-		h, _ := chainhash.NewHash(chainhash.DoubleHashB(w.Bytes()))
-		return h
-	}
-
+	ovm.GetHash = GetHash
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
-	now := time.Now()
-	ovm.Time        = func() time.Time { return now }
 
-	steps := uint64(0)
+	ovm.vmConfig.NoLoop = false
+	ovm.interpreter.readOnly = false
 
 	for i, txOut := range tx.MsgTx().TxOut {
-		addr, param := parsePkScript(txOut.PkScript)
+		if i < start {
+			continue
+		}
+		ovm.GetCurrentOutput = func() *wire.TxOut { return txOut }
+
+		version, addr, method, param := parsePkScript(txOut.PkScript)
 
 		if addr == nil {
-			return nil, 0, txsparser.ScriptError(txsparser.ErrInternal, "Incorrect pkScript format.")
+			return nil, omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 
-		if zeroaddr(addr) {	// zero address, sys call
-			_, err := syscall(nil, tx, uint32(i), nil, param)
-			if err != nil {
-				return nil, 0, err
-			}
+		if !isContract(version) {
 			continue
 		}
-
-		if !isContract(addr) {
-			continue
+		if zeroaddr(addr) {
+			return nil, omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 
-		step, err := ovm.Call(ovm.StateDB[addr], txOut.Token, params)
-		// returning steps will be used by other miners to verify the contract call. they will execute exactly
-		// that many steps regardless their policy setting.
+		var d Address
+		copy(d[:], addr)
 
-		if err != nil {
-			return nil, 0, err
-		}
-		steps += step
+		existence := true
+		creation := bytes.Compare(method, []byte{0,0,0,0}) == 0
 
-		var w bytes.Buffer
-		common.BinarySerializer.PutUint32(&w, common.LittleEndian, uint32(steps))
-		txOut.PkScript = append(txOut.PkScript, w.Bytes()[:]...)
-
-		if spendPoint == nil || len(spendPoint) == 0 {
-			continue
-		}
-
-		var sig [21]byte
-		sig[0] = txsparser.OP_CONTRACTCALL
-		copy(sig[1:], contract[:])
-
-		wallet := make(map[uint64][]WalletItem, 0)
-
-		err = ovm.StateDB.DB.View(func(dbTx database.Tx) error {
-			// find out necessary spending
-			bucket := dbTx.Metadata().Bucket([]byte("contract" + string(contract)))
-
-			if err := json.Unmarshal(bucket.Get([]byte("Wallet")), &wallet); err != nil {
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			return nil, 0, err
-		}
-
-
-		used := make(map[uint64]struct{}, 0)
-		for _, t := range spendPoint {
-			used[t.TokenType] = struct{}{}
-		}
-
-		rview := viewpoint.NewViewPointSet(&ovm.StateDB.DB).Rights
-
-		for u,_ := range used {
-			if u & 0x2 == 0 {
-				// with no right
-				need := uint64(0)
-				for i, t := range spendPoint {
-					if t.TokenType != u {
-						continue
-					}
-					need += uint64(t.Value.(*token.NumToken).Val)
-				}
-				supply := uint64(0)
-				for i,t := range wallet[u] {
-					if t.Outpoint.Hash != *(tx.Hash()) {
-						outtx.MsgTx().AddContractTxIn(wire.NewTxIn(&t.Outpoint, sig[:], nil))
-						supply += t.Worth
-					}
-				}
-
-				leftover := (*WalletItem)(nil)
-				if supply < need {
-					return nil, txsparser.ScriptError(txsparser.ErrInternal, "Insufficient fund in wallet.")
-				} else if supply > need {
-					to := wire.NewTxOut(u, &token.NumToken{Val: int64(supply - need) }, nil, sig[:])
-					index := outtx.MsgTx().AddContractTxOut(to)
-					leftover = &WalletItem {
-						Outpoint:wire.OutPoint{ *tx.Hash(), uint32(index) },
-						Worth:supply - need,
-						Rights:nil,
-					}
-				}
-				nb := make([]WalletItem, 0)
-				for i,t := range wallet[u] {
-					if t.Outpoint.Hash == *tx.Hash() {
-						nb = append(nb, t)
-					}
-				}
-				if leftover != nil {
-					nb = append(nb, *leftover)
-				}
-				wallet[u] = nb
-			} else {
-				// with rights
-				baseRightset := mkBaseRights(spendPoint, u)
-				requirementAnalysis(rview, spendPoint, u, baseRightset)
-				used, leftover := matchRequirement(wallet[u], baseRightset)
-
-				for _,d := range used {
-					outtx.MsgTx().AddContractTxIn(wire.NewTxIn(&d, sig[:], nil))
-out1:
-					for i,t := range wallet[u] {
-						if t.Outpoint.Hash == d.Hash && t.Outpoint.Index == d.Index {
-							wallet[u] = append(wallet[u][:i], wallet[u][i+1:]...)
-							break out1
-						}
-					}
-				}
-
-				for _,tok := range leftover {
-					to := wire.NewTxOut(u, tok.Value, tok.Rights, sig[:])
-					index := outtx.MsgTx().AddContractTxOut(to)
-					wallet[u] = append(wallet[u], WalletItem {
-						Outpoint:wire.OutPoint{*tx.Hash(), uint32(index) },
-						Worth: uint64(tok.Value.(*token.NumToken).Val),
-						Rights:to.Rights,
-					})
-				}
-			}
-		}
-
-		spendPoint = nil
-
-		err = ovm.StateDB.DB.Update(func(dbTx database.Tx) error {
-			bucket := dbTx.Metadata().Bucket([]byte("contract" + string(contract)))
-			// update account balance (non-commit) in ovm
-			r,err := json.Marshal(wallet)
-			if err != nil {
-				return err
-			}
-			if err := bucket.Put([]byte("Wallet"), r); err != nil {
-				return err
+		if _,ok := ovm.StateDB[d]; !ok {
+			ovm.StateDB[d] = &stateDB{
+				DB:       ovm.views.Db,
+				contract: d,
+				data:     make(map[chainhash.Hash]entry),
+				wallet:	  make([]WalletItem, 0),
+				meta:make(map[string]struct{
+					data []byte
+					back []byte
+					flag status }),
 			}
 
-			return nil
-		})
+			existence = ovm.StateDB[d].Exists()
+
+			if !existence && !creation {
+				delete(ovm.StateDB, d)
+				return nil, omega.ScriptError(omega.ErrInternal, "Contract does not exist.")
+			}
+			if existence && creation {
+				return nil, omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
+			}
+
+			if existence {
+				ovm.StateDB[d].LoadWallet()
+			}
+		} else if creation {
+			return nil, omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
+		}
+
+		ovm.Spend = func(t token.Token) bool {
+			if ovm.StateDB[d].Debt(t) != nil {
+				return false
+			}
+			outtx.AddTxIn(t)
+			return true
+		}
+
+		_, err := ovm.Call(d, method, &txOut.Token, param)
+		// if fail, ovm.Call should have restored ovm.StateDB[d]
+
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if submitting != nil {
-		*outtx.MsgTx() = *submitting
-	}
+//	if len(outtx.MsgTx().TxOut) > start {
+//		return ExecContract(outtx, len(tx.MsgTx().TxOut), txHeight, ovm, chainParams)
+//	}
 
-	return outtx, steps, nil
-}
-
-type basePoint struct {
-	hash *chainhash.Hash
-	amount uint64
-}
-
-func mkBaseRights(spendPoint []token.Token, u uint64) *map[chainhash.Hash]uint64 {
-	res := make(map[chainhash.Hash]uint64, 0)
-	for _,t := range spendPoint {
-		if t.TokenType == u {
-			for _, r := range t.Rights {
-				if _, ok := res[r]; ok {
-					res[r] += uint64(t.Value.(*token.NumToken).Val)
-				} else {
-					res[r] = uint64(t.Value.(*token.NumToken).Val)
-				}
-			}
-		}
-	}
-	return &res
-}
-
-func requirementAnalysis(rview * viewpoint.RightViewpoint, spendPoint []token.Token, u uint64, baseRightset *map[chainhash.Hash]uint64) {
-
-}
-
-func matchRequirement(wallet []WalletItem, baseRightset *map[chainhash.Hash]uint64) ([]wire.OutPoint, []token.Token) {
-	return nil,nil
-}
-
-type  efunc func(*stateDB, * btcutil.Tx, int) error
-
-var sysFunc []efunc = []efunc {
-	deployCode,
-	directXfer,
-}
-
-func syscall(db *stateDB, fn uint32, tx * btcutil.Tx, seq uint32, param []byte) error {
-	if sysFunc[fn] == nil {
-		return txsparser.ScriptError(txsparser.ErrInternal, "Incorrect system function id.")
-	}
-	return sysFunc[fn](db, tx, seq, param)
-}
-
-func directXfer(db *stateDB, contract []byte, tx * btcutil.Tx, seq int) error {
-	// do contract deployment
-	tok := &tx.MsgTx().TxOut[seq].Token
-
-	err := db.DB.Update(func(dbTx database.Tx) error {
-		meta := dbTx.Metadata()
-		// for each contract, create 2 buckets: "contract" + <address>, "storage" + <address>
-		var err error
-
-		mainbkt := []byte("contract" + string(contract))
-		bucket := meta.Bucket(mainbkt)
-
-		key := tok.TokenType
-		coins := make(map[uint64][]WalletItem, 0)
-		json.Unmarshal(bucket.Get([]byte("Wallet")), &coins)
-
-		if w,ok := coins[key]; ok {
-			if len(w) >= 2 {
-				for _,c := range w {
-					tx.MsgTx().AddTxIn(wire.NewTxIn(&c.Outpoint, []byte{}, [][]byte{}))
-				}
-			}
-		} else {
-			coins[key] = append(coins[key], WalletItem{wire.OutPoint{*tx.Hash(), uint32(seq) }, 0, nil} )
-		}
-
-		coins[tok.TokenType] = []WalletItem{WalletItem{wire.OutPoint{Hash: *tx.Hash(), Index: uint32(seq) }, 0, nil }}
-
-		md, _ := json.Marshal(coins)
-
-		if err := bucket.Put([]byte("Wallet"[:]), md); err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	return err
-}
-
-func deployCode(db *stateDB, txOut * btcutil.Tx, seq uint32) error {
-	// verify validity of paramenters
-	tx := txOut.MsgTx().TxOut[seq]
-	data := tx.PkScript[21:]
-
-	var creation contractCreation
-
-	if err := json.Unmarshal(data, &creation); err != nil {
-		return err
-	}
-
-	sz, _ := creation.serialize()
-	contract := txscript.Hash160(sz)
-
-	// do contract deployment
-	err := db.DB.Update(func(dbTx database.Tx) error {
-		meta := dbTx.Metadata()
-		// for each contract, create 2 buckets: "contract" + <address>, "storage" + <address>
-		var err error
-
-		mainbkt := []byte("contract" + string(contract))
-		if _, err = meta.CreateBucket(mainbkt); err != nil {
-			return err
-		}
-
-		if _, err = meta.CreateBucket([]byte("storage" + string(contract))); err != nil {
-			meta.DeleteBucket([]byte("contract" + string(contract)))
-			return err
-		}
-
-		collaterals := make(map[uint64][]WalletItem, 0)
-		coins := make(map[uint64][]WalletItem, 0)
-
-		worth := int64(0)
-		if creation.Collateral || !tx.Token.IsNumeric() {
-			worth = int64(creation.Mint)
-			collaterals[tx.TokenType] = []WalletItem{WalletItem{wire.OutPoint{Hash: * txOut.Hash(), Index: seq },
-				uint64(worth), creation.Rights }}
-		} else {
-			worth = tx.Value.(*token.NumToken).Val
-			coins[tx.TokenType] = []WalletItem{WalletItem{wire.OutPoint{Hash: * txOut.Hash(), Index: seq },
-				uint64(worth), tx.Rights }}
-		}
-
-		bucket := meta.Bucket(mainbkt)
-
-		if creation.Mint != 0 {
-			var key []byte
-			var defaultVersion uint64
-
-			if len(creation.Rights) == 0 {
-				key = []byte("availNonRightTokenType")
-				defaultVersion = 0x1FC
-			} else {
-				key = []byte("availRightTokenType")
-				defaultVersion = 0x1FE
-			}
-
-			// the toktype value for numtoken available
-			version := uint64(DbFetchVersion(dbTx, key))
-			if version == 0 {
-				version = defaultVersion
-				err := DbPutVersion(dbTx, key, version)
-				if err != nil {
-					return err
-				}
-			} else {
-				err := DbPutVersion(dbTx, key, version+0x100)
-				if err != nil {
-					return err
-				}
-			}
-
-			var serialized [8]byte
-			binary.LittleEndian.PutUint64(serialized[:], version)
-			if err := bucket.Put([]byte("Currency"), serialized[:]); err != nil {
-				return err
-			}
-
-			t := token.Token{
-				TokenType: version,
-				Value:     &token.NumToken{Val: int64(creation.Mint) },
-			}
-			if version & 2 != 0 {
-				t.Rights = creation.Rights
-			}
-
-			pkScript := make([]byte, 21)
-			pkScript[0] = txsparser.OP_CONTRACTCALL
-			copy(pkScript[1:], contract)
-
-			out := wire.NewTxOut(version, &token.NumToken{Val: int64(creation.Mint) }, creation.Rights, pkScript)
-
-			if _, ok := coins[out.TokenType]; ok {
-				coins[out.TokenType] = append(coins[out.TokenType], WalletItem{wire.OutPoint{ Hash: * txOut.Hash(), Index: uint32(txOut.MsgTx().AddTxOut(out)) }, creation.Mint, creation.Rights})
-			} else {
-				coins[out.TokenType] = []WalletItem{WalletItem{wire.OutPoint{Hash: * txOut.Hash(), Index: uint32(txOut.MsgTx().AddTxOut(out)) },
-					creation.Mint, creation.Rights }}
-			}
-		}
-
-		md,_ := json.Marshal(creation.Abi)
-
-		if err := bucket.Put([]byte("Abi"), md); err != nil {
-			return err
-		}
-		if err := bucket.Put([]byte("Code"), creation.Code); err != nil {
-			return err
-		}
-		if err := bucket.Put([]byte("Owner"), []byte(creation.Owner)); err != nil {
-			return err
-		}
-		col := byte(0)
-		if creation.Collateral {
-			col = 1
-		}
-		if err := bucket.Put([]byte("AllowNewIssue"), []byte{col}); err != nil {
-			return err
-		}
-		md, _ = json.Marshal(coins)
-		if err := bucket.Put([]byte("Wallet"), md); err != nil {
-			return err
-		}
-		if len(collaterals) > 0 {
-			md, _ = json.Marshal(collaterals)
-			if err := bucket.Put([]byte("Collaterals"), md); err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-
-	return err
+	return outtx, nil
 }
 
 var byteOrder = binary.LittleEndian
