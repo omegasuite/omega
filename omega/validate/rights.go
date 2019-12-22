@@ -88,7 +88,7 @@ func parseRights(tx *btcutil.Tx, views *viewpoint.ViewPointSet, checkPolygon boo
 		if !checkPolygon && txOut.TokenType & 1 == uncheck {
 			continue
 		}
-		if txOut.TokenType & 3 == 1 {
+		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF || txOut.TokenType & 3 == 1 {
 			continue
 		}
 
@@ -242,6 +242,9 @@ func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 		res[0][i].value = x.Value
 	}
 	for i, x := range tx.MsgTx().TxOut {
+		if x.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		res[1][i] = tokennelement{}
 		res[1][i].tokenType = x.TokenType
 		if x.TokenType & 1 == 1 {

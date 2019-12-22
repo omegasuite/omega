@@ -106,6 +106,10 @@ func calcHashSequence(tx *wire.MsgTx) chainhash.Hash {
 func calcHashOutputs(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
 	for _, out := range tx.TxOut {
+		if out.TokenType == 0xFFFFFFFFFFFFFFFF {
+			// the rest txouts are added by contract, will not be included in tx hash
+			return chainhash.DoubleHashH(b.Bytes())
+		}
 		out.WriteTxOut(&b, 0, 0, wire.BaseEncoding)
 	}
 

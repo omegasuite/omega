@@ -151,9 +151,11 @@ type Params struct {
 
 	// GenesisBlock defines the first block of the chain.
 	GenesisBlock *wire.MsgBlock
+	GenesisMinerBlock *wire.NewNodeBlock
 
 	// GenesisHash is the starting block hash.
 	GenesisHash *chainhash.Hash
+	GenesisMinerHash *chainhash.Hash
 
 	// PowLimit defines the highest allowed proof of work value for a block
 	// as a uint256.
@@ -267,7 +269,9 @@ var MainNetParams = Params{
 
 	// Chain parameters
 	GenesisBlock:             &genesisBlock,
+	GenesisMinerBlock:		  &genesisMinerBlock,
 	GenesisHash:              &genesisHash,
+	GenesisMinerHash:         &genesisMinerHash,
 	PowLimit:                 mainPowLimit,
 	PowLimitBits:             0x1d00ffff,
 	CoinbaseMaturity:         100,
@@ -333,7 +337,9 @@ var RegressionNetParams = Params{
 
 	// Chain parameters
 	GenesisBlock:             &regTestGenesisBlock,
+	GenesisMinerBlock:		  &regTestGenesisMinerBlock,
 	GenesisHash:              &regTestGenesisHash,
+	GenesisMinerHash:         &regTestGenesisMinerHash,
 	PowLimit:                 regressionPowLimit,
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         100,
@@ -402,7 +408,9 @@ var TestNet3Params = Params{
 
 	// Chain parameters
 	GenesisBlock:             &testNet3GenesisBlock,
+	GenesisMinerBlock:		  &testNet3GenesisMinerBlock,
 	GenesisHash:              &testNet3GenesisHash,
+	GenesisMinerHash:         &testNet3GenesisMinerHash,
 	PowLimit:                 testNet3PowLimit,
 	PowLimitBits:             0x1f00ffff,
 	CoinbaseMaturity:         100,
@@ -473,7 +481,9 @@ var SimNetParams = Params{
 
 	// Chain parameters
 	GenesisBlock:             &simNetGenesisBlock,
+	GenesisMinerBlock:		  &simNetGenesisMinerBlock,
 	GenesisHash:              &simNetGenesisHash,
+	GenesisMinerHash:         &simNetGenesisMinerHash,
 	PowLimit:                 simNetPowLimit,
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         100,

@@ -330,11 +330,30 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainPa
 		return tx.MsgTx()
 	}
 	ovm.AddTxOutput = func(t wire.TxOut) bool {
-		outtx.MsgTx().AddTxOut(&t)
+		if isContract(t.PkScript[0]) {
+			// can't add a contract call txout within a contract execution
+			return false
+		}
+		tx := outtx.MsgTx()
+		if !outtx.HasOuts {
+			// this servers as a separater. only TokenType is serialized
+			to := wire.TxOut{}
+			to.Token = token.Token{TokenType:0xFFFFFFFFFFFFFFFF}
+			tx.AddTxOut(&to)
+			outtx.HasOuts = true
+		}
+		tx.AddTxOut(&t)
 		return true
 	}
 	ovm.AddRight = func(t *token.RightDef) bool {
-		outtx.MsgTx().AddDef(t)
+		tx := outtx.MsgTx()
+		if !outtx.HasOuts {
+			to := wire.TxOut{}
+			to.Token = token.Token{TokenType:0xFFFFFFFFFFFFFFFF}
+			tx.AddTxOut(&to)
+			outtx.HasOuts = true
+		}
+		tx.AddDef(t)
 		return true
 	}
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
@@ -422,6 +441,9 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainPa
 		if err != nil {
 			return nil, err
 		}
+
+		// take the coins sent to us
+		ovm.StateDB[d].Credit(txOut.Token)
 	}
 
 //	if len(outtx.MsgTx().TxOut) > start {

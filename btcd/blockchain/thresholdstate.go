@@ -92,29 +92,29 @@ type thresholdConditionChecker interface {
 
 // thresholdStateCache provides a type to cache the threshold states of each
 // threshold window for a set of IDs.
-type thresholdStateCache struct {
+type ThresholdStateCache struct {
 	entries map[chainhash.Hash]ThresholdState
 }
 
 // Lookup returns the threshold state associated with the given hash along with
 // a boolean that indicates whether or not it is valid.
-func (c *thresholdStateCache) Lookup(hash *chainhash.Hash) (ThresholdState, bool) {
+func (c *ThresholdStateCache) Lookup(hash *chainhash.Hash) (ThresholdState, bool) {
 	state, ok := c.entries[*hash]
 	return state, ok
 }
 
 // Update updates the cache to contain the provided hash to threshold state
 // mapping.
-func (c *thresholdStateCache) Update(hash *chainhash.Hash, state ThresholdState) {
+func (c *ThresholdStateCache) Update(hash *chainhash.Hash, state ThresholdState) {
 	c.entries[*hash] = state
 }
 
 // newThresholdCaches returns a new array of caches to be used when calculating
 // threshold states.
-func newThresholdCaches(numCaches uint32) []thresholdStateCache {
-	caches := make([]thresholdStateCache, numCaches)
+func NewThresholdCaches(numCaches uint32) []ThresholdStateCache {
+	caches := make([]ThresholdStateCache, numCaches)
 	for i := 0; i < len(caches); i++ {
-		caches[i] = thresholdStateCache{
+		caches[i] = ThresholdStateCache{
 			entries: make(map[chainhash.Hash]ThresholdState),
 		}
 	}
@@ -126,7 +126,7 @@ func newThresholdCaches(numCaches uint32) []thresholdStateCache {
 // threshold states for previous windows are only calculated once.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) thresholdState(prevNode *blockNode, checker thresholdConditionChecker, cache *thresholdStateCache) (ThresholdState, error) {
+func (b *BlockChain) thresholdState(prevNode *blockNode, checker thresholdConditionChecker, cache *ThresholdStateCache) (ThresholdState, error) {
 	// The threshold state for the window that contains the genesis block is
 	// defined by definition.
 	confirmationWindow := int32(checker.MinerConfirmationWindow())
@@ -308,10 +308,10 @@ func (b *BlockChain) deploymentState(prevNode *blockNode, deploymentID uint32) (
 	return b.thresholdState(prevNode, checker, cache)
 }
 
-// initThresholdCaches initializes the threshold state caches for each warning
+// InitThresholdCaches initializes the threshold state caches for each warning
 // bit and defined deployment and provides warnings if the chain is current per
 // the warnUnknownVersions and warnUnknownRuleActivations functions.
-func (b *BlockChain) initThresholdCaches() error {
+func (b *BlockChain) InitThresholdCaches() error {
 	// Initialize the warning and deployment caches by calculating the
 	// threshold state for each of them.  This will ensure the caches are
 	// populated and any states that needed to be recalculated due to

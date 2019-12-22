@@ -546,6 +546,10 @@ func CheckGeometryIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet) bool 
 
 	for io, tks := range tokens {
 		for _, emt := range tks {
+			if emt.tokenType != 3 {
+				// ioTokens will include all types, here we are only interested in polygons
+				continue
+			}
 			y := TokenRights(views, &emt)
 
 			for s, _ := range basicRS {

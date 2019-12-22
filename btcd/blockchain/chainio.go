@@ -18,6 +18,7 @@ import (
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcd/blockchain/bccompress"
 	"github.com/btcsuite/omega/token"
+	"github.com/btcsuite/omega/ovm"
 )
 
 const (
@@ -849,6 +850,10 @@ func (b *BlockChain) createChainState() error {
 		// Store the genesis block into the database.
 		return dbStoreBlock(dbTx, genesisBlock)
 	})
+
+	// Create system wallet
+	ovm.CreateSysWallet(b.chainParams, b.db)
+
 	return err
 }
 
@@ -1284,7 +1289,10 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.UtxoViewpoint, er
 	// itself.
 	neededSet := make(map[wire.OutPoint]struct{})
 	prevOut := wire.OutPoint{Hash: *tx.Hash()}
-	for txOutIdx := range tx.MsgTx().TxOut {
+	for txOutIdx, txOut := range tx.MsgTx().TxOut {
+		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		prevOut.Index = uint32(txOutIdx)
 		neededSet[prevOut] = struct{}{}
 	}

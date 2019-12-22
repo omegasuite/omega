@@ -979,7 +979,7 @@ type transaction struct {
 }
 
 // Enforce transaction implements the database.Tx interface.
-var _ database.Tx = (*transaction)(nil)
+var Tx = (*transaction)(nil)
 
 // removeActiveIter removes the passed iterator from the list of active
 // iterators against the pending keys treap.
@@ -1183,6 +1183,60 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 	tx.pendingBlocks[*blockHash] = len(tx.pendingBlockData)
 	tx.pendingBlockData = append(tx.pendingBlockData, pendingBlock{
 		hash:  blockHash,
+		bytes: blockBytes,
+	})
+	log.Tracef("Added block %s to pending blocks", blockHash)
+
+	return nil
+}
+
+// StoreBlock stores the provided block into the database.  There are no checks
+// to ensure the block connects to a previous block, contains double spends, or
+// any additional functionality such as transaction indexing.  It simply stores
+// the block in the database.
+//
+// Returns the following errors as required by the interface contract:
+//   - ErrBlockExists when the block hash already exists
+//   - ErrTxNotWritable if attempted against a read-only transaction
+//   - ErrTxClosed if the transaction has already been closed
+//
+// This function is part of the database.Tx interface implementation.
+func (tx *transaction) StoreMinerBlock(block * wire.MinerBlock) error {
+	// Ensure transaction state is valid.
+	if err := tx.checkClosed(); err != nil {
+		return err
+	}
+
+	// Ensure the transaction is writable.
+	if !tx.writable {
+		str := "store block requires a writable database transaction"
+		return makeDbErr(database.ErrTxNotWritable, str, nil)
+	}
+
+	// Reject the block if it already exists.
+	blockHash := block.Hash()
+	if tx.hasBlock(&blockHash) {
+		str := fmt.Sprintf("block %s already exists", blockHash)
+		return makeDbErr(database.ErrBlockExists, str, nil)
+	}
+
+	blockBytes, err := block.Bytes()
+	if err != nil {
+		str := fmt.Sprintf("failed to get serialized bytes for block %s",
+			blockHash)
+		return makeDbErr(database.ErrDriverSpecific, str, err)
+	}
+
+	// Add the block to be stored to the list of pending blocks to store
+	// when the transaction is committed.  Also, add it to pending blocks
+	// map so it is easy to determine the block is pending based on the
+	// block hash.
+	if tx.pendingBlocks == nil {
+		tx.pendingBlocks = make(map[chainhash.Hash]int)
+	}
+	tx.pendingBlocks[blockHash] = len(tx.pendingBlockData)
+	tx.pendingBlockData = append(tx.pendingBlockData, pendingBlock{
+		hash:  &blockHash,
 		bytes: blockBytes,
 	})
 	log.Tracef("Added block %s to pending blocks", blockHash)

@@ -55,8 +55,9 @@ type Definition interface {
 
 type VertexDef struct {
 	hash *chainhash.Hash
-	Lat uint32
-	Lng uint32
+	Lat int32
+	Lng int32
+	Alt int32
 //	Desc []byte
 }
 
@@ -70,9 +71,10 @@ func (t * VertexDef) Hash() chainhash.Hash {
 //		writeElements(buf, DefTypeVertex, t.Lat, t.Lng, t.Desc)
 //		hash := chainhash.DoubleHashH(buf.Bytes())
 
-		b := make([]byte, 8)	// + len(t.Desc))
-		binary.LittleEndian.PutUint32(b[0:], t.Lat)
-		binary.LittleEndian.PutUint32(b[4:], t.Lng)
+		b := make([]byte, 12)	// + len(t.Desc))
+		binary.LittleEndian.PutUint32(b[0:], uint32(t.Lat))
+		binary.LittleEndian.PutUint32(b[4:], uint32(t.Lng))
+		binary.LittleEndian.PutUint32(b[8:], uint32(t.Alt))
 //		copy(b[8:], t.Desc)
 		hash := chainhash.HashH(b)
 
@@ -89,12 +91,13 @@ func (t * VertexDef) Size() int {
 	return 1 + 4 + 4	// + 4	+ len(t.Desc)
 }
 
-func NewVertexDef(lat int32, lng int32, desc []byte) (* VertexDef) {
+func NewVertexDef(lat, lng, alt int32) (* VertexDef) {
 	t := VertexDef{}
 //	t.Desc = make([]byte, len(desc))
 //	copy(t.Desc, desc)
-	t.Lat = uint32(lat)
-	t.Lng = uint32(lng)
+	t.Lat = lat
+	t.Lng = lng
+	t.Alt = alt
 
 	return &t
 }
@@ -104,13 +107,19 @@ func (msg * VertexDef) MemRead(r io.Reader, pver uint32) error {
 	if err != nil {
 		return err
 	}
-	msg.Lat = uint32(lat)
+	msg.Lat = int32(lat)
 
 	lng, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
 	if err != nil {
 		return err
 	}
-	msg.Lng = uint32(lng)
+	msg.Lng = int32(lng)
+
+	alt, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+	if err != nil {
+		return err
+	}
+	msg.Alt = int32(alt)
 
 //	count, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
 //	if err != nil {
@@ -130,15 +139,21 @@ func (msg * VertexDef) Read(r io.Reader, pver uint32) error {
 	if err != nil {
 		return err
 	}
-	msg.Lat = uint32(lat)
+	msg.Lat = int32(lat)
 
 	lng, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
 	if err != nil {
 		return err
 	}
-	msg.Lng = uint32(lng)
+	msg.Lng = int32(lng)
 
-//	count, err := common.ReadVarInt(r, pver)
+	alt, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+	if err != nil {
+		return err
+	}
+	msg.Alt = int32(alt)
+
+	//	count, err := common.ReadVarInt(r, pver)
 //	if err != nil {
 //		return err
 //	}
@@ -156,12 +171,17 @@ func (msg * VertexDef) Write(w io.Writer, pver uint32) error {
 	if err != nil {
 		return err
 	}
-	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, msg.Lng)
+	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Lng))
 	if err != nil {
 		return err
 	}
 
-//	count := uint64(len(msg.Desc))
+	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Alt))
+	if err != nil {
+		return err
+	}
+
+	//	count := uint64(len(msg.Desc))
 //	err = common.WriteVarInt(w, pver, count)
 //	if err != nil {
 //		return err
@@ -176,10 +196,16 @@ func (msg * VertexDef) MemWrite(w io.Writer, pver uint32) error {
 	if err != nil {
 		return err
 	}
-	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, msg.Lng)
+	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Lng))
 	if err != nil {
 		return err
 	}
+
+	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Alt))
+	if err != nil {
+		return err
+	}
+
 
 //	count := uint64(len(msg.Desc))
 //	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(count))
@@ -656,6 +682,24 @@ func (t *Token) HasRight () bool {
 	return t.TokenType & 2 == 0
 }
 
+func (t *Token) Diff(s *Token) bool {
+	if t.TokenType != s.TokenType {
+		return true
+	}
+	if t.TokenType & 1 != 0 {
+		if !t.Value.(*HashToken).Hash.IsEqual(&s.Value.(*HashToken).Hash) {
+			return true
+		}
+	} else if t.Value.(*NumToken).Val != s.Value.(*NumToken).Val {
+		return true
+	}
+
+	if t.TokenType & 2 != 0 {
+		return !t.Rights.IsEqual(s.Rights)
+	}
+	return false
+}
+
 // SerializeSize returns the number of bytes it would take to serialize the
 // the transaction output.
 func (t *Token) SerializeSize() int {
@@ -893,6 +937,11 @@ func (to *Token) ReadTxOut(r io.Reader, pver uint32, version uint32) error {
 	}
 	to.TokenType = t
 
+	if t == 0xFFFFFFFFFFFFFFFF {
+		// this is a separator
+		return nil
+	}
+
 	if (t & 1) == 1 {
 		h := HashToken{}
 		err = common.ReadElement(r, &h.Hash)
@@ -922,6 +971,11 @@ func (to * Token) WriteTxOut(w io.Writer, pver uint32, version int32) error {
 	err := common.WriteVarInt(w, pver, to.TokenType)
 	if err != nil {
 		return err
+	}
+
+	if to.TokenType == 0xFFFFFFFFFFFFFFFF {
+		// this is a separator
+		return nil
 	}
 
 	h, v := to.Value.Value()

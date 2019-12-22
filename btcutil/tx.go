@@ -28,6 +28,7 @@ type Tx struct {
 	txHashSignature *chainhash.Hash // Cached transaction witness hash
 	txIndex       int             // Position within a block or TxIndexUnknown
 	Spends 		  []token.Token	  // spendings by contracts. temp data used for validation
+	HasOuts		  bool			  // temp data indicating whether there is TxOuts added by contracts
 }
 
 // MsgTx returns the underlying wire.MsgTx for the transaction.
@@ -51,7 +52,44 @@ func (s *Tx) Copy() *Tx {
 		txHashSignature: s.SignatureHash(),
 		txIndex: s.Index(),
 		Spends: ds,
+		HasOuts: s.HasOuts,
 	}
+}
+
+func (s *Tx) CleanCopy() *Tx {
+	return &Tx{
+		msgTx: s.msgTx.CleanCopy(),
+		txHash: s.Hash(),
+		txHashSignature: s.SignatureHash(),
+		txIndex: s.Index(),
+		Spends: make([]token.Token, 0),
+		HasOuts: false,
+	}
+}
+
+func (s *Tx) VerifyContractOut(t *Tx) bool {
+	if len(s.Spends) != len(t.Spends) || len(s.msgTx.TxOut) != len(t.msgTx.TxOut) {
+		return false
+	}
+	for i, p := range s.Spends {
+		if p.Diff(&t.Spends[i]) {
+			return false
+		}
+	}
+	start := false
+	for i, p := range s.msgTx.TxOut {
+		if start {
+			if p.Diff(t.msgTx.TxOut[i]) {
+				return false
+			}
+		} else if p.TokenType == 0xFFFFFFFFFFFFFFFF {
+			start = true
+			if p.TokenType != t.msgTx.TxOut[i].TokenType {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (s *Tx) AddTxIn(t  token.Token) {
@@ -106,6 +144,7 @@ func NewTx(msgTx *wire.MsgTx) *Tx {
 		msgTx:   msgTx,
 		txIndex: TxIndexUnknown,
 		Spends: make([]token.Token, 0),
+		HasOuts: false,
 	}
 }
 

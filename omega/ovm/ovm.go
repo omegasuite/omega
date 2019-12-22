@@ -68,7 +68,9 @@ func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
 	if contract.CodeAddr != nil {
 		precompiles := PrecompiledContracts
 		precompiles[[4]byte{0,0,0,0}] = &create{evm, contract }
-		precompiles[[4]byte{0x40,0,0,0}] = &mint{evm, contract }
+		precompiles[[4]byte{OP_MINT,0,0,0}] = &mint{evm, contract }
+		precompiles[[4]byte{OP_MINER_APPLY,0,0,0}] = &addminer{evm, contract }
+		precompiles[[4]byte{OP_MINRE_QUIT,0,0,0}] = &quitminer{evm, contract }
 		var abi [4]byte
 		copy(abi[:], contract.CodeAddr)
 		if p := precompiles[abi]; p != nil {
@@ -303,6 +305,24 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	ovm.StateDB[d].SetCodeHash(contract.CodeHash)
 
 	return nil, nil
+}
+
+func CreateSysWallet(chainConfig *chaincfg.Params, db database.DB) {
+	var addr [20]byte
+
+	sdb := stateDB{
+		DB:       db,
+		contract: addr,
+		data:     make(map[chainhash.Hash]entry),
+		wallet:	  make([]WalletItem, 0),
+		meta:make(map[string]struct{
+			data []byte
+			back []byte
+			flag status }),
+	}
+
+	sdb.SetAddres(addr)
+	sdb.Commit(0)
 }
 
 // ChainConfig returns the environment's chain configuration

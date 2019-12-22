@@ -287,11 +287,12 @@ type GetTxOutResult struct {
 
 type VertexDefinition struct {
 	Kind		   int32   `json:"kind"`		// 0
-	Lat			   uint32   `json:"lat"`		// a wire.Vertex
-	Lng			   uint32   `json:"lng"`		// a wire.Vertex
+	Lat			   int32   `json:"lat"`		// a wire.Vertex
+	Lng			   int32   `json:"lng"`		// a wire.Vertex
+	Alt			   int32   `json:"alt"`		// a wire.Vertex
 	X			   float64   `json:"x"`		// a wire.Vertex
 	Y			   float64   `json:"y"`		// a wire.Vertex
-	Desc		   string   `json:"desc"`		// a wire.Vertex
+	H			   float64   `json:"h"`		// a wire.Vertex
 }
 type BorderDefinition struct {
 	Kind		   int32   `json:"kind"`		// 1

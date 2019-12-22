@@ -658,6 +658,9 @@ func (m *wsNotificationManager) subscribedClients(tx *btcutil.Tx,
 	}
 
 	for i, output := range msgTx.TxOut {
+		if output.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		addrs, _, err := indexers.ExtractPkScriptAddrs(
 			output.PkScript, m.server.cfg.ChainParams)
 		if err != nil {
@@ -830,6 +833,9 @@ func (m *wsNotificationManager) notifyForNewTx(clients map[chan struct{}]*wsClie
 
 	var amount int64
 	for _, txOut := range mtx.TxOut {
+		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		amount += txOut.Value.(*token.NumToken).Val
 	}
 
@@ -1001,6 +1007,9 @@ func (m *wsNotificationManager) notifyForTxOuts(ops map[wire.OutPoint]map[chan s
 	txHex := ""
 	wscNotified := make(map[chan struct{}]struct{})
 	for i, txOut := range tx.MsgTx().TxOut {
+		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		txAddrs, _, err := indexers.ExtractPkScriptAddrs(
 			txOut.PkScript, m.server.cfg.ChainParams)
 		if err != nil {
@@ -2050,6 +2059,9 @@ func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
 		}
 
 		for txOutIdx, txout := range tx.MsgTx().TxOut {
+			if txout.TokenType == 0xFFFFFFFFFFFFFFFF {
+				continue
+			}
 			addrs, _, _ := indexers.ExtractPkScriptAddrs(
 				txout.PkScript, wsc.server.cfg.ChainParams)
 
@@ -2174,6 +2186,9 @@ func rescanBlockFilter(filter *wsClientFilter, block *btcutil.Block, params *cha
 
 		// Scan outputs.
 		for i, output := range msgTx.TxOut {
+			if output.TokenType == 0xFFFFFFFFFFFFFFFF {
+				continue
+			}
 			addrs, _, err := indexers.ExtractPkScriptAddrs(
 				output.PkScript, params)
 			if err != nil {

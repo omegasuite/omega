@@ -877,6 +877,12 @@ func (d * stateDB) Commit(block uint64) {
 			return err
 		}
 
+		if meta.Bucket([]byte("rollbacks")) == nil {
+			if _, err := meta.CreateBucket([]byte("rollbacks")); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	}); err != nil {
 		return

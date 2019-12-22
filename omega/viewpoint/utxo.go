@@ -251,6 +251,11 @@ func (view *ViewPointSet) AddTxOut(tx *btcutil.Tx, txOutIdx uint32, blockHeight 
 	// is allowed so long as the previous transaction is fully spent.
 	prevOut := wire.OutPoint{Hash: *tx.Hash(), Index: txOutIdx}
 	txOut := tx.MsgTx().TxOut[txOutIdx]
+
+	if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+		return
+	}
+
 	e := view.Utxo.addTxOut(prevOut, txOut, tx.IsCoinBase(), blockHeight)
 
 	// if it has a monitor right, add a monitor index
@@ -276,6 +281,9 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 	isCoinBase := tx.IsCoinBase()
 	prevOut := wire.OutPoint{Hash: *tx.Hash()}
 	for txOutIdx, txOut := range tx.MsgTx().TxOut {
+		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		// Update existing entries.  All fields are updated because it's
 		// possible (although extremely unlikely) that the existing
 		// entry is being replaced by a different transaction with the
@@ -388,6 +396,9 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 		txHash := tx.Hash()
 		prevOut := wire.OutPoint{Hash: *txHash}
 		for txOutIdx, txOut := range tx.MsgTx().TxOut {
+			if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+				continue
+			}
 			prevOut.Index = uint32(txOutIdx)
 			entry := view.Utxo.entries[prevOut]
 			if entry == nil {

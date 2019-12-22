@@ -252,6 +252,10 @@ func (t *TxOut) HasRight () bool {
 	return t.Token.HasRight()
 }
 
+func (t *TxOut) Diff(s *TxOut) bool {
+	return t.Token.Diff(&s.Token) || bytes.Compare(t.PkScript, s.PkScript) != 0
+}
+
 // NewTxOut returns a new bitcoin transaction output with the provided
 // transaction value and public key script.
 func NewTxOut(tokenType	uint64, value token.TokenValue, rights *chainhash.Hash, pkScript []byte) *TxOut {
@@ -368,6 +372,67 @@ func (msg *MsgTx) SignatureHash() chainhash.Hash {
 // Copy creates a deep copy of a transaction so that the original does not get
 // modified when the copy is manipulated.
 func (msg *MsgTx) Copy() *MsgTx {
+	newTx := msg.CleanCopy()
+
+	// Deep copy the old TxOut data.
+	start := false
+	for _, oldTxOut := range msg.TxOut {
+		if oldTxOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			start = true
+			newTxOut := TxOut{}
+			newTxOut.TokenType = oldTxOut.TokenType
+			newTx.TxOut = append(newTx.TxOut, &newTxOut)
+			continue
+		} else if !start {
+			continue
+		}
+
+		// Deep copy the old PkScript
+		var newScript []byte
+		oldScript := oldTxOut.PkScript
+		oldScriptLen := len(oldScript)
+		if oldScriptLen > 0 {
+			newScript = make([]byte, oldScriptLen)
+			copy(newScript, oldScript[:oldScriptLen])
+		}
+
+		oldRights := oldTxOut.Rights
+		newRights := (*chainhash.Hash)(nil)
+		if oldRights != nil {
+			newRights = &chainhash.Hash{}
+			copy(newRights[:], (*oldRights)[:])
+		}
+
+		var newVal token.TokenValue
+
+		h,v := oldTxOut.Value.Value()
+		if oldTxOut.Value.IsNumeric() {
+			newVal = &token.NumToken {
+				Val: v,
+			}
+		} else {
+			newVal = &token.HashToken {
+				Hash: *h,
+			}
+		}
+
+		// Create new txOut with the deep copied data and append it to
+		// new Tx.
+		newTxOut := TxOut{}
+		newTxOut.TokenType = oldTxOut.TokenType
+		newTxOut.Value = newVal
+		newTxOut.Rights = newRights
+		newTxOut.PkScript = newScript
+
+		newTx.TxOut = append(newTx.TxOut, &newTxOut)
+	}
+
+	return newTx
+}
+
+// Copy creates a deep copy of a transaction so that the original does not get
+// modified when the copy is manipulated.
+func (msg *MsgTx) CleanCopy() *MsgTx {
 	// Create new tx and start by copying primitive values and making space
 	// for the transaction inputs and outputs.
 	newTx := MsgTx{
@@ -400,6 +465,10 @@ func (msg *MsgTx) Copy() *MsgTx {
 
 	// Deep copy the old TxOut data.
 	for _, oldTxOut := range msg.TxOut {
+		if oldTxOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			break
+		}
+
 		// Deep copy the old PkScript
 		var newScript []byte
 		oldScript := oldTxOut.PkScript
@@ -552,32 +621,10 @@ func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 	}
 
 	if enc == SignatureEncoding {
-		sigCount, err := common.ReadVarInt(r, pver)
+		err := msg.ReadSignature(r, pver)
 		if err != nil {
 			return err
 		}
-
-		// Prevent a possible memory exhaustion attack by
-		// limiting the witCount value to a sane upper bound.
-		if int(sigCount) > len(msg.TxIn) {
-			str := fmt.Sprintf("more signatures than inputs (%d, %d)",
-				sigCount, len(msg.TxIn))
-			return messageError("MsgTx.BtcDecode", str)
-		}
-
-		// signature data.
-		for i := 0; i < int(sigCount); i++ {
-			s, err := readScript(r, pver, MaxMessagePayload,
-				"transaction signature script")
-			if err != nil {
-				return err
-			}
-			msg.AddSignature(s)
-		}
-	}
-
-	if err != nil {
-		return err
 	}
 
 	return nil
@@ -636,7 +683,7 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 	}
 
 	for _, ti := range msg.TxIn {
-		err = ti.writeTxIn(w, pver, msg.Version)
+		err = ti.writeTxIn(w, pver, msg.Version, enc)
 		if err != nil {
 			return err
 		}
@@ -659,19 +706,7 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 	}
 
 	if enc == SignatureEncoding {
-		if err := common.WriteVarInt(w, 0, uint64(len(msg.SignatureScripts))); err != nil {
-			return err
-		}
-
-		// signature data.
-		for _, s := range msg.SignatureScripts {
-			if err := common.WriteVarInt(w, 0, uint64(len(s))); err != nil {
-				return err
-			}
-			if _, err := w.Write(s); err != nil {
-				return err
-			}
-		}
+		msg.WriteSignature(w, pver)
 	}
 
 	return nil
@@ -841,13 +876,17 @@ func (ti *TxIn) readTxIn(r io.Reader, pver uint32, version int32) error {
 
 // writeTxIn encodes ti to the bitcoin protocol encoding for a transaction
 // input (TxIn) to w.
-func (ti *TxIn) writeTxIn(w io.Writer, pver uint32, version int32) error {
+func (ti *TxIn) writeTxIn(w io.Writer, pver uint32, version int32, enc MessageEncoding) error {
 	err := writeOutPoint(w, pver, version, &ti.PreviousOutPoint)
 	if err != nil {
 		return err
 	}
 
-	if err = common.BinarySerializer.PutUint32(w, common.LittleEndian, ti.SignatureIndex); err != nil {
+	if enc == SignatureEncoding {
+		if err = common.BinarySerializer.PutUint32(w, common.LittleEndian, ti.SignatureIndex); err != nil {
+			return err
+		}
+	} else if err = common.BinarySerializer.PutUint32(w, common.LittleEndian, 0xFFFFFFFF); err != nil {
 		return err
 	}
 
@@ -880,7 +919,7 @@ func (to *TxOut) WriteTxOut(w io.Writer, pver uint32, version int32, enc Message
 
 // writeSignature encodes the bitcoin protocol encoding for a transaction
 // input's witness into to w.
-func (tx * MsgTx) WriteSignature(w io.Writer, pver uint32, version MessageEncoding) error {
+func (tx * MsgTx) WriteSignature(w io.Writer, pver uint32) error {
 	err := common.WriteVarInt(w, pver, uint64(len(tx.SignatureScripts)))
 	if err != nil {
 		return err
@@ -895,23 +934,30 @@ func (tx * MsgTx) WriteSignature(w io.Writer, pver uint32, version MessageEncodi
 
 // writeSignature encodes the bitcoin protocol encoding for a transaction
 // input's witness into to w.
-func (tx * MsgTx) ReadSignature(r io.Reader, pver uint32, version MessageEncoding) error {
+func (tx * MsgTx) ReadSignature(r io.Reader, pver uint32) error {
 	count, err := common.ReadVarInt(r, pver)
 	if err != nil {
 		return err
 	}
 
-	tx.SignatureScripts = make([][]byte, count)
+	// Prevent a possible memory exhaustion attack by
+	// limiting the witCount value to a sane upper bound.
+	if int(count) > len(tx.TxIn) {
+		str := fmt.Sprintf("more signatures than inputs (%d, %d)",
+			count, len(tx.TxIn))
+		return messageError("MsgTx.BtcDecode", str)
+	}
+
+	// signature data.
 	for i := 0; i < int(count); i++ {
-		scount, err := common.ReadVarInt(r, pver)
+		s, err := readScript(r, pver, MaxMessagePayload,
+			"transaction signature script")
 		if err != nil {
 			return err
 		}
-		tx.SignatureScripts[i] = make([]byte, scount)
-		if _, err = io.ReadFull(r, tx.SignatureScripts[i]); err != nil {
-			return err
-		}
+		tx.AddSignature(s)
 	}
+
 	return nil
 }
 

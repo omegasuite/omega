@@ -84,7 +84,7 @@ func (msg *MsgBlock) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) er
 	msg.Transactions = make([]*MsgTx, 0, txCount)
 	for i := uint64(0); i < txCount; i++ {
 		tx := MsgTx{}
-		err := tx.BtcDecode(r, pver, enc)
+		err := tx.BtcDecode(r, pver, BaseEncoding)
 		if err != nil {
 			return err
 		}
@@ -93,7 +93,7 @@ func (msg *MsgBlock) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) er
 
 	if enc == SignatureEncoding {
 		for _, tx := range msg.Transactions {
-			tx.ReadSignature(r, pver, enc)
+			tx.ReadSignature(r, pver)
 		}
 	}
 
@@ -164,12 +164,19 @@ func (msg *MsgBlock) DeserializeTxLoc(r *bytes.Buffer) ([]TxLoc, error) {
 	for i := uint64(0); i < txCount; i++ {
 		txLocs[i].TxStart = fullLen - r.Len()
 		tx := MsgTx{}
-		err := tx.Deserialize(r)
+		err := tx.DeserializeNoWitness(r)
 		if err != nil {
 			return nil, err
 		}
 		msg.Transactions = append(msg.Transactions, &tx)
 		txLocs[i].TxLen = (fullLen - r.Len()) - txLocs[i].TxStart
+	}
+
+	for _, tx := range msg.Transactions {
+		err := tx.ReadSignature(r, 0)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return txLocs, nil
@@ -191,7 +198,7 @@ func (msg *MsgBlock) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) er
 	}
 
 	for _, tx := range msg.Transactions {
-		err = tx.BtcEncode(w, pver, enc)
+		err = tx.BtcEncode(w, pver, BaseEncoding)
 		if err != nil {
 			return err
 		}
@@ -199,7 +206,7 @@ func (msg *MsgBlock) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) er
 
 	if enc == SignatureEncoding {
 		for _, tx := range msg.Transactions {
-			tx.WriteSignature(w, pver, enc)
+			tx.WriteSignature(w, pver)
 		}
 	}
 
@@ -242,6 +249,10 @@ func (msg *MsgBlock) SerializeSize() int {
 	// transactions.
 	n := blockHeaderLen + common.VarIntSerializeSize(uint64(len(msg.Transactions)))
 
+//	if msg.Header.BlackList != nil {
+//		n += len(msg.Header.BlackList) + common.VarIntSerializeSize(uint64(len(msg.Header.BlackList)))
+//	}
+
 	for _, tx := range msg.Transactions {
 		n += tx.SerializeSize()
 	}
@@ -250,11 +261,15 @@ func (msg *MsgBlock) SerializeSize() int {
 }
 
 // SerializeSizeStripped returns the number of bytes it would take to serialize
-// the block, excluding any witness data (if any).
+// the block, excluding any signature data (if any).
 func (msg *MsgBlock) SerializeSizeStripped() int {
 	// Block header bytes + Serialized varint size for the number of
 	// transactions.
 	n := blockHeaderLen + common.VarIntSerializeSize(uint64(len(msg.Transactions)))
+
+//	if msg.Header.BlackList != nil {
+//		n += len(msg.Header.BlackList) + common.VarIntSerializeSize(uint64(len(msg.Header.BlackList)))
+//	}
 
 	for _, tx := range msg.Transactions {
 		n += tx.SerializeSizeStripped()

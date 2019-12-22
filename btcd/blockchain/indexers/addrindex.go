@@ -745,6 +745,9 @@ func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 		}
 
 		for _, txOut := range tx.MsgTx().TxOut {
+			if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+				continue
+			}
 			idx.indexPkScript(data, txOut.PkScript, txIdx)
 		}
 	}
@@ -917,6 +920,9 @@ func (idx *AddrIndex) AddUnconfirmedTx(tx *btcutil.Tx, utxoView *viewpoint.UtxoV
 
 	// Index addresses of all created outputs.
 	for _, txOut := range tx.MsgTx().TxOut {
+		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		idx.indexUnconfirmedAddresses(txOut.PkScript, tx)
 	}
 }

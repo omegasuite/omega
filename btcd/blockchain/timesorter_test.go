@@ -37,7 +37,7 @@ func TestTimeSorter(t *testing.T) {
 	for i, test := range tests {
 		result := make([]int64, len(test.in))
 		copy(result, test.in)
-		sort.Sort(timeSorter(result))
+		sort.Sort(TimeSorter(result))
 		if !reflect.DeepEqual(result, test.want) {
 			t.Errorf("timeSorter #%d got %v want %v", i, result,
 				test.want)

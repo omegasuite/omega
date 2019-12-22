@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/btcsuite/btcd/blockchain/bccompress"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/omega/viewpoint"
-	"github.com/btcsuite/btcd/blockchain/bccompress"
 	"github.com/btcsuite/omega/ovm"
+	"github.com/btcsuite/omega/viewpoint"
 )
 
 const (
@@ -87,6 +87,10 @@ func newBestState(node *blockNode, blockSize, blockWeight, numTxns,
 	}
 }
 
+type MinerChain interface {
+	NextMiner (* BlockChain) ([]byte, []byte)		// returns the next miner (address, ip) according to the best chain
+}
+
 // BlockChain provides functions for working with the bitcoin block chain.
 // It includes functionality such as rejecting duplicate blocks, ensuring blocks
 // follow all rules, orphan handling, checkpoint handling, and best chain
@@ -101,6 +105,8 @@ type BlockChain struct {
 	chainParams         *chaincfg.Params
 	timeSource          MedianTimeSource
 	indexManager        IndexManager
+
+	Miners 				MinerChain		// The miner chain to provide the next miner
 
 	// The following fields are calculated based upon the provided chain
 	// parameters.  They are also set when the instance is created and
@@ -166,8 +172,8 @@ type BlockChain struct {
 	//
 	// deploymentCaches caches the current deployment threshold state for
 	// blocks in each of the actively defined deployments.
-	warningCaches    []thresholdStateCache
-	deploymentCaches []thresholdStateCache
+	warningCaches    []ThresholdStateCache
+	deploymentCaches []ThresholdStateCache
 
 	// The following fields are used to determine if certain warnings have
 	// already been shown.
@@ -184,6 +190,8 @@ type BlockChain struct {
 	// certain blockchain events.
 	notificationsLock sync.RWMutex
 	notifications     []NotificationCallback
+
+	// The virtual machine
 	ovm * ovm.OVM
 }
 
@@ -1224,6 +1232,11 @@ func (b *BlockChain) isCurrent() bool {
 	return true
 }
 
+func (b *BlockChain) SameChain(u, v, w chainhash.Hash) bool {
+	// whether the tree blocks identified by hashes are in the same chain
+	return true
+}
+
 // IsCurrent returns whether or not the chain believes it is current.  Several
 // factors are used to guess, but the key factors that allow the chain to
 // believe it is current are:
@@ -1747,8 +1760,8 @@ func New(config *Config) (*BlockChain, error) {
 		bestChain:           newChainView(nil),
 		orphans:             make(map[chainhash.Hash]*orphanBlock),
 		prevOrphans:         make(map[chainhash.Hash][]*orphanBlock),
-		warningCaches:       newThresholdCaches(vbNumBits),
-		deploymentCaches:    newThresholdCaches(chaincfg.DefinedDeployments),
+		warningCaches:       NewThresholdCaches(vbNumBits),
+		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
 	}
 
 	// Initialize the chain state from the passed database.  When the db
@@ -1773,7 +1786,7 @@ func New(config *Config) (*BlockChain, error) {
 	}
 
 	// Initialize rule change threshold state caches.
-	if err := b.initThresholdCaches(); err != nil {
+	if err := b.InitThresholdCaches(); err != nil {
 		return nil, err
 	}
 

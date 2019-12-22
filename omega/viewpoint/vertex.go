@@ -26,8 +26,9 @@ type VtxEntry struct {
 	// specifically crafted to result in minimal padding.  There will be a
 	// lot of these in memory, so a few extra bytes of padding adds up.
 
-	Lat uint32
-	Lng uint32
+	Lat int32
+	Lng int32
+	Alt int32
 //	desc []byte
 
 	// packedFlags contains additional info about vertex. Currently unused.
@@ -66,6 +67,7 @@ func (entry *VtxEntry) ToToken() *token.VertexDef {
 	return &token.VertexDef{
 		Lat: entry.Lat,
 		Lng: entry.Lng,
+		Alt: entry.Alt,
 //		entry.desc,
 	}
 }
@@ -109,6 +111,7 @@ func (view *VtxViewpoint) addVertex(vertex *token.VertexDef) {
 		view.entries[h] = entry
 		entry.Lat = vertex.Lat
 		entry.Lng = vertex.Lng
+		entry.Alt = vertex.Alt
 //		entry.desc = make([]byte, len(vertex.Desc))
 //		copy(entry.desc[:], vertex.Desc[:])
 		entry.packedFlags = TfModified
@@ -314,10 +317,11 @@ func serializeVtxEntry(entry *VtxEntry) ([]byte, error) {
 		return nil, nil
 	}
 
-	var serialized = make([]byte, 8)	// + len(entry.desc))
+	var serialized = make([]byte, 12)	// + len(entry.desc))
 
-	byteOrder.PutUint32(serialized[:], entry.Lat)
-	byteOrder.PutUint32(serialized[4:], entry.Lng)
+	byteOrder.PutUint32(serialized[:], uint32(entry.Lat))
+	byteOrder.PutUint32(serialized[4:], uint32(entry.Lng))
+	byteOrder.PutUint32(serialized[8:], uint32(entry.Lng))
 //	copy(serialized[8:], entry.desc[:])
 
 	return serialized, nil
@@ -333,8 +337,9 @@ func DbFetchVertexEntry(dbTx database.Tx, hash *chainhash.Hash) (*VtxEntry, erro
 	}
 
 	vtx := VtxEntry { }
-	vtx.Lat = byteOrder.Uint32(serialized[:])
-	vtx.Lng = byteOrder.Uint32(serialized[4:])
+	vtx.Lat = int32(byteOrder.Uint32(serialized[:]))
+	vtx.Lng = int32(byteOrder.Uint32(serialized[4:]))
+	vtx.Alt = int32(byteOrder.Uint32(serialized[8:]))
 //	vtx.desc = make([]byte, len(serialized) - 8)
 //	copy(vtx.desc[:], serialized[8:])
 

@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/btcsuite/omega/minerchain"
 	"math"
 	"net"
 	"runtime"
@@ -2627,7 +2628,7 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 
 	// Create a new block chain instance with the appropriate configuration.
 	var err error
-	s.chain, err = blockchain.New(&blockchain.Config{
+	s.chain, err = minerchain.New(&blockchain.Config{
 		DB:           s.db,
 		Interrupt:    interrupt,
 		ChainParams:  s.chainParams,

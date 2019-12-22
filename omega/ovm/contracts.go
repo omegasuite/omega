@@ -18,19 +18,17 @@ package ovm
 
 import (
 	"crypto/sha256"
-	"errors"
 	"math/big"
 
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/crypto/bn256"
 	"golang.org/x/crypto/ripemd160"
 	"github.com/btcsuite/omega/token"
+	"github.com/btcsuite/btcd/wire"
 	"encoding/binary"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/btcec"
 	"bytes"
+	"fmt"
 )
 
 // PrecompiledContract is the basic interface for native Go contracts. The implementation
@@ -47,24 +45,37 @@ type create struct {
 }
 
 const (
-	OP_CREATE		= 0
-	OP_MINT		= 0x40
+	OP_CREATE					= 0
+	OP_MINT					= 0x40
 
-	PAYFUNC_MIN	= 0x41
-	PAYFUNC_MAX	= 0x46
+	PAYFUNC_MIN				= 0x41
+	PAYFUNC_MAX				= 0x46
 
-	OP_PAY2PKH		= 0x41
-	OP_PAY2SCRIPTH	= 0x42
-	OP_PAY2MULTIPKH		= 0x43
+	OP_PAY2PKH					= 0x41
+	OP_PAY2SCRIPTH			= 0x42
+	OP_PAY2MULTIPKH			= 0x43
 	OP_PAY2MULTISCRIPTH		= 0x44
-	OP_PAY2NONE		= 0x45
-	OP_PAY2ANY			= 0x46
+	OP_PAY2NONE				= 0x45
+	OP_PAY2ANY					= 0x46
+
+	// Miner selection
+	OP_MINER_APPLY			= 0x20		// pay & apply to become a miner
+	OP_MINRE_QUIT				= 0x21		// quit & withdraw
+
+	MINER_FEE_CAP				= 500		// miner fee cap. in omegas: 500 omegas
+	MINER_RORATE_FREQ			= 50		// const: rotate frequency. How many blocks between rotation
+	MAX_WITNESS				= 5			// max number of witnesses in a block
+	COMMITTEE_DEF_SIZE		= 5			// default committee size
 )
 
 // PrecompiledContracts contains the default set of pre-compiled contracts
 var PrecompiledContracts = map[[4]byte]PrecompiledContract{
-	([4]byte{OP_CREATE, 0, 0, 0}): &create{},				// create a contract
+	([4]byte{OP_CREATE, 0, 0, 0}): &create{},			// create a contract
 	([4]byte{OP_MINT, 0, 0, 0}): &mint{},				// mint a coin
+
+	// miner selection contract
+	([4]byte{OP_MINER_APPLY, 0, 0, 0}): &addminer{},
+	([4]byte{OP_MINRE_QUIT, 0, 0, 0}): &quitminer{},
 
 	// pk script functions
 	([4]byte{OP_PAY2PKH, 0, 0, 0}): &pay2pkh{},			// pay to pubkey hash script
@@ -80,9 +91,130 @@ var PrecompiledContracts = map[[4]byte]PrecompiledContract{
 	([4]byte{3, 0, 0, 0}): &ripemd160hash{},
 	([4]byte{4, 0, 0, 0}): &dataCopy{},
 	([4]byte{5, 0, 0, 0}): &bigModExp{},
-	([4]byte{6, 0, 0, 0}): &bn256Add{},
-	([4]byte{7, 0, 0, 0}): &bn256ScalarMul{},
-	([4]byte{8, 0, 0, 0}): &bn256Pairing{},
+}
+
+type addminer struct {
+	ovm * OVM
+	contract *Contract
+}
+
+type quitminer struct {
+	ovm * OVM
+	contract *Contract
+}
+
+func (p *addminer) Run(input []byte) ([]byte, error) {
+	var d Address
+	if _,ok := p.ovm.StateDB[d]; !ok {
+		p.ovm.StateDB[d] = &stateDB{
+			DB:       p.ovm.views.Db,
+			contract: d,
+			data:     make(map[chainhash.Hash]entry),
+			wallet:	  make([]WalletItem, 0),
+			meta:make(map[string]struct{
+				data []byte
+				back []byte
+				flag status }),
+		}
+
+		p.ovm.StateDB[d].LoadWallet()
+	}
+
+	if p.contract.value.TokenType != 0 {
+		return nil, fmt.Errorf("Only omegas are accepted as payment.")
+	}
+
+	if p.contract.value.Value.(*token.NumToken).Val != int64(MinerFeeRate(p.ovm.BlockNumber())) {
+		return nil, fmt.Errorf("Payment must be exactly %d satoshi.", MinerFeeRate(p.ovm.BlockNumber()))
+	}
+
+	if !p.ovm.views.Miners.Insert(input, uint64(p.contract.value.Value.(*token.NumToken).Val)) {
+		return nil, fmt.Errorf("Miner already exists.")
+	}
+
+	p.ovm.StateDB[d].Credit(*p.contract.value)
+
+	return nil, nil
+}
+
+func (p *quitminer) Run(input []byte) ([]byte, error) {
+	var d Address
+	if _,ok := p.ovm.StateDB[d]; !ok {
+		p.ovm.StateDB[d] = &stateDB{
+			DB:       p.ovm.views.Db,
+			contract: d,
+			data:     make(map[chainhash.Hash]entry),
+			wallet:	  make([]WalletItem, 0),
+			meta:make(map[string]struct{
+				data []byte
+				back []byte
+				flag status }),
+		}
+
+		p.ovm.StateDB[d].LoadWallet()
+	}
+
+	f := p.ovm.views.Miners.Remove(input)
+
+	if f == 0 {
+		return nil, fmt.Errorf("Miner does not exists.")
+	}
+
+	t := token.Token{ TokenType: 0, }
+	t.Value = &token.NumToken{Val:int64(f)}
+	p.ovm.Spend(t)
+
+	newScript := make([]byte, 25)
+	newScript[0] = p.ovm.chainConfig.PubKeyHashAddrID
+	copy(newScript[1:21], input)
+	newScript[21] = OP_PAY2PKH
+
+	newTxOut := wire.TxOut{}
+	newTxOut.TokenType = 0
+	newTxOut.Value = &token.NumToken{Val:int64(f)}
+	newTxOut.PkScript = newScript
+
+	p.ovm.AddTxOutput(newTxOut)
+
+	return nil, nil
+}
+
+func MinerFeeRate(height uint64) uint64 {       // miner application fee rate in satoshi at height
+	rate := uint64(100000000)					// initial rate is 1 omega
+
+	for height /= 100000; height > 0 && rate < 50000000000; height-- {// rate adjusted every 100K blocks
+		rate += rate / height
+	}
+
+	if rate > 50000000000 {
+		rate = 50000000000
+	}
+	return rate
+}
+
+func MinerAward(height uint64) uint64 { // miner award in satoshi at height
+	// miner award in satoshi/block. award adjusted every 10M blocks to
+	// 1/2, 1/3, 1/4, ..,, 1/10 then the award is set such that total new
+	// coins made each year is 3% of total outstanding coins at the end of
+	// the previous year (1 year = 10M blocks)
+
+	award := uint64(500000000) // initially 5 omegas/block = 500000000 satoshi
+	height /= 10000000
+	height++
+	if height <= 10 {
+		return award / height
+	} else {
+		s := uint64(50000000) // coins generated in the first year: 50M omegas
+		for i := 20; i < 110; i += 10 {
+			s += award / uint64(i)
+		}
+		height -= 10
+		for ; height > 0; height-- {
+			s += uint64(float64(s) * 0.03)
+		}
+		award = uint64(float64(s) * 0.03 * 10) // 3% and convert to satoshi/block 100000000 / 10000000
+		return award
+	}
 }
 
 type payanyone struct {}
@@ -413,29 +545,35 @@ func (c *create) Run(input []byte) ([]byte, error) {
 type ecrecover struct{}
 
 func (c *ecrecover) Run(input []byte) ([]byte, error) {
-	const ecRecoverInputLength = 128
+	// input is: pub key, signature, signature hash.
+	// returns pubkey hash160 padded to 32 bytes if the signature verifies
+	pkBytes, pos := reformatData(input[0:])
 
-	input = common.RightPadBytes(input, ecRecoverInputLength)
-	// "input" is (hash, v, r, s), each 32 bytes
-	// but for ecrecover we want (r, s, v)
-
-	r := new(big.Int).SetBytes(input[64:96])
-	s := new(big.Int).SetBytes(input[96:128])
-	v := input[63] - 27
-
-	// tighter sig s values input homestead only apply to tx sigs
-	if !allZero(input[32:63]) || !crypto.ValidateSignatureValues(v, r, s, false) {
-		return nil, nil
-	}
-	// v needs to be at the end for libsecp256k1
-	pubKey, err := crypto.Ecrecover(input[:32], append(input[64:128], v))
-	// make sure the public key is a valid one
+	pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 
-	// the first byte of pubkey is bitcoin heritage
-	return common.LeftPadBytes(crypto.Keccak256(pubKey[1:])[12:], 32), nil
+	sigBytes, siglen := reformatData(input[pos:])
+	pos += siglen
+
+	hash := input[pos:pos + 32]
+
+	var signature *btcec.Signature
+
+	signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
+
+	if err != nil {
+		return nil, err
+	}
+
+	valid := signature.Verify(hash, pubKey)
+
+	if valid {
+		ph := Hash160(pkBytes)
+		return LeftPadBytes(ph, 32), nil
+	}
+	return nil, err
 }
 
 // SHA256 implemented as a native contract.
@@ -452,7 +590,7 @@ type ripemd160hash struct{}
 func (c *ripemd160hash) Run(input []byte) ([]byte, error) {
 	ripemd := ripemd160.New()
 	ripemd.Write(input)
-	return common.LeftPadBytes(ripemd.Sum(nil), 32), nil
+	return LeftPadBytes(ripemd.Sum(nil), 32), nil
 }
 
 // data copy implemented as a native contract.
@@ -502,100 +640,7 @@ func (c *bigModExp) Run(input []byte) ([]byte, error) {
 	)
 	if mod.BitLen() == 0 {
 		// Modulo 0 is undefined, return zero
-		return common.LeftPadBytes([]byte{}, int(modLen)), nil
+		return LeftPadBytes([]byte{}, int(modLen)), nil
 	}
-	return common.LeftPadBytes(base.Exp(base, exp, mod).Bytes(), int(modLen)), nil
-}
-
-// newCurvePoint unmarshals a binary blob into a bn256 elliptic curve point,
-// returning it, or an error if the point is invalid.
-func newCurvePoint(blob []byte) (*bn256.G1, error) {
-	p := new(bn256.G1)
-	if _, err := p.Unmarshal(blob); err != nil {
-		return nil, err
-	}
-	return p, nil
-}
-
-// newTwistPoint unmarshals a binary blob into a bn256 elliptic curve point,
-// returning it, or an error if the point is invalid.
-func newTwistPoint(blob []byte) (*bn256.G2, error) {
-	p := new(bn256.G2)
-	if _, err := p.Unmarshal(blob); err != nil {
-		return nil, err
-	}
-	return p, nil
-}
-
-// bn256Add implements a native elliptic curve point addition.
-type bn256Add struct{}
-
-func (c *bn256Add) Run(input []byte) ([]byte, error) {
-	x, err := newCurvePoint(getData(input, 0, 64))
-	if err != nil {
-		return nil, err
-	}
-	y, err := newCurvePoint(getData(input, 64, 64))
-	if err != nil {
-		return nil, err
-	}
-	res := new(bn256.G1)
-	res.Add(x, y)
-	return res.Marshal(), nil
-}
-
-// bn256ScalarMul implements a native elliptic curve scalar multiplication.
-type bn256ScalarMul struct{}
-
-func (c *bn256ScalarMul) Run(input []byte) ([]byte, error) {
-	p, err := newCurvePoint(getData(input, 0, 64))
-	if err != nil {
-		return nil, err
-	}
-	res := new(bn256.G1)
-	res.ScalarMult(p, new(big.Int).SetBytes(getData(input, 64, 32)))
-	return res.Marshal(), nil
-}
-
-var (
-	// true32Byte is returned if the bn256 pairing check succeeds.
-	true32Byte = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
-
-	// false32Byte is returned if the bn256 pairing check fails.
-	false32Byte = make([]byte, 32)
-
-	// errBadPairingInput is returned if the bn256 pairing input is invalid.
-	errBadPairingInput = errors.New("bad elliptic curve pairing size")
-)
-
-// bn256Pairing implements a pairing pre-compile for the bn256 curve
-type bn256Pairing struct{}
-
-func (c *bn256Pairing) Run(input []byte) ([]byte, error) {
-	// Handle some corner cases cheaply
-	if len(input)%192 > 0 {
-		return nil, errBadPairingInput
-	}
-	// Convert the input into a set of coordinates
-	var (
-		cs []*bn256.G1
-		ts []*bn256.G2
-	)
-	for i := 0; i < len(input); i += 192 {
-		c, err := newCurvePoint(input[i : i+64])
-		if err != nil {
-			return nil, err
-		}
-		t, err := newTwistPoint(input[i+64 : i+192])
-		if err != nil {
-			return nil, err
-		}
-		cs = append(cs, c)
-		ts = append(ts, t)
-	}
-	// Execute the pairing checks and return the results
-	if bn256.PairingCheck(cs, ts) {
-		return true32Byte, nil
-	}
-	return false32Byte, nil
+	return LeftPadBytes(base.Exp(base, exp, mod).Bytes(), int(modLen)), nil
 }

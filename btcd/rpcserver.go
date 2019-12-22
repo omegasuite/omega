@@ -759,6 +759,9 @@ func pubKeyTypes(script []byte) string {
 func createVoutList(mtx *wire.MsgTx, chainParams *chaincfg.Params, filterAddrMap map[string]struct{}) []btcjson.Vout {
 	voutList := make([]btcjson.Vout, 0, len(mtx.TxOut))
 	for i, v := range mtx.TxOut {
+		if v.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		// The disassembled string will contain [error] inline if the
 		// script doesn't fully parse, so ignore the error here.
 //		disbuf, _ := txscript.DisasmString(v.PkScript)
@@ -2755,7 +2758,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		}
 
 		txOut := mtx.TxOut[c.Vout]
-		if txOut == nil {
+		if txOut == nil || txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
 			errStr := fmt.Sprintf("Output index: %d for txid: %s "+
 				"does not exist", c.Vout, txHash)
 			return nil, internalRPCError(errStr, "")
@@ -2857,13 +2860,16 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		v := &token.VertexDef{
 			Lng:  entry.Lng,
 			Lat:  entry.Lat,
+			Alt:  entry.Alt,
 		}
 		result[v.Hash().String()] = &btcjson.VertexDefinition{
 			Kind: 0,
 			Lng:  entry.Lng,
 			Lat:  entry.Lat,
+			Alt:  entry.Alt,
 			X: float64(int32(entry.Lng)) / token.CoordPrecision,
 			Y: float64(int32(entry.Lat)) / token.CoordPrecision,
+			H: float64(int32(entry.Alt)) / token.CoordPrecision,
 		}
 		reply := &btcjson.GetDefineResult {
 			Definition: result,

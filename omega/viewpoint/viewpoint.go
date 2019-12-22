@@ -9,7 +9,7 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
-//	"github.com/btcsuite/btcd/wire"
+	//	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/token"
 	"fmt"
@@ -50,6 +50,7 @@ type ViewPointSet struct {
 	Border * BorderViewpoint
 	Polygon * PolygonViewpoint
 	Rights * RightViewpoint
+	Miners * MinersViewpoint
 }
 
 func NewViewPointSet(db database.DB) * ViewPointSet {
@@ -60,6 +61,7 @@ func NewViewPointSet(db database.DB) * ViewPointSet {
 	t.Border = NewBorderViewpoint()
 	t.Polygon = NewPolygonViewpoint()
 	t.Rights = NewRightViewpoint()
+	t.Miners = NewMinersViewpoint()
 	return &t
 }
 
@@ -69,9 +71,12 @@ func (t * ViewPointSet) SetBestHash(hash * chainhash.Hash) {
 	t.Polygon.bestHash = *hash
 	t.Border.bestHash = *hash
 	t.Utxo.bestHash = *hash
+	t.Miners.bestHash = *hash
 }
 
 func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Block, stxos []SpentTxOut) error {
+	t.Miners.disconnectTransactions(block)
+
 	err := t.Vertex.disconnectTransactions(db, block)
 	if err != nil {
 		return err
@@ -101,7 +106,7 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 			}
 		}
 		for _, out := range tx.MsgTx().TxOut {
-			if out.TokenType&3 == 3 {
+			if out.TokenType == 3 {
 				t.Polygon.LookupEntry(out.Token.Value.(*token.HashToken).Hash).deReference(t)
 			}
 		}
@@ -116,9 +121,12 @@ func (t * ViewPointSet) Commit() {
 	t.Polygon.commit()
 	t.Border.commit()
 	t.Utxo.commit()
+	t.Miners.commit()
 }
 
 func DbPutViews(dbTx database.Tx,  view * ViewPointSet) error {
+	DbPutMinersView(view.Miners)
+
 	DbPutUtxoView(dbTx, view.Utxo)
 	DbPutPolygonView(dbTx, view.Polygon)
 	DbPutBorderView(dbTx, view.Border)
@@ -168,7 +176,6 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 		}
 	}
 
-
 	DbPutVtxView(dbTx, vtxview)
 	DbPutBorderView(dbTx, bdrview)
 	DbPutRightView(dbTx, rtview)
@@ -206,7 +213,7 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 			}
 		}
 		for _, out := range tx.MsgTx().TxOut {
-			if out.TokenType & 3 == 3 {
+			if out.TokenType == 3 {
 				view.Polygon.LookupEntry(out.Token.Value.(*token.HashToken).Hash).reference(view)
 			}
 		}

@@ -212,7 +212,10 @@ func (mp *TxPool) removeOrphan(tx *btcutil.Tx, removeRedeemers bool) {
 	// Remove any orphans that redeem outputs from this one if requested.
 	if removeRedeemers {
 		prevOut := wire.OutPoint{Hash: *txHash}
-		for txOutIdx := range tx.MsgTx().TxOut {
+		for txOutIdx, txOut := range tx.MsgTx().TxOut {
+			if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+				continue
+			}
 			prevOut.Index = uint32(txOutIdx)
 			for _, orphan := range mp.orphansByPrev[prevOut] {
 				mp.removeOrphan(orphan, true)
@@ -460,6 +463,9 @@ func (mp *TxPool) removeTransaction(tx *btcutil.Tx, removeRedeemers bool) {
 	if removeRedeemers {
 		// Remove any transactions which rely on this one.
 		for i := uint32(0); i < uint32(len(tx.MsgTx().TxOut)); i++ {
+			if tx.MsgTx().TxOut[i].TokenType == 0xFFFFFFFFFFFFFFFF {
+				continue
+			}
 			prevOut := wire.OutPoint{Hash: *txHash, Index: i}
 			if txRedeemer, exists := mp.outpoints[prevOut]; exists {
 				mp.removeTransaction(txRedeemer, true)
@@ -731,7 +737,10 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	// Don't allow the transaction if it exists in the main chain and is not
 	// not already fully spent.
 	prevOut := wire.OutPoint{Hash: *txHash}
-	for txOutIdx := range tx.MsgTx().TxOut {
+	for txOutIdx, txOut := range tx.MsgTx().TxOut {
+		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		prevOut.Index = uint32(txOutIdx)
 		entry := utxoView.LookupEntry(prevOut)
 		if entry != nil && !entry.IsSpent() {
@@ -957,7 +966,10 @@ func (mp *TxPool) processOrphans(acceptedTx *btcutil.Tx) []*TxDesc {
 		processItem := firstElement.(*btcutil.Tx)
 
 		prevOut := wire.OutPoint{Hash: *processItem.Hash()}
-		for txOutIdx := range processItem.MsgTx().TxOut {
+		for txOutIdx, txOut := range processItem.MsgTx().TxOut {
+			if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+				continue
+			}
 			// Look up all orphans that redeem the output that is
 			// now available.  This will typically only be one, but
 			// it could be multiple if the orphan pool contains

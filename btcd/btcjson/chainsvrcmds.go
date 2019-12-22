@@ -66,7 +66,8 @@ type Definition struct {
 
 type Vertex struct {
 	Lat	int32  `json:"lat"`
-	Lng	int32  `json:"lng`
+	Lng	int32  `json:"lng"`
+	Alt	int32  `json:"alt"`
 }
 
 type Border struct {
@@ -93,8 +94,9 @@ func (t * Definition) ConvertTo() token.Definition {
 			return nil
 		}
 		t := token.VertexDef{
-			Lat: uint32(v.Lat),
-			Lng: uint32(v.Lng),
+			Lat: v.Lat,
+			Lng: v.Lng,
+			Alt: v.Alt,
 		}
 		return &t
 		break

@@ -66,9 +66,11 @@ func isNullOutpoint(outpoint *wire.OutPoint) bool {
 // coinbase transaction. Judgement is based on the block version in the block
 // header. Blocks with version 2 and above satisfy this criteria. See BIP0034
 // for further information.
+/*
 func ShouldHaveSerializedBlockHeight(header *wire.BlockHeader) bool {
 	return header.Version >= serializedHeightVersion
 }
+*/
 
 // IsCoinBaseTx determines whether or not a transaction is a coinbase.  A coinbase
 // is a special transaction created by miners that has no inputs.  This is
@@ -305,33 +307,39 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 // The flags modify the behavior of this function as follows:
 //  - BFNoPoWCheck: The check to ensure the block hash is less than the target
 //    difficulty is not performed.
-func checkProofOfWork(header *wire.BlockHeader, powLimit *big.Int, flags BehaviorFlags) error {
-	// The target difficulty must be larger than zero.
-	target := CompactToBig(header.Bits)
-	if target.Sign() <= 0 {
-		str := fmt.Sprintf("block target difficulty of %064x is too low",
-			target)
-		return ruleError(ErrUnexpectedDifficulty, str)
-	}
-
-	// The target difficulty must be less than the maximum allowed.
-	if target.Cmp(powLimit) > 0 {
-		str := fmt.Sprintf("block target difficulty of %064x is "+
-			"higher than max of %064x", target, powLimit)
-		return ruleError(ErrUnexpectedDifficulty, str)
-	}
-
-	// The block hash must be less than the claimed target unless the flag
-	// to avoid proof of work checks is set.
-	if flags&BFNoPoWCheck != BFNoPoWCheck {
-		// The block hash must be less than the claimed target.
-		hash := header.BlockHash()
-		hashNum := HashToBig(&hash)
-		if hashNum.Cmp(target) > 0 {
-			str := fmt.Sprintf("block hash of %064x is higher than "+
-				"expected max of %064x", hashNum, target)
-			return ruleError(ErrHighHash, str)
+func checkProofOfWork(header *wire.BlockHeader, powLimit *big.Int, flags BehaviorFlags, bits uint32) error {
+	if header.Nonce > 0 {
+		// The target difficulty must be larger than zero.
+		target := CompactToBig(bits)
+		if target.Sign() <= 0 {
+			str := fmt.Sprintf("block target difficulty of %064x is too low",
+				target)
+			return ruleError(ErrUnexpectedDifficulty, str)
 		}
+
+		// The target difficulty must be less than the maximum allowed.
+		if target.Cmp(powLimit) > 0 {
+			str := fmt.Sprintf("block target difficulty of %064x is "+
+				"higher than max of %064x", target, powLimit)
+			return ruleError(ErrUnexpectedDifficulty, str)
+		}
+
+		// The block hash must be less than the claimed target unless the flag
+		// to avoid proof of work checks is set.
+		if flags&BFNoPoWCheck != BFNoPoWCheck {
+			// The block hash must be less than the claimed target.
+			hash := header.BlockHash()
+			hashNum := HashToBig(&hash)
+			if hashNum.Cmp(target) > 0 {
+				str := fmt.Sprintf("block hash of %064x is higher than "+
+					"expected max of %064x", hashNum, target)
+				return ruleError(ErrHighHash, str)
+			}
+		}
+	} else {
+		// get parent = previous block
+		// if parent.Nonce > 0 && header.Nonce < 0 { error }
+		// if parent.Nonce < 0 && header.Nonce != -((-parent.Nonce + 1) % ROT) { error }
 	}
 
 	return nil
@@ -340,8 +348,8 @@ func checkProofOfWork(header *wire.BlockHeader, powLimit *big.Int, flags Behavio
 // CheckProofOfWork ensures the block header bits which indicate the target
 // difficulty is in min/max range and that the block hash is less than the
 // target difficulty as claimed.
-func CheckProofOfWork(block *btcutil.Block, powLimit *big.Int) error {
-	return checkProofOfWork(&block.MsgBlock().Header, powLimit, BFNone)
+func CheckProofOfWork(block *btcutil.Block, powLimit *big.Int, bits uint32) error {
+	return checkProofOfWork(&block.MsgBlock().Header, powLimit, BFNone, bits)
 }
 
 // CountSigOps returns the number of signature operations for all transaction
@@ -358,11 +366,11 @@ func CountSigOps(tx *btcutil.Tx) int {
 //
 // The flags do not modify the behavior of this function directly, however they
 // are needed to pass along to checkProofOfWork.
-func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSource MedianTimeSource, flags BehaviorFlags) error {
+func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSource MedianTimeSource, flags BehaviorFlags, bits uint32) error {
 	// Ensure the proof of work bits in the block header is in min/max range
 	// and the block hash is less than the target value described by the
 	// bits.
-	err := checkProofOfWork(header, powLimit, flags)
+	err := checkProofOfWork(header, powLimit, flags, bits)
 	if err != nil {
 		return err
 	}
@@ -395,10 +403,10 @@ func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSou
 //
 // The flags do not modify the behavior of this function directly, however they
 // are needed to pass along to checkBlockHeaderSanity.
-func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource MedianTimeSource, flags BehaviorFlags) error {
+func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource MedianTimeSource, flags BehaviorFlags, bits uint32) error {
 	msgBlock := block.MsgBlock()
 	header := &msgBlock.Header
-	err := checkBlockHeaderSanity(header, powLimit, timeSource, flags)
+	err := checkBlockHeaderSanity(header, powLimit, timeSource, flags, bits)
 	if err != nil {
 		return err
 	}
@@ -509,6 +517,7 @@ func CheckBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource Median
 // ExtractCoinbaseHeight attempts to extract the height of the block from the
 // scriptSig of a coinbase transaction.  Coinbase heights are only present in
 // blocks of version 2 or later.  This was added as part of BIP0034.
+/*
 func ExtractCoinbaseHeight(coinbaseTx *btcutil.Tx) (int32, error) {
 		str := "the coinbase signature script for blocks of " +
 			"version %d or greater must start with the " +
@@ -516,9 +525,11 @@ func ExtractCoinbaseHeight(coinbaseTx *btcutil.Tx) (int32, error) {
 		str = fmt.Sprintf(str, serializedHeightVersion)
 		return 0, ruleError(ErrMissingCoinbaseHeight, str)
 }
+*/
 
 // checkSerializedHeight checks if the signature script in the passed
 // transaction starts with the serialized block height of wantHeight.
+/*
 func checkSerializedHeight(coinbaseTx *btcutil.Tx, wantHeight int32) error {
 	serializedHeight, err := ExtractCoinbaseHeight(coinbaseTx)
 	if err != nil {
@@ -533,6 +544,7 @@ func checkSerializedHeight(coinbaseTx *btcutil.Tx, wantHeight int32) error {
 	}
 	return nil
 }
+*/
 
 // checkBlockHeaderContext performs several validation checks on the block header
 // which depend on its position within the block chain.
@@ -542,22 +554,24 @@ func checkSerializedHeight(coinbaseTx *btcutil.Tx, wantHeight int32) error {
 //    the checkpoints are not performed.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode *blockNode, flags BehaviorFlags) error {
+func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode *blockNode, flags BehaviorFlags, bits uint32) error {
 	fastAdd := flags&BFFastAdd == BFFastAdd
 	if !fastAdd {
 		// Ensure the difficulty specified in the block header matches
 		// the calculated difficulty based on the previous block and
 		// difficulty retarget rules.
-		expectedDifficulty, err := b.calcNextRequiredDifficulty(prevNode,
-			header.Timestamp)
-		if err != nil {
-			return err
-		}
-		blockDifficulty := header.Bits
-		if blockDifficulty != expectedDifficulty {
-			str := "block difficulty of %d is not the expected value of %d"
-			str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
-			return ruleError(ErrUnexpectedDifficulty, str)
+		if bits != 0 {
+			expectedDifficulty, err := b.calcNextRequiredDifficulty(prevNode,
+				header.Timestamp)
+			if err != nil {
+				return err
+			}
+			blockDifficulty := bits
+			if blockDifficulty != expectedDifficulty {
+				str := "block difficulty of %d is not the expected value of %d"
+				str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
+				return ruleError(ErrUnexpectedDifficulty, str)
+			}
 		}
 
 		// Ensure the timestamp for the block header is after the
@@ -614,7 +628,7 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *blockNode, flags BehaviorFlags) error {
 	// Perform all block header related validation checks.
 	header := &block.MsgBlock().Header
-	err := b.checkBlockHeaderContext(header, prevNode, flags)
+	err := b.checkBlockHeaderContext(header, prevNode, flags, prevNode.bits)
 	if err != nil {
 		return err
 	}
@@ -649,13 +663,13 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *blockNode
 		// blocks whose version is the serializedHeightVersion or newer
 		// once a majority of the network has upgraded.  This is part of
 		// BIP0034.
-
+/*
 		coinbaseTx := block.Transactions()[0]
 		err = checkSerializedHeight(coinbaseTx, blockHeight)
 		if err != nil {
 			return err
 		}
-
+*/
 			// Validate the witness commitment (if any) within the
 			// block.  This involves asserting that if the coinbase
 			// contains the special commitment output, then this
@@ -888,6 +902,9 @@ func CheckTransactionFeess(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vie
 	totalSatoshiOut := make(map[uint64]int64)
 
 	for _, txOut := range tx.MsgTx().TxOut {
+		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		if txOut.TokenType & 3 == 0 {
 			if _, ok := totalSatoshiOut[txOut.TokenType]; ok {
 				totalSatoshiOut[txOut.TokenType] += txOut.Value.(*token.NumToken).Val
@@ -1035,13 +1052,16 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 
 		// excute contracts if necessary. note, if the execution causes any change in
 		// in transaction, a new copy of tx will be returned.
-		otx, err := b.ovm.ExecContract(tx, 0, node.height, b.chainParams)
+		cleantx := tx.CleanCopy()
+
+		otx, err := b.ovm.ExecContract(cleantx, 0, node.height, b.chainParams)
 		if err != nil {
 			return err
 		}
 
-		if otx != nil {
-			tx = otx
+		// verify that tx and otx are the same
+		if !otx.VerifyContractOut(tx) {
+			return fmt.Errorf("Contract execution result is not the same as transaction in block.")
 		}
 
 		err = CheckTransactionIntegrity(tx, views)
@@ -1079,13 +1099,12 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 	// errors here because those error conditions would have already been
 	// caught by checkTransactionSanity.
 	var totalSatoshiOut int64
-/* -- TBD
+
 	for _, txOut := range transactions[0].MsgTx().TxOut {
-		totalSatoshiOut += txOut.Value
+		totalSatoshiOut += txOut.Value.(*token.NumToken).Val
 	}
-*/
-	expectedSatoshiOut := CalcBlockSubsidy(node.height, b.chainParams) +
-		totalFees
+
+	expectedSatoshiOut := CalcBlockSubsidy(node.height, b.chainParams) + totalFees
 	if totalSatoshiOut > expectedSatoshiOut {
 		str := fmt.Sprintf("coinbase transaction for block pays %v "+
 			"which is more than expected value of %v",

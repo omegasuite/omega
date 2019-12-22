@@ -90,7 +90,7 @@ type blockNode struct {
 	// platforms.
 	version    int32
 	bits       uint32
-	nonce      uint32
+	nonce      int32
 	timestamp  int64
 	merkleRoot chainhash.Hash
 
@@ -108,9 +108,9 @@ type blockNode struct {
 func initBlockNode(node *blockNode, blockHeader *wire.BlockHeader, parent *blockNode) {
 	*node = blockNode{
 		hash:       blockHeader.BlockHash(),
-		workSum:    CalcWork(blockHeader.Bits),
+		workSum:    CalcWork(parent.bits),
 		version:    blockHeader.Version,
-		bits:       blockHeader.Bits,
+		bits:       parent.bits,
 		nonce:      blockHeader.Nonce,
 		timestamp:  blockHeader.Timestamp.Unix(),
 		merkleRoot: blockHeader.MerkleRoot,
@@ -145,7 +145,7 @@ func (node *blockNode) Header() wire.BlockHeader {
 		PrevBlock:  *prevHash,
 		MerkleRoot: node.merkleRoot,
 		Timestamp:  time.Unix(node.timestamp, 0),
-		Bits:       node.bits,
+//		Bits:       node.bits,
 		Nonce:      node.nonce,
 	}
 }
@@ -199,7 +199,7 @@ func (node *blockNode) CalcPastMedianTime() time.Time {
 	// will be fewer than desired near the beginning of the block chain
 	// and sort them.
 	timestamps = timestamps[:numNodes]
-	sort.Sort(timeSorter(timestamps))
+	sort.Sort(TimeSorter(timestamps))
 
 	// NOTE: The consensus rules incorrectly calculate the median for even
 	// numbers of blocks.  A true median averages the middle two elements

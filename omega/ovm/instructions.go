@@ -999,6 +999,9 @@ ret:
 	case 1:		// all output
 		var wbuf bytes.Buffer
 		for _, txo := range ovm.GetTx().TxOut {
+			if txo.TokenType == 0xFFFFFFFFFFFFFFFF {
+				break
+			}
 			err := txo.WriteTxOut(&wbuf, 0, ovm.GetTx().Version, wire.BaseEncoding)
 			if err != nil {
 				ovm.interpreter.intPool.put(sz)
@@ -1025,8 +1028,11 @@ ret:
 		*pc++
 		clen = uint64(contract.Code[*pc]) + 1
 		for _, txo := range ovm.GetTx().TxOut {
+			if txo.TokenType == 0xFFFFFFFFFFFFFFFF {
+				break
+			}
 			var wbuf bytes.Buffer
-			err := txo.WriteTxOut(&wbuf, 0, ovm.GetTx().Version, wire.SignatureEncoding)
+			err := txo.WriteTxOut(&wbuf, 0, ovm.GetTx().Version, wire.BaseEncoding)
 			if err != nil {
 				*pc += clen
 				ovm.interpreter.intPool.put(sz)
@@ -1197,7 +1203,12 @@ func opGetTx(pc *uint64, evm *OVM, contract *Contract, memory *Memory, stack *St
 	tx := evm.GetTx()
 	n := uint64(16)
 	n += uint64(36 * len(tx.TxIn))
+	adj := 0
 	for _,t := range tx.TxOut {
+		if t.TokenType == 0xFFFFFFFFFFFFFFFF {
+			adj--
+			continue
+		}
 		if t.TokenType & 1 == 0 {
 			n += 16
 		} else {
@@ -1226,9 +1237,12 @@ func opGetTx(pc *uint64, evm *OVM, contract *Contract, memory *Memory, stack *St
 		p += 4
 	}
 
-	memory.SetUint32(p, uint32(len(tx.TxOut)))
+	memory.SetUint32(p, uint32(len(tx.TxOut) + adj))
 	p += 4
 	for _,t := range tx.TxOut {
+		if t.TokenType == 0xFFFFFFFFFFFFFFFF {
+			continue
+		}
 		p = uint64(tokenToMem(int64(p), int64(n), memory, &t.Token))
 		// we take only address part
 		memory.Set(p, 21, t.PkScript[:21])

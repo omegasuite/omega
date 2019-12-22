@@ -40,7 +40,9 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 				return ruleError(1, str)
 			}
 			if !saneVertex(v) {	// check coords is in valid range
-				str := fmt.Sprintf("Insane vertex %v (%f， %f) => (%d， %d)", v.Hash(), float64(int32(v.Lat)) / token.CoordPrecision, float64(int32(v.Lng)) / token.CoordPrecision, int32(v.Lat), int32(v.Lng))
+				str := fmt.Sprintf("Insane vertex %v (%f， %f, %f) => (%d， %d, %d)", v.Hash(),
+					float64(int32(v.Lat)) / token.CoordPrecision, float64(int32(v.Lng)) / token.CoordPrecision,
+					float64(int32(v.Alt)) / token.CoordPrecision, v.Lat, v.Lng, v.Alt)
 				return ruleError(1, str)
 			}
 			break
@@ -75,7 +77,7 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 			refd := false
 			h := v.Hash()
 			for _,to := range msgTx.TxOut {
-				if to.IsNumeric() {
+				if to.TokenType != 3 && to.TokenType != 1 {
 					continue
 				}
 				n := to.Value.(*token.HashToken).Hash
@@ -114,7 +116,7 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 			refd := false
 			h := v.Hash()
 			for _,to := range msgTx.TxOut {
-				if !to.HasRight() {
+				if to.TokenType == 0xFFFFFFFFFFFFFFFF || !to.HasRight() {
 					continue
 				}
 				if to.Rights.IsEqual(&h) {
@@ -287,7 +289,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 					continue
 				}
 				h := &utxo.Amount.(*token.HashToken).Hash
-				sum += appeared(&h, as, views)
+				sum += int32(appeared(h, as, views))
 /*
 				p,_ := views.Polygon.FetchEntry(views.Db, h)
 				for _, loop := range p.Loops {
@@ -361,8 +363,8 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 
 func appeared(p * chainhash.Hash, as map[chainhash.Hash]struct{}, views * viewpoint.ViewPointSet) int {
 	sum := 0
-	p,_ := views.Polygon.FetchEntry(views.Db, *p)
-	for _, loop := range p.Loops {
+	plg,_ := views.Polygon.FetchEntry(views.Db, p)
+	for _, loop := range plg.Loops {
 		if len(loop) == 1 {
 			sum += appeared(&loop[0], as, views)
 		}
