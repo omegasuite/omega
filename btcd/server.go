@@ -606,7 +606,7 @@ func (sp *serverPeer) OnMinerBlock(_ *peer.Peer, msg *wire.NewNodeBlock, buf []b
 	block := wire.NewMinerBlockFromBlockAndBytes(msg, buf)
 
 	// Add the block to the known inventory for the peer.
-	iv := wire.NewInvVect(common.InvTypeBlock, block.Hash())
+	iv := wire.NewInvVect(common.InvTypeMinerBlock, block.Hash())
 	sp.AddKnownInventory(iv)
 
 	// Queue the block up to be handled by the block

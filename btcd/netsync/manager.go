@@ -1288,7 +1288,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				sm.limitMap(sm.requestedMinerBlocks, maxRequestedBlocks)
 				state.requestedMinerBlocks[iv.Hash] = struct{}{}
 
-				iv.Type = common.InvTypeWitnessBlock
+				iv.Type = common.InvTypeMinerBlock
 
 				gdmsg.AddInvVect(iv)
 				numRequested++
