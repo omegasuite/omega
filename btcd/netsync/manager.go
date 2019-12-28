@@ -596,6 +596,8 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	delete(state.requestedBlocks, *blockHash)
 	delete(sm.requestedBlocks, *blockHash)
 
+	log.Infof("handleBlockMsg: %v", bmsg.block.MsgBlock().Header.PrevBlock)
+
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
 	_, isOrphan, err := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
@@ -753,6 +755,8 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		return
 	}
 
+	log.Infof("handleMinerBlockMsg: %v", bmsg.block.MsgBlock().PrevBlock)
+
 	// If we didn't ask for this block then the peer is misbehaving.
 	blockHash := bmsg.block.Hash()
 	if _, exists = state.requestedMinerBlocks[*blockHash]; !exists {
@@ -824,7 +828,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 			log.Warnf("Failed to get block locator for the "+
 				"latest block: %v", err)
 		} else {
-			peer.PushGetBlocksMsg(locator, orphanRoot)
+			peer.PushGetMinerBlocksMsg(locator, orphanRoot)
 		}
 	} else {
 		// When the block is not an orphan, log information about it and
