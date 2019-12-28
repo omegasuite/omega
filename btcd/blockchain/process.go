@@ -243,8 +243,10 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	log.Debugf("Accepted block %v", blockHash)
-	log.Infof("ProcessBlock: Tx chian = %d Miner chain = %d", b.BestSnapshot().Height,
-		b.Miners.BestSnapshot().Height)
+//	log.Infof("ProcessBlock: Tx chian = %d Miner chain = %d", b.BestSnapshot().Height, b.Miners.BestSnapshot().Height)
+
+	log.Infof("ProcessBlock finished with height = %d miner height = %d orphans = %d", b.BestSnapshot().Height,
+		b.Miners.BestSnapshot().Height, len(b.orphans))
 
 	return isMainChain, false, nil
 }

@@ -225,6 +225,9 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, false, err
 	}
 
+	log.Infof("miner.ProcessBlock finished with height = %d tx height = %d orphans = %d", b.BestSnapshot().Height,
+		b.blockChain.BestSnapshot().Height, len(b.orphans))
+
 	return isMainChain, false, nil
 }
 
