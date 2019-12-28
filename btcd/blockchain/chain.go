@@ -89,6 +89,7 @@ type MinerChain interface {
 	CheckConnectBlockTemplate (*wire.MinerBlock) error
 	CalcNextRequiredDifficulty (timestamp time.Time) (uint32, error)
 	ProcessOrphans (* chainhash.Hash, BehaviorFlags) error
+	IsCurrent () bool
 }
 
 // BlockChain provides functions for working with the bitcoin block chain.
@@ -1315,7 +1316,7 @@ func (b *BlockChain) IsCurrent() bool {
 	b.ChainLock.RLock()
 	defer b.ChainLock.RUnlock()
 
-	return b.isCurrent()
+	return b.isCurrent() && b.Miners.IsCurrent()
 }
 
 // BestSnapshot returns information about the current best chain block and
