@@ -2,9 +2,11 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="e098c1bd-eece-4ebc-8186-9f3c7a3757dc" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/rpcclient/examples/bitcoincorehttp/.idea/vcs.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../btcinit/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/../btcinit/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../btcwallet/wallet.exe" beforeDir="false" afterPath="$PROJECT_DIR$/../btcwallet/wallet.exe" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/../omega/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/../omega/.idea/workspace.xml" afterDir="false" />
     </list>
-    <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -24,159 +26,8 @@
     <expand />
     <select />
   </component>
-  <component name="FUSProjectUsageTrigger">
-    <session id="-1705324220">
-      <usages-collector id="statistics.lifecycle.project">
-        <counts>
-          <entry key="project.closed" value="3" />
-          <entry key="project.open.time.1" value="1" />
-          <entry key="project.open.time.2" value="1" />
-          <entry key="project.open.time.81" value="1" />
-          <entry key="project.opened" value="3" />
-        </counts>
-      </usages-collector>
-      <usages-collector id="statistics.file.extensions.open">
-        <counts>
-          <entry key="go" value="15" />
-        </counts>
-      </usages-collector>
-      <usages-collector id="statistics.file.types.open">
-        <counts>
-          <entry key="Go" value="15" />
-        </counts>
-      </usages-collector>
-      <usages-collector id="statistics.file.extensions.edit">
-        <counts>
-          <entry key="go" value="698" />
-        </counts>
-      </usages-collector>
-      <usages-collector id="statistics.file.types.edit">
-        <counts>
-          <entry key="Go" value="698" />
-        </counts>
-      </usages-collector>
-    </session>
-  </component>
   <component name="FavoritesManager">
     <favorites_list name="btcd" />
-  </component>
-  <component name="FileEditorManager">
-    <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/wire/msgtx.go">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-1615">
-              <caret line="19" column="7" lean-forward="true" selection-start-line="19" selection-start-column="7" selection-end-line="19" selection-end-column="7" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/txscript/newscript.go">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-23">
-              <caret line="241" column="41" selection-start-line="241" selection-start-column="41" selection-end-line="241" selection-end-column="41" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/mining/mining.go">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="140">
-              <caret line="837" column="35" selection-start-line="837" selection-start-column="35" selection-end-line="837" selection-end-column="35" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/rpcserver.go">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="140">
-              <caret line="3217" column="49" selection-start-line="3217" selection-start-column="49" selection-end-line="3217" selection-end-column="49" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/blockchain/merkle.go">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="190">
-              <caret line="229" column="50" selection-start-line="229" selection-start-column="50" selection-end-line="229" selection-end-column="50" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/blockchain/scriptval.go">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-373">
-              <caret line="75" column="19" selection-start-line="75" selection-start-column="12" selection-end-line="75" selection-end-column="19" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/blockchain/weight.go">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="148">
-              <caret line="75" column="28" selection-start-line="75" selection-start-column="28" selection-end-line="75" selection-end-column="28" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/txscript/engine.go">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-88">
-              <caret line="268" column="32" selection-start-line="268" selection-start-column="10" selection-end-line="268" selection-end-column="32" />
-            </state>
-          </provider>
-        </entry>
-      </file>
-    </leaf>
-  </component>
-  <component name="FindInProjectRecents">
-    <findStrings>
-      <find>parsedOpcode2scriptInfo</find>
-      <find>scriptError(</find>
-      <find>txsparser.</find>
-      <find>isSmallInt</find>
-      <find>asSmallInt</find>
-      <find>GetScriptClass</find>
-      <find>CalcScriptInfo</find>
-      <find>CalcMultiSigStats</find>
-      <find>payToPubKeyHashScript</find>
-      <find>2s</find>
-      <find>ParsedOpcode</find>
-      <find>RemoveOpcodeByData</find>
-      <find>calcSignatureHash</find>
-      <find>canonicalPush</find>
-      <find>txsparser</find>
-      <find>wallet</find>
-      <find>ripemd160h</find>
-      <find>hash160</find>
-      <find>dbFetchVersion</find>
-      <find>byteOrder</find>
-      <find>U256</find>
-      <find>bigEndianByteAt</find>
-      <find>S256</find>
-      <find>GetHash</find>
-      <find>SetBytes</find>
-      <find>Contract</find>
-      <find>PaddedBigBytes</find>
-      <find>BigToHash</find>
-      <find>ScriptAddress</find>
-      <find>DelegateCall</find>
-    </findStrings>
-    <replaceStrings>
-      <replace>txsparser.OP_</replace>
-      <replace>.Data</replace>
-      <replace>.Opcode</replace>
-      <replace>.Opcode.Value</replace>
-      <replace>ScriptError(txsparser.</replace>
-      <replace>txsparser.ScriptError(txsparser.</replace>
-    </replaceStrings>
   </component>
   <component name="GOROOT" path="F:\Go" />
   <component name="Git.Settings">
@@ -189,55 +40,15 @@
       </list>
     </option>
   </component>
-  <component name="IdeDocumentHistory">
-    <option name="CHANGED_PATHS">
-      <list>
-        <option value="$PROJECT_DIR$/blockchain/merkle.go" />
-        <option value="$PROJECT_DIR$/blockchain/scriptval.go" />
-        <option value="$PROJECT_DIR$/blockchain/polygonviewpoint.go" />
-        <option value="$PROJECT_DIR$/rpcserver.go" />
-        <option value="$PROJECT_DIR$/wire/msgtx.go" />
-      </list>
-    </option>
-  </component>
-  <component name="JsBuildToolGruntFileManager" detection-done="true" sorting="DEFINITION_ORDER" />
-  <component name="JsBuildToolPackageJson" detection-done="true" sorting="DEFINITION_ORDER" />
-  <component name="JsGulpfileManager">
-    <detection-done>true</detection-done>
-    <sorting>DEFINITION_ORDER</sorting>
-  </component>
-  <component name="ProjectFrameBounds" extendedState="6">
-    <option name="x" value="28" />
-    <option name="width" value="1132" />
-    <option name="height" value="783" />
-  </component>
   <component name="ProjectId" id="1SHmbh4CcZJIYbVZ0TAaBPyPyZ3" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
-  <component name="ProjectView">
-    <navigator proportions="" version="1">
-      <foldersAlwaysOnTop value="true" />
-    </navigator>
-    <panes>
-      <pane id="ProjectPane">
-        <subPane>
-          <expand>
-            <path>
-              <item name="btcd" type="b2602c69:ProjectViewProjectNode" />
-              <item name="btcd" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="btcd" type="b2602c69:ProjectViewProjectNode" />
-              <item name="btcd" type="462c0819:PsiDirectoryNode" />
-              <item name="wire" type="462c0819:PsiDirectoryNode" />
-            </path>
-          </expand>
-          <select />
-        </subPane>
-      </pane>
-      <pane id="Scope" />
-    </panes>
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showExcludedFiles" value="true" />
+    <option name="showLibraryContents" value="true" />
   </component>
   <component name="PropertiesComponent">
+    <property name="ASKED_ADD_EXTERNAL_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="configurable.Global.GOPATH.is.expanded" value="true" />
     <property name="configurable.Module.GOPATH.is.expanded" value="false" />
@@ -245,22 +56,10 @@
     <property name="go.gopath.indexing.explicitly.defined" value="true" />
     <property name="go.import.settings.migrated" value="true" />
     <property name="go.sdk.automatically.set" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/../omega/viewpoint/utxo.go" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="nodejs_interpreter_path.stuck_in_default_project" value="undefined stuck path" />
     <property name="nodejs_npm_path_reset_for_default_project" value="true" />
-    <property name="settings.editor.selected.configurable" value="configurable.group.language" />
-  </component>
-  <component name="RunDashboard">
-    <option name="ruleStates">
-      <list>
-        <RuleState>
-          <option name="name" value="ConfigurationTypeDashboardGroupingRule" />
-        </RuleState>
-        <RuleState>
-          <option name="name" value="StatusDashboardGroupingRule" />
-        </RuleState>
-      </list>
-    </option>
+    <property name="settings.editor.selected.configurable" value="vcs.Git" />
   </component>
   <component name="RunManager">
     <configuration name="btcd" type="GoApplicationRunConfiguration" factoryName="Go Application">
@@ -276,38 +75,17 @@
       <method v="2" />
     </configuration>
   </component>
-  <component name="TodoView" selected-index="1">
-    <todo-panel id="selected-file">
-      <is-autoscroll-to-source value="true" />
-    </todo-panel>
-    <todo-panel id="all">
-      <are-packages-shown value="true" />
-      <is-autoscroll-to-source value="true" />
-    </todo-panel>
-  </component>
-  <component name="ToolWindowManager">
-    <frame x="-8" y="-8" width="1168" height="840" extended-state="6" />
-    <editor active="true" />
-    <layout>
-      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.25902528" />
-      <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
-      <window_info id="Favorites" order="2" side_tool="true" />
-      <window_info anchor="bottom" id="Message" order="0" />
-      <window_info active="true" anchor="bottom" id="Find" order="1" visible="true" weight="0.3286119" />
-      <window_info anchor="bottom" id="Run" order="2" />
-      <window_info anchor="bottom" id="Debug" order="3" weight="0.4" />
-      <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
-      <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
-      <window_info anchor="bottom" id="TODO" order="6" />
-      <window_info anchor="bottom" id="Database Changes" order="7" show_stripe_button="false" />
-      <window_info anchor="bottom" id="Version Control" order="8" />
-      <window_info anchor="bottom" id="Terminal" order="9" />
-      <window_info anchor="bottom" id="Event Log" order="10" side_tool="true" />
-      <window_info anchor="right" id="Commander" internal_type="SLIDING" order="0" type="SLIDING" weight="0.4" />
-      <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
-      <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
-      <window_info anchor="right" id="Database" order="3" />
-    </layout>
+  <component name="ServiceViewManager">
+    <option name="viewStates">
+      <list>
+        <serviceView>
+          <treeState>
+            <expand />
+            <select />
+          </treeState>
+        </serviceView>
+      </list>
+    </option>
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="1" />
@@ -315,17 +93,68 @@
   <component name="UnknownFeatures">
     <option featureType="com.intellij.fileTypeFactory" implementationName="*.conf" />
   </component>
-  <component name="VcsContentAnnotationSettings">
-    <option name="myLimit" value="2678400000" />
+  <component name="WindowStateProjectService">
+    <state x="0" y="30" key="#com.intellij.execution.impl.EditConfigurationsDialog" timestamp="1577517445788">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state x="0" y="30" key="#com.intellij.execution.impl.EditConfigurationsDialog/0.0.1043.743@0.0.1043.743" timestamp="1577517445788" />
+    <state width="689" height="438" key="DebuggerActiveHint" timestamp="1577450066554">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state width="689" height="438" key="DebuggerActiveHint/0.0.1043.743@0.0.1043.743" timestamp="1577450066554" />
+    <state x="275" y="97" key="FileChooserDialogImpl" timestamp="1577323573358">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state x="275" y="97" key="FileChooserDialogImpl/0.0.1043.743@0.0.1043.743" timestamp="1577323573358" />
+    <state x="244" y="86" key="FileChooserDialogImpl/0.0.927.657@0.0.927.657" timestamp="1576796655709" />
+    <state width="1001" height="228" key="GridCell.Tab.0.bottom" timestamp="1577529237906">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state width="1001" height="228" key="GridCell.Tab.0.bottom/0.0.1043.743@0.0.1043.743" timestamp="1577529237906" />
+    <state width="1001" height="228" key="GridCell.Tab.0.center" timestamp="1577529237906">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state width="1001" height="228" key="GridCell.Tab.0.center/0.0.1043.743@0.0.1043.743" timestamp="1577529237906" />
+    <state width="1001" height="228" key="GridCell.Tab.0.left" timestamp="1577529237906">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state width="1001" height="228" key="GridCell.Tab.0.left/0.0.1043.743@0.0.1043.743" timestamp="1577529237906" />
+    <state width="1001" height="228" key="GridCell.Tab.0.right" timestamp="1577529237906">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state width="1001" height="228" key="GridCell.Tab.0.right/0.0.1043.743@0.0.1043.743" timestamp="1577529237906" />
+    <state width="1001" height="228" key="GridCell.Tab.1.bottom" timestamp="1577529237719">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state width="1001" height="228" key="GridCell.Tab.1.bottom/0.0.1043.743@0.0.1043.743" timestamp="1577529237719" />
+    <state width="1001" height="228" key="GridCell.Tab.1.center" timestamp="1577529237719">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state width="1001" height="228" key="GridCell.Tab.1.center/0.0.1043.743@0.0.1043.743" timestamp="1577529237719" />
+    <state width="1001" height="228" key="GridCell.Tab.1.left" timestamp="1577529237719">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state width="1001" height="228" key="GridCell.Tab.1.left/0.0.1043.743@0.0.1043.743" timestamp="1577529237719" />
+    <state width="1001" height="228" key="GridCell.Tab.1.right" timestamp="1577529237719">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state width="1001" height="228" key="GridCell.Tab.1.right/0.0.1043.743@0.0.1043.743" timestamp="1577529237719" />
+    <state x="0" y="0" key="SettingsEditor" timestamp="1576796671037">
+      <screen x="0" y="0" width="927" height="657" />
+    </state>
+    <state x="0" y="0" key="SettingsEditor/0.0.927.657@0.0.927.657" timestamp="1576796671037" />
+    <state width="529" height="368" key="XDebugger.FullValuePopup" timestamp="1577404022049">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state width="529" height="368" key="XDebugger.FullValuePopup/0.0.1043.743@0.0.1043.743" timestamp="1577404022049" />
+    <state x="265" y="0" key="refactoring.ChangeSignatureDialog" timestamp="1577424127672">
+      <screen x="0" y="0" width="1043" height="743" />
+    </state>
+    <state x="265" y="0" key="refactoring.ChangeSignatureDialog/0.0.1043.743@0.0.1043.743" timestamp="1577424127672" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
-        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
-          <url>file://$PROJECT_DIR$/blockchain/chainio.go</url>
-          <line>546</line>
-          <option name="timeStamp" value="6" />
-        </line-breakpoint>
         <line-breakpoint enabled="true" type="DlvLineBreakpoint">
           <url>file://$PROJECT_DIR$/cmd/btcctl/config.go</url>
           <line>171</line>
@@ -368,7 +197,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="DlvLineBreakpoint">
           <url>file://$PROJECT_DIR$/../btcwallet/rpc/legacyrpc/methods.go</url>
-          <line>1579</line>
+          <line>1581</line>
           <option name="timeStamp" value="52" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="DlvLineBreakpoint">
@@ -377,34 +206,289 @@
           <option name="timeStamp" value="63" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="DlvLineBreakpoint">
-          <url>file://$PROJECT_DIR$/rpcserver.go</url>
-          <line>494</line>
-          <option name="timeStamp" value="119" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
-          <url>file://$PROJECT_DIR$/mining/cpuminer/cpuminer.go</url>
-          <line>625</line>
-          <option name="timeStamp" value="148" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
           <url>file://$PROJECT_DIR$/rpcclient/infrastructure.go</url>
           <line>997</line>
           <option name="timeStamp" value="156" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="DlvLineBreakpoint">
           <url>file://$PROJECT_DIR$/rpcclient/chain.go</url>
-          <line>692</line>
+          <line>810</line>
           <option name="timeStamp" value="157" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
-          <url>file://$PROJECT_DIR$/rpcserver.go</url>
-          <line>1351</line>
-          <option name="timeStamp" value="158" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="DlvLineBreakpoint">
           <url>file://$PROJECT_DIR$/../ovm/runtime/env.go</url>
           <line>18</line>
           <option name="timeStamp" value="159" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/../omega/viewpoint/right.go</url>
+          <line>373</line>
+          <option name="timeStamp" value="172" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/../omega/viewpoint/right.go</url>
+          <line>617</line>
+          <option name="timeStamp" value="174" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/blockchain/validate.go</url>
+          <line>653</line>
+          <option name="timeStamp" value="267" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/blockchain/chain.go</url>
+          <line>1125</line>
+          <option name="timeStamp" value="297" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/blockchain/chain.go</url>
+          <line>1116</line>
+          <option name="timeStamp" value="302" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/rpcwebsocket.go</url>
+          <line>652</line>
+          <option name="timeStamp" value="335" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/rpcwebsocket.go</url>
+          <line>658</line>
+          <option name="timeStamp" value="336" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/rpcwebsocket.go</url>
+          <line>671</line>
+          <option name="timeStamp" value="337" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/rpcserver.go</url>
+          <line>373</line>
+          <option name="timeStamp" value="338" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>454</line>
+          <option name="timeStamp" value="346" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>393</line>
+          <option name="timeStamp" value="350" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>2101</line>
+          <option name="timeStamp" value="351" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>1204</line>
+          <option name="timeStamp" value="352" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>1212</line>
+          <option name="timeStamp" value="353" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>1753</line>
+          <option name="timeStamp" value="354" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>1761</line>
+          <option name="timeStamp" value="355" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>1768</line>
+          <option name="timeStamp" value="356" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>1782</line>
+          <option name="timeStamp" value="367" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>1350</line>
+          <option name="timeStamp" value="368" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>1228</line>
+          <option name="timeStamp" value="369" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>1249</line>
+          <option name="timeStamp" value="370" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>1270</line>
+          <option name="timeStamp" value="371" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>510</line>
+          <option name="timeStamp" value="373" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>456</line>
+          <option name="timeStamp" value="374" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>2283</line>
+          <option name="timeStamp" value="375" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>353</line>
+          <option name="timeStamp" value="376" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>923</line>
+          <option name="timeStamp" value="378" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>945</line>
+          <option name="timeStamp" value="379" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>963</line>
+          <option name="timeStamp" value="380" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>766</line>
+          <option name="timeStamp" value="382" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/server.go</url>
+          <line>2261</line>
+          <option name="timeStamp" value="423" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>1371</line>
+          <option name="timeStamp" value="425" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/blockchain/chain.go</url>
+          <line>876</line>
+          <option name="timeStamp" value="430" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/../omega/minerchain/chain.go</url>
+          <line>505</line>
+          <option name="timeStamp" value="431" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/peer/peer.go</url>
+          <line>537</line>
+          <option name="timeStamp" value="439" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/peer/peer.go</url>
+          <line>666</line>
+          <option name="timeStamp" value="440" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/peer/peer.go</url>
+          <line>518</line>
+          <option name="timeStamp" value="446" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/peer/peer.go</url>
+          <line>567</line>
+          <option name="timeStamp" value="447" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/peer/peer.go</url>
+          <line>828</line>
+          <option name="timeStamp" value="449" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/peer/peer.go</url>
+          <line>947</line>
+          <option name="timeStamp" value="450" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/peer/peer.go</url>
+          <line>1545</line>
+          <option name="timeStamp" value="452" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>1091</line>
+          <option name="timeStamp" value="454" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>1122</line>
+          <option name="timeStamp" value="455" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>1224</line>
+          <option name="timeStamp" value="456" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>298</line>
+          <option name="timeStamp" value="462" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/peer/peer.go</url>
+          <line>1669</line>
+          <option name="timeStamp" value="470" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/wire/message.go</url>
+          <line>191</line>
+          <option name="timeStamp" value="477" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/peer/peer.go</url>
+          <line>960</line>
+          <option name="timeStamp" value="479" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>288</line>
+          <option name="timeStamp" value="480" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/peer/peer.go</url>
+          <line>962</line>
+          <option name="timeStamp" value="481" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>1032</line>
+          <option name="timeStamp" value="482" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>749</line>
+          <option name="timeStamp" value="483" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>1136</line>
+          <option name="timeStamp" value="491" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="DlvLineBreakpoint">
+          <url>file://$PROJECT_DIR$/netsync/manager.go</url>
+          <line>1285</line>
+          <option name="timeStamp" value="492" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
@@ -417,6 +501,7 @@
         <watch expression="*(*&quot;[][]*github.com/btcsuite/btcd/blockchain.edge&quot;)(825743215296)" />
         <watch expression="outgeo" />
         <watch expression="old" />
+        <watch expression="*(*&quot;github.com/btcsuite/btcd/wire.NewNodeBlock&quot;)(824638562688)" />
       </configuration>
     </watches-manager>
   </component>
@@ -520,89 +605,5 @@
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
     </expressions>
-  </component>
-  <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/blockchain/polygonviewpoint.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="197">
-          <caret line="35" lean-forward="true" selection-start-line="35" selection-end-line="35" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/../omega/viewpoint/utxo.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-2622" />
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/../omega/token/token.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="1326">
-          <caret line="188" column="19" lean-forward="true" selection-start-line="188" selection-start-column="19" selection-end-line="188" selection-end-column="19" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/rpcserver.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="140">
-          <caret line="3217" column="49" selection-start-line="3217" selection-start-column="49" selection-end-line="3217" selection-end-column="49" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/blockchain/merkle.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="190">
-          <caret line="229" column="50" selection-start-line="229" selection-start-column="50" selection-end-line="229" selection-end-column="50" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/blockchain/scriptval.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-373">
-          <caret line="75" column="19" selection-start-line="75" selection-start-column="12" selection-end-line="75" selection-end-column="19" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/blockchain/weight.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="148">
-          <caret line="75" column="28" selection-start-line="75" selection-start-column="28" selection-end-line="75" selection-end-column="28" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/txscript/engine.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-88">
-          <caret line="268" column="32" selection-start-line="268" selection-start-column="10" selection-end-line="268" selection-end-column="32" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/txscript/script_test.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="148">
-          <caret line="3857" column="23" selection-start-line="3857" selection-start-column="23" selection-end-line="3857" selection-end-column="23" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/txscript/newscript.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-23">
-          <caret line="241" column="41" selection-start-line="241" selection-start-column="41" selection-end-line="241" selection-end-column="41" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/mining/mining.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="140">
-          <caret line="837" column="35" selection-start-line="837" selection-start-column="35" selection-end-line="837" selection-end-column="35" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/wire/msgtx.go">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-1615">
-          <caret line="19" column="7" lean-forward="true" selection-start-line="19" selection-start-column="7" selection-end-line="19" selection-end-column="7" />
-        </state>
-      </provider>
-    </entry>
   </component>
 </project>
