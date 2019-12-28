@@ -1,5 +1,5 @@
 // Copyright (c) 2013-2017 The btcsuite developers
-// Copyright (c) 2015-2018 The Decred developers
+// Copyright (c) 2015-2018 The Decred develserver.dbopers
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
@@ -709,6 +709,8 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
 		case common.InvTypeBlock:
 			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
+		case common.InvTypeMinerBlock:
+			err = sp.server.pushMinerBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 		case common.InvTypeFilteredWitnessBlock:
 			err = sp.server.pushMerkleBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
 		case common.InvTypeFilteredBlock:
@@ -1549,6 +1551,70 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		best := sp.server.chain.BestSnapshot()
 		invMsg := wire.NewMsgInvSizeHint(1)
 		iv := wire.NewInvVect(common.InvTypeBlock, &best.Hash)
+		invMsg.AddInvVect(iv)
+		sp.QueueMessage(invMsg, doneChan)
+		sp.continueHash = nil
+	}
+	return nil
+}
+
+func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- struct{},
+	waitChan <-chan struct{}, encoding wire.MessageEncoding) error {
+
+	// Fetch the raw block bytes from the database.
+	var blockBytes []byte
+	err := sp.server.minerdb.View(func(dbTx database.Tx) error {
+		var err error
+		blockBytes, err = dbTx.FetchBlock(hash)
+		return err
+	})
+	if err != nil {
+		peerLog.Tracef("Unable to fetch requested block hash %v: %v",
+			hash, err)
+
+		if doneChan != nil {
+			doneChan <- struct{}{}
+		}
+		return err
+	}
+
+	// Deserialize the block.
+	var msgBlock wire.NewNodeBlock
+	err = msgBlock.Deserialize(bytes.NewReader(blockBytes))
+	if err != nil {
+		peerLog.Tracef("Unable to deserialize requested block hash "+
+			"%v: %v", hash, err)
+
+		if doneChan != nil {
+			doneChan <- struct{}{}
+		}
+		return err
+	}
+
+	// Once we have fetched data wait for any previous operation to finish.
+	if waitChan != nil {
+		<-waitChan
+	}
+
+	// We only send the channel for this message if we aren't sending
+	// an inv straight after.
+	var dc chan<- struct{}
+	continueHash := sp.continueHash
+	sendInv := continueHash != nil && continueHash.IsEqual(hash)
+	if !sendInv {
+		dc = doneChan
+	}
+	sp.QueueMessageWithEncoding(&msgBlock, dc, encoding)
+
+	// When the peer requests the final block that was advertised in
+	// response to a getblocks message which requested more blocks than
+	// would fit into a single message, send it a new inventory message
+	// to trigger it to issue another getblocks message for the next
+	// batch of inventory.
+	if sendInv {
+		best := sp.server.chain.Miners.BestSnapshot()
+		invMsg := wire.NewMsgInvSizeHint(1)
+		iv := wire.NewInvVect(common.InvTypeMinerBlock, &best.Hash)
 		invMsg.AddInvVect(iv)
 		sp.QueueMessage(invMsg, doneChan)
 		sp.continueHash = nil
