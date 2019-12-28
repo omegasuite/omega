@@ -53,6 +53,7 @@ type MsgVersion struct {
 
 	// Last block seen by the generator of the version message.
 	LastBlock int32
+	LastMinerBlock int32
 
 	// Don't announce transactions to peer.
 	DisableRelayTx bool
@@ -129,6 +130,10 @@ func (msg *MsgVersion) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) 
 		if err != nil {
 			return err
 		}
+		err = readElement(buf, &msg.LastMinerBlock)
+		if err != nil {
+			return err
+		}
 	}
 
 	// There was no relay transactions field before BIP0037Version, but
@@ -187,6 +192,11 @@ func (msg *MsgVersion) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) 
 		return err
 	}
 
+	err = writeElement(w, msg.LastMinerBlock)
+	if err != nil {
+		return err
+	}
+
 	// There was no relay transactions field before BIP0037Version.  Also,
 	// the wire encoding for the field is true when transactions should be
 	// relayed, so reverse it from the DisableRelayTx field.
@@ -214,7 +224,7 @@ func (msg *MsgVersion) MaxPayloadLength(pver uint32) uint32 {
 	// remote and local net addresses + nonce 8 bytes + length of user
 	// agent (varInt) + max allowed useragent length + last block 4 bytes +
 	// relay transactions flag 1 byte.
-	return 33 + (maxNetAddressPayload(pver) * 2) + common.MaxVarIntPayload +
+	return 37 + (maxNetAddressPayload(pver) * 2) + common.MaxVarIntPayload +
 		MaxUserAgentLen
 }
 
@@ -222,7 +232,7 @@ func (msg *MsgVersion) MaxPayloadLength(pver uint32) uint32 {
 // Message interface using the passed parameters and defaults for the remaining
 // fields.
 func NewMsgVersion(me *NetAddress, you *NetAddress, nonce uint64,
-	lastBlock int32) *MsgVersion {
+	lastBlock, LastMinerBlock int32) *MsgVersion {
 
 	// Limit the timestamp to one second precision since the protocol
 	// doesn't support better.
@@ -235,6 +245,7 @@ func NewMsgVersion(me *NetAddress, you *NetAddress, nonce uint64,
 		Nonce:           nonce,
 		UserAgent:       DefaultUserAgent,
 		LastBlock:       lastBlock,
+		LastMinerBlock:	 LastMinerBlock,
 		DisableRelayTx:  false,
 	}
 }

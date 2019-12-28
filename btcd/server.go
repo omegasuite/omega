@@ -217,6 +217,7 @@ type server struct {
 	chain                *blockchain.BlockChain
 	txMemPool            *mempool.TxPool
 	cpuMiner             *cpuminer.CPUMiner
+	minerMiner			 *minerchain.CPUMiner
 	modifyRebroadcastInv chan interface{}
 	newPeers             chan *serverPeer
 	donePeers            chan *serverPeer
@@ -225,10 +226,12 @@ type server struct {
 	relayInv             chan relayMsg
 	broadcast            chan broadcastMsg
 	peerHeightsUpdate    chan updatePeerHeightsMsg
+	peerMinerHeightsUpdate    chan updatePeerHeightsMsg
 	wg                   sync.WaitGroup
 	quit                 chan struct{}
 	nat                  NAT
 	db                   database.DB
+	minerdb              database.DB
 	timeSource           blockchain.MedianTimeSource
 	services             common.ServiceFlag
 
@@ -296,6 +299,11 @@ func (sp *serverPeer) newestBlock() (*chainhash.Hash, int32, error) {
 	return &best.Hash, best.Height, nil
 }
 
+func (sp *serverPeer) newestMinerBlock() (*chainhash.Hash, int32, error) {
+	best := sp.server.chain.Miners.BestSnapshot()
+	return &best.Hash, best.Height, nil
+}
+
 // addKnownAddresses adds the given addresses to the set of known addresses to
 // the peer to prevent sending duplicate addresses.
 func (sp *serverPeer) addKnownAddresses(addresses []*wire.NetAddress) {
@@ -342,7 +350,7 @@ func (sp *serverPeer) pushAddrMsg(addresses []*wire.NetAddress) {
 	known, err := sp.PushAddrMsg(addrs)
 	if err != nil {
 		peerLog.Errorf("Can't push address message to %s: %v", sp.Peer, err)
-		sp.Disconnect()
+		sp.Disconnect("pushAddrMsg")
 		return
 	}
 	sp.addKnownAddresses(known)
@@ -382,7 +390,7 @@ func (sp *serverPeer) addBanScore(persistent, transient uint32, reason string) {
 			peerLog.Warnf("Misbehaving peer %s -- banning and disconnecting",
 				sp)
 			sp.server.BanPeer(sp)
-			sp.Disconnect()
+			sp.Disconnect("addBanScore")
 		}
 	}
 }
@@ -445,7 +453,7 @@ func (sp *serverPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 		if !sp.IsWitnessEnabled() {
 			peerLog.Infof("Disconnecting non-segwit peer %v, isn't segwit "+
 				"enabled and we need more segwit enabled peers", sp)
-			sp.Disconnect()
+			sp.Disconnect("OnVersion")
 			return nil
 		}
 
@@ -499,7 +507,7 @@ func (sp *serverPeer) OnMemPool(_ *peer.Peer, msg *wire.MsgMemPool) {
 	if sp.server.services&common.SFNodeBloom != common.SFNodeBloom {
 		peerLog.Debugf("peer %v sent mempool request with bloom "+
 			"filtering disabled -- disconnecting", sp)
-		sp.Disconnect()
+		sp.Disconnect("OnMemPool")
 		return
 	}
 
@@ -590,6 +598,32 @@ func (sp *serverPeer) OnBlock(_ *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 	<-sp.blockProcessed
 }
 
+// OnBlock is invoked when a peer receives a block bitcoin message.  It
+// blocks until the bitcoin block has been fully processed.
+func (sp *serverPeer) OnMinerBlock(_ *peer.Peer, msg *wire.NewNodeBlock, buf []byte) {
+	// Convert the raw MsgBlock to a btcutil.Block which provides some
+	// convenience methods and things such as hash caching.
+	block := wire.NewMinerBlockFromBlockAndBytes(msg, buf)
+
+	// Add the block to the known inventory for the peer.
+	iv := wire.NewInvVect(common.InvTypeBlock, block.Hash())
+	sp.AddKnownInventory(iv)
+
+	// Queue the block up to be handled by the block
+	// manager and intentionally block further receives
+	// until the bitcoin block is fully processed and known
+	// good or bad.  This helps prevent a malicious peer
+	// from queuing up a bunch of bad blocks before
+	// disconnecting (or being disconnected) and wasting
+	// memory.  Additionally, this behavior is depended on
+	// by at least the block acceptance test tool as the
+	// reference implementation processes blocks in the same
+	// thread and therefore blocks further messages until
+	// the bitcoin block has been fully processed.
+	sp.server.syncManager.QueueMinerBlock(block, sp.Peer, sp.blockProcessed)
+	<-sp.blockProcessed
+}
+
 // OnInv is invoked when a peer receives an inv bitcoin message and is
 // used to examine the inventory being advertised by the remote peer and react
 // accordingly.  We pass the message down to blockmanager which will call
@@ -610,7 +644,7 @@ func (sp *serverPeer) OnInv(_ *peer.Peer, msg *wire.MsgInv) {
 			if sp.ProtocolVersion() >= wire.BIP0037Version {
 				peerLog.Infof("Peer %v is announcing "+
 					"transactions -- disconnecting", sp)
-				sp.Disconnect()
+				sp.Disconnect("OnInv")
 				return
 			}
 			continue
@@ -734,6 +768,43 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 	invMsg := wire.NewMsgInv()
 	for i := range hashList {
 		iv := wire.NewInvVect(common.InvTypeBlock, &hashList[i])
+		invMsg.AddInvVect(iv)
+	}
+
+	// Send the inventory message if there is anything to send.
+	if len(invMsg.InvList) > 0 {
+		invListLen := len(invMsg.InvList)
+		if invListLen == wire.MaxBlocksPerMsg {
+			// Intentionally use a copy of the final hash so there
+			// is not a reference into the inventory slice which
+			// would prevent the entire slice from being eligible
+			// for GC as soon as it's sent.
+			continueHash := invMsg.InvList[invListLen-1].Hash
+			sp.continueHash = &continueHash
+		}
+		sp.QueueMessage(invMsg, nil)
+	}
+}
+
+func (sp *serverPeer) OnGetMinerBlocks(_ *peer.Peer, msg *wire.MsgGetMinerBlocks) {
+	// Find the most recent known block in the best chain based on the block
+	// locator and fetch all of the block hashes after it until either
+	// wire.MaxBlocksPerMsg have been fetched or the provided stop hash is
+	// encountered.
+	//
+	// Use the block after the genesis block if no other blocks in the
+	// provided locator are known.  This does mean the client will start
+	// over with the genesis block if unknown block locators are provided.
+	//
+	// This mirrors the behavior in the reference implementation.
+	chain := sp.server.chain.Miners.(*minerchain.MinerChain)
+	hashList := chain.LocateBlocks(msg.BlockLocatorHashes, &msg.HashStop,
+		wire.MaxBlocksPerMsg)
+
+	// Generate inventory message.
+	invMsg := wire.NewMsgInv()
+	for i := range hashList {
+		iv := wire.NewInvVect(common.InvTypeMinerBlock, &hashList[i])
 		invMsg.AddInvVect(iv)
 	}
 
@@ -1125,7 +1196,7 @@ func (sp *serverPeer) enforceNodeBloomFlag(cmd string) bool {
 			// Disconnect the peer regardless of whether it was
 			// banned.
 			sp.addBanScore(100, 0, cmd)
-			sp.Disconnect()
+			sp.Disconnect("enforceNodeBloomFlag @ BIP0111Version")
 			return false
 		}
 
@@ -1133,7 +1204,7 @@ func (sp *serverPeer) enforceNodeBloomFlag(cmd string) bool {
 		// state.
 		peerLog.Debugf("%s sent an unsupported %s request -- "+
 			"disconnecting", sp, cmd)
-		sp.Disconnect()
+		sp.Disconnect("enforceNodeBloomFlag")
 		return false
 	}
 
@@ -1149,7 +1220,7 @@ func (sp *serverPeer) OnFeeFilter(_ *peer.Peer, msg *wire.MsgFeeFilter) {
 	if msg.MinFee < 0 || msg.MinFee > btcutil.MaxSatoshi {
 		peerLog.Debugf("Peer %v sent an invalid feefilter '%v' -- "+
 			"disconnecting", sp, btcutil.Amount(msg.MinFee))
-		sp.Disconnect()
+		sp.Disconnect("OnFeeFilter")
 		return
 	}
 
@@ -1170,7 +1241,7 @@ func (sp *serverPeer) OnFilterAdd(_ *peer.Peer, msg *wire.MsgFilterAdd) {
 	if !sp.filter.IsLoaded() {
 		peerLog.Debugf("%s sent a filteradd request with no filter "+
 			"loaded -- disconnecting", sp)
-		sp.Disconnect()
+		sp.Disconnect("OnFilterAdd")
 		return
 	}
 
@@ -1191,7 +1262,7 @@ func (sp *serverPeer) OnFilterClear(_ *peer.Peer, msg *wire.MsgFilterClear) {
 	if !sp.filter.IsLoaded() {
 		peerLog.Debugf("%s sent a filterclear request with no "+
 			"filter loaded -- disconnecting", sp)
-		sp.Disconnect()
+		sp.Disconnect("OnFilterClear")
 		return
 	}
 
@@ -1271,7 +1342,7 @@ func (sp *serverPeer) OnAddr(_ *peer.Peer, msg *wire.MsgAddr) {
 	if len(msg.AddrList) == 0 {
 		peerLog.Errorf("Command [%s] from %s does not contain any addresses",
 			msg.Command(), sp.Peer)
-		sp.Disconnect()
+		sp.Disconnect("OnAddr")
 		return
 	}
 
@@ -1574,6 +1645,30 @@ func (s *server) handleUpdatePeerHeights(state *peerState, umsg updatePeerHeight
 	})
 }
 
+func (s *server) handleUpdatePeerMinerHeights(state *peerState, umsg updatePeerHeightsMsg) {
+	state.forAllPeers(func(sp *serverPeer) {
+		// The origin peer should already have the updated height.
+		if sp.Peer == umsg.originPeer {
+			return
+		}
+
+		latestBlkHash := sp.LastAnnouncedMinerBlock()
+
+		// Skip this peer if it hasn't recently announced any new blocks.
+		if latestBlkHash == nil {
+			return
+		}
+
+		// If the peer has recently announced a block, and this block
+		// matches our newly accepted block, then update their block
+		// height.
+		if *latestBlkHash == *umsg.newHash {
+			sp.UpdateLastMinerBlockHeight(umsg.newHeight)
+			sp.UpdateLastAnnouncedMinerBlock(nil)
+		}
+	})
+}
+
 // handleAddPeerMsg deals with adding new peers.  It is invoked from the
 // peerHandler goroutine.
 func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
@@ -1584,7 +1679,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	// Ignore new peers if we're shutting down.
 	if atomic.LoadInt32(&s.shutdown) != 0 {
 		srvrLog.Infof("New peer %s ignored - server is shutting down", sp)
-		sp.Disconnect()
+		sp.Disconnect("handleAddPeerMsg @ shutdown")
 		return false
 	}
 
@@ -1592,14 +1687,14 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	host, _, err := net.SplitHostPort(sp.Addr())
 	if err != nil {
 		srvrLog.Debugf("can't split hostport %v", err)
-		sp.Disconnect()
+		sp.Disconnect("handleAddPeerMsg @ SplitHostPort")
 		return false
 	}
 	if banEnd, ok := state.banned[host]; ok {
 		if time.Now().Before(banEnd) {
 			srvrLog.Debugf("Peer %s is banned for another %v - disconnecting",
 				host, time.Until(banEnd))
-			sp.Disconnect()
+			sp.Disconnect("handleAddPeerMsg @ banned")
 			return false
 		}
 
@@ -1613,7 +1708,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	if state.Count() >= cfg.MaxPeers {
 		srvrLog.Infof("Max peers reached [%d] - disconnecting peer %s",
 			cfg.MaxPeers, sp)
-		sp.Disconnect()
+		sp.Disconnect("handleAddPeerMsg @ MaxPeers")
 		// TODO: how to handle permanent peers here?
 		// they should be rescheduled.
 		return false
@@ -1932,7 +2027,7 @@ func disconnectPeer(peerList map[int32]*serverPeer, compareFunc func(*serverPeer
 			// This is ok because we are not continuing
 			// to iterate so won't corrupt the loop.
 			delete(peerList, addr)
-			peer.Disconnect()
+			peer.Disconnect("disconnectPeer")
 			return true
 		}
 	}
@@ -1947,10 +2042,12 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 			OnMemPool:      sp.OnMemPool,
 			OnTx:           sp.OnTx,
 			OnBlock:        sp.OnBlock,
+			OnMinerBlock:   sp.OnMinerBlock,
 			OnInv:          sp.OnInv,
 			OnHeaders:      sp.OnHeaders,
 			OnGetData:      sp.OnGetData,
 			OnGetBlocks:    sp.OnGetBlocks,
+			OnGetMinerBlocks:    sp.OnGetMinerBlocks,
 			OnGetHeaders:   sp.OnGetHeaders,
 			OnGetCFilters:  sp.OnGetCFilters,
 			OnGetCFHeaders: sp.OnGetCFHeaders,
@@ -1971,6 +2068,7 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 			OnAlert: nil,
 		},
 		NewestBlock:       sp.newestBlock,
+		NewestMinerBlock:  sp.newestMinerBlock,
 		HostToNetAddress:  sp.server.addrManager.HostToNetAddress,
 		Proxy:             cfg.Proxy,
 		UserAgentName:     userAgentName,
@@ -2088,6 +2186,9 @@ out:
 		case umsg := <-s.peerHeightsUpdate:
 			s.handleUpdatePeerHeights(state, umsg)
 
+		case umsg := <-s.peerMinerHeightsUpdate:
+			s.handleUpdatePeerMinerHeights(state, umsg)
+
 		// Peer to ban.
 		case p := <-s.banPeers:
 			s.handleBanPeerMsg(state, p)
@@ -2108,7 +2209,7 @@ out:
 			// Disconnect all peers on server shutdown.
 			state.forAllPeers(func(sp *serverPeer) {
 				srvrLog.Tracef("Shutdown peer %s", sp)
-				sp.Disconnect()
+				sp.Disconnect("peerHandler @ quit")
 			})
 			break out
 		}
@@ -2126,6 +2227,7 @@ cleanup:
 		case <-s.newPeers:
 		case <-s.donePeers:
 		case <-s.peerHeightsUpdate:
+		case <-s.peerMinerHeightsUpdate:
 		case <-s.relayInv:
 		case <-s.broadcast:
 		case <-s.query:
@@ -2204,6 +2306,14 @@ func (s *server) NetTotals() (uint64, uint64) {
 // selection has access to the latest block heights for each peer.
 func (s *server) UpdatePeerHeights(latestBlkHash *chainhash.Hash, latestHeight int32, updateSource *peer.Peer) {
 	s.peerHeightsUpdate <- updatePeerHeightsMsg{
+		newHash:    latestBlkHash,
+		newHeight:  latestHeight,
+		originPeer: updateSource,
+	}
+}
+
+func (s *server) UpdatePeerMinerHeights(latestBlkHash *chainhash.Hash, latestHeight int32, updateSource *peer.Peer) {
+	s.peerMinerHeightsUpdate <- updatePeerHeightsMsg{
 		newHash:    latestBlkHash,
 		newHeight:  latestHeight,
 		originPeer: updateSource,
@@ -2303,6 +2413,7 @@ func (s *server) Start() {
 	// Start the CPU miner if generation is enabled.
 	if cfg.Generate {
 		s.cpuMiner.Start()
+		s.minerMiner.Start()
 	}
 }
 
@@ -2319,6 +2430,7 @@ func (s *server) Stop() error {
 
 	// Stop the CPU miner if needed
 	s.cpuMiner.Stop()
+	s.minerMiner.Stop()
 
 	// Shutdown the RPC server if it's not disabled.
 	if !cfg.DisableRPC {
@@ -2533,7 +2645,7 @@ func setupRPCListeners() ([]net.Listener, error) {
 // newServer returns a new btcd server configured to listen on addr for the
 // bitcoin network type specified by chainParams.  Use start to begin accepting
 // connections from peers.
-func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Params, interrupt <-chan struct{}) (*server, error) {
+func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chaincfg.Params, interrupt <-chan struct{}) (*server, error) {
 	services := defaultServices
 	if cfg.NoPeerBloomFilters {
 		services &^= common.SFNodeBloom
@@ -2573,8 +2685,10 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 		quit:                 make(chan struct{}),
 		modifyRebroadcastInv: make(chan interface{}),
 		peerHeightsUpdate:    make(chan updatePeerHeightsMsg),
+		peerMinerHeightsUpdate: make(chan updatePeerHeightsMsg),
 		nat:                  nat,
 		db:                   db,
+		minerdb:			  minerdb,
 		timeSource:           blockchain.NewMedianTime(),
 		services:             services,
 //		sigCache:             NewSigCache(cfg.SigCacheMaxSize),
@@ -2630,6 +2744,7 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 	var err error
 	s.chain, err = minerchain.New(&blockchain.Config{
 		DB:           s.db,
+		MinerDB:      s.minerdb,
 		Interrupt:    interrupt,
 		ChainParams:  s.chainParams,
 		Checkpoints:  checkpoints,
@@ -2728,11 +2843,22 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 	blockTemplateGenerator := mining.NewBlkTmplGenerator(&policy,
 		s.chainParams, s.txMemPool, s.chain, s.timeSource)
 //		s.sigCache, s.hashCache)
+	// This is the miner for Tx chain
 	s.cpuMiner = cpuminer.New(&cpuminer.Config{
 		ChainParams:            chainParams,
 		BlockTemplateGenerator: blockTemplateGenerator,
 		MiningAddrs:            cfg.miningAddrs,
+		PrivKeys:				cfg.privKeys,
 		ProcessBlock:           s.syncManager.ProcessBlock,
+		ConnectedCount:         s.ConnectedCount,
+		IsCurrent:              s.syncManager.IsCurrent,
+	})
+	// This is the miner for miner chain
+	s.minerMiner = minerchain.NewMiner(&minerchain.Config{
+		ChainParams:            chainParams,
+		BlockTemplateGenerator: blockTemplateGenerator,
+		MiningAddrs:            cfg.miningAddrs,
+		ProcessBlock:           s.syncManager.ProcessMinerBlock,
 		ConnectedCount:         s.ConnectedCount,
 		IsCurrent:              s.syncManager.IsCurrent,
 	})
@@ -2839,6 +2965,7 @@ func newServer(listenAddrs []string, db database.DB, chainParams *chaincfg.Param
 			Chain:        s.chain,
 			ChainParams:  chainParams,
 			DB:           db,
+			MinerDB:	  minerdb,
 			TxMemPool:    s.txMemPool,
 			Generator:    blockTemplateGenerator,
 			CPUMiner:     s.cpuMiner,

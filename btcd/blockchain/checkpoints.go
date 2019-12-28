@@ -98,7 +98,7 @@ func (b *BlockChain) findPreviousCheckpoint() (*blockNode, error) {
 		// that is already available.
 		for i := numCheckpoints - 1; i >= 0; i-- {
 			node := b.index.LookupNode(checkpoints[i].Hash)
-			if node == nil || !b.bestChain.Contains(node) {
+			if node == nil || !b.BestChain.Contains(node) {
 				continue
 			}
 
@@ -129,7 +129,7 @@ func (b *BlockChain) findPreviousCheckpoint() (*blockNode, error) {
 	// When there is a next checkpoint and the height of the current best
 	// chain does not exceed it, the current checkpoint lockin is still
 	// the latest known checkpoint.
-	if b.bestChain.Tip().height < b.nextCheckpoint.Height {
+	if b.BestChain.Tip().height < b.nextCheckpoint.Height {
 		return b.checkpointNode, nil
 	}
 
@@ -199,12 +199,12 @@ func isNonstandardTransaction(tx *btcutil.Tx) bool {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) IsCheckpointCandidate(block *btcutil.Block) (bool, error) {
-	b.chainLock.RLock()
-	defer b.chainLock.RUnlock()
+	b.ChainLock.RLock()
+	defer b.ChainLock.RUnlock()
 
 	// A checkpoint must be in the main chain.
 	node := b.index.LookupNode(block.Hash())
-	if node == nil || !b.bestChain.Contains(node) {
+	if node == nil || !b.BestChain.Contains(node) {
 		return false, nil
 	}
 
@@ -219,7 +219,7 @@ func (b *BlockChain) IsCheckpointCandidate(block *btcutil.Block) (bool, error) {
 
 	// A checkpoint must be at least CheckpointConfirmations blocks
 	// before the end of the main chain.
-	mainChainHeight := b.bestChain.Tip().height
+	mainChainHeight := b.BestChain.Tip().height
 	if node.height > (mainChainHeight - CheckpointConfirmations) {
 		return false, nil
 	}
@@ -229,7 +229,7 @@ func (b *BlockChain) IsCheckpointCandidate(block *btcutil.Block) (bool, error) {
 	// This should always succeed since the check above already made sure it
 	// is CheckpointConfirmations back, but be safe in case the constant
 	// changes.
-	nextNode := b.bestChain.Next(node)
+	nextNode := b.BestChain.Next(node)
 	if nextNode == nil {
 		return false, nil
 	}

@@ -5,18 +5,17 @@
 package main
 
 import (
-	"github.com/btcsuite/btcutil"
-	_ "net/http/pprof"
-	"time"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcd/blockchain"
 	"fmt"
-	"os"
-	"github.com/vsergeev/btckeygenie/btckey"
-	"log"
+	"github.com/btcsuite/btcd/blockchain"
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/token"
+	"github.com/vsergeev/btckeygenie/btckey"
+	_ "net/http/pprof"
+	"os"
+	"time"
 )
 
 type geoCoords struct {
@@ -24,15 +23,14 @@ type geoCoords struct {
 	Lng float64
 }
 
-/*
 func solveGenesisBlock(msgBlock *wire.MsgBlock, bits uint32) {
 	// Create some convenience variables.
 	header := &msgBlock.Header
 	targetDifficulty := blockchain.CompactToBig(bits)
 
-	log.Printf("targetDifficulty = %s\n", targetDifficulty.String())
+//	log.Printf("targetDifficulty = %s\n", targetDifficulty.String())
 
-	for i := int32(0); true; i++ {
+	for i := int32(1); true; i++ {
 		// Update the nonce and hash the block header.  Each
 		// hash is actually a double sha256 (two hashes), so
 		// increment the number of hashes completed for each
@@ -40,7 +38,7 @@ func solveGenesisBlock(msgBlock *wire.MsgBlock, bits uint32) {
 		header.Nonce = i
 		hash := header.BlockHash()
 
-		log.Printf("%d: solve = %s\n", i, blockchain.HashToBig(&hash).String())
+//		log.Printf("%d: solve = %s\n", i, blockchain.HashToBig(&hash).String())
 
 		// The block is solved when the new block hash is less
 		// than the target difficulty.  Yay!
@@ -49,13 +47,12 @@ func solveGenesisBlock(msgBlock *wire.MsgBlock, bits uint32) {
 		}
 	}
 }
-*/
 
 func solveMinerBlock(header *wire.NewNodeBlock) {
 	// Create some convenience variables.
 	targetDifficulty := blockchain.CompactToBig(header.Bits)
 
-	log.Printf("targetDifficulty = %s\n", targetDifficulty.String())
+//	log.Printf("targetDifficulty = %s\n", targetDifficulty.String())
 
 	for i := int32(0); true; i++ {
 		// Update the nonce and hash the block header.  Each
@@ -65,7 +62,7 @@ func solveMinerBlock(header *wire.NewNodeBlock) {
 		header.Nonce = i
 		hash := header.BlockHash()
 
-		log.Printf("%d: solve = %s\n", i, blockchain.HashToBig(&hash).String())
+//		log.Printf("%d: solve = %s\n", i, blockchain.HashToBig(&hash).String())
 
 		// The block is solved when the new block hash is less
 		// than the target difficulty.  Yay!
@@ -76,12 +73,14 @@ func solveMinerBlock(header *wire.NewNodeBlock) {
 }
 
 func main() {
-	log.Printf("Begin\n")
-
 	var priv btckey.PrivateKey
 
 	// for main net
 	priv.FromWIF("cQdPVU5KSzLkD1rhvLJztvpWBu9TrVAE2iPxfgEQrzWuS5xLNRX6")
+
+	dwif,_ := btcutil.DecodeWIF("cQdPVU5KSzLkD1rhvLJztvpWBu9TrVAE2iPxfgEQrzWuS5xLNRX6")
+
+	privKey := dwif.PrivKey
 
 	// generate initial polygon representing the globe
 	var vertices = []geoCoords {	// international date line
@@ -109,16 +108,16 @@ func main() {
 	}
 
 	fmt.Printf("// This is generated code. Should not be manually modified.\n\n" +
-		"package omega\n\n" +
-		"\n\nimport (\n\t\"time\"\n" +
-		"\n\t\"github.com/btcsuite/btcd/chaincfg/chainhash\"\n"+
-		"\n\t\"github.com/btcsuite/btcd/wire\"\n" +
+		"package omega" +
+		"\n\nimport (\n\t\"time\"" +
+		"\n\t\"github.com/btcsuite/btcd/chaincfg/chainhash\""+
+		"\n\t\"github.com/btcsuite/btcd/wire\"" +
 		"\n\t\"github.com/btcsuite/omega/token\"\n)\n\n" +
 		"var IntlDateLine = [][2]float64 {	// international date line")
 	for _, v := range vertices {
-		fmt.Printf("\n\t{ %f, %f },\n", v.Lat, v.Lng)
+		fmt.Printf("\n\t{ %f, %f },", v.Lat, v.Lng)
 	}
-	fmt.Printf("}\n\nvar InitDefs = []token.Definition{")
+	fmt.Printf("\n}\n\nvar InitDefs = []token.Definition{")
 
 	m := len(vertices)
 
@@ -164,39 +163,12 @@ func main() {
 	uright := token.NewRightDef(chainhash.Hash{}, []byte("All Rights"), 3)
 	defs = append(defs, uright)
 
-	for _,d := range defs {
-		switch d.DefType() {
-		case token.DefTypeVertex:
-			v := d.(*token.VertexDef)
-			fmt.Printf("\n\t&token.VertexDef {\n\t\t Lat: %d,\n\t\tLng: %d,\n\t},", v.Lat, v.Lng)
-		case token.DefTypeBorder:
-			v := d.(*token.BorderDef)
-			fmt.Printf("\n\t&token.BorderDef {\n\t\tFather: ")
-			if v.Father.IsEqual(&chainhash.Hash{}) {
-				fmt.Printf("chainhash.Hash{}")
-			} else {
-				printhash(v.Father)
-			}
-			fmt.Printf(",\n\t\tBegin: ")
-			printhash(v.Begin)
-			fmt.Printf(",\n\t\tEnd: ")
-			printhash(v.End)
-			fmt.Printf(",\n\t},")
-		case token.DefTypePolygon:
-			v := d.(*token.PolygonDef)
-			fmt.Printf("\n\t&token.PolygonDef {	Loops: []token.LoopDef{{\n\t\t")
-			printhash(v.Loops[0][0])
-			printhash(v.Loops[0][1])
-			printhash(v.Loops[0][2])
-			printhash(v.Loops[0][3])
-			fmt.Printf(" },\n\t\t},\n\t},")
-		case token.DefTypeRight:
-			v := d.(*token.RightDef)
-			fmt.Printf("\n\t&token.RightDef {Father: chainhash.Hash{},")
-			fmt.Printf("\n\t\tDesc: []byte(\"%s\"),", v.Desc)
-			fmt.Printf("\n\t\tAttrib: %d,\n\t},", v.Attrib)
-		}
-	}
+	printdef(defs)
+
+	fmt.Printf("\n\nvar coinToken = token.Token{\n\t" +
+		"TokenType: 0,\n\t" +
+		"Value: &token.NumToken{Val: 5000000000},\n\t" +
+		"Rights: &chainhash.Hash{},\n}")
 
 	// genesisCoinbaseTx is the coinbase transaction for the genesis blocks for
 	// the main network, regression test network, and test network (version 3).
@@ -227,7 +199,7 @@ func main() {
 					Hash:  chainhash.Hash{},
 					Index: 0xffffffff,
 				},
-				SignatureIndex: 0,
+				SignatureIndex: 0xffffffff,
 				Sequence: 0xffffffff,
 			},
 		},
@@ -241,7 +213,6 @@ func main() {
 	genesisCoinbaseTx.TxOut[0].TokenType = 0
 	genesisCoinbaseTx.TxOut[0].Value = &token.NumToken{Val: 0x12a05f200}
 	genesisCoinbaseTx.TxOut[0].Rights = &chainhash.Hash{}
-	genesisCoinbaseTx.SignatureScripts = nil
 
 	var genesisInitPolygonTx = wire.MsgTx{
 		Version: 1,
@@ -272,9 +243,6 @@ func main() {
 	// for the main network.
 	var genesisMerkleRoot = merkles[len(merkles) - 1]
 
-	fmt.Printf("genesisMerkleRoot: ")
-	printhash(*genesisMerkleRoot)
-
 	// genesisBlock defines the genesis block of the block chain which serves as the
 	// public transaction ledger for the main network.
 	var genesisBlock = wire.MsgBlock{
@@ -283,14 +251,61 @@ func main() {
 			PrevBlock:  chainhash.Hash{},         // 0000000000000000000000000000000000000000000000000000000000000000
 			MerkleRoot: *genesisMerkleRoot,        // 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
 			Timestamp:  time.Now(),
-//			Bits:       0x1f00ffff,               // 486604799 [00000000ffff0000000000000000000000000000000000000000000000000000]
 			Nonce:      0,
 		},
 		Transactions: []*wire.MsgTx{&genesisCoinbaseTx, &genesisInitPolygonTx},
 	}
 
-//	solveGenesisBlock(&genesisBlock, 0x1f00ffff)
+	solveGenesisBlock(&genesisBlock, 0x1f00ffff)
 	var genesisHash = genesisBlock.Header.BlockHash()
+
+	gotSig, _ := privKey.Sign(genesisHash[:])
+	gotSigBytes := gotSig.Serialize()
+	genesisCoinbaseTx.SignatureScripts = [][]byte{gotSigBytes}
+
+	printCoinbase("genesisCoinbaseTx", gotSigBytes, true)
+
+	fmt.Printf("\n\nvar polygonToken = token.Token{" +
+		"\n\tTokenType: 3," +
+		"\n\tValue: &token.HashToken{Hash: ")
+	printhash(polygon.Hash())
+
+	fmt.Printf("},\n\tRights: &")
+	printhash(uright.Hash())
+	fmt.Printf("," + "\n}")
+
+	fmt.Printf("\n\nvar genesisInitPolygonTx = wire.MsgTx{" +
+		"\n\tVersion: 1," +
+		"\n\tTxDef: InitDefs," +
+		"\n\tTxIn: []*wire.TxIn{}," +
+		"\n\tTxOut: []*wire.TxOut{" +
+		"\n\t\t{" +
+		"\n\t\t\tToken: polygonToken," +
+		"\n\t\t\tPkScript: []byte{" +
+		"\n\t\t\t\t0x6f, 0x2f, 0xe0, 0xef, 0x92, 0x85, 0xa1, 0x0e, 0x86, 0x0c, 0x25, 0xe0," +
+		"\n\t\t\t\t0x3c, 0x3f, 0xf8, 0x59, 0x93, 0xd3, 0xff, 0xc3, 0x5e, 0x41, 0x00, 0x00, 0x00," +
+		"\n\t\t\t}," +
+		"\n\t\t}," +
+		"\n\t}," +
+		"\n\tLockTime: 0," +
+		"\n\t}")
+
+	fmt.Printf("\n\nvar GenesisMerkleRoot = ")
+	printhash(*genesisMerkleRoot)
+
+	fmt.Printf("\n\nvar GenesisBlock = wire.MsgBlock{" +
+		"\n\tHeader: wire.BlockHeader{" +
+		"\n\t\tVersion:    0x10000000," +
+		"\n\t\tPrevBlock:  chainhash.Hash{}," +
+		"\n\t\tMerkleRoot: GenesisMerkleRoot," +
+		"\n\t\tTimestamp:  time.Unix(0x%x, 0), " +
+		"\n\t\tNonce:      %d," +
+		"\n\t}," +
+		"\n\tTransactions: []*wire.MsgTx{&genesisCoinbaseTx, &genesisInitPolygonTx}," +
+		"\n}", genesisBlock.Header.Timestamp.Unix(), genesisBlock.Header.Nonce)
+
+	fmt.Printf("\n\nvar creator = []byte{0x2f, 0xe0, 0xef, 0x92, 0x85, 0xa1, 0xe, 0x86, 0xc, 0x25," +
+		"\n\t0xe0, 0x3c, 0x3f, 0xf8, 0x59, 0x93, 0xd3, 0xff, 0xc3, 0x5e, }")
 
 	var minerBlock = wire.NewNodeBlock{
 		Version:       0x10000000,
@@ -308,13 +323,25 @@ func main() {
 	// network (genesis block)
 
 //	var genesisHash = genesisBlock.BlockHash()
-	fmt.Printf("genesisHash: ")
+	fmt.Printf("\n\nvar  GenesisHash = []chainhash.Hash{\n")
 	printhash(genesisHash)
+	fmt.Printf(",\n")
 
 	var genesisMinerHash = minerBlock.BlockHash()
 
-	fmt.Printf("genesisMinerHash: ")
 	printhash(genesisMinerHash)
+	fmt.Printf(",\n}")
+
+	fmt.Printf("\n\nvar GenesisMinerBlock = wire.NewNodeBlock{" +
+		"\n\tVersion:    GenesisBlock.Header.Version," +
+		"\n\tPrevBlock:  chainhash.Hash{}," +
+		"\n\tReferredBlock: GenesisHash[0]," +
+		"\n\tBestBlock: GenesisHash[0]," +
+		"\n\tTimestamp:  GenesisBlock.Header.Timestamp, " +
+		"\n\tBits:      0x%x," +
+		"\n\tNonce:      %d," +
+		"\n\tNewnode: creator," +
+	"\n}", minerBlock.Bits, minerBlock.Nonce)
 
 	// regTestGenesisMerkleRoot is the hash of the first transaction in the genesis
 	// block for the regression test network.  It is the same as the merkle root for
@@ -335,14 +362,19 @@ func main() {
 		Transactions: []*wire.MsgTx{&genesisCoinbaseTx, &genesisInitPolygonTx},
 	}
 
-//	solveGenesisBlock(&regTestGenesisBlock, 0x1f7fffff)
+	solveGenesisBlock(&regTestGenesisBlock, 0x1f7fffff)
 
 	// regTestGenesisHash is the hash of the first block in the block chain for the
 	// regression test network (genesis block).
 //	var regTestGenesisHash = regTestGenesisBlock.BlockHash()
 	var regTestGenesisHash = regTestGenesisBlock.Header.BlockHash()
-	fmt.Printf("\n regTestGenesisHash: ")
+	fmt.Printf("\n\nvar RegTestGenesisHash = []chainhash.Hash{\n")
 	printhash(regTestGenesisHash)
+	fmt.Printf(",\n")
+
+	gotSig, _ = privKey.Sign(regTestGenesisHash[:])
+	gotSigBytes = gotSig.Serialize()
+	regTestGenesisBlock.Transactions[0].SignatureScripts = [][]byte{gotSigBytes}
 
 	var regTestGenesisMinerBlock = wire.NewNodeBlock{
 		Version:       0x10000000,
@@ -356,9 +388,32 @@ func main() {
 	}
 	solveMinerBlock(&regTestGenesisMinerBlock)
 	var regTestGenesisMinerHash = regTestGenesisMinerBlock.BlockHash()
-	fmt.Printf("\n regTestGenesisMinerHash: ")
 	printhash(regTestGenesisMinerHash)
+	fmt.Printf(",\n}\n\nvar RegTestGenesisMerkleRoot = GenesisMerkleRoot")
 
+	printCoinbase("regGenesisCoinbaseTx", gotSigBytes, false)
+
+	fmt.Printf("\n\nvar RegTestGenesisBlock = wire.MsgBlock{" +
+		"\n\tHeader: wire.BlockHeader{" +
+		"\n\t\tVersion:    0x10000000," +
+		"\n\t\tPrevBlock:  chainhash.Hash{}," +
+		"\n\t\tMerkleRoot: RegTestGenesisMerkleRoot," +
+		"\n\t\tTimestamp:  time.Unix(0x%x, 0), " +
+		"\n\t\tNonce:      %d," +
+		"\n\t}," +
+		"\n\tTransactions: []*wire.MsgTx{&regGenesisCoinbaseTx, &genesisInitPolygonTx}," +
+		"\n}", regTestGenesisBlock.Header.Timestamp.Unix(), regTestGenesisBlock.Header.Nonce)
+
+	fmt.Printf("\n\nvar RegTestGenesisMinerBlock = wire.NewNodeBlock{" +
+		"\n\tVersion:    RegTestGenesisBlock.Header.Version," +
+		"\n\tPrevBlock:  chainhash.Hash{}," +
+		"\n\tReferredBlock: RegTestGenesisHash[0]," +
+		"\n\tBestBlock: RegTestGenesisHash[0]," +
+		"\n\tTimestamp:  RegTestGenesisBlock.Header.Timestamp, " +
+		"\n\tBits:      0x%x," +
+		"\n\tNonce:      %d," +
+		"\n\tNewnode: creator," +
+		"\n}", regTestGenesisMinerBlock.Bits, regTestGenesisMinerBlock.Nonce)
 
 	// testNet3GenesisMerkleRoot is the hash of the first transaction in the genesis
 	// block for the test network (version 3).  It is the same as the merkle root
@@ -379,14 +434,19 @@ func main() {
 		Transactions: []*wire.MsgTx{&genesisCoinbaseTx, &genesisInitPolygonTx},
 	}
 
-//	solveGenesisBlock(&testNet3GenesisBlock, 0x1f00ffff)
+	solveGenesisBlock(&testNet3GenesisBlock, 0x1f00ffff)
 
 	// testNet3GenesisHash is the hash of the first block in the block chain for the
 	// test network (version 3).
 //	var testNet3GenesisHash = testNet3GenesisBlock.BlockHash()
 	var testNet3GenesisHash = testNet3GenesisBlock.Header.BlockHash()
-	fmt.Printf("\n testNet3GenesisHash: ")
+	fmt.Printf("\n\nvar TestNet3GenesisHash = []chainhash.Hash{\n")
 	printhash(testNet3GenesisHash)
+	fmt.Printf(",\n")
+
+	gotSig, _ = privKey.Sign(testNet3GenesisHash[:])
+	gotSigBytes = gotSig.Serialize()
+	testNet3GenesisBlock.Transactions[0].SignatureScripts = [][]byte{gotSigBytes}
 
 	var testNet3GenesisMinerBlock = wire.NewNodeBlock{
 		Version:       0x10000000,
@@ -400,8 +460,32 @@ func main() {
 	}
 	solveMinerBlock(&testNet3GenesisMinerBlock)
 	var testNet3GenesisMinerHash = testNet3GenesisMinerBlock.BlockHash()
-	fmt.Printf("\n testNet3GenesisMinerHash: ")
 	printhash(testNet3GenesisMinerHash)
+	fmt.Printf(",\n}\n\nvar TestNet3GenesisMerkleRoot = GenesisMerkleRoot")
+
+	printCoinbase("test3netgenesisCoinbaseTx", gotSigBytes, false)
+
+	fmt.Printf("\n\nvar TestNet3GenesisBlock = wire.MsgBlock{" +
+		"\n\tHeader: wire.BlockHeader{" +
+		"\n\t\tVersion:    0x10000000," +
+		"\n\t\tPrevBlock:  chainhash.Hash{}," +
+		"\n\t\tMerkleRoot: TestNet3GenesisMerkleRoot," +
+		"\n\t\tTimestamp:  time.Unix(0x%x, 0), " +
+		"\n\t\tNonce:      %d," +
+		"\n\t}," +
+		"\n\tTransactions: []*wire.MsgTx{&test3netgenesisCoinbaseTx, &genesisInitPolygonTx}," +
+		"\n}", testNet3GenesisBlock.Header.Timestamp.Unix(), testNet3GenesisBlock.Header.Nonce)
+
+	fmt.Printf("\n\nvar TestNet3GenesisMinerBlock = wire.NewNodeBlock{" +
+		"\n\tVersion:    TestNet3GenesisBlock.Header.Version," +
+		"\n\tPrevBlock:  chainhash.Hash{}," +
+		"\n\tReferredBlock: TestNet3GenesisHash[0]," +
+		"\n\tBestBlock: TestNet3GenesisHash[0]," +
+		"\n\tTimestamp:  TestNet3GenesisBlock.Header.Timestamp, " +
+		"\n\tBits:      0x%x," +
+		"\n\tNonce:      %d," +
+		"\n\tNewnode: creator," +
+		"\n}", testNet3GenesisMinerBlock.Bits, testNet3GenesisMinerBlock.Nonce)
 
 	// simNetGenesisMerkleRoot is the hash of the first transaction in the genesis
 	// block for the simulation test network.  It is the same as the merkle root for
@@ -422,14 +506,19 @@ func main() {
 		Transactions: []*wire.MsgTx{&genesisCoinbaseTx, &genesisInitPolygonTx},
 	}
 
-//	solveGenesisBlock(&simNetGenesisBlock, 0x1f7fffff)
+	solveGenesisBlock(&simNetGenesisBlock, 0x1f7fffff)
 
 	// simNetGenesisHash is the hash of the first block in the block chain for the
 	// simulation test network.
 //	var simNetGenesisHash = simNetGenesisBlock.BlockHash()
 	var simNetGenesisHash = simNetGenesisBlock.Header.BlockHash()
-	fmt.Printf("\n simNetGenesisHash: ")
+	fmt.Printf("\n\nvar SimNetGenesisHash = []chainhash.Hash{\n")
 	printhash(simNetGenesisHash)
+	fmt.Printf(",\n")
+
+	gotSig, _ = privKey.Sign(simNetGenesisHash[:])
+	gotSigBytes = gotSig.Serialize()
+	simNetGenesisBlock.Transactions[0].SignatureScripts = [][]byte{gotSigBytes}
 
 	var simNetGenesisMinerBlock = wire.NewNodeBlock{
 		Version:       0x10000000,
@@ -443,38 +532,90 @@ func main() {
 	}
 	solveMinerBlock(&simNetGenesisMinerBlock)
 	var simNetGenesisMinerHash = simNetGenesisMinerBlock.BlockHash()
-	fmt.Printf("\n simNetGenesisMinerHash: ")
 	printhash(simNetGenesisMinerHash)
 
-	var witnessMerkleTree = blockchain.BuildMerkleTreeStore([]*btcutil.Tx{btcutil.NewTx(&genesisCoinbaseTx), btcutil.NewTx(&genesisInitPolygonTx)}, true)
-	var witnessMerkleRoot = witnessMerkleTree[len(witnessMerkleTree)-1]
+	fmt.Printf(",\n}\n\nvar SimNetGenesisMerkleRoot = GenesisMerkleRoot")
+	printCoinbase("simnetgenesisCoinbaseTx", gotSigBytes, false)
 
-	fmt.Printf("\n witnessMerkleRoot\n")
-	printhash(*witnessMerkleRoot)
+	fmt.Printf("\n\nvar SimNetGenesisBlock = wire.MsgBlock{" +
+		"\n\tHeader: wire.BlockHeader{" +
+		"\n\t\tVersion:    0x10000000," +
+		"\n\t\tPrevBlock:  chainhash.Hash{}," +
+		"\n\t\tMerkleRoot: SimNetGenesisMerkleRoot," +
+		"\n\t\tTimestamp:  time.Unix(0x%x, 0), " +
+		"\n\t\tNonce:      %d," +
+		"\n\t}," +
+		"\n\tTransactions: []*wire.MsgTx{&simnetgenesisCoinbaseTx, &genesisInitPolygonTx}," +
+		"\n}", simNetGenesisBlock.Header.Timestamp.Unix(), simNetGenesisBlock.Header.Nonce)
 
-	fmt.Printf("\n defs\n")
-	printdef(defs)
+	fmt.Printf("\n\nvar SimNetGenesisMinerBlock = wire.NewNodeBlock{" +
+		"\n\tVersion:    SimNetGenesisBlock.Header.Version," +
+		"\n\tPrevBlock:  chainhash.Hash{}," +
+		"\n\tReferredBlock: SimNetGenesisHash[0]," +
+		"\n\tBestBlock: SimNetGenesisHash[0]," +
+		"\n\tTimestamp:  SimNetGenesisBlock.Header.Timestamp, " +
+		"\n\tBits:      0x%x," +
+		"\n\tNonce:      %d," +
+		"\n\tNewnode: creator," +
+		"\n}", simNetGenesisMinerBlock.Bits, simNetGenesisMinerBlock.Nonce)
+}
 
-	fmt.Printf("\n genesisBlock\n")
-	printblock(genesisBlock)
-	fmt.Printf("\n genesisBlock\n")
-	printminerblock(minerBlock)
-	fmt.Printf("\n regTestGenesisBlock\n")
-	printblock(regTestGenesisBlock)
-	fmt.Printf("\n regTestGenesisBlock\n")
-	printminerblock(regTestGenesisMinerBlock)
-	fmt.Printf("\n testNet3GenesisBlock\n")
-	printblock(testNet3GenesisBlock)
-	fmt.Printf("\n testNet3GenesisBlock\n")
-	printminerblock(testNet3GenesisMinerBlock)
-	fmt.Printf("\n simNetGenesisBlock\n")
-	printblock(simNetGenesisBlock)
-	fmt.Printf("\n simNetGenesisMinerBlock\n")
-	printminerblock(simNetGenesisMinerBlock)
+func printCoinbase(name string, gotSigBytes []byte, full bool) {
+	if !full {
+		fmt.Printf("\n\nvar %s = genesisCoinbaseTx", name)
+		return
+	}
+
+	fmt.Printf("\n\nvar %s = wire.MsgTx{" +
+		"\n\tVersion: 1," +
+		"\n\tTxDef: []token.Definition{},", name)
+	if full {
+		fmt.Printf("\n\tTxIn: []*wire.TxIn{"+
+			"\n\t\t{"+
+			"\n\t\t\tPreviousOutPoint: wire.OutPoint{"+
+			"\n\t\t\tHash:  chainhash.Hash{},"+
+			"\n\t\t\tIndex: 0xffffffff,"+
+			"\n\t\t},"+
+			"\n\t\tSignatureIndex: 0xffffffff,"+
+			"\n\t\tSequence: 0xffffffff,"+
+			"\n\t},"+
+			"\n\t},"+
+			"\n\tTxOut: []*wire.TxOut{"+
+			"\n\t\t{"+
+			"\n\t\t\tToken:coinToken,"+
+			"\n\t\t\tPkScript: []byte{"+
+			"\n\t\t\t\t0x6f, 0x2f, 0xe0, 0xef, 0x92, 0x85, 0xa1, 0x0e, 0x86, 0x0c, 0x25, 0xe0,"+
+			"\n\t\t\t\t0x3c, 0x3f, 0xf8, 0x59, 0x93, 0xd3, 0xff, 0xc3, 0x5e, 0x41, 0x00, 0x00, 0x00,"+
+			"\n\t\t\t},"+
+			"\n\t\t},"+
+			"\n\t}," +
+			"\n\tSignatureScripts: [][]byte { []byte{")
+	} else {
+		fmt.Printf("\n\tTxIn: genesisCoinbaseTx.TxIn,"+
+			"\n\tTxOut: genesisCoinbaseTx.TxOut," +
+			"\n\tSignatureScripts: [][]byte { []byte{")
+	}
+
+	// the first item in coinbase SignatureScripts is merkle root of signatures in the block
+	// for genesis block, as there is no signature, it is zero hash
+	for i := 0; i < 4; i++ {
+		fmt.Printf("\n\t\t0, 0, 0, 0, 0, 0, 0, 0, ")
+	}
+/*
+	for i := 0; i < len(gotSigBytes); i++ {
+		if i % 8 == 0 {
+			fmt.Printf("\n\t\t")
+		}
+		fmt.Printf("0x%02x, ", gotSigBytes[i])
+	}
+ */
+	fmt.Printf("\n\t} }," +
+		"\n\tLockTime: 0," +
+		"\n\t}")
 }
 
 func printhash(h chainhash.Hash) {
-	fmt.Printf("chainhash.Hash([chainhash.HashSize]byte{")
+	fmt.Printf("chainhash.Hash{")
 	hb := h.CloneBytes()
 	i := 0
 	for _,b := range hb {
@@ -484,7 +625,7 @@ func printhash(h chainhash.Hash) {
 		i++
 		fmt.Printf("0x%02x, ", b)
 	}
-	fmt.Printf("\n\t}),")
+	fmt.Printf("\n\t}")
 }
 
 func printminerblock(blk wire.NewNodeBlock) {
@@ -513,11 +654,11 @@ func printblock(blk wire.MsgBlock) {
 				fmt.Printf("Hash: ")
 				printhash(*h)
 			}
-			fmt.Printf("\n\t\t\tRights: ")
+			fmt.Printf(",\n\t\t\tRights: ")
 
 			printhash(*to.Rights)
 
-			fmt.Printf("\n\t\t\tPkScript: [")
+			fmt.Printf(",\n\t\t\tPkScript: [")
 			for _,r := range to.PkScript {
 				fmt.Printf("0x%02x, ", r)
 			}
@@ -527,43 +668,47 @@ func printblock(blk wire.MsgBlock) {
 	}
 }
 
+
 func printdef(def []token.Definition) {
-	fmt.Printf("Definitions\n")
 	for _,f := range def {
 		switch f.(type) {
 		case *token.VertexDef:
 			v := f.(*token.VertexDef)
-			fmt.Printf("&token.VertexDef {\n\tLat: %d,\n\tLng: %d,\n},\n",
-				v.Lat, v.Lng)
+			fmt.Printf("\n\t&token.VertexDef {\n\t\tLat: %d,\n\t\tLng: %d,\n\t},", v.Lat, v.Lng)
 			break
 		case *token.BorderDef:
 			v := f.(*token.BorderDef)
-			fmt.Printf("&token.BorderDef {\n\tFather: ");
-			printhash(v.Father)
-			fmt.Printf("\n\tBegin: ")
+			fmt.Printf("\n\t&token.BorderDef {\n\t\tFather: ");
+			if v.Father.IsEqual(&chainhash.Hash{}) {
+				fmt.Printf("chainhash.Hash{}")
+			} else {
+				printhash(v.Father)
+			}
+			fmt.Printf(",\n\t\tBegin: ")
 			printhash(v.Begin)
-			fmt.Printf("\n\tEnd: ")
+			fmt.Printf(",\n\t\tEnd: ")
 			printhash(v.End)
-			fmt.Printf("\n},\n")
+			fmt.Printf(",\n\t},")
 			break
 		case *token.PolygonDef:
 			v := f.(*token.PolygonDef)
-			fmt.Printf("&token.PolygonDef {");
+			fmt.Printf("\n\t&token.PolygonDef {");
 			for i,l := range v.Loops {
-				fmt.Printf("\tLoops: []wire.LoopDef{{	// Loop %d:\n", i)
+				fmt.Printf("\tLoops: []token.LoopDef{{	// Loop %d:\n\t\t", i)
 				for _,h := range l {
 					printhash(h)
+					fmt.Printf(",\n\t\t")
 				}
 				fmt.Printf("\t},\n")
 			}
-			fmt.Printf("},\n},\n")
+			fmt.Printf("\t\t},\n\t},")
 			break
 		case *token.RightDef:
 			v := f.(*token.RightDef)
-			fmt.Printf("&token.RightDef {Father: ")
-			printhash(v.Father)
-			fmt.Printf("\n\tDesc: []byte(\"%s\"),\n\tAttrib: %d,\n},\n", v.Desc, v.Attrib)
+			fmt.Printf("\n\t&token.RightDef {Father: chainhash.Hash{},")
+			fmt.Printf("\n\t\tDesc: []byte(\"%s\"),\n\t\tAttrib: %d,\n\t},", v.Desc, v.Attrib)
 			break
 		}
 	}
+	fmt.Printf("\n}")
 }

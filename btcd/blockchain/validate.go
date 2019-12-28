@@ -5,7 +5,11 @@
 package blockchain
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
+	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/wire/common"
 	"math"
 	"math/big"
 	"time"
@@ -307,7 +311,11 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 // The flags modify the behavior of this function as follows:
 //  - BFNoPoWCheck: The check to ensure the block hash is less than the target
 //    difficulty is not performed.
-func checkProofOfWork(header *wire.BlockHeader, powLimit *big.Int, flags BehaviorFlags, bits uint32) error {
+func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, powLimit *big.Int, flags BehaviorFlags) error {
+	bits := b.BestSnapshot().Bits
+	rotate := b.BestSnapshot().LastRotation
+	header := &block.MsgBlock().Header
+
 	if header.Nonce > 0 {
 		// The target difficulty must be larger than zero.
 		target := CompactToBig(bits)
@@ -336,10 +344,88 @@ func checkProofOfWork(header *wire.BlockHeader, powLimit *big.Int, flags Behavio
 				return ruleError(ErrHighHash, str)
 			}
 		}
-	} else {
-		// get parent = previous block
-		// if parent.Nonce > 0 && header.Nonce < 0 { error }
-		// if parent.Nonce < 0 && header.Nonce != -((-parent.Nonce + 1) % ROT) { error }
+	} else if parent != nil {
+		// examine nonce
+		if parent.Header().Nonce > 0 {
+			// if previous block was a POW block, this block must be either a POW block, or a rotate
+			// block that phase out all the previous committee members
+			if header.Nonce != - int32(rotate + wire.MINER_RORATE_FREQ + 1) {
+				str := fmt.Sprintf("The previous block was a POW block, this block must be either a POW block, or a rotate block that phase out all the previous committee members.")
+				return ruleError(ErrHighHash, str)
+			}
+//			rotate++
+		} else {
+			switch {
+			case parent.Header().Nonce == -(wire.MINER_RORATE_FREQ - 1):
+				// this is a rotation block, nonce must be -(height of next miner block)
+				if header.Nonce != - int32(rotate + 1 + wire.MINER_RORATE_FREQ) {
+					str := fmt.Sprintf("The this is a rotation block, nonce must be height of next miner block.")
+					return ruleError(ErrHighHash, str)
+				}
+//				rotate++
+			case parent.Header().Nonce <= -wire.MINER_RORATE_FREQ:
+				// previous block is a rotation block, this block none must be -1
+				if header.Nonce != -1 {
+					str := fmt.Sprintf("Previous block is a rotation block, this block nonce must be -1.")
+					return ruleError(ErrHighHash, str)
+				}
+			default:
+				if header.Nonce != -((-parent.nonce + 1) % wire.MINER_RORATE_FREQ) {
+					// if parent.Nonce < 0 && header.Nonce != -((-parent.Nonce + 1) % ROT) { error }
+					str := fmt.Sprintf("The previous block is a block in a series, this block must be the next in the series.")
+					return ruleError(ErrHighHash, str)
+				}
+			}
+		}
+
+		// examine signatures
+		w := bytes.NewBuffer(make([]byte, 0, 36))
+		binary.Write(w, common.LittleEndian, block.Height())
+		binary.Write(w, common.LittleEndian, block.Hash())
+		hash := chainhash.DoubleHashB(w.Bytes())
+
+		usigns := make(map[[20]byte]struct{})
+
+		for _,sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+			k,err := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+//			k,err := btcutil.DecodeAddress(string(sign[:33]), b.chainParams)
+			if err != nil {
+				return ruleError(ErrHighHash, "Incorrect miner signature")
+			}
+
+			pk,_ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
+//			pk := k.(*btcutil.AddressPubKey)
+
+			pkh := pk.AddressPubKeyHash().Hash160()
+			if _,ok := usigns[*pkh]; ok {
+				return ruleError(ErrHighHash, "Duplicated miner signature")
+			}
+			// is the signer in committee?
+			matched := false
+			for i := int32(0); i < wire.CommitteeSize; i++ {
+				blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
+				if bytes.Compare(pkh[:], blk.MsgBlock().Newnode) == 0 {
+					matched = true
+				}
+			}
+			if !matched {
+				return ruleError(ErrHighHash, "Unauthorized miner signature")
+			}
+
+			s,err := btcec.ParseSignature(sign[btcec.PubKeyBytesLenCompressed:], btcec.S256())
+			if err != nil {
+				return ruleError(ErrHighHash, "Incorrect miner signature")
+			}
+
+			if !s.Verify(hash, pk.PubKey()) {
+				return ruleError(ErrHighHash, "Incorrect miner signature")
+			}
+
+			usigns[*pkh] = struct {}{}
+		}
+		if len(usigns) <= wire.CommitteeSize / 2 {
+			return ruleError(ErrHighHash, "Insufficient number of miner signatures.")
+		}
 	}
 
 	return nil
@@ -348,8 +434,8 @@ func checkProofOfWork(header *wire.BlockHeader, powLimit *big.Int, flags Behavio
 // CheckProofOfWork ensures the block header bits which indicate the target
 // difficulty is in min/max range and that the block hash is less than the
 // target difficulty as claimed.
-func CheckProofOfWork(block *btcutil.Block, powLimit *big.Int, bits uint32) error {
-	return checkProofOfWork(&block.MsgBlock().Header, powLimit, BFNone, bits)
+func (b *BlockChain) CheckProofOfWork(block *btcutil.Block, parent * blockNode, powLimit *big.Int) error {
+	return b.checkProofOfWork(block, parent, powLimit, BFNone)
 }
 
 // CountSigOps returns the number of signature operations for all transaction
@@ -366,14 +452,14 @@ func CountSigOps(tx *btcutil.Tx) int {
 //
 // The flags do not modify the behavior of this function directly, however they
 // are needed to pass along to checkProofOfWork.
-func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSource MedianTimeSource, flags BehaviorFlags, bits uint32) error {
+func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSource MedianTimeSource, flags BehaviorFlags) error {
 	// Ensure the proof of work bits in the block header is in min/max range
 	// and the block hash is less than the target value described by the
 	// bits.
-	err := checkProofOfWork(header, powLimit, flags, bits)
-	if err != nil {
-		return err
-	}
+//	err := checkProofOfWork(header, powLimit, flags, bits)
+//	if err != nil {
+//		return err
+//	}
 
 	// A block timestamp must not have a greater precision than one second.
 	// This check is necessary because Go time.Time values support
@@ -403,10 +489,10 @@ func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSou
 //
 // The flags do not modify the behavior of this function directly, however they
 // are needed to pass along to checkBlockHeaderSanity.
-func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource MedianTimeSource, flags BehaviorFlags, bits uint32) error {
+func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource MedianTimeSource, flags BehaviorFlags) error {
 	msgBlock := block.MsgBlock()
 	header := &msgBlock.Header
-	err := checkBlockHeaderSanity(header, powLimit, timeSource, flags, bits)
+	err := checkBlockHeaderSanity(header, powLimit, timeSource, flags)
 	if err != nil {
 		return err
 	}
@@ -482,8 +568,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource Median
 	for _, tx := range transactions {
 		hash := tx.Hash()
 		if _, exists := existingTxHashes[*hash]; exists {
-			str := fmt.Sprintf("block contains duplicate "+
-				"transaction %v", hash)
+			str := fmt.Sprintf("block contains duplicate transaction %v", hash)
 			return ruleError(ErrDuplicateTx, str)
 		}
 		existingTxHashes[*hash] = struct{}{}
@@ -554,12 +639,17 @@ func checkSerializedHeight(coinbaseTx *btcutil.Tx, wantHeight int32) error {
 //    the checkpoints are not performed.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode *blockNode, flags BehaviorFlags, bits uint32) error {
+func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode *blockNode, flags BehaviorFlags) error {
 	fastAdd := flags&BFFastAdd == BFFastAdd
 	if !fastAdd {
 		// Ensure the difficulty specified in the block header matches
 		// the calculated difficulty based on the previous block and
 		// difficulty retarget rules.
+
+		// for main chain, difficulty is always the one come with the last rotate in miner.
+
+/*		for main chain, difficulty is always the one come with the last rotate in miner.
+		so we check difficulty by scanning the chain backward
 		if bits != 0 {
 			expectedDifficulty, err := b.calcNextRequiredDifficulty(prevNode,
 				header.Timestamp)
@@ -573,7 +663,7 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 				return ruleError(ErrUnexpectedDifficulty, str)
 			}
 		}
-
+*/
 		// Ensure the timestamp for the block header is after the
 		// median time of the last several blocks (medianTimeBlocks).
 		medianTime := prevNode.CalcPastMedianTime()
@@ -628,7 +718,7 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *blockNode, flags BehaviorFlags) error {
 	// Perform all block header related validation checks.
 	header := &block.MsgBlock().Header
-	err := b.checkBlockHeaderContext(header, prevNode, flags, prevNode.bits)
+	err := b.checkBlockHeaderContext(header, prevNode, flags)
 	if err != nil {
 		return err
 	}
@@ -830,7 +920,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 	return nil
 }
 
-func CheckTransactionFeess(tx *btcutil.Tx, txHeight int32, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, error) {
+func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, error) {
 	// Coinbase transactions have no inputs.
 
 	utxoView := views.Utxo
@@ -1037,7 +1127,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 	// against all the inputs when the signature operations are out of
 	// bounds.
 	var totalFees int64
-	for _, tx := range transactions {
+	for _, tx := range transactions[1:] {
 		err := CheckTransactionInputs(tx, node.height, views, b.chainParams)
 		if err != nil {
 			return err
@@ -1069,7 +1159,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 			return err
 		}
 
-		txFee, err := CheckTransactionFeess(tx, node.height, views, b.chainParams)
+		txFee, err := CheckTransactionFees(tx, node.height, views, b.chainParams)
 		if err != nil {
 			return err
 		}
@@ -1172,15 +1262,15 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
-	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
+	b.ChainLock.Lock()
+	defer b.ChainLock.Unlock()
 
 	// Skip the proof of work check as this is just a block template.
 	flags := BFNoPoWCheck
 
 	// This only checks whether the block can be connected to the tip of the
 	// current chain.
-	tip := b.bestChain.Tip()
+	tip := b.BestChain.Tip()
 	header := block.MsgBlock().Header
 	if tip.hash != header.PrevBlock {
 		str := fmt.Sprintf("previous block must be the current chain tip %v, "+

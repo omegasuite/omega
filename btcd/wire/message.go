@@ -33,10 +33,12 @@ const (
 	CmdGetAddr      = "getaddr"
 	CmdAddr         = "addr"
 	CmdGetBlocks    = "getblocks"
+	CmdGetMinerBlocks    = "getminerblks"
 	CmdInv          = "inv"
 	CmdGetData      = "getdata"
 	CmdNotFound     = "notfound"
 	CmdBlock        = "block"
+	CmdMinerBlock   = "minerblock"
 	CmdTx           = "tx"
 	CmdGetHeaders   = "getheaders"
 	CmdHeaders      = "headers"
@@ -108,8 +110,14 @@ func makeEmptyMessage(command string) (Message, error) {
 	case CmdGetBlocks:
 		msg = &MsgGetBlocks{}
 
+	case CmdGetMinerBlocks:
+		msg = &MsgGetMinerBlocks{}
+
 	case CmdBlock:
 		msg = &MsgBlock{}
+
+	case CmdMinerBlock:
+		msg = &NewNodeBlock{}
 
 	case CmdInv:
 		msg = &MsgInv{}

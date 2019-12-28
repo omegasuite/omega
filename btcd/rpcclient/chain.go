@@ -18,10 +18,26 @@ import (
 // FutureGetBestBlockHashResult is a future promise to deliver the result of a
 // GetBestBlockAsync RPC invocation (or an applicable error).
 type FutureGetBestBlockHashResult chan *response
+type FutureGetBestMinerBlockHashResult chan *response
 
 // Receive waits for the response promised by the future and returns the hash of
 // the best block in the longest block chain.
 func (r FutureGetBestBlockHashResult) Receive() (*chainhash.Hash, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal result as a string.
+	var txHashStr string
+	err = json.Unmarshal(res, &txHashStr)
+	if err != nil {
+		return nil, err
+	}
+	return chainhash.NewHashFromStr(txHashStr)
+}
+
+func (r FutureGetBestMinerBlockHashResult) Receive() (*chainhash.Hash, error) {
 	res, err := receiveFuture(r)
 	if err != nil {
 		return nil, err
@@ -46,15 +62,25 @@ func (c *Client) GetBestBlockHashAsync() FutureGetBestBlockHashResult {
 	return c.sendCmd(cmd)
 }
 
+func (c *Client) GetBestMinerBlockHashAsync() FutureGetBestMinerBlockHashResult {
+	cmd := btcjson.NewGetBestMinerBlockHashCmd()
+	return c.sendCmd(cmd)
+}
+
 // GetBestBlockHash returns the hash of the best block in the longest block
 // chain.
 func (c *Client) GetBestBlockHash() (*chainhash.Hash, error) {
 	return c.GetBestBlockHashAsync().Receive()
 }
 
+func (c *Client) GetBestMinerBlockHash() (*chainhash.Hash, error) {
+	return c.GetBestMinerBlockHashAsync().Receive()
+}
+
 // FutureGetBlockResult is a future promise to deliver the result of a
 // GetBlockAsync RPC invocation (or an applicable error).
 type FutureGetBlockResult chan *response
+type FutureGetMinerBlockResult chan *response
 
 // Receive waits for the response promised by the future and returns the raw
 // block requested from the server given its hash.
@@ -86,6 +112,34 @@ func (r FutureGetBlockResult) Receive() (*wire.MsgBlock, error) {
 	return &msgBlock, nil
 }
 
+func (r FutureGetMinerBlockResult) Receive() (*wire.MsgMinerBlock, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal result as a string.
+	var blockHex string
+	err = json.Unmarshal(res, &blockHex)
+	if err != nil {
+		return nil, err
+	}
+
+	// Decode the serialized block hex to raw bytes.
+	serializedBlock, err := hex.DecodeString(blockHex)
+	if err != nil {
+		return nil, err
+	}
+
+	// Deserialize the block and return it.
+	var msgMinerBlock wire.MsgMinerBlock
+	err = msgBlock.Deserialize(bytes.NewReader(serializedBlock))
+	if err != nil {
+		return nil, err
+	}
+	return &msgBlock, nil
+}
+
 // GetBlockAsync returns an instance of a type that can be used to get the
 // result of the RPC at some future time by invoking the Receive function on the
 // returned instance.
@@ -101,12 +155,26 @@ func (c *Client) GetBlockAsync(blockHash *chainhash.Hash) FutureGetBlockResult {
 	return c.sendCmd(cmd)
 }
 
+func (c *Client) GetMinerBlockAsync(blockHash *chainhash.Hash) FutureGetMinerBlockResult {
+	hash := ""
+	if blockHash != nil {
+		hash = blockHash.String()
+	}
+
+	cmd := btcjson.NewGetMinerBlockCmd(hash, btcjson.Bool(false), nil)
+	return c.sendCmd(cmd)
+}
+
 // GetBlock returns a raw block from the server given its hash.
 //
 // See GetBlockVerbose to retrieve a data structure with information about the
 // block instead.
 func (c *Client) GetBlock(blockHash *chainhash.Hash) (*wire.MsgBlock, error) {
 	return c.GetBlockAsync(blockHash).Receive()
+}
+
+func (c *Client) GetMinerBlock(blockHash *chainhash.Hash) (*wire.MsgMinerBlock, error) {
+	return c.GetMinerBlockAsync(blockHash).Receive()
 }
 
 // FutureGetBlockVerboseResult is a future promise to deliver the result of a
@@ -181,10 +249,26 @@ func (c *Client) GetBlockVerboseTx(blockHash *chainhash.Hash) (*btcjson.GetBlock
 // FutureGetBlockCountResult is a future promise to deliver the result of a
 // GetBlockCountAsync RPC invocation (or an applicable error).
 type FutureGetBlockCountResult chan *response
+type FutureGetMinerBlockCountResult chan *response
 
 // Receive waits for the response promised by the future and returns the number
 // of blocks in the longest block chain.
 func (r FutureGetBlockCountResult) Receive() (int64, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return 0, err
+	}
+
+	// Unmarshal the result as an int64.
+	var count int64
+	err = json.Unmarshal(res, &count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+func (r FutureGetMinerBlockCountResult) Receive() (int64, error) {
 	res, err := receiveFuture(r)
 	if err != nil {
 		return 0, err
@@ -209,9 +293,18 @@ func (c *Client) GetBlockCountAsync() FutureGetBlockCountResult {
 	return c.sendCmd(cmd)
 }
 
+func (c *Client) GetMinerBlockCountAsync() FutureGetMinerBlockCountResult {
+	cmd := btcjson.NewGetMinerBlockCountCmd()
+	return c.sendCmd(cmd)
+}
+
 // GetBlockCount returns the number of blocks in the longest block chain.
 func (c *Client) GetBlockCount() (int64, error) {
 	return c.GetBlockCountAsync().Receive()
+}
+
+func (c *Client) GetMinerBlockCount() (int64, error) {
+	return c.GetMinerBlockCountAsync().Receive()
 }
 
 // FutureGetDifficultyResult is a future promise to deliver the result of a
@@ -290,10 +383,26 @@ func (c *Client) GetBlockChainInfo() (*btcjson.GetBlockChainInfoResult, error) {
 // FutureGetBlockHashResult is a future promise to deliver the result of a
 // GetBlockHashAsync RPC invocation (or an applicable error).
 type FutureGetBlockHashResult chan *response
+type FutureGetMinerBlockHashResult chan *response
 
 // Receive waits for the response promised by the future and returns the hash of
 // the block in the best block chain at the given height.
 func (r FutureGetBlockHashResult) Receive() (*chainhash.Hash, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal the result as a string-encoded sha.
+	var txHashStr string
+	err = json.Unmarshal(res, &txHashStr)
+	if err != nil {
+		return nil, err
+	}
+	return chainhash.NewHashFromStr(txHashStr)
+}
+
+func (r FutureGetMinerBlockHashResult) Receive() (*chainhash.Hash, error) {
 	res, err := receiveFuture(r)
 	if err != nil {
 		return nil, err
@@ -318,10 +427,19 @@ func (c *Client) GetBlockHashAsync(blockHeight int64) FutureGetBlockHashResult {
 	return c.sendCmd(cmd)
 }
 
+func (c *Client) GetMinerBlockHashAsync(blockHeight int64) FutureGetMinerBlockHashResult {
+	cmd := btcjson.NewGetMinerBlockHashCmd(blockHeight)
+	return c.sendCmd(cmd)
+}
+
 // GetBlockHash returns the hash of the block in the best block chain at the
 // given height.
 func (c *Client) GetBlockHash(blockHeight int64) (*chainhash.Hash, error) {
 	return c.GetBlockHashAsync(blockHeight).Receive()
+}
+
+func (c *Client) GetMinerBlockHash(blockHeight int64) (*chainhash.Hash, error) {
+	return c.GetMinerBlockHashAsync(blockHeight).Receive()
 }
 
 // FutureGetBlockHeaderResult is a future promise to deliver the result of a

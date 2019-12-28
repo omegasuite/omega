@@ -496,6 +496,17 @@ func NewAddressPubKey(serializedPubKey []byte, net *chaincfg.Params) (*AddressPu
 	}, nil
 }
 
+func NewAddressPubKeyPubKey(pubKey btcec.PublicKey, net *chaincfg.Params) (*AddressPubKey, error) {
+	key := pubKey
+	pkFormat := PKFUncompressed
+
+	return &AddressPubKey{
+		pubKeyFormat: pkFormat,
+		pubKey:       &key,
+		pubKeyHashID: net.PubKeyHashAddrID,
+	}, nil
+}
+
 // serialize returns the serialization of the public key according to the
 // format associated with the address.
 func (a *AddressPubKey) serialize() []byte {

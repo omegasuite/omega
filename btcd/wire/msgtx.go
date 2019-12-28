@@ -942,7 +942,7 @@ func (tx * MsgTx) ReadSignature(r io.Reader, pver uint32) error {
 
 	// Prevent a possible memory exhaustion attack by
 	// limiting the witCount value to a sane upper bound.
-	if int(count) > len(tx.TxIn) {
+	if int(count) > len(tx.TxIn) + 1 {	// allow one for signature because coin base Tx includes signature merkle root
 		str := fmt.Sprintf("more signatures than inputs (%d, %d)",
 			count, len(tx.TxIn))
 		return messageError("MsgTx.BtcDecode", str)

@@ -5,6 +5,7 @@
 package blockchain
 
 import (
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"sync"
 )
 
@@ -349,7 +350,7 @@ func (c *chainView) FindFork(node *blockNode) *blockNode {
 // See the exported BlockLocator function comments for more details.
 //
 // This function MUST be called with the view mutex locked (for reads).
-func (c *chainView) blockLocator(node *blockNode) BlockLocator {
+func (c *chainView) blockLocator(node *blockNode) chainhash.BlockLocator {
 	// Use the current tip if requested.
 	if node == nil {
 		node = c.tip()
@@ -370,7 +371,7 @@ func (c *chainView) blockLocator(node *blockNode) BlockLocator {
 		adjustedHeight := uint32(node.height) - 10
 		maxEntries = 12 + fastLog2Floor(adjustedHeight)
 	}
-	locator := make(BlockLocator, 0, maxEntries)
+	locator := make(chainhash.BlockLocator, 0, maxEntries)
 
 	step := int32(1)
 	for node != nil {
@@ -416,7 +417,7 @@ func (c *chainView) blockLocator(node *blockNode) BlockLocator {
 // locator.
 //
 // This function is safe for concurrent access.
-func (c *chainView) BlockLocator(node *blockNode) BlockLocator {
+func (c *chainView) BlockLocator(node *blockNode) chainhash.BlockLocator {
 	c.mtx.Lock()
 	locator := c.blockLocator(node)
 	c.mtx.Unlock()

@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/btcsuite/omega/minerchain"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -134,13 +135,19 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"estimatefee":           handleEstimateFee,
 	"generate":              handleGenerate,
 	"getaddednodeinfo":      handleGetAddedNodeInfo,
-	"getbestblock":          handleGetBestBlock,
+	"getbestblock":          handleGetBestBlock,		// Changed: get the best block of both chains
 	"getbestblockhash":      handleGetBestBlockHash,
+	"getbestminerblockhash": handleGetBestMinerBlockHash,	// New
 	"getblock":              handleGetBlock,
-	"getblockchaininfo":     handleGetBlockChainInfo,
+	"getblockchaininfo":     handleGetBlockChainInfo,		// Changed: get info. for both chains
 	"getblockcount":         handleGetBlockCount,
 	"getblockhash":          handleGetBlockHash,
 	"getblockheader":        handleGetBlockHeader,
+
+	"getminerblock":         handleGetMinerBlock,	// New
+	"getminerblockcount":    handleGetMinerBlockCount,	// New
+	"getminerblockhash":     handleGetMinerBlockHash,	// New
+
 	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
 	"getcfilterheader":      handleGetCFilterHeader,
@@ -258,10 +265,14 @@ var rpcLimited = map[string]struct{}{
 	"estimatefee":           {},
 	"getbestblock":          {},
 	"getbestblockhash":      {},
+	"getbestminerblockhash": {},
 	"getblock":              {},
+	"getminerblock":         {},
 	"getblockcount":         {},
 	"getblockhash":          {},
 	"getblockheader":        {},
+	"getminerblockcount":    {},
+	"getminerblockhash":     {},
 	"getcfilter":            {},
 	"getcfilterheader":      {},
 	"getcurrentnet":         {},
@@ -1132,9 +1143,12 @@ func handleGetBestBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	// hash, or both but require the block SHA.  This gets both for
 	// the best block.
 	best := s.cfg.Chain.BestSnapshot()
+	mbest := s.cfg.Chain.Miners.BestSnapshot()
 	result := &btcjson.GetBestBlockResult{
 		Hash:   best.Hash.String(),
 		Height: best.Height,
+		MinerHash:   mbest.Hash.String(),
+		MinerHeight: mbest.Height,
 	}
 	return result, nil
 }
@@ -1142,6 +1156,12 @@ func handleGetBestBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 // handleGetBestBlockHash implements the getbestblockhash command.
 func handleGetBestBlockHash(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	best := s.cfg.Chain.BestSnapshot()
+	return best.Hash.String(), nil
+}
+
+// handleGetBestMinerBlockHash implements the getbestminerblockhash command.
+func handleGetBestMinerBlockHash(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	best := s.cfg.Chain.Miners.BestSnapshot()
 	return best.Hash.String(), nil
 }
 
@@ -1237,8 +1257,8 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		Size:          int32(len(blkBytes)),
 		StrippedSize:  int32(blk.MsgBlock().SerializeSizeStripped()),
 		Weight:        int32(blockchain.GetBlockWeight(blk)),
-		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
-		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
+//		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
+//		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 		NextHash:      nextHashString,
 	}
 
@@ -1263,6 +1283,83 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 			rawTxns[i] = *rawTxn
 		}
 		blockReply.RawTx = rawTxns
+	}
+
+	return blockReply, nil
+}
+
+// handleGetMinerBlock implements the getminerblock command.
+func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetMinerBlockCmd)
+
+	// Load the raw block bytes from the database.
+	hash, err := chainhash.NewHashFromStr(c.Hash)
+	if err != nil {
+		return nil, rpcDecodeHexError(c.Hash)
+	}
+	var blkBytes []byte
+	err = s.cfg.DB.View(func(dbTx database.Tx) error {
+		var err error
+		blkBytes, err = dbTx.FetchBlock(hash)
+		return err
+	})
+	if err != nil {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCBlockNotFound,
+			Message: "Block not found",
+		}
+	}
+
+	// When the verbose flag isn't set, simply return the serialized block
+	// as a hex-encoded string.
+	if c.Verbose != nil && !*c.Verbose {
+		return hex.EncodeToString(blkBytes), nil
+	}
+
+	// The verbose flag is set, so generate the JSON object and return it.
+
+	// Deserialize the block.
+	blk, err := btcutil.NewMinerBlockFromBytes(blkBytes)
+	if err != nil {
+		context := "Failed to deserialize block"
+		return nil, internalRPCError(err.Error(), context)
+	}
+
+	// Get the block height from chain.
+	blockHeight, err := s.cfg.Chain.Miners.(*minerchain.MinerChain).BlockHeightByHash(hash)
+	if err != nil {
+		context := "Failed to obtain block height"
+		return nil, internalRPCError(err.Error(), context)
+	}
+	blk.SetHeight(blockHeight)
+	best := s.cfg.Chain.Miners.BestSnapshot()
+
+	// Get next block hash unless there are none.
+	var nextHashString string
+	if blockHeight < best.Height {
+		nextHash, err := s.cfg.Chain.Miners.(*minerchain.MinerChain).BlockHashByHeight(blockHeight + 1)
+		if err != nil {
+			context := "No next block"
+			return nil, internalRPCError(err.Error(), context)
+		}
+		nextHashString = nextHash.String()
+	}
+
+	params := s.cfg.ChainParams
+	blockHeader := blk.MsgBlock()
+	blockReply := btcjson.GetMinerBlockVerboseResult{
+		Hash:          c.Hash,
+		Version:       blockHeader.Version,
+		VersionHex:    fmt.Sprintf("%08x", blockHeader.Version),
+		PreviousHash:  blockHeader.PrevBlock.String(),
+		Nonce:         blockHeader.Nonce,
+		Time:          blockHeader.Timestamp.Unix(),
+		Confirmations: int64(1 + best.Height - blockHeight),
+		Height:        int64(blockHeight),
+		Size:          int32(len(blkBytes)),
+		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
+		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
+		NextHash:      nextHashString,
 	}
 
 	return blockReply, nil
@@ -1294,6 +1391,7 @@ func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan str
 	params := s.cfg.ChainParams
 	chain := s.cfg.Chain
 	chainSnapshot := chain.BestSnapshot()
+	minerchainSnapshot := chain.Miners.BestSnapshot()
 
 	chainInfo := &btcjson.GetBlockChainInfoResult{
 		Chain:         params.Name,
@@ -1303,6 +1401,11 @@ func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan str
 		Difficulty:    getDifficultyRatio(chainSnapshot.Bits, params),
 		MedianTime:    chainSnapshot.MedianTime.Unix(),
 		Pruned:        false,
+		MinerBlocks:        minerchainSnapshot.Height,
+		MinerHeaders:       minerchainSnapshot.Height,
+		MinerBestBlockHash: minerchainSnapshot.Hash.String(),
+		MinerDifficulty:    getDifficultyRatio(minerchainSnapshot.Bits, params),
+		MinerMedianTime:    minerchainSnapshot.MedianTime.Unix(),
 	}
 
 	// Next, populate the response with information describing the current
@@ -1359,6 +1462,11 @@ func handleGetBlockCount(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 	return int64(best.Height), nil
 }
 
+func handleGetMinerBlockCount(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	best := s.cfg.Chain.Miners.BestSnapshot()
+	return int64(best.Height), nil
+}
+
 // handleGetBlockHash implements the getblockhash command.
 func handleGetBlockHash(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetBlockHashCmd)
@@ -1370,6 +1478,21 @@ func handleGetBlockHash(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 			Code:    btcjson.ErrRPCOutOfRange,
 			Message: "Block number out of range",
 		}*/
+	}
+
+	return hash.String(), nil
+}
+
+func handleGetMinerBlockHash(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetMinerBlockHashCmd)
+	hash, err := s.cfg.Chain.Miners.(*minerchain.MinerChain).BlockHashByHeight(int32(c.Index))
+	if err != nil {
+		return nil, err
+		/*
+			&btcjson.RPCError{
+				Code:    btcjson.ErrRPCOutOfRange,
+				Message: "Block number out of range",
+			}*/
 	}
 
 	return hash.String(), nil
@@ -1425,7 +1548,7 @@ func handleGetBlockHeader(s *rpcServer, cmd interface{}, closeChan <-chan struct
 		nextHashString = nextHash.String()
 	}
 
-	params := s.cfg.ChainParams
+//	params := s.cfg.ChainParams
 	blockHeaderReply := btcjson.GetBlockHeaderVerboseResult{
 		Hash:          c.Hash,
 		Confirmations: int64(1 + best.Height - blockHeight),
@@ -1437,8 +1560,8 @@ func handleGetBlockHeader(s *rpcServer, cmd interface{}, closeChan <-chan struct
 		PreviousHash:  blockHeader.PrevBlock.String(),
 		Nonce:         uint64(blockHeader.Nonce),
 		Time:          blockHeader.Timestamp.Unix(),
-		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
-		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
+//		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
+//		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 	}
 	return blockHeaderReply, nil
 }
@@ -1640,9 +1763,9 @@ func (state *gbtWorkState) updateBlockTemplate(s *rpcServer, useCoinbaseValue bo
 				"template: "+err.Error(), "")
 		}
 		template = blkTemplate
-		msgBlock = template.Block
+		msgBlock = template.Block.(*wire.MsgBlock)
 		targetDifficulty = fmt.Sprintf("%064x",
-			blockchain.CompactToBig(msgBlock.Header.Bits))
+			blockchain.CompactToBig(template.Bits))	// msgBlock.Header.Bits))
 
 		// Get the minimum allowed timestamp for the block based on the
 		// median timestamp of the last several blocks per the chain
@@ -1690,20 +1813,20 @@ func (state *gbtWorkState) updateBlockTemplate(s *rpcServer, useCoinbaseValue bo
 			copy(pkScript[1:], payToAddr.ScriptAddress())
 			pkScript[21] = ovm.OP_PAY2PKH
 
-			template.Block.Transactions[0].TxOut[0].PkScript = pkScript
+			template.Block.(*wire.MsgBlock).Transactions[0].TxOut[0].PkScript = pkScript
 			template.ValidPayAddress = true
 
 			// Update the merkle root.
-			block := btcutil.NewBlock(template.Block)
+			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
 			merkles := blockchain.BuildMerkleTreeStore(block.Transactions(), false)
 
-			template.Block.Header.MerkleRoot = *merkles[len(merkles)-1]
+			template.Block.(*wire.MsgBlock).Header.MerkleRoot = *merkles[len(merkles)-1]
 		}
 
 		// Set locals for convenience.
-		msgBlock = template.Block
+		msgBlock = template.Block.(*wire.MsgBlock)
 		targetDifficulty = fmt.Sprintf("%064x",
-			blockchain.CompactToBig(msgBlock.Header.Bits))
+			blockchain.CompactToBig(template.Bits))		// msgBlock.Header.Bits))
 
 		// Update the time of the block template to the current time
 		// while accounting for the median time of the past several
@@ -1730,7 +1853,7 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 	// after the template is generated, but it's important to avoid serving
 	// invalid block templates.
 	template := state.template
-	msgBlock := template.Block
+	msgBlock := template.Block.(*wire.MsgBlock)
 	header := &msgBlock.Header
 	adjustedTime := state.timeSource.AdjustedTime()
 	maxTime := adjustedTime.Add(time.Second * blockchain.MaxTimeOffsetSeconds)
@@ -1799,10 +1922,10 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 	// implied by the included or omission of fields:
 	//  Including MinTime -> time/decrement
 	//  Omitting CoinbaseTxn -> coinbase, generation
-	targetDifficulty := fmt.Sprintf("%064x", blockchain.CompactToBig(header.Bits))
+	targetDifficulty := fmt.Sprintf("%064x", blockchain.CompactToBig(template.Bits))	// header.Bits))
 	templateID := encodeTemplateID(state.prevHash, state.lastGenerated)
 	reply := btcjson.GetBlockTemplateResult{
-		Bits:         strconv.FormatInt(int64(header.Bits), 16),
+		Bits:         strconv.FormatInt(int64(template.Bits), 16),	//	header.Bits), 16),
 		CurTime:      header.Timestamp.Unix(),
 		Height:       int64(template.Height),
 		PreviousHash: header.PrevBlock.String(),
@@ -1903,7 +2026,7 @@ func handleGetBlockTemplateLongPoll(s *rpcServer, longPollID string, useCoinbase
 	// Return the block template now if the specific block template
 	// identified by the long poll ID no longer matches the current block
 	// template as this means the provided template is stale.
-	prevTemplateHash := &state.template.Block.Header.PrevBlock
+	prevTemplateHash := &state.template.Block.(*wire.MsgBlock).Header.PrevBlock
 	if !prevHash.IsEqual(prevTemplateHash) ||
 		lastGenerated != state.lastGenerated.Unix() {
 
@@ -1951,7 +2074,7 @@ func handleGetBlockTemplateLongPoll(s *rpcServer, longPollID string, useCoinbase
 	// Include whether or not it is valid to submit work against the old
 	// block template depending on whether or not a solution has already
 	// been found and added to the block chain.
-	submitOld := prevHash.IsEqual(&state.template.Block.Header.PrevBlock)
+	submitOld := prevHash.IsEqual(&state.template.Block.(*wire.MsgBlock).Header.PrevBlock)
 	result, err := state.blockTemplateResult(useCoinbaseValue, &submitOld)
 	if err != nil {
 		return nil, err
@@ -2517,7 +2640,7 @@ func handleGetNetworkHashPS(s *rpcServer, cmd interface{}, closeChan <-chan stru
 			minTimestamp = header.Timestamp
 			maxTimestamp = minTimestamp
 		} else {
-			totalWork.Add(totalWork, blockchain.CalcWork(header.Bits))
+//			totalWork.Add(totalWork, blockchain.CalcWork(header.Bits))
 
 			if minTimestamp.After(header.Timestamp) {
 				minTimestamp = header.Timestamp
@@ -2564,7 +2687,9 @@ func handleGetPeerInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 			SubVer:         statsSnap.UserAgent,
 			Inbound:        statsSnap.Inbound,
 			StartingHeight: statsSnap.StartingHeight,
+			StartingMinerHeight: statsSnap.StartingMinerHeight,
 			CurrentHeight:  statsSnap.LastBlock,
+			CurrentMinerHeight: statsSnap.LastMinerBlock,
 			BanScore:       int32(p.BanScore()),
 			FeeFilter:      p.FeeFilter(),
 			SyncNode:       statsSnap.ID == syncPeerID,
@@ -4544,6 +4669,7 @@ type rpcserverConfig struct {
 	Chain       *blockchain.BlockChain
 	ChainParams *chaincfg.Params
 	DB          database.DB
+	MinerDB     database.DB
 
 	// TxMemPool defines the transaction memory pool to interact with.
 	TxMemPool *mempool.TxPool
@@ -4589,6 +4715,7 @@ func newRPCServer(config *rpcserverConfig) (*rpcServer, error) {
 	}
 	rpc.ntfnMgr = newWsNotificationManager(&rpc)
 	rpc.cfg.Chain.Subscribe(rpc.handleBlockchainNotification)
+	rpc.cfg.Chain.Miners.(*minerchain.MinerChain).Subscribe(rpc.handleBlockchainNotification)
 
 	return &rpc, nil
 }
@@ -4600,7 +4727,7 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 	case blockchain.NTBlockAccepted:
 		block, ok := notification.Data.(*btcutil.Block)
 		if !ok {
-			rpcsLog.Warnf("Chain accepted notification is not a block.")
+//			rpcsLog.Warnf("Chain accepted notification is not a block.")
 			break
 		}
 
@@ -4610,14 +4737,16 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 		s.gbtWorkState.NotifyBlockConnected(block.Hash())
 
 	case blockchain.NTBlockConnected:
-		block, ok := notification.Data.(*btcutil.Block)
-		if !ok {
+		switch notification.Data.(type) {
+		case *btcutil.Block:
+			// Notify registered websocket clients of incoming block.
+			s.ntfnMgr.NotifyBlockConnected(notification.Data.(*btcutil.Block))
+		case *wire.MinerBlock:
+			// Notify registered websocket clients of incoming block.
+			s.ntfnMgr.NotifyMinerBlockConnected(notification.Data.(*wire.MinerBlock))
+		default:
 			rpcsLog.Warnf("Chain connected notification is not a block.")
-			break
 		}
-
-		// Notify registered websocket clients of incoming block.
-		s.ntfnMgr.NotifyBlockConnected(block)
 
 	case blockchain.NTBlockDisconnected:
 		block, ok := notification.Data.(*btcutil.Block)

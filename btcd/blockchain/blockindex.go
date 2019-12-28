@@ -83,6 +83,7 @@ type blockNode struct {
 
 	// height is the position in the block chain.
 	height int32
+	nextMiner	int32		// height of the miner chain block for the next miner
 
 	// Some fields from block headers to aid in best chain selection and
 	// reconstructing headers from memory.  These must be treated as
@@ -108,17 +109,31 @@ type blockNode struct {
 func initBlockNode(node *blockNode, blockHeader *wire.BlockHeader, parent *blockNode) {
 	*node = blockNode{
 		hash:       blockHeader.BlockHash(),
-		workSum:    CalcWork(parent.bits),
 		version:    blockHeader.Version,
-		bits:       parent.bits,
 		nonce:      blockHeader.Nonce,
 		timestamp:  blockHeader.Timestamp.Unix(),
 		merkleRoot: blockHeader.MerkleRoot,
 	}
 	if parent != nil {
+		node.nextMiner = parent.nextMiner
+		if node.nonce > 0 {
+			node.nextMiner = parent.nextMiner + wire.CommitteeSize
+		}
+		if node.nonce == -(wire.MINER_RORATE_FREQ - 1) {
+			node.nextMiner = parent.nextMiner + 1
+		}
+		if node.bits == 0 {
+			node.bits = parent.bits // default is same as parent
+		}
+		node.workSum = CalcWork(node.bits)
 		node.parent = parent
 		node.height = parent.height + 1
 		node.workSum = node.workSum.Add(parent.workSum, node.workSum)
+	} else {
+		// parent is nil only if the node is genesis block.
+		node.nextMiner = 0
+		node.workSum = big.NewInt(0)
+		// bits should have been set to the pow limit of the chain
 	}
 }
 
@@ -129,6 +144,14 @@ func newBlockNode(blockHeader *wire.BlockHeader, parent *blockNode) *blockNode {
 	var node blockNode
 	initBlockNode(&node, blockHeader, parent)
 	return &node
+}
+
+func (node *blockNode) Hash() * chainhash.Hash {
+	return &node.hash
+}
+
+func (node *blockNode) Parent() * blockNode {
+	return node.parent
 }
 
 // Header constructs a block header from the node and returns it.

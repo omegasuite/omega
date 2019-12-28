@@ -549,6 +549,8 @@ func getBestBlock(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	result := &btcjson.GetBestBlockResult{
 		Hash:   blk.Hash.String(),
 		Height: blk.Height,
+		MinerHash:   blk.MinerHash.String(),
+		MinerHeight: blk.MinerHeight,
 	}
 	return result, nil
 }

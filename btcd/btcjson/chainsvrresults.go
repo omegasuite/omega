@@ -21,8 +21,8 @@ type GetBlockHeaderVerboseResult struct {
 	MerkleRoot    string  `json:"merkleroot"`
 	Time          int64   `json:"time"`
 	Nonce         uint64  `json:"nonce"`
-	Bits          string  `json:"bits"`
-	Difficulty    float64 `json:"difficulty"`
+//	Bits          string  `json:"bits"`
+//	Difficulty    float64 `json:"difficulty"`
 	PreviousHash  string  `json:"previousblockhash,omitempty"`
 	NextHash      string  `json:"nextblockhash,omitempty"`
 }
@@ -43,11 +43,24 @@ type GetBlockVerboseResult struct {
 	Tx            []string      `json:"tx,omitempty"`
 	RawTx         []TxRawResult `json:"rawtx,omitempty"`
 	Time          int64         `json:"time"`
-	Nonce         uint32        `json:"nonce"`
-	Bits          string        `json:"bits"`
-	Difficulty    float64       `json:"difficulty"`
+	Nonce         int32         `json:"nonce"`
 	PreviousHash  string        `json:"previousblockhash"`
 	NextHash      string        `json:"nextblockhash,omitempty"`
+}
+
+type GetMinerBlockVerboseResult struct {
+	Hash          string        `json:"hash"`
+	Confirmations int64         `json:"confirmations"`
+	Size          int32         `json:"size"`
+	Height        int64         `json:"height"`
+	Version       int32         `json:"version"`
+	VersionHex    string        `json:"versionHex"`
+	Time          int64         `json:"time"`
+	Nonce         int32         `json:"nonce"`
+	PreviousHash  string        `json:"previousblockhash"`
+	NextHash      string        `json:"nextblockhash,omitempty"`
+	Bits          string        `json:"bits"`
+	Difficulty    float64       `json:"difficulty"`
 }
 
 // CreateMultiSigResult models the data returned from the createmultisig
@@ -104,6 +117,14 @@ type GetBlockChainInfoResult struct {
 	PruneHeight          int32                               `json:"pruneheight,omitempty"`
 	ChainWork            string                              `json:"chainwork,omitempty"`
 	SoftForks            []*SoftForkDescription              `json:"softforks"`
+
+	MinerBlocks               int32                          `json:"minerblocks"`
+	MinerHeaders              int32                          `json:"minerheaders"`
+	MinerBestBlockHash        string                         `json:"minerbestblockhash"`
+	MinerDifficulty           float64                        `json:"minerdifficulty"`
+	MinerMedianTime           int64                          `json:"minermediantime"`
+	MinerVerificationProgress float64                        `json:"minerverificationprogress,omitempty"`
+	MinerChainWork            string                         `json:"minerchainwork,omitempty"`
 }
 
 // GetBlockTemplateResultTx models the transactions field of the
@@ -245,7 +266,9 @@ type GetPeerInfoResult struct {
 	SubVer         string  `json:"subver"`
 	Inbound        bool    `json:"inbound"`
 	StartingHeight int32   `json:"startingheight"`
+	StartingMinerHeight int32   `json:"startingminerheight"`
 	CurrentHeight  int32   `json:"currentheight,omitempty"`
+	CurrentMinerHeight  int32   `json:"currentminerheight,omitempty"`
 	BanScore       int32   `json:"banscore"`
 	FeeFilter      int64   `json:"feefilter"`
 	SyncNode       bool    `json:"syncnode"`

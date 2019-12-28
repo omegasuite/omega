@@ -126,14 +126,14 @@ func TestCalcSequenceLock(t *testing.T) {
 
 	// Generate enough synthetic blocks to activate CSV.
 	chain := newFakeChain(netParams)
-	node := chain.bestChain.Tip()
+	node := chain.BestChain.Tip()
 	blockTime := node.Header().Timestamp
 	numBlocksToActivate := (netParams.MinerConfirmationWindow * 3)
 	for i := uint32(0); i < numBlocksToActivate; i++ {
 		blockTime = blockTime.Add(time.Second)
 		node = newFakeNode(node, blockVersion, 0, blockTime)
 		chain.index.AddNode(node)
-		chain.bestChain.SetTip(node)
+		chain.BestChain.SetTip(node)
 	}
 
 	// Create a utxo view with a fake utxo for the inputs used in the
@@ -470,7 +470,7 @@ func TestLocateInventory(t *testing.T) {
 	// 	                              \-> 16a -> 17a
 	tip := tstTip
 	chain := newFakeChain(&chaincfg.MainNetParams)
-	branch0Nodes := chainedNodes(chain.bestChain.Genesis(), 18)
+	branch0Nodes := chainedNodes(chain.BestChain.Genesis(), 18)
 	branch1Nodes := chainedNodes(branch0Nodes[14], 2)
 	for _, node := range branch0Nodes {
 		chain.index.AddNode(node)
@@ -478,7 +478,7 @@ func TestLocateInventory(t *testing.T) {
 	for _, node := range branch1Nodes {
 		chain.index.AddNode(node)
 	}
-	chain.bestChain.SetTip(tip(branch0Nodes))
+	chain.BestChain.SetTip(tip(branch0Nodes))
 
 	// Create chain views for different branches of the overall chain to
 	// simulate a local and remote node on different parts of the chain.
@@ -772,10 +772,10 @@ func TestLocateInventory(t *testing.T) {
 		if test.maxAllowed != 0 {
 			// Need to use the unexported function to override the
 			// max allowed for headers.
-			chain.chainLock.RLock()
+			chain.ChainLock.RLock()
 			headers = chain.locateHeaders(test.locator,
 				&test.hashStop, test.maxAllowed)
-			chain.chainLock.RUnlock()
+			chain.ChainLock.RUnlock()
 		} else {
 			headers = chain.LocateHeaders(test.locator,
 				&test.hashStop)
@@ -810,7 +810,7 @@ func TestHeightToHashRange(t *testing.T) {
 	// 	                              \-> 16a -> 17a -> 18a (unvalidated)
 	tip := tstTip
 	chain := newFakeChain(&chaincfg.MainNetParams)
-	branch0Nodes := chainedNodes(chain.bestChain.Genesis(), 18)
+	branch0Nodes := chainedNodes(chain.BestChain.Genesis(), 18)
 	branch1Nodes := chainedNodes(branch0Nodes[14], 3)
 	for _, node := range branch0Nodes {
 		chain.index.SetStatusFlags(node, statusValid)
@@ -822,7 +822,7 @@ func TestHeightToHashRange(t *testing.T) {
 		}
 		chain.index.AddNode(node)
 	}
-	chain.bestChain.SetTip(tip(branch0Nodes))
+	chain.BestChain.SetTip(tip(branch0Nodes))
 
 	tests := []struct {
 		name        string
@@ -902,7 +902,7 @@ func TestIntervalBlockHashes(t *testing.T) {
 	// 	                              \-> 16a -> 17a -> 18a (unvalidated)
 	tip := tstTip
 	chain := newFakeChain(&chaincfg.MainNetParams)
-	branch0Nodes := chainedNodes(chain.bestChain.Genesis(), 18)
+	branch0Nodes := chainedNodes(chain.BestChain.Genesis(), 18)
 	branch1Nodes := chainedNodes(branch0Nodes[14], 3)
 	for _, node := range branch0Nodes {
 		chain.index.SetStatusFlags(node, statusValid)
@@ -914,7 +914,7 @@ func TestIntervalBlockHashes(t *testing.T) {
 		}
 		chain.index.AddNode(node)
 	}
-	chain.bestChain.SetTip(tip(branch0Nodes))
+	chain.BestChain.SetTip(tip(branch0Nodes))
 
 	tests := []struct {
 		name        string

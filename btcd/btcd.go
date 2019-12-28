@@ -25,6 +25,7 @@ const (
 	// database type is appended to this value to form the full block
 	// database name.
 	blockDbNamePrefix = "blocks"
+	minerDbNamePrefix = "miners"
 )
 
 var (
@@ -104,10 +105,19 @@ func btcdMain(serverChan chan<- *server) error {
 		btcdLog.Errorf("%v", err)
 		return err
 	}
+
+	// Load the block database.
+	minerdb, err := loadMinerDB()
+	if err != nil {
+		btcdLog.Errorf("%v", err)
+		return err
+	}
+
 	defer func() {
 		// Ensure the database is sync'd and closed on shutdown.
 		btcdLog.Infof("Gracefully shutting down the database...")
 		db.Close()
+		minerdb.Close()
 	}()
 
 	// Return now if an interrupt signal was triggered.
@@ -145,7 +155,7 @@ func btcdMain(serverChan chan<- *server) error {
 	}
 
 	// Create server and start it.
-	server, err := newServer(cfg.Listeners, db, activeNetParams.Params,
+	server, err := newServer(cfg.Listeners, db, minerdb, activeNetParams.Params,
 		interrupt)
 	if err != nil {
 		// TODO: this logging could do with some beautifying.
@@ -203,6 +213,17 @@ func removeRegressionDB(dbPath string) error {
 func blockDbPath(dbType string) string {
 	// The database name is based on the database type.
 	dbName := blockDbNamePrefix + "_" + dbType
+	if dbType == "sqlite" {
+		dbName = dbName + ".db"
+	}
+	dbPath := filepath.Join(cfg.DataDir, dbName)
+	return dbPath
+}
+
+// dbPath returns the path to the block database given a database type.
+func minerDbPath(dbType string) string {
+	// The database name is based on the database type.
+	dbName := minerDbNamePrefix + "_" + dbType
 	if dbType == "sqlite" {
 		dbName = dbName + ".db"
 	}
@@ -293,6 +314,52 @@ func loadBlockDB() (database.DB, error) {
 	}
 
 	btcdLog.Info("Block database loaded")
+	return db, nil
+}
+
+// loadMinerDB loads (or creates when needed) the miner database taking into
+// account the selected database backend and returns a handle to it.  It also
+// contains additional logic such warning the user if there are multiple
+// databases which consume space on the file system and ensuring the regression
+// test database is clean when in regression test mode.
+func loadMinerDB() (database.DB, error) {
+	// The memdb backend does not have a file path associated with it, so
+	// handle it uniquely.  We also don't want to worry about the multiple
+	// database type warnings when running with the memory database.
+	if cfg.DbType == "memdb" {
+		return nil, fmt.Errorf("Does not support miner database in memory.")
+	}
+
+	// The database name is based on the database type.
+	dbPath := minerDbPath(cfg.DbType)
+
+	// The regression test is special in that it needs a clean database for
+	// each run, so remove it now if it already exists.
+	removeRegressionDB(dbPath)
+
+	btcdLog.Infof("Loading miner database from '%s'", dbPath)
+	db, err := database.Open(cfg.DbType, dbPath, activeNetParams.Net)
+	if err != nil {
+		// Return the error if it's not because the database doesn't
+		// exist.
+		if dbErr, ok := err.(database.Error); !ok || dbErr.ErrorCode !=
+			database.ErrDbDoesNotExist {
+
+			return nil, err
+		}
+
+		// Create the db if it does not exist.
+		err = os.MkdirAll(cfg.DataDir, 0700)
+		if err != nil {
+			return nil, err
+		}
+		db, err = database.Create(cfg.DbType, dbPath, activeNetParams.Net)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	btcdLog.Info("Miner database loaded")
 	return db, nil
 }
 

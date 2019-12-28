@@ -148,8 +148,8 @@ func sanitizeString(str string, maxLength uint) string {
 func messageSummary(msg wire.Message) string {
 	switch msg := msg.(type) {
 	case *wire.MsgVersion:
-		return fmt.Sprintf("agent %s, pver %d, block %d",
-			msg.UserAgent, msg.ProtocolVersion, msg.LastBlock)
+		return fmt.Sprintf("agent %s, pver %d, block %d miner block %d",
+			msg.UserAgent, msg.ProtocolVersion, msg.LastBlock, msg.LastMinerBlock)
 
 	case *wire.MsgVerAck:
 		// No summary.
@@ -192,6 +192,9 @@ func messageSummary(msg wire.Message) string {
 		return invSummary(msg.InvList)
 
 	case *wire.MsgGetBlocks:
+		return locatorSummary(msg.BlockLocatorHashes, &msg.HashStop)
+
+	case *wire.MsgGetMinerBlocks:
 		return locatorSummary(msg.BlockLocatorHashes, &msg.HashStop)
 
 	case *wire.MsgGetHeaders:

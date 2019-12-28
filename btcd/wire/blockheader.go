@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	CommitteeSize				= 3
+	CommitteeSize				= 1			// 3
 	MINER_RORATE_FREQ			= 20		// rotate committee every MINER_RORATE_FREQ blocks
 	DESIRABLE_MINER_CANDIDATES	= 20		// the desirable number of miner candidate we want to have
-	MinerGap					= 100		// a miner mmust wait between to candidacies
+	MinerGap					= 3			// a miner must wait between to candidacies
 )
 
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.
@@ -25,6 +25,7 @@ const (
 // PrevBlock and MerkleRoot hashes.
 //const MaxBlockHeaderPayload = 16 + (chainhash.HashSize * 2)
 const MaxBlockHeaderPayload = 24 + (chainhash.HashSize * 2)
+const MaxMinerBlockHeaderPayload = 5000
 
 // we use a dual block chain structure. one is Tx chain (normal block chain), one is committee candidate chain
 // NewNodeBlock is committee candidate chain struct
@@ -224,7 +225,7 @@ func (h *NewNodeBlock) BlockHash() chainhash.Hash {
 // This is part of the Message interface implementation.
 // See Deserialize for decoding block headers stored to disk, such as in a
 // database, as opposed to decoding block headers from the wire.
-func (h *NewNodeBlock) BtcDecode(r io.Reader, pver uint32) error {
+func (h *NewNodeBlock) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	return readMinerBlock(r, pver, h)
 }
 
@@ -232,7 +233,7 @@ func (h *NewNodeBlock) BtcDecode(r io.Reader, pver uint32) error {
 // This is part of the Message interface implementation.
 // See Serialize for encoding block headers to be stored to disk, such as in a
 // database, as opposed to encoding block headers for the wire.
-func (h *NewNodeBlock) BtcEncode(w io.Writer, pver uint32) error {
+func (h *NewNodeBlock) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
 	return writeMinerBlock(w, pver, h)
 }
 
@@ -321,19 +322,27 @@ type MinerBlock struct {		// equivalent of btcutil.Block
 	hash * chainhash.Hash
 }
 
+func NewMinerBlockFromBlockAndBytes(msgBlock *NewNodeBlock, serializedBlock []byte) *MinerBlock {
+	return &MinerBlock{
+		msgBlock:        msgBlock,
+		serializedBlock: serializedBlock,
+		height:     -1,
+	}
+}
+
 func (b * MinerBlock) MsgBlock() * NewNodeBlock {
 	return b.msgBlock
 }
 
-func (b * MinerBlock) Hash() chainhash.Hash {
+func (b * MinerBlock) Hash() * chainhash.Hash {
 	if b.hash != nil {
-		return *b.hash
+		return b.hash
 	}
 
 	h := b.msgBlock.BlockHash()
 	b.hash = &h
 
-	return h
+	return b.hash
 }
 
 func (b * MinerBlock) SetHeight(h int32) {
@@ -368,4 +377,17 @@ func (b *MinerBlock) Bytes() ([]byte, error) {
 
 func NewMinerBlock(b * NewNodeBlock) * MinerBlock {
 	return &MinerBlock { b, nil,int32(-1),nil }
+}
+
+func (msg *NewNodeBlock) Command() string {
+	return CmdMinerBlock
+}
+
+// MaxPayloadLength returns the maximum length the payload can be for the
+// receiver.  This is part of the Message interface implementation.
+func (msg *NewNodeBlock) MaxPayloadLength(pver uint32) uint32 {
+	// Block header at 80 bytes + transaction count + max transactions
+	// which can vary up to the MaxBlockPayload (including the block header
+	// and transaction count).
+	return MaxMinerBlockHeaderPayload
 }

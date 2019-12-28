@@ -22,6 +22,7 @@ import (
 	"github.com/btcsuite/btcd/peer"
 
 	"github.com/btcsuite/btclog"
+	"github.com/btcsuite/omega/minerchain"
 	"github.com/jrick/logrotate/rotator"
 )
 
@@ -79,6 +80,7 @@ func init() {
 	indexers.UseLogger(indxLog)
 	mining.UseLogger(minrLog)
 	cpuminer.UseLogger(minrLog)
+	minerchain.UseLogger(minrLog)
 	peer.UseLogger(peerLog)
 //	UseLogger(scrpLog)
 	netsync.UseLogger(syncLog)

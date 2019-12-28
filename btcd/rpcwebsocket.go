@@ -216,6 +216,17 @@ func (m *wsNotificationManager) NotifyBlockConnected(block *btcutil.Block) {
 	}
 }
 
+func (m *wsNotificationManager) NotifyMinerBlockConnected(block *wire.MinerBlock) {
+	// As NotifyBlockConnected will be called by the block manager
+	// and the RPC server may no longer be running, use a select
+	// statement to unblock enqueuing the notification once the RPC
+	// server has begun shutting down.
+	select {
+	case m.queueNotification <- (*notificationMinerBlockConnected)(block):
+	case <-m.quit:
+	}
+}
+
 // NotifyBlockDisconnected passes a block disconnected from the best chain
 // to the notification manager for block notification processing.
 func (m *wsNotificationManager) NotifyBlockDisconnected(block *btcutil.Block) {
@@ -449,7 +460,10 @@ func (f *wsClientFilter) removeUnspentOutPoint(op *wire.OutPoint) {
 
 // Notification types
 type notificationBlockConnected btcutil.Block
+type notificationMinerBlockConnected wire.MinerBlock
 type notificationBlockDisconnected btcutil.Block
+type notificationMinerBlockDisconnected wire.MinerBlock
+
 type notificationTxAcceptedByMempool struct {
 	isNew bool
 	tx    *btcutil.Tx
@@ -493,6 +507,7 @@ func (m *wsNotificationManager) notificationHandler() {
 	// Where possible, the quit channel is used as the unique id for a client
 	// since it is quite a bit more efficient than using the entire struct.
 	blockNotifications := make(map[chan struct{}]*wsClient)
+	minerBlockNotifications := make(map[chan struct{}]*wsClient)
 	txNotifications := make(map[chan struct{}]*wsClient)
 	watchedOutPoints := make(map[wire.OutPoint]map[chan struct{}]*wsClient)
 	watchedAddrs := make(map[string]map[chan struct{}]*wsClient)
@@ -525,6 +540,14 @@ out:
 						block)
 				}
 
+			case *notificationMinerBlockConnected:
+				block := (*wire.MinerBlock)(n)
+
+				if len(minerBlockNotifications) != 0 {
+					m.notifyMinerBlockConnected(minerBlockNotifications,
+						block)
+				}
+
 			case *notificationBlockDisconnected:
 				block := (*btcutil.Block)(n)
 
@@ -532,6 +555,14 @@ out:
 					m.notifyBlockDisconnected(blockNotifications,
 						block)
 					m.notifyFilteredBlockDisconnected(blockNotifications,
+						block)
+				}
+
+			case *notificationMinerBlockDisconnected:
+				block := (*wire.MinerBlock)(n)
+
+				if len(minerBlockNotifications) != 0 {
+					m.notifyMinerBlockDisconnected(minerBlockNotifications,
 						block)
 				}
 
@@ -712,6 +743,23 @@ func (*wsNotificationManager) notifyBlockConnected(clients map[chan struct{}]*ws
 	}
 }
 
+func (*wsNotificationManager) notifyMinerBlockConnected(clients map[chan struct{}]*wsClient,
+	block *wire.MinerBlock) {
+
+	// Notify interested websocket clients about the connected block.
+	ntfn := btcjson.NewMinerBlockConnectedNtfn(block.Hash().String(), block.Height(),
+		block.MsgBlock().Timestamp.Unix())
+	marshalledJSON, err := btcjson.MarshalCmd(nil, ntfn)
+	if err != nil {
+		rpcsLog.Errorf("Failed to marshal block connected notification: "+
+			"%v", err)
+		return
+	}
+	for _, wsc := range clients {
+		wsc.QueueNotification(marshalledJSON)
+	}
+}
+
 // notifyBlockDisconnected notifies websocket clients that have registered for
 // block updates when a block is disconnected from the main chain (due to a
 // reorganize).
@@ -725,6 +773,27 @@ func (*wsNotificationManager) notifyBlockDisconnected(clients map[chan struct{}]
 	// Notify interested websocket clients about the disconnected block.
 	ntfn := btcjson.NewBlockDisconnectedNtfn(block.Hash().String(),
 		block.Height(), block.MsgBlock().Header.Timestamp.Unix())
+	marshalledJSON, err := btcjson.MarshalCmd(nil, ntfn)
+	if err != nil {
+		rpcsLog.Errorf("Failed to marshal block disconnected "+
+			"notification: %v", err)
+		return
+	}
+	for _, wsc := range clients {
+		wsc.QueueNotification(marshalledJSON)
+	}
+}
+
+func (*wsNotificationManager) notifyMinerBlockDisconnected(clients map[chan struct{}]*wsClient, block *wire.MinerBlock) {
+	// Skip notification creation if no clients have requested block
+	// connected/disconnected notifications.
+	if len(clients) == 0 {
+		return
+	}
+
+	// Notify interested websocket clients about the disconnected block.
+	ntfn := btcjson.NewMinerBlockDisconnectedNtfn(block.Hash().String(),
+		block.Height(), block.MsgBlock().Timestamp.Unix())
 	marshalledJSON, err := btcjson.MarshalCmd(nil, ntfn)
 	if err != nil {
 		rpcsLog.Errorf("Failed to marshal block disconnected "+

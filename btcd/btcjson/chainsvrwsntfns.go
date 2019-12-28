@@ -14,6 +14,7 @@ const (
 	//
 	// NOTE: Deprecated. Use FilteredBlockConnectedNtfnMethod instead.
 	BlockConnectedNtfnMethod = "blockconnected"
+	MinerBlockConnectedNtfnMethod = "minerblockconnected"
 
 	// BlockDisconnectedNtfnMethod is the legacy, deprecated method used for
 	// notifications from the chain server that a block has been
@@ -21,6 +22,7 @@ const (
 	//
 	// NOTE: Deprecated. Use FilteredBlockDisconnectedNtfnMethod instead.
 	BlockDisconnectedNtfnMethod = "blockdisconnected"
+	MinerBlockDisconnectedNtfnMethod = "minerblockdisconnected"
 
 	// FilteredBlockConnectedNtfnMethod is the new method used for
 	// notifications from the chain server that a block has been connected.
@@ -86,12 +88,26 @@ type BlockConnectedNtfn struct {
 	Time   int64
 }
 
+type MinerBlockConnectedNtfn struct {
+	Hash   string
+	Height int32
+	Time   int64
+}
+
 // NewBlockConnectedNtfn returns a new instance which can be used to issue a
 // blockconnected JSON-RPC notification.
 //
 // NOTE: Deprecated. Use NewFilteredBlockConnectedNtfn instead.
 func NewBlockConnectedNtfn(hash string, height int32, time int64) *BlockConnectedNtfn {
 	return &BlockConnectedNtfn{
+		Hash:   hash,
+		Height: height,
+		Time:   time,
+	}
+}
+
+func NewMinerBlockConnectedNtfn(hash string, height int32, time int64) *MinerBlockConnectedNtfn {
+	return &MinerBlockConnectedNtfn{
 		Hash:   hash,
 		Height: height,
 		Time:   time,
@@ -107,12 +123,26 @@ type BlockDisconnectedNtfn struct {
 	Time   int64
 }
 
+type MinerBlockDisconnectedNtfn struct {
+	Hash   string
+	Height int32
+	Time   int64
+}
+
 // NewBlockDisconnectedNtfn returns a new instance which can be used to issue a
 // blockdisconnected JSON-RPC notification.
 //
 // NOTE: Deprecated. Use NewFilteredBlockDisconnectedNtfn instead.
 func NewBlockDisconnectedNtfn(hash string, height int32, time int64) *BlockDisconnectedNtfn {
 	return &BlockDisconnectedNtfn{
+		Hash:   hash,
+		Height: height,
+		Time:   time,
+	}
+}
+
+func NewMinerBlockDisconnectedNtfn(hash string, height int32, time int64) *MinerBlockDisconnectedNtfn {
+	return &MinerBlockDisconnectedNtfn{
 		Hash:   hash,
 		Height: height,
 		Time:   time,
@@ -292,6 +322,8 @@ func init() {
 
 	MustRegisterCmd(BlockConnectedNtfnMethod, (*BlockConnectedNtfn)(nil), flags)
 	MustRegisterCmd(BlockDisconnectedNtfnMethod, (*BlockDisconnectedNtfn)(nil), flags)
+	MustRegisterCmd(MinerBlockConnectedNtfnMethod, (*MinerBlockConnectedNtfn)(nil), flags)
+	MustRegisterCmd(MinerBlockDisconnectedNtfnMethod, (*MinerBlockDisconnectedNtfn)(nil), flags)
 	MustRegisterCmd(FilteredBlockConnectedNtfnMethod, (*FilteredBlockConnectedNtfn)(nil), flags)
 	MustRegisterCmd(FilteredBlockDisconnectedNtfnMethod, (*FilteredBlockDisconnectedNtfn)(nil), flags)
 	MustRegisterCmd(RecvTxNtfnMethod, (*RecvTxNtfn)(nil), flags)

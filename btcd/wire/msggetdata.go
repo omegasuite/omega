@@ -6,8 +6,8 @@ package wire
 
 import (
 	"fmt"
-	"io"
 	"github.com/btcsuite/btcd/wire/common"
+	"io"
 )
 
 // MsgGetData implements the Message interface and represents a bitcoin

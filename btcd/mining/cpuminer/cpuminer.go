@@ -7,8 +7,9 @@ package cpuminer
 import (
 	"errors"
 	"fmt"
+	"github.com/btcsuite/btcd/btcec"
 	"math/rand"
-//	"runtime"
+	//	"runtime"
 	"sync"
 	"time"
 
@@ -19,16 +20,11 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/token"
-	"github.com/btcsuite/btcd/wire/common"
 )
 
 const (
 	// maxNonce is the maximum value a nonce can be in a block header.
-	maxNonce = ^uint32(0) // 2^32 - 1
-
-	// maxExtraNonce is the maximum value an extra nonce used in a coinbase
-	// transaction can be.
-	maxExtraNonce = ^uint64(0) // 2^64 - 1
+	maxNonce = 0x7FFFFFFF	// ^uint32(0) // 2^32 - 1
 
 	// hpsUpdateSecs is the number of seconds to wait in between each
 	// update to the hashes per second monitor.
@@ -40,6 +36,9 @@ const (
 	// reduce the amount of syncs between the workers that must be done to
 	// keep track of the hashes per second.
 	hashUpdateSecs = 15
+
+	// if no new block received in 3000 Millisecond, start POW mining
+	miningGap = 3000
 )
 
 var (
@@ -66,6 +65,7 @@ type Config struct {
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
 	MiningAddrs []btcutil.Address
+	PrivKeys	map[btcutil.Address]*btcec.PrivateKey
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -143,11 +143,11 @@ out:
 					hashesPerSec/1000)
 			}
 			if len(m.queryHashesPerSec) == 0 {
-				m.queryHashesPerSec <- hashesPerSec
+//				m.queryHashesPerSec <- hashesPerSec
 			}
 
 		// Request for the number of hashes per second.
-//		case m.queryHashesPerSec <- hashesPerSec:
+		case m.queryHashesPerSec <- hashesPerSec:
 			// Nothing to do.
 
 		case <-m.speedMonitorQuit:
@@ -214,41 +214,25 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 // This function will return early with false when conditions that trigger a
 // stale block such as a new block showing up or periodically when there are
 // new transactions and enough time has elapsed without finding a solution.
-func (m *CPUMiner) solveBlock(msgBlock *wire.MsgBlock, blockHeight int32,
+func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	ticker *time.Ticker, quit chan struct{}) bool {
 
-	// Choose a random extra nonce offset for this block template and
-	// worker.
-	enOffset, err := common.RandomUint64()
-	if err != nil {
-		log.Errorf("Unexpected error while generating random "+
-			"extra nonce offset: %v", err)
-		enOffset = 0
-	}
-
 	// Create some convenience variables.
+	msgBlock := template.Block.(*wire.MsgBlock)
 	header := &msgBlock.Header
 
-	targetDifficulty := blockchain.CompactToBig(header.Bits)
+	targetDifficulty := blockchain.CompactToBig(template.Bits)
 
 	// Initial state.
 	lastGenerated := time.Now()
 	lastTxUpdate := m.g.TxSource().LastUpdated()
 	hashesCompleted := uint64(0)
 
-	// Note that the entire extra nonce range is iterated and the offset is
-	// added relying on the fact that overflow will wrap around 0 as
-	// provided by the Go spec.
-	for extraNonce := uint64(0); extraNonce < maxExtraNonce; extraNonce++ {
-		// Update the extra nonce in the block template with the
-		// new value by regenerating the coinbase script and
-		// setting the merkle root to the new value.
-		m.g.UpdateExtraNonce(msgBlock, blockHeight, extraNonce+enOffset)
-
+	for true {
 		// Search through the entire nonce range for a solution while
 		// periodically checking for early quit and stale block
 		// conditions along with updates to the speed monitor.
-		for i := uint32(0); i <= maxNonce; i++ {
+		for i := uint32(1); i <= maxNonce; i++ {
 			select {
 			case <-quit:
 				return false
@@ -277,7 +261,7 @@ func (m *CPUMiner) solveBlock(msgBlock *wire.MsgBlock, blockHeight int32,
 				m.g.UpdateBlockTime(msgBlock)
 
 				if m.cfg.ChainParams.ReduceMinDifficulty {
-					targetDifficulty = blockchain.CompactToBig(msgBlock.Header.Bits)
+					targetDifficulty = blockchain.CompactToBig(template.Bits)
 				}
 
 			default:
@@ -288,7 +272,7 @@ func (m *CPUMiner) solveBlock(msgBlock *wire.MsgBlock, blockHeight int32,
 			// hash is actually a double sha256 (two hashes), so
 			// increment the number of hashes completed for each
 			// attempt accordingly.
-			header.Nonce = i
+			header.Nonce = int32(i)
 			hash := header.BlockHash()
 			hashesCompleted += 2
 
@@ -300,6 +284,7 @@ func (m *CPUMiner) solveBlock(msgBlock *wire.MsgBlock, blockHeight int32,
 				return true
 			}
 		}
+		m.g.UpdateBlockTime(msgBlock)
 	}
 
 	return false
@@ -352,32 +337,90 @@ out:
 			continue
 		}
 
-		// Choose a payment address at random.
-		rand.Seed(time.Now().UnixNano())
-		payToAddr := m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
+		if time.Now().UnixNano() - m.g.BestSnapshot().Updated.UnixNano() <= miningGap * 1000000 {
+			time.Sleep(time.Millisecond * miningGap)
+			continue
+		}
+
+		// Choose a payment address.
+		// check whether the address is allowed to mine a POW block
+		// the rule is that we don't do POW mining while in committee
+
+		var payToAddr * btcutil.Address
+		var activeAddr * btcutil.Address
+		committee := m.g.Committee()
+
+		for i, addr := range m.cfg.MiningAddrs {
+			if _,ok := m.cfg.PrivKeys[addr]; !ok {
+				payToAddr = &m.cfg.MiningAddrs[i]
+				continue
+			}
+			var adr [20]byte
+			copy(adr[:], addr.ScriptAddress())
+			if _,ok := committee[adr]; ok {
+				activeAddr = &m.cfg.MiningAddrs[i]
+				payToAddr = nil
+				break
+			}
+		}
+		if payToAddr == nil && activeAddr == nil {
+			time.Sleep(time.Millisecond * miningGap)
+			continue
+		}
+		powMode := true
+		if activeAddr != nil {
+			powMode = false
+			payToAddr = activeAddr
+		}
+
+//		payToAddr := m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
 
 		// Create a new block template using the available transactions
 		// in the memory pool as a source of transactions to potentially
 		// include in the block.
-		template, err := m.g.NewBlockTemplate(payToAddr)
+		template, err := m.g.NewBlockTemplate(*payToAddr)
 		m.submitBlockLock.Unlock()
-
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to create new block "+
 				"template: %v", err)
 			log.Errorf(errStr)
 			continue
 		}
+
+		if !powMode {
+			nonce := m.g.Chain.BestChain.Tip().Header().Nonce - 1
+			if nonce == -wire.MINER_RORATE_FREQ || nonce >= 0 {
+				nonce = - int32(m.g.BestSnapshot().LastRotation + 1 + wire.MINER_RORATE_FREQ)
+			} else if nonce < -wire.MINER_RORATE_FREQ {
+				nonce = -1
+			}
+			template.Block.(*wire.MsgBlock).Header.Nonce = nonce
+
+			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
+
+			if wire.CommitteeSize == 1 {
+				// solo miner, add signature to coinbase, otherwise will add after committee decides
+				mining.AddSignature(block, m.cfg.PrivKeys[*payToAddr])
+			}
+			m.submitBlock(block)
+//			time.Sleep(time.Millisecond * miningGap)
+			continue
+		}
+
+		time.Sleep(time.Second * 20)
+
 		log.Info("Try to solve block ")
 
 		// Attempt to solve the block.  The function will exit early
 		// with false when conditions that trigger a stale block, so
 		// a new block template can be generated.  When the return is
 		// true a solution was found, so submit the solved block.
-		if m.solveBlock(template.Block, curHeight+1, ticker, quit) {
+		if m.solveBlock(template, curHeight+1, ticker, quit) {
 			log.Info("New block produced")
-			block := btcutil.NewBlock(template.Block)
+			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
 			m.submitBlock(block)
+			log.Infof("Tx chian = %d Miner chain = %d", m.g.Chain.BestSnapshot().Height,
+				m.g.Chain.Miners.BestSnapshot().Height)
 		} else {
 			log.Info("No New block produced")
 		}
@@ -631,8 +674,8 @@ func (m *CPUMiner) GenerateNBlocks(n uint32) ([]*chainhash.Hash, error) {
 		// with false when conditions that trigger a stale block, so
 		// a new block template can be generated.  When the return is
 		// true a solution was found, so submit the solved block.
-		if m.solveBlock(template.Block, curHeight+1, ticker, nil) {
-			block := btcutil.NewBlock(template.Block)
+		if m.solveBlock(template, curHeight+1, ticker, nil) {
+			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
 			m.submitBlock(block)
 			blockHashes[i] = block.Hash()
 			i++

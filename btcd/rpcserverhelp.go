@@ -159,6 +159,10 @@ var helpDescsEnUS = map[string]string{
 	"getbestblockhash--synopsis": "Returns the hash of the of the best (most recent) block in the longest block chain.",
 	"getbestblockhash--result0":  "The hex-encoded block hash",
 
+	// GetBestMinerBlockHash help.
+	"getbestminerblockhash--synopsis": "Returns the hash of the of the best (most recent) miner block in the longest block chain.",
+	"getbestminerblockhash--result0":  "The hex-encoded miner block hash",
+
 	// GetBlockCmd help.
 	"getblock--synopsis":   "Returns information about a block given its hash.",
 	"getblock-hash":        "The hash of the block",
@@ -247,10 +251,17 @@ var helpDescsEnUS = map[string]string{
 	"getblockcount--synopsis": "Returns the number of blocks in the longest block chain.",
 	"getblockcount--result0":  "The current block count",
 
+	"getminerblockcount--synopsis": "Returns the number of Miner blocks in the longest block chain.",
+	"getminerblockcount--result0":  "The current Miner block count",
+
 	// GetBlockHashCmd help.
 	"getblockhash--synopsis": "Returns hash of the block in best block chain at the given height.",
 	"getblockhash-index":     "The block height",
 	"getblockhash--result0":  "The block hash",
+
+	"getminerblockhash--synopsis": "Returns hash of the block in best miner block chain at the given height.",
+	"getminerblockhash-index":     "The miner block height",
+	"getminerblockhash--result0":  "The miner block hash",
 
 	// GetBlockHeaderCmd help.
 	"getblockheader--synopsis":   "Returns information about a block header given its hash.",
@@ -684,9 +695,13 @@ var rpcResultTypes = map[string][]interface{}{
 	"getaddednodeinfo":      {(*[]string)(nil), (*[]btcjson.GetAddedNodeInfoResult)(nil)},
 	"getbestblock":          {(*btcjson.GetBestBlockResult)(nil)},
 	"getbestblockhash":      {(*string)(nil)},
+	"getbestminerblockhash": {(*string)(nil)},
 	"getblock":              {(*string)(nil), (*btcjson.GetBlockVerboseResult)(nil)},
+	"getminerblock":         {(*string)(nil), (*btcjson.GetMinerBlockVerboseResult)(nil)},
 	"getblockcount":         {(*int64)(nil)},
+	"getminerblockcount":         {(*int64)(nil)},
 	"getblockhash":          {(*string)(nil)},
+	"getminerblockhash":          {(*string)(nil)},
 	"getblockheader":        {(*string)(nil), (*btcjson.GetBlockHeaderVerboseResult)(nil)},
 	"getblocktemplate":      {(*btcjson.GetBlockTemplateResult)(nil), (*string)(nil), nil},
 	"getblockchaininfo":     {(*btcjson.GetBlockChainInfoResult)(nil)},

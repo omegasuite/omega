@@ -75,8 +75,7 @@ func (t * ViewPointSet) SetBestHash(hash * chainhash.Hash) {
 }
 
 func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Block, stxos []SpentTxOut) error {
-	t.Miners.disconnectTransactions(block)
-
+//	t.Miners.disconnectTransactions(block)
 	err := t.Vertex.disconnectTransactions(db, block)
 	if err != nil {
 		return err
@@ -94,7 +93,7 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 		return err
 	}
 
-	for _,tx := range block.Transactions() {
+	for _,tx := range block.Transactions()[1:] {
 		for _, in := range tx.MsgTx().TxIn {
 			entry := t.Utxo.LookupEntry(in.PreviousOutPoint)
 			if entry == nil {

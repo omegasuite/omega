@@ -5,10 +5,8 @@
 package blockchain
 
 import (
-	"math/big"
-	"time"
-
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"math/big"
 )
 
 var (
@@ -156,6 +154,7 @@ func CalcWork(bits uint32) *big.Int {
 // can have given starting difficulty bits and a duration.  It is mainly used to
 // verify that claimed proof of work by a block is sane as compared to a
 // known good checkpoint.
+/*
 func (b *BlockChain) calcEasiestDifficulty(bits uint32, duration time.Duration) uint32 {
 	// Convert types used in the calculations below.
 	durationVal := int64(duration / time.Second)
@@ -314,8 +313,10 @@ func (b *BlockChain) calcNextRequiredDifficulty(lastNode *blockNode, newBlockTim
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) CalcNextRequiredDifficulty(timestamp time.Time) (uint32, error) {
-	b.chainLock.Lock()
-	difficulty, err := b.calcNextRequiredDifficulty(b.bestChain.Tip(), timestamp)
-	b.chainLock.Unlock()
+	b.ChainLock.Lock()
+	difficulty, err := b.calcNextRequiredDifficulty(b.BestChain.Tip(), timestamp)
+	b.ChainLock.Unlock()
 	return difficulty, err
 }
+
+*/

@@ -319,12 +319,27 @@ func main() {
 			}
 			log.Printf("Block count: %d", blockCount)
 			break
+		case "getminerblockcount":	//
+			// Get the current block count.
+			blockCount, err := client.GetMinerBlockCount()
+			if err != nil {
+				log.Print(err)
+			}
+			log.Printf("Block count: %d", blockCount)
+			break
 		case "getbestblockhash":	//
 			res, err := client.GetBestBlockHash()
 			if err != nil {
 				log.Print(err)
 			}
 			log.Printf("GetBestBlockHash: %s", res)
+			break
+		case "getbestminerblockhash":	//
+			res, err := client.GetBestMinerBlockHash()
+			if err != nil {
+				log.Print(err)
+			}
+			log.Printf("GetBestMinerBlockHash: %s", res)
 			break
 		case "getblockhash":	//  index
 			fmt.Println("Block height -> ")
@@ -338,6 +353,18 @@ func main() {
 			}
 			log.Printf("GetBlockHash: %s", res.String())
 			break
+		case "getminerblockhash":	//  index
+			fmt.Println("Block height -> ")
+			s, _ := reader.ReadString('\n')
+			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
+			var h int64
+			fmt.Sscanf(s, "%d", &h)
+			res, err := client.GetMinerBlockHash(h)
+			if err != nil {
+				log.Print(err)
+			}
+			log.Printf("GetMinerBlockHash: %s", res.String())
+			break
 		case "getblock":	//  "hash" ( verbose )
 			fmt.Println("Block hash -> ")
 			s := "00002c7307e3905a38ca29a862cc2e018202de40619c88765124d37a771cae49"	// block 0 hash
@@ -345,6 +372,45 @@ func main() {
 			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
 			h,_ := chainhash.NewHashFromStr(s)
 			res, err := client.GetBlock(h)
+			if err != nil {
+				log.Print(err)
+			} else {
+				log.Printf("Header.Version:%d\n", res.Header.Version)
+				log.Printf("Header.Nonce:%d\n", res.Header.Nonce)
+				log.Printf("Header.Bits:%d\n", res.Header.Bits)
+				log.Printf("Header.Timestamp:%d\n", res.Header.Timestamp)
+				log.Printf("Header.MerkleRoot:%d\n", res.Header.MerkleRoot.String())
+				log.Printf("Header.PrevBlock:%d\n", res.Header.PrevBlock.String())
+				for _, t := range res.Transactions {
+					log.Printf("-------------------------- Transaction ------------------------------\n")
+					log.Printf("TxHash: %s", t.TxHash().String())
+					log.Printf("Version: %d\n", t.Version)
+					log.Printf("LockTime: %d\n", t.LockTime)
+					log.Printf("TxIn: \n")
+					for _, in := range t.TxIn {
+						log.Printf("PreviousOutPoint: %s : %d\n", in.PreviousOutPoint.Hash.String(), in.PreviousOutPoint.Index)
+						log.Printf("Sequence: %d\n", in.Sequence)
+					}
+					log.Printf("TxDef: \n")
+					for _, d := range t.TxDef {
+						log.Printf("DefType: %s Hash: %s\n", d.DefType(), d.Hash().String())
+					}
+					log.Printf("TxOut: \n")
+					for _, out := range t.TxOut {
+						log.Printf("TokenType: \n", out.TokenType)
+						log.Printf("Value: \n", out.Value)
+						log.Printf("Rights: \n", out.Rights)
+					}
+				}
+			}
+			break
+		case "getminerblock":	//  "hash" ( verbose )
+			fmt.Println("Block hash -> ")
+			s := "00002c7307e3905a38ca29a862cc2e018202de40619c88765124d37a771cae49"	// block 0 hash
+			s, _ = reader.ReadString('\n')
+			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
+			h,_ := chainhash.NewHashFromStr(s)
+			res, err := client.GetMinerBlock(h)
 			if err != nil {
 				log.Print(err)
 			} else {

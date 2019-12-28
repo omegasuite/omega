@@ -18,6 +18,10 @@ const (
 
 	// Maximum payload size for an inventory vector.
 	maxInvVectPayload = 4 + chainhash.HashSize
+
+	// InvWitnessFlag denotes that the inventory vector type is requesting,
+	// or sending a version which includes witness data.
+	InvWitnessFlag = 1 << 30
 )
 
 // InvVect defines a bitcoin inventory vector which is used to describe data,

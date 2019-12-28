@@ -269,10 +269,16 @@ func NewGetAddedNodeInfoCmd(dns bool, node *string) *GetAddedNodeInfoCmd {
 // GetBestBlockHashCmd defines the getbestblockhash JSON-RPC command.
 type GetBestBlockHashCmd struct{}
 
+type GetBestMinerBlockHashCmd struct{}
+
 // NewGetBestBlockHashCmd returns a new instance which can be used to issue a
 // getbestblockhash JSON-RPC command.
 func NewGetBestBlockHashCmd() *GetBestBlockHashCmd {
 	return &GetBestBlockHashCmd{}
+}
+
+func NewGetBestMinerBlockHashCmd() *GetBestMinerBlockHashCmd {
+	return &GetBestMinerBlockHashCmd{}
 }
 
 // GetBlockCmd defines the getblock JSON-RPC command.
@@ -280,6 +286,11 @@ type GetBlockCmd struct {
 	Hash      string
 	Verbose   *bool `jsonrpcdefault:"true"`
 	VerboseTx *bool `jsonrpcdefault:"false"`
+}
+
+type GetMinerBlockCmd struct {
+	Hash      string
+	Verbose   *bool `jsonrpcdefault:"true"`
 }
 
 // NewGetBlockCmd returns a new instance which can be used to issue a getblock
@@ -295,6 +306,13 @@ func NewGetBlockCmd(hash string, verbose, verboseTx *bool) *GetBlockCmd {
 	}
 }
 
+func NewGetMinerBlockCmd(hash string, verbose *bool) *GetMinerBlockCmd {
+	return &GetMinerBlockCmd{
+		Hash:      hash,
+		Verbose:   verbose,
+	}
+}
+
 // GetBlockChainInfoCmd defines the getblockchaininfo JSON-RPC command.
 type GetBlockChainInfoCmd struct{}
 
@@ -306,6 +324,7 @@ func NewGetBlockChainInfoCmd() *GetBlockChainInfoCmd {
 
 // GetBlockCountCmd defines the getblockcount JSON-RPC command.
 type GetBlockCountCmd struct{}
+type GetMinerBlockCountCmd struct{}
 
 // NewGetBlockCountCmd returns a new instance which can be used to issue a
 // getblockcount JSON-RPC command.
@@ -313,8 +332,16 @@ func NewGetBlockCountCmd() *GetBlockCountCmd {
 	return &GetBlockCountCmd{}
 }
 
+func NewGetMinerBlockCountCmd() *GetMinerBlockCountCmd {
+	return &GetMinerBlockCountCmd{}
+}
+
 // GetBlockHashCmd defines the getblockhash JSON-RPC command.
 type GetBlockHashCmd struct {
+	Index int64
+}
+
+type GetMinerBlockHashCmd struct {
 	Index int64
 }
 
@@ -326,8 +353,19 @@ func NewGetBlockHashCmd(index int64) *GetBlockHashCmd {
 	}
 }
 
+func NewGetMinerBlockHashCmd(index int64) *GetMinerBlockHashCmd {
+	return &GetMinerBlockHashCmd{
+		Index: index,
+	}
+}
+
 // GetBlockHeaderCmd defines the getblockheader JSON-RPC command.
 type GetBlockHeaderCmd struct {
+	Hash    string
+	Verbose *bool `jsonrpcdefault:"true"`
+}
+
+type GetMinerBlockHeaderCmd struct {
 	Hash    string
 	Verbose *bool `jsonrpcdefault:"true"`
 }
@@ -336,6 +374,13 @@ type GetBlockHeaderCmd struct {
 // getblockheader JSON-RPC command.
 func NewGetBlockHeaderCmd(hash string, verbose *bool) *GetBlockHeaderCmd {
 	return &GetBlockHeaderCmd{
+		Hash:    hash,
+		Verbose: verbose,
+	}
+}
+
+func NewGetMinerBlockHeaderCmd(hash string, verbose *bool) *GetMinerBlockHeaderCmd {
+	return &GetMinerBlockHeaderCmd{
 		Hash:    hash,
 		Verbose: verbose,
 	}
@@ -951,9 +996,12 @@ func init() {
 	MustRegisterCmd("decodescript", (*DecodeScriptCmd)(nil), flags)
 	MustRegisterCmd("getaddednodeinfo", (*GetAddedNodeInfoCmd)(nil), flags)
 	MustRegisterCmd("getbestblockhash", (*GetBestBlockHashCmd)(nil), flags)
+	MustRegisterCmd("getbestminerblockhash", (*GetBestMinerBlockHashCmd)(nil), flags)
 	MustRegisterCmd("getblock", (*GetBlockCmd)(nil), flags)
+	MustRegisterCmd("getminerblock", (*GetBlockCmd)(nil), flags)
 	MustRegisterCmd("getblockchaininfo", (*GetBlockChainInfoCmd)(nil), flags)
 	MustRegisterCmd("getblockcount", (*GetBlockCountCmd)(nil), flags)
+	MustRegisterCmd("getminerblockcount", (*GetMinerBlockCountCmd)(nil), flags)
 	MustRegisterCmd("getblockhash", (*GetBlockHashCmd)(nil), flags)
 	MustRegisterCmd("getblockheader", (*GetBlockHeaderCmd)(nil), flags)
 	MustRegisterCmd("getblocktemplate", (*GetBlockTemplateCmd)(nil), flags)

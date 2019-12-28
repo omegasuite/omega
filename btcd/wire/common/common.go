@@ -31,6 +31,22 @@ const (
 	BinaryFreeListMaxItems = 1024
 )
 
+// InvType represents the allowed types of inventory vectors.  See InvVect.
+type InvType uint32
+
+// These constants define the various supported inventory vector types.
+const (
+	InvTypeError                InvType = 0
+	InvTypeTx                   InvType = 1
+	InvTypeBlock                InvType = 2
+	InvTypeFilteredBlock        InvType = 3
+	InvTypeTempBlock		    InvType = 4
+	InvTypeMinerBlock           InvType = 5
+	InvTypeWitnessBlock         InvType = InvTypeBlock | InvWitnessFlag
+	InvTypeWitnessTx            InvType = InvTypeTx | InvWitnessFlag
+	InvTypeFilteredWitnessBlock InvType = InvTypeFilteredBlock | InvWitnessFlag
+)
+
 const (
 	MaxUint64 = 1<<64 - 1
 )
@@ -49,9 +65,6 @@ type BitcoinNet uint32
 
 // BloomUpdateType specifies how the filter is updated when a match is found
 type BloomUpdateType uint8
-
-// InvType represents the allowed types of inventory vectors.  See InvVect.
-type InvType uint32
 
 // RejectCode represents a numeric value by which a remote peer indicates
 // why a message was rejected.
@@ -757,14 +770,6 @@ func NewMessageError(f string, desc string) *MessageError {
 
 // These constants define the various supported inventory vector types.
 const (
-	InvTypeError                InvType = 0
-	InvTypeTx                   InvType = 1
-	InvTypeBlock                InvType = 2
-	InvTypeFilteredBlock        InvType = 3
-	InvTypeWitnessBlock         InvType = InvTypeBlock | InvWitnessFlag
-	InvTypeWitnessTx            InvType = InvTypeTx | InvWitnessFlag
-	InvTypeFilteredWitnessBlock InvType = InvTypeFilteredBlock | InvWitnessFlag
-
 	// InvWitnessFlag denotes that the inventory vector type is requesting,
 	// or sending a version which includes witness data.
 	InvWitnessFlag = 1 << 30

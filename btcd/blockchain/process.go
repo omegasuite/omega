@@ -6,6 +6,7 @@ package blockchain
 
 import (
 	"fmt"
+	"github.com/btcsuite/btcd/wire"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -28,6 +29,8 @@ const (
 	// ensures a block hashes to a value less than the required target will
 	// not be performed.
 	BFNoPoWCheck
+
+	BFAddAsOrphan
 
 	// BFNone is a convenience value to specifically indicate no flags.
 	BFNone BehaviorFlags = 0
@@ -71,7 +74,7 @@ func (b *BlockChain) blockExists(hash *chainhash.Hash) (bool, error) {
 	return exists, err
 }
 
-// processOrphans determines if there are any orphans which depend on the passed
+// ProcessOrphans determines if there are any orphans which depend on the passed
 // block hash (they are no longer orphans if true) and potentially accepts them.
 // It repeats the process for the newly accepted blocks (to detect further
 // orphans which may no longer be orphans) until there are no more.
@@ -80,7 +83,7 @@ func (b *BlockChain) blockExists(hash *chainhash.Hash) (bool, error) {
 // are needed to pass along to maybeAcceptBlock.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) processOrphans(hash *chainhash.Hash, flags BehaviorFlags) error {
+func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) error {
 	// Start with processing at least the passed hash.  Leave a little room
 	// for additional orphan blocks that need to be processed without
 	// needing to grow the array in the common case.
@@ -140,10 +143,10 @@ func (b *BlockChain) processOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error) {
-	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
+	b.ChainLock.Lock()
+	defer b.ChainLock.Unlock()
 
-	fastAdd := flags&BFFastAdd == BFFastAdd
+//	fastAdd := flags&BFFastAdd == BFFastAdd
 
 	blockHash := block.Hash()
 	log.Tracef("Processing block %v", blockHash)
@@ -199,28 +202,49 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return false, false, err
 	}
 	if !prevHashExists {
-		log.Infof("Adding orphan block %v with parent %v", blockHash, prevHash)
-		b.addOrphanBlock(block)
+//		log.Infof("Adding orphan block %v with parent %v", blockHash, prevHash)
+		b.AddOrphanBlock(block)
 
 		return false, true, nil
 	}
 
+	requiredRotate := b.BestSnapshot().LastRotation
+	header := &block.MsgBlock().Header
+	if header.Nonce > 0 || header.Nonce == -(wire.MINER_RORATE_FREQ - 1){
+		requiredRotate++
+	}
+
+	isMainChain := false
+	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {
+		isMainChain, err = b.maybeAcceptBlock(block, flags)
+		if err != nil {
+			return false, false, err
+		}
+	} else {
+		// add it as an orphan. whenever a miner block is added,
+		// we shall call ProcessOrphans with tip of best tx chain hash as param.
+		b.AddOrphanBlock(block)
+		return false, true, nil
+	}
+
+	if isMainChain {
+		b.Miners.ProcessOrphans(&b.Miners.BestSnapshot().Hash, BFNone)
+	}
+
 	// The block has passed all context independent checks and appears sane
 	// enough to potentially accept it into the block chain.
-	isMainChain, err := b.maybeAcceptBlock(block, flags)
-	if err != nil {
-		return false, false, err
-	}
 
 	// Accept any orphan blocks that depend on this block (they are
 	// no longer orphans) and repeat for those accepted blocks until
 	// there are no more.
-	err = b.processOrphans(blockHash, flags)
+	err = b.ProcessOrphans(blockHash, flags)
 	if err != nil {
 		return false, false, err
 	}
 
 	log.Debugf("Accepted block %v", blockHash)
+	log.Infof("ProcessBlock: Tx chian = %d Miner chain = %d", b.BestSnapshot().Height,
+		b.Miners.BestSnapshot().Height)
 
 	return isMainChain, false, nil
 }

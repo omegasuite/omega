@@ -5,6 +5,7 @@
 package netsync
 
 import (
+	"github.com/btcsuite/btcd/wire"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 // blocks. Ex: syncing to best chain, indexing all blocks, etc.
 type blockProgressLogger struct {
 	receivedLogBlocks int64
+	receivedMinerLogBlocks int64
 	receivedLogTx     int64
 	lastBlockLogTime  time.Time
 
@@ -72,6 +74,34 @@ func (b *blockProgressLogger) LogBlockHeight(block *btcutil.Block) {
 
 	b.receivedLogBlocks = 0
 	b.receivedLogTx = 0
+	b.lastBlockLogTime = now
+}
+
+func (b *blockProgressLogger) LogMinerBlockHeight(block *wire.MinerBlock) {
+	b.Lock()
+	defer b.Unlock()
+
+	b.receivedMinerLogBlocks++
+
+	now := time.Now()
+	duration := now.Sub(b.lastBlockLogTime)
+	if duration < time.Second*10 {
+		return
+	}
+
+	// Truncate the duration to 10s of milliseconds.
+	durationMillis := int64(duration / time.Millisecond)
+	tDuration := 10 * time.Millisecond * time.Duration(durationMillis/10)
+
+	// Log information about new block height.
+	blockStr := "blocks"
+	if b.receivedMinerLogBlocks == 1 {
+		blockStr = "block"
+	}
+	b.subsystemLogger.Infof("%s %d %s in the last %s (height %d, %s)",
+		b.progressAction, b.receivedMinerLogBlocks, blockStr, tDuration, block.Height(), block.MsgBlock().Timestamp)
+
+	b.receivedMinerLogBlocks = 0
 	b.lastBlockLogTime = now
 }
 

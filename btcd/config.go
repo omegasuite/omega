@@ -25,6 +25,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/connmgr"
 	"github.com/btcsuite/btcd/database"
+	"github.com/btcsuite/btcd/btcec"
 	_ "github.com/btcsuite/btcd/database/ffldb"
 	"github.com/btcsuite/btcd/mempool"
 	"github.com/btcsuite/btcd/peer"
@@ -146,6 +147,7 @@ type config struct {
 	MaxOrphanTxs         int           `long:"maxorphantx" description:"Max number of orphan transactions to keep in memory"`
 	Generate             bool          `long:"generate" description:"Generate (mine) bitcoins using the CPU"`
 	MiningAddrs          []string      `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
+	PrivKeys  	         []string      `long:"privKeys" description:"Add the specified private key to the list of keys to sign for generated blocks -- At least one key is required if the generate option is set"`
 	BlockMinSize         uint32        `long:"blockminsize" description:"Mininum block size in bytes to be used when creating a block"`
 	BlockMaxSize         uint32        `long:"blockmaxsize" description:"Maximum block size in bytes to be used when creating a block"`
 	BlockMinWeight       uint32        `long:"blockminweight" description:"Mininum block weight to be used when creating a block"`
@@ -168,6 +170,7 @@ type config struct {
 	dial                 func(string, string, time.Duration) (net.Conn, error)
 	addCheckpoints       []chaincfg.Checkpoint
 	miningAddrs          []btcutil.Address
+	privKeys 			 map[btcutil.Address]*btcec.PrivateKey
 	minRelayTxFee        btcutil.Amount
 	whitelists           []*net.IPNet
 }
@@ -868,7 +871,7 @@ func loadConfig() (*config, []string, error) {
 	}
 
 	// Check mining addresses are valid and saved parsed versions.
-	cfg.miningAddrs = make([]btcutil.Address, 0, len(cfg.MiningAddrs))
+	cfg.miningAddrs = make([]btcutil.Address, 0, len(cfg.MiningAddrs) + len(cfg.PrivKeys))
 	for _, strAddr := range cfg.MiningAddrs {
 		addr, err := btcutil.DecodeAddress(strAddr, activeNetParams.Params)
 		if err != nil {
@@ -886,6 +889,36 @@ func loadConfig() (*config, []string, error) {
 			return nil, nil, err
 		}
 		cfg.miningAddrs = append(cfg.miningAddrs, addr)
+	}
+
+	cfg.privKeys = make(map[btcutil.Address]*btcec.PrivateKey)
+	for _, strAddr := range cfg.PrivKeys {
+		// for main net
+		dwif,err := btcutil.DecodeWIF(strAddr)
+		if err != nil {
+			continue
+		}
+		privKey := dwif.PrivKey
+		pkaddr,err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
+
+		if err != nil {
+			str := "%s: mining address '%s' failed to decode: %v"
+			err := fmt.Errorf(str, funcName, strAddr, err)
+			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(os.Stderr, usageMessage)
+			return nil, nil, err
+		}
+
+		addr := pkaddr.AddressPubKeyHash()
+		if !addr.IsForNet(activeNetParams.Params) {
+			str := "%s: mining address '%s' is on the wrong network"
+			err := fmt.Errorf(str, funcName, strAddr)
+			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(os.Stderr, usageMessage)
+			return nil, nil, err
+		}
+		cfg.miningAddrs = append(cfg.miningAddrs, addr)
+		cfg.privKeys[addr] = privKey
 	}
 
 	// Ensure there is at least one mining address when the generate flag is

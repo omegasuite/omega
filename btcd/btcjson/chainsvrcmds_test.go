@@ -222,6 +222,17 @@ func TestChainSvrCmds(t *testing.T) {
 			unmarshalled: &btcjson.GetBlockHashCmd{Index: 123},
 		},
 		{
+			name: "getminerblockhash",
+			newCmd: func() (interface{}, error) {
+				return btcjson.NewCmd("getminerblockhash", 123)
+			},
+			staticCmd: func() interface{} {
+				return btcjson.NewGetMinerBlockHashCmd(123)
+			},
+			marshalled:   `{"jsonrpc":"1.0","method":"getminerblockhash","params":[123],"id":1}`,
+			unmarshalled: &btcjson.GetMinerBlockHashCmd{Index: 123},
+		},
+		{
 			name: "getblockheader",
 			newCmd: func() (interface{}, error) {
 				return btcjson.NewCmd("getblockheader", "123")

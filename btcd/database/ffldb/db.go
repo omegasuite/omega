@@ -1190,9 +1190,9 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 	return nil
 }
 
-// StoreBlock stores the provided block into the database.  There are no checks
-// to ensure the block connects to a previous block, contains double spends, or
-// any additional functionality such as transaction indexing.  It simply stores
+// StoreMinerBlock stores the provided miner block into the database.  There are
+// no checks to ensure the block connects to a previous block, any additional
+// functionality such as transaction indexing.  It simply stores
 // the block in the database.
 //
 // Returns the following errors as required by the interface contract:
@@ -1215,7 +1215,7 @@ func (tx *transaction) StoreMinerBlock(block * wire.MinerBlock) error {
 
 	// Reject the block if it already exists.
 	blockHash := block.Hash()
-	if tx.hasBlock(&blockHash) {
+	if tx.hasBlock(blockHash) {
 		str := fmt.Sprintf("block %s already exists", blockHash)
 		return makeDbErr(database.ErrBlockExists, str, nil)
 	}
@@ -1234,9 +1234,9 @@ func (tx *transaction) StoreMinerBlock(block * wire.MinerBlock) error {
 	if tx.pendingBlocks == nil {
 		tx.pendingBlocks = make(map[chainhash.Hash]int)
 	}
-	tx.pendingBlocks[blockHash] = len(tx.pendingBlockData)
+	tx.pendingBlocks[*blockHash] = len(tx.pendingBlockData)
 	tx.pendingBlockData = append(tx.pendingBlockData, pendingBlock{
-		hash:  &blockHash,
+		hash:  blockHash,
 		bytes: blockBytes,
 	})
 	log.Tracef("Added block %s to pending blocks", blockHash)

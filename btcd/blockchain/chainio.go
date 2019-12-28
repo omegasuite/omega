@@ -168,8 +168,8 @@ func dbFetchOrCreateVersion(dbTx database.Tx, key []byte, defaultVersion uint32)
 // This function is safe for concurrent access however the returned entry (if
 // any) is NOT.
 func (b *BlockChain) FetchUtxoEntry(outpoint wire.OutPoint) (*viewpoint.UtxoEntry, error) {
-	b.chainLock.RLock()
-	defer b.chainLock.RUnlock()
+	b.ChainLock.RLock()
+	defer b.ChainLock.RUnlock()
 
 	var entry *viewpoint.UtxoEntry
 	err := b.db.View(func(dbTx database.Tx) error {
@@ -278,8 +278,8 @@ func (b *BlockChain) NewViewPointSet() * viewpoint.ViewPointSet {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) FetchSpendJournal(targetBlock *btcutil.Block) ([]viewpoint.SpentTxOut, error) {
-	b.chainLock.RLock()
-	defer b.chainLock.RUnlock()
+	b.ChainLock.RLock()
+	defer b.ChainLock.RUnlock()
 
 	var spendEntries []viewpoint.SpentTxOut
 	err := b.db.View(func(dbTx database.Tx) error {
@@ -649,8 +649,10 @@ func dbFetchHashByHeight(dbTx database.Tx, height int32) (*chainhash.Hash, error
 // best chain state.
 type bestChainState struct {
 	hash      chainhash.Hash
+	bits      uint32
 	height    uint32
 	totalTxns uint64
+	rotation  uint32
 	workSum   *big.Int
 }
 
@@ -660,13 +662,17 @@ func serializeBestChainState(state bestChainState) []byte {
 	// Calculate the full size needed to serialize the chain state.
 	workSumBytes := state.workSum.Bytes()
 	workSumBytesLen := uint32(len(workSumBytes))
-	serializedLen := chainhash.HashSize + 4 + 8 + 4 + workSumBytesLen
+	serializedLen := chainhash.HashSize + 4 + 8 + 4 + 4 + 4 + workSumBytesLen
 
 	// Serialize the chain state.
 	serializedData := make([]byte, serializedLen)
 	copy(serializedData[0:chainhash.HashSize], state.hash[:])
 	offset := uint32(chainhash.HashSize)
+	byteOrder.PutUint32(serializedData[offset:], state.bits)
+	offset += 4
 	byteOrder.PutUint32(serializedData[offset:], state.height)
+	offset += 4
+	byteOrder.PutUint32(serializedData[offset:], state.rotation)
 	offset += 4
 	byteOrder.PutUint64(serializedData[offset:], state.totalTxns)
 	offset += 8
@@ -683,7 +689,7 @@ func serializeBestChainState(state bestChainState) []byte {
 func deserializeBestChainState(serializedData []byte) (bestChainState, error) {
 	// Ensure the serialized data has enough bytes to properly deserialize
 	// the hash, height, total transactions, and work sum length.
-	if len(serializedData) < chainhash.HashSize+16 {
+	if len(serializedData) < chainhash.HashSize+24 {
 		return bestChainState{}, database.Error{
 			ErrorCode:   database.ErrCorruption,
 			Description: "corrupt best chain state",
@@ -693,7 +699,11 @@ func deserializeBestChainState(serializedData []byte) (bestChainState, error) {
 	state := bestChainState{}
 	copy(state.hash[:], serializedData[0:chainhash.HashSize])
 	offset := uint32(chainhash.HashSize)
+	state.bits = byteOrder.Uint32(serializedData[offset : offset+4])
+	offset += 4
 	state.height = byteOrder.Uint32(serializedData[offset : offset+4])
+	offset += 4
+	state.rotation = byteOrder.Uint32(serializedData[offset : offset+4])
 	offset += 4
 	state.totalTxns = byteOrder.Uint64(serializedData[offset : offset+8])
 	offset += 8
@@ -720,6 +730,8 @@ func dbPutBestState(dbTx database.Tx, snapshot *BestState, workSum *big.Int) err
 	// Serialize the current best chain state.
 	serializedData := serializeBestChainState(bestChainState{
 		hash:      snapshot.Hash,
+		bits:	   snapshot.Bits,
+		rotation:  snapshot.LastRotation,
 		height:    uint32(snapshot.Height),
 		totalTxns: snapshot.TotalTxns,
 		workSum:   workSum,
@@ -738,8 +750,9 @@ func (b *BlockChain) createChainState() error {
 	genesisBlock.SetHeight(0)
 	header := &genesisBlock.MsgBlock().Header
 	node := newBlockNode(header, nil)
+	node.bits = b.chainParams.PowLimitBits
 	node.status = statusDataStored | statusValid
-	b.bestChain.SetTip(node)
+	b.BestChain.SetTip(node)
 
 	// Add the new node to the index which is used for faster lookups.
 	b.index.addNode(node)
@@ -750,7 +763,7 @@ func (b *BlockChain) createChainState() error {
 	blockSize := uint64(genesisBlock.MsgBlock().SerializeSize())
 	blockWeight := uint64(GetBlockWeight(genesisBlock))
 	b.stateSnapshot = newBestState(node, blockSize, blockWeight, numTxns,
-		numTxns, time.Unix(node.timestamp, 0))
+		numTxns, time.Unix(node.timestamp, 0), b.chainParams.PowLimitBits, 0)
 
 	// Create the initial the database chain state including creating the
 	// necessary index buckets and inserting the genesis block.
@@ -964,7 +977,12 @@ func (b *BlockChain) initChainState() error {
 			return AssertError(fmt.Sprintf("initChainState: cannot find "+
 				"chain tip %s in block index", state.hash))
 		}
-		b.bestChain.SetTip(tip)
+
+		if tip.parent == nil {
+			tip.bits = b.chainParams.PowLimitBits
+		}
+
+		b.BestChain.SetTip(tip)
 
 		// Load the raw block bytes for the best block.
 		blockBytes, err := dbTx.FetchBlock(&state.hash)
@@ -1000,8 +1018,10 @@ func (b *BlockChain) initChainState() error {
 		blockSize := uint64(len(blockBytes))
 		blockWeight := uint64(GetBlockWeight(btcutil.NewBlock(&block)))
 		numTxns := uint64(len(block.Transactions))
+
+		tip.bits = state.bits
 		b.stateSnapshot = newBestState(tip, blockSize, blockWeight,
-			numTxns, state.totalTxns, tip.CalcPastMedianTime())
+			numTxns, state.totalTxns, tip.CalcPastMedianTime(), state.bits, state.rotation)
 
 		return nil
 	})
@@ -1132,7 +1152,7 @@ func blockIndexKey(blockHash *chainhash.Hash, blockHeight uint32) []byte {
 // This function is safe for concurrent access.
 func (b *BlockChain) BlockByHeight(blockHeight int32) (*btcutil.Block, error) {
 	// Lookup the block height in the best chain.
-	node := b.bestChain.NodeByHeight(blockHeight)
+	node := b.BestChain.NodeByHeight(blockHeight)
 	if node == nil {
 		str := fmt.Sprintf("no block at height %d exists", blockHeight)
 		return nil, bccompress.ErrNotInMainChain(str)
@@ -1156,7 +1176,7 @@ func (b *BlockChain) BlockByHash(hash *chainhash.Hash) (*btcutil.Block, error) {
 	// Lookup the block hash in block index and ensure it is in the best
 	// chain.
 	node := b.index.LookupNode(hash)
-	if node == nil || !b.bestChain.Contains(node) {
+	if node == nil || !b.BestChain.Contains(node) {
 		str := fmt.Sprintf("block %s is not in the main chain", hash)
 		return nil, bccompress.ErrNotInMainChain(str)
 	}
@@ -1182,8 +1202,8 @@ func (b *BlockChain) BlockByHash(hash *chainhash.Hash) (*btcutil.Block, error) {
 // This function is safe for concurrent access however the returned entry (if
 // any) is NOT.
 func (b *BlockChain) FetchBorderEntry(hash chainhash.Hash) (*viewpoint.BorderEntry, error) {
-	b.chainLock.RLock()
-	defer b.chainLock.RUnlock()
+	b.ChainLock.RLock()
+	defer b.ChainLock.RUnlock()
 
 	var entry *viewpoint.BorderEntry
 	err := b.db.View(func(dbTx database.Tx) error {
@@ -1210,8 +1230,8 @@ func (b *BlockChain) FetchBorderEntry(hash chainhash.Hash) (*viewpoint.BorderEnt
 // This function is safe for concurrent access however the returned entry (if
 // any) is NOT.
 func (b *BlockChain) FetchPolygonEntry(hash chainhash.Hash) (*viewpoint.PolygonEntry, error) {
-	b.chainLock.RLock()
-	defer b.chainLock.RUnlock()
+	b.ChainLock.RLock()
+	defer b.ChainLock.RUnlock()
 
 	var entry *viewpoint.PolygonEntry
 	err := b.db.View(func(dbTx database.Tx) error {
@@ -1245,8 +1265,8 @@ func (b *BlockChain) FetchPolygonEntry(hash chainhash.Hash) (*viewpoint.PolygonE
 // This function is safe for concurrent access however the returned entry (if
 // any) is NOT.
 func (b *BlockChain) FetchRightEntry(hash chainhash.Hash) (*viewpoint.RightEntry, error) {
-	b.chainLock.RLock()
-	defer b.chainLock.RUnlock()
+	b.ChainLock.RLock()
+	defer b.ChainLock.RUnlock()
 
 	var entry *viewpoint.RightEntry
 	err := b.db.View(func(dbTx database.Tx) error {
@@ -1305,9 +1325,9 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.UtxoViewpoint, er
 	// Request the utxos from the point of view of the end of the main
 	// chain.
 	view := viewpoint.NewUtxoViewpoint()
-	b.chainLock.RLock()
+	b.ChainLock.RLock()
 	err := view.FetchUtxosMain(b.db, neededSet)
-	b.chainLock.RUnlock()
+	b.ChainLock.RUnlock()
 	return view, err
 }
 
@@ -1321,8 +1341,8 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.UtxoViewpoint, er
 // This function is safe for concurrent access however the returned entry (if
 // any) is NOT.
 func (b *BlockChain) FetchVtxEntry(hash chainhash.Hash) (*viewpoint.VtxEntry, error) {
-	b.chainLock.RLock()
-	defer b.chainLock.RUnlock()
+	b.ChainLock.RLock()
+	defer b.ChainLock.RUnlock()
 
 	var entry *viewpoint.VtxEntry
 	err := b.db.View(func(dbTx database.Tx) error {
