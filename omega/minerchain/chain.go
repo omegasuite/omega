@@ -71,7 +71,7 @@ type MinerChain struct {
 
 	// chainLock protects concurrent access to the vast majority of the
 	// fields in this struct below this point.
-	chainLock sync.RWMutex
+	chainLock * sync.RWMutex
 
 	// These fields are related to the memory block index.  They both have
 	// their own locks, however they are often also protected by the chain
@@ -610,9 +610,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		// then process orphans in tx chain, as they may become valid, and new
 		// miner block may depend on new tx block, thus for each new miner block added
 		// we need to process tx orphans once
-		b.blockChain.ChainLock.Lock()
 		b.blockChain.ProcessOrphans(&b.blockChain.BestSnapshot().Hash, blockchain.BFNone)
-		b.blockChain.ChainLock.Unlock()
 	}
 
 	// Log the point where the chain forked and old and new best chain
@@ -739,7 +737,6 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 	}
 	if fork.height <= b.blockChain.BestSnapshot().Height {
 		// a reorg is required
-		b.blockChain.ChainLock.Lock()
 		detach := list.New()
 
 		p := b.blockChain.BestChain.Tip()
@@ -762,7 +759,6 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 			p = p.Parent()
 		}
 		b.blockChain.ReorganizeChain(detach, list.New())
-		b.blockChain.ChainLock.Unlock()
 	}
 
 	err := b.reorganizeChain(detachNodes, attachNodes)
@@ -785,7 +781,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 //  - Latest block has a timestamp newer than 24 hours ago
 //
 // This function MUST be called with the chain state lock held (for reads).
-func (b *MinerChain) isCurrent() bool {
+func (b *MinerChain) IsCurrent() bool {
 	// Not current if the latest main (best) chain height is before the
 	// latest known good checkpoint (when checkpoints are enabled).
 	if b.chainParams.Name == "mainnet" {
@@ -808,12 +804,21 @@ func (b *MinerChain) isCurrent() bool {
 //  - Latest block has a timestamp newer than 24 hours ago
 //
 // This function is safe for concurrent access.
+/*
 func (b *MinerChain) IsCurrent() bool {
 	b.chainLock.RLock()
-	defer b.chainLock.RUnlock()
+	defer
+	c := b.isCurrent()
+	b.chainLock.RUnlock()
 
-	return b.isCurrent()
+	if !c {
+		return false
+	}
+
+	return b.blockChain.IsCurrent()
 }
+
+*/
 
 // BestSnapshot returns information about the current best chain block and
 // related state as of the current point in time.  The returned instance must be
@@ -1220,6 +1225,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		orphans:             make(map[chainhash.Hash]*orphanBlock),
 		prevOrphans:         make(map[chainhash.Hash][]*orphanBlock),
 		stateLock:           &s.StateLock,
+		chainLock:			 &s.ChainLock,
 	}
 
 	// Initialize the chain state from the passed database.  When the db
