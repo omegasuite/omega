@@ -36,10 +36,10 @@ import (
 	"github.com/btcsuite/btcd/netsync"
 	"github.com/btcsuite/btcd/peer"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/bloom"
 	"github.com/btcsuite/omega/viewpoint"
-	"github.com/btcsuite/btcd/wire/common"
 )
 
 const (
@@ -265,6 +265,7 @@ type serverPeer struct {
 	server         *server
 	persistent     bool
 	continueHash   *chainhash.Hash
+	continueMinerHash   *chainhash.Hash
 	relayMtx       sync.Mutex
 	disableRelayTx bool
 	sentAddrs      bool
@@ -803,9 +804,12 @@ func (sp *serverPeer) OnGetMinerBlocks(_ *peer.Peer, msg *wire.MsgGetMinerBlocks
 	hashList := chain.LocateBlocks(msg.BlockLocatorHashes, &msg.HashStop,
 		wire.MaxBlocksPerMsg)
 
+	peerLog.Warnf("OnGetMinerBlocks [")
+
 	// Generate inventory message.
 	invMsg := wire.NewMsgInv()
 	for i := range hashList {
+		peerLog.Warnf("[%v], ", hashList[i])
 		iv := wire.NewInvVect(common.InvTypeMinerBlock, &hashList[i])
 		invMsg.AddInvVect(iv)
 	}
@@ -819,7 +823,7 @@ func (sp *serverPeer) OnGetMinerBlocks(_ *peer.Peer, msg *wire.MsgGetMinerBlocks
 			// would prevent the entire slice from being eligible
 			// for GC as soon as it's sent.
 			continueHash := invMsg.InvList[invListLen-1].Hash
-			sp.continueHash = &continueHash
+			sp.continueMinerHash = &continueHash
 		}
 		sp.QueueMessage(invMsg, nil)
 	}
@@ -1591,6 +1595,8 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 		return err
 	}
 
+	srvrLog.Infof("Serving Miner block: %v", msgBlock.PrevBlock)
+
 	// Once we have fetched data wait for any previous operation to finish.
 	if waitChan != nil {
 		<-waitChan
@@ -1599,7 +1605,7 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 	// We only send the channel for this message if we aren't sending
 	// an inv straight after.
 	var dc chan<- struct{}
-	continueHash := sp.continueHash
+	continueHash := sp.continueMinerHash
 	sendInv := continueHash != nil && continueHash.IsEqual(hash)
 	if !sendInv {
 		dc = doneChan
@@ -1617,7 +1623,7 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 		iv := wire.NewInvVect(common.InvTypeMinerBlock, &best.Hash)
 		invMsg.AddInvVect(iv)
 		sp.QueueMessage(invMsg, doneChan)
-		sp.continueHash = nil
+		sp.continueMinerHash = nil
 	}
 	return nil
 }
