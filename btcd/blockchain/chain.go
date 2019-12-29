@@ -622,15 +622,16 @@ func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 	numTxns := uint64(len(block.MsgBlock().Transactions))
 	blockSize := uint64(block.MsgBlock().SerializeSize())
 	blockWeight := uint64(GetBlockWeight(block))
+
 	state := newBestState(node, blockSize, blockWeight, numTxns,
 		curTotalTxns+numTxns, node.CalcPastMedianTime(), b.BestSnapshot().Bits,
 		b.BestSnapshot().LastRotation)
 	if node.nonce > 0 {
 		state.LastRotation++
 	} else if node.nonce <= -wire.MINER_RORATE_FREQ {
-		state.LastRotation = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
-		s, _ := b.Miners.BlockByHeight(int32(state.LastRotation - 1))
+		s, _ := b.Miners.BlockByHeight(int32(state.LastRotation))
 		state.Bits = s.MsgBlock().Bits
+		state.LastRotation++	// = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
 	}
 
 	// Atomically insert info into the database.
@@ -744,26 +745,43 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	blockWeight := uint64(GetBlockWeight(prevBlock))
 	newTotalTxns := curTotalTxns - uint64(len(block.MsgBlock().Transactions))
 
+	rotation := b.BestSnapshot().LastRotation
+	bits := prevNode.bits
+
 	if node.nonce <= -wire.MINER_RORATE_FREQ {
 		// the removed block was the first of a series rotated in block, difficulty should be
 		// in its previous block
-		realheight := -node.nonce - wire.MINER_RORATE_FREQ - 1
+		p := node
+		realheight := -p.nonce - wire.MINER_RORATE_FREQ - 1
+		for i := 0; i < wire.MINER_RORATE_FREQ; i++ {
+			p = p.parent
+		}
+
+		for p != nil && p.nonce >= 0 {
+			p = p.parent
+			realheight--
+		}
+
 		// the real miner block height of the previous miner block
-		mblock,_ := b.Miners.BlockByHeight(realheight)
+		mblock,_ := b.Miners.BlockByHeight(realheight - 1)
 		if mblock == nil {
-			prevNode.bits = b.chainParams.PowLimitBits
+			bits = b.chainParams.PowLimitBits
 		} else {
-			prevNode.bits = mblock.MsgBlock().Bits
+			bits = mblock.MsgBlock().Bits
 		}
 	}
 
-	state := newBestState(prevNode, blockSize, blockWeight, numTxns,
-		newTotalTxns, prevNode.CalcPastMedianTime(), prevNode.bits, b.BestSnapshot().LastRotation)
+	if node.nonce > 0 || node.nonce <= -wire.MINER_RORATE_FREQ {
+		rotation--
+	}
 
+	state := newBestState(prevNode, blockSize, blockWeight, numTxns,
+		newTotalTxns, prevNode.CalcPastMedianTime(), bits, rotation)	// prevNode.bits, b.BestSnapshot().LastRotation)
+/*
 	ht := b.BestSnapshot().Height
 	h := - node.nonce
 
-	if node.nonce > 0 {
+	if node.nonce > 0 || node.nonce <= -wire.MINER_RORATE_FREQ {
 		state.LastRotation--
 		var p wire.BlockHeader
 		for p = node.Header(); err == nil && p.Nonce > 0; p, err = b.HeaderByHash(&p.PrevBlock) {
@@ -786,6 +804,7 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	if node.nonce < 0 {
 		state.LastRotation = uint32(h)
 	}
+*/
 
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.

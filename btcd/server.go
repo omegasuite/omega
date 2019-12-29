@@ -804,12 +804,12 @@ func (sp *serverPeer) OnGetMinerBlocks(_ *peer.Peer, msg *wire.MsgGetMinerBlocks
 	hashList := chain.LocateBlocks(msg.BlockLocatorHashes, &msg.HashStop,
 		wire.MaxBlocksPerMsg)
 
-	peerLog.Warnf("OnGetMinerBlocks [")
+//	peerLog.Warnf("OnGetMinerBlocks [")
 
 	// Generate inventory message.
 	invMsg := wire.NewMsgInv()
 	for i := range hashList {
-		peerLog.Warnf("[%v], ", hashList[i])
+//		peerLog.Warnf("[%v], ", hashList[i])
 		iv := wire.NewInvVect(common.InvTypeMinerBlock, &hashList[i])
 		invMsg.AddInvVect(iv)
 	}
@@ -1595,7 +1595,7 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 		return err
 	}
 
-	srvrLog.Infof("Serving Miner block: %v", msgBlock.PrevBlock)
+//	srvrLog.Infof("Serving Miner block: %v", msgBlock.PrevBlock)
 
 	// Once we have fetched data wait for any previous operation to finish.
 	if waitChan != nil {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
 	"math/rand"
+
 	//	"runtime"
 	"sync"
 	"time"
@@ -329,15 +330,26 @@ out:
 		// this would otherwise end up building a new block template on
 		// a block that is in the process of becoming stale.
 		m.submitBlockLock.Lock()
-		curHeight := m.g.BestSnapshot().Height
+
 		isCurrent := m.cfg.IsCurrent()
+
+		m.g.Chain.ChainLock.Lock()
+		bs := m.g.BestSnapshot()
+		curHeight := bs.Height
+
+//		log.Infof("Preparing for minging at height = %d last rotation = %d", curHeight, bs.LastRotation)
+
 		if curHeight != 0 && !isCurrent {
+			m.g.Chain.ChainLock.Unlock()
 			m.submitBlockLock.Unlock()
 			time.Sleep(time.Second)
 			continue
 		}
 
+
 		if time.Now().UnixNano() - m.g.BestSnapshot().Updated.UnixNano() <= miningGap * 1000000 {
+			m.g.Chain.ChainLock.Unlock()
+			m.submitBlockLock.Unlock()
 			time.Sleep(time.Millisecond * miningGap)
 			continue
 		}
@@ -348,7 +360,12 @@ out:
 
 		var payToAddr * btcutil.Address
 		var activeAddr * btcutil.Address
+
+		pb := m.g.Chain.BestChain.Tip().Header()
+
 		committee := m.g.Committee()
+
+		m.g.Chain.ChainLock.Unlock()
 
 		for i, addr := range m.cfg.MiningAddrs {
 			if _,ok := m.cfg.PrivKeys[addr]; !ok {
@@ -364,6 +381,7 @@ out:
 			}
 		}
 		if payToAddr == nil && activeAddr == nil {
+			m.submitBlockLock.Unlock()
 			time.Sleep(time.Millisecond * miningGap)
 			continue
 		}
@@ -380,6 +398,7 @@ out:
 		// include in the block.
 		template, err := m.g.NewBlockTemplate(*payToAddr)
 		m.submitBlockLock.Unlock()
+
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to create new block "+
 				"template: %v", err)
@@ -388,12 +407,22 @@ out:
 		}
 
 		if !powMode {
-			nonce := m.g.Chain.BestChain.Tip().Header().Nonce - 1
+			nonce := pb.Nonce
+			if nonce >= 0 || nonce <= -wire.MINER_RORATE_FREQ {
+				nonce = -1
+			} else if nonce == -wire.MINER_RORATE_FREQ + 1 {
+				nonce = -int32(bs.LastRotation) - 1 - wire.MINER_RORATE_FREQ
+			} else {
+				nonce--
+			}
+/*
 			if nonce == -wire.MINER_RORATE_FREQ || nonce >= 0 {
 				nonce = - int32(m.g.BestSnapshot().LastRotation + 1 + wire.MINER_RORATE_FREQ)
 			} else if nonce < -wire.MINER_RORATE_FREQ {
 				nonce = -1
 			}
+*/
+
 			template.Block.(*wire.MsgBlock).Header.Nonce = nonce
 
 			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
@@ -402,6 +431,7 @@ out:
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
 				mining.AddSignature(block, m.cfg.PrivKeys[*payToAddr])
 			}
+			log.Infof("New block generated. nonce = %d", nonce)
 			m.submitBlock(block)
 //			time.Sleep(time.Millisecond * miningGap)
 			continue
@@ -610,6 +640,7 @@ func (m *CPUMiner) NumWorkers() int32 {
 // detecting when it is performing stale work and reacting accordingly by
 // generating a new block template.  When a block is solved, it is submitted.
 // The function returns a list of the hashes of generated blocks.
+
 func (m *CPUMiner) GenerateNBlocks(n uint32) ([]*chainhash.Hash, error) {
 	m.Lock()
 

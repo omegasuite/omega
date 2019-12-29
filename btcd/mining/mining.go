@@ -1080,7 +1080,10 @@ func (g *BlkTmplGenerator) ActiveMiner(address btcutil.Address) bool {
 
 func (g *BlkTmplGenerator) Committee() map[[20]byte]struct{} {
 	h := g.BestSnapshot().LastRotation		// .Chain.LastRotation(g.BestSnapshot().Hash)
+
 	n := h - wire.CommitteeSize
+
+//	log.Infof("Get committee at last rotation = %d", h)
 
 	adrs := make(map[[20]byte]struct{})
 

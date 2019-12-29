@@ -346,39 +346,33 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 		}
 	} else if parent != nil {
 		// examine nonce
-		if parent.Header().Nonce > 0 {
+		if parent.nonce > 0 {
 			// if previous block was a POW block, this block must be either a POW block, or a rotate
 			// block that phase out all the previous committee members
-			if header.Nonce != - int32(rotate + wire.MINER_RORATE_FREQ + 1) {
+			if header.Nonce != -1 {	// - int32(rotate + wire.MINER_RORATE_FREQ + 1) {
 				str := fmt.Sprintf("The previous block was a POW block, this block must be either a POW block, or a rotate block that phase out all the previous committee members.")
 				return ruleError(ErrHighHash, str)
 			}
-
-			p := parent
-			for p != nil && p.Header().Nonce > 0 {
-				rotate--
-				p = p.parent
-			}
-//			rotate++
 		} else {
 			switch {
-			case parent.Header().Nonce == -(wire.MINER_RORATE_FREQ - 1):
+			case parent.nonce == -wire.MINER_RORATE_FREQ + 1:
 				// this is a rotation block, nonce must be -(height of next miner block)
 				if header.Nonce != - int32(rotate + 1 + wire.MINER_RORATE_FREQ) {
 					str := fmt.Sprintf("The this is a rotation block, nonce must be height of next miner block.")
 					return ruleError(ErrHighHash, str)
 				}
-//				rotate++
-			case parent.Header().Nonce <= -wire.MINER_RORATE_FREQ:
+
+			case parent.nonce <= -wire.MINER_RORATE_FREQ:
 				// previous block is a rotation block, this block none must be -1
 				if header.Nonce != -1 {
 					str := fmt.Sprintf("Previous block is a rotation block, this block nonce must be -1.")
 					return ruleError(ErrHighHash, str)
 				}
+
 			default:
-				if header.Nonce != -((-parent.nonce + 1) % wire.MINER_RORATE_FREQ) {
+				if header.Nonce != parent.nonce - 1 {
 					// if parent.Nonce < 0 && header.Nonce != -((-parent.Nonce + 1) % ROT) { error }
-					str := fmt.Sprintf("The previous block is a block in a series, this block must be the next in the series.")
+					str := fmt.Sprintf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce)
 					return ruleError(ErrHighHash, str)
 				}
 			}

@@ -596,7 +596,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	delete(state.requestedBlocks, *blockHash)
 	delete(sm.requestedBlocks, *blockHash)
 
-	log.Infof("handleBlockMsg: %v", bmsg.block.MsgBlock().Header.PrevBlock)
+//	log.Infof("handleBlockMsg: %v", bmsg.block.MsgBlock().Header.PrevBlock)
 
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
@@ -755,7 +755,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		return
 	}
 
-	log.Infof("handleMinerBlockMsg: %v", bmsg.block.MsgBlock().PrevBlock)
+//	log.Infof("handleMinerBlockMsg: %v", bmsg.block.MsgBlock().PrevBlock)
 
 	// If we didn't ask for this block then the peer is misbehaving.
 	blockHash := bmsg.block.Hash()
