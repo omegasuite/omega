@@ -199,8 +199,12 @@ func isNonstandardTransaction(tx *btcutil.Tx) bool {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) IsCheckpointCandidate(block *btcutil.Block) (bool, error) {
+	log.Infof("IsCheckpointCandidate: ChainLock.RLock")
 	b.ChainLock.RLock()
-	defer b.ChainLock.RUnlock()
+	defer func () {
+		b.ChainLock.RUnlock()
+		log.Infof("IsCheckpointCandidate: ChainLock.RUnlock")
+	} ()
 
 	// A checkpoint must be in the main chain.
 	node := b.index.LookupNode(block.Hash())

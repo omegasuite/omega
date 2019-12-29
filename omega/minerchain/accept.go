@@ -256,8 +256,12 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) CheckConnectBlockTemplate(block *wire.MinerBlock) error {
+	log.Infof("MinerChain.CheckConnectBlockTemplate: ChainLock.RLock")
 	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
+	defer func() {
+		b.chainLock.Unlock()
+		log.Infof("MinerChain.CheckConnectBlockTemplate: ChainLock.Unlock")
+	} ()
 
 	// Skip the proof of work check as this is just a block template.
 	flags := blockchain.BFNoPoWCheck
