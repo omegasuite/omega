@@ -626,7 +626,7 @@ func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 		state.LastRotation++
 	} else if node.nonce <= -wire.MINER_RORATE_FREQ {
 		state.LastRotation = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
-		s, _ := b.Miners.BlockByHeight(int32(state.LastRotation))
+		s, _ := b.Miners.BlockByHeight(int32(state.LastRotation - 1))
 		state.Bits = s.MsgBlock().Bits
 	}
 
