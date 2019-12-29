@@ -143,12 +143,15 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error) {
-	log.Infof("ProcessBlock: ChainLock.RLock")
+//	log.Infof("ProcessBlock: ChainLock.RLock")
 	b.ChainLock.Lock()
-	defer func () {
+	defer b.ChainLock.Unlock()
+/*
+	func () {
 		b.ChainLock.Unlock()
 		log.Infof("ProcessBlock: ChainLock.Unlock")
 	} ()
+*/
 
 //	fastAdd := flags&BFFastAdd == BFFastAdd
 

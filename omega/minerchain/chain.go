@@ -130,11 +130,11 @@ func (b *MinerChain) HaveBlock(hash *chainhash.Hash) (bool, error) {
 }
 
 func (b *MinerChain) LatestMinerBlockLocator() (chainhash.BlockLocator, error) {
-	log.Infof("MinerChain.LatestMinerBlockLocator: ChainLock.RLock")
+//	log.Infof("MinerChain.LatestMinerBlockLocator: ChainLock.RLock")
 	b.chainLock.RLock()
 	locator := b.BestChain.BlockLocator(nil)
 	b.chainLock.RUnlock()
-	log.Infof("MinerChain.LatestMinerBlockLocator: ChainLock.RUnlock")
+//	log.Infof("MinerChain.LatestMinerBlockLocator: ChainLock.RUnlock")
 
 	return locator, nil
 }
@@ -870,12 +870,12 @@ func (b *MinerChain) MainChainHasBlock(hash *chainhash.Hash) bool {
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockLocator {
-	log.Infof("MinerChain.BlockLocatorFromHash: ChainLock.RLock")
+//	log.Infof("MinerChain.BlockLocatorFromHash: ChainLock.RLock")
 	b.chainLock.RLock()
 	node := b.index.LookupNode(hash)
 	locator := b.BestChain.blockLocator(node)
 	b.chainLock.RUnlock()
-	log.Infof("MinerChain.BlockLocatorFromHash: ChainLock.RUnlock")
+//	log.Infof("MinerChain.BlockLocatorFromHash: ChainLock.RUnlock")
 
 	return locator
 }
@@ -885,11 +885,11 @@ func (b *MinerChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockL
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) LatestBlockLocator() (chainhash.BlockLocator, error) {
-	log.Infof("MinerChain.LatestBlockLocator: ChainLock.RLock")
+//	log.Infof("MinerChain.LatestBlockLocator: ChainLock.RLock")
 	b.chainLock.RLock()
 	locator := b.BestChain.BlockLocator(nil)
 	b.chainLock.RUnlock()
-	log.Infof("MinerChain.LatestBlockLocator: ChainLock.RUnlock")
+//	log.Infof("MinerChain.LatestBlockLocator: ChainLock.RUnlock")
 	return locator, nil
 }
 
@@ -1151,11 +1151,11 @@ func (b *MinerChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) LocateBlocks(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxHashes uint32) []chainhash.Hash {
-	log.Infof("MinerChain.LocateBlocks: ChainLock.RLock")
+//	log.Infof("MinerChain.LocateBlocks: ChainLock.RLock")
 	b.chainLock.RLock()
 	hashes := b.locateBlocks(locator, hashStop, maxHashes)
 	b.chainLock.RUnlock()
-	log.Infof("MinerChain.LocateBlocks: ChainLock.RUnlock")
+//	log.Infof("MinerChain.LocateBlocks: ChainLock.RUnlock")
 
 	return hashes
 }
@@ -1199,11 +1199,11 @@ func (b *MinerChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) LocateHeaders(locator chainhash.BlockLocator, hashStop *chainhash.Hash) []wire.NewNodeBlock {
-	log.Infof("MinerChain.LocateHeaders: ChainLock.RLock")
+//	log.Infof("MinerChain.LocateHeaders: ChainLock.RLock")
 	b.chainLock.RLock()
 	headers := b.locateHeaders(locator, hashStop, wire.MaxBlockHeadersPerMsg)
 	b.chainLock.RUnlock()
-	log.Infof("MinerChain.LocateHeaders: ChainLock.RUnlock")
+//	log.Infof("MinerChain.LocateHeaders: ChainLock.RUnlock")
 
 	return headers
 }

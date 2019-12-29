@@ -363,13 +363,16 @@ type SequenceLock struct {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) CalcSequenceLock(tx *btcutil.Tx, utxoView *viewpoint.UtxoViewpoint, mempool bool) (*SequenceLock, error) {
-	log.Infof("CalcSequenceLock: ChainLock.RLock")
+//	log.Infof("CalcSequenceLock: ChainLock.RLock")
 
 	b.ChainLock.Lock()
-	defer func () {
+	defer b.ChainLock.Unlock()
+/*
+	func () {
 		b.ChainLock.Unlock()
 		log.Infof("CalcSequenceLock: ChainLock.Unlock")
 	} ()
+*/
 
 	return b.calcSequenceLock(b.BestChain.Tip(), tx, utxoView, mempool)
 }
@@ -1322,12 +1325,15 @@ func (b *BlockChain) SameChain(u, v, w chainhash.Hash) bool {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) IsCurrent() bool {
-	log.Infof("IsCurrent: ChainLock.RLock")
+//	log.Infof("IsCurrent: ChainLock.RLock")
 	b.ChainLock.RLock()
-	defer func () {
+	defer b.ChainLock.RUnlock()
+/*
+	func () {
 		b.ChainLock.RUnlock()
 		log.Infof("IsCurrent: ChainLock.RUnlock")
 	} ()
+*/
 
 	return b.isCurrent() && b.Miners.IsCurrent()
 }
@@ -1375,12 +1381,12 @@ func (b *BlockChain) MainChainHasBlock(hash *chainhash.Hash) bool {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockLocator {
-	log.Infof("BlockLocatorFromHash: ChainLock.RLock")
+//	log.Infof("BlockLocatorFromHash: ChainLock.RLock")
 	b.ChainLock.RLock()
 	node := b.index.LookupNode(hash)
 	locator := b.BestChain.blockLocator(node)
 	b.ChainLock.RUnlock()
-	log.Infof("BlockLocatorFromHash: ChainLock.RUnlock")
+//	log.Infof("BlockLocatorFromHash: ChainLock.RUnlock")
 	return locator
 }
 
@@ -1389,11 +1395,11 @@ func (b *BlockChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockL
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) LatestBlockLocator() (chainhash.BlockLocator, error) {
-	log.Infof("LatestBlockLocator: ChainLock.RLock")
+//	log.Infof("LatestBlockLocator: ChainLock.RLock")
 	b.ChainLock.RLock()
 	locator := b.BestChain.BlockLocator(nil)
 	b.ChainLock.RUnlock()
-	log.Infof("LatestBlockLocator: ChainLock.RUnlock")
+//	log.Infof("LatestBlockLocator: ChainLock.RUnlock")
 	return locator, nil
 }
 
@@ -1657,11 +1663,11 @@ func (b *BlockChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) LocateBlocks(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxHashes uint32) []chainhash.Hash {
-	log.Infof("LocateBlocks: ChainLock.RLock")
+//	log.Infof("LocateBlocks: ChainLock.RLock")
 	b.ChainLock.RLock()
 	hashes := b.locateBlocks(locator, hashStop, maxHashes)
 	b.ChainLock.RUnlock()
-	log.Infof("LocateBlocks: ChainLock.RUnlock")
+//	log.Infof("LocateBlocks: ChainLock.RUnlock")
 	return hashes
 }
 
@@ -1704,11 +1710,11 @@ func (b *BlockChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) LocateHeaders(locator chainhash.BlockLocator, hashStop *chainhash.Hash) []wire.BlockHeader {
-	log.Infof("LocateHeaders: ChainLock.RLock")
+//	log.Infof("LocateHeaders: ChainLock.RLock")
 	b.ChainLock.RLock()
 	headers := b.locateHeaders(locator, hashStop, wire.MaxBlockHeadersPerMsg)
 	b.ChainLock.RUnlock()
-	log.Infof("LocateHeaders: RUnlock.RLock")
+//	log.Infof("LocateHeaders: RUnlock.RLock")
 	return headers
 }
 

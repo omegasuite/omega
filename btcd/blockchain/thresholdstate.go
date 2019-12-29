@@ -264,11 +264,11 @@ func (b *BlockChain) thresholdState(prevNode *blockNode, checker thresholdCondit
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) ThresholdState(deploymentID uint32) (ThresholdState, error) {
-	log.Infof("ThresholdState: ChainLock.RLock")
+//	log.Infof("ThresholdState: ChainLock.RLock")
 	b.ChainLock.Lock()
 	state, err := b.deploymentState(b.BestChain.Tip(), deploymentID)
 	b.ChainLock.Unlock()
-	log.Infof("ThresholdState: ChainLock.Unlock")
+//	log.Infof("ThresholdState: ChainLock.Unlock")
 
 	return state, err
 }
@@ -278,11 +278,11 @@ func (b *BlockChain) ThresholdState(deploymentID uint32) (ThresholdState, error)
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) IsDeploymentActive(deploymentID uint32) (bool, error) {
-	log.Infof("IsDeploymentActive: ChainLock.RLock")
+//	log.Infof("IsDeploymentActive: ChainLock.RLock")
 	b.ChainLock.Lock()
 	state, err := b.deploymentState(b.BestChain.Tip(), deploymentID)
 	b.ChainLock.Unlock()
-	log.Infof("IsDeploymentActive: ChainLock.Unlock")
+//	log.Infof("IsDeploymentActive: ChainLock.Unlock")
 
 	if err != nil {
 		return false, err

@@ -352,8 +352,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			if header.Nonce != - int32(rotate + wire.MINER_RORATE_FREQ + 1) {
 				str := fmt.Sprintf("The previous block was a POW block, this block must be either a POW block, or a rotate block that phase out all the previous committee members.")
 				return ruleError(ErrHighHash, str)
-			
-				
+			}
 
 			p := parent
 			for p != nil && p.Header().Nonce > 0 {
@@ -1269,12 +1268,15 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
-	log.Infof("CheckConnectBlockTemplate: ChainLock.RLock")
+//	log.Infof("CheckConnectBlockTemplate: ChainLock.RLock")
 	b.ChainLock.Lock()
-	defer func() {
+	defer b.ChainLock.Unlock()
+/*
+	func() {
 		b.ChainLock.Unlock()
 		log.Infof("CheckConnectBlockTemplate: ChainLock.Unlock")
 	} ()
+*/
 
 	// Skip the proof of work check as this is just a block template.
 	flags := BFNoPoWCheck
