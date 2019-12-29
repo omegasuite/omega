@@ -156,25 +156,25 @@ type FutureGetBestBlockResult chan *response
 func (r FutureGetBestBlockResult) Receive() (*chainhash.Hash, int32, *chainhash.Hash, int32, error) {
 	res, err := receiveFuture(r)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, 0, err
 	}
 
 	// Unmarshal result as a getbestblock result object.
 	var bestBlock btcjson.GetBestBlockResult
 	err = json.Unmarshal(res, &bestBlock)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, 0, err
 	}
 
 	// Convert to hash from string.
 	hash, err := chainhash.NewHashFromStr(bestBlock.Hash)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, 0, err
 	}
 
 	mhash, err := chainhash.NewHashFromStr(bestBlock.MinerHash)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, 0, err
 	}
 
 	return hash, bestBlock.Height, mhash, bestBlock.MinerHeight, nil

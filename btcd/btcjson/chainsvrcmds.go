@@ -365,22 +365,10 @@ type GetBlockHeaderCmd struct {
 	Verbose *bool `jsonrpcdefault:"true"`
 }
 
-type GetMinerBlockHeaderCmd struct {
-	Hash    string
-	Verbose *bool `jsonrpcdefault:"true"`
-}
-
 // NewGetBlockHeaderCmd returns a new instance which can be used to issue a
 // getblockheader JSON-RPC command.
 func NewGetBlockHeaderCmd(hash string, verbose *bool) *GetBlockHeaderCmd {
 	return &GetBlockHeaderCmd{
-		Hash:    hash,
-		Verbose: verbose,
-	}
-}
-
-func NewGetMinerBlockHeaderCmd(hash string, verbose *bool) *GetMinerBlockHeaderCmd {
-	return &GetMinerBlockHeaderCmd{
 		Hash:    hash,
 		Verbose: verbose,
 	}
@@ -998,11 +986,12 @@ func init() {
 	MustRegisterCmd("getbestblockhash", (*GetBestBlockHashCmd)(nil), flags)
 	MustRegisterCmd("getbestminerblockhash", (*GetBestMinerBlockHashCmd)(nil), flags)
 	MustRegisterCmd("getblock", (*GetBlockCmd)(nil), flags)
-	MustRegisterCmd("getminerblock", (*GetBlockCmd)(nil), flags)
+	MustRegisterCmd("getminerblock", (*GetMinerBlockCmd)(nil), flags)
 	MustRegisterCmd("getblockchaininfo", (*GetBlockChainInfoCmd)(nil), flags)
 	MustRegisterCmd("getblockcount", (*GetBlockCountCmd)(nil), flags)
 	MustRegisterCmd("getminerblockcount", (*GetMinerBlockCountCmd)(nil), flags)
 	MustRegisterCmd("getblockhash", (*GetBlockHashCmd)(nil), flags)
+	MustRegisterCmd("getminerblockhash", (*GetMinerBlockHashCmd)(nil), flags)
 	MustRegisterCmd("getblockheader", (*GetBlockHeaderCmd)(nil), flags)
 	MustRegisterCmd("getblocktemplate", (*GetBlockTemplateCmd)(nil), flags)
 	MustRegisterCmd("getcfilter", (*GetCFilterCmd)(nil), flags)

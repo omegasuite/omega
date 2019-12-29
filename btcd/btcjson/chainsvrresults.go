@@ -61,6 +61,10 @@ type GetMinerBlockVerboseResult struct {
 	NextHash      string        `json:"nextblockhash,omitempty"`
 	Bits          string        `json:"bits"`
 	Difficulty    float64       `json:"difficulty"`
+	Address       string        `json:"address"`
+	Referred	  string        `json:"address"`
+	Best		  string        `json:"best"`
+	BlackList	  string        `json:"blacklist"`
 }
 
 // CreateMultiSigResult models the data returned from the createmultisig

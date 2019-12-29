@@ -1298,7 +1298,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		return nil, rpcDecodeHexError(c.Hash)
 	}
 	var blkBytes []byte
-	err = s.cfg.DB.View(func(dbTx database.Tx) error {
+	err = s.cfg.MinerDB.View(func(dbTx database.Tx) error {
 		var err error
 		blkBytes, err = dbTx.FetchBlock(hash)
 		return err
@@ -1360,6 +1360,10 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
 		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 		NextHash:      nextHashString,
+		Address:	   hex.EncodeToString(blockHeader.Newnode),
+		Referred:	   blockHeader.ReferredBlock.String(),
+		Best:		   blockHeader.BestBlock.String(),
+		BlackList:	   hex.EncodeToString(blockHeader.BlackList),
 	}
 
 	return blockReply, nil

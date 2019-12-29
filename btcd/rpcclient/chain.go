@@ -112,7 +112,7 @@ func (r FutureGetBlockResult) Receive() (*wire.MsgBlock, error) {
 	return &msgBlock, nil
 }
 
-func (r FutureGetMinerBlockResult) Receive() (*wire.MsgMinerBlock, error) {
+func (r FutureGetMinerBlockResult) Receive() (*wire.NewNodeBlock, error) {
 	res, err := receiveFuture(r)
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func (r FutureGetMinerBlockResult) Receive() (*wire.MsgMinerBlock, error) {
 	}
 
 	// Deserialize the block and return it.
-	var msgMinerBlock wire.MsgMinerBlock
+	var msgBlock wire.NewNodeBlock
 	err = msgBlock.Deserialize(bytes.NewReader(serializedBlock))
 	if err != nil {
 		return nil, err
@@ -161,7 +161,7 @@ func (c *Client) GetMinerBlockAsync(blockHash *chainhash.Hash) FutureGetMinerBlo
 		hash = blockHash.String()
 	}
 
-	cmd := btcjson.NewGetMinerBlockCmd(hash, btcjson.Bool(false), nil)
+	cmd := btcjson.NewGetMinerBlockCmd(hash, btcjson.Bool(false))
 	return c.sendCmd(cmd)
 }
 
@@ -173,7 +173,7 @@ func (c *Client) GetBlock(blockHash *chainhash.Hash) (*wire.MsgBlock, error) {
 	return c.GetBlockAsync(blockHash).Receive()
 }
 
-func (c *Client) GetMinerBlock(blockHash *chainhash.Hash) (*wire.MsgMinerBlock, error) {
+func (c *Client) GetMinerBlock(blockHash *chainhash.Hash) (*wire.NewNodeBlock, error) {
 	return c.GetMinerBlockAsync(blockHash).Receive()
 }
 
