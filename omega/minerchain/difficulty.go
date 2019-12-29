@@ -312,8 +312,11 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *blockNode, newBlockTim
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) CalcNextRequiredDifficulty(timestamp time.Time) (uint32, error) {
+	log.Infof("MinerChain.CalcNextRequiredDifficulty: ChainLock.RLock")
 	b.chainLock.Lock()
 	difficulty, err := b.calcNextRequiredDifficulty(b.BestChain.Tip(), timestamp)
 	b.chainLock.Unlock()
+	log.Infof("MinerChain.CalcNextRequiredDifficulty: ChainLock.Unlock")
+
 	return difficulty, err
 }

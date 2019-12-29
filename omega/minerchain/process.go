@@ -143,8 +143,12 @@ func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.Behav
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.BehaviorFlags) (bool, bool, error) {
+	log.Infof("MinerChain.ProcessBlock: ChainLock.RLock")
 	b.chainLock.Lock()
-	defer b.chainLock.Unlock()
+	defer func () {
+		b.chainLock.Unlock()
+		log.Infof("MinerChain.ProcessBlock: ChainLock.Unlock")
+	} ()
 
 	blockHash := block.Hash()
 
