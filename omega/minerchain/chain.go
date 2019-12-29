@@ -394,7 +394,9 @@ func (b *MinerChain) connectBlock(node *blockNode, block *wire.MinerBlock) error
 	// Notify the caller that the block was connected to the main chain.
 	// The caller would typically want to react with actions such as
 	// updating wallets.
+	b.chainLock.Unlock()
 	b.sendNotification(blockchain.NTBlockConnected, block)
+	b.chainLock.Lock()
 
 	return nil
 }
@@ -479,7 +481,9 @@ func (b *MinerChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	// Notify the caller that the block was disconnected from the main
 	// chain.  The caller would typically want to react with actions such as
 	// updating wallets.
+	b.chainLock.Unlock()
 	b.sendNotification(blockchain.NTBlockDisconnected, block)
+	b.chainLock.Lock()
 
 	return nil
 }

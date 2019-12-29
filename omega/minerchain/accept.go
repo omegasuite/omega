@@ -89,7 +89,9 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	// Notify the caller that the new block was accepted into the block
 	// chain.  The caller would typically want to react by relaying the
 	// inventory to other peers.
+	b.chainLock.Unlock()
 	b.sendNotification(blockchain.NTBlockAccepted, block)
+	b.chainLock.Lock()
 
 	return isMainChain, nil
 }
