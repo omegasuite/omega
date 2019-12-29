@@ -695,7 +695,9 @@ func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 	// Notify the caller that the block was connected to the main chain.
 	// The caller would typically want to react with actions such as
 	// updating wallets.
+	b.ChainLock.Unlock()
 	b.sendNotification(NTBlockConnected, block)
+	b.ChainLock.Lock()
 
 	return nil
 }
@@ -853,7 +855,9 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	// Notify the caller that the block was disconnected from the main
 	// chain.  The caller would typically want to react with actions such as
 	// updating wallets.
+	b.ChainLock.Unlock()
 	b.sendNotification(NTBlockDisconnected, block)
+	b.ChainLock.Lock()
 
 	return nil
 }
