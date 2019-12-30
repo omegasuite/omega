@@ -1401,6 +1401,7 @@ func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan str
 		Chain:         params.Name,
 		Blocks:        chainSnapshot.Height,
 		Headers:       chainSnapshot.Height,
+		Rotate:		   int32(chainSnapshot.LastRotation),
 		BestBlockHash: chainSnapshot.Hash.String(),
 		Difficulty:    getDifficultyRatio(chainSnapshot.Bits, params),
 		MedianTime:    chainSnapshot.MedianTime.Unix(),
@@ -1411,7 +1412,7 @@ func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan str
 		MinerDifficulty:    getDifficultyRatio(minerchainSnapshot.Bits, params),
 		MinerMedianTime:    minerchainSnapshot.MedianTime.Unix(),
 	}
-
+/*
 	// Next, populate the response with information describing the current
 	// status of soft-forks deployed via the super-majority block
 	// signalling mechanism.
@@ -1456,6 +1457,7 @@ func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan str
 			}
 		}
 	}
+*/
 
 	return chainInfo, nil
 }

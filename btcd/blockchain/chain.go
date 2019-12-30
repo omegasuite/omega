@@ -629,9 +629,9 @@ func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 	if node.nonce > 0 {
 		state.LastRotation++
 	} else if node.nonce <= -wire.MINER_RORATE_FREQ {
-		s, _ := b.Miners.BlockByHeight(int32(state.LastRotation))
-		state.Bits = s.MsgBlock().Bits
 		state.LastRotation++	// = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
+		s, _ := b.Miners.BlockByHeight(int32(state.LastRotation) - wire.CommitteeSize)
+		state.Bits = s.MsgBlock().Bits
 	}
 
 	// Atomically insert info into the database.
@@ -749,21 +749,21 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	bits := prevNode.bits
 
 	if node.nonce <= -wire.MINER_RORATE_FREQ {
-		// the removed block was the first of a series rotated in block, difficulty should be
+		// the removed block was the first of a series rotated-in block, difficulty should be
 		// in its previous block
-		p := node
-		realheight := -p.nonce - wire.MINER_RORATE_FREQ - 1
-		for i := 0; i < wire.MINER_RORATE_FREQ; i++ {
+		p := node.parent
+
+		for p != nil && p.nonce > wire.MINER_RORATE_FREQ {
 			p = p.parent
 		}
 
-		for p != nil && p.nonce >= 0 {
-			p = p.parent
-			realheight--
+		realheight := int32(0)
+		if p != nil {
+			realheight = -p.nonce - wire.MINER_RORATE_FREQ
 		}
 
 		// the real miner block height of the previous miner block
-		mblock,_ := b.Miners.BlockByHeight(realheight - 1)
+		mblock,_ := b.Miners.BlockByHeight(realheight - wire.CommitteeSize)
 		if mblock == nil {
 			bits = b.chainParams.PowLimitBits
 		} else {
@@ -771,8 +771,12 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 		}
 	}
 
-	if node.nonce > 0 || node.nonce <= -wire.MINER_RORATE_FREQ {
+	if node.nonce >= 0 || node.nonce <= -wire.MINER_RORATE_FREQ {
 		rotation--
+	}
+
+	if rotation < 0 {		// should never happen
+		rotation = 0
 	}
 
 	state := newBestState(prevNode, blockSize, blockWeight, numTxns,

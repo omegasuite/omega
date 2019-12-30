@@ -310,8 +310,20 @@ func main() {
 			res, err := client.GetBlockChainInfo()
 			if err != nil {
 				log.Print(err)
+			} else {
+				log.Printf("Chain: %s", res.Chain)
+				log.Printf("Blocks: %d", res.Blocks)
+				log.Printf("Headers: %d", res.Headers)
+				log.Printf("Rotate: %d", res.Rotate)
+				log.Printf("BestBlockHash: %s", res.BestBlockHash)
+				log.Printf("Difficulty: %f", res.Difficulty)
+				log.Printf("MedianTime: %d", res.MedianTime)
+				log.Printf("MinerBlocks: %d", res.MinerBlocks)
+				log.Printf("MinerHeaders: %d", res.MinerHeaders)
+				log.Printf("MinerBestBlockHash: %s", res.MinerBestBlockHash)
+				log.Printf("MinerDifficulty: %f", res.MinerDifficulty)
+				log.Printf("MinerMedianTime: %d", res.MinerMedianTime)
 			}
-			log.Printf("GetBlockChainInfo: %d", res)
 			break
 		case "getblockcount":	//
 			// Get the current block count.
