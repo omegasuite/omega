@@ -842,11 +842,11 @@ func (b *MinerChain) BestSnapshot() *blockchain.BestState {
 // HeaderByHash returns the block header identified by the given hash or an
 // error if it doesn't exist. Note that this will return headers from both the
 // main and side chains.
-func (b *MinerChain) HeaderByHash(hash *chainhash.Hash) (wire.NewNodeBlock, error) {
+func (b *MinerChain) HeaderByHash(hash *chainhash.Hash) (wire.MingingRightBlock, error) {
 	node := b.index.LookupNode(hash)
 	if node == nil {
 		err := fmt.Errorf("block %s is not known", hash)
-		return wire.NewNodeBlock{}, err
+		return wire.MingingRightBlock{}, err
 	}
 
 	return node.Header(), nil
@@ -1167,7 +1167,7 @@ func (b *MinerChain) LocateBlocks(locator chainhash.BlockLocator, hashStop *chai
 // See the comment on the exported function for more details on special cases.
 //
 // This function MUST be called with the chain state lock held (for reads).
-func (b *MinerChain) locateHeaders(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxHeaders uint32) []wire.NewNodeBlock {
+func (b *MinerChain) locateHeaders(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxHeaders uint32) []wire.MingingRightBlock {
 	// Find the node after the first known block in the locator and the
 	// total number of nodes after it needed while respecting the stop hash
 	// and max entries.
@@ -1177,7 +1177,7 @@ func (b *MinerChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 	}
 
 	// Populate and return the found headers.
-	headers := make([]wire.NewNodeBlock, 0, total)
+	headers := make([]wire.MingingRightBlock, 0, total)
 	for i := uint32(0); i < total; i++ {
 		headers = append(headers, node.Header())
 		node = b.BestChain.Next(node)
@@ -1198,7 +1198,7 @@ func (b *MinerChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 //   after the genesis block will be returned
 //
 // This function is safe for concurrent access.
-func (b *MinerChain) LocateHeaders(locator chainhash.BlockLocator, hashStop *chainhash.Hash) []wire.NewNodeBlock {
+func (b *MinerChain) LocateHeaders(locator chainhash.BlockLocator, hashStop *chainhash.Hash) []wire.MingingRightBlock {
 //	log.Infof("MinerChain.LocateHeaders: ChainLock.RLock")
 	b.chainLock.RLock()
 	headers := b.locateHeaders(locator, hashStop, wire.MaxBlockHeadersPerMsg)
@@ -1303,7 +1303,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 // The flags modify the behavior of this function as follows:
 //  - BFNoPoWCheck: The check to ensure the block hash is less than the target
 //    difficulty is not performed.
-func checkProofOfWork(header *wire.NewNodeBlock, powLimit *big.Int, flags blockchain.BehaviorFlags) error {
+func checkProofOfWork(header *wire.MingingRightBlock, powLimit *big.Int, flags blockchain.BehaviorFlags) error {
 	// The target difficulty must be larger than zero.
 	target := CompactToBig(header.Bits)
 	if target.Sign() <= 0 {

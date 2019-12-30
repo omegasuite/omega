@@ -117,7 +117,7 @@ func dbStoreMinerBlock(dbTx database.Tx, block *wire.MinerBlock) error {
 // The flags modify the behavior of this function as follows:
 //  - BFNoPoWCheck: The check to ensure the block hash is less than the target
 //    difficulty is not performed.
-func (m *MinerChain) checkProofOfWork(header *wire.NewNodeBlock, powLimit *big.Int, flags blockchain.BehaviorFlags) error {
+func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *big.Int, flags blockchain.BehaviorFlags) error {
 	// The target difficulty must be larger than zero.
 	target := CompactToBig(header.Bits)
 	if target.Sign() <= 0 {

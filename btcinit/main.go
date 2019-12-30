@@ -48,7 +48,7 @@ func solveGenesisBlock(msgBlock *wire.MsgBlock, bits uint32) {
 	}
 }
 
-func solveMinerBlock(header *wire.NewNodeBlock) {
+func solveMinerBlock(header *wire.MingingRightBlock) {
 	// Create some convenience variables.
 	targetDifficulty := blockchain.CompactToBig(header.Bits)
 
@@ -307,7 +307,7 @@ func main() {
 	fmt.Printf("\n\nvar creator = []byte{0x2f, 0xe0, 0xef, 0x92, 0x85, 0xa1, 0xe, 0x86, 0xc, 0x25," +
 		"\n\t0xe0, 0x3c, 0x3f, 0xf8, 0x59, 0x93, 0xd3, 0xff, 0xc3, 0x5e, }")
 
-	var minerBlock = wire.NewNodeBlock{
+	var minerBlock = wire.MingingRightBlock{
 		Version:       0x10000000,
 		PrevBlock:     chainhash.Hash{},
 		ReferredBlock: genesisHash,
@@ -332,7 +332,7 @@ func main() {
 	printhash(genesisMinerHash)
 	fmt.Printf(",\n}")
 
-	fmt.Printf("\n\nvar GenesisMinerBlock = wire.NewNodeBlock{" +
+	fmt.Printf("\n\nvar GenesisMinerBlock = wire.MingingRightBlock{" +
 		"\n\tVersion:    GenesisBlock.Header.Version," +
 		"\n\tPrevBlock:  chainhash.Hash{}," +
 		"\n\tReferredBlock: GenesisHash[0]," +
@@ -376,7 +376,7 @@ func main() {
 	gotSigBytes = gotSig.Serialize()
 	regTestGenesisBlock.Transactions[0].SignatureScripts = [][]byte{gotSigBytes}
 
-	var regTestGenesisMinerBlock = wire.NewNodeBlock{
+	var regTestGenesisMinerBlock = wire.MingingRightBlock{
 		Version:       0x10000000,
 		PrevBlock:     chainhash.Hash{},
 		ReferredBlock: regTestGenesisHash,
@@ -404,7 +404,7 @@ func main() {
 		"\n\tTransactions: []*wire.MsgTx{&regGenesisCoinbaseTx, &genesisInitPolygonTx}," +
 		"\n}", regTestGenesisBlock.Header.Timestamp.Unix(), regTestGenesisBlock.Header.Nonce)
 
-	fmt.Printf("\n\nvar RegTestGenesisMinerBlock = wire.NewNodeBlock{" +
+	fmt.Printf("\n\nvar RegTestGenesisMinerBlock = wire.MingingRightBlock{" +
 		"\n\tVersion:    RegTestGenesisBlock.Header.Version," +
 		"\n\tPrevBlock:  chainhash.Hash{}," +
 		"\n\tReferredBlock: RegTestGenesisHash[0]," +
@@ -448,7 +448,7 @@ func main() {
 	gotSigBytes = gotSig.Serialize()
 	testNet3GenesisBlock.Transactions[0].SignatureScripts = [][]byte{gotSigBytes}
 
-	var testNet3GenesisMinerBlock = wire.NewNodeBlock{
+	var testNet3GenesisMinerBlock = wire.MingingRightBlock{
 		Version:       0x10000000,
 		PrevBlock:     chainhash.Hash{},
 		ReferredBlock: testNet3GenesisHash,
@@ -476,7 +476,7 @@ func main() {
 		"\n\tTransactions: []*wire.MsgTx{&test3netgenesisCoinbaseTx, &genesisInitPolygonTx}," +
 		"\n}", testNet3GenesisBlock.Header.Timestamp.Unix(), testNet3GenesisBlock.Header.Nonce)
 
-	fmt.Printf("\n\nvar TestNet3GenesisMinerBlock = wire.NewNodeBlock{" +
+	fmt.Printf("\n\nvar TestNet3GenesisMinerBlock = wire.MingingRightBlock{" +
 		"\n\tVersion:    TestNet3GenesisBlock.Header.Version," +
 		"\n\tPrevBlock:  chainhash.Hash{}," +
 		"\n\tReferredBlock: TestNet3GenesisHash[0]," +
@@ -520,7 +520,7 @@ func main() {
 	gotSigBytes = gotSig.Serialize()
 	simNetGenesisBlock.Transactions[0].SignatureScripts = [][]byte{gotSigBytes}
 
-	var simNetGenesisMinerBlock = wire.NewNodeBlock{
+	var simNetGenesisMinerBlock = wire.MingingRightBlock{
 		Version:       0x10000000,
 		PrevBlock:     chainhash.Hash{},
 		ReferredBlock: simNetGenesisHash,
@@ -548,7 +548,7 @@ func main() {
 		"\n\tTransactions: []*wire.MsgTx{&simnetgenesisCoinbaseTx, &genesisInitPolygonTx}," +
 		"\n}", simNetGenesisBlock.Header.Timestamp.Unix(), simNetGenesisBlock.Header.Nonce)
 
-	fmt.Printf("\n\nvar SimNetGenesisMinerBlock = wire.NewNodeBlock{" +
+	fmt.Printf("\n\nvar SimNetGenesisMinerBlock = wire.MingingRightBlock{" +
 		"\n\tVersion:    SimNetGenesisBlock.Header.Version," +
 		"\n\tPrevBlock:  chainhash.Hash{}," +
 		"\n\tReferredBlock: SimNetGenesisHash[0]," +

@@ -436,7 +436,7 @@ func main() {
 				log.Printf("Header.PrevBlock:%s\n", res.PrevBlock.String())
 				log.Printf("Header.ReferredBlock:%s\n", res.ReferredBlock.String())
 				log.Printf("Header.BestBlock:%s\n", res.BestBlock.String())
-				log.Printf("Header.Newnode:%s\n", hex.EncodeToString(res.Newnode))
+				log.Printf("Header.Miner:%s\n", hex.EncodeToString(res.Miner))
 				log.Printf("Header.BlackList:%s\n", hex.EncodeToString(res.BlackList))
 			}
 			break
@@ -472,7 +472,7 @@ func main() {
 					log.Printf("Header.PrevBlock:%s\n", blk.PrevBlock.String())
 					log.Printf("Header.ReferredBlock:%s\n", blk.ReferredBlock.String())
 					log.Printf("Header.BestBlock:%s\n", blk.BestBlock.String())
-					log.Printf("Header.Newnode:%s\n", hex.EncodeToString(blk.Newnode))
+					log.Printf("Header.Miner:%s\n", hex.EncodeToString(blk.Miner))
 					log.Printf("Header.BlackList:%s\n", hex.EncodeToString(blk.BlackList))
 				}
 			}

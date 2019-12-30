@@ -106,6 +106,8 @@ type MessageListeners struct {
 	// OnAddr is invoked when a peer receives an addr bitcoin message.
 	OnAddr func(p *Peer, msg *wire.MsgAddr)
 
+	OnInvitation func(p *Peer, msg *wire.MsgInvitation)
+
 	// OnPing is invoked when a peer receives a ping bitcoin message.
 	OnPing func(p *Peer, msg *wire.MsgPing)
 
@@ -123,7 +125,7 @@ type MessageListeners struct {
 
 	// OnBlock is invoked when a peer receives a block bitcoin message.
 	OnBlock func(p *Peer, msg *wire.MsgBlock, buf []byte)
-	OnMinerBlock func(p *Peer, msg *wire.NewNodeBlock, buf []byte)
+	OnMinerBlock func(p *Peer, msg *wire.MingingRightBlock, buf []byte)
 
 	// OnCFilter is invoked when a peer receives a cfilter bitcoin message.
 	OnCFilter func(p *Peer, msg *wire.MsgCFilter)
@@ -493,6 +495,9 @@ type Peer struct {
 	queueQuit     chan struct{}
 	outQuit       chan struct{}
 	quit          chan struct{}
+
+	// status related committee
+	CommitteHeight	uint32		// height of MingingRightBlock, default 0
 }
 
 // String returns the peer's address and directionality as a human-readable
@@ -1503,6 +1508,11 @@ out:
 				p.cfg.Listeners.OnAddr(p, msg)
 			}
 
+		case *wire.MsgInvitation:
+			if p.cfg.Listeners.OnInvitation != nil {
+				p.cfg.Listeners.OnInvitation(p, msg)
+			}
+
 		case *wire.MsgPing:
 //			log.Infof("inHandler MsgPing")
 			p.handlePingMsg(msg)
@@ -1541,7 +1551,7 @@ out:
 				p.cfg.Listeners.OnBlock(p, msg, buf)
 			}
 
-		case *wire.NewNodeBlock:
+		case *wire.MingingRightBlock:
 			//			log.Infof("inHandler MsgBlock")
 			if p.cfg.Listeners.OnMinerBlock != nil {
 				p.cfg.Listeners.OnMinerBlock(p, msg, buf)

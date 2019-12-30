@@ -151,7 +151,7 @@ type Params struct {
 
 	// GenesisBlock defines the first block of the chain.
 	GenesisBlock *wire.MsgBlock
-	GenesisMinerBlock *wire.NewNodeBlock
+	GenesisMinerBlock *wire.MingingRightBlock
 
 	// GenesisHash is the starting block hash.
 	GenesisHash *chainhash.Hash

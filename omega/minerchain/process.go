@@ -7,8 +7,10 @@ package minerchain
 import (
 	"fmt"
 	"math/big"
+	"net"
 	"time"
 
+	"encoding/hex"
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
@@ -271,5 +273,16 @@ func checkBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource blo
 			"future", header.MsgBlock().Timestamp)
 		return ruleError(ErrTimeTooNew, str)
 	}
+
+	if len(header.MsgBlock().Connection) < 128 {
+		_, err := net.ResolveTCPAddr("", string(header.MsgBlock().Connection))
+		if err != nil {
+			return err
+		}
+	} else if len(header.MsgBlock().Connection) != 128 {
+		return fmt.Errorf("The connect information is neither a RSA key nor an IP address",
+			hex.EncodeToString(header.MsgBlock().Connection))
+	}
+
 	return nil
 }

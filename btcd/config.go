@@ -19,13 +19,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-//	"github.com/btcsuite/btcd/blockchain"
+	"github.com/btcsuite/btcd/btcec"
+	//	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/connmgr"
 	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/btcec"
 	_ "github.com/btcsuite/btcd/database/ffldb"
 	"github.com/btcsuite/btcd/mempool"
 	"github.com/btcsuite/btcd/peer"
@@ -147,7 +146,8 @@ type config struct {
 	MaxOrphanTxs         int           `long:"maxorphantx" description:"Max number of orphan transactions to keep in memory"`
 	Generate             bool          `long:"generate" description:"Generate (mine) bitcoins using the CPU"`
 	MiningAddrs          []string      `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
-	PrivKeys  	         []string      `long:"privKeys" description:"Add the specified private key to the list of keys to sign for generated blocks -- At least one key is required if the generate option is set"`
+	PrivKeys  	         []string      `long:"privkeys" description:"Add the specified private key to the list of keys to sign for generated blocks -- At least one key is required if the generate option is set"`
+	RsaPrivateKey		 string			`long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
 	BlockMinSize         uint32        `long:"blockminsize" description:"Mininum block size in bytes to be used when creating a block"`
 	BlockMaxSize         uint32        `long:"blockmaxsize" description:"Maximum block size in bytes to be used when creating a block"`
 	BlockMinWeight       uint32        `long:"blockminweight" description:"Mininum block weight to be used when creating a block"`
@@ -160,17 +160,18 @@ type config struct {
 	SigCacheMaxSize      uint          `long:"sigcachemaxsize" description:"The maximum number of entries in the signature verification cache"`
 	BlocksOnly           bool          `long:"blocksonly" description:"Do not accept transactions from remote peers."`
 	TxIndex              bool          `long:"txindex" description:"Maintain a full hash-based transaction index which makes all transactions available via the getrawtransaction RPC"`
-	DropTxIndex          bool          `long:"droptxindex" description:"Deletes the hash-based transaction index from the database on start up and then exits."`
-	AddrIndex            bool          `long:"addrindex" description:"Maintain a full address-based transaction index which makes the searchrawtransactions RPC available"`
-	DropAddrIndex        bool          `long:"dropaddrindex" description:"Deletes the address-based transaction index from the database on start up and then exits."`
-	RelayNonStd          bool          `long:"relaynonstd" description:"Relay non-standard transactions regardless of the default settings for the active network."`
-	RejectNonStd         bool          `long:"rejectnonstd" description:"Reject non-standard transactions regardless of the default settings for the active network."`
-	lookup               func(string) ([]net.IP, error)
-	oniondial            func(string, string, time.Duration) (net.Conn, error)
-	dial                 func(string, string, time.Duration) (net.Conn, error)
-	addCheckpoints       []chaincfg.Checkpoint
-	miningAddrs          []btcutil.Address
-	privKeys 			 map[btcutil.Address]*btcec.PrivateKey
+	DropTxIndex    bool          `long:"droptxindex" description:"Deletes the hash-based transaction index from the database on start up and then exits."`
+	AddrIndex      bool          `long:"addrindex" description:"Maintain a full address-based transaction index which makes the searchrawtransactions RPC available"`
+	DropAddrIndex  bool          `long:"dropaddrindex" description:"Deletes the address-based transaction index from the database on start up and then exits."`
+	RelayNonStd    bool          `long:"relaynonstd" description:"Relay non-standard transactions regardless of the default settings for the active network."`
+	RejectNonStd   bool          `long:"rejectnonstd" description:"Reject non-standard transactions regardless of the default settings for the active network."`
+	lookup         func(string) ([]net.IP, error)
+	oniondial      func(string, string, time.Duration) (net.Conn, error)
+	dial           func(string, string, time.Duration) (net.Conn, error)
+	addCheckpoints []chaincfg.Checkpoint
+	miningAddrs    []btcutil.Address
+	privateKeys    map[btcutil.Address]*btcec.PrivateKey
+
 	minRelayTxFee        btcutil.Amount
 	whitelists           []*net.IPNet
 }
@@ -891,7 +892,7 @@ func loadConfig() (*config, []string, error) {
 		cfg.miningAddrs = append(cfg.miningAddrs, addr)
 	}
 
-	cfg.privKeys = make(map[btcutil.Address]*btcec.PrivateKey)
+	cfg.privateKeys = make(map[btcutil.Address]*btcec.PrivateKey)
 	for _, strAddr := range cfg.PrivKeys {
 		// for main net
 		dwif,err := btcutil.DecodeWIF(strAddr)
@@ -918,7 +919,7 @@ func loadConfig() (*config, []string, error) {
 			return nil, nil, err
 		}
 		cfg.miningAddrs = append(cfg.miningAddrs, addr)
-		cfg.privKeys[addr] = privKey
+		cfg.privateKeys[addr] = privKey
 	}
 
 	// Ensure there is at least one mining address when the generate flag is

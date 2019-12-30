@@ -112,7 +112,7 @@ func (r FutureGetBlockResult) Receive() (*wire.MsgBlock, error) {
 	return &msgBlock, nil
 }
 
-func (r FutureGetMinerBlockResult) Receive() (*wire.NewNodeBlock, error) {
+func (r FutureGetMinerBlockResult) Receive() (*wire.MingingRightBlock, error) {
 	res, err := receiveFuture(r)
 	if err != nil {
 		return nil, err
@@ -132,7 +132,7 @@ func (r FutureGetMinerBlockResult) Receive() (*wire.NewNodeBlock, error) {
 	}
 
 	// Deserialize the block and return it.
-	var msgBlock wire.NewNodeBlock
+	var msgBlock wire.MingingRightBlock
 	err = msgBlock.Deserialize(bytes.NewReader(serializedBlock))
 	if err != nil {
 		return nil, err
@@ -173,7 +173,7 @@ func (c *Client) GetBlock(blockHash *chainhash.Hash) (*wire.MsgBlock, error) {
 	return c.GetBlockAsync(blockHash).Receive()
 }
 
-func (c *Client) GetMinerBlock(blockHash *chainhash.Hash) (*wire.NewNodeBlock, error) {
+func (c *Client) GetMinerBlock(blockHash *chainhash.Hash) (*wire.MingingRightBlock, error) {
 	return c.GetMinerBlockAsync(blockHash).Receive()
 }
 

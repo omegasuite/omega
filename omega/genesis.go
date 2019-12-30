@@ -1201,7 +1201,7 @@ chainhash.Hash{
 	},
 }
 
-var GenesisMinerBlock = wire.NewNodeBlock{
+var GenesisMinerBlock = wire.MingingRightBlock{
 	Version:    GenesisBlock.Header.Version,
 	PrevBlock:  chainhash.Hash{},
 	ReferredBlock: GenesisHash[0],
@@ -1209,7 +1209,7 @@ var GenesisMinerBlock = wire.NewNodeBlock{
 	Timestamp:  GenesisBlock.Header.Timestamp, 
 	Bits:      0x1f00ffff,
 	Nonce:      26458,
-	Newnode: creator,
+	Miner: creator,
 }
 
 var RegTestGenesisHash = []chainhash.Hash{
@@ -1242,7 +1242,7 @@ var RegTestGenesisBlock = wire.MsgBlock{
 	Transactions: []*wire.MsgTx{&regGenesisCoinbaseTx, &genesisInitPolygonTx},
 }
 
-var RegTestGenesisMinerBlock = wire.NewNodeBlock{
+var RegTestGenesisMinerBlock = wire.MingingRightBlock{
 	Version:    RegTestGenesisBlock.Header.Version,
 	PrevBlock:  chainhash.Hash{},
 	ReferredBlock: RegTestGenesisHash[0],
@@ -1250,7 +1250,7 @@ var RegTestGenesisMinerBlock = wire.NewNodeBlock{
 	Timestamp:  RegTestGenesisBlock.Header.Timestamp, 
 	Bits:      0x1f7fffff,
 	Nonce:      939,
-	Newnode: creator,
+	Miner: creator,
 }
 
 var TestNet3GenesisHash = []chainhash.Hash{
@@ -1283,7 +1283,7 @@ var TestNet3GenesisBlock = wire.MsgBlock{
 	Transactions: []*wire.MsgTx{&test3netgenesisCoinbaseTx, &genesisInitPolygonTx},
 }
 
-var TestNet3GenesisMinerBlock = wire.NewNodeBlock{
+var TestNet3GenesisMinerBlock = wire.MingingRightBlock{
 	Version:    TestNet3GenesisBlock.Header.Version,
 	PrevBlock:  chainhash.Hash{},
 	ReferredBlock: TestNet3GenesisHash[0],
@@ -1291,7 +1291,7 @@ var TestNet3GenesisMinerBlock = wire.NewNodeBlock{
 	Timestamp:  TestNet3GenesisBlock.Header.Timestamp, 
 	Bits:      0x1f00ffff,
 	Nonce:      153784,
-	Newnode: creator,
+	Miner: creator,
 }
 
 var SimNetGenesisHash = []chainhash.Hash{
@@ -1324,7 +1324,7 @@ var SimNetGenesisBlock = wire.MsgBlock{
 	Transactions: []*wire.MsgTx{&simnetgenesisCoinbaseTx, &genesisInitPolygonTx},
 }
 
-var SimNetGenesisMinerBlock = wire.NewNodeBlock{
+var SimNetGenesisMinerBlock = wire.MingingRightBlock{
 	Version:    SimNetGenesisBlock.Header.Version,
 	PrevBlock:  chainhash.Hash{},
 	ReferredBlock: SimNetGenesisHash[0],
@@ -1332,5 +1332,5 @@ var SimNetGenesisMinerBlock = wire.NewNodeBlock{
 	Timestamp:  SimNetGenesisBlock.Header.Timestamp, 
 	Bits:      0x1f7fffff,
 	Nonce:      58,
-	Newnode: creator,
+	Miner: creator,
 }

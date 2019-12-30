@@ -930,15 +930,15 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 	h3,_ := g.Chain.BlockHashByHeight(h2)
 
 	// Create a new block ready to be solved.
-	msgBlock := wire.NewNodeBlock{
-		Version:    nextBlockVersion,
-		PrevBlock:  best.Hash,
-		Timestamp:  ts,
-		Bits:       reqDifficulty,
+	msgBlock := wire.MingingRightBlock{
+		Version:       nextBlockVersion,
+		PrevBlock:     best.Hash,
+		Timestamp:     ts,
+		Bits:          reqDifficulty,
 		ReferredBlock: *h3,
-		BestBlock:	cbest.Hash,
-		Newnode:	payToAddress.ScriptAddress(),
-		BlackList:	[]byte{},
+		BestBlock:     cbest.Hash,
+		Miner:         payToAddress.ScriptAddress(),
+		BlackList:     []byte{},
 	}
 
 	// Finally, perform a full check on the created block against the Chain
@@ -986,7 +986,7 @@ func (g *BlkTmplGenerator) UpdateBlockTime(msgBlock *wire.MsgBlock) error {
 	return nil
 }
 
-func (g *BlkTmplGenerator) UpdateMinerBlockTime(msgBlock *wire.NewNodeBlock) error {
+func (g *BlkTmplGenerator) UpdateMinerBlockTime(msgBlock *wire.MingingRightBlock) error {
 	// The new timestamp is potentially adjusted to ensure it comes after
 	// the median time of the last several blocks per the Chain consensus
 	// rules.
@@ -1069,7 +1069,7 @@ func (g *BlkTmplGenerator) ActiveMiner(address btcutil.Address) bool {
 	for n < h {
 		n++
 		m,_ := g.Chain.Miners.BlockByHeight(int32(n))
-		if bytes.Compare(address.ScriptAddress(), m.MsgBlock().Newnode) == 0 {
+		if bytes.Compare(address.ScriptAddress(), m.MsgBlock().Miner) == 0 {
 			// if it is in committee, not allowed to do POW mining
 			return true
 		}
@@ -1092,7 +1092,7 @@ func (g *BlkTmplGenerator) Committee() map[[20]byte]struct{} {
 		m,_ := g.Chain.Miners.BlockByHeight(int32(n))
 
 		var adr [20]byte
-		copy(adr[:], m.MsgBlock().Newnode)
+		copy(adr[:], m.MsgBlock().Miner)
 		adrs[adr] = struct{}{}
 	}
 

@@ -404,7 +404,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			matched := false
 			for i := int32(0); i < wire.CommitteeSize; i++ {
 				blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
-				if bytes.Compare(pkh[:], blk.MsgBlock().Newnode) == 0 {
+				if bytes.Compare(pkh[:], blk.MsgBlock().Miner) == 0 {
 					matched = true
 				}
 			}

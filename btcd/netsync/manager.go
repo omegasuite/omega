@@ -193,6 +193,10 @@ type SyncManager struct {
 
 	// An optional fee estimator.
 	feeEstimator *mempool.FeeEstimator
+
+	// broadcasted is the inventory of message we have broadcasted,
+	// the purpose is to prevent rebroadcast
+	Broadcasted map[chainhash.Hash]int64
 }
 
 // resetHeaderState sets the headers-first mode state to values appropriate for
@@ -1725,6 +1729,7 @@ func New(config *Config) (*SyncManager, error) {
 		headerList:      list.New(),
 		quit:            make(chan struct{}),
 		feeEstimator:    config.FeeEstimator,
+		Broadcasted:	 make(map[chainhash.Hash]int64),
 	}
 
 	best := sm.chain.BestSnapshot()

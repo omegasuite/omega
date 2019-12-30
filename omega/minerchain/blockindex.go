@@ -91,7 +91,7 @@ type blockNode struct {
 	// reconstructing headers from memory.  These must be treated as
 	// immutable and are intentionally ordered to avoid padding on 64-bit
 	// platforms.
-	block      * wire.NewNodeBlock
+	block      * wire.MingingRightBlock
 //	bits       uint32
 //	nonce      uint32
 //	timestamp  int64
@@ -107,7 +107,7 @@ type blockNode struct {
 // calculating the height and workSum from the respective fields on the parent.
 // This function is NOT safe for concurrent access.  It must only be called when
 // initially creating a node.
-func initBlockNode(node *blockNode, blockHeader *wire.NewNodeBlock, parent *blockNode) {
+func initBlockNode(node *blockNode, blockHeader *wire.MingingRightBlock, parent *blockNode) {
 	*node = blockNode{
 		hash:       blockHeader.BlockHash(),
 		workSum:	CalcWork(blockHeader.Bits),
@@ -127,7 +127,7 @@ func initBlockNode(node *blockNode, blockHeader *wire.NewNodeBlock, parent *bloc
 // newBlockNode returns a new block node for the given block header and parent
 // node, calculating the height and workSum from the respective fields on the
 // parent. This function is NOT safe for concurrent access.
-func newBlockNode(blockHeader *wire.NewNodeBlock, parent *blockNode) *blockNode {
+func newBlockNode(blockHeader *wire.MingingRightBlock, parent *blockNode) *blockNode {
 	var node blockNode
 	initBlockNode(&node, blockHeader, parent)
 	return &node
@@ -140,7 +140,7 @@ func (node *blockNode) Hash() chainhash.Hash {
 // Header constructs a block header from the node and returns it.
 //
 // This function is safe for concurrent access.
-func (node *blockNode) Header() wire.NewNodeBlock {
+func (node *blockNode) Header() wire.MingingRightBlock {
 	return * node.block
 /*
 	// No lock is needed because all accessed fields are immutable.

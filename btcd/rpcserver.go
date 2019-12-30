@@ -1360,7 +1360,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
 		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 		NextHash:      nextHashString,
-		Address:	   hex.EncodeToString(blockHeader.Newnode),
+		Address:	   hex.EncodeToString(blockHeader.Miner),
 		Referred:	   blockHeader.ReferredBlock.String(),
 		Best:		   blockHeader.BestBlock.String(),
 		BlackList:	   hex.EncodeToString(blockHeader.BlackList),

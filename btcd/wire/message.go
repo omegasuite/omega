@@ -32,6 +32,7 @@ const (
 	CmdVerAck       = "verack"
 	CmdGetAddr      = "getaddr"
 	CmdAddr         = "addr"
+	CmdInvitation   = "invitation"
 	CmdGetBlocks    = "getblocks"
 	CmdGetMinerBlocks    = "getminerblks"
 	CmdInv          = "inv"
@@ -107,6 +108,9 @@ func makeEmptyMessage(command string) (Message, error) {
 	case CmdAddr:
 		msg = &MsgAddr{}
 
+	case CmdInvitation:
+		msg = &MsgInvitation{}
+
 	case CmdGetBlocks:
 		msg = &MsgGetBlocks{}
 
@@ -117,7 +121,7 @@ func makeEmptyMessage(command string) (Message, error) {
 		msg = &MsgBlock{}
 
 	case CmdMinerBlock:
-		msg = &NewNodeBlock{}
+		msg = &MingingRightBlock{}
 
 	case CmdInv:
 		msg = &MsgInv{}

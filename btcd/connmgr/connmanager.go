@@ -65,6 +65,8 @@ type ConnReq struct {
 	state      ConnState
 	stateMtx   sync.RWMutex
 	retryCount uint32
+
+	Committee  int32
 }
 
 // updateState updates the state of the connection request.

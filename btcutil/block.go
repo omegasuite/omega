@@ -276,7 +276,7 @@ func NewBlockFromReader(r io.Reader) (*Block, error) {
 
 func NewMinerBlockFromReader(r io.Reader) (*wire.MinerBlock, error) {
 	// Deserialize the bytes into a MsgBlock.
-	var msgBlock wire.NewNodeBlock
+	var msgBlock wire.MingingRightBlock
 	err := msgBlock.Deserialize(r)
 	if err != nil {
 		return nil, err

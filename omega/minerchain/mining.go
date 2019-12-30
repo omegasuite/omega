@@ -179,7 +179,7 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 	}
 
 	log.Info("Miner Block submitted via CPU miner accepted (hash %s, "+
-		"Newnode %v)", block.Hash(), block.MsgBlock().Newnode)
+		"Newnode %v)", block.Hash(), block.MsgBlock().Miner)
 
 	return true
 }
@@ -212,9 +212,9 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 
 	// Create some convenience variables.
 	targetDifficulty := blockchain.CompactToBig(header.Bits)
-	header.Block.(*wire.NewNodeBlock).Bits = header.Bits
+	header.Block.(*wire.MingingRightBlock).Bits = header.Bits
 
-	factorPOW := m.factorPOW(uint32(header.Height), header.Block.(*wire.NewNodeBlock).PrevBlock)
+	factorPOW := m.factorPOW(uint32(header.Height), header.Block.(*wire.MingingRightBlock).PrevBlock)
 
 	if factorPOW != nil {
 		targetDifficulty.Mul(targetDifficulty, big.NewInt(1024))
@@ -240,11 +240,11 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 				// The current block is stale if the best block
 				// has changed.
 				best := m.g.BestSnapshot()
-				if !header.Block.(*wire.NewNodeBlock).PrevBlock.IsEqual(&best.Hash) {
+				if !header.Block.(*wire.MingingRightBlock).PrevBlock.IsEqual(&best.Hash) {
 					return false
 				}
 
-				m.g.UpdateMinerBlockTime(header.Block.(*wire.NewNodeBlock))
+				m.g.UpdateMinerBlockTime(header.Block.(*wire.MingingRightBlock))
 
 				if m.cfg.ChainParams.ReduceMinDifficulty {
 					targetDifficulty = blockchain.CompactToBig(header.Bits)
@@ -258,8 +258,8 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 			// hash is actually a double sha256 (two hashes), so
 			// increment the number of hashes completed for each
 			// attempt accordingly.
-			header.Block.(*wire.NewNodeBlock).Nonce = int32(i)
-			hash := header.Block.(*wire.NewNodeBlock).BlockHash()
+			header.Block.(*wire.MingingRightBlock).Nonce = int32(i)
+			hash := header.Block.(*wire.MingingRightBlock).BlockHash()
 			hashesCompleted += 2
 
 			// The block is solved when the new block hash is less
@@ -268,7 +268,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 				return true
 			}
 		}
-		m.g.UpdateMinerBlockTime(header.Block.(*wire.NewNodeBlock))
+		m.g.UpdateMinerBlockTime(header.Block.(*wire.MingingRightBlock))
 	}
 
 	return false
@@ -340,7 +340,7 @@ out:
 		// true a solution was found, so submit the solved block.
 		if m.solveBlock(template, curHeight+1, ticker, quit) {
 			log.Info("New miner block produced")
-			block := wire.NewMinerBlock(template.Block.(*wire.NewNodeBlock))
+			block := wire.NewMinerBlock(template.Block.(*wire.MingingRightBlock))
 			m.submitBlock(block)
 		} else {
 			log.Info("No New block produced")

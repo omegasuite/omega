@@ -479,7 +479,7 @@ func (b *MinerChain) initChainState() error {
 		if err != nil {
 			return err
 		}
-		var block wire.NewNodeBlock
+		var block wire.MingingRightBlock
 		err = block.Deserialize(bytes.NewReader(blockBytes))
 		if err != nil {
 			return err
@@ -525,7 +525,7 @@ func (b *MinerChain) initChainState() error {
 func deserializeBlockRow(blockRow []byte) (*wire.MinerBlock, blockStatus, error) {
 	buffer := bytes.NewReader(blockRow)
 
-	var header wire.NewNodeBlock
+	var header wire.MingingRightBlock
 	err := header.Deserialize(buffer)
 	if err != nil {
 		return nil, statusNone, err
@@ -578,7 +578,7 @@ func dbFetchBlockByNode(dbTx database.Tx, node *blockNode) (*wire.MinerBlock, er
 	}
 
 	// Create the encapsulated block and set the height appropriately.
-	nd := wire.NewNodeBlock{}
+	nd := wire.MingingRightBlock{}
 	buffer := bytes.NewReader(blockBytes)
 	nd.Deserialize(buffer)
 	block := wire.NewMinerBlock(&nd)

@@ -384,7 +384,7 @@ func TestPeerListeners(t *testing.T) {
 			OnBlock: func(p *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 				ok <- msg
 			},
-			OnMinerBlock: func(p *peer.Peer, msg *wire.NewNodeBlock, buf []byte) {
+			OnMinerBlock: func(p *peer.Peer, msg *wire.MingingRightBlock, buf []byte) {
 				ok <- msg
 			},
 			OnInv: func(p *peer.Peer, msg *wire.MsgInv) {
