@@ -33,6 +33,7 @@ const (
 	CmdGetAddr      = "getaddr"
 	CmdAddr         = "addr"
 	CmdInvitation   = "invitation"
+	CmdAckInvitation = "avkinvite"
 	CmdGetBlocks    = "getblocks"
 	CmdGetMinerBlocks    = "getminerblks"
 	CmdInv          = "inv"
@@ -110,6 +111,9 @@ func makeEmptyMessage(command string) (Message, error) {
 
 	case CmdInvitation:
 		msg = &MsgInvitation{}
+
+	case CmdAckInvitation:
+		msg = &MsgAckInvitation{}
 
 	case CmdGetBlocks:
 		msg = &MsgGetBlocks{}

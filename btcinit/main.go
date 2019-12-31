@@ -315,7 +315,7 @@ func main() {
 		Timestamp:     genesisBlock.Header.Timestamp,
 		Bits:          0x1f00ffff,
 		Nonce:         0,
-		Newnode:       addr.ScriptAddress(),
+		Miner:       addr.ScriptAddress(),
 	}
 	solveMinerBlock(&minerBlock)
 
@@ -340,7 +340,7 @@ func main() {
 		"\n\tTimestamp:  GenesisBlock.Header.Timestamp, " +
 		"\n\tBits:      0x%x," +
 		"\n\tNonce:      %d," +
-		"\n\tNewnode: creator," +
+		"\n\tMiner: creator," +
 	"\n}", minerBlock.Bits, minerBlock.Nonce)
 
 	// regTestGenesisMerkleRoot is the hash of the first transaction in the genesis
@@ -384,7 +384,7 @@ func main() {
 		Timestamp:     regTestGenesisBlock.Header.Timestamp,
 		Bits:          0x1f7fffff,
 		Nonce:         0,
-		Newnode:       addr.ScriptAddress(),
+		Miner:       addr.ScriptAddress(),
 	}
 	solveMinerBlock(&regTestGenesisMinerBlock)
 	var regTestGenesisMinerHash = regTestGenesisMinerBlock.BlockHash()
@@ -412,7 +412,7 @@ func main() {
 		"\n\tTimestamp:  RegTestGenesisBlock.Header.Timestamp, " +
 		"\n\tBits:      0x%x," +
 		"\n\tNonce:      %d," +
-		"\n\tNewnode: creator," +
+		"\n\tMiner: creator," +
 		"\n}", regTestGenesisMinerBlock.Bits, regTestGenesisMinerBlock.Nonce)
 
 	// testNet3GenesisMerkleRoot is the hash of the first transaction in the genesis
@@ -456,7 +456,7 @@ func main() {
 		Timestamp:     testNet3GenesisBlock.Header.Timestamp,
 		Bits:          0x1f00ffff,
 		Nonce:         0,
-		Newnode:       addr.ScriptAddress(),
+		Miner:       addr.ScriptAddress(),
 	}
 	solveMinerBlock(&testNet3GenesisMinerBlock)
 	var testNet3GenesisMinerHash = testNet3GenesisMinerBlock.BlockHash()
@@ -484,7 +484,7 @@ func main() {
 		"\n\tTimestamp:  TestNet3GenesisBlock.Header.Timestamp, " +
 		"\n\tBits:      0x%x," +
 		"\n\tNonce:      %d," +
-		"\n\tNewnode: creator," +
+		"\n\tMiner: creator," +
 		"\n}", testNet3GenesisMinerBlock.Bits, testNet3GenesisMinerBlock.Nonce)
 
 	// simNetGenesisMerkleRoot is the hash of the first transaction in the genesis
@@ -528,7 +528,7 @@ func main() {
 		Timestamp:     simNetGenesisBlock.Header.Timestamp,
 		Bits:          0x1f7fffff,
 		Nonce:         0,
-		Newnode:       addr.ScriptAddress(),
+		Miner:       addr.ScriptAddress(),
 	}
 	solveMinerBlock(&simNetGenesisMinerBlock)
 	var simNetGenesisMinerHash = simNetGenesisMinerBlock.BlockHash()
@@ -556,7 +556,7 @@ func main() {
 		"\n\tTimestamp:  SimNetGenesisBlock.Header.Timestamp, " +
 		"\n\tBits:      0x%x," +
 		"\n\tNonce:      %d," +
-		"\n\tNewnode: creator," +
+		"\n\tMiner: creator," +
 		"\n}", simNetGenesisMinerBlock.Bits, simNetGenesisMinerBlock.Nonce)
 }
 
@@ -628,12 +628,12 @@ func printhash(h chainhash.Hash) {
 	fmt.Printf("\n\t}")
 }
 
-func printminerblock(blk wire.NewNodeBlock) {
+func printminerblock(blk wire.MingingRightBlock) {
 	fmt.Printf("Header {\n\tVersion:%d,\n\tPrevBlock: %s\n\tReferredBlock: %s\n\tBestBlock: %s\n\tTimestamp: 0x%x\n\tBits: 0x%x\n\tNonce: %d",
 		blk.Version, blk.PrevBlock.String(), blk.ReferredBlock.String(), blk.BestBlock.String(), blk.Timestamp.Unix(),
 		blk.Bits, blk.Nonce)
-	fmt.Printf("\n\tNewnode:[")
-	for _,b := range blk.Newnode {
+	fmt.Printf("\n\tMiner:[")
+	for _,b := range blk.Miner {
 		fmt.Printf("0x%x, ", b)
 	}
 	fmt.Printf("]\n\tBlackList: %s\n", blk.BlackList)

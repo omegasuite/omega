@@ -67,6 +67,7 @@ type ConnReq struct {
 	retryCount uint32
 
 	Committee  int32
+	Initcallback func()
 }
 
 // updateState updates the state of the connection request.

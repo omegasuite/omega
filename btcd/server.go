@@ -9,10 +9,8 @@ import (
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/tls"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -168,7 +166,7 @@ type peerState struct {
 	outboundGroups  map[string]int
 
 	// connected committee members. it is a map into index of outboundPeers
-	committee       map[int32]int32
+	committee       map[int32]*serverPeer
 }
 
 // Count returns the count of all known peers.
@@ -262,6 +260,7 @@ type server struct {
 	cfCheckptCachesMtx sync.RWMutex
 	privKeys 		   map[btcutil.Address]*btcec.PrivateKey
 	rsaPrivateKey	   *rsa.PrivateKey
+	peerState 		   * peerState
 }
 
 // serverPeer extends the peer to maintain state shared by the server and
@@ -288,9 +287,6 @@ type serverPeer struct {
 	// The following chans are used to sync blockmanager and server.
 	txProcessed    chan struct{}
 	blockProcessed chan struct{}
-
-	// are we committee member? if yes, which one
-	committee      uint32
 }
 
 // newServerPeer returns a new serverPeer instance. The peer needs to be set by
@@ -1392,103 +1388,6 @@ func (sp *serverPeer) OnAddr(_ *peer.Peer, msg *wire.MsgAddr) {
 	sp.server.addrManager.AddAddresses(msg.AddrList, sp.NA())
 }
 
-func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
-	// 1. check if the message has expired, if yes, do nothing
-	if sp.server.chain.BestSnapshot().LastRotation > msg.Expire {
-		return
-	}
-
-	// 2. check if we are invited, if yes take it by connecting to the peer
-	// decode the message
-	// try to decode the message with my RSA priv key
-	if sp.server.rsaPrivateKey != nil {
-		m, err := rsa.DecryptOAEP(sha256.New(), nil, sp.server.rsaPrivateKey, msg.Msg, []byte("invitation"))
-		switch {
-		case err == nil:
-			// this mesage is for me
-			inv := wire.Invitation{}
-			inv.Deserialize(bytes.NewReader(m))
-
-			if sp.server.chain.BestSnapshot().LastRotation > uint32(inv.Height)+wire.CommitteeSize {
-				// expired
-				return
-			}
-
-			if sp.server.chain.BestSnapshot().LastRotation + advanceCommitteeConnection < uint32(inv.Height) {
-				// too early for me
-				break
-			}
-
-			k,err := btcec.ParsePubKey(inv.Pubkey[:], btcec.S256())
-			if err != nil {
-				return
-			}
-
-			mb, err := sp.server.chain.Miners.BlockByHeight(inv.Height)
-			if err != nil {
-				break
-			}
-
-			// check signature
-			miner := mb.MsgBlock().Miner
-			pk,_ := btcutil.NewAddressPubKeyPubKey(*k, sp.server.chainParams)
-			pkh := pk.AddressPubKeyHash().Hash160()
-
-			if bytes.Compare(pkh[:], miner) != 0 {
-				return
-			}
-
-			s,err := btcec.ParseSignature(msg.Sig, btcec.S256())
-			if err != nil {
-				return
-			}
-
-			var w bytes.Buffer
-
-			if inv.Serialize(&w) != nil {
-				return
-			}
-
-			hash := chainhash.DoubleHashB(w.Bytes())
-
-			if !s.Verify(hash, pk.PubKey()) {
-				return
-			}
-
-			tcp, err := net.ResolveTCPAddr("", string(inv.IP))
-			if err != nil {
-				// not a valid address. should have validated before
-				return
-			}
-
-			go sp.server.connManager.Connect(&connmgr.ConnReq{
-				Addr:      tcp,
-				Permanent: false,
-				Committee: inv.Height,
-			})
-			return
-		}
-	}
-
-	// 3. if not, check if the message is in inventory, if yes, ignore it
-	mh := msg.Hash()
-	if _, ok := sp.server.syncManager.Broadcasted[mh]; ok {
-		sp.server.syncManager.Broadcasted[mh] = time.Now().Unix() + 300
-		return
-	}
-
-	// 4. otherwise, broadcast it
-	// remove expired inventory
-	for i, t := range sp.server.syncManager.Broadcasted {
-		if time.Now().Unix() > t {
-			delete(sp.server.syncManager.Broadcasted, i)
-		}
-	}
-	// inventory expires 5 minutes
-	sp.server.syncManager.Broadcasted[mh] = time.Now().Unix() + 300
-	sp.server.broadcast <- broadcastMsg{msg, []*serverPeer{sp} }
-}
-
 // OnRead is invoked when a peer receives a message and it is used to update
 // the bytes received by the server.
 func (sp *serverPeer) OnRead(_ *peer.Peer, bytesRead int, msg wire.Message, err error) {
@@ -1909,7 +1808,12 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 			state.outboundPeers[sp.ID()] = sp
 		}
 		if sp.connReq.Committee > 0 {
-			state.committee[sp.connReq.Committee] = sp.ID()
+			state.committee[sp.connReq.Committee] = sp
+		}
+		if sp.connReq.Initcallback != nil {
+			// one time call back to allow us send msg immediately after successful connection
+			sp.connReq.Initcallback()
+			sp.connReq.Initcallback = nil
 		}
 	}
 
@@ -2084,157 +1988,6 @@ type removeNodeMsg struct {
 	reply chan error
 }
 
-func (s *server) handleCommitteRotation(state *peerState, r int32) {
-	b := s.chain
-
-	if uint32(r) < b.BestSnapshot().LastRotation {
-		// if we have more advanced block, ignore this one
-		return
-	}
-
-	minerTop := b.Miners.BestSnapshot().Height
-
-	for i, k := range state.committee {
-		if i < r - wire.CommitteeSize {
-			delete(state.committee, i)
-		}
-		_, ok := state.outboundPeers[k]
-		_, ok2 := state.persistentPeers[k]
-		if !ok && !ok2 {
-			delete(state.committee, i)
-		}
-	}
-
-	me := int32(0)
-	for i := r - wire.CommitteeSize + 1; i < r + wire.CommitteeSize; i++ {
-		// scan wire.CommitteeSize records before and after r to determine
-		// if we are in the committee
-		if i < 0 || i >= minerTop {
-			continue
-		}
-
-		mb, _ := b.Miners.BlockByHeight(i)
-		miner := mb.MsgBlock().Miner
-		found := false
-		for addr, _ := range s.privKeys {
-			if bytes.Compare(miner[:], addr.ScriptAddress()) == 0 {
-				found = true
-				break
-			}
-		}
-		if found {
-			me = i
-			break
-		}
-	}
-
-	// block me is myself, check CommitteeSize miners before and advanceCommitteeConnection
-	// miners afetr me to connect to them
-	for j := me - wire.CommitteeSize + 1; j < me + advanceCommitteeConnection; j++ {
-		if _, ok := state.committee[j]; me == j || j < 0 || j >= minerTop || ok {
-			continue
-		}
-		mb,_ := b.Miners.BlockByHeight(j)
-		miner := mb.MsgBlock().Miner
-		// establish connection
-		// check its connection info.
-		// if it is an IP address, connect directly,
-		// otherwise, broadcast q request for connection msg.
-		conn := mb.MsgBlock().Connection
-		if len(conn) < 128 {
-			// we use 1024-bit RSA pub key, so treat what is less
-			// that that as an IP address
-			tcp, err := net.ResolveTCPAddr("", string(conn))
-			if err != nil {
-				// not a valid address. should have validated before
-				continue
-			}
-
-			isin := false
-			for k, ob := range state.outboundPeers {
-				if ob.connReq.Addr.String() == tcp.String() {
-					state.committee[j] = k
-					isin = true
-				}
-			}
-			if isin {
-				continue
-			}
-			for k, ob := range state.persistentPeers {
-				if ob.connReq.Addr.String() == tcp.String() {
-					state.committee[j] = k
-					isin = true
-				}
-			}
-			if isin {
-				continue
-			}
-
-			go s.connManager.Connect(&connmgr.ConnReq{
-				Addr:      tcp,
-				Permanent: false,
-				Committee:  me,
-			})
-		} else if len(cfg.ExternalIPs) == 0 {
-			continue
-		} else {
-			inv := wire.Invitation {
-				Height: me,
-			}
-			m := wire.MsgInvitation{
-				Expire: uint32(me) + wire.CommitteeSize + uint32(randomUint16Number(10)),
-			}
-
-			copy(m.To[:], miner)
-			var w bytes.Buffer
-
-			for adr, key := range s.privKeys {
-				if bytes.Compare(miner, adr.ScriptAddress()) != 0 {
-					continue
-				}
-
-				copy(inv.Pubkey[:], key.PubKey().SerializeCompressed())
-				inv.IP = []byte(cfg.ExternalIPs[0])
-
-				inv.Serialize(&w)
-				hash := chainhash.DoubleHashH(w.Bytes())
-
-				sig, err := s.privKeys[adr].Sign(hash[:])
-				if err != nil {
-					continue
-				}
-				m.Sig = sig.Serialize()
-				break
-			}
-			if m.Sig == nil {
-				continue
-			}
-
-			var pubkey rsa.PublicKey
-			var err error
-			type RSA struct {
-				N []byte         `json:"n"`
-				E int            `json:"e"`
-			}
-			var r RSA
-
-			if json.Unmarshal(mb.MsgBlock().Connection, &r) == nil {
-				pubkey.N = big.NewInt(0).SetBytes(r.N)
-				pubkey.E = r.E
-			} else {
-				continue
-			}
-
-			m.Msg, err = rsa.EncryptOAEP(sha256.New(), nil, &pubkey, w.Bytes(), []byte("invitation"))
-			if err != nil {
-				continue
-			}
-
-			s.broadcast <- broadcastMsg { message: &m}
-		}
-	}
-}
-
 // handleQuery is the central handler for all queries and commands from other
 // goroutines related to peer state.
 func (s *server) handleQuery(state *peerState, querymsg interface{}) {
@@ -2396,6 +2149,7 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 			OnGetAddr:      sp.OnGetAddr,
 			OnAddr:         sp.OnAddr,
 			OnInvitation:	sp.OnInvitation,
+			OnAckInvitation:	sp.OnAckInvitation,
 			OnRead:         sp.OnRead,
 			OnWrite:        sp.OnWrite,
 
@@ -2473,8 +2227,6 @@ func (s *server) peerDoneHandler(sp *serverPeer) {
 	close(sp.quit)
 }
 
-const advanceCommitteeConnection = wire.CommitteeSize	// # of miner blocks we should prepare for connection
-
 // peerHandler is used to handle peer operations such as adding and removing
 // peers to and from the server, banning peers, and broadcasting messages to
 // peers.  It must be run in a goroutine.
@@ -2495,8 +2247,10 @@ func (s *server) peerHandler() {
 		outboundPeers:   make(map[int32]*serverPeer),
 		banned:          make(map[string]time.Time),
 		outboundGroups:  make(map[string]int),
-		committee: 		 make(map[int32]int32),
+		committee: 		 make(map[int32]*serverPeer),
 	}
+
+	s.peerState = state
 
 	if !cfg.DisableDNSSeed {
 		// Add peers discovered through DNS to the address manager.
@@ -3061,9 +2815,8 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 			Primes [][]byte       `json:"primes"`
 		}
 		var r RSA
-		var keyb [2048]byte
-		hex.Decode(keyb[:], []byte(cfg.RsaPrivateKey))
-		if json.Unmarshal(keyb[:], &r) == nil {
+		if json.Unmarshal([]byte(cfg.RsaPrivateKey), &r) == nil {
+			s.rsaPrivateKey = &rsa.PrivateKey{}
 			s.rsaPrivateKey.N = big.NewInt(0).SetBytes(r.N)
 			s.rsaPrivateKey.E = r.E
 			s.rsaPrivateKey.D = big.NewInt(0).SetBytes(r.D)

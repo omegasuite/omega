@@ -55,6 +55,7 @@ func (m * Invitation) Deserialize(r io.Reader) error {
 type MsgInvitation struct {
 	Expire uint32 // expiration height. anything more than Height + committee size
 	To [20]byte	// receipient identified by PKH address
+	Encrypt bool	// whether Msg is encrypted Invitation
 	Sig []byte	// my signature (w/o pubkey) on invitation to prove I am the one
 	Msg []byte	// RSA encrypted invitation message using the receipient's RSA pubkey
 }
@@ -80,13 +81,24 @@ func (msg *MsgInvitation) BtcDecode(r io.Reader, pver uint32, enc MessageEncodin
 		return err
 	}
 
-	t, err := common.ReadVarBytes(r, 0, 1024, "To")
+	var b byte
+	err = common.ReadElement(r, &b)
+	if err != nil {
+		return err
+	}
+	if b == 0 {
+		msg.Encrypt = false
+	} else {
+		msg.Encrypt = true
+	}
+
+	t, err := common.ReadVarBytes(r, 0, 1024, "Sig")
 	if err != nil {
 		return err
 	}
 	copy(msg.Sig[:], t)
 
-	t, err = common.ReadVarBytes(r, 0, 1024, "To")
+	t, err = common.ReadVarBytes(r, 0, 1024, "Msg")
 	if err != nil {
 		return err
 	}
@@ -104,6 +116,15 @@ func (msg *MsgInvitation) BtcEncode(w io.Writer, pver uint32, enc MessageEncodin
 	}
 
 	err = common.WriteElement(w, msg.To[:])
+	if err != nil {
+		return err
+	}
+
+	if msg.Encrypt {
+		err = common.WriteElement(w, byte(1))
+	} else {
+		err = common.WriteElement(w, byte(0))
+	}
 	if err != nil {
 		return err
 	}
@@ -133,4 +154,52 @@ func (msg *MsgInvitation) MaxPayloadLength(pver uint32) uint32 {
 // Message interface.  See MsgAddr for details.
 func NewMsgInvitation() *MsgInvitation {
 	return &MsgInvitation{}
+}
+
+type MsgAckInvitation struct {
+	// acknowledgement to invitation, send back after connected on invitation
+	Invitation	// this does not have to be RSA encrypted since we know we are connected
+				// to confirmed committee member, but wu do have to sign to to prove ourself
+	Sig []byte	// my signature (w/o pubkey) on invitation to prove I am the one
+}
+
+// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// This is part of the Message interface implementation.
+func (msg *MsgAckInvitation) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+	msg.Invitation.Deserialize(r)
+
+	t, err := common.ReadVarBytes(r, 0, 1024, "Sig")
+	if err != nil {
+		return err
+	}
+	copy(msg.Sig[:], t)
+
+	return nil
+}
+
+// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// This is part of the Message interface implementation.
+func (msg *MsgAckInvitation) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+	msg.Invitation.Serialize(w)
+
+	return common.WriteVarBytes(w, 0, msg.Sig[:])
+}
+
+// Command returns the protocol command string for the message.  This is part
+// of the Message interface implementation.
+func (msg *MsgAckInvitation) Command() string {
+	return CmdAckInvitation
+}
+
+// MaxPayloadLength returns the maximum length the payload can be for the
+// receiver.  This is part of the Message interface implementation.
+func (msg *MsgAckInvitation) MaxPayloadLength(pver uint32) uint32 {
+	// Num addresses (varInt) + max allowed addresses.
+	return 2048
+}
+
+// NewMsgAddr returns a new bitcoin addr message that conforms to the
+// Message interface.  See MsgAddr for details.
+func NewMsgAckInvitation() *MsgAckInvitation {
+	return &MsgAckInvitation{}
 }

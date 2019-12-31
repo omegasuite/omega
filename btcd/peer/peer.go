@@ -107,6 +107,7 @@ type MessageListeners struct {
 	OnAddr func(p *Peer, msg *wire.MsgAddr)
 
 	OnInvitation func(p *Peer, msg *wire.MsgInvitation)
+	OnAckInvitation func(p *Peer, msg *wire.MsgAckInvitation)
 
 	// OnPing is invoked when a peer receives a ping bitcoin message.
 	OnPing func(p *Peer, msg *wire.MsgPing)
@@ -495,9 +496,6 @@ type Peer struct {
 	queueQuit     chan struct{}
 	outQuit       chan struct{}
 	quit          chan struct{}
-
-	// status related committee
-	CommitteHeight	uint32		// height of MingingRightBlock, default 0
 }
 
 // String returns the peer's address and directionality as a human-readable
@@ -1511,6 +1509,11 @@ out:
 		case *wire.MsgInvitation:
 			if p.cfg.Listeners.OnInvitation != nil {
 				p.cfg.Listeners.OnInvitation(p, msg)
+			}
+
+		case *wire.MsgAckInvitation:
+			if p.cfg.Listeners.OnInvitation != nil {
+				p.cfg.Listeners.OnAckInvitation(p, msg)
 			}
 
 		case *wire.MsgPing:
