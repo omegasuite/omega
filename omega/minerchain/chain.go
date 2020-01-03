@@ -18,6 +18,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/viewpoint"
 )
@@ -339,7 +340,6 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *MinerChain) connectBlock(node *blockNode, block *wire.MinerBlock) error {
-
 	// Make sure it's extending the end of the best chain.
 	prevHash := &block.MsgBlock().PrevBlock
 	if !prevHash.IsEqual(&b.BestChain.Tip().hash) {
@@ -371,6 +371,22 @@ func (b *MinerChain) connectBlock(node *blockNode, block *wire.MinerBlock) error
 		err = dbPutBlockIndex(dbTx, h, node.height)
 		if err != nil {
 			return err
+		}
+
+		if len(node.block.BlackList) > 0 {
+			meta := dbTx.Metadata()
+
+			bkt := meta.Bucket(BlacklistKeyName)
+			var height [4]byte
+			common.LittleEndian.PutUint32(height[:], uint32(node.height))
+			ser := make([]byte, len(node.block.BlackList) * 20)
+			for i, p := range node.block.BlackList {
+				copy(ser[20 * i:], p.Address[:])
+				b.blockChain.Blacklist.Add(uint32(node.height), p.Address)
+			}
+			if err := bkt.Put(height[:], ser); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -455,6 +471,13 @@ func (b *MinerChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 		if err != nil {
 			return err
 		}
+
+		meta := dbTx.Metadata()
+		bkt := meta.Bucket(BlacklistKeyName)
+		var height [4]byte
+		common.LittleEndian.PutUint32(height[:], uint32(node.height))
+		bkt.Delete(height[:])
+		b.blockChain.Blacklist.Remove(uint32(node.height))
 
 		return nil
 	})
@@ -774,9 +797,9 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 	// changes to the block index, so flush regardless of whether there was an
 	// error. The index would only be dirty if the block failed to connect, so
 	// we can ignore any errors writing.
-//	if writeErr := b.index.flushToDB(); writeErr != nil {
-//		log.Warnf("Error flushing block index changes to disk: %v", writeErr)
-//	}
+	if writeErr := b.index.flushToDB(); writeErr != nil {
+		log.Warnf("Error flushing block index changes to disk: %v", writeErr)
+	}
 
 	return err == nil, err
 }
@@ -1255,43 +1278,6 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 
 	b.blockChain = s
 	s.Miners = b
-/*
-	// check consistency between two chains
-	// no need to lock state as we are in initialization
-	if s.BestSnapshot().LastRotation > uint32(b.BestSnapshot().Height) {
-		// main chain used a miner block at non-existence height
-		// roll back main chain until it is not
-		// Start from the end of the main chain and work backwards until the
-		// the rotation block with height less than miner chain height
-		if err := s.ReorganizeChain(s.GetRollbackList(b.BestSnapshot().Height), list.New()); err != nil {
-			return nil, err
-		}
-	}
-
-	for _, err := s.HeaderByHash(&b.BestChain.Tip().block.BestBlock); err != nil; {
-		detachNodes := list.New()
-		detachNodes.PushBack(b.BestChain.Tip())
-		b.reorganizeChain(detachNodes, list.New())
-		_, err = s.HeaderByHash(&b.BestChain.Tip().block.BestBlock)
-	}
-*/
-	// Perform any upgrades to the various chain-specific buckets as needed.
-//	if err := b.maybeUpgradeDbBuckets(config.Interrupt); err != nil {
-//		return nil, err
-//	}
-
-	// Initialize rule change threshold state caches.
-//	b.blockChain = s
-//	if err := b.InitThresholdCaches(); err != nil {
-//		return nil, err
-//	}
-
-//	bestNode := b.BestChain.Tip()
-//	log.Infof("Chain state (height %d, hash %v, totaltx %d, work %v)",
-//		bestNode.height, bestNode.hash, b.stateSnapshot.TotalTxns,
-//		bestNode.workSum)
-
-//	s.Miners = b
 
 	return s, nil
 }

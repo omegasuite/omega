@@ -51,6 +51,9 @@ var (
 	// chain state.
 	chainStateKeyName = []byte("chainstate")
 
+	// BlacklistKeyName is the name of the db key used to store the blacklist.
+	BlacklistKeyName = []byte("blacklist")
+
 	// byteOrder is the preferred byte order used for serializing numeric
 	// fields for storage in the database.
 	byteOrder = binary.LittleEndian
@@ -338,6 +341,11 @@ func (b *MinerChain) createChainState() error {
 		// Create the bucket that houses the chain block height to hash
 		// index.
 		if _, err = meta.CreateBucket(heightIndexBucketName); err != nil {
+			return err
+		}
+
+		// Create the bucket that houses the blacklist.
+		if _, err = meta.CreateBucket(BlacklistKeyName); err != nil {
 			return err
 		}
 

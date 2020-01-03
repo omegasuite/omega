@@ -64,7 +64,7 @@ type GetMinerBlockVerboseResult struct {
 	Address       string        `json:"address"`
 	Referred	  string        `json:"address"`
 	Best		  string        `json:"best"`
-	BlackList	  string        `json:"blacklist"`
+//	BlackList	  string        `json:"blacklist"`
 }
 
 // CreateMultiSigResult models the data returned from the createmultisig

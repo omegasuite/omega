@@ -1198,8 +1198,10 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 	}
 
 	prevPows := uint(0)
-	for pw := b.BestChain.Tip(); pw != nil && pw.nonce > 0; pw = pw.parent {
-		prevPows++
+	if node.nonce > 0 {
+		for pw := b.BestChain.Tip(); pw != nil && pw.nonce > 0; pw = pw.parent {
+			prevPows++
+		}
 	}
 
 	expectedSatoshiOut := CalcBlockSubsidy(node.height, b.chainParams, prevPows) + totalFees
@@ -1256,6 +1258,29 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 		}
 	}
 */
+	// blacklist check
+	for _, tx := range block.Transactions() {
+		for _, txo := range tx.MsgTx().TxOut {
+			var name [20]byte
+			copy(name[:], txo.PkScript[1:21])
+			if b.Blacklist.IsBlack(name) {
+				return fmt.Errorf("Blacklised txo")
+			}
+		}
+		for _, txi := range tx.MsgTx().TxIn {
+			utxo := views.Utxo.LookupEntry(txi.PreviousOutPoint)
+			if utxo == nil || utxo.IsSpent() {
+				continue
+			}
+
+			// check blacklist
+			var name [20]byte
+			copy(name[:], utxo.PkScript()[1:21])
+			if b.Blacklist.IsBlack(name) {
+				return fmt.Errorf("Blacklised input")
+			}
+		}
+	}
 
 	// Update the best hash for view to include this block since all of its
 	// transactions have been connected.

@@ -1,10 +1,10 @@
 package consensus
 
 import (
-	"encoding/binary"
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/mining"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/btcutil"
@@ -161,17 +161,19 @@ func (self *Syncer) releasenb() {
 
 func (self *Syncer) Signature(msg * MsgSignature) {
 	// verify signature
-	var h [36]byte
-	binary.LittleEndian.PutUint32(h[:], uint32(self.Height))
-	copy(h[4:], self.forest[self.Me].hash[:])
-	hash := chainhash.DoubleHashB(h[:])
+	hash := mining.MakeMinerSigHash(self.Height, self.forest[self.Me].hash)
 
-	s, err := btcec.ParseDERSignature(msg.Signature[:], btcec.S256())
+	k,err := btcec.ParsePubKey(msg.Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 	if err != nil {
 		return
 	}
 
-	if !s.Verify(hash, &msg.PubKey) {
+	s, err := btcec.ParseDERSignature(msg.Signature[btcec.PubKeyBytesLenCompressed:], btcec.S256())
+	if err != nil {
+		return
+	}
+
+	if !s.Verify(hash, k) {
 		return
 	}
 
@@ -186,17 +188,19 @@ func (self *Syncer) Signature(msg * MsgSignature) {
 func (self *Syncer) Consensus(msg * MsgConsensus) {
 	if self.agreed == self.Members[msg.From] || self.agreed == -1 {
 		// verify signature
-		var h [36]byte
-		binary.LittleEndian.PutUint32(h[:], uint32(self.Height))
-		copy(h[4:], self.forest[msg.From].hash[:])
-		hash := chainhash.DoubleHashB(h[:])
+		hash := mining.MakeMinerSigHash(self.Height, self.forest[msg.From].hash)
 
-		s, err := btcec.ParseDERSignature(msg.Signature[:], btcec.S256())
+		k,err := btcec.ParsePubKey(msg.Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 		if err != nil {
 			return
 		}
 
-		if !s.Verify(hash, &msg.PubKey) {
+		s, err := btcec.ParseDERSignature(msg.Signature[btcec.PubKeyBytesLenCompressed:], btcec.S256())
+		if err != nil {
+			return
+		}
+
+		if !s.Verify(hash, k) {
 			return
 		}
 
@@ -205,13 +209,14 @@ func (self *Syncer) Consensus(msg * MsgConsensus) {
 			msg := MsgSignature {
 				Height:    self.Height,
 				From:      self.Me,
-				PubKey:	   *privKey.PubKey(),
 			}
+
 			s := sig.Serialize()
-			copy(msg.Signature[:], s)
+			copy(msg.Signature[:], privKey.PubKey().SerializeCompressed())
+			copy(msg.Signature[btcec.PubKeyBytesLenCompressed:], s)
 
 			// add signature to block
-			self.forest[self.Me].block.MsgBlock().Transactions[0].SignatureScripts[1 + self.Myself] = s
+			self.forest[self.Me].block.MsgBlock().Transactions[0].SignatureScripts[1 + self.Myself] = msg.Signature[:]
 			self.signed[self.Me] = struct{}{}
 
 			miner.server.CommitteeCast(self.Myself, &msg)
@@ -234,20 +239,17 @@ func (self *Syncer) ckconsensus() {
 		return
 	}
 
-	var h [36]byte
-	binary.LittleEndian.PutUint32(h[:], uint32(self.Height))
-	copy(h[4:], self.forest[self.Me].hash[:])
-
-	hash := chainhash.DoubleHashB(h[:])
+	hash := mining.MakeMinerSigHash(self.Height, self.forest[self.Me].hash)
 
 	if privKey := miner.server.GetPrivKey(self.Me); privKey != nil {
 		sig, _ := privKey.Sign(hash)
 		msg := MsgConsensus{
 			Height:    self.Height,
 			From:      self.Me,
-			PubKey:	   *privKey.PubKey(),
 		}
-		copy(msg.Signature[:], sig.Serialize())
+
+		copy(msg.Signature[:], privKey.PubKey().SerializeCompressed())
+		copy(msg.Signature[btcec.PubKeyBytesLenCompressed:], sig.Serialize())
 
 		miner.server.CommitteeCast(self.Myself, &msg)
 	}
@@ -537,32 +539,45 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	var adr [20]byte
 	copy(adr[:], block.MsgBlock().Transactions[0].SignatureScripts[1])
 
-	if !self.Runnable {
-		best := self.Chain.BestSnapshot()
+	Runnable := false
 
+	best := self.Chain.BestSnapshot()
+
+	if !self.Runnable {
 		if best.Height > self.Height {
 			self.Quit()
 			return
 		}
 
-		self.Runnable = self.Height == best.Height
-
-		if self.Runnable {
-			self.SetCommittee(int32(best.LastRotation))
-		}
+		Runnable = self.Height == best.Height
 	}
 
 	// total fees are total coinbase outputs
-	fees := uint64(0)
+	fees := int64(0)
+	eq := int64(-1)
 	for _, txo := range block.MsgBlock().Transactions[0].TxOut {
 		if txo.TokenType == 0 {
-			fees += uint64(txo.Value.(*token.NumToken).Val)
+			if eq < 0 {
+				eq = txo.Value.(*token.NumToken).Val
+			} else if eq != txo.Value.(*token.NumToken).Val {
+				return
+			}
+			fees += eq
 		}
+	}
+
+	if len(block.MsgBlock().Transactions[0].TxOut) <= wire.CommitteeSize / 2 {
+		return
+	}
+
+	if !self.Runnable && Runnable {
+		self.Runnable = Runnable
+		self.SetCommittee(int32(best.LastRotation))
 	}
 
 	self.newtree <- tree {
 		creator: adr,
-		fees: fees,
+		fees: uint64(fees),
 		hash: * block.Hash(),
 		header: &block.MsgBlock().Header,
 		block: block,

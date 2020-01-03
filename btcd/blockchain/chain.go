@@ -92,6 +92,15 @@ type MinerChain interface {
 	IsCurrent () bool
 }
 
+type BlackList interface {
+	IsBlack([20]byte) bool
+	IsGrey([20]byte) bool
+	Update(uint32)
+	Rollback(uint32)
+	Add(uint32, [20]byte)
+	Remove(uint32)
+}
+
 // BlockChain provides functions for working with the bitcoin block chain.
 // It includes functionality such as rejecting duplicate blocks, ensuring blocks
 // follow all rules, orphan handling, checkpoint handling, and best chain
@@ -194,6 +203,7 @@ type BlockChain struct {
 
 	// The virtual machine
 	ovm * ovm.OVM
+	Blacklist BlackList
 }
 
 func (b *BlockChain) Ovm() * ovm.OVM {
@@ -701,6 +711,9 @@ func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 	// This node is now the end of the best chain.
 	b.BestChain.SetTip(node)
 
+	// update blocklist
+	b.Blacklist.Update(uint32(node.height))
+
 	// Update the state for the best block.  Notice how this replaces the
 	// entire struct instead of updating the existing one.  This effectively
 	// allows the old version to act as a snapshot which callers can use
@@ -881,6 +894,7 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	// Prune fully spent entries and mark all entries in the view unmodified
 	// now that the modifications have been committed to the database.
 	view.Commit()
+	b.Blacklist.Rollback(uint32(node.height))
 
 	// This node's parent is now the end of the best chain.
 	b.BestChain.SetTip(node.parent)

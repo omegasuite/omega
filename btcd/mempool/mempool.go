@@ -157,6 +157,7 @@ type orphanTx struct {
 	expiration time.Time
 }
 
+
 // TxPool is used as a source of transactions that need to be mined into blocks
 // and relayed to other peers.  It is safe for concurrent access from multiple
 // peers.
@@ -178,6 +179,8 @@ type TxPool struct {
 	// the scan will only run when an orphan is added to the pool as opposed
 	// to on an unconditional timer.
 	nextExpireScan time.Time
+
+	Blacklist blockchain.BlackList
 }
 
 // Ensure the TxPool type implements the mining.TxSource interface.
@@ -741,6 +744,14 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
 			continue
 		}
+
+		// check if any out to black list
+		var name [20]byte
+		copy(name[:], txOut.PkScript[1:21])
+		if mp.Blacklist.IsGrey(name) {
+			return nil, nil, fmt.Errorf("Blacklised txo")
+		}
+
 		prevOut.Index = uint32(txOutIdx)
 		entry := utxoView.LookupEntry(prevOut)
 		if entry != nil && !entry.IsSpent() {
@@ -748,6 +759,21 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 				"transaction already exists")
 		}
 		utxoView.RemoveEntry(prevOut)
+	}
+
+	for _, txIn := range tx.MsgTx().TxIn {
+		// Ensure the referenced input transaction is available.
+		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
+		if utxo == nil || utxo.IsSpent() {
+			continue
+		}
+
+		// check blacklist
+		var name [20]byte
+		copy(name[:], utxo.PkScript()[1:21])
+		if mp.Blacklist.IsGrey(name) {
+			return nil, nil, fmt.Errorf("Blacklised input")
+		}
 	}
 
 	// Transaction is an orphan if any of the referenced transaction outputs

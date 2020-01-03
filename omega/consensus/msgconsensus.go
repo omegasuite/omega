@@ -6,18 +6,15 @@ package consensus
 
 import (
 	"bytes"
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcd/wire/common"
 	"io"
 )
 
 type MsgConsensus struct {
 	Height    int32
 	From      [20]byte
-	PubKey    btcec.PublicKey
-	Signature      [65]byte
+	Signature      [98]byte
 }
 
 func (msg * MsgConsensus) Block() int32 {
@@ -37,18 +34,6 @@ func (msg * MsgConsensus) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEnco
 	if err != nil {
 		return err
 	}
-
-	pks, err := common.ReadVarBytes(r, 0, 1024, "PubKey")
-	if err != nil {
-		return err
-	}
-
-	pk, err := btcec.ParsePubKey(pks, btcec.S256())
-	if err != nil {
-		return err
-	}
-
-	msg.PubKey = *pk
 
 	err = readElement(r, msg.Signature)
 	if err != nil {
@@ -71,8 +56,6 @@ func (msg * MsgConsensus) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEnco
 	if err != nil {
 		return err
 	}
-
-	common.WriteVarBytes(w, 0, msg.PubKey.SerializeCompressed())
 
 	err = writeElement(w, msg.Signature)
 	if err != nil {

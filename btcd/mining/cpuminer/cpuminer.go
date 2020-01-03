@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/omega/minerchain"
 	"github.com/btcsuite/omega/ovm"
 	"math/rand"
 
@@ -112,6 +113,7 @@ type CPUMiner struct {
 	updateHashes      chan uint64
 	speedMonitorQuit  chan struct{}
 	quit              chan struct{}
+	connch 			  chan int32
 }
 
 // speedMonitor handles tracking the number of hashes per second the mining
@@ -292,6 +294,18 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	return false
 }
 
+func (m *CPUMiner) notice (notification *blockchain.Notification) {
+	switch notification.Type {
+	case blockchain.NTBlockConnected:
+		switch notification.Data.(type) {
+		case *wire.MinerBlock:
+			if m.started {
+				m.connch <- notification.Data.(*wire.MinerBlock).Height()
+			}
+		}
+	}
+}
+
 // generateBlocks is a worker that is controlled by the miningWorkerController.
 // It is self contained in that it creates block templates and attempts to solve
 // them while detecting when it is performing stale work and reacting
@@ -306,6 +320,7 @@ func (m *CPUMiner) generateBlocks(quit chan struct{}) {
 	// updates to the speed monitor.
 	ticker := time.NewTicker(time.Second * hashUpdateSecs)
 	defer ticker.Stop()
+
 out:
 	for {
 		// Quit when the miner is stopped.
@@ -346,7 +361,6 @@ out:
 			time.Sleep(time.Second)
 			continue
 		}
-
 
 		if time.Now().UnixNano() - m.g.BestSnapshot().Updated.UnixNano() <= miningGap * 1000000 {
 			m.g.Chain.ChainLock.Unlock()
@@ -447,8 +461,32 @@ out:
 			}
 			log.Infof("New block generated. nonce = %d", nonce)
 			m.submitBlock(block)
+
+			// TBD: optimization idea. instead of waiting a block connect at this height,
+			// we just keep on mining the next block. if lucky, this block is in main chain
+			// if not, we end up with a side chain and reorg it. the complexity lies in chain
+			// management, i.e. we add a block to main chain knowing it could be invalid.
+			connected:
+			for {
+				select {
+				case blk := <- m.connch:
+					if blk >= block.Height() {
+						break connected
+					}
+				}
+			}
+			// wait until a block at this height is connect to mainchain
 //			time.Sleep(time.Millisecond * miningGap)
 			continue
+		}
+
+		flushed:
+		for {
+			select {
+			case <- m.connch:
+			default:
+				break flushed
+			}
 		}
 
 		time.Sleep(time.Second * 20)
@@ -621,6 +659,16 @@ func (m *CPUMiner) Stop() {
 	close(m.quit)
 	m.wg.Wait()
 	m.started = false
+
+	for {
+		select {
+		case <- m.connch:
+		default:
+			log.Infof("CPU miner stopped")
+			return
+		}
+	}
+
 	log.Infof("CPU miner stopped")
 }
 
@@ -784,12 +832,15 @@ func (m *CPUMiner) GenerateNBlocks(n uint32) ([]*chainhash.Hash, error) {
 // Use Start to begin the mining process.  See the documentation for CPUMiner
 // type for more details.
 func New(cfg *Config) *CPUMiner {
-	return &CPUMiner{
+	m := &CPUMiner{
 		g:                 cfg.BlockTemplateGenerator,
 		cfg:               *cfg,
 		numWorkers:        defaultNumWorkers,
 		updateNumWorkers:  make(chan struct{}),
 		queryHashesPerSec: make(chan float64),
 		updateHashes:      make(chan uint64),
+		connch: 		   make(chan int32, 100),
 	}
+	m.g.Chain.Miners.(*minerchain.MinerChain).Subscribe(m.notice)
+	return m
 }

@@ -10,7 +10,6 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
-	"math"
 )
 
 var (
@@ -238,17 +237,21 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *blockNode, newBlockTim
 	normalizedTimespan := int64(0)
 	pb := firstNode
 	for i := b.blocksPerRetarget - 2; i >= 0; i-- {
-		factor := float64(1.0)
+		factor := uint32(0)
 		if d > wire.DESIRABLE_MINER_CANDIDATES {
-			factor = math.Pow(powScaleFactor, float64(d - wire.DESIRABLE_MINER_CANDIDATES))
+			factor = (d - wire.DESIRABLE_MINER_CANDIDATES)
+			if factor > wire.SCALEFACTORCAP {
+				factor = wire.SCALEFACTORCAP
+			}
+//			factor = math.Pow(powScaleFactor, float64(d - wire.DESIRABLE_MINER_CANDIDATES))
 		}
 		ob := pb
 		if i != 0 {
 			nb := lastNode.RelativeAncestor(i)
-			normalizedTimespan += int64(float64(nb.block.Timestamp.Unix() - pb.block.Timestamp.Unix()) / factor)
+			normalizedTimespan += int64(float64(nb.block.Timestamp.Unix() - pb.block.Timestamp.Unix())) >> factor  // / factor)
 			pb = nb
 		} else {
-			normalizedTimespan += int64(float64(lastNode.block.Timestamp.Unix() - pb.block.Timestamp.Unix()) / factor)
+			normalizedTimespan += int64(float64(lastNode.block.Timestamp.Unix() - pb.block.Timestamp.Unix())) >> factor // / factor)
 		}
 		d++
 		h0 = pb.Header().BestBlock

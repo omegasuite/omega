@@ -5,16 +5,18 @@
 package minerchain
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/btcsuite/btcd/blockchain"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/database"
+	"github.com/btcsuite/btcd/mining"
 	"github.com/btcsuite/btcd/wire"
-	"math"
 	"math/big"
 )
 
-const powScaleFactor = 1.2		// the pow scale factor when the number of miner candidate is more than DESIRABLE_MINER_CANDIDATES
+// const powScaleFactor = 1.2		// the pow scale factor when the number of miner candidate is more than DESIRABLE_MINER_CANDIDATES
 
 // maybeAcceptBlock potentially accepts a block into the miner chain and, if
 // accepted, returns whether or not it is on the main chain.  It performs
@@ -141,10 +143,10 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 		hashNum := HashToBig(&hash)
 
 		factor := m.factorPOW(m.index.LookupNode(&header.PrevBlock))
-		if factor != nil {
-			hashNum = hashNum.Mul(hashNum, factor)
-			hashNum = hashNum.Div(hashNum, big.NewInt(1024))
-		}
+//		if factor != nil {
+			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+//			hashNum = hashNum.Div(hashNum, big.NewInt(1024))
+//		}
 		if hashNum.Cmp(target) > 0 {
 			str := fmt.Sprintf("block hash of %064x is higher than "+
 				"expected max of %064x", hashNum, target)
@@ -155,21 +157,29 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 	return nil
 }
 
-func (m *MinerChain) factorPOW(firstNode *blockNode) *big.Int {
+func (m *MinerChain) factorPOW(firstNode *blockNode) int64 {
 //	h0 := firstNode.Header().BestBlock
 	baseh := uint32(firstNode.height)
 
 	h := m.blockChain.BestSnapshot().LastRotation	// .LastRotation(h0)
 	if h == 0 {
-		return nil
+		return 1 	// nil
 	}
 
 	d := uint32(baseh) - h
+
+	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
+		return int64(1) << wire.SCALEFACTORCAP
+	}
+
+	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
+/*
 	factor := float64(1024.0)
 	if d > wire.DESIRABLE_MINER_CANDIDATES {
 		factor *= math.Pow(powScaleFactor, float64(d - wire.DESIRABLE_MINER_CANDIDATES))
 	}
 	return big.NewInt(int64(factor))
+ */
 }
 
 // checkBlockContext peforms several validation checks on the block which depend
@@ -191,6 +201,15 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 	}
 
 	header := block.MsgBlock()
+
+	for p, i := prevNode, 0; i < wire.MinerGap; i++ {
+		if bytes.Compare(p.Header().Miner, block.MsgBlock().Miner) == 0 {
+			str := "Miner has appeared in the past %d blocks"
+			str = fmt.Sprintf(str, wire.MinerGap)
+			return ruleError(ErrUnexpectedDifficulty, str)
+		}
+		p = p.parent
+	}
 
 	// Ensure the difficulty specified in the block header matches
 	// the calculated difficulty based on the previous block and
@@ -246,6 +265,32 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 		str := "referred main chain best block height of %d is less that previous"
 		str = fmt.Sprintf(str, best)
 		return ruleError(ErrTimeTooOld, str)
+	}
+
+	for _, p := range block.MsgBlock().BlackList {
+		// verify the signatures
+		if refh,err := b.blockChain.BlockHeightByHash(&p.Hashes[0]); err != nil {
+			return err
+			if refh != int32(p.Height) {
+				return fmt.Errorf("The first hash must be a block in main chain at the given height")
+			}
+		}
+
+		for i := 0; i < 2; i++ {
+			k, err := btcec.ParsePubKey(p.Signatures[i][:btcec.PubKeyBytesLenCompressed], btcec.S256())
+			if err != nil {
+				return err
+			}
+			sig, err := btcec.ParseDERSignature(p.Signatures[i][btcec.PubKeyBytesLenCompressed:], btcec.S256())
+			if err != nil {
+				return err
+			}
+
+			h := mining.MakeMinerSigHash(int32(p.Height), p.Hashes[i])
+			if !sig.Verify(h, k) {
+				return fmt.Errorf("Incorrect balck list signature")
+			}
+		}
 	}
 
 	return nil

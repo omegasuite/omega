@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"encoding/binary"
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/blockchain"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
@@ -472,6 +472,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress btcutil.Address) (*Bloc
 		prevPows++
 	}
 
+	// this coinbase is for POW block. for block bu committee, will do differently.
 	coinbaseTx, err := createCoinbaseTx(g.chainParams, nextBlockHeight, payToAddress, prevPows)
 	if err != nil {
 		return nil, err
@@ -944,7 +945,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 		ReferredBlock: *h3,
 		BestBlock:     cbest.Hash,
 		Miner:         payToAddress.ScriptAddress(),
-		BlackList:     []byte{},
+		BlackList:     make([]wire.BlackList, 0),
 	}
 
 	// Finally, perform a full check on the created block against the Chain
@@ -1105,11 +1106,19 @@ func (g *BlkTmplGenerator) Committee() map[[20]byte]struct{} {
 	return adrs
 }
 
+func MakeMinerSigHash(height int32, hash chainhash.Hash) []byte {
+	s1 := "Omega chain miner block "
+	s2 := " at height "
+	lenth := 36 + len(s1) + len(s2)
+	t := make([]byte, lenth)
+	copy(t[:], []byte(s1))
+	copy(t[len(s1):], hash[:])
+	binary.LittleEndian.PutUint32(t[len(s1)+32:], uint32(height))
+	return chainhash.DoubleHashB(t[:])
+}
+
 func AddSignature(block * btcutil.Block, privkey *btcec.PrivateKey) {
-	w := bytes.NewBuffer(make([]byte, 0, 36))
-	binary.Write(w, common.LittleEndian, block.Height())
-	binary.Write(w, common.LittleEndian, block.Hash())
-	hash := chainhash.DoubleHashB(w.Bytes())
+	hash := MakeMinerSigHash(block.Height(), *block.Hash())
 
 	sig,_ := privkey.Sign(hash)
 	pubk := privkey.PubKey().SerializeCompressed()	// 33 bytes always

@@ -5,15 +5,15 @@
 package minerchain
 
 import (
-	"math"
-	"math/big"
-	"math/rand"
+	"bytes"
 	"github.com/btcsuite/btcd/blockchain"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/mining"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
+	"math/big"
 	//	"runtime"
 	"sync"
 	"time"
@@ -59,6 +59,8 @@ type Config struct {
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
 	MiningAddrs []btcutil.Address
+
+	PrivKeys map[btcutil.Address]*btcec.PrivateKey
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -184,18 +186,24 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 	return true
 }
 
-func (m *CPUMiner) factorPOW(baseh uint32, h0 chainhash.Hash) *big.Int {
+func (m *CPUMiner) factorPOW(baseh uint32, h0 chainhash.Hash) int64 {	// *big.Int {
 	h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
 	if h == 0 {
-		return nil
+		return 1 	// nil
 	}
 
 	d := uint32(baseh) - h
+	if d > wire.SCALEFACTORCAP {
+		return int64(1) << wire.SCALEFACTORCAP
+	}
+	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
+/*
 	factor := float64(1024.0)
 	if d > wire.DESIRABLE_MINER_CANDIDATES {
 		factor *= math.Pow(powScaleFactor, float64(d - wire.DESIRABLE_MINER_CANDIDATES))
 	}
 	return big.NewInt(int64(factor))
+*/
 }
 
 // solveBlock attempts to find some combination of a nonce, extra nonce, and
@@ -215,11 +223,12 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 	header.Block.(*wire.MingingRightBlock).Bits = header.Bits
 
 	factorPOW := m.factorPOW(uint32(header.Height), header.Block.(*wire.MingingRightBlock).PrevBlock)
-
+/*
 	if factorPOW != nil {
 		targetDifficulty.Mul(targetDifficulty, big.NewInt(1024))
 		targetDifficulty.Div(targetDifficulty, factorPOW)
 	}
+*/
 
 	// Initial state.
 	hashesCompleted := uint64(0)
@@ -264,7 +273,8 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 
 			// The block is solved when the new block hash is less
 			// than the target difficulty.  Yay!
-			if blockchain.HashToBig(&hash).Cmp(targetDifficulty) <= 0 {
+			res := blockchain.HashToBig(&hash)
+			if res.Mul(res, big.NewInt(factorPOW)).Cmp(targetDifficulty) <= 0 {
 				return true
 			}
 		}
@@ -300,7 +310,7 @@ out:
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
 		if m.cfg.ConnectedCount() == 0 {
-			time.Sleep(time.Second)
+			time.Sleep(time.Second * 5)
 			continue
 		}
 
@@ -314,23 +324,42 @@ out:
 		isCurrent := m.cfg.IsCurrent()
 		if curHeight != 0 && !isCurrent {
 			m.submitBlockLock.Unlock()
-			time.Sleep(time.Second)
+			time.Sleep(time.Second * 5)
 			continue
 		}
 
 		// Choose a payment address at random.
-		// apply the rule for gap between activations -- TBD
-		// should select one with priv key, instead of randomly
-		rand.Seed(time.Now().UnixNano())
-		payToAddr := m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
+
+		var payToAddress btcutil.Address
+
+		good := false
+		for addr, _ := range m.cfg.PrivKeys {
+			good = true
+			for i := 0; i < wire.MinerGap; i++ {
+				p, _ := m.g.Chain.Miners.BlockByHeight(curHeight - int32(i))
+				if bytes.Compare(p.MsgBlock().Miner, payToAddress.ScriptAddress()) == 0 {
+					good = false
+					break
+				}
+			}
+			if good {
+				payToAddress = addr
+				break
+			}
+		}
 
 		// Create a new block template using the available transactions
 		// in the memory pool as a source of transactions to potentially
 		// include in the block.
-		template, err := m.g.NewMinerBlockTemplate(payToAddr)
+		var template *mining.BlockTemplate
+		var err error
+		if good {
+			template, err = m.g.NewMinerBlockTemplate(payToAddress)
+		}
 		m.submitBlockLock.Unlock()
 
 		if err != nil || template == nil {
+			time.Sleep(time.Second * 5)
 			continue
 		}
 
