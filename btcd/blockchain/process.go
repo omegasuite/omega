@@ -32,6 +32,10 @@ const (
 
 	BFAddAsOrphan
 
+	BFSubmission
+
+	BFNoConnect
+
 	// BFNone is a convenience value to specifically indicate no flags.
 	BFNone BehaviorFlags = 0
 )
@@ -169,9 +173,14 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	// The block must not already exist as an orphan.
-	if _, exists := b.orphans[*blockHash]; exists {
-		str := fmt.Sprintf("already have block (orphan) %v", blockHash)
-		return false, false, ruleError(ErrDuplicateBlock, str)
+	if p, exists := b.orphans[*blockHash]; exists {
+		// check if the orphan is a pre-consus block and this is a consensus block
+		if len(block.MsgBlock().Transactions[0].SignatureScripts) > len(p.block.MsgBlock().Transactions[0].SignatureScripts) {
+			b.removeOrphanBlock(p)
+		} else {
+			str := fmt.Sprintf("already have block (orphan) %v", blockHash)
+			return false, false, ruleError(ErrDuplicateBlock, str)
+		}
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
@@ -232,6 +241,12 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		// we shall call ProcessOrphans with tip of best tx chain hash as param.
 		b.AddOrphanBlock(block)
 		return false, true, nil
+	}
+
+	if flags & BFNoConnect == BFNoConnect {
+		// this mark an pre-consus block
+		b.AddOrphanBlock(block)
+		return isMainChain, false, nil
 	}
 
 	if isMainChain {

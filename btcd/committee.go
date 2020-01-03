@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/omega/consensus"
 	"math/big"
 	"net"
 	"time"
@@ -105,11 +106,14 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	}
 
 	sp.server.peerState.committee[msg.Invitation.Height] = sp
+
+	sp.Peer.Committee = msg.Invitation.Height
+	copy(sp.Peer.Miner[:], miner)
 }
 
 func (s *server) sendInvAck(peer int32) {
 	// send an acknowledgement so the peer knows we are too
-	me := s.myPlaceInCommittee(int32(s.chain.BestSnapshot().LastRotation))
+	me := s.MyPlaceInCommittee(int32(s.chain.BestSnapshot().LastRotation))
 	if me == 0 {	// should never happen
 		return
 	}
@@ -201,6 +205,10 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 				sp.server.peerState.forAllPeers(func(ob *serverPeer) {
 					if !isin && ob.connReq.Addr.String() == tcp.String() {
 						sp.server.peerState.committee[inv.Height] = ob
+
+						ob.Peer.Committee = inv.Height
+						copy(ob.Peer.Miner[:], miner)
+
 						isin = true
 					}
 				})
@@ -252,7 +260,7 @@ func (state *peerState) phaseoutCommittee(r int32) {
 	}
 }
 
-func (s *server) myPlaceInCommittee(r int32) int32 {
+func (s *server) MyPlaceInCommittee(r int32) int32 {
 	minerTop := s.chain.Miners.BestSnapshot().Height
 
 	for i := r - wire.CommitteeSize + 1; i < r + advanceCommitteeConnection; i++ {
@@ -348,7 +356,7 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 	}
 
 	state.phaseoutCommittee(r)
-	me := s.myPlaceInCommittee(r)
+	me := s.MyPlaceInCommittee(r)
 	if me == 0 {
 		return
 	}
@@ -399,6 +407,10 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 			state.forAllPeers(func (ob *serverPeer) {
 				if !isin && ob.connReq.Addr.String() == tcp.String() {
 					state.committee[j] = ob
+
+					ob.Peer.Committee = j
+					copy(ob.Peer.Miner[:], miner)
+
 					isin = true
 					if state.committee[j].Peer.Connected() {
 						callback()
@@ -420,4 +432,64 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 			s.broadcast <- broadcastMsg { message: m}
 		}
 	}
+}
+
+func (s *server) AnnounceNewBlock(m * btcutil.Block) {
+	h := consensus.MsgMerkleBlock{
+		Fees: 0,
+		Header: m.MsgBlock().Header,
+		Height: m.Height(),
+	}
+	copy(h.From[:], m.MsgBlock().Transactions[0].SignatureScripts[1])
+	for _, txo := range m.MsgBlock().Transactions[0].TxOut {
+		_,v := txo.Value.Value()
+		h.Fees += uint64(v)
+	}
+	s.committeecast <- broadcastMsg { message: &h}
+}
+
+func (s *server) CommitteeMsg(p int32, m wire.Message) bool {
+	if sp,ok := s.peerState.committee[p]; ok {
+		done := make(chan struct{})
+		sp.QueueMessage(m, nil)
+		<- done
+		return true
+	}
+	return false
+}
+
+func (s *server) NewConsusBlock(m * wire.MsgBlock) {
+	s.broadcast <- broadcastMsg { message: m}
+}
+
+func (s *server) handleCommitteecastMsg(state *peerState, bmsg *broadcastMsg) {
+	state.forAllCommittee(func(sp *serverPeer) {
+		for _, ep := range bmsg.excludePeers {
+			if sp == ep {
+				return
+			}
+		}
+
+		sp.QueueMessage(bmsg.message, nil)
+	})
+}
+
+func (s *server) CommitteeCast(sender int32, msg wire.Message) {
+	sdr := s.peerState.committee[sender]
+	s.peerState.forAllCommittee(func(sp *serverPeer) {
+		if sdr == sp {
+				return
+			}
+
+		sp.QueueMessage(msg, nil)
+	})
+}
+
+func (s *server) GetPrivKey(who [20]byte) * btcec.PrivateKey {
+	for adr, pvk := range cfg.privateKeys {
+		if bytes.Compare(who[:], adr.ScriptAddress()) == 0 {
+			return pvk
+		}
+	}
+	return nil
 }

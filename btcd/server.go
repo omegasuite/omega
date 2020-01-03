@@ -10,15 +10,17 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/omega/consensus"
 	"github.com/btcsuite/omega/minerchain"
 	"math"
-	"math/big"
 	"net"
+	"os"
 	"runtime"
 	"sort"
 	"strconv"
@@ -232,6 +234,7 @@ type server struct {
 	query                chan interface{}
 	relayInv             chan relayMsg
 	broadcast            chan broadcastMsg
+	committeecast        chan broadcastMsg
 	peerHeightsUpdate    chan updatePeerHeightsMsg
 	peerMinerHeightsUpdate    chan updatePeerHeightsMsg
 	wg                   sync.WaitGroup
@@ -1518,27 +1521,36 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		blockBytes, err = dbTx.FetchBlock(hash)
 		return err
 	})
-	if err != nil {
-		peerLog.Tracef("Unable to fetch requested block hash %v: %v",
-			hash, err)
 
-		if doneChan != nil {
-			doneChan <- struct{}{}
-		}
-		return err
-	}
-
-	// Deserialize the block.
 	var msgBlock wire.MsgBlock
-	err = msgBlock.Deserialize(bytes.NewReader(blockBytes))
-	if err != nil {
-		peerLog.Tracef("Unable to deserialize requested block hash "+
-			"%v: %v", hash, err)
 
-		if doneChan != nil {
-			doneChan <- struct{}{}
+	if err != nil {
+		// now check orphans
+		m := s.chain.GetOrphanBlock(hash)
+		if m != nil {
+			msgBlock = *m
+			err = nil
+		} else {
+			peerLog.Tracef("Unable to fetch requested block hash %v: %v",
+				hash, err)
+
+			if doneChan != nil {
+				doneChan <- struct{}{}
+			}
+			return err
 		}
-		return err
+	} else {
+		// Deserialize the block.
+		err = msgBlock.Deserialize(bytes.NewReader(blockBytes))
+		if err != nil {
+			peerLog.Tracef("Unable to deserialize requested block hash "+
+				"%v: %v", hash, err)
+
+			if doneChan != nil {
+				doneChan <- struct{}{}
+			}
+			return err
+		}
 	}
 
 	// Once we have fetched data wait for any previous operation to finish.
@@ -1809,6 +1821,9 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		}
 		if sp.connReq.Committee > 0 {
 			state.committee[sp.connReq.Committee] = sp
+			sp.Peer.Committee = sp.connReq.Committee
+			sb, _ := s.chain.Miners.BlockByHeight(sp.connReq.Committee)
+			copy(sp.Peer.Miner[:], sb.MsgBlock().Miner[:])
 		}
 		if sp.connReq.Initcallback != nil {
 			// one time call back to allow us send msg immediately after successful connection
@@ -2309,6 +2324,9 @@ out:
 		case bmsg := <-s.broadcast:
 			s.handleBroadcastMsg(state, &bmsg)
 
+		case bmsg := <-s.committeecast:
+			s.handleCommitteecastMsg(state, &bmsg)
+
 		case qmsg := <-s.query:
 			s.handleQuery(state, qmsg)
 
@@ -2420,6 +2438,7 @@ func (s *server) UpdatePeerHeights(latestBlkHash *chainhash.Hash, latestHeight i
 		newHeight:  latestHeight,
 		originPeer: updateSource,
 	}
+	consensus.UpdateChainHeight(s.chain.BestSnapshot().Height)
 }
 
 func (s *server) UpdatePeerMinerHeights(latestBlkHash *chainhash.Hash, latestHeight int32, updateSource *peer.Peer) {
@@ -2792,6 +2811,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		query:                make(chan interface{}),
 		relayInv:             make(chan relayMsg, cfg.MaxPeers),
 		broadcast:            make(chan broadcastMsg, cfg.MaxPeers),
+		committeecast:        make(chan broadcastMsg, cfg.MaxPeers),
 		quit:                 make(chan struct{}),
 		modifyRebroadcastInv: make(chan interface{}),
 		peerHeightsUpdate:    make(chan updatePeerHeightsMsg),
@@ -2808,21 +2828,13 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	}
 
 	if cfg.RsaPrivateKey != "" {
-		type RSA struct {
-			N []byte         `json:"n"`
-			E int            `json:"e"`
-			D []byte		 `json:"d"`
-			Primes [][]byte       `json:"primes"`
-		}
-		var r RSA
-		if json.Unmarshal([]byte(cfg.RsaPrivateKey), &r) == nil {
-			s.rsaPrivateKey = &rsa.PrivateKey{}
-			s.rsaPrivateKey.N = big.NewInt(0).SetBytes(r.N)
-			s.rsaPrivateKey.E = r.E
-			s.rsaPrivateKey.D = big.NewInt(0).SetBytes(r.D)
-			s.rsaPrivateKey.Primes = make([]*big.Int, 0, len(r.Primes))
-			for _, p := range r.Primes {
-				s.rsaPrivateKey.Primes = append(s.rsaPrivateKey.Primes, big.NewInt(0).SetBytes(p))
+		if file, err := os.Open(cfg.RsaPrivateKey); err == nil {
+			defer file.Close()
+			if fileinfo, err := os.Stat(cfg.RsaPrivateKey); err == nil {
+				fileStream := make([]byte, fileinfo.Size())
+				file.Read(fileStream)
+				block, _ := pem.Decode(fileStream)
+				s.rsaPrivateKey, _ = x509.ParsePKCS1PrivateKey(block.Bytes)
 			}
 		}
 	}

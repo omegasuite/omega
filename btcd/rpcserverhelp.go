@@ -532,7 +532,7 @@ var helpDescsEnUS = map[string]string{
 	// SearchRawTransactionsCmd help.
 	"searchrawtransactions--synopsis": "Returns raw data for transactions involving the passed address.\n" +
 		"Returned transactions are pulled from both the database, and transactions currently in the mempool.\n" +
-		"Transactions pulled from the mempool will have the 'confirmations' field set to 0.\n" +
+		"Height pulled from the mempool will have the 'confirmations' field set to 0.\n" +
 		"Usage of this RPC requires the optional --addrindex flag to be activated, otherwise all responses will simply return with an error stating the address index has not yet been built.\n" +
 		"Similarly, until the address index has caught up with the current best height, all requests will return an error response in order to avoid serving stale data.",
 	"searchrawtransactions-address":     "The Bitcoin address to search for",

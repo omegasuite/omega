@@ -7,6 +7,7 @@ package mining
 import (
 	"bytes"
 	"container/heap"
+	"github.com/btcsuite/omega/ovm"
 	"time"
 
 	"encoding/binary"
@@ -138,7 +139,7 @@ func (pq *txPriorityQueue) Pop() interface{} {
 }
 
 // SetLessFunc sets the compare function for the priority queue to the provided
-// function.  It also invokes heap.Init on the priority queue using the new
+// function.  It also invokes heap.BlockInit on the priority queue using the new
 // function so it can immediately be used with heap.Push/Pop.
 func (pq *txPriorityQueue) SetLessFunc(lessFunc txPriorityQueueLessFunc) {
 	pq.lessFunc = lessFunc
@@ -258,7 +259,7 @@ func standardCoinbaseScript(nextBlockHeight int32, extraNonce uint64) ([]byte, e
 //
 // See the comment for NewBlockTemplate for more information about why the nil
 // address handling is useful.
-func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addr btcutil.Address) (*btcutil.Tx, error) {
+func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addr btcutil.Address, prevPows uint) (*btcutil.Tx, error) {
 	// Create the script to pay to the provided payment address if one was
 	// specified.  Otherwise create a script that allows the coinbase to be
 	// redeemable by anyone.
@@ -266,7 +267,7 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addr btcut
 	if addr != nil {
 		pkScript[0] = addr.Version()
 		copy(pkScript[1:], addr.ScriptAddress())
-		pkScript[21] = 0x41
+		pkScript[21] = ovm.OP_PAY2PKH
 	} else {
 		pkScript[0] = 0x6F
 		pkScript[1] = 1		// anything but 0
@@ -286,7 +287,7 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addr btcut
 	t := token.Token{
 		TokenType: 0,
 		Value:    &token.NumToken{
-			Val: blockchain.CalcBlockSubsidy(nextBlockHeight, params),
+			Val: blockchain.CalcBlockSubsidy(nextBlockHeight, params, prevPows),
 		},
 	}
 	tx.AddTxOut(&wire.TxOut{
@@ -399,17 +400,17 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 //
 // The transactions selected and included are prioritized according to several
 // factors.  First, each transaction has a priority calculated based on its
-// value, age of inputs, and size.  Transactions which consist of larger
+// value, age of inputs, and size.  Height which consist of larger
 // amounts, older inputs, and small sizes have the highest priority.  Second, a
-// fee per kilobyte is calculated for each transaction.  Transactions with a
+// fee per kilobyte is calculated for each transaction.  Height with a
 // higher fee per kilobyte are preferred.  Finally, the block generation related
 // policy settings are all taken into account.
 //
-// Transactions which only spend outputs from other transactions already in the
+// Height which only spend outputs from other transactions already in the
 // block Chain are immediately added to a priority queue which either
 // prioritizes based on the priority (then fee per kilobyte) or the fee per
 // kilobyte (then priority) depending on whether or not the BlockPrioritySize
-// policy setting allots space for high-priority transactions.  Transactions
+// policy setting allots space for high-priority transactions.  Height
 // which spend outputs from other transactions in the source pool are added to a
 // dependency map so they can be added to the priority queue once the
 // transactions they depend on have been included.
@@ -424,7 +425,7 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 // nonzero, in which case the block will be filled with the low-fee/free
 // transactions until the block size reaches that minimum size.
 //
-// Transactions sending output to a contract will cause the contract executed,
+// Height sending output to a contract will cause the contract executed,
 // and, if successful, the augumented (by the contract) will be added to the
 // template. If a transaction has multiple contract outputs, contracts will be
 // executed in the order they appear in the transaction output list.
@@ -439,13 +440,13 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 //  |      Coinbase Transaction         |   |   |
 //  |-----------------------------------|   |   |
 //  |                                   |   |   | ----- policy.BlockPrioritySize
-//  |   High-priority Transactions      |   |   |
+//  |   High-priority Height      |   |   |
 //  |                                   |   |   |
 //  |-----------------------------------|   | --
 //  |                                   |   |
 //  |                                   |   |
 //  |                                   |   |--- policy.BlockMaxSize
-//  |  Transactions prioritized by fee  |   |
+//  |  Height prioritized by fee  |   |
 //  |  until <= policy.TxMinFreeFee     |   |
 //  |                                   |   |
 //  |                                   |   |
@@ -466,7 +467,12 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress btcutil.Address) (*Bloc
 	// been selected.  It is created here to detect any errors early
 	// before potentially doing a lot of work below.
 
-	coinbaseTx, err := createCoinbaseTx(g.chainParams, nextBlockHeight, payToAddress)
+	prevPows := uint(0)
+	for pw := g.Chain.BestChain.Tip(); pw != nil && pw.Nonce() > 0; pw = pw.Parent() {
+		prevPows++
+	}
+
+	coinbaseTx, err := createCoinbaseTx(g.chainParams, nextBlockHeight, payToAddress, prevPows)
 	if err != nil {
 		return nil, err
 	}
@@ -1021,22 +1027,22 @@ func (g *BlkTmplGenerator) UpdateExtraNonce(msgBlock *wire.MsgBlock, blockHeight
 			len(coinbaseScript), blockchain.MinCoinbaseScriptLen,
 			blockchain.MaxCoinbaseScriptLen)
 	}
-	if msgBlock.Transactions[0].SignatureScripts == nil || len(msgBlock.Transactions[0].SignatureScripts) == 0 {
-		msgBlock.Transactions[0].SignatureScripts = make([][]byte, 2)
+	if msgBlock.Height[0].SignatureScripts == nil || len(msgBlock.Height[0].SignatureScripts) == 0 {
+		msgBlock.Height[0].SignatureScripts = make([][]byte, 2)
 		// this is the place we use to stoare merkle root of signatures
-		msgBlock.Transactions[0].SignatureScripts[0] = make([]byte, 32)
+		msgBlock.Height[0].SignatureScripts[0] = make([]byte, 32)
 	}
-	msgBlock.Transactions[0].TxIn[0].SignatureIndex = 1
-	msgBlock.Transactions[0].SignatureScripts[1] = coinbaseScript
-//	msgBlock.Transactions[0].TxIn[0].SignatureScript = coinbaseScript
+	msgBlock.Height[0].TxIn[0].SignatureIndex = 1
+	msgBlock.Height[0].SignatureScripts[1] = coinbaseScript
+//	msgBlock.Height[0].TxIn[0].SignatureScript = coinbaseScript
 
 	// TODO(davec): A btcutil.Block should use saved in the state to avoid
 	// recalculating all of the other transaction hashes.
-	// block.Transactions[0].InvalidateCache()
+	// block.Height[0].InvalidateCache()
 
 	// Recalculate the merkle root with the updated extra nonce.
 	block := btcutil.NewBlock(msgBlock)
-	merkles := blockchain.BuildMerkleTreeStore(block.Transactions(), false)
+	merkles := blockchain.BuildMerkleTreeStore(block.Height(), false)
 	msgBlock.Header.MerkleRoot = *merkles[len(merkles)-1]
 	return nil
 }

@@ -210,7 +210,7 @@ type BlockRegion struct {
 //
 // As would be expected with a transaction, no changes will be saved to the
 // database until it has been committed.  The transaction will only provide a
-// view of the database at the time it was created.  Transactions should not be
+// view of the database at the time it was created.  Height should not be
 // long running operations.
 type Tx interface {
 	// Metadata returns the top-most bucket for all metadata storage.

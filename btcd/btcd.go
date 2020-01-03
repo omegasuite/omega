@@ -6,6 +6,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/btcsuite/omega/consensus"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -174,10 +175,16 @@ func btcdMain(serverChan chan<- *server) error {
 		serverChan <- server
 	}
 
+	go consensus.Consensus(server)
+
 	// Wait until the interrupt signal is received from an OS signal or
 	// shutdown is requested through one of the subsystems such as the RPC
 	// server.
 	<-interrupt
+
+	// END consensus routine
+	consensus.Quit <- struct {}{}
+
 	return nil
 }
 

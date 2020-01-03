@@ -121,7 +121,7 @@ func (m * MinersViewpoint) SetMinerDB(s string) {
 /*
 func (m * MinersViewpoint) disconnectTransactions(block *btcutil.Block) {
 	var zero, addr [20]byte
-	for _,tx := range block.Transactions() {
+	for _,tx := range block.Height() {
 		quits := make(map[[20]byte]int)
 		for j, out := range tx.MsgTx().TxOut {
 			if out.TokenType == 0xFFFFFFFFFFFFFFFF {

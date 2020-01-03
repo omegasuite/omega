@@ -7,31 +7,39 @@ package consensus
 import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/wire/common"
 	"io"
 )
 
 type MsgKnowledge struct {
 	Height    int32
-	K         []int
+	K         []int64
 	M         chainhash.Hash
 	Finder    [20]byte
 	From      [20]byte
-	Signatures      map[int][]byte
+//	Signatures      map[int][]byte
 }
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
 	// Read filter type
-	err := readElement(r, &msg.Height)
+	err := common.ReadElement(r, &msg.Height)
 	if err != nil {
 		return err
 	}
 
-	// Read stop hash
-	err = readElement(r, &msg.K)
+	k, err := common.ReadVarInt(r, 0)
 	if err != nil {
 		return err
+	}
+	msg.K = make([]int64, k)
+	for i := 0; i < int(k); i++ {
+		p, err := common.ReadVarInt(r, 0)
+		if err != nil {
+			return err
+		}
+		msg.K[i] = int64(p)
 	}
 
 	err = readElement(r, &msg.M)
@@ -52,21 +60,30 @@ func (msg MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncodi
 	}
 
 	// Read stop hash
-	err = readElement(r, &msg.Signatures)
-	if err != nil {
-		return err
-	}
+//	err = readElement(r, &msg.Signatures)
+//	if err != nil {
+//		return err
+//	}
 
 	return nil
 }
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg MsgKnowledge) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgKnowledge) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {
 		return err
+	}
+
+	if err = common.WriteVarInt(w, 0, uint64(len(msg.K))); err != nil {
+		return err
+	}
+	for _, p := range msg.K {
+		if err = common.WriteVarInt(w, 0, uint64(p)); err != nil {
+			return err
+		}
 	}
 
 	// Write stop hash
@@ -93,23 +110,23 @@ func (msg MsgKnowledge) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncodi
 	}
 
 	// Write stop hash
-	err = writeElement(w, msg.Signatures)
-	if err != nil {
-		return err
-	}
+//	err = writeElement(w, msg.Signatures)
+//	if err != nil {
+//		return err
+//	}
 
 	return nil
 }
 
 // Command returns the protocol command string for the message.  This is part
 // of the Message interface implementation.
-func (msg MsgKnowledge) Command() string {
+func (msg * MsgKnowledge) Command() string {
 	return CmdKnowledge
 }
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg MsgKnowledge) MaxPayloadLength(pver uint32) uint32 {
+func (msg * MsgKnowledge) MaxPayloadLength(pver uint32) uint32 {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	return MaxMessagePayload
@@ -117,7 +134,7 @@ func (msg MsgKnowledge) MaxPayloadLength(pver uint32) uint32 {
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg MsgKnowledge) DoubleHashB() []byte {
+func (msg * MsgKnowledge) DoubleHashB() []byte {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	h := make([]byte, 64 + 4 * len(msg.K))
@@ -135,15 +152,19 @@ func (msg MsgKnowledge) DoubleHashB() []byte {
 	return chainhash.DoubleHashB(h)
 }
 
-func (msg MsgKnowledge) GetSignature() []byte {
-	return msg.Signatures[msg.K[len(msg.K) - 1]]
+func (msg * MsgKnowledge) Block() int32 {
+	return msg.Height
 }
+
+//func (msg MsgKnowledge) GetSignature() []byte {
+//	return msg.Signatures[msg.K[len(msg.K) - 1]]
+//}
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to
 // the Message interface. See MsgCFCheckpt for details.
 func NewMsgKnowledge() *MsgKnowledge {
 	return &MsgKnowledge{
-		K:      make([]int, 0),
-		Signatures: make(map[int][]byte),
+		K:      make([]int64, 0),
+//		Signatures: make(map[int][]byte),
 	}
 }

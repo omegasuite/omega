@@ -348,7 +348,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 				}
 				for d := 0; d < 2; d++ {
 					for rt, _ := range rights[d] {
-						if !viewpoint.InSet(views, rt, chainParams.GenesisBlock.Transactions[1].TxOut[0].Rights) {
+						if !viewpoint.InSet(views, rt, chainParams.GenesisBlock.Height[1].TxOut[0].Rights) {
 							return ruleError(1, "Illegal border definition.")
 						}
 					}

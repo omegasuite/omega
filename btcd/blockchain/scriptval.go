@@ -199,11 +199,11 @@ func checkBlockScripts(block *btcutil.Block, utxoView *viewpoint.UtxoViewpoint) 
 	// Collect all of the transaction inputs and required information for
 	// validation for all transactions in the block into a single slice.
 	numInputs := 0
-	for _, tx := range block.Transactions() {
+	for _, tx := range block.Height() {
 		numInputs += len(tx.MsgTx().TxIn)
 	}
 	txValItems := make([]*txValidateItem, 0, numInputs)
-	for _, tx := range block.Transactions() {
+	for _, tx := range block.Height() {
 		hash := tx.Hash()
 
 		// If the HashCache is present, and it doesn't yet contain the
@@ -256,7 +256,7 @@ func checkBlockScripts(block *btcutil.Block, utxoView *viewpoint.UtxoViewpoint) 
 	// longer need the cached hashes for these transactions, so we purge
 	// them from the cache.
 	if segwitActive && hashCache != nil {
-		for _, tx := range block.Transactions() {
+		for _, tx := range block.Height() {
 			if tx.MsgTx().HasWitness() {
 				hashCache.PurgeSigHashes(tx.Hash())
 			}

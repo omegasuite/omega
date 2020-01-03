@@ -870,7 +870,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	}
 
 	// Require that free transactions have sufficient priority to be mined
-	// in the next block.  Transactions which are being added back to the
+	// in the next block.  Height which are being added back to the
 	// memory pool from blocks that have been disconnected during a reorg
 	// are exempted.
 	if isNew && !mp.cfg.Policy.DisableRelayPriority && txFee < minFee {

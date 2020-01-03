@@ -12,22 +12,19 @@ import (
 
 type MsgCandidate struct {
 	Height    int32
-	Nonce	  int
 	F		  [20]byte
 	M	      chainhash.Hash
 	Signature      []byte
 }
 
+func (msg * MsgCandidate) Block() int32 {
+	return msg.Height
+}
+
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg MsgCandidate) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgCandidate) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
 	err := readElement(r, &msg.Height)
-	if err != nil {
-		return err
-	}
-
-	// Read filter type
-	err = readElement(r, &msg.Nonce)
 	if err != nil {
 		return err
 	}
@@ -53,15 +50,9 @@ func (msg MsgCandidate) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncodi
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg MsgCandidate) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgCandidate) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
-	if err != nil {
-		return err
-	}
-
-	// Write stop hash
-	err = writeElement(w, msg.Nonce)
 	if err != nil {
 		return err
 	}
@@ -88,13 +79,13 @@ func (msg MsgCandidate) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncodi
 
 // Command returns the protocol command string for the message.  This is part
 // of the Message interface implementation.
-func (msg MsgCandidate) Command() string {
+func (msg * MsgCandidate) Command() string {
 	return CmdCandidate
 }
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg MsgCandidate) MaxPayloadLength(pver uint32) uint32 {
+func (msg * MsgCandidate) MaxPayloadLength(pver uint32) uint32 {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	return MaxMessagePayload
@@ -102,31 +93,28 @@ func (msg MsgCandidate) MaxPayloadLength(pver uint32) uint32 {
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg MsgCandidate) DoubleHashB() []byte {
+func (msg * MsgCandidate) DoubleHashB() []byte {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	h := make([]byte, 48)
 	for i := uint(0); i < 4; i++ {
 		h[i] = byte((msg.Height >> (i * 8) & 0xFF))
 	}
-	for i := uint(0); i < 4; i++ {
-		h[4 + i] = byte((msg.Nonce >> (i * 8) & 0xFF))
-	}
+
 	copy(h[8:], msg.F[:])
 	copy(h[28:], msg.M[:])
 	return chainhash.DoubleHashB(h)
 }
 
-func (msg MsgCandidate) GetSignature() []byte {
+func (msg * MsgCandidate) GetSignature() []byte {
 	return msg.Signature
 }
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to
 // the Message interface. See MsgCFCheckpt for details.
-func NewMsgCandidate(blk int32, f [20]byte, m chainhash.Hash, nonce int) *MsgCandidate {
+func NewMsgCandidate(blk int32, f [20]byte, m chainhash.Hash) *MsgCandidate {
 	return &MsgCandidate{
 		Height: blk,
-		Nonce:	nonce,
 		F:      f,
 		M:      m,
 	}
@@ -134,20 +122,22 @@ func NewMsgCandidate(blk int32, f [20]byte, m chainhash.Hash, nonce int) *MsgCan
 
 type MsgCandidateResp struct {
 	Height	  int32
-	Nonce	  int
 	Reply	  string
+	K         []int64	// knowledge, when rejected
+	better    int32
+	From	  [20]byte
+	M 		  chainhash.Hash
 	Signature      []byte
+}
+
+func (msg * MsgCandidateResp) Block() int32 {
+	return msg.Height
 }
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
 	err := readElement(r, &msg.Height)
-	if err != nil {
-		return err
-	}
-
-	err = readElement(r, &msg.Nonce)
 	if err != nil {
 		return err
 	}
@@ -168,14 +158,9 @@ func (msg MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEn
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg MsgCandidateResp) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgCandidateResp) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
-	if err != nil {
-		return err
-	}
-
-	err = writeElement(w, msg.Nonce)
 	if err != nil {
 		return err
 	}
@@ -197,13 +182,13 @@ func (msg MsgCandidateResp) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEn
 
 // Command returns the protocol command string for the message.  This is part
 // of the Message interface implementation.
-func (msg MsgCandidateResp) Command() string {
+func (msg * MsgCandidateResp) Command() string {
 	return CmdCandidateReply
 }
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg MsgCandidateResp) MaxPayloadLength(pver uint32) uint32 {
+func (msg * MsgCandidateResp) MaxPayloadLength(pver uint32) uint32 {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	return MaxMessagePayload
@@ -211,21 +196,19 @@ func (msg MsgCandidateResp) MaxPayloadLength(pver uint32) uint32 {
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg MsgCandidateResp) DoubleHashB() []byte {
+func (msg * MsgCandidateResp) DoubleHashB() []byte {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	h := make([]byte, 8 + len(msg.Reply))
 	for i := uint(0); i < 4; i++ {
 		h[i] = byte((msg.Height >> (i * 8) & 0xFF))
 	}
-	for i := uint(0); i < 4; i++ {
-		h[4 + i] = byte((msg.Nonce >> (i * 8) & 0xFF))
-	}
+
 	copy(h[8:], msg.Reply)
 	return chainhash.DoubleHashB(h)
 }
 
-func (msg MsgCandidateResp) GetSignature() []byte {
+func (msg * MsgCandidateResp) GetSignature() []byte {
 	return msg.Signature
 }
 

@@ -10,6 +10,7 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
+	"github.com/btcsuite/omega/consensus"
 	"io"
 	"math/rand"
 	"net"
@@ -496,6 +497,9 @@ type Peer struct {
 	queueQuit     chan struct{}
 	outQuit       chan struct{}
 	quit          chan struct{}
+
+	Committee     int32		// place in committee, i.e. miner chain height
+	Miner         [20]byte	// a copy of miner in the miner block to avoid lookup
 }
 
 // String returns the peer's address and directionality as a human-readable
@@ -1677,6 +1681,9 @@ out:
 			if p.cfg.Listeners.OnSendHeaders != nil {
 				p.cfg.Listeners.OnSendHeaders(p, msg)
 			}
+
+		case consensus.Message:
+			consensus.HandleMessage(msg)
 
 		default:
 //			log.Infof("inHandler default")

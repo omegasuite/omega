@@ -3528,7 +3528,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	numSkipped := uint32(0)
 	addressTxns := make([]retrievedTx, 0, numRequested)
 	if reverse {
-		// Transactions in the mempool are not in a block header yet,
+		// Height in the mempool are not in a block header yet,
 		// so the block header field in the retieved transaction struct
 		// is left nil.
 		mpTxns, mpSkipped := fetchMempoolTxnsForAddress(s, addr,
@@ -3582,7 +3582,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	// Add transactions from mempool last if client did not request reverse
 	// order and the number of results is still under the number requested.
 	if !reverse && len(addressTxns) < numRequested {
-		// Transactions in the mempool are not in a block header yet,
+		// Height in the mempool are not in a block header yet,
 		// so the block header field in the retieved transaction struct
 		// is left nil.
 		mpTxns, mpSkipped := fetchMempoolTxnsForAddress(s, addr,
@@ -3670,7 +3670,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		result.Version = mtx.Version
 		result.LockTime = mtx.LockTime
 
-		// Transactions grabbed from the mempool aren't yet in a block,
+		// Height grabbed from the mempool aren't yet in a block,
 		// so conditionally fetch block details here.  This will be
 		// reflected in the final JSON output (mempool won't have
 		// confirmations or block information).

@@ -5,6 +5,7 @@
 package netsync
 
 import (
+	"bytes"
 	"container/list"
 	"github.com/btcsuite/omega/minerchain"
 	"net"
@@ -117,6 +118,12 @@ type processBlockMsg struct {
 }
 
 type processConsusMsg struct {
+	block *btcutil.Block
+	flags blockchain.BehaviorFlags
+	reply chan processBlockResponse
+}
+
+type processConsusPull struct {
 	block *btcutil.Block
 	flags blockchain.BehaviorFlags
 	reply chan processBlockResponse
@@ -554,6 +561,24 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		return
 	}
 
+	behaviorFlags := blockchain.BFNone
+
+	// if it is a block being processed by the committee, veryfy it is from the peer
+	// producing, i.e. the address in coinbase signature is the peer's
+	if wire.CommitteeSize > 1 && len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
+		if len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) < 2 {
+			return
+		}
+		if bytes.Compare(peer.Miner[:], bmsg.block.MsgBlock().Transactions[0].SignatureScripts[1]) == 0 {
+			// not the same
+			return
+		}
+		if peer.Committee < int32(sm.chain.BestSnapshot().LastRotation) - wire.CommitteeSize {
+			return
+		}
+		behaviorFlags |= blockchain.BFNoConnect
+	}
+
 	// If we didn't ask for this block then the peer is misbehaving.
 	blockHash := bmsg.block.Hash()
 	if _, exists = state.requestedBlocks[*blockHash]; !exists {
@@ -578,7 +603,6 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	// since it is needed to verify the next round of headers links
 	// properly.
 	isCheckpointBlock := false
-	behaviorFlags := blockchain.BFNone
 	if sm.headersFirstMode {
 		firstNodeEl := sm.headerList.Front()
 		if firstNodeEl != nil {
@@ -605,6 +629,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
 	_, isOrphan, err := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
+
 	if err != nil {
 		// When the error is a rule error, it means the block was simply
 		// rejected as opposed to something actually going wrong, so log
@@ -626,6 +651,12 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		// send it.
 		code, reason := mempool.ErrToRejectErr(err)
 		peer.PushRejectMsg(wire.CmdBlock, code, reason, blockHash, false)
+		return
+	}
+
+	if behaviorFlags & blockchain.BFNoConnect == blockchain.BFNoConnect {
+		// passing it consus
+		sm.msgChan <- processConsusMsg{block: bmsg.block, flags: behaviorFlags }
 		return
 	}
 
@@ -651,7 +682,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 /*
 		header := &bmsg.block.MsgBlock().Header
 		if blockchain.ShouldHaveSerializedBlockHeight(header) {
-			coinbaseTx := bmsg.block.Transactions()[0]
+			coinbaseTx := bmsg.block.Height()[0]
 			cbHeight, err := blockchain.ExtractCoinbaseHeight(coinbaseTx)
 			if err != nil {
 				log.Warnf("Unable to extract height from "+
@@ -1412,19 +1443,14 @@ out:
 				}
 
 			case processConsusMsg:
-				_, isOrphan, err := consensus.ProcessBlock(sm.chain, msg.block, msg.flags)
-
-				if err != nil {
-					msg.reply <- processBlockResponse{
-						isOrphan: false,
-						err:      err,
-					}
-				}
-
-				msg.reply <- processBlockResponse{
-					isOrphan: isOrphan,
+				consensus.ProcessBlock(sm.chain, msg.block, msg.flags)
+				msg.reply <- processBlockResponse {
+					isOrphan: true,
 					err:      nil,
 				}
+
+			case *consensus.MsgMerkleBlock:
+				consensus.ProcessHeader(sm.chain, msg)
 
 			case processMinerBlockMsg:
 				_, isOrphan, err := sm.chain.Miners.ProcessBlock(
@@ -1498,7 +1524,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 		// connected block from the transaction pool.  Secondly, remove any
 		// transactions which are now double spends as a result of these
 		// new transactions.  Finally, remove any transaction that is
-		// no longer an orphan. Transactions which depend on a confirmed
+		// no longer an orphan. Height which depend on a confirmed
 		// transaction are NOT removed recursively because they are still
 		// valid.
 		for _, tx := range block.Transactions()[1:] {
@@ -1673,9 +1699,15 @@ func (sm *SyncManager) SyncPeerID() int32 {
 func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) (bool, error) {
 	reply := make(chan processBlockResponse, 1)
 
-	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 {
+	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
 		// need to go through a committee to finalize it
-		sm.msgChan <- processConsusMsg{block: block, flags: flags, reply: reply}
+		if flags & blockchain.BFSubmission == blockchain.BFSubmission {
+			flags ^= blockchain.BFSubmission
+			sm.peerNotifier.AnnounceNewBlock(block)
+		}
+		sm.msgChan <- processConsusMsg{block: block, flags: flags }
+		// treating these blocks as orphans because we may need to pull them upon request
+		return true, nil
 	} else {
 		sm.msgChan <- processBlockMsg{block: block, flags: flags, reply: reply}
 	}

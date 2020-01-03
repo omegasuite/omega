@@ -166,7 +166,7 @@ func (s *Store) removeConflict(ns walletdb.ReadWriteBucket, rec *TxRecord) error
 }
 
 // UnminedTxs returns the underlying transactions for all unmined transactions
-// which are not known to have been mined in a block.  Transactions are
+// which are not known to have been mined in a block.  Height are
 // guaranteed to be sorted by their dependency order.
 func (s *Store) UnminedTxs(ns walletdb.ReadBucket) ([]*wire.MsgTx, error) {
 	recSet, err := s.unminedTxRecords(ns)

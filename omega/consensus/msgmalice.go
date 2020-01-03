@@ -7,7 +7,6 @@ package consensus
 import (
 	"io"
 
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 )
 
@@ -49,7 +48,6 @@ func (msg *MsgMalice) MaxPayloadLength(pver uint32) uint32 {
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to
 // the Message interface. See MsgCFCheckpt for details.
-func NewMsgMalice(filterType FilterType, stopHash *chainhash.Hash,
-	headersCount int) *MsgMalice {
+func NewMsgMalice() *MsgMalice {
 	return &MsgMalice{}
 }

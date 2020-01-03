@@ -102,6 +102,14 @@ type blockNode struct {
 	status blockStatus
 }
 
+func (b * blockNode) Nonce() int32 {
+	return b.nonce
+}
+
+func (b * blockNode) Parent() *blockNode {
+	return b.parent
+}
+
 // initBlockNode initializes a block node from the given header and parent node,
 // calculating the height and workSum from the respective fields on the parent.
 // This function is NOT safe for concurrent access.  It must only be called when
@@ -150,9 +158,6 @@ func (node *blockNode) Hash() * chainhash.Hash {
 	return &node.hash
 }
 
-func (node *blockNode) Parent() * blockNode {
-	return node.parent
-}
 
 // Header constructs a block header from the node and returns it.
 //

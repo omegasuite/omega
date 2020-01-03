@@ -290,7 +290,7 @@ type TxIndex struct {
 // Ensure the TxIndex type implements the Indexer interface.
 var _ Indexer = (*TxIndex)(nil)
 
-// Init initializes the hash-based transaction index.  In particular, it finds
+// BlockInit initializes the hash-based transaction index.  In particular, it finds
 // the highest used block ID and stores it for later use when connecting or
 // disconnecting blocks.
 //

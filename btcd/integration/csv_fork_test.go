@@ -95,15 +95,15 @@ func makeTestOutput(r *rpctest.Harness, t *testing.T,
 //
 // Overview:
 //  - Pre soft-fork:
-//    - Transactions with non-final lock-times from the PoV of MTP should be
+//    - Height with non-final lock-times from the PoV of MTP should be
 //      rejected from the mempool.
-//    - Transactions within non-final MTP based lock-times should be accepted
+//    - Height within non-final MTP based lock-times should be accepted
 //      in valid blocks.
 //
 //  - Post soft-fork:
-//    - Transactions with non-final lock-times from the PoV of MTP should be
+//    - Height with non-final lock-times from the PoV of MTP should be
 //      rejected from the mempool and when found within otherwise valid blocks.
-//    - Transactions with final lock-times from the PoV of MTP should be
+//    - Height with final lock-times from the PoV of MTP should be
 //      accepted to the mempool and mined in future block.
 func TestBIP0113Activation(t *testing.T) {
 	t.Parallel()

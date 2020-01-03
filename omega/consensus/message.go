@@ -31,45 +31,13 @@ const MaxMessagePayload = (1024 * 1024 * 32) // 32MB
 
 // Commands used in bitcoin message headers which describe the type of message.
 const (
-	CmdVersion      = "version"
-	CmdVerAck       = "verack"
-	CmdGetAddr      = "getaddr"
-	CmdAddr         = "addr"
-	CmdGetBlocks    = "getblocks"
-	CmdInv          = "inv"
-	CmdGetData      = "getdata"
-	CmdNotFound     = "notfound"
-	CmdBlock        = "block"
-	CmdTx           = "tx"
-	CmdGetHeaders   = "getheaders"
-	CmdHeaders      = "headers"
-	CmdPing         = "ping"
-	CmdPong         = "pong"
-	CmdAlert        = "alert"
-	CmdMemPool      = "mempool"
-	CmdFilterAdd    = "filteradd"
-	CmdFilterClear  = "filterclear"
-	CmdFilterLoad   = "filterload"
 	CmdMerkleBlock  = "merkleblock"
-	CmdReject       = "reject"
-	CmdSendHeaders  = "sendheaders"
-	CmdFeeFilter    = "feefilter"
-	CmdGetCFilters  = "getcfilters"
-	CmdGetCFHeaders = "getcfheaders"
-	CmdGetCFCheckpt = "getcfcheckpt"
-	CmdCFilter      = "cfilter"
-	CmdCFHeaders    = "cfheaders"
-	CmdCFCheckpt    = "cfcheckpt"
-
-	CmdJoinCommittee = "joincommittee"
 	CmdKnowledge = "knowledge"
 	CmdCandidate = "candidate"
 	CmdCandidateReply = "candidateReply"
 	CmdRelease = "release"
-	CmdCancel = "cancel"
 	CmdConsensus = "consensus"
-	CmdConsensusReply = "consensusReply"
-	CmdTmpMerkleBlock = "tmpmerkleblock"
+	CmdSignature = "signature"
 )
 
 const (
@@ -106,9 +74,6 @@ func makeEmptyMessage(command string) (wire.Message, error) {
 	case CmdMerkleBlock:
 		msg = &MsgMerkleBlock{}
 
-	case CmdReject:
-		msg = &MsgReject{}
-
 	case CmdKnowledge:
 		msg = &MsgKnowledge{}
 
@@ -118,20 +83,14 @@ func makeEmptyMessage(command string) (wire.Message, error) {
 	case CmdRelease:
 		msg = &MsgRelease{}
 
-	case CmdCancel:
-		msg = &MsgCancel{}
-
 	case CmdConsensus:
 		msg = &MsgConsensus{}
 
 	case CmdCandidateReply:
 		msg = &MsgCandidateResp{}
 
-	case CmdConsensusReply:
-		msg = &MsgConsensusResp{}
-
-	case CmdTmpMerkleBlock:
-		msg = &MsgTmpMerkleBlock{}
+	case CmdSignature:
+		msg = &MsgSignature{}
 
 	default:
 		return nil, fmt.Errorf("unhandled command [%s]", command)

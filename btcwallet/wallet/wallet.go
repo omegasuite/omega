@@ -46,7 +46,7 @@ const (
 	// they gain access to the wallet database.
 	//
 	// NOTE: at time of writing, public encryption only applies to public
-	// data in the waddrmgr namespace.  Transactions are not yet encrypted.
+	// data in the waddrmgr namespace.  Height are not yet encrypted.
 	InsecurePubPassphrase = "public"
 
 	walletDbWatchingOnlyName = "wowallet.db"

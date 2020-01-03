@@ -5,43 +5,50 @@
 package consensus
 
 import (
+	"bytes"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/wire/common"
 	"io"
 )
 
 type MsgConsensus struct {
 	Height    int32
-	Nonce	  int
-	F	      [20]byte
-	M	      chainhash.Hash
+	From      [20]byte
+	PubKey    btcec.PublicKey
 	Signature      [65]byte
+}
+
+func (msg * MsgConsensus) Block() int32 {
+	return msg.Height
 }
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg MsgConsensus) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgConsensus) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
 	// Read filter type
 	err := readElement(r, &msg.Height)
 	if err != nil {
 		return err
 	}
 
-	// Read stop hash
-	err = readElement(r, &msg.Nonce)
+	err = readElement(r, msg.From)
 	if err != nil {
 		return err
 	}
 
-	err = readElement(r, msg.F)
+	pks, err := common.ReadVarBytes(r, 0, 1024, "PubKey")
 	if err != nil {
 		return err
 	}
 
-	err = readElement(r, msg.M)
+	pk, err := btcec.ParsePubKey(pks, btcec.S256())
 	if err != nil {
 		return err
 	}
+
+	msg.PubKey = *pk
 
 	err = readElement(r, msg.Signature)
 	if err != nil {
@@ -53,26 +60,20 @@ func (msg MsgConsensus) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncodi
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg MsgConsensus) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgConsensus) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {
 		return err
 	}
 
-	// Write stop hash
-	err = writeElement(w, msg.Nonce)
+	err = writeElement(w, msg.From)
 	if err != nil {
 		return err
 	}
-	err = writeElement(w, msg.F)
-	if err != nil {
-		return err
-	}
-	err = writeElement(w, msg.M)
-	if err != nil {
-		return err
-	}
+
+	common.WriteVarBytes(w, 0, msg.PubKey.SerializeCompressed())
+
 	err = writeElement(w, msg.Signature)
 	if err != nil {
 		return err
@@ -83,34 +84,27 @@ func (msg MsgConsensus) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncodi
 
 // Command returns the protocol command string for the message.  This is part
 // of the Message interface implementation.
-func (msg MsgConsensus) Command() string {
+func (msg * MsgConsensus) Command() string {
 	return CmdConsensus
 }
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg MsgConsensus) MaxPayloadLength(pver uint32) uint32 {
+func (msg * MsgConsensus) MaxPayloadLength(pver uint32) uint32 {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	return MaxMessagePayload
 }
 
-func (msg MsgConsensus) DoubleHashB() []byte {
+func (msg * MsgConsensus) DoubleHashB() []byte {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
-	h := make([]byte, 48)
-	for i := uint(0); i < 4; i++ {
-		h[i] = byte((msg.Height >> (i * 8) & 0xFF))
-	}
-	for i := uint(0); i < 4; i++ {
-		h[4 + i] = byte((msg.Nonce >> (i * 8) & 0xFF))
-	}
-	copy(h[8:], msg.F[:])
-	copy(h[28:], msg.M[:])
-	return chainhash.DoubleHashB(h)
+	var w bytes.Buffer
+	msg.BtcEncode(&w, 0, wire.BaseEncoding)
+	return chainhash.DoubleHashB(w.Bytes())
 }
 
-func (msg MsgConsensus) GetSignature() []byte {
+func (msg * MsgConsensus) GetSignature() []byte {
 	return msg.Signature[:]
 }
 
@@ -121,112 +115,48 @@ func NewMsgConsensus() *MsgConsensus {
 }
 
 
-type MsgConsensusResp struct {
-	Height    int32
-	Nonce 	  int
-	F	      [20]byte
-	Sign	  [65]byte
-	Signature      [65]byte
+type MsgSignature MsgConsensus
+
+func (msg * MsgSignature) Block() int32 {
+	return (*MsgConsensus)(msg).Block()
 }
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg MsgConsensusResp) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
-	// Read filter type
-	err := readElement(r, &msg.Height)
-	if err != nil {
-		return err
-	}
-
-	err = readElement(r, &msg.Nonce)
-	if err != nil {
-		return err
-	}
-
-	// Read stop hash
-	err = readElement(r, msg.F)
-	if err != nil {
-		return err
-	}
-
-	err = readElement(r, msg.Sign)
-	if err != nil {
-		return err
-	}
-
-	err = readElement(r, msg.Signature)
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (msg * MsgSignature) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+	return (*MsgConsensus)(msg).BtcDecode(r, pver, wire.BaseEncoding)
 }
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg MsgConsensusResp) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
-	// Write filter type
-	err := writeElement(w, msg.Height)
-	if err != nil {
-		return err
-	}
-
-	err = writeElement(w, msg.Nonce)
-	if err != nil {
-		return err
-	}
-
-	// Write stop hash
-	err = writeElement(w, msg.F)
-	if err != nil {
-		return err
-	}
-
-	err = writeElement(w, msg.Sign)
-	if err != nil {
-		return err
-	}
-	err = writeElement(w, msg.Signature)
-	if err != nil {
-		return err
-	}
-
-	return nil
+func (msg * MsgSignature) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+	return (*MsgConsensus)(msg).BtcEncode(w, pver, wire.BaseEncoding)
 }
 
 // Command returns the protocol command string for the message.  This is part
 // of the Message interface implementation.
-func (msg MsgConsensusResp) Command() string {
-	return CmdConsensusReply
+func (msg * MsgSignature) Command() string {
+	return CmdSignature
 }
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg MsgConsensusResp) MaxPayloadLength(pver uint32) uint32 {
+func (msg MsgSignature) MaxPayloadLength(pver uint32) uint32 {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	return MaxMessagePayload
 }
 
-func (msg MsgConsensusResp) DoubleHashB() []byte {
-	h := make([]byte, 28 + len(msg.Signature))
-	for i := uint(0); i < 4; i++ {
-		h[i] = byte((msg.Height >> (i * 8) & 0xFF))
-	}
-	for i := uint(0); i < 4; i++ {
-		h[4 + i] = byte((msg.Nonce >> (i * 8) & 0xFF))
-	}
-	copy(h[8:], msg.F[:])
-	copy(h[28:], msg.Sign[:])
-	return chainhash.DoubleHashB(h)
+func (msg * MsgSignature) DoubleHashB() []byte {
+	return (*MsgConsensus)(msg).DoubleHashB()
 }
 
-func (msg MsgConsensusResp) GetSignature() []byte {
+func (msg * MsgSignature) GetSignature() []byte {
 	return msg.Signature[:]
 }
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to
 // the Message interface. See MsgCFCheckpt for details.
-func NewMsgConsensusResp() *MsgConsensusResp {
-	return &MsgConsensusResp{}
+func NewMsgSignature() *MsgSignature {
+	return &MsgSignature{}
 }

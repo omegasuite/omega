@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/omega/ovm"
 	"math/rand"
 
 	//	"runtime"
@@ -180,7 +181,7 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 
 	// Process this block using the same rules as blocks coming from other
 	// nodes.  This will in turn relay it to the network like normal.
-	isOrphan, err := m.cfg.ProcessBlock(block, blockchain.BFNone)
+	isOrphan, err := m.cfg.ProcessBlock(block, blockchain.BFSubmission)
 	if err != nil {
 		// Anything other than a rule violation is an unexpected error,
 		// so log that error as an internal error.
@@ -367,12 +368,13 @@ out:
 
 		m.g.Chain.ChainLock.Unlock()
 
+		var adr [20]byte
+
 		for i, addr := range m.cfg.MiningAddrs {
 			if _,ok := m.cfg.PrivKeys[addr]; !ok {
 				payToAddr = &m.cfg.MiningAddrs[i]
 				continue
 			}
-			var adr [20]byte
 			copy(adr[:], addr.ScriptAddress())
 			if _,ok := committee[adr]; ok {
 				activeAddr = &m.cfg.MiningAddrs[i]
@@ -430,6 +432,18 @@ out:
 			if wire.CommitteeSize == 1 {
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
 				mining.AddSignature(block, m.cfg.PrivKeys[*payToAddr])
+			} else {
+				if !m.coinbaseByCommittee(block.MsgBlock().Transactions[0]) {
+					time.Sleep(time.Second * 20)
+					continue
+				}
+
+				if len(block.MsgBlock().Transactions[0].SignatureScripts) == 0 {
+					block.MsgBlock().Transactions[0].SignatureScripts = make([][]byte, 1)
+					block.MsgBlock().Transactions[0].SignatureScripts[0] = make([]byte, 0)
+				}
+
+				block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
 			}
 			log.Infof("New block generated. nonce = %d", nonce)
 			m.submitBlock(block)
@@ -458,6 +472,48 @@ out:
 
 	m.workerWg.Done()
 	log.Tracef("Generate blocks worker done")
+}
+
+func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
+	prevPows := uint(0)
+	adj := int64(0)
+
+	best := m.g.Chain.BestSnapshot()
+	bh := best.LastRotation
+	for pw := m.g.Chain.BestChain.Tip(); pw != nil && pw.Nonce() > 0; pw = pw.Parent() {
+		prevPows++
+	}
+	if prevPows != 0 {
+		adj = blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, 0) -
+			blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, prevPows)
+	}
+
+	oldtxo := tx.TxOut[0]
+
+	award := (adj + oldtxo.Value.(*token.NumToken).Val) / wire.CommitteeSize
+	good := 0
+
+	tx.TxOut = make([]*wire.TxOut, 0, wire.CommitteeSize)
+
+	tok := token.NumToken{Val:award}
+	txo := wire.TxOut{}
+	txo.TokenType = 0
+	txo.Rights = nil
+	txo.Value = &tok
+	txo.PkScript = make([]byte, 25)
+	txo.PkScript[0] = m.cfg.ChainParams.PubKeyHashAddrID
+	txo.PkScript[21] = ovm.OP_PAY2PKH
+
+	for i := -int32(wire.CommitteeSize - 1); i <= 0; i++ {
+		if mb,_ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
+			ntx := txo
+			copy(ntx.PkScript[1:21], mb.MsgBlock().Miner)
+			tx.TxOut = append(tx.TxOut, &ntx)
+			good++
+		}
+	}
+
+	return good > wire.CommitteeSize / 2
 }
 
 // miningWorkerController launches the worker goroutines that are used to

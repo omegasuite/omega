@@ -192,13 +192,13 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 //
 // At the target block generation rate for the main network, this is
 // approximately every 4 years.
-func CalcBlockSubsidy(height int32, chainParams *chaincfg.Params) int64 {
+func CalcBlockSubsidy(height int32, chainParams *chaincfg.Params, prevPows uint) int64 {
 	if chainParams.SubsidyReductionInterval == 0 {
 		return baseSubsidy
 	}
 
 	// Equivalent to: baseSubsidy / 2^(height/subsidyHalvingInterval)
-	return baseSubsidy >> uint(height/chainParams.SubsidyReductionInterval)
+	return baseSubsidy >> (prevPows + uint(height/chainParams.SubsidyReductionInterval))
 }
 
 // CheckTransactionSanity performs some preliminary checks on a transaction to
@@ -404,6 +404,9 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			matched := false
 			for i := int32(0); i < wire.CommitteeSize; i++ {
 				blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
+				if blk == nil {
+					return ruleError(ErrHighHash, "Unauthorized miner signature")
+				}
 				if bytes.Compare(pkh[:], blk.MsgBlock().Miner) == 0 {
 					matched = true
 				}
@@ -754,7 +757,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *blockNode
 		// once a majority of the network has upgraded.  This is part of
 		// BIP0034.
 /*
-		coinbaseTx := block.Transactions()[0]
+		coinbaseTx := block.Height()[0]
 		err = checkSerializedHeight(coinbaseTx, blockHeight)
 		if err != nil {
 			return err
@@ -1194,7 +1197,12 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 		totalSatoshiOut += txOut.Value.(*token.NumToken).Val
 	}
 
-	expectedSatoshiOut := CalcBlockSubsidy(node.height, b.chainParams) + totalFees
+	prevPows := uint(0)
+	for pw := b.BestChain.Tip(); pw != nil && pw.nonce > 0; pw = pw.parent {
+		prevPows++
+	}
+
+	expectedSatoshiOut := CalcBlockSubsidy(node.height, b.chainParams, prevPows) + totalFees
 	if totalSatoshiOut > expectedSatoshiOut {
 		str := fmt.Sprintf("coinbase transaction for block pays %v "+
 			"which is more than expected value of %v",
