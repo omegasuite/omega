@@ -426,18 +426,18 @@ out:
 			nonce := pb.Nonce
 			if nonce >= 0 || nonce <= -wire.MINER_RORATE_FREQ {
 				nonce = -1
-			} else if nonce == -wire.MINER_RORATE_FREQ + 1 {
+			} else if nonce == -wire.MINER_RORATE_FREQ+1 {
 				nonce = -int32(bs.LastRotation) - 1 - wire.MINER_RORATE_FREQ
 			} else {
 				nonce--
 			}
-/*
-			if nonce == -wire.MINER_RORATE_FREQ || nonce >= 0 {
-				nonce = - int32(m.g.BestSnapshot().LastRotation + 1 + wire.MINER_RORATE_FREQ)
-			} else if nonce < -wire.MINER_RORATE_FREQ {
-				nonce = -1
-			}
-*/
+			/*
+				if nonce == -wire.MINER_RORATE_FREQ || nonce >= 0 {
+					nonce = - int32(m.g.BestSnapshot().LastRotation + 1 + wire.MINER_RORATE_FREQ)
+				} else if nonce < -wire.MINER_RORATE_FREQ {
+					nonce = -1
+				}
+			*/
 
 			template.Block.(*wire.MsgBlock).Header.Nonce = nonce
 
@@ -448,36 +448,38 @@ out:
 				mining.AddSignature(block, m.cfg.PrivKeys[*payToAddr])
 			} else {
 				if !m.coinbaseByCommittee(block.MsgBlock().Transactions[0]) {
-					time.Sleep(time.Second * 20)
-					continue
-				}
+					powMode = true
+				} else {
+					if len(block.MsgBlock().Transactions[0].SignatureScripts) == 0 {
+						block.MsgBlock().Transactions[0].SignatureScripts = make([][]byte, 1)
+						block.MsgBlock().Transactions[0].SignatureScripts[0] = make([]byte, 0)
+					}
 
-				if len(block.MsgBlock().Transactions[0].SignatureScripts) == 0 {
-					block.MsgBlock().Transactions[0].SignatureScripts = make([][]byte, 1)
-					block.MsgBlock().Transactions[0].SignatureScripts[0] = make([]byte, 0)
+					block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
 				}
-
-				block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
 			}
-			log.Infof("New block generated. nonce = %d", nonce)
-			m.submitBlock(block)
 
-			// TBD: optimization idea. instead of waiting a block connect at this height,
-			// we just keep on mining the next block. if lucky, this block is in main chain
-			// if not, we end up with a side chain and reorg it. the complexity lies in chain
-			// management, i.e. we add a block to main chain knowing it could be invalid.
+			if !powMode {
+				log.Infof("New block generated. nonce = %d", nonce)
+				m.submitBlock(block)
+
+				// TBD: optimization idea. instead of waiting a block connect at this height,
+				// we just keep on mining the next block. if lucky, this block is in main chain
+				// if not, we end up with a side chain and reorg it. the complexity lies in chain
+				// management, i.e. we add a block to main chain knowing it could be invalid.
 			connected:
-			for {
-				select {
-				case blk := <- m.connch:
-					if blk >= block.Height() {
-						break connected
+				for {
+					select {
+					case blk := <-m.connch:
+						if blk >= block.Height() {
+							break connected
+						}
 					}
 				}
+				// wait until a block at this height is connect to mainchain
+				//			time.Sleep(time.Millisecond * miningGap)
+				continue
 			}
-			// wait until a block at this height is connect to mainchain
-//			time.Sleep(time.Millisecond * miningGap)
-			continue
 		}
 
 		flushed:
