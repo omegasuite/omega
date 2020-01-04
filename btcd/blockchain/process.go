@@ -226,7 +226,9 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	requiredRotate := b.BestSnapshot().LastRotation
 	header := &block.MsgBlock().Header
-	if header.Nonce > 0 || header.Nonce == -(wire.MINER_RORATE_FREQ - 1){
+	if header.Nonce > 0 {
+		requiredRotate += wire.CommitteeSize / 2 + 1
+	} else if header.Nonce == -(wire.MINER_RORATE_FREQ - 1){
 		requiredRotate++
 	}
 
