@@ -119,18 +119,19 @@ func (c *BitcoindClient) BackEnd() string {
 }
 
 // GetBestBlock returns the highest block known to bitcoind.
-func (c *BitcoindClient) GetBestBlock() (*chainhash.Hash, int32, error) {
+func (c *BitcoindClient) GetBestBlock() (*chainhash.Hash, int32, *chainhash.Hash, int32, error) {
+
 	bcinfo, err := c.chainConn.client.GetBlockChainInfo()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, 0, err
 	}
 
 	hash, err := chainhash.NewHashFromStr(bcinfo.BestBlockHash)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, 0, err
 	}
 
-	return hash, bcinfo.Blocks, nil
+	return hash, bcinfo.Blocks, nil, 0, nil
 }
 
 // GetBlockHeight returns the height for the hash, if known, or returns an
@@ -178,7 +179,7 @@ func (c *BitcoindClient) GetBlockHeaderVerbose(
 // IsCurrent returns whether the chain backend considers its view of the network
 // as "current".
 func (c *BitcoindClient) IsCurrent() bool {
-	bestHash, _, err := c.GetBestBlock()
+	bestHash, _, _, _, err := c.GetBestBlock()
 	if err != nil {
 		return false
 	}
@@ -276,7 +277,7 @@ func (c *BitcoindClient) NotifyBlocks() error {
 	// Re-evaluate our known best block since it's possible that blocks have
 	// occurred between now and when the client was created. This ensures we
 	// don't detect a new notified block as a potential reorg.
-	bestHash, bestHeight, err := c.GetBestBlock()
+	bestHash, bestHeight, _, _, err := c.GetBestBlock()
 	if err != nil {
 		atomic.StoreUint32(&c.notifyBlocks, 0)
 		return fmt.Errorf("unable to retrieve best block: %v", err)
@@ -461,7 +462,7 @@ func (c *BitcoindClient) Start() error {
 	c.notificationQueue.ChanIn() <- ClientConnected{}
 
 	// Retrieve the best block of the chain.
-	bestHash, bestHeight, err := c.GetBestBlock()
+	bestHash, bestHeight, _, _, err := c.GetBestBlock()
 	if err != nil {
 		return fmt.Errorf("unable to retrieve best block: %v", err)
 	}
@@ -966,7 +967,7 @@ func (c *BitcoindClient) rescan(start chainhash.Hash) error {
 	// the height, as the hash can change during a reorganization, which we
 	// catch by testing connectivity from known blocks to the previous
 	// block.
-	bestHash, bestHeight, err := c.GetBestBlock()
+	bestHash, bestHeight, _, _, err := c.GetBestBlock()
 	if err != nil {
 		return err
 	}
@@ -1115,7 +1116,7 @@ func (c *BitcoindClient) rescan(start chainhash.Hash) error {
 		// blocks. If it has, update the best known block and continue
 		// to rescan to that point.
 		if i == bestBlock.Height {
-			bestHash, bestHeight, err = c.GetBestBlock()
+			bestHash, bestHeight, _, _, err = c.GetBestBlock()
 			if err != nil {
 				return err
 			}

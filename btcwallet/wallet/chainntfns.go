@@ -362,7 +362,7 @@ func (w *Wallet) addRelevantTx(dbtx walletdb.ReadWriteTx, rec *wtxmgr.TxRecord, 
 type chainConn interface {
 	// GetBestBlock returns the hash and height of the best block known to
 	// the backend.
-	GetBestBlock() (*chainhash.Hash, int32, error)
+	GetBestBlock() (*chainhash.Hash, int32, *chainhash.Hash, int32, error)
 
 	// GetBlockHash returns the hash of the block with the given height.
 	GetBlockHash(int64) (*chainhash.Hash, error)

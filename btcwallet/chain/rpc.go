@@ -143,7 +143,7 @@ func (c *RPCClient) Stop() {
 // IsCurrent returns whether the chain backend considers its view of the network
 // as "current".
 func (c *RPCClient) IsCurrent() bool {
-	bestHash, _, err := c.GetBestBlock()
+	bestHash, _, _, _, err := c.GetBestBlock()
 	if err != nil {
 		return false
 	}
@@ -379,7 +379,8 @@ func (c *RPCClient) onRescanFinished(hash *chainhash.Hash, height int32, blkTime
 // handler maintains a queue of notifications and the current state (best
 // block) of the chain.
 func (c *RPCClient) handler() {
-	hash, height, err := c.GetBestBlock()
+	hash, height, _, _, err := c.GetBestBlock()
+
 	if err != nil {
 		log.Errorf("Failed to receive best block from chain server: %v", err)
 		c.Stop()

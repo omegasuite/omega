@@ -388,6 +388,9 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 		}
 
 		mb,_ := b.Miners.BlockByHeight(j)
+		if mb == nil {
+			break
+		}
 		miner := mb.MsgBlock().Miner
 		// establish connection
 		// check its connection info.

@@ -166,10 +166,12 @@ func (m *MinerChain) factorPOW(firstNode *blockNode) int64 {
 		return 1 	// nil
 	}
 
-	d := uint32(baseh) - h
+	d := int32(baseh) - int32(h)
 
 	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP
+	} else if d <= wire.DESIRABLE_MINER_CANDIDATES {
+		return 1
 	}
 
 	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)

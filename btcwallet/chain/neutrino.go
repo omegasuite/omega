@@ -124,13 +124,13 @@ func (s *NeutrinoClient) GetBlockHeight(hash *chainhash.Hash) (int32, error) {
 }
 
 // GetBestBlock replicates the RPC client's GetBestBlock command.
-func (s *NeutrinoClient) GetBestBlock() (*chainhash.Hash, int32, error) {
+func (s *NeutrinoClient) GetBestBlock() (*chainhash.Hash, int32, *chainhash.Hash, int32, error) {
 	chainTip, err := s.CS.BestBlock()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, nil, 0, err
 	}
 
-	return &chainTip.Hash, chainTip.Height, nil
+	return &chainTip.Hash, chainTip.Height, nil, 0, nil
 }
 
 // BlockStamp returns the latest block notified by the client, or an error
@@ -669,7 +669,7 @@ func (s *NeutrinoClient) dispatchRescanFinished() {
 // no bounds on the queue, so the dequeue channel should be read continually to
 // avoid running out of memory.
 func (s *NeutrinoClient) notificationHandler() {
-	hash, height, err := s.GetBestBlock()
+	hash, height, _, _, err := s.GetBestBlock()
 	if err != nil {
 		log.Errorf("Failed to get best block from chain service: %s",
 			err)

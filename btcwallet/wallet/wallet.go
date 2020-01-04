@@ -549,7 +549,7 @@ func locateBirthdayBlock(chainClient chainConn,
 
 	// Retrieve the lookup range for our block.
 	startHeight := int32(0)
-	_, bestHeight, err := chainClient.GetBestBlock()
+	_, bestHeight, _, _, err := chainClient.GetBestBlock()
 	if err != nil {
 		return nil, err
 	}
@@ -657,7 +657,7 @@ func (w *Wallet) recovery(chainClient chain.Interface,
 
 	// Fetch the best height from the backend to determine when we should
 	// stop.
-	_, bestHeight, err := chainClient.GetBestBlock()
+	_, bestHeight, _, _, err := chainClient.GetBestBlock()
 	if err != nil {
 		return err
 	}

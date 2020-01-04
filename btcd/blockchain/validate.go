@@ -441,6 +441,10 @@ func (b *BlockChain) CheckProofOfWork(block *btcutil.Block, parent * blockNode, 
 	return b.checkProofOfWork(block, parent, powLimit, BFNone)
 }
 
+func CheckProofOfWork(stubBlock * btcutil.Block, powLimit *big.Int) error {
+	return nil
+}
+
 // CountSigOps returns the number of signature operations for all transaction
 // input and output scripts in the provided transaction.  This uses the
 // quicker, but imprecise, signature operation counting mechanism from
