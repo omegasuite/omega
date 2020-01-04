@@ -404,10 +404,18 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			matched := false
 			for i := int32(0); i < wire.CommitteeSize; i++ {
 				blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
+				if blk == nil {
+					return ruleError(ErrHighHash, "Unauthorized miner signature")
+				}
 				if bytes.Compare(pkh[:], blk.MsgBlock().Miner) == 0 {
 					matched = true
 				}
 			}
+			
+			
+			
+			
+			
 			if !matched {
 				return ruleError(ErrHighHash, "Unauthorized miner signature")
 			}
