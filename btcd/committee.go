@@ -397,7 +397,7 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 		// if it is an IP address, connect directly,
 		// otherwise, broadcast q request for connection msg.
 		conn := mb.MsgBlock().Connection
-		if len(conn) < 128 {
+		if len(conn) > 0 && len(conn) < 128 {
 			// we use 1024-bit RSA pub key, so treat what is less
 			// that that as an IP address
 			tcp, err := net.ResolveTCPAddr("", string(conn))
@@ -408,7 +408,7 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 
 			isin := false
 			state.forAllPeers(func (ob *serverPeer) {
-				if !isin && ob.connReq.Addr.String() == tcp.String() {
+				if !isin && ob.connReq != nil && ob.connReq.Addr.String() == tcp.String() {
 					state.committee[j] = ob
 
 					ob.Peer.Committee = j
