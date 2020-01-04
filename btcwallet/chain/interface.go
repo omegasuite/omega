@@ -32,7 +32,7 @@ type Interface interface {
 	Start() error
 	Stop()
 	WaitForShutdown()
-	GetBestBlock() (*chainhash.Hash, int32, error)
+	GetBestBlock() (*chainhash.Hash, int32, *chainhash.Hash, int32, error)
 	GetBlock(*chainhash.Hash) (*wire.MsgBlock, error)
 	GetBlockHash(int64) (*chainhash.Hash, error)
 	GetBlockHeader(*chainhash.Hash) (*wire.BlockHeader, error)

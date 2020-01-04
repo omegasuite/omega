@@ -192,9 +192,11 @@ func (m *CPUMiner) factorPOW(baseh uint32, h0 chainhash.Hash) int64 {	// *big.In
 		return 1 	// nil
 	}
 
-	d := uint32(baseh) - h
+	d := int32(baseh) - int32(h)
 	if d > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP
+	} else if d <= wire.DESIRABLE_MINER_CANDIDATES {
+		return 1
 	}
 	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
 /*
@@ -237,7 +239,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 		// Search through the entire nonce range for a solution while
 		// periodically checking for early quit and stale block
 		// conditions along with updates to the speed monitor.
-		for i := uint32(0); i <= maxNonce; i++ {
+		for i := uint32(1); i <= maxNonce; i++ {
 			select {
 			case <-quit:
 				return false

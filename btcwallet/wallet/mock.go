@@ -24,8 +24,8 @@ func (m *mockChainClient) Stop() {
 
 func (m *mockChainClient) WaitForShutdown() {}
 
-func (m *mockChainClient) GetBestBlock() (*chainhash.Hash, int32, error) {
-	return nil, 0, nil
+func (m *mockChainClient) GetBestBlock() (*chainhash.Hash, int32, *chainhash.Hash, int32, error) {
+	return nil, 0, nil, 0, nil
 }
 
 func (m *mockChainClient) GetBlock(*chainhash.Hash) (*wire.MsgBlock, error) {

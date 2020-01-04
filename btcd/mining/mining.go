@@ -1096,11 +1096,11 @@ func (g *BlkTmplGenerator) Committee() map[[20]byte]struct{} {
 
 	for n < h {
 		n++
-		m,_ := g.Chain.Miners.BlockByHeight(int32(n))
-
-		var adr [20]byte
-		copy(adr[:], m.MsgBlock().Miner)
-		adrs[adr] = struct{}{}
+		if m,_ := g.Chain.Miners.BlockByHeight(int32(n)); m != nil {
+			var adr [20]byte
+			copy(adr[:], m.MsgBlock().Miner)
+			adrs[adr] = struct{}{}
+		}
 	}
 
 	return adrs
