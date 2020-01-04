@@ -233,17 +233,17 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	isMainChain := false
-	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {
+//	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {
 		isMainChain, err = b.maybeAcceptBlock(block, flags)
 		if err != nil {
 			return false, false, err
 		}
-	} else {
+//	} else {
 		// add it as an orphan. whenever a miner block is added,
 		// we shall call ProcessOrphans with tip of best tx chain hash as param.
-		b.AddOrphanBlock(block)
-		return false, true, nil
-	}
+//		b.AddOrphanBlock(block)
+//		return false, true, nil
+//	}
 
 	if flags & BFNoConnect == BFNoConnect {
 		// this mark an pre-consus block
