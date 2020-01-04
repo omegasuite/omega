@@ -500,6 +500,7 @@ out:
 		if m.solveBlock(template, curHeight+1, ticker, quit) {
 			log.Info("New block produced")
 			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
+			block.SetHeight(template.Height)
 			m.submitBlock(block)
 			log.Infof("Tx chian = %d Miner chain = %d", m.g.Chain.BestSnapshot().Height,
 				m.g.Chain.Miners.BestSnapshot().Height)
