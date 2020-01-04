@@ -202,7 +202,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 
 	header := block.MsgBlock()
 
-	for p, i := prevNode, 0; i < wire.MinerGap; i++ {
+	for p, i := prevNode, 0; p != nil && i < wire.MinerGap; i++ {
 		if bytes.Compare(p.Header().Miner, block.MsgBlock().Miner) == 0 {
 			str := "Miner has appeared in the past %d blocks"
 			str = fmt.Sprintf(str, wire.MinerGap)

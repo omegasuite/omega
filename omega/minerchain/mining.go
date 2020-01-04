@@ -335,9 +335,9 @@ out:
 		good := false
 		for addr, _ := range m.cfg.PrivKeys {
 			good = true
-			for i := 0; i < wire.MinerGap; i++ {
+			for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
 				p, _ := m.g.Chain.Miners.BlockByHeight(curHeight - int32(i))
-				if bytes.Compare(p.MsgBlock().Miner, payToAddress.ScriptAddress()) == 0 {
+				if bytes.Compare(p.MsgBlock().Miner, addr.ScriptAddress()) == 0 {
 					good = false
 					break
 				}
