@@ -97,7 +97,7 @@ func TestBlock(t *testing.T) {
 
 		// Ensure we get the expected number of transactions.
 		if len(transactions) != len(wantTxHashes) {
-			t.Errorf("Transactions #%d mismatched number of "+
+			t.Errorf("Height #%d mismatched number of "+
 				"transactions - got %d, want %d", i,
 				len(transactions), len(wantTxHashes))
 			continue
@@ -112,7 +112,7 @@ func TestBlock(t *testing.T) {
 
 			hash := tx.Hash()
 			if !hash.IsEqual(wantHash) {
-				t.Errorf("Transactions #%d mismatched hashes "+
+				t.Errorf("Height #%d mismatched hashes "+
 					"- got %v, want %v", j, hash, wantHash)
 				continue
 			}

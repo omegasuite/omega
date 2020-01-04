@@ -81,7 +81,7 @@ var (
 
 // -----------------------------------------------------------------------------
 // The address index maps addresses referenced in the blockchain to a list of
-// all the transactions involving that address.  Transactions are stored
+// all the transactions involving that address.  Height are stored
 // according to their order of appearance in the blockchain.  That is to say
 // first by block height and then by offset inside the block.  It is also
 // important to note that this implementation requires the transaction index
@@ -599,7 +599,7 @@ func (idx *AddrIndex) NeedsInputs() bool {
 	return true
 }
 
-// Init is only provided to satisfy the Indexer interface as there is nothing to
+// BlockInit is only provided to satisfy the Indexer interface as there is nothing to
 // initialize for this index.
 //
 // This is part of the Indexer interface.

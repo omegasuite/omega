@@ -43,14 +43,14 @@ func IsUnspendable(pkScript []byte) bool {
 
 
 // IsDustAmount determines whether a transaction output value and script length would
-// cause the output to be considered dust.  Transactions with dust outputs are
+// cause the output to be considered dust.  Height with dust outputs are
 // not standard and are rejected by mempools with default policies.
 func IsDustAmount(amount btcutil.Amount, scriptSize int, relayFeePerKb btcutil.Amount) bool {
 	return amount < GetDustThreshold(scriptSize, relayFeePerKb)
 }
 
 // IsDustOutput determines whether a transaction output is considered dust.
-// Transactions with dust outputs are not standard and are rejected by mempools
+// Height with dust outputs are not standard and are rejected by mempools
 // with default policies.
 func IsDustOutput(output *wire.TxOut, relayFeePerKb btcutil.Amount) bool {
 	// All other unspendable outputs are considered dust.

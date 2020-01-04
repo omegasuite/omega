@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/omega/minerchain"
+	"github.com/btcsuite/omega/ovm"
 	"math/rand"
 
 	//	"runtime"
@@ -111,6 +113,7 @@ type CPUMiner struct {
 	updateHashes      chan uint64
 	speedMonitorQuit  chan struct{}
 	quit              chan struct{}
+	connch 			  chan int32
 }
 
 // speedMonitor handles tracking the number of hashes per second the mining
@@ -180,7 +183,7 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 
 	// Process this block using the same rules as blocks coming from other
 	// nodes.  This will in turn relay it to the network like normal.
-	isOrphan, err := m.cfg.ProcessBlock(block, blockchain.BFNone)
+	isOrphan, err := m.cfg.ProcessBlock(block, blockchain.BFSubmission)
 	if err != nil {
 		// Anything other than a rule violation is an unexpected error,
 		// so log that error as an internal error.
@@ -291,6 +294,18 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	return false
 }
 
+func (m *CPUMiner) notice (notification *blockchain.Notification) {
+	switch notification.Type {
+	case blockchain.NTBlockConnected:
+		switch notification.Data.(type) {
+		case *wire.MinerBlock:
+			if m.started {
+				m.connch <- notification.Data.(*wire.MinerBlock).Height()
+			}
+		}
+	}
+}
+
 // generateBlocks is a worker that is controlled by the miningWorkerController.
 // It is self contained in that it creates block templates and attempts to solve
 // them while detecting when it is performing stale work and reacting
@@ -305,6 +320,7 @@ func (m *CPUMiner) generateBlocks(quit chan struct{}) {
 	// updates to the speed monitor.
 	ticker := time.NewTicker(time.Second * hashUpdateSecs)
 	defer ticker.Stop()
+
 out:
 	for {
 		// Quit when the miner is stopped.
@@ -346,7 +362,6 @@ out:
 			continue
 		}
 
-
 		if time.Now().UnixNano() - m.g.BestSnapshot().Updated.UnixNano() <= miningGap * 1000000 {
 			m.g.Chain.ChainLock.Unlock()
 			m.submitBlockLock.Unlock()
@@ -367,12 +382,13 @@ out:
 
 		m.g.Chain.ChainLock.Unlock()
 
+		var adr [20]byte
+
 		for i, addr := range m.cfg.MiningAddrs {
 			if _,ok := m.cfg.PrivKeys[addr]; !ok {
 				payToAddr = &m.cfg.MiningAddrs[i]
 				continue
 			}
-			var adr [20]byte
 			copy(adr[:], addr.ScriptAddress())
 			if _,ok := committee[adr]; ok {
 				activeAddr = &m.cfg.MiningAddrs[i]
@@ -430,11 +446,47 @@ out:
 			if wire.CommitteeSize == 1 {
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
 				mining.AddSignature(block, m.cfg.PrivKeys[*payToAddr])
+			} else {
+				if !m.coinbaseByCommittee(block.MsgBlock().Transactions[0]) {
+					time.Sleep(time.Second * 20)
+					continue
+				}
+
+				if len(block.MsgBlock().Transactions[0].SignatureScripts) == 0 {
+					block.MsgBlock().Transactions[0].SignatureScripts = make([][]byte, 1)
+					block.MsgBlock().Transactions[0].SignatureScripts[0] = make([]byte, 0)
+				}
+
+				block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
 			}
 			log.Infof("New block generated. nonce = %d", nonce)
 			m.submitBlock(block)
+
+			// TBD: optimization idea. instead of waiting a block connect at this height,
+			// we just keep on mining the next block. if lucky, this block is in main chain
+			// if not, we end up with a side chain and reorg it. the complexity lies in chain
+			// management, i.e. we add a block to main chain knowing it could be invalid.
+			connected:
+			for {
+				select {
+				case blk := <- m.connch:
+					if blk >= block.Height() {
+						break connected
+					}
+				}
+			}
+			// wait until a block at this height is connect to mainchain
 //			time.Sleep(time.Millisecond * miningGap)
 			continue
+		}
+
+		flushed:
+		for {
+			select {
+			case <- m.connch:
+			default:
+				break flushed
+			}
 		}
 
 		time.Sleep(time.Second * 20)
@@ -458,6 +510,48 @@ out:
 
 	m.workerWg.Done()
 	log.Tracef("Generate blocks worker done")
+}
+
+func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
+	prevPows := uint(0)
+	adj := int64(0)
+
+	best := m.g.Chain.BestSnapshot()
+	bh := best.LastRotation
+	for pw := m.g.Chain.BestChain.Tip(); pw != nil && pw.Nonce() > 0; pw = pw.Parent() {
+		prevPows++
+	}
+	if prevPows != 0 {
+		adj = blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, 0) -
+			blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, prevPows)
+	}
+
+	oldtxo := tx.TxOut[0]
+
+	award := (adj + oldtxo.Value.(*token.NumToken).Val) / wire.CommitteeSize
+	good := 0
+
+	tx.TxOut = make([]*wire.TxOut, 0, wire.CommitteeSize)
+
+	tok := token.NumToken{Val:award}
+	txo := wire.TxOut{}
+	txo.TokenType = 0
+	txo.Rights = nil
+	txo.Value = &tok
+	txo.PkScript = make([]byte, 25)
+	txo.PkScript[0] = m.cfg.ChainParams.PubKeyHashAddrID
+	txo.PkScript[21] = ovm.OP_PAY2PKH
+
+	for i := -int32(wire.CommitteeSize - 1); i <= 0; i++ {
+		if mb,_ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
+			ntx := txo
+			copy(ntx.PkScript[1:21], mb.MsgBlock().Miner)
+			tx.TxOut = append(tx.TxOut, &ntx)
+			good++
+		}
+	}
+
+	return good > wire.CommitteeSize / 2
 }
 
 // miningWorkerController launches the worker goroutines that are used to
@@ -565,6 +659,16 @@ func (m *CPUMiner) Stop() {
 	close(m.quit)
 	m.wg.Wait()
 	m.started = false
+
+	for {
+		select {
+		case <- m.connch:
+		default:
+			log.Infof("CPU miner stopped")
+			return
+		}
+	}
+
 	log.Infof("CPU miner stopped")
 }
 
@@ -728,12 +832,15 @@ func (m *CPUMiner) GenerateNBlocks(n uint32) ([]*chainhash.Hash, error) {
 // Use Start to begin the mining process.  See the documentation for CPUMiner
 // type for more details.
 func New(cfg *Config) *CPUMiner {
-	return &CPUMiner{
+	m := &CPUMiner{
 		g:                 cfg.BlockTemplateGenerator,
 		cfg:               *cfg,
 		numWorkers:        defaultNumWorkers,
 		updateNumWorkers:  make(chan struct{}),
 		queryHashesPerSec: make(chan float64),
 		updateHashes:      make(chan uint64),
+		connch: 		   make(chan int32, 100),
 	}
+	m.g.Chain.Miners.(*minerchain.MinerChain).Subscribe(m.notice)
+	return m
 }

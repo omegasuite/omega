@@ -64,7 +64,7 @@ type Indexer interface {
 	// to be created for the first time.
 	Create(dbTx database.Tx) error
 
-	// Init is invoked when the index manager is first initializing the
+	// BlockInit is invoked when the index manager is first initializing the
 	// index.  This differs from the Create method in that it is called on
 	// every load, including the case the index was just created.
 	Init() error

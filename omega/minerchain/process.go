@@ -179,6 +179,12 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, false, err
 	}
 
+	var name[20]byte
+	copy(name[:], block.MsgBlock().Miner)
+	if b.blockChain.Blacklist.IsGrey(name) {
+		return false, false, fmt.Errorf("Blacklised Miner")
+	}
+
 	// Find the previous checkpoint and perform some additional checks based
 	// on the checkpoint.  This provides a few nice properties such as
 	// preventing old side chain blocks before the last checkpoint,

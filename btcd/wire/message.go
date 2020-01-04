@@ -61,6 +61,8 @@ const (
 	CmdCFilter      = "cfilter"
 	CmdCFHeaders    = "cfheaders"
 	CmdCFCheckpt    = "cfcheckpt"
+
+	// consensus protocol message
 )
 
 // MessageEncoding represents the wire message encoding format to be used.

@@ -226,7 +226,7 @@ func (m *Manager) maybeCreateIndexes(dbTx database.Tx) error {
 	return nil
 }
 
-// Init initializes the enabled indexes.  This is called during chain
+// BlockInit initializes the enabled indexes.  This is called during chain
 // initialization and primarily consists of catching up all indexes to the
 // current best chain tip.  This is necessary since each index can be disabled
 // and re-enabled at any time and attempting to catch-up indexes at the same

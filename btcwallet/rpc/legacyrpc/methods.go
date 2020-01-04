@@ -1343,7 +1343,7 @@ func listTransactions(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 		// efficiently) calculated.
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCWallet,
-			Message: "Transactions are not yet grouped by account",
+			Message: "Height are not yet grouped by account",
 		}
 	}
 

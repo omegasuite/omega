@@ -43,14 +43,14 @@ The Begin function provides an unmanaged transaction while the View and Update
 functions provide a managed transaction.  These are described in more detail
 below.
 
-Transactions
+Height
 
 The Tx interface provides facilities for rolling back or committing changes that
 took place while the transaction was active.  It also provides the root metadata
 bucket under which all keys, values, and nested buckets are stored.  A
 transaction can either be read-only or read-write and managed or unmanaged.
 
-Managed versus Unmanaged Transactions
+Managed versus Unmanaged Height
 
 A managed transaction is one where the caller provides a function to execute
 within the context of the transaction and the commit or rollback is handled

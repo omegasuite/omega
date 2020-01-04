@@ -95,7 +95,7 @@ func (idx *CfIndex) NeedsInputs() bool {
 	return true
 }
 
-// Init initializes the hash-based cf index. This is part of the Indexer
+// BlockInit initializes the hash-based cf index. This is part of the Indexer
 // interface.
 func (idx *CfIndex) Init() error {
 	return nil // Nothing to do.

@@ -337,14 +337,6 @@ func readElement(r io.Reader, element interface{}) error {
 		}
 		*e = BitcoinNet(rv)
 		return nil
-
-	case *RejectCode:
-		rv, err := binarySerializer.Uint8(r)
-		if err != nil {
-			return err
-		}
-		*e = RejectCode(rv)
-		return nil
 	}
 
 	// Fall back to the slower binary.Read if a fast path was not available
@@ -482,12 +474,6 @@ func writeElement(w io.Writer, element interface{}) error {
 		}
 		return nil
 
-	case RejectCode:
-		err := binarySerializer.PutUint8(w, uint8(e))
-		if err != nil {
-			return err
-		}
-		return nil
 	}
 
 	// Fall back to the slower binary.Write if a fast path was not available

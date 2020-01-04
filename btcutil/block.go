@@ -37,7 +37,7 @@ type Block struct {
 	serializedBlockNoWitness []byte          // Serialized bytes for block w/o witness data
 	blockHash                *chainhash.Hash // Cached block hash
 	blockHeight              int32           // Height in the main block chain
-	transactions             []*Tx           // Transactions
+	transactions             []*Tx           // Height
 	txnsGenerated            bool            // ALL wrapped transactions generated
 }
 
@@ -147,7 +147,7 @@ func (b *Block) Tx(txNum int) (*Tx, error) {
 	return newTx, nil
 }
 
-// Transactions returns a slice of wrapped transactions (btcutil.Tx) for all
+// Height returns a slice of wrapped transactions (btcutil.Tx) for all
 // transactions in the Block.  This is nearly equivalent to accessing the raw
 // transactions (wire.MsgTx) in the underlying wire.MsgBlock, however it
 // instead provides easy access to wrapped versions (btcutil.Tx) of them.

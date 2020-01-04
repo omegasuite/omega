@@ -10,15 +10,17 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/omega/consensus"
 	"github.com/btcsuite/omega/minerchain"
 	"math"
-	"math/big"
 	"net"
+	"os"
 	"runtime"
 	"sort"
 	"strconv"
@@ -232,6 +234,7 @@ type server struct {
 	query                chan interface{}
 	relayInv             chan relayMsg
 	broadcast            chan broadcastMsg
+	committeecast        chan broadcastMsg
 	peerHeightsUpdate    chan updatePeerHeightsMsg
 	peerMinerHeightsUpdate    chan updatePeerHeightsMsg
 	wg                   sync.WaitGroup
@@ -261,6 +264,9 @@ type server struct {
 	privKeys 		   map[btcutil.Address]*btcec.PrivateKey
 	rsaPrivateKey	   *rsa.PrivateKey
 	peerState 		   * peerState
+
+	BlackList          map[[20]byte]struct{}
+	PendingBlackList   map[[20]byte]uint32
 }
 
 // serverPeer extends the peer to maintain state shared by the server and
@@ -1518,27 +1524,36 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		blockBytes, err = dbTx.FetchBlock(hash)
 		return err
 	})
-	if err != nil {
-		peerLog.Tracef("Unable to fetch requested block hash %v: %v",
-			hash, err)
 
-		if doneChan != nil {
-			doneChan <- struct{}{}
-		}
-		return err
-	}
-
-	// Deserialize the block.
 	var msgBlock wire.MsgBlock
-	err = msgBlock.Deserialize(bytes.NewReader(blockBytes))
-	if err != nil {
-		peerLog.Tracef("Unable to deserialize requested block hash "+
-			"%v: %v", hash, err)
 
-		if doneChan != nil {
-			doneChan <- struct{}{}
+	if err != nil {
+		// now check orphans
+		m := s.chain.GetOrphanBlock(hash)
+		if m != nil {
+			msgBlock = *m
+			err = nil
+		} else {
+			peerLog.Tracef("Unable to fetch requested block hash %v: %v",
+				hash, err)
+
+			if doneChan != nil {
+				doneChan <- struct{}{}
+			}
+			return err
 		}
-		return err
+	} else {
+		// Deserialize the block.
+		err = msgBlock.Deserialize(bytes.NewReader(blockBytes))
+		if err != nil {
+			peerLog.Tracef("Unable to deserialize requested block hash "+
+				"%v: %v", hash, err)
+
+			if doneChan != nil {
+				doneChan <- struct{}{}
+			}
+			return err
+		}
 	}
 
 	// Once we have fetched data wait for any previous operation to finish.
@@ -1809,6 +1824,9 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		}
 		if sp.connReq.Committee > 0 {
 			state.committee[sp.connReq.Committee] = sp
+			sp.Peer.Committee = sp.connReq.Committee
+			sb, _ := s.chain.Miners.BlockByHeight(sp.connReq.Committee)
+			copy(sp.Peer.Miner[:], sb.MsgBlock().Miner[:])
 		}
 		if sp.connReq.Initcallback != nil {
 			// one time call back to allow us send msg immediately after successful connection
@@ -2309,6 +2327,9 @@ out:
 		case bmsg := <-s.broadcast:
 			s.handleBroadcastMsg(state, &bmsg)
 
+		case bmsg := <-s.committeecast:
+			s.handleCommitteecastMsg(state, &bmsg)
+
 		case qmsg := <-s.query:
 			s.handleQuery(state, qmsg)
 
@@ -2420,6 +2441,7 @@ func (s *server) UpdatePeerHeights(latestBlkHash *chainhash.Hash, latestHeight i
 		newHeight:  latestHeight,
 		originPeer: updateSource,
 	}
+	consensus.UpdateChainHeight(s.chain.BestSnapshot().Height)
 }
 
 func (s *server) UpdatePeerMinerHeights(latestBlkHash *chainhash.Hash, latestHeight int32, updateSource *peer.Peer) {
@@ -2792,6 +2814,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		query:                make(chan interface{}),
 		relayInv:             make(chan relayMsg, cfg.MaxPeers),
 		broadcast:            make(chan broadcastMsg, cfg.MaxPeers),
+		committeecast:        make(chan broadcastMsg, cfg.MaxPeers),
 		quit:                 make(chan struct{}),
 		modifyRebroadcastInv: make(chan interface{}),
 		peerHeightsUpdate:    make(chan updatePeerHeightsMsg),
@@ -2805,24 +2828,18 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 //		hashCache:            NewHashCache(cfg.SigCacheMaxSize),
 		cfCheckptCaches:      make(map[wire.FilterType][]cfHeaderKV),
 		privKeys:			  cfg.privateKeys,
+		BlackList:            make(map[[20]byte]struct{}),
+		PendingBlackList:     make(map[[20]byte]uint32),
 	}
 
 	if cfg.RsaPrivateKey != "" {
-		type RSA struct {
-			N []byte         `json:"n"`
-			E int            `json:"e"`
-			D []byte		 `json:"d"`
-			Primes [][]byte       `json:"primes"`
-		}
-		var r RSA
-		if json.Unmarshal([]byte(cfg.RsaPrivateKey), &r) == nil {
-			s.rsaPrivateKey = &rsa.PrivateKey{}
-			s.rsaPrivateKey.N = big.NewInt(0).SetBytes(r.N)
-			s.rsaPrivateKey.E = r.E
-			s.rsaPrivateKey.D = big.NewInt(0).SetBytes(r.D)
-			s.rsaPrivateKey.Primes = make([]*big.Int, 0, len(r.Primes))
-			for _, p := range r.Primes {
-				s.rsaPrivateKey.Primes = append(s.rsaPrivateKey.Primes, big.NewInt(0).SetBytes(p))
+		if file, err := os.Open(cfg.RsaPrivateKey); err == nil {
+			defer file.Close()
+			if fileinfo, err := os.Stat(cfg.RsaPrivateKey); err == nil {
+				fileStream := make([]byte, fileinfo.Size())
+				file.Read(fileStream)
+				block, _ := pem.Decode(fileStream)
+				s.rsaPrivateKey, _ = x509.ParsePKCS1PrivateKey(block.Bytes)
 			}
 		}
 	}
@@ -2890,6 +2907,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 
 	// Search for a FeeEstimator state in the database. If none can be found
 	// or if it cannot be loaded, create a new one.
+
 	db.Update(func(tx database.Tx) error {
 		metadata := tx.Metadata()
 		feeEstimationData := metadata.Get(mempool.EstimateFeeDatabaseKey)
@@ -2904,6 +2922,31 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 
 			if err != nil {
 				peerLog.Errorf("Failed to restore fee estimator %v", err)
+			}
+		}
+
+		return nil
+	})
+
+	// load black list
+	best := s.chain.BestSnapshot().LastRotation
+
+	minerdb.View(func(tx database.Tx) error {
+		metadata := tx.Metadata()
+		bkt := metadata.Bucket(minerchain.BlacklistKeyName)
+		cursor := bkt.Cursor()
+
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			d := binary.LittleEndian.Uint32(cursor.Key())
+			cs := cursor.Value()
+			for i := 0; i < len(cs); i+= 20 {
+				var name [20]byte
+				copy(name[:], cs[i:i+20])
+				if d <= best {
+					s.BlackList[name] = struct{}{}
+				} else {
+					s.PendingBlackList[name] = d
+				}
 			}
 		}
 
@@ -2944,6 +2987,9 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		FeeEstimator:       s.feeEstimator,
 	}
 	s.txMemPool = mempool.New(&txC)
+	s.txMemPool.Blacklist = &s
+
+	s.chain.Blacklist = &s
 
 	s.syncManager, err = netsync.New(&netsync.Config{
 		PeerNotifier:       &s,
@@ -2989,6 +3035,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		ChainParams:            chainParams,
 		BlockTemplateGenerator: blockTemplateGenerator,
 		MiningAddrs:            cfg.miningAddrs,
+		PrivKeys:	            s.privKeys,
 		ProcessBlock:           s.syncManager.ProcessMinerBlock,
 		ConnectedCount:         s.ConnectedCount,
 		IsCurrent:              s.syncManager.IsCurrent,
@@ -3117,6 +3164,70 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	}
 
 	return &s, nil
+}
+
+func (s *server) IsBlack(n [20]byte) bool {
+	_,ok := s.BlackList[n]
+	return ok
+}
+
+func (s *server) IsGrey(n [20]byte) bool {
+	_,ok1 := s.BlackList[n]
+	_,ok2 := s.PendingBlackList[n]
+	return ok1 || ok2
+}
+
+func (s *server) Update(n uint32) {
+	for p, q := range s.PendingBlackList {
+		if q == n {
+			s.BlackList[p] = struct{}{}
+		}
+	}
+}
+
+func (s *server) Rollback(n uint32) {
+	found := false
+	for p, q := range s.PendingBlackList {
+		if q == n {
+			found = true
+			delete(s.BlackList, p)
+		} else if q < n {
+			found = true
+		}
+	}
+	if !found {
+		var h[4]byte
+		binary.LittleEndian.PutUint32(h[:], n)
+		// check db
+		s.db.View(func (tx database.Tx) error {
+			meta := tx.Metadata()
+			bkt := meta.Bucket(minerchain.BlacklistKeyName)
+			d := bkt.Get(h[:])
+			if d == nil || len(d) == 0 {
+				return nil
+			}
+			for i := 0; i < len(d); i += 20 {
+				var name [20]byte
+				copy(name[:], d[i:i+20])
+				s.PendingBlackList[name] = n
+			}
+			s.Rollback(n)
+			return nil
+		})
+	}
+}
+
+func (s *server) Add(n uint32, p [20]byte) {
+	s.PendingBlackList[p] = n
+}
+
+func (s *server) Remove(n uint32) {
+	for p, q := range s.PendingBlackList {
+		if q == n {
+			delete(s.BlackList, p)
+			delete(s.PendingBlackList, p)
+		}
+	}
 }
 
 // initListeners initializes the configured net listeners and adds any bound

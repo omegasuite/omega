@@ -175,7 +175,7 @@ type FeeEstimator struct {
 	// The cached estimates.
 	cached []SatoshiPerByte
 
-	// Transactions that have been removed from the bins. This allows us to
+	// Height that have been removed from the bins. This allows us to
 	// revert in case of an orphaned block.
 	dropped []*registeredBlock
 }

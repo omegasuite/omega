@@ -192,13 +192,13 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 //
 // At the target block generation rate for the main network, this is
 // approximately every 4 years.
-func CalcBlockSubsidy(height int32, chainParams *chaincfg.Params) int64 {
+func CalcBlockSubsidy(height int32, chainParams *chaincfg.Params, prevPows uint) int64 {
 	if chainParams.SubsidyReductionInterval == 0 {
 		return baseSubsidy
 	}
 
 	// Equivalent to: baseSubsidy / 2^(height/subsidyHalvingInterval)
-	return baseSubsidy >> uint(height/chainParams.SubsidyReductionInterval)
+	return baseSubsidy >> (prevPows + uint(height/chainParams.SubsidyReductionInterval))
 }
 
 // CheckTransactionSanity performs some preliminary checks on a transaction to
@@ -762,7 +762,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *blockNode
 		// once a majority of the network has upgraded.  This is part of
 		// BIP0034.
 /*
-		coinbaseTx := block.Transactions()[0]
+		coinbaseTx := block.Height()[0]
 		err = checkSerializedHeight(coinbaseTx, blockHeight)
 		if err != nil {
 			return err
@@ -1202,7 +1202,14 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 		totalSatoshiOut += txOut.Value.(*token.NumToken).Val
 	}
 
-	expectedSatoshiOut := CalcBlockSubsidy(node.height, b.chainParams) + totalFees
+	prevPows := uint(0)
+	if node.nonce > 0 {
+		for pw := b.BestChain.Tip(); pw != nil && pw.nonce > 0; pw = pw.parent {
+			prevPows++
+		}
+	}
+
+	expectedSatoshiOut := CalcBlockSubsidy(node.height, b.chainParams, prevPows) + totalFees
 	if totalSatoshiOut > expectedSatoshiOut {
 		str := fmt.Sprintf("coinbase transaction for block pays %v "+
 			"which is more than expected value of %v",
@@ -1256,6 +1263,29 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 		}
 	}
 */
+	// blacklist check
+	for _, tx := range block.Transactions() {
+		for _, txo := range tx.MsgTx().TxOut {
+			var name [20]byte
+			copy(name[:], txo.PkScript[1:21])
+			if b.Blacklist.IsBlack(name) {
+				return fmt.Errorf("Blacklised txo")
+			}
+		}
+		for _, txi := range tx.MsgTx().TxIn {
+			utxo := views.Utxo.LookupEntry(txi.PreviousOutPoint)
+			if utxo == nil || utxo.IsSpent() {
+				continue
+			}
+
+			// check blacklist
+			var name [20]byte
+			copy(name[:], utxo.PkScript()[1:21])
+			if b.Blacklist.IsBlack(name) {
+				return fmt.Errorf("Blacklised input")
+			}
+		}
+	}
 
 	// Update the best hash for view to include this block since all of its
 	// transactions have been connected.

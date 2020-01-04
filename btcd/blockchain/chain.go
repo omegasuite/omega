@@ -92,6 +92,15 @@ type MinerChain interface {
 	IsCurrent () bool
 }
 
+type BlackList interface {
+	IsBlack([20]byte) bool
+	IsGrey([20]byte) bool
+	Update(uint32)
+	Rollback(uint32)
+	Add(uint32, [20]byte)
+	Remove(uint32)
+}
+
 // BlockChain provides functions for working with the bitcoin block chain.
 // It includes functionality such as rejecting duplicate blocks, ensuring blocks
 // follow all rules, orphan handling, checkpoint handling, and best chain
@@ -194,10 +203,25 @@ type BlockChain struct {
 
 	// The virtual machine
 	ovm * ovm.OVM
+	Blacklist BlackList
 }
 
 func (b *BlockChain) Ovm() * ovm.OVM {
 	return b.ovm
+}
+
+func (b *BlockChain) GetOrphanBlock(hash * chainhash.Hash) * wire.MsgBlock {
+	var msgBlock * wire.MsgBlock
+
+	b.ChainLock.RLock()
+	b.orphanLock.RLock()
+	if p, exists := b.orphans[*hash]; exists {
+		msgBlock = p.block.MsgBlock()
+	}
+	b.orphanLock.RUnlock()
+	b.ChainLock.RUnlock()
+
+	return msgBlock
 }
 
 // HaveBlock returns whether or not the chain instance has the block represented
@@ -627,7 +651,7 @@ func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 		curTotalTxns+numTxns, node.CalcPastMedianTime(), b.BestSnapshot().Bits,
 		b.BestSnapshot().LastRotation)
 	if node.nonce > 0 {
-		state.LastRotation++
+		state.LastRotation += wire.CommitteeSize / 2 + 1
 	} else if node.nonce <= -wire.MINER_RORATE_FREQ {
 		state.LastRotation++	// = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
 		s, _ := b.Miners.BlockByHeight(int32(state.LastRotation) - wire.CommitteeSize)
@@ -686,6 +710,9 @@ func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 
 	// This node is now the end of the best chain.
 	b.BestChain.SetTip(node)
+
+	// update blocklist
+	b.Blacklist.Update(uint32(node.height))
 
 	// Update the state for the best block.  Notice how this replaces the
 	// entire struct instead of updating the existing one.  This effectively
@@ -771,7 +798,9 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 		}
 	}
 
-	if node.nonce >= 0 || node.nonce <= -wire.MINER_RORATE_FREQ {
+	if node.nonce >= 0 {
+		rotation -= wire.CommitteeSize / 2 + 1
+	} else if node.nonce <= -wire.MINER_RORATE_FREQ {
 		rotation--
 	}
 
@@ -865,6 +894,7 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	// Prune fully spent entries and mark all entries in the view unmodified
 	// now that the modifications have been committed to the database.
 	view.Commit()
+	b.Blacklist.Rollback(uint32(node.height))
 
 	// This node's parent is now the end of the best chain.
 	b.BestChain.SetTip(node.parent)
@@ -1745,7 +1775,7 @@ func (b *BlockChain) LocateHeaders(locator chainhash.BlockLocator, hashStop *cha
 // connected and disconnected to and from the tip of the main chain for the
 // purpose of supporting optional indexes.
 type IndexManager interface {
-	// Init is invoked during chain initialize in order to allow the index
+	// BlockInit is invoked during chain initialize in order to allow the index
 	// manager to initialize itself and any indexes it is managing.  The
 	// channel parameter specifies a channel the caller can close to signal
 	// that the process should be interrupted.  It can be nil if that

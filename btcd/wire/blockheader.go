@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	CommitteeSize				= 1			// 3
+	CommitteeSize				= 3			// 3
 	MINER_RORATE_FREQ			= 20		// rotate committee every MINER_RORATE_FREQ blocks
 	DESIRABLE_MINER_CANDIDATES	= 20		// the desirable number of miner candidate we want to have
 	MinerGap					= 3			// a miner must wait between to candidacies
+	SCALEFACTORCAP				= 48
 )
 
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.
@@ -26,6 +27,67 @@ const (
 //const MaxBlockHeaderPayload = 16 + (chainhash.HashSize * 2)
 const MaxBlockHeaderPayload = 24 + (chainhash.HashSize * 2)
 const MaxMinerBlockHeaderPayload = 5000
+
+
+type BlackList struct {
+	// blacklist format：
+	Address [20]byte
+	Height uint32
+	Hashes [2]chainhash.Hash
+	Signatures [2][]byte
+}
+
+func (b * BlackList) Read(r io.Reader) error {
+	if err := common.ReadElement(r, &b.Address); err != nil {
+		return err
+	}
+	if err := common.ReadElement(r, &b.Height); err != nil {
+		return err
+	}
+	if err := common.ReadElement(r, &b.Hashes[0]); err != nil {
+		return err
+	}
+	s, err := common.ReadVarBytes(r, 0, 65, "signature")
+	b.Signatures[0] = s
+	if err != nil {
+		return err
+	}
+
+	if err := common.ReadElement(r, &b.Hashes[1]); err != nil {
+		return err
+	}
+	b.Signatures[1], err = common.ReadVarBytes(r, 0, 65, "signature")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+
+func (b * BlackList) Write(w io.Writer) error {
+	if err := common.WriteElement(w, b.Address); err != nil {
+		return err
+	}
+	if err := common.WriteElement(w, b.Height); err != nil {
+		return err
+	}
+	if err := common.WriteElement(w, b.Hashes[0]); err != nil {
+		return err
+	}
+	if err := common.WriteVarBytes(w, 0, b.Signatures[0]); err != nil {
+		return err
+	}
+
+	if err := common.WriteElement(w, b.Hashes[1]); err != nil {
+		return err
+	}
+	if err := common.WriteVarBytes(w, 0, b.Signatures[1]); err != nil {
+		return err
+	}
+
+	return nil
+}
 
 // we use a dual block chain structure. one is Tx chain (normal block chain), one is committee candidate chain
 // MingingRightBlock is miner candidate chain struct
@@ -56,7 +118,7 @@ type MingingRightBlock struct {
 
 	Connection []byte	// connection info. either an IP:port address or an RSA pubkey
 
-	BlackList []byte		  // the double signers and proof
+	BlackList []BlackList		  // the double signers and proof
 
 	// the following condition must be met before MingingRightBlock may be accepted
 	// hash of: PrevBlock + ReferredBlock + BestBlock + Miner + Nonce must be within Bits Difficulty target, which is
@@ -301,8 +363,21 @@ func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
 		return err
 	}
 	bh.Connection = t
-	bh.BlackList,_ = common.ReadVarBytes(r, 0, 1000000, "BlackList")
-	return err
+
+	d, err := common.ReadVarInt(r, 0)
+	if err != nil {
+		return err
+	}
+
+	bh.BlackList = make([]BlackList, d)
+
+	for i := 0; i < int(d); i++ {
+		if err := bh.BlackList[i].Read(r); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // writeBlockHeader writes a miner block to w.  See Serialize for
@@ -322,7 +397,18 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 		return err
 	}
 
-	return common.WriteVarBytes(w, 0, bh.BlackList)
+	err := common.WriteVarInt(w, 0, uint64(len(bh.BlackList)))
+	if err != nil {
+		return err
+	}
+
+	for _, p := range bh.BlackList {
+		if err := p.Write(w); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type MinerBlock struct {		// equivalent of btcutil.Block
