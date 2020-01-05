@@ -208,7 +208,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 
 	height1,_ := b.blockChain.BlockHeightByHash(&block.MsgBlock().ReferredBlock)
 	ref := b.blockChain.BestChain.NodeByHeight(height1)
-	height2,_ = b.blockChain.BlockHeightByHash(&block.MsgBlock().BestBlock)
+	height2,_ := b.blockChain.BlockHeightByHash(&block.MsgBlock().BestBlock)
 	best := b.blockChain.BestChain.NodeByHeight(height2)
 
 	eq1 := block.MsgBlock().ReferredBlock.IsEqual(ref.Hash())
