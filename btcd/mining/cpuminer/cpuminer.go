@@ -447,8 +447,10 @@ out:
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
 				mining.AddSignature(block, m.cfg.PrivKeys[*payToAddr])
 			} else {
+				t0 := *block.MsgBlock().Transactions[0]
 				if !m.coinbaseByCommittee(block.MsgBlock().Transactions[0]) {
 					powMode = true
+					block.MsgBlock().Transactions[0] = &t0
 				} else {
 					if len(block.MsgBlock().Transactions[0].SignatureScripts) == 0 {
 						block.MsgBlock().Transactions[0].SignatureScripts = make([][]byte, 1)
@@ -521,8 +523,8 @@ func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
 		prevPows++
 	}
 	if prevPows != 0 {
-		adj = blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, 0) -
-			blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, prevPows)
+		adj = blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, prevPows) -
+			blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, 0)
 	}
 
 	oldtxo := tx.TxOut[0]
