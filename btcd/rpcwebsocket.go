@@ -240,6 +240,17 @@ func (m *wsNotificationManager) NotifyBlockDisconnected(block *btcutil.Block) {
 	}
 }
 
+func (m *wsNotificationManager) NotifyMinerBlockDisconnected(block *wire.MinerBlock) {
+	// As NotifyBlockDisconnected will be called by the block manager
+	// and the RPC server may no longer be running, use a select
+	// statement to unblock enqueuing the notification once the RPC
+	// server has begun shutting down.
+	select {
+	case m.queueNotification <- (*notificationMinerBlockDisconnected)(block):
+	case <-m.quit:
+	}
+}
+
 // NotifyMempoolTx passes a transaction accepted by mempool to the
 // notification manager for transaction notification processing.  If
 // isNew is true, the tx is is a new transaction, rather than one

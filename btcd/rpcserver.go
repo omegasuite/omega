@@ -4758,14 +4758,21 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 		}
 
 	case blockchain.NTBlockDisconnected:
-		block, ok := notification.Data.(*btcutil.Block)
-		if !ok {
+		switch notification.Data.(type) {
+		case *btcutil.Block:
+			block := notification.Data.(*btcutil.Block)
+			// Notify registered websocket clients.
+			s.ntfnMgr.NotifyBlockDisconnected(block)
+
+		case *wire.MinerBlock:
+			block := notification.Data.(*wire.MinerBlock)
+			// Notify registered websocket clients.
+			s.ntfnMgr.NotifyMinerBlockDisconnected(block)
+
+		default:
 			rpcsLog.Warnf("Chain disconnected notification is not a block.")
 			break
 		}
-
-		// Notify registered websocket clients.
-		s.ntfnMgr.NotifyBlockDisconnected(block)
 	}
 }
 
