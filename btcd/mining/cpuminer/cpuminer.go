@@ -462,7 +462,7 @@ out:
 			}
 
 			if !powMode {
-				log.Infof("New block generated. nonce = %d", nonce)
+				log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
 				m.submitBlock(block)
 
 			connected:
@@ -502,8 +502,8 @@ out:
 		// a new block template can be generated.  When the return is
 		// true a solution was found, so submit the solved block.
 		if m.solveBlock(template, curHeight+1, ticker, quit) {
-			log.Info("New block produced")
 			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
+			log.Infof("New POW block produced nonce = %s at %d", block.MsgBlock().Header.Nonce, template.Height)
 			block.SetHeight(template.Height)
 			m.submitBlock(block)
 			log.Infof("Tx chian = %d Miner chain = %d", m.g.Chain.BestSnapshot().Height,

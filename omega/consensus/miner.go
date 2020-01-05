@@ -52,12 +52,13 @@ var newheadch chan newhead
 
 func ProcessBlock(b *blockchain.BlockChain, block *btcutil.Block, flags blockchain.BehaviorFlags) {
 	flags |= blockchain.BFNoConnect
+	fmt.Printf("Consensus for block at %d", block.Height)
 	newblockch <- newblock { b,block, flags }
 }
 
 func ProcessHeader(b *blockchain.BlockChain, block *MsgMerkleBlock) {
 	flags := blockchain.BFNoConnect
-
+	fmt.Printf("Consensus for header at %d", block.Height)
 	newheadch <- newhead { b,block, flags }
 }
 

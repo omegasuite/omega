@@ -391,7 +391,7 @@ out:
 		// a new block template can be generated.  When the return is
 		// true a solution was found, so submit the solved block.
 		if m.solveBlock(template, curHeight+1, ticker, quit) {
-			log.Info("New miner block produced")
+			log.Infof("New miner block produced by %s at %d", payToAddress.String(), template.Height)
 			block := wire.NewMinerBlock(template.Block.(*wire.MingingRightBlock))
 			m.submitBlock(block)
 		} else {

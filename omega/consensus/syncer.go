@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"fmt"
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -482,6 +483,8 @@ func (self *Syncer) SetCommittee(c int32) {
 		self.Quit()
 		return
 	}
+
+	fmt.Printf("Consensus running block at %d", self.Height)
 
 	go self.run()
 }
