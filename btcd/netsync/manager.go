@@ -1162,7 +1162,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	if lastMinerBlock != -1 && sm.current() {
 		blkHeight, err := sm.chain.Miners.(*minerchain.MinerChain).BlockHeightByHash(&invVects[lastMinerBlock].Hash)
 		if err == nil {
-			peer.UpdateLastBlockHeight(blkHeight)
+			peer.UpdateLastMinerBlockHeight(blkHeight)
 		}
 	}
 
