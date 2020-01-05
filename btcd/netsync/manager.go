@@ -530,8 +530,11 @@ func (sm *SyncManager) handleTxMsg(tmsg *txMsg) {
 
 // current returns true if we believe we are synced with our peers, false if we
 // still have blocks to check
-func (sm *SyncManager) current() bool {
-	if !sm.chain.IsCurrent() {
+func (sm *SyncManager) current(t int) bool {
+	if t == 0 && !sm.chain.IsCurrent() {
+		return false
+	}
+	if t == 1 && !sm.chain.Miners.IsCurrent() {
 		return false
 	}
 
@@ -543,10 +546,10 @@ func (sm *SyncManager) current() bool {
 
 	// No matter what chain thinks, if we are below the block we are syncing
 	// to we are not current.
-	if sm.chain.BestSnapshot().Height < sm.syncPeer.LastBlock() {
+	if t == 0 && sm.chain.BestSnapshot().Height < sm.syncPeer.LastBlock() {
 		return false
 	}
-	if sm.chain.Miners.BestSnapshot().Height < sm.syncPeer.LastMinerBlock() {
+	if t == 1 && sm.chain.Miners.BestSnapshot().Height < sm.syncPeer.LastMinerBlock() {
 		return false
 	}
 	return true
@@ -725,7 +728,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	// if we're syncing the chain from scratch.
 	if blkHashUpdate != nil && heightUpdate != 0 {
 		peer.UpdateLastBlockHeight(heightUpdate)
-		if isOrphan || sm.current() {
+		if isOrphan || sm.current(0) {
 			go sm.peerNotifier.UpdatePeerHeights(blkHashUpdate, heightUpdate,
 				peer)
 		}
@@ -884,7 +887,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	// if we're syncing the chain from scratch.
 	if blkHashUpdate != nil && heightUpdate != 0 {
 		peer.UpdateLastMinerBlockHeight(heightUpdate)
-		if isOrphan || sm.current() {
+		if isOrphan || sm.current(1) {
 			go sm.peerNotifier.UpdatePeerMinerHeights(blkHashUpdate, heightUpdate,
 				peer)
 		}
@@ -1138,28 +1141,29 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	// announced block for this peer. We'll use this information later to
 	// update the heights of peers based on blocks we've accepted that they
 	// previously announced.
-	if lastBlock != -1 && (peer != sm.syncPeer || sm.current()) {
+	if lastBlock != -1 && (peer != sm.syncPeer || sm.current(0)) {
 		peer.UpdateLastAnnouncedBlock(&invVects[lastBlock].Hash)
 	}
-	if lastMinerBlock != -1 && (peer != sm.syncPeer || sm.current()) {
+	if lastMinerBlock != -1 && (peer != sm.syncPeer || sm.current(1)) {
 		peer.UpdateLastAnnouncedMinerBlock(&invVects[lastMinerBlock].Hash)
 	}
 
 	// Ignore invs from peers that aren't the sync if we are not current.
 	// Helps prevent fetching a mass of orphans.
-	if peer != sm.syncPeer && !sm.current() {
+	if peer != sm.syncPeer && ((lastBlock != -1 && !sm.current(0)) ||
+		(lastMinerBlock != -1 && !sm.current(1))) {
 		return
 	}
 
 	// If our chain is current and a peer announces a block we already
 	// know of, then update their current block height.
-	if lastBlock != -1 && sm.current() {
+	if lastBlock != -1 && sm.current(0) {
 		blkHeight, err := sm.chain.BlockHeightByHash(&invVects[lastBlock].Hash)
 		if err == nil {
 			peer.UpdateLastBlockHeight(blkHeight)
 		}
 	}
-	if lastMinerBlock != -1 && sm.current() {
+	if lastMinerBlock != -1 && sm.current(1) {
 		blkHeight, err := sm.chain.Miners.(*minerchain.MinerChain).BlockHeightByHash(&invVects[lastMinerBlock].Hash)
 		if err == nil {
 			peer.UpdateLastMinerBlockHeight(blkHeight)
@@ -1471,7 +1475,7 @@ out:
 				}
 
 			case isCurrentMsg:
-				msg.reply <- sm.current()
+				msg.reply <- sm.current(0) && sm.current(1)
 
 			case pauseMsg:
 				// Wait until the sender unpauses the manager.
@@ -1501,17 +1505,20 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 	case blockchain.NTBlockAccepted:
 		// Don't relay if we are not current. Other peers that are
 		// current should already know about it.
-		if !sm.current() {
-			return
-		}
 		switch notification.Data.(type) {
 		case *btcutil.Block:
+			if !sm.current(0) {
+				return
+			}
 			block := notification.Data.(*btcutil.Block)
 			// Generate the inventory vector and relay it.
 			iv := wire.NewInvVect(common.InvTypeBlock, block.Hash())
 			sm.peerNotifier.RelayInventory(iv, block.MsgBlock().Header)
 
 		case *wire.MinerBlock:
+			if !sm.current(1) {
+				return
+			}
 			block := notification.Data.(*wire.MinerBlock)
 			iv := wire.NewInvVect(common.InvTypeMinerBlock, block.Hash())
 			sm.peerNotifier.RelayInventory(iv, block.MsgBlock())
