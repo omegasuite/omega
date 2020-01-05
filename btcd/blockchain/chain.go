@@ -1297,7 +1297,9 @@ func (b *BlockChain) connectBestChain(node *blockNode, block *btcutil.Block, fla
 
 	// We're extending (or creating) a side chain, but the cumulative
 	// work for this new side chain is not enough to make it the new chain.
-	if node.workSum.Cmp(b.BestChain.Tip().workSum) <= 0 {
+	tip := b.BestChain.Tip()
+	if node.workSum.Cmp(tip.workSum) < 0 ||
+		(node.workSum.Cmp(tip.workSum) == 0 && node.height <= tip.height) {
 		// Log information about how the block is forking the chain.
 		fork := b.BestChain.FindFork(node)
 		if fork.hash.IsEqual(parentHash) {
