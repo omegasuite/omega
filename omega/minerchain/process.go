@@ -206,14 +206,16 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, true, nil
 	}
 
-	height,_ := b.blockChain.BlockHeightByHash(&block.MsgBlock().ReferredBlock)
-	ref := b.blockChain.BestChain.NodeByHeight(height)
-	height,_ = b.blockChain.BlockHeightByHash(&block.MsgBlock().BestBlock)
-	best := b.blockChain.BestChain.NodeByHeight(height)
+	height1,_ := b.blockChain.BlockHeightByHash(&block.MsgBlock().ReferredBlock)
+	ref := b.blockChain.BestChain.NodeByHeight(height1)
+	height2,_ = b.blockChain.BlockHeightByHash(&block.MsgBlock().BestBlock)
+	best := b.blockChain.BestChain.NodeByHeight(height2)
 
-	if (ref == nil || !block.MsgBlock().ReferredBlock.IsEqual(ref.Hash())) ||
-		(best == nil || !block.MsgBlock().BestBlock.IsEqual(best.Hash())) {
-		//		log.Infof("Adding orphan block %v with parent %v", blockHash, prevHash)
+	eq1 := block.MsgBlock().ReferredBlock.IsEqual(ref.Hash())
+	eq2 := block.MsgBlock().BestBlock.IsEqual(best.Hash())
+
+	if ref == nil || !eq1 || best == nil || !eq2 {
+		log.Infof("Adding orphan block %v (%d, %d)", blockHash, height1, height2)
 		b.addOrphanBlock(block)
 
 		return false, true, nil

@@ -44,6 +44,8 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	blockHeight := prevNode.height + 1
 	block.SetHeight(blockHeight)
 
+	log.Infof("miner maybeAcceptBlock at %d hash %x", blockHeight, block.Hash())
+
 	// The block must pass all of the validation rules which depend on the
 	// position of the block within the block chain.
 	err := b.checkBlockContext(block, prevNode, flags)
@@ -87,6 +89,7 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	if err != nil {
 		return false, err
 	}
+	log.Infof("isMainChain = %d", isMainChain)
 
 	// Notify the caller that the new block was accepted into the block
 	// chain.  The caller would typically want to react by relaying the
