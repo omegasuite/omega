@@ -1287,7 +1287,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// inventory message, so force a request for more.  This
 			// should only happen if we're on a really long side
 			// chain.
-			if i == lastBlock {
+			if i == lastMinerBlock {
 				// Request blocks after this one up to the
 				// final one the remote peer knows about (zero
 				// stop hash).
