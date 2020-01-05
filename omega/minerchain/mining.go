@@ -286,6 +286,27 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 	return false
 }
 
+func (g * MinerChain) QualifiedMier(privKeys map[btcutil.Address]*btcec.PrivateKey) btcutil.Address {
+	curHeight := g.BestSnapshot().Height
+	// Choose a payment address at random.
+
+	good := false
+	for addr, _ := range privKeys {
+		good = true
+		for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
+			p, _ := g.BlockByHeight(curHeight - int32(i))
+			if bytes.Compare(p.MsgBlock().Miner, addr.ScriptAddress()) == 0 {
+				good = false
+				break
+			}
+		}
+		if good {
+			return addr
+		}
+	}
+	return nil
+}
+
 // generateBlocks is a worker that is controlled by the miningWorkerController.
 // It is self contained in that it creates block templates and attempts to solve
 // them while detecting when it is performing stale work and reacting

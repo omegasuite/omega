@@ -489,6 +489,10 @@ out:
 			}
 		}
 
+		if m.g.Chain.Miners.(*minerchain.MinerChain).QualifiedMier(m.cfg.PrivKeys) != nil {
+			continue
+		}
+
 		time.Sleep(time.Second * 20)
 
 		log.Info("Try to solve block ")
