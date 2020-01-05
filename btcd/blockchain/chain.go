@@ -90,6 +90,7 @@ type MinerChain interface {
 	CalcNextRequiredDifficulty (timestamp time.Time) (uint32, error)
 	ProcessOrphans (* chainhash.Hash, BehaviorFlags) error
 	IsCurrent () bool
+	Subscribe(callback NotificationCallback)
 }
 
 type BlackList interface {

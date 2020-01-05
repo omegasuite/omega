@@ -1504,16 +1504,21 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 		if !sm.current() {
 			return
 		}
+		switch notification.Data.(type) {
+		case *btcutil.Block:
+			block := notification.Data.(*btcutil.Block)
+			// Generate the inventory vector and relay it.
+			iv := wire.NewInvVect(common.InvTypeBlock, block.Hash())
+			sm.peerNotifier.RelayInventory(iv, block.MsgBlock().Header)
 
-		block, ok := notification.Data.(*btcutil.Block)
-		if !ok {
+		case *wire.MinerBlock:
+			block := notification.Data.(*wire.MinerBlock)
+			iv := wire.NewInvVect(common.InvTypeMinerBlock, block.Hash())
+			sm.peerNotifier.RelayInventory(iv, block.MsgBlock())
+
+		default:
 			log.Warnf("Chain accepted notification is not a block.")
-			break
 		}
-
-		// Generate the inventory vector and relay it.
-		iv := wire.NewInvVect(common.InvTypeBlock, block.Hash())
-		sm.peerNotifier.RelayInventory(iv, block.MsgBlock().Header)
 
 	// A block has been connected to the main block chain.
 	case blockchain.NTBlockConnected:
@@ -1780,6 +1785,7 @@ func New(config *Config) (*SyncManager, error) {
 	}
 
 	sm.chain.Subscribe(sm.handleBlockchainNotification)
+	sm.chain.Miners.Subscribe(sm.handleBlockchainNotification)
 
 	return &sm, nil
 }
