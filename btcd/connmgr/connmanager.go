@@ -103,7 +103,7 @@ type Config struct {
 	// Listeners defines a slice of listeners for which the connection
 	// manager will take ownership of and accept connections.  When a
 	// connection is accepted, the OnAccept handler will be invoked with the
-	// connection.  Since the connection manager takes ownership of these
+	// connection.  Since tFailed to connecthe connection manager takes ownership of these
 	// listeners, they will be closed when the connection manager is
 	// stopped.
 	//
@@ -345,8 +345,7 @@ out:
 				}
 
 				connReq.updateState(ConnFailing)
-				log.Debugf("Failed to connect to %v: %v",
-					connReq, msg.err)
+//				log.Debugf("Failed to connect to %v: %v",	connReq, msg.err)
 				cm.handleFailedConn(connReq)
 			}
 
@@ -434,11 +433,11 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 		}
 	}
 
-	log.Infof("Attempting to connect to %v", c)
+//	log.Infof("Attempting to connect to %v", c)
 
 	conn, err := cm.cfg.Dial(c.Addr)
 	if err != nil {
-		log.Infof(". Failed to connect to %s\n", c.Addr.String())
+//		log.Infof(". Failed to connect to %s\n", c.Addr.String())
 		select {
 		case cm.requests <- handleFailed{c, err}:
 		case <-cm.quit:

@@ -953,7 +953,7 @@ func (p *Peer) PushGetMinerBlocksMsg(locator chainhash.BlockLocator, stopHash *c
 
 	// Filter duplicate getblocks requests.
 	p.prevGetBlocksMtx.Lock()
-	isDuplicate := p.prevGetBlocksStop != nil && p.prevGetMinerBlocksBegin != nil &&
+	isDuplicate := p.prevGetMinerBlocksStop != nil && p.prevGetMinerBlocksBegin != nil &&
 		beginHash != nil && stopHash.IsEqual(p.prevGetMinerBlocksStop) &&
 		beginHash.IsEqual(p.prevGetMinerBlocksBegin)
 	p.prevGetBlocksMtx.Unlock()
@@ -1553,19 +1553,19 @@ out:
 			}
 
 		case *wire.MsgBlock:
-			//			log.Infof("inHandler MsgBlock")
+			log.Infof("inHandler MsgBlock")
 			if p.cfg.Listeners.OnBlock != nil {
 				p.cfg.Listeners.OnBlock(p, msg, buf)
 			}
 
 		case *wire.MingingRightBlock:
-			//			log.Infof("inHandler MsgBlock")
+			log.Infof("inHandler MingingRightBlock")
 			if p.cfg.Listeners.OnMinerBlock != nil {
 				p.cfg.Listeners.OnMinerBlock(p, msg, buf)
 			}
 
 		case *wire.MsgInv:
-//			log.Infof("inHandler MsgInv")
+	log.Infof("inHandler MsgInv")
 			if p.cfg.Listeners.OnInv != nil {
 				p.cfg.Listeners.OnInv(p, msg)
 			}
@@ -1583,19 +1583,19 @@ out:
 			}
 
 		case *wire.MsgGetData:
-//			log.Infof("inHandler MsgGetData")
+			log.Infof("inHandler MsgGetData")
 			if p.cfg.Listeners.OnGetData != nil {
 				p.cfg.Listeners.OnGetData(p, msg)
 			}
 
 		case *wire.MsgGetBlocks:
-//			log.Infof("inHandler MsgGetBlocks")
+			log.Infof("inHandler MsgGetBlocks")
 			if p.cfg.Listeners.OnGetBlocks != nil {
 				p.cfg.Listeners.OnGetBlocks(p, msg)
 			}
 
 		case *wire.MsgGetMinerBlocks:
-//			log.Infof("inHandler MsgGetMinerBlocks")
+			log.Infof("inHandler MsgGetMinerBlocks")
 			if p.cfg.Listeners.OnGetMinerBlocks != nil {
 				p.cfg.Listeners.OnGetMinerBlocks(p, msg)
 			}
