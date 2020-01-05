@@ -565,7 +565,8 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	// if it is a block being processed by the committee, veryfy it is from the peer
 	// producing, i.e. the address in coinbase signature is the peer's
-	if wire.CommitteeSize > 1 && len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
+	if wire.CommitteeSize > 1 && bmsg.block.MsgBlock().Header.Nonce < 0 &&
+		len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
 		if len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) < 2 {
 			return
 		}
