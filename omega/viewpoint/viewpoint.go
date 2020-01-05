@@ -201,14 +201,16 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 			return fmt.Errorf("Attempt to add illegal polygon.")
 		}
 
-		for _, in := range tx.MsgTx().TxIn {
-			entry := view.Utxo.LookupEntry(in.PreviousOutPoint)
-			if entry == nil {
-				return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))
-			}
+		if !tx.IsCoinBase() {
+			for _, in := range tx.MsgTx().TxIn {
+				entry := view.Utxo.LookupEntry(in.PreviousOutPoint)
+				if entry == nil {
+					return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))
+				}
 
-			if entry.TokenType & 3 == 3 {
-				view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).deReference(view)
+				if entry.TokenType&3 == 3 {
+					view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).deReference(view)
+				}
 			}
 		}
 		for _, out := range tx.MsgTx().TxOut {
