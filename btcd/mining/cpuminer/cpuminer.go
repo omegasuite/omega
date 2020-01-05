@@ -463,10 +463,6 @@ out:
 				log.Infof("New block generated. nonce = %d", nonce)
 				m.submitBlock(block)
 
-				// TBD: optimization idea. instead of waiting a block connect at this height,
-				// we just keep on mining the next block. if lucky, this block is in main chain
-				// if not, we end up with a side chain and reorg it. the complexity lies in chain
-				// management, i.e. we add a block to main chain knowing it could be invalid.
 			connected:
 				for {
 					select {

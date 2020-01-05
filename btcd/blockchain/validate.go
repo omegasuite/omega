@@ -378,6 +378,10 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			}
 		}
 
+		if wire.CommitteeSize > 1 && flags & BFSubmission == BFSubmission {
+			return nil
+		}
+
 		// examine signatures
 		w := bytes.NewBuffer(make([]byte, 0, 36))
 		binary.Write(w, common.LittleEndian, block.Height())
