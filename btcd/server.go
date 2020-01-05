@@ -3199,7 +3199,7 @@ func (s *server) Rollback(n uint32) {
 		var h[4]byte
 		binary.LittleEndian.PutUint32(h[:], n)
 		// check db
-		s.db.View(func (tx database.Tx) error {
+		s.minerdb.View(func (tx database.Tx) error {
 			meta := tx.Metadata()
 			bkt := meta.Bucket(minerchain.BlacklistKeyName)
 			d := bkt.Get(h[:])
