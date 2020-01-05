@@ -155,13 +155,13 @@ func (c *Client) GetBlockAsync(blockHash *chainhash.Hash) FutureGetBlockResult {
 	return c.sendCmd(cmd)
 }
 
-func (c *Client) GetMinerBlockAsync(blockHash *chainhash.Hash) FutureGetMinerBlockResult {
+func (c *Client) GetMinerBlockAsync(blockHash *chainhash.Hash, verbose bool) FutureGetMinerBlockResult {
 	hash := ""
 	if blockHash != nil {
 		hash = blockHash.String()
 	}
 
-	cmd := btcjson.NewGetMinerBlockCmd(hash, btcjson.Bool(false))
+	cmd := btcjson.NewGetMinerBlockCmd(hash, btcjson.Bool(verbose))
 	return c.sendCmd(cmd)
 }
 
@@ -173,8 +173,12 @@ func (c *Client) GetBlock(blockHash *chainhash.Hash) (*wire.MsgBlock, error) {
 	return c.GetBlockAsync(blockHash).Receive()
 }
 
+func (c *Client) GetMinerBlockVerbose(blockHash *chainhash.Hash) ([]byte, error) {
+	return receiveFuture(c.GetMinerBlockAsync(blockHash, true))
+}
+
 func (c *Client) GetMinerBlock(blockHash *chainhash.Hash) (*wire.MingingRightBlock, error) {
-	return c.GetMinerBlockAsync(blockHash).Receive()
+	return c.GetMinerBlockAsync(blockHash, false).Receive()
 }
 
 // FutureGetBlockVerboseResult is a future promise to deliver the result of a

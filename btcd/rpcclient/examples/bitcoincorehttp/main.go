@@ -437,7 +437,7 @@ func main() {
 				log.Printf("Header.ReferredBlock:%s\n", res.ReferredBlock.String())
 				log.Printf("Header.BestBlock:%s\n", res.BestBlock.String())
 				log.Printf("Header.Miner:%s\n", hex.EncodeToString(res.Miner))
-				log.Printf("Header.BlackList:%s\n", hex.EncodeToString(res.BlackList))
+//				log.Printf("Header.BlackList:%s\n", hex.EncodeToString(res.BlackList))
 			}
 			break
 		case "getminerblocks":	//  "hash" ( verbose )
@@ -460,6 +460,9 @@ func main() {
 					break
 				}
 
+				s, _ := client.GetMinerBlockVerbose(res)
+				log.Print(string(s))
+/*
 				blk, err := client.GetMinerBlock(res)
 				if err != nil {
 					log.Print(err)
@@ -473,8 +476,10 @@ func main() {
 					log.Printf("Header.ReferredBlock:%s\n", blk.ReferredBlock.String())
 					log.Printf("Header.BestBlock:%s\n", blk.BestBlock.String())
 					log.Printf("Header.Miner:%s\n", hex.EncodeToString(blk.Miner))
-					log.Printf("Header.BlackList:%s\n", hex.EncodeToString(blk.BlackList))
+//					log.Printf("Header.BlackList:%s\n", hex.EncodeToString(blk.BlackList))
 				}
+
+ */
 			}
 
 			break
