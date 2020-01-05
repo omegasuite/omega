@@ -5,6 +5,7 @@
 package blockchain
 
 import (
+	"container/list"
 	"fmt"
 	"github.com/btcsuite/btcd/wire"
 	"time"
@@ -156,20 +157,75 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		log.Infof("ProcessBlock: ChainLock.Unlock")
 	} ()
 */
+	blockHeader := &block.MsgBlock().Header
+	prevHash := &blockHeader.PrevBlock
+	prevHashExists, err := b.blockExists(prevHash)
+	if err != nil {
+		return false, false, err
+	}
+	if !prevHashExists {
+		//		log.Infof("Adding orphan block %v with parent %v", blockHash, prevHash)
+		b.AddOrphanBlock(block)
+
+		return false, true, nil
+	}
+
+	prevNode := b.index.LookupNode(prevHash)
+
+	if prevNode == nil {
+		str := fmt.Sprintf("previous block %s is unknown", prevHash)
+		return false, false, ruleError(ErrPreviousBlockUnknown, str)
+	} else if b.index.NodeStatus(prevNode).KnownInvalid() {
+		str := fmt.Sprintf("previous block %s is known to be invalid", prevHash)
+		return false, false, ruleError(ErrInvalidAncestorBlock, str)
+	}
+
+	blockHeight := prevNode.height + 1
+	block.SetHeight(blockHeight)
 
 //	fastAdd := flags&BFFastAdd == BFFastAdd
 
+	var detachNodes *list.List
+	var attachable *list.List
+	var eHight * btcutil.Block
+
 	blockHash := block.Hash()
 	log.Tracef("Processing block %v", blockHash)
+
+	if eHight, _ = b.BlockByHeight(block.Height()); eHight != nil {
+		if wire.CommitteeSize > 1 && eHight.MsgBlock().Header.Nonce < 0 &&
+			len(eHight.MsgBlock().Transactions[0].SignatureScripts) <= 2 &&
+			len(block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSize/2 {
+			// reorg
+			goon := true
+			detachNodes = list.New()
+			if *blockHash == *eHight.Hash() {
+				attachable = list.New()
+			}
+			for n := b.BestChain.Tip(); n != nil && goon; n = n.parent {
+				detachNodes.PushBack(n)
+				goon = n.hash != *eHight.Hash()
+				if attachable != nil {
+					a,_ := b.BlockByHash(&n.hash)
+					attachable.PushBack(a)
+				}
+			}
+
+			if err := b.ReorganizeChain(detachNodes, list.New()); err != nil {
+				return false, false, err
+			}
+			flags ^= BFNoConnect
+		}
+	}
 
 	// The block must not already exist in the main chain or side chains.
 	exists, err := b.blockExists(blockHash)
 	if err != nil {
 		return false, false, err
 	}
+
 	if exists {
-		str := fmt.Sprintf("already have block %v", blockHash)
-		return false, false, ruleError(ErrDuplicateBlock, str)
+		return false, false, fmt.Errorf("Block already exists")
 	}
 
 	// The block must not already exist as an orphan.
@@ -195,7 +251,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// rejecting easy to mine, but otherwise bogus, blocks that could be
 	// used to eat memory, and ensuring expected (versus claimed) proof of
 	// work requirements since the previous checkpoint are met.
-	blockHeader := &block.MsgBlock().Header
 	checkpointNode, err := b.findPreviousCheckpoint()
 	if err != nil {
 		return false, false, err
@@ -212,18 +267,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	// Handle orphan blocks.
-	prevHash := &blockHeader.PrevBlock
-	prevHashExists, err := b.blockExists(prevHash)
-	if err != nil {
-		return false, false, err
-	}
-	if !prevHashExists {
-//		log.Infof("Adding orphan block %v with parent %v", blockHash, prevHash)
-		b.AddOrphanBlock(block)
-
-		return false, true, nil
-	}
-
+/*
 	requiredRotate := b.BestSnapshot().LastRotation
 	header := &block.MsgBlock().Header
 	if header.Nonce > 0 {
@@ -231,8 +275,16 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	} else if header.Nonce == -(wire.MINER_RORATE_FREQ - 1){
 		requiredRotate++
 	}
+*/
 
 	isMainChain := false
+
+	if flags & BFNoConnect == BFNoConnect {
+		// this mark an pre-consus block
+		b.AddOrphanBlock(block)
+		return isMainChain, false, nil
+	}
+
 //	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {
 		isMainChain, err = b.maybeAcceptBlock(block, flags)
 		if err != nil {
@@ -245,10 +297,14 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 //		return false, true, nil
 //	}
 
-	if flags & BFNoConnect == BFNoConnect {
-		// this mark an pre-consus block
-		b.AddOrphanBlock(block)
-		return isMainChain, false, nil
+	if attachable != nil && attachable.Len() > 0 {
+		for e := attachable.Front(); e != nil; e = e.Next() {
+			// optimization: skip checkProofOfWork & checkBlockContext in maybeAcceptBlock
+			_, err = b.maybeAcceptBlock(e.Value.(*btcutil.Block), BFNone)
+			if err != nil {
+				return false, false, err
+			}
+		}
 	}
 
 	if isMainChain {

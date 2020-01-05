@@ -1430,16 +1430,18 @@ out:
 			case processBlockMsg:
 				_, isOrphan, err := sm.chain.ProcessBlock(
 					msg.block, msg.flags)
-				if err != nil {
-					msg.reply <- processBlockResponse{
-						isOrphan: false,
-						err:      err,
+				if msg.reply != nil {
+					if err != nil {
+						msg.reply <- processBlockResponse{
+							isOrphan: false,
+							err:      err,
+						}
 					}
-				}
 
-				msg.reply <- processBlockResponse{
-					isOrphan: isOrphan,
-					err:      nil,
+					msg.reply <- processBlockResponse{
+						isOrphan: isOrphan,
+						err:      nil,
+					}
 				}
 
 			case processConsusMsg:
@@ -1702,6 +1704,7 @@ func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.Behav
 	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
 		// need to go through a committee to finalize it
 		if flags & blockchain.BFSubmission == blockchain.BFSubmission {
+			sm.msgChan <- processBlockMsg{block: block, flags: flags, reply: nil}
 			flags ^= blockchain.BFSubmission
 			sm.peerNotifier.AnnounceNewBlock(block)
 		}
