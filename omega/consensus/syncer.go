@@ -463,6 +463,9 @@ func (self *Syncer) SetCommittee(c int32) {
 
 	for i := c - wire.CommitteeSize + 1; i <= c; i++ {
 		blk,_ := self.Chain.Miners.BlockByHeight(i)
+		if blk == nil {
+			continue
+		}
 		var adr [20]byte
 		copy(adr[:], blk.MsgBlock().Miner)
 		self.Members[adr] = i - (c - wire.CommitteeSize + 1)
