@@ -1401,13 +1401,14 @@ func (sm *SyncManager) limitMap(m map[chainhash.Hash]struct{}, limit int) {
 func (sm *SyncManager) blockHandler() {
 out:
 	for {
-		if len(sm.msgChan) > 5 {
-			log.Infof("blockHandler queue pending len = ", len(sm.msgChan))
-		}
+//		if len(sm.msgChan) > 5 {
+//			log.Infof("blockHandler queue pending len = ", len(sm.msgChan))
+//		}
 
 		select {
 		case m := <-sm.msgChan:
-			log.Infof("blockHandler took a message from sm.msgChan: ", reflect.TypeOf(m).String())
+//			log.Infof("blockHandler took a message from sm.msgChan: ", reflect.TypeOf(m).String())
+
 			switch msg := m.(type) {
 			case *newPeerMsg:
 				sm.handleNewPeerMsg(msg.peer)
