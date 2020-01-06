@@ -1553,7 +1553,7 @@ out:
 			}
 
 		case *wire.MsgBlock:
-			log.Infof("inHandler MsgBlock")
+//			log.Infof("inHandler MsgBlock")
 			if p.cfg.Listeners.OnBlock != nil {
 				p.cfg.Listeners.OnBlock(p, msg, buf)
 			}
