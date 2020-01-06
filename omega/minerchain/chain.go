@@ -740,7 +740,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 //			block.Hash())
 //	}
 
-	// We're extending (or creating) a side chain, but the cumulative
+	// We're extending (or creating) a side chain, but thconnectBlock must be called with a blocke cumulative
 	// work for this new side chain is not enough to make it the new chain.
 	if node.height < b.BestChain.Tip().height {
 		// Log information about how the block is forking the chain.

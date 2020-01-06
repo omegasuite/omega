@@ -325,6 +325,7 @@ out:
 	for {
 		// Quit when the miner is stopped.
 		select {
+		case <-m.connch:	// prevent chan full & blocking
 		case <-quit:
 			break out
 		default:

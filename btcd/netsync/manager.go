@@ -9,6 +9,7 @@ import (
 	"container/list"
 	"github.com/btcsuite/omega/minerchain"
 	"net"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -822,7 +823,11 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
+
+	log.Infof("sm.chain.Miners.ProcessBlock")
 	_, isOrphan, err := sm.chain.Miners.ProcessBlock(bmsg.block, behaviorFlags)
+	log.Infof("Processed")
+
 	if err != nil {
 		// When the error is a rule error, it means the block was simply
 		// rejected as opposed to something actually going wrong, so log
@@ -1396,10 +1401,13 @@ func (sm *SyncManager) limitMap(m map[chainhash.Hash]struct{}, limit int) {
 func (sm *SyncManager) blockHandler() {
 out:
 	for {
+		if len(sm.msgChan) > 5 {
+			log.Infof("blockHandler queue pending len = ", len(sm.msgChan))
+		}
+
 		select {
 		case m := <-sm.msgChan:
-//			log.Infof("blockHandler received following message from sm.msgChan:")
-//			log.Infof(fmt.Sprint("%v", m))
+			log.Infof("blockHandler took a message from sm.msgChan: ", reflect.TypeOf(m).String())
 			switch msg := m.(type) {
 			case *newPeerMsg:
 				sm.handleNewPeerMsg(msg.peer)
@@ -1524,14 +1532,14 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 			sm.peerNotifier.RelayInventory(iv, block.MsgBlock())
 
 		default:
-			log.Warnf("Chain accepted notification is not a block.")
+			log.Warnf("Chain accepted notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
 		}
 
 	// A block has been connected to the main block chain.
 	case blockchain.NTBlockConnected:
 		block, ok := notification.Data.(*btcutil.Block)
 		if !ok {
-//			log.Warnf("Chain accepted notification is not a block.")
+			log.Warnf("Chain NTBlockConnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
 			break
 		}
 
@@ -1569,7 +1577,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 	case blockchain.NTBlockDisconnected:
 		block, ok := notification.Data.(*btcutil.Block)
 		if !ok {
-			log.Warnf("Chain disconnected notification is not a block.")
+			log.Warnf("Chain NTBlockDisconnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
 			break
 		}
 
@@ -1648,6 +1656,8 @@ func (sm *SyncManager) QueueInv(inv *wire.MsgInv, peer *peerpkg.Peer) {
 	if atomic.LoadInt32(&sm.shutdown) != 0 {
 		return
 	}
+
+	log.Info("OnInv add to sm.msgChan, len = %d", len(sm.msgChan))
 
 	sm.msgChan <- &invMsg{inv: inv, peer: peer}
 }
