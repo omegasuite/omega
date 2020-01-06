@@ -11,7 +11,11 @@ import (
 // log is a logger that is initialized with no output filters.  This
 // means the package will not perform any logging by default until the caller
 // requests it.
+
 var log btclog.Logger
+
+const blockchainLogFunc = (0x1 << 16) | 0xFFFF
+
 
 // The default amount of logging is none.
 func init() {

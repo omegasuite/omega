@@ -61,4 +61,6 @@ type Logger interface {
 
 	// SetLevel changes the logging level to the passed level.
 	SetLevel(level Level)
+
+	Fonctionality() uint64
 }

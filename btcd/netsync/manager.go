@@ -1531,7 +1531,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 	case blockchain.NTBlockConnected:
 		block, ok := notification.Data.(*btcutil.Block)
 		if !ok {
-			log.Warnf("Chain accepted notification is not a block.")
+//			log.Warnf("Chain accepted notification is not a block.")
 			break
 		}
 

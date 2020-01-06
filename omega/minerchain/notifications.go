@@ -22,6 +22,7 @@ func (b *MinerChain) Subscribe(callback blockchain.NotificationCallback) {
 // to New.
 func (b *MinerChain) sendNotification(typ blockchain.NotificationType, data interface{}) {
 	// Generate and send the notification.
+	log.Infof("sendNotification: %s", typ.String())
 	n := blockchain.Notification{Type: typ, Data: data}
 	b.notificationsLock.RLock()
 	for _, callback := range b.notifications {

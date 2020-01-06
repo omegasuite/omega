@@ -151,6 +151,7 @@ out:
 // submitBlock submits the passed block to network after ensuring it passes all
 // of the consensus validation rules.
 func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
+	log.Infof("submitBlock %d", block.Height())
 	m.submitBlockLock.Lock()
 	defer m.submitBlockLock.Unlock()
 
@@ -177,6 +178,7 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 		return false
 	}
 	if isOrphan {
+		log.Info("It is an orphan")
 		return false
 	}
 
@@ -347,6 +349,7 @@ out:
 		isCurrent := m.cfg.IsCurrent()
 		if curHeight != 0 && !isCurrent {
 			m.submitBlockLock.Unlock()
+			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent ")
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -382,6 +385,7 @@ out:
 		m.submitBlockLock.Unlock()
 
 		if err != nil || template == nil {
+			log.Infof("generateBlocks: sleep on err != nil || template == nil, curHeight = %d", curHeight)
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -395,7 +399,7 @@ out:
 			block := wire.NewMinerBlock(template.Block.(*wire.MingingRightBlock))
 			m.submitBlock(block)
 		} else {
-			log.Info("No New block produced")
+//			log.Info("No New block produced")
 		}
 	}
 

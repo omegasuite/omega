@@ -560,8 +560,17 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	// Rather than doing two loads, cache the loaded data into these slices.
 	attachBlocks := make([]*wire.MinerBlock, 0, attachNodes.Len())
 
+	var forkNode * blockNode
+	var oldBest * blockNode
+	var newBest * blockNode
+
 	for e := detachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*blockNode)
+		forkNode = n.parent
+		if oldBest != nil {
+			oldBest = n
+		}
+
 		var block *wire.MinerBlock
 		err := b.db.View(func(dbTx database.Tx) error {
 			var err error
@@ -594,8 +603,10 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	// at least a couple of ways accomplish that rollback, but both involve
 	// tweaking the chain and/or database.  This approach catches these
 	// issues before ever modifying the chain.
+
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*blockNode)
+		newBest = n
 
 		var block *wire.MinerBlock
 		err := b.db.View(func(dbTx database.Tx) error {
@@ -645,14 +656,14 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 
 	// Log the point where the chain forked and old and new best chain
 	// heads.
-//	if forkNode != nil {
-//		log.Infof("REORGANIZE: Chain forks at %v (height %v)", forkNode.hash,
-//			forkNode.height)
-//	}
-//	log.Infof("REORGANIZE: Old best chain head was %v (height %v)",
-//		&oldBest.hash, oldBest.height)
-//	log.Infof("REORGANIZE: New best chain head is %v (height %v)",
-//		newBest.hash, newBest.height)
+	if forkNode != nil {
+		log.Infof("REORGANIZE: Chain forks at %v (height %v)", forkNode.hash,
+			forkNode.height)
+	}
+	log.Infof("REORGANIZE: Old best chain head was %v (height %v)",
+		&oldBest.hash, oldBest.height)
+	log.Infof("REORGANIZE: New best chain head is %v (height %v)",
+		newBest.hash, newBest.height)
 
 	return nil
 }
@@ -733,7 +744,6 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 	// work for this new side chain is not enough to make it the new chain.
 	if node.height < b.BestChain.Tip().height {
 		// Log information about how the block is forking the chain.
-/*
 		fork := b.BestChain.FindFork(node)
 		if fork.hash.IsEqual(parentHash) {
 			log.Infof("FORK: Block %v forks the chain at height %d"+
@@ -744,7 +754,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 				"which forks the chain at height %d/block %v",
 				node.hash, fork.height, fork.hash)
 		}
-*/
+
 		return false, nil
 	}
 
@@ -758,7 +768,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 	detachNodes, attachNodes := b.getReorganizeNodes(node)
 
 	// Reorganize the chain.
-//	log.Infof("REORGANIZE: Block %v is causing a reorganize.", node.hash)
+	log.Infof("REORGANIZE: Block %v is causing a reorganize.", node.hash)
 	// a reorganization in miner chain may cause a reorg in tx chain
 	// but a reorg in tx chain will not cause reorg in mainer chain
 	var fork *blockNode

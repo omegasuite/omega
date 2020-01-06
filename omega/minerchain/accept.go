@@ -44,7 +44,7 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	blockHeight := prevNode.height + 1
 	block.SetHeight(blockHeight)
 
-	log.Infof("miner maybeAcceptBlock at %d hash %x", blockHeight, block.Hash())
+	log.Infof("maybeAcceptBlock at %d hash %x", blockHeight, block.Hash())
 
 	// The block must pass all of the validation rules which depend on the
 	// position of the block within the block chain.
@@ -87,6 +87,7 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	// also handles validation of the transaction scripts.
 	isMainChain, err := b.connectBestChain(newNode, block, flags)
 	if err != nil {
+		log.Infof("connectBestChain failed. %s", err.Error())
 		return false, err
 	}
 	log.Infof("isMainChain = %d", isMainChain)

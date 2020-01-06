@@ -78,6 +78,9 @@ func init() {
 // to a level which is below the current level are filtered.
 type Level uint32
 
+// 64-bit mask. Upper 48 bits for modules, lower 16 bits for functions
+type ModFunc uint64
+
 // Level constants.
 const (
 	LevelTrace Level = iota
@@ -315,8 +318,8 @@ func (b *Backend) printf(lvl, tag string, format string, args ...interface{}) {
 // Logger returns a new logger for a particular subsystem that writes to the
 // Backend b.  A tag describes the subsystem and is included in all log
 // messages.  The logger uses the info verbosity level by default.
-func (b *Backend) Logger(subsystemTag string) Logger {
-	return &slog{LevelInfo, subsystemTag, b}
+func (b *Backend) Logger(subsystemTag string, f uint64) Logger {
+	return &slog{LevelInfo, subsystemTag, b, f }
 }
 
 // slog is a subsystem logger for a Backend.  Implements the Logger interface.
@@ -324,8 +327,12 @@ type slog struct {
 	lvl Level // atomic
 	tag string
 	b   *Backend
+	F uint64
 }
 
+func (l *slog)  Fonctionality() uint64 {
+	return l.F
+}
 // Trace formats message using the default formats for its operands, prepends
 // the prefix as necessary, and writes to log with LevelTrace.
 //

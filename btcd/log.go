@@ -22,7 +22,10 @@ import (
 	"github.com/btcsuite/btcd/peer"
 
 	"github.com/btcsuite/btclog"
+	"github.com/btcsuite/omega/consensus"
 	"github.com/btcsuite/omega/minerchain"
+	"github.com/btcsuite/omega/ovm"
+	"github.com/btcsuite/omega/token"
 	"github.com/jrick/logrotate/rotator"
 )
 
@@ -54,37 +57,44 @@ var (
 	// application shutdown.
 	logRotator *rotator.Rotator
 
-	adxrLog = backendLog.Logger("ADXR")
-	amgrLog = backendLog.Logger("AMGR")
-	cmgrLog = backendLog.Logger("CMGR")
-	bcdbLog = backendLog.Logger("BCDB")
-	btcdLog = backendLog.Logger("BTCD")
-	chanLog = backendLog.Logger("CHAN")
-	discLog = backendLog.Logger("DISC")
-	indxLog = backendLog.Logger("INDX")
-	minrLog = backendLog.Logger("MINR")
-	peerLog = backendLog.Logger("PEER")
-	rpcsLog = backendLog.Logger("RPCS")
-	scrpLog = backendLog.Logger("SCRP")
-	srvrLog = backendLog.Logger("SRVR")
-	syncLog = backendLog.Logger("SYNC")
-	txmpLog = backendLog.Logger("TXMP")
+	adxrLog = backendLog.Logger("ADXR", 0xFFFF)
+	amgrLog = backendLog.Logger("AMGR", 0xFFFF)
+	cmgrLog = backendLog.Logger("CMGR", 0xFFFF)
+	bcdbLog = backendLog.Logger("BCDB", 0xFFFF)
+	btcdLog = backendLog.Logger("BTCD", 0xFFFF)
+	chanLog = backendLog.Logger("CHAN", 0xFFFF)
+	discLog = backendLog.Logger("DISC", 0xFFFF)
+	indxLog = backendLog.Logger("INDX", 0xFFFF)
+	minrLog = backendLog.Logger("MINR", 0xFFFF)
+	peerLog = backendLog.Logger("PEER", 0xFFFF)
+	rpcsLog = backendLog.Logger("RPCS", 0xFFFF)
+	scrpLog = backendLog.Logger("SCRP", 0xFFFF)
+	srvrLog = backendLog.Logger("SRVR", 0xFFFF)
+	syncLog = backendLog.Logger("SYNC", 0xFFFF)
+	txmpLog = backendLog.Logger("TXMP", 0xFFFF)
+	ovmLog = backendLog.Logger("OVM", 0xFFFF)
+	consensusLog = backendLog.Logger("CNSS", 0xFFFF)
+	minerLog = backendLog.Logger("MNER", 0xFFFF)
+	tokenLog = backendLog.Logger("TKN", 0xFFFF)
 )
 
 // Initialize package-global logger variables.
 func init() {
-	addrmgr.UseLogger(amgrLog)
-	connmgr.UseLogger(cmgrLog)
-	database.UseLogger(bcdbLog)
-	blockchain.UseLogger(chanLog)
-	indexers.UseLogger(indxLog)
-	mining.UseLogger(minrLog)
-	cpuminer.UseLogger(minrLog)
-	minerchain.UseLogger(minrLog)
+	addrmgr.UseLogger(btclog.Disabled)	// amgrLog)
+	connmgr.UseLogger(btclog.Disabled)	// cmgrLog)
+	database.UseLogger(btclog.Disabled)	// bcdbLog)
+	blockchain.UseLogger(btclog.Disabled)	// chanLog)
+	indexers.UseLogger(btclog.Disabled)	// indxLog)
+	mining.UseLogger(btclog.Disabled)	// minrLog)
+	cpuminer.UseLogger(btclog.Disabled)	// minrLog)
 	peer.UseLogger(peerLog)
 //	UseLogger(scrpLog)
-	netsync.UseLogger(syncLog)
-	mempool.UseLogger(txmpLog)
+	netsync.UseLogger(btclog.Disabled)	// syncLog)
+	mempool.UseLogger(btclog.Disabled)	// txmpLog)
+	ovm.UseLogger(btclog.Disabled)	// ovmLog)
+	consensus.UseLogger(btclog.Disabled)	// consensusLog)
+	minerchain.UseLogger(minerLog)
+	token.UseLogger(btclog.Disabled)	// tokenLog)
 }
 
 // subsystemLoggers maps each subsystem identifier to its associated logger.
