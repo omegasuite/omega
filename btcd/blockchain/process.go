@@ -285,7 +285,17 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return isMainChain, false, nil
 	}
 
-//	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {
+	state := b.BestSnapshot()
+	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
+		state.LastRotation++	// = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
+		mstate := b.Miners.BestSnapshot()
+		if int32(state.LastRotation) - wire.CommitteeSize >= mstate.Height {
+			b.AddOrphanBlock(block)
+			return isMainChain, true, nil
+		}
+	}
+
+	//	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {
 		isMainChain, err = b.maybeAcceptBlock(block, flags)
 		if err != nil {
 			return false, false, err

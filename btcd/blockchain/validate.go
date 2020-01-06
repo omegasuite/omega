@@ -415,11 +415,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 					matched = true
 				}
 			}
-			
-			
-			
-			
-			
+
 			if !matched {
 				return ruleError(ErrHighHash, "Unauthorized miner signature")
 			}

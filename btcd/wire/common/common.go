@@ -780,6 +780,7 @@ var ivStrings = map[InvType]string{
 	InvTypeError:                "ERROR",
 	InvTypeTx:                   "MSG_TX",
 	InvTypeBlock:                "MSG_BLOCK",
+	InvTypeMinerBlock:           "MSG_MINERBLOCK",
 	InvTypeFilteredBlock:        "MSG_FILTERED_BLOCK",
 	InvTypeWitnessBlock:         "MSG_WITNESS_BLOCK",
 	InvTypeWitnessTx:            "MSG_WITNESS_TX",

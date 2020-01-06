@@ -1565,7 +1565,7 @@ out:
 			}
 
 		case *wire.MsgInv:
-	log.Infof("inHandler MsgInv")
+	log.Infof("inHandler MsgInv %s %s %x", p.addr, msg.InvList[0].Type.String(), msg.InvList[0].Hash)
 			if p.cfg.Listeners.OnInv != nil {
 				p.cfg.Listeners.OnInv(p, msg)
 			}

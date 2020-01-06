@@ -98,6 +98,8 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	b.sendNotification(blockchain.NTBlockAccepted, block)
 	b.chainLock.Lock()
 
+	log.Infof("maybeAcceptBlock done")
+
 	return isMainChain, nil
 }
 

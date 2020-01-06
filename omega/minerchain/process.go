@@ -145,7 +145,7 @@ func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.Behav
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.BehaviorFlags) (bool, bool, error) {
-//	log.Infof("MinerChain.ProcessBlock: ChainLock.RLock")
+	log.Infof("MinerChain.ProcessBlock: ChainLock.RLock")
 	b.chainLock.Lock()
 	defer b.chainLock.Unlock()
 /*
@@ -178,6 +178,8 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	if err != nil {
 		return false, false, err
 	}
+
+	log.Infof("checkBlockSanity pass")
 
 	var name[20]byte
 	copy(name[:], block.MsgBlock().Miner)
@@ -221,6 +223,8 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, true, nil
 	}
 
+	log.Infof("maybeAcceptBlock ready")
+
 	// The block has passed all context independent checks and appears sane
 	// enough to potentially accept it into the block chain.
 	isMainChain, err := b.maybeAcceptBlock(block, flags)
@@ -229,6 +233,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	}
 
 	if isMainChain {
+		log.Infof("b.blockChain.ProcessOrphans ready")
 		b.blockChain.ProcessOrphans(&b.blockChain.BestSnapshot().Hash, blockchain.BFNone)
 	}
 
@@ -237,6 +242,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// there are no more.
 	err = b.ProcessOrphans(blockHash, flags)
 	if err != nil {
+		log.Infof("b.ProcessOrphans error %s", err)
 		return false, false, err
 	}
 
