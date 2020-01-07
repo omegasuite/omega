@@ -354,6 +354,13 @@ out:
 		bs := m.g.BestSnapshot()
 		curHeight := bs.Height
 
+		if int32(bs.LastRotation) > m.g.Chain.Miners.BestSnapshot().Height {
+			m.submitBlockLock.Unlock()
+			log.Infof("generateBlocks: sleep on LastRotation > Miners.Height")
+			time.Sleep(time.Second * 5)
+			continue
+		}
+
 //		log.Infof("Preparing for minging at height = %d last rotation = %d", curHeight, bs.LastRotation)
 
 		if curHeight != 0 && !isCurrent {
