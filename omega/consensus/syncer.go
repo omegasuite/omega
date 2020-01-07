@@ -10,6 +10,7 @@ import (
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/token"
 	"net/http"
+	"reflect"
 )
 
 type tree struct {
@@ -102,6 +103,7 @@ out:
 			}
 
 		case m := <- self.messages:
+			log.Infof("processing %s message", reflect.TypeOf(m).String())
 			switch m.(type) {
 			case *MsgKnowledge:
 				k := m.(*MsgKnowledge)

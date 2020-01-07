@@ -136,12 +136,14 @@ func Consensus(s PeerNotifier) {
 		case <-newheadch:
 
 		default:
+			log.Info("consensus quits")
 			return
 		}
 	}
 }
 
 func HandleMessage(m Message) {
+	log.Infof("consensus message for height %d", m.Block())
 	s, ok := miner.Sync[m.Block()]
 	if !ok {
 		miner.Sync[m.Block()] = CreateSyncer()
