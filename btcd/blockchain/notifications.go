@@ -29,8 +29,6 @@ const (
 	// NTBlockDisconnected indicates the associated block was disconnected
 	// from the main chain.
 	NTBlockDisconnected
-
-	NTBlockMinerAccepted
 )
 
 // notificationTypeStrings is a map of notification types back to their constant

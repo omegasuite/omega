@@ -54,6 +54,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	err = b.db.Update(func(dbTx database.Tx) error {
 		return dbStoreBlock(dbTx, block)
 	})
+
 	if err != nil {
 		return false, err
 	}
@@ -83,10 +84,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	// chain.  The caller would typically want to react by relaying the
 	// inventory to other peers.
 	b.ChainLock.Unlock()
-	b.sendNotification(NTBlockMinerAccepted, block)
-	if flags & BFSubmission != BFSubmission {
-		b.sendNotification(NTBlockAccepted, block)
-	}
+	b.sendNotification(NTBlockAccepted, block)
 	b.ChainLock.Lock()
 
 	return isMainChain, nil

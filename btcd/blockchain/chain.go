@@ -651,6 +651,7 @@ func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 	state := newBestState(node, blockSize, blockWeight, numTxns,
 		curTotalTxns+numTxns, node.CalcPastMedianTime(), b.BestSnapshot().Bits,
 		b.BestSnapshot().LastRotation)
+
 	if node.nonce > 0 {
 		state.LastRotation += wire.CommitteeSize / 2 + 1
 	} else if node.nonce <= -wire.MINER_RORATE_FREQ {
@@ -811,6 +812,7 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 
 	state := newBestState(prevNode, blockSize, blockWeight, numTxns,
 		newTotalTxns, prevNode.CalcPastMedianTime(), bits, rotation)	// prevNode.bits, b.BestSnapshot().LastRotation)
+
 /*
 	ht := b.BestSnapshot().Height
 	h := - node.nonce
@@ -1291,6 +1293,7 @@ func (b *BlockChain) connectBestChain(node *blockNode, block *btcutil.Block, fla
 
 		return true, nil
 	}
+
 	if fastAdd {
 		log.Warnf("fastAdd set in the side chain case? %v\n",
 			block.Hash())

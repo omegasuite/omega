@@ -105,7 +105,7 @@ out:
 		case m := <- self.messages:
 			log.Infof("processing %s message", reflect.TypeOf(m).String())
 			switch m.(type) {
-			case *MsgKnowledge:
+			case *MsgKnowledge:		// passing knowledge
 				k := m.(*MsgKnowledge)
 				if !self.validateMsg(k.Finder, &k.M, m) {
 					continue
@@ -114,19 +114,35 @@ out:
 					self.candidacy()
 				}
 
-			case *MsgCandidate:
-				self.Candidate(m.(*MsgCandidate))
+			case *MsgCandidate:		// announce candidacy
+				k := m.(*MsgCandidate)
+				if !self.validateMsg(k.F, &k.M, m) {
+					continue
+				}
+				self.Candidate(k)
 
-			case *MsgCandidateResp:
-				self.candidateResp(m.(*MsgCandidateResp))
+			case *MsgCandidateResp:		// response to candidacy announcement
+				k := m.(*MsgCandidateResp)
+				if !self.validateMsg(k.From, &k.M, m) {
+					continue
+				}
+				self.candidateResp(k)
 
-			case *MsgRelease:
-				self.Release(m.(*MsgRelease))
+			case *MsgRelease:			// grant a release from duty
+				k := m.(*MsgRelease)
+				if !self.validateMsg(k.From, nil, m) {
+					continue
+				}
+				self.Release(k)
 
-			case *MsgConsensus:
-				self.Consensus(m.(*MsgConsensus))
+			case *MsgConsensus:			// announce consensus reached
+				k := m.(*MsgConsensus)
+				if !self.validateMsg(k.From, nil, m) {
+					continue
+				}
+				self.Consensus(k)
 
-			case *MsgSignature:
+			case *MsgSignature:		// give signature
 				self.Signature(m.(*MsgSignature))
 			}
 
@@ -440,9 +456,9 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 		self.pull(*m, c)
 		return false
 	} else if m != nil && self.forest[finder].hash != *m {
-		self.Malice[finder] = struct {}{}
-		delete(self.forest, finder)
-		self.knowledges.Malice(c)
+//		self.Malice[finder] = struct {}{}
+//		delete(self.forest, finder)
+//		self.knowledges.Malice(c)
 		return false
 	}
 	return true
@@ -523,6 +539,7 @@ func (self *Syncer) UpdateChainHeight(h int32) {
 	}
 }
 
+/*
 func (self *Syncer) HeaderInit(block *MsgMerkleBlock) {
 	var adr [20]byte
 	copy(adr[:], block.From[:])
@@ -550,6 +567,8 @@ func (self *Syncer) HeaderInit(block *MsgMerkleBlock) {
 		block: nil,
 	}
 }
+
+ */
 
 func (self *Syncer) BlockInit(block *btcutil.Block) {
 	var adr [20]byte

@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/omega/consensus"
 	"math/big"
 	"net"
 	"time"
@@ -439,6 +438,7 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 }
 
 func (s *server) AnnounceNewBlock(m * btcutil.Block) {
+/*
 	h := consensus.MsgMerkleBlock{
 		Fees: 0,
 		Header: m.MsgBlock().Header,
@@ -449,7 +449,8 @@ func (s *server) AnnounceNewBlock(m * btcutil.Block) {
 		_,v := txo.Value.Value()
 		h.Fees += uint64(v)
 	}
-	s.committeecast <- broadcastMsg { message: &h}
+ */
+	s.committeecast <- broadcastMsg { message: m.MsgBlock()}
 }
 
 func (s *server) CommitteeMsg(p int32, m wire.Message) bool {
@@ -463,8 +464,9 @@ func (s *server) CommitteeMsg(p int32, m wire.Message) bool {
 }
 
 func (s *server) NewConsusBlock(m * btcutil.Block) {
-	s.chain.ProcessBlock(m, blockchain.BFNone)
-	s.broadcast <- broadcastMsg { message: m.MsgBlock()}
+	if _, _, err := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil {
+		s.broadcast <- broadcastMsg { message: m.MsgBlock()}
+	}
 }
 
 func (s *server) handleCommitteecastMsg(state *peerState, bmsg *broadcastMsg) {

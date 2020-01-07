@@ -477,7 +477,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress btcutil.Address) (*Bloc
 	if err != nil {
 		return nil, err
 	}
-	coinbaseSigOpCost := int64(blockchain.CountSigOps(coinbaseTx)) * chaincfg.WitnessScaleFactor
+	coinbaseSigOpCost := int64(blockchain.CountSigOps(coinbaseTx))	// * chaincfg.WitnessScaleFactor
 
 	// Get the current source transactions and create a priority queue to
 	// hold the transactions which are ready for inclusion into a block

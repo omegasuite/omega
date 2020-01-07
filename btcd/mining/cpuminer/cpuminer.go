@@ -5,13 +5,9 @@
 package cpuminer
 
 import (
-	"errors"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/omega/minerchain"
 	"github.com/btcsuite/omega/ovm"
-	"math/rand"
-
 	//	"runtime"
 	"sync"
 	"time"
@@ -175,7 +171,9 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 	// a new block, but the check only happens periodically, so it is
 	// possible a block was found and submitted in between.
 	msgBlock := block.MsgBlock()
-	if !msgBlock.Header.PrevBlock.IsEqual(&m.g.BestSnapshot().Hash) {
+
+	best := m.g.BestSnapshot()
+	if !msgBlock.Header.PrevBlock.IsEqual(&best.Hash) {
 		log.Info("Block submitted via CPU miner with previous "+
 			"block %s is stale", msgBlock.Header.PrevBlock)
 		return false
@@ -183,7 +181,7 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 
 	// Process this block using the same rules as blocks coming from other
 	// nodes.  This will in turn relay it to the network like normal.
-	isOrphan, err := m.cfg.ProcessBlock(block, blockchain.BFSubmission)
+	isOrphan, err := m.cfg.ProcessBlock(block, blockchain.BFSubmission | blockchain.BFNoConnect)
 	if err != nil {
 		// Anything other than a rule violation is an unexpected error,
 		// so log that error as an internal error.
@@ -197,6 +195,7 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 //		log.Info("Block submitted via CPU miner rejected: %v", err)
 		return false
 	}
+
 	if isOrphan {
 		log.Info("Block submitted via CPU miner is an orphan")
 		return false
@@ -296,7 +295,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 
 func (m *CPUMiner) notice (notification *blockchain.Notification) {
 	switch notification.Type {
-	case blockchain.NTBlockMinerAccepted:
+	case blockchain.NTBlockConnected:
 		switch notification.Data.(type) {
 //		case *wire.MinerBlock:
 		case *btcutil.Block:
@@ -387,7 +386,7 @@ out:
 		var payToAddr * btcutil.Address
 		var activeAddr * btcutil.Address
 
-		pb := m.g.Chain.BestChain.Tip().Header()
+		pb := m.g.Chain.BestChain.Tip().Header().Nonce
 
 		committee := m.g.Committee()
 
@@ -434,7 +433,7 @@ out:
 		}
 
 		if !powMode {
-			nonce := pb.Nonce
+			nonce := pb
 			if nonce >= 0 || nonce <= -wire.MINER_RORATE_FREQ {
 				nonce = -1
 			} else if nonce == -wire.MINER_RORATE_FREQ+1 {
@@ -442,6 +441,7 @@ out:
 			} else {
 				nonce--
 			}
+
 			/*
 				if nonce == -wire.MINER_RORATE_FREQ || nonce >= 0 {
 					nonce = - int32(m.g.BestSnapshot().LastRotation + 1 + wire.MINER_RORATE_FREQ)
@@ -475,7 +475,9 @@ out:
 
 			if !powMode {
 				log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
-				m.submitBlock(block)
+				if !m.submitBlock(block) {
+					continue
+				}
 
 			connected:
 				for {
@@ -501,9 +503,9 @@ out:
 			}
 		}
 
-		if m.g.Chain.Miners.(*minerchain.MinerChain).QualifiedMier(m.cfg.PrivKeys) != nil {
-			continue
-		}
+// ???		if m.g.Chain.Miners.(*minerchain.MinerChain).QualifiedMier(m.cfg.PrivKeys) != nil {
+//			continue
+//		}
 
 		time.Sleep(time.Second * 20)
 
@@ -763,6 +765,8 @@ func (m *CPUMiner) NumWorkers() int32 {
 // The function returns a list of the hashes of generated blocks.
 
 func (m *CPUMiner) GenerateNBlocks(n uint32) ([]*chainhash.Hash, error) {
+	return nil, fmt.Errorf("not supported")
+/*
 	m.Lock()
 
 	// Respond with an error if server is already mining.
@@ -804,7 +808,7 @@ func (m *CPUMiner) GenerateNBlocks(n uint32) ([]*chainhash.Hash, error) {
 		// be changing and this would otherwise end up building a new block
 		// template on a block that is in the process of becoming stale.
 		m.submitBlockLock.Lock()
-		curHeight := m.g.BestSnapshot().Height
+		curHeight := m.g.BestSnapshot().CHeight
 
 		// Choose a payment address at random.
 		rand.Seed(time.Now().UnixNano())
@@ -843,6 +847,7 @@ func (m *CPUMiner) GenerateNBlocks(n uint32) ([]*chainhash.Hash, error) {
 			}
 		}
 	}
+*/
 }
 
 // New returns a new instance of a CPU miner for the provided configuration.

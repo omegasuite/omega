@@ -1467,8 +1467,8 @@ out:
 					}
 				}
 
-			case *consensus.MsgMerkleBlock:
-				consensus.ProcessHeader(sm.chain, msg)
+//			case *consensus.MsgMerkleBlock:
+//				consensus.ProcessHeader(sm.chain, msg)
 
 			case processMinerBlockMsg:
 				_, isOrphan, err := sm.chain.Miners.ProcessBlock(
@@ -1737,24 +1737,29 @@ func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.Behav
 			// this is a locally mined block
 			// this would add the block to the chain as an orphan
 			log.Infof("send for local ProcessBlock")
-			sm.msgChan <- processBlockMsg{block: block, flags: flags, reply: nil}
+
+			sm.msgChan <- processBlockMsg{block: block, flags: flags, reply: reply}
+
+			response := <-reply
+			if response.err != nil {
+				return response.isOrphan, response.err
+			}
 
 			// notify others in comittee for consensus
 			log.Infof("committee cast")
 			flags ^= blockchain.BFSubmission
 			sm.peerNotifier.AnnounceNewBlock(block)
 		}
-		// for consensus generation
+		// for local consensus generation
 		log.Infof("send for consensus generation")
 		sm.msgChan <- processConsusMsg{block: block, flags: flags }
 		// treating these blocks as orphans because we may need to pull them upon request
 		return true, nil
 	} else {
 		sm.msgChan <- processBlockMsg{block: block, flags: flags, reply: reply}
+		response := <-reply
+		return response.isOrphan, response.err
 	}
-
-	response := <-reply
-	return response.isOrphan, response.err
 }
 
 // ProcessMinerBlock makes use of ProcessBlock on an internal instance of a block

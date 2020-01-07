@@ -48,7 +48,7 @@ type newhead struct {
 }
 
 var newblockch chan newblock
-var newheadch chan newhead
+// var newheadch chan newhead
 
 func ProcessBlock(b *blockchain.BlockChain, block *btcutil.Block, flags blockchain.BehaviorFlags) {
 	flags |= blockchain.BFNoConnect
@@ -56,11 +56,13 @@ func ProcessBlock(b *blockchain.BlockChain, block *btcutil.Block, flags blockcha
 	newblockch <- newblock { b,block, flags }
 }
 
+/*
 func ProcessHeader(b *blockchain.BlockChain, block *MsgMerkleBlock) {
 	flags := blockchain.BFNoConnect
 	fmt.Printf("Consensus for header at %d", block.Height)
 	newheadch <- newhead { b,block, flags }
 }
+*/
 
 var miner * Miner
 
@@ -102,7 +104,7 @@ func Consensus(s PeerNotifier) {
 				miner.Sync[blk.block.Height()].Initialize(blk.chain, blk.block.Height())
 			}
 			miner.Sync[blk.block.Height()].BlockInit(blk.block)
-
+/*
 		case head := <- newheadch:
 			top := head.chain.BestSnapshot().Height
 //			cleaner(top)
@@ -117,7 +119,7 @@ func Consensus(s PeerNotifier) {
 				miner.Sync[head.head.Height].Initialize(head.chain, head.head.Height)
 			}
 			miner.Sync[head.head.Height].HeaderInit(head.head)
-
+*/
 		case <- Quit:
 			log.Info("consensus received Quit")
 			for i, t := range miner.Sync {
@@ -133,7 +135,7 @@ func Consensus(s PeerNotifier) {
 		select {
 		case <-miner.updateheight:
 		case <-newblockch:
-		case <-newheadch:
+//		case <-newheadch:
 
 		default:
 			log.Info("consensus quits")
