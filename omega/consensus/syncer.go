@@ -488,7 +488,7 @@ func (self *Syncer) SetCommittee(c int32) {
 		return
 	}
 
-	fmt.Printf("Consensus running block at %d", self.Height)
+	log.Info("Consensus running block at %d", self.Height)
 
 	go self.run()
 }

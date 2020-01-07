@@ -1728,10 +1728,15 @@ func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.Behav
 	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
 		// need to go through a committee to finalize it
 		if flags & blockchain.BFSubmission == blockchain.BFSubmission {
+			// this is a locally mined block
+			// this would add the block to the chain as an orphan
 			sm.msgChan <- processBlockMsg{block: block, flags: flags, reply: nil}
+
+			// notify others in comittee for consensus
 			flags ^= blockchain.BFSubmission
 			sm.peerNotifier.AnnounceNewBlock(block)
 		}
+		// for consensus generation
 		sm.msgChan <- processConsusMsg{block: block, flags: flags }
 		// treating these blocks as orphans because we may need to pull them upon request
 		return true, nil

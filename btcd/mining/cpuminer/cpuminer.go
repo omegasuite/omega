@@ -445,6 +445,7 @@ out:
 			template.Block.(*wire.MsgBlock).Header.Nonce = nonce
 
 			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
+			block.SetHeight(template.Height)
 
 			if wire.CommitteeSize == 1 {
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
