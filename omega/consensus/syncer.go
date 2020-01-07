@@ -425,6 +425,7 @@ func CreateSyncer() *Syncer {
 	p.signed = make(map[[20]byte]struct{})
 	p.Members = make(map[[20]byte]int32)
 	p.Names = make(map[int32][20]byte)
+	p.Malice = make(map[[20]byte]struct {})
 
 	p.mode = 0
 	p.agreed = -1
