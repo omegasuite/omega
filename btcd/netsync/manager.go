@@ -1754,7 +1754,7 @@ func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.Behav
 		log.Infof("send for consensus generation")
 		sm.msgChan <- processConsusMsg{block: block, flags: flags }
 		// treating these blocks as orphans because we may need to pull them upon request
-		return true, nil
+		return false, nil
 	} else {
 		sm.msgChan <- processBlockMsg{block: block, flags: flags, reply: reply}
 		response := <-reply
