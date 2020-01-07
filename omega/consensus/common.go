@@ -710,12 +710,16 @@ func RandomUint64() (uint64, error) {
 }
 
 func readBlockHeader(r io.Reader, pver uint32, bh *wire.BlockHeader) error {
-	return readElements(r, &bh.Version, &bh.PrevBlock, &bh.MerkleRoot,
-		(*uint32Time)(&bh.Timestamp), &bh.Nonce)
+	var t uint32
+	err := readElements(r, &bh.Version, &bh.PrevBlock, &bh.MerkleRoot,
+		&t, &bh.Nonce)
+
+	bh.Timestamp = time.Unix(int64(t), 0)
+	return err
 }
 
 func writeBlockHeader(w io.Writer, pver uint32, bh *wire.BlockHeader) error {
 	sec := uint32(bh.Timestamp.Unix())
-	return writeElements(w, bh.Version, &bh.PrevBlock, &bh.MerkleRoot,
+	return writeElements(w, bh.Version, bh.PrevBlock, bh.MerkleRoot,
 		sec, bh.Nonce)
 }
