@@ -336,8 +336,8 @@ out:
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
 		if m.cfg.ConnectedCount() == 0 {
-			log.Info("Sleep one sec because there is no connected peer.")
-			time.Sleep(time.Second)
+			log.Info("Sleep 5 sec because there is no connected peer.")
+			time.Sleep(time.Second * 5)
 			continue
 		}
 
@@ -350,25 +350,27 @@ out:
 
 		isCurrent := m.cfg.IsCurrent()
 
-		m.g.Chain.ChainLock.Lock()
+//		m.g.Chain.ChainLock.Lock()
 		bs := m.g.BestSnapshot()
 		curHeight := bs.Height
 
 //		log.Infof("Preparing for minging at height = %d last rotation = %d", curHeight, bs.LastRotation)
 
 		if curHeight != 0 && !isCurrent {
-			m.g.Chain.ChainLock.Unlock()
+//			m.g.Chain.ChainLock.Unlock()
 			m.submitBlockLock.Unlock()
-			time.Sleep(time.Second)
+			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent ")
+			time.Sleep(time.Second * 5)
 			continue
 		}
-
+/*
 		if time.Now().UnixNano() - m.g.BestSnapshot().Updated.UnixNano() <= miningGap * 1000000 {
 			m.g.Chain.ChainLock.Unlock()
 			m.submitBlockLock.Unlock()
 			time.Sleep(time.Millisecond * miningGap)
 			continue
 		}
+*/
 
 		// Choose a payment address.
 		// check whether the address is allowed to mine a POW block
@@ -381,7 +383,7 @@ out:
 
 		committee := m.g.Committee()
 
-		m.g.Chain.ChainLock.Unlock()
+//		m.g.Chain.ChainLock.Unlock()
 
 		var adr [20]byte
 

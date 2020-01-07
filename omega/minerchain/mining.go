@@ -335,6 +335,7 @@ out:
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
 		if m.cfg.ConnectedCount() == 0 {
+			log.Info("generateBlocks: sleep because of no connection")
 			time.Sleep(time.Second * 5)
 			continue
 		}
