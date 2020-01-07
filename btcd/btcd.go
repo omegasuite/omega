@@ -118,7 +118,9 @@ func btcdMain(serverChan chan<- *server) error {
 		// Ensure the database is sync'd and closed on shutdown.
 		btcdLog.Infof("Gracefully shutting down the database...")
 		db.Close()
+		btcdLog.Infof("db Closed")
 		minerdb.Close()
+		btcdLog.Infof("minerdb Closed")
 	}()
 
 	// Return now if an interrupt signal was triggered.
@@ -165,25 +167,30 @@ func btcdMain(serverChan chan<- *server) error {
 		return err
 	}
 	defer func() {
+		btcdLog.Infof("Gracefully shutting down consensus server...")
+		consensus.Quit <- struct{}{}
+		srvrLog.Infof("consensus Server shutdown complete")
+
 		btcdLog.Infof("Gracefully shutting down the server...")
 		server.Stop()
+		btcdLog.Infof(" server Stopped")
 		server.WaitForShutdown()
 		srvrLog.Infof("Server shutdown complete")
 	}()
+
+	go consensus.Consensus(server)
+
 	server.Start()
 	if serverChan != nil {
 		serverChan <- server
 	}
 
-	go consensus.Consensus(server)
-	defer func() {
-		consensus.Quit <- struct{}{}
-	}()
-
 	// Wait until the interrupt signal is received from an OS signal or
 	// shutdown is requested through one of the subsystems such as the RPC
 	// server.
 	<-interrupt
+
+	srvrLog.Infof("interrupt received, going to shut down")
 
 	return nil
 }

@@ -19,8 +19,6 @@ import (
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcd/wire/common"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/omega/viewpoint"
 )
 
 const (
@@ -421,7 +419,7 @@ func (b *MinerChain) connectBlock(node *blockNode, block *wire.MinerBlock) error
 // the main (best) chain.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *MinerChain) disconnectBlock(node *blockNode, block *btcutil.Block, view *viewpoint.ViewPointSet) error {
+func (b *MinerChain) disconnectBlock(node *blockNode, block *wire.MinerBlock) error {
 	// Make sure the node being disconnected is the end of the best chain.
 	if !node.hash.IsEqual(&b.BestChain.Tip().hash) {
 		return AssertError("disconnectBlock must be called with the " +
@@ -464,14 +462,6 @@ func (b *MinerChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 			return err
 		}
 
-		// Update the utxo set using the state of the utxo view.  This
-		// entails restoring all of the utxos spent and removing the new
-		// ones created by the block.
-		err = viewpoint.DbPutViews(dbTx, view)
-		if err != nil {
-			return err
-		}
-
 		meta := dbTx.Metadata()
 		bkt := meta.Bucket(BlacklistKeyName)
 		var height [4]byte
@@ -484,10 +474,6 @@ func (b *MinerChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	if err != nil {
 		return err
 	}
-
-	// Prune fully spent entries and mark all entries in the view unmodified
-	// now that the modifications have been committed to the database.
-	view.Commit()
 
 	// This node's parent is now the end of the best chain.
 	b.BestChain.SetTip(node.parent)
@@ -552,25 +538,23 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	}
 
 	// Track the old and new best chains heads.
+	oldBest := tip
+	newBest := tip
 
 	// All of the blocks to detach and related spend journal entries needed
 	// to unspend transaction outputs in the blocks being disconnected must
 	// be loaded from the database during the reorg check phase below and
 	// then they are needed again when doing the actual database updates.
 	// Rather than doing two loads, cache the loaded data into these slices.
+	detachBlocks := make([]*wire.MinerBlock, 0, detachNodes.Len())
 	attachBlocks := make([]*wire.MinerBlock, 0, attachNodes.Len())
-
-	var forkNode * blockNode
-	var oldBest * blockNode
-	var newBest * blockNode
 
 	for e := detachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*blockNode)
-		forkNode = n.parent
-		if oldBest != nil {
-			oldBest = n
+		if n.parent == nil {
+			// never remove genesis block
+			continue
 		}
-
 		var block *wire.MinerBlock
 		err := b.db.View(func(dbTx database.Tx) error {
 			var err error
@@ -580,16 +564,24 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		if err != nil {
 			return err
 		}
-		bh := block.Hash()
-		if !bh.IsEqual(&n.hash) {
+		if n.hash != *block.Hash() {
 			return AssertError(fmt.Sprintf("detach block node hash %v (height "+
 				"%v) does not match previous parent block hash %v", &n.hash,
 				n.height, block.Hash()))
 		}
+
+		// Store the loaded block and spend journal entry for later.
+		detachBlocks = append(detachBlocks, block)
+
+		newBest = n.parent
 	}
 
 	// Set the fork point only if there are nodes to attach since otherwise
 	// blocks are only being disconnected and thus there is no fork point.
+	var forkNode *blockNode
+	if attachNodes.Len() > 0 {
+		forkNode = newBest
+	}
 
 	// Perform several checks to verify each block that needs to be attached
 	// to the main chain can be connected without violating any rules and
@@ -603,10 +595,8 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	// at least a couple of ways accomplish that rollback, but both involve
 	// tweaking the chain and/or database.  This approach catches these
 	// issues before ever modifying the chain.
-
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*blockNode)
-		newBest = n
 
 		var block *wire.MinerBlock
 		err := b.db.View(func(dbTx database.Tx) error {
@@ -625,10 +615,21 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		// checkConnectBlock gets skipped, we still need to update the UTXO
 		// view.
 		if b.index.NodeStatus(n).KnownValid() {
+			newBest = n
 			continue
 		}
 
+		// Notice the spent txout details are not requested here and
+		// thus will not be generated.  This is done because the state
+		// is not being immediately written to the database, so it is
+		// not needed.
+		//
+		// In the case the block is determined to be invalid due to a
+		// rule violation, mark it as invalid and mark all of its
+		// descendants as having an invalid ancestor.
 		b.index.SetStatusFlags(n, statusValid)
+
+		newBest = n
 	}
 
 	// Reset the view for the actual connection code below.  This is
@@ -636,6 +637,23 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	// the reorg would be successful and the connection code requires the
 	// view to be valid from the viewpoint of each block being connected or
 	// disconnected.
+	//	views.Utxo = NewUtxoViewpoint()
+	// Disconnect blocks from the main chain.
+	for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
+		n := e.Value.(*blockNode)
+		if n.parent == nil {
+			// never remove genesis block
+			continue
+		}
+
+		block := detachBlocks[i]
+
+		// Update the database and chain state.
+		err := b.disconnectBlock(n, block)
+		if err != nil {
+			return err
+		}
+	}
 
 	// Connect the new best chain blocks.
 	for i, e := 0, attachNodes.Front(); e != nil; i, e = i+1, e.Next() {
@@ -769,13 +787,21 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 
 	// Reorganize the chain.
 	log.Infof("REORGANIZE: Block %v is causing a reorganize.", node.hash)
+
 	// a reorganization in miner chain may cause a reorg in tx chain
 	// but a reorg in tx chain will not cause reorg in mainer chain
 	var fork *blockNode
 	for e := detachNodes.Front(); e != nil; e = e.Next() {
 		fork = e.Value.(*blockNode)
 	}
-	if fork.height <= b.blockChain.BestSnapshot().Height {
+
+	forkheight := fork.height
+
+	if err := b.reorganizeChain(detachNodes, attachNodes); err != nil {
+		return false, err
+	}
+
+	if forkheight <= int32(b.blockChain.BestSnapshot().LastRotation) {
 		// a reorg is required
 		detach := list.New()
 
@@ -785,23 +811,21 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 			// do we want to add it to orphan list in case this chain might be switched back?
 			// No. It is unlikely to happen. Even if it does, the problem can be addressed by peer sync.
 			detach.PushBack(p)
-			if p.Header().Nonce > 0 || p.Header().Nonce <= -wire.MINER_RORATE_FREQ {
-				if p.Header().Nonce > 0 {
-					// but for pow block, we may want keep them
-					blk,_ := b.blockChain.BlockByHash(p.Hash())
-					b.blockChain.AddOrphanBlock(blk)
-				}
+			if p.Header().Nonce > 0 {
+				blk, _ := b.blockChain.BlockByHash(p.Hash())
+				b.blockChain.AddOrphanBlock(blk)
+				rotated -= wire.CommitteeSize/2 + 1
+			} else if p.Header().Nonce <= -wire.MINER_RORATE_FREQ {
 				rotated--
-				if rotated < uint32(fork.height) {
-					break
-				}
+			}
+
+			if rotated < uint32(forkheight) {
+				break
 			}
 			p = p.Parent()
 		}
 		b.blockChain.ReorganizeChain(detach, list.New())
 	}
-
-	err := b.reorganizeChain(detachNodes, attachNodes)
 
 	// Either getReorganizeNodes or reorganizeChain could have made unsaved
 	// changes to the block index, so flush regardless of whether there was an
@@ -811,7 +835,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 		log.Warnf("Error flushing block index changes to disk: %v", writeErr)
 	}
 
-	return err == nil, err
+	return true, nil
 }
 
 // isCurrent returns whether or not the chain believes it is current.  Several

@@ -140,14 +140,18 @@ out:
 		case m := <- self.messages:
 			switch m.(type) {
 			case *MsgSignature:
+				log.Info("handling MsgSignature on quit")
 				self.Signature(m.(*MsgSignature))
 			}
 
 		default:
-			if self.forest[self.Me] != nil && self.forest[self.Me].block != nil &&
+			if self.Runnable && self.forest[self.Me] != nil && self.forest[self.Me].block != nil &&
 				len(self.forest[self.Me].block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSize / 2 + 1 {
-				miner.server.NewConsusBlock(self.forest[self.Me].block.MsgBlock())
+				log.Info("passing NewConsusBlock on quit")
+				miner.server.NewConsusBlock(self.forest[self.Me].block)
 			}
+			self.Runnable = false
+			log.Info("sync quit")
 			return
 		}
 	}
@@ -157,7 +161,7 @@ func (self *Syncer) releasenb() {
 	self.Runnable = false
 	self.Quit()
 
-	miner.server.NewConsusBlock(self.forest[self.Me].block.MsgBlock())
+	miner.server.NewConsusBlock(self.forest[self.Me].block)
 }
 
 func (self *Syncer) Signature(msg * MsgSignature) {
@@ -618,7 +622,10 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) bool {
 }
 
 func (self *Syncer) Quit() {
-	self.quit <- true
+	if self.Runnable {
+		log.Info("sync quit")
+		self.quit <- true
+	}
 }
 
 func (self *Syncer) Debug(w http.ResponseWriter, r *http.Request) {

@@ -44,6 +44,10 @@ func interruptListener() <-chan struct{} {
 		for {
 			select {
 			case sig := <-interruptChannel:
+				var x float64
+				var y * float64
+				x = 1.65
+				btcdLog.Infof("error on purpose", x, x / *y)
 				btcdLog.Infof("Received signal (%s).  Already "+
 					"shutting down...", sig)
 

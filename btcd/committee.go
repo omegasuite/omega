@@ -10,6 +10,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/json"
+	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/omega/consensus"
 	"math/big"
@@ -461,8 +462,9 @@ func (s *server) CommitteeMsg(p int32, m wire.Message) bool {
 	return false
 }
 
-func (s *server) NewConsusBlock(m * wire.MsgBlock) {
-	s.broadcast <- broadcastMsg { message: m}
+func (s *server) NewConsusBlock(m * btcutil.Block) {
+	s.chain.ProcessBlock(m, blockchain.BFNone)
+	s.broadcast <- broadcastMsg { message: m.MsgBlock()}
 }
 
 func (s *server) handleCommitteecastMsg(state *peerState, bmsg *broadcastMsg) {

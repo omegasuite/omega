@@ -2552,22 +2552,30 @@ func (s *server) Start() {
 // Stop gracefully shuts down the server by stopping and disconnecting all
 // peers and the main listener.
 func (s *server) Stop() error {
+	btcdLog.Info("Server Stop")
 	// Make sure this only happens once.
 	if atomic.AddInt32(&s.shutdown, 1) != 1 {
 		srvrLog.Infof("Server is already in the process of shutting down")
 		return nil
 	}
 
+	btcdLog.Info("Server shutting down")
 	srvrLog.Warnf("Server shutting down")
 
 	// Stop the CPU miner if needed
+	btcdLog.Info("Server cpuMiner Stop")
+
 	s.cpuMiner.Stop()
+
+	btcdLog.Info("Server minerMiner Stop")
 	s.minerMiner.Stop()
 
 	// Shutdown the RPC server if it's not disabled.
 	if !cfg.DisableRPC {
+		btcdLog.Info("Server rpcServer Stop")
 		s.rpcServer.Stop()
 	}
+	btcdLog.Info("Save fee estimator state in the database")
 
 	// Save fee estimator state in the database.
 	s.db.Update(func(tx database.Tx) error {
@@ -2578,6 +2586,7 @@ func (s *server) Stop() error {
 	})
 
 	// Signal the remaining goroutines to quit.
+	btcdLog.Info("Signal the remaining goroutines to quit")
 	close(s.quit)
 	return nil
 }

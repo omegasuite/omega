@@ -24,7 +24,7 @@ type PeerNotifier interface {
 	MyPlaceInCommittee(r int32) int32
 	CommitteeMsg(int32, wire.Message) bool
 	CommitteeCast(int32, wire.Message)
-	NewConsusBlock(block * wire.MsgBlock)
+	NewConsusBlock(block * btcutil.Block)
 	GetPrivKey([20]byte) * btcec.PrivateKey
 }
 
@@ -72,10 +72,14 @@ func Consensus(s PeerNotifier) {
 	newblockch = make(chan newblock)
 	errMootBlock = fmt.Errorf("Moot block.")
 	errInvalidBlock = fmt.Errorf("Invalid block")
+	Quit = make(chan struct{})
 
 	miner = CreateMiner(s)
 
+	log.Info("Consensus running")
+
 	// this should run as a goroutine
+	out:
 	for {
 		select {
 		case height := <- miner.updateheight:
@@ -115,11 +119,13 @@ func Consensus(s PeerNotifier) {
 			miner.Sync[head.head.Height].HeaderInit(head.head)
 
 		case <- Quit:
+			log.Info("consensus received Quit")
 			for i, t := range miner.Sync {
+				log.Infof("Sync %d to Quit", i)
 				t.Quit()
 				delete(miner.Sync, i)
 			}
-			break
+			break out
 		}
 	}
 
@@ -127,6 +133,7 @@ func Consensus(s PeerNotifier) {
 		select {
 		case <-miner.updateheight:
 		case <-newblockch:
+		case <-newheadch:
 
 		default:
 			return
