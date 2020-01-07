@@ -296,11 +296,12 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 
 func (m *CPUMiner) notice (notification *blockchain.Notification) {
 	switch notification.Type {
-	case blockchain.NTBlockConnected:
+	case blockchain.NTBlockMinerAccepted:
 		switch notification.Data.(type) {
-		case *wire.MinerBlock:
+//		case *wire.MinerBlock:
+		case *btcutil.Block:
 			if m.started {
-				m.connch <- notification.Data.(*wire.MinerBlock).Height()
+				m.connch <- notification.Data.(*btcutil.Block).Height()	// (*wire.MinerBlock).
 			}
 		}
 	}
@@ -538,8 +539,8 @@ func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
 		prevPows++
 	}
 	if prevPows != 0 {
-		adj = blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, prevPows) -
-			blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, 0)
+		adj = blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, 0) -
+			blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, prevPows)
 	}
 
 	oldtxo := tx.TxOut[0]
@@ -857,6 +858,6 @@ func New(cfg *Config) *CPUMiner {
 		updateHashes:      make(chan uint64),
 		connch: 		   make(chan int32, 100),
 	}
-	m.g.Chain.Miners.(*minerchain.MinerChain).Subscribe(m.notice)
+	m.g.Chain.Subscribe(m.notice)	// Miners.(*minerchain.MinerChain).
 	return m
 }

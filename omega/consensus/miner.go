@@ -52,7 +52,7 @@ var newheadch chan newhead
 
 func ProcessBlock(b *blockchain.BlockChain, block *btcutil.Block, flags blockchain.BehaviorFlags) {
 	flags |= blockchain.BFNoConnect
-	log.Infof("Consensus for block at %d", block.Height)
+	log.Infof("Consensus for block at %d", block.Height())
 	newblockch <- newblock { b,block, flags }
 }
 
@@ -90,7 +90,7 @@ func Consensus(s PeerNotifier) {
 
 		case blk := <- newblockch:
 			top := blk.chain.BestSnapshot().Height
-			cleaner(top)
+//			cleaner(top)
 			if blk.block.Height() < top {
 				continue
 			}
@@ -105,7 +105,7 @@ func Consensus(s PeerNotifier) {
 
 		case head := <- newheadch:
 			top := head.chain.BestSnapshot().Height
-			cleaner(top)
+//			cleaner(top)
 			if head.head.Height < top {
 				continue
 			}

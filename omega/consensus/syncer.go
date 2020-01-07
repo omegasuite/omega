@@ -163,6 +163,8 @@ func (self *Syncer) releasenb() {
 	self.Quit()
 
 	miner.server.NewConsusBlock(self.forest[self.Me].block)
+
+	cleaner(self.Height)
 }
 
 func (self *Syncer) Signature(msg * MsgSignature) {
@@ -405,6 +407,8 @@ func CreateSyncer() *Syncer {
 	p.pulling = make(map[chainhash.Hash]struct{})
 	p.agrees = make(map[int32]struct{})
 	p.signed = make(map[[20]byte]struct{})
+	p.Members = make(map[[20]byte]int32)
+	p.Names = make(map[int32][20]byte)
 
 	p.mode = 0
 	p.agreed = -1
@@ -451,7 +455,7 @@ func (p * Syncer) Initialize(chain * blockchain.BlockChain, height int32) {
 	p.Height = height
 
 	best := chain.BestSnapshot()
-	p.Runnable = p.Height == best.Height
+	p.Runnable = p.Height == best.Height + 1
 
 	if p.Runnable {
 		p.SetCommittee(int32(best.LastRotation))
@@ -474,12 +478,13 @@ func (self *Syncer) SetCommittee(c int32) {
 		}
 		var adr [20]byte
 		copy(adr[:], blk.MsgBlock().Miner)
-		self.Members[adr] = i - (c - wire.CommitteeSize + 1)
-		self.Names[i - (c - wire.CommitteeSize + 1)] = adr
+		who := i - (c - wire.CommitteeSize + 1)
+		self.Members[adr] = who
+		self.Names[who] = adr
 
 		if me == i {
 			copy(self.Me[:], blk.MsgBlock().Miner)
-			self.Myself = me - c - wire.CommitteeSize + 1
+			self.Myself = who
 			in = true
 		}
 	}
@@ -510,7 +515,7 @@ func (self *Syncer) UpdateChainHeight(h int32) {
 			return
 		}
 
-		self.Runnable = self.Height == best.Height
+		self.Runnable = self.Height == best.Height + 1
 
 		if self.Runnable {
 			self.SetCommittee(int32(best.LastRotation))
@@ -530,7 +535,7 @@ func (self *Syncer) HeaderInit(block *MsgMerkleBlock) {
 			return
 		}
 
-		self.Runnable = self.Height == best.Height
+		self.Runnable = self.Height == best.Height + 1
 
 		if self.Runnable {
 			self.SetCommittee(int32(best.LastRotation))
@@ -555,12 +560,12 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	best := self.Chain.BestSnapshot()
 
 	if !self.Runnable {
-		if best.Height > self.Height {
+		if best.Height >= self.Height {
 			self.Quit()
 			return
 		}
 
-		Runnable = self.Height == best.Height
+		Runnable = self.Height == best.Height + 1
 	}
 
 	// total fees are total coinbase outputs
