@@ -648,15 +648,17 @@ func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 	blockSize := uint64(block.MsgBlock().SerializeSize())
 	blockWeight := uint64(GetBlockWeight(block))
 
+	bst := b.BestSnapshot()
+
 	state := newBestState(node, blockSize, blockWeight, numTxns,
-		curTotalTxns+numTxns, node.CalcPastMedianTime(), b.BestSnapshot().Bits,
-		b.BestSnapshot().LastRotation)
+		curTotalTxns+numTxns, node.CalcPastMedianTime(), bst.Bits,
+		bst.LastRotation)
 
 	if node.nonce > 0 {
 		state.LastRotation += wire.CommitteeSize / 2 + 1
 	} else if node.nonce <= -wire.MINER_RORATE_FREQ {
-		state.LastRotation++	// = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
-		s, _ := b.Miners.BlockByHeight(int32(state.LastRotation) - wire.CommitteeSize)
+		state.LastRotation = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
+		s, _ := b.Miners.BlockByHeight(int32(state.LastRotation))
 		state.Bits = s.MsgBlock().Bits
 	}
 
@@ -782,7 +784,7 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 		// in its previous block
 		p := node.parent
 
-		for p != nil && p.nonce > wire.MINER_RORATE_FREQ {
+		for p != nil && p.nonce > -wire.MINER_RORATE_FREQ {
 			p = p.parent
 		}
 
@@ -792,9 +794,9 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 		}
 
 		// the real miner block height of the previous miner block
-		mblock,_ := b.Miners.BlockByHeight(realheight - wire.CommitteeSize)
-		if mblock == nil {
-			bits = b.chainParams.PowLimitBits
+		mblock, err := b.Miners.BlockByHeight(realheight)
+		if err != nil {
+			return err		// impossible
 		} else {
 			bits = mblock.MsgBlock().Bits
 		}
