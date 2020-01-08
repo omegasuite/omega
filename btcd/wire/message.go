@@ -51,7 +51,6 @@ const (
 	CmdFilterAdd    = "filteradd"
 	CmdFilterClear  = "filterclear"
 	CmdFilterLoad   = "filterload"
-	CmdMerkleBlock  = "merkleblock"
 	CmdReject       = "reject"
 	CmdSendHeaders  = "sendheaders"
 	CmdFeeFilter    = "feefilter"
@@ -63,6 +62,13 @@ const (
 	CmdCFCheckpt    = "cfcheckpt"
 
 	// consensus protocol message
+	CmdMerkleBlock  = "merkleblock"
+	CmdKnowledge = "knowledge"
+	CmdCandidate = "candidate"
+	CmdCandidateReply = "candidateReply"
+	CmdRelease = "release"
+	CmdConsensus = "consensus"
+	CmdSignature = "signature"
 )
 
 // MessageEncoding represents the wire message encoding format to be used.
@@ -92,6 +98,12 @@ type Message interface {
 	BtcEncode(io.Writer, uint32, MessageEncoding) error
 	Command() string
 	MaxPayloadLength(uint32) uint32
+}
+
+type OmegaMessage interface {
+	Message
+	DoubleHashB() []byte
+	GetSignature() []byte
 }
 
 // makeEmptyMessage creates a message of the appropriate concrete type based
@@ -168,9 +180,6 @@ func makeEmptyMessage(command string) (Message, error) {
 	case CmdFilterLoad:
 		msg = &MsgFilterLoad{}
 
-	case CmdMerkleBlock:
-		msg = &MsgMerkleBlock{}
-
 	case CmdReject:
 		msg = &MsgReject{}
 
@@ -197,6 +206,27 @@ func makeEmptyMessage(command string) (Message, error) {
 
 	case CmdCFCheckpt:
 		msg = &MsgCFCheckpt{}
+
+	case CmdMerkleBlock:
+		msg = &MsgMerkleBlock{}
+
+	case CmdKnowledge:
+		msg = &MsgKnowledge{}
+
+	case CmdCandidate:
+		msg = &MsgCandidate{}
+
+	case CmdRelease:
+		msg = &MsgRelease{}
+
+	case CmdConsensus:
+		msg = &MsgConsensus{}
+
+	case CmdCandidateReply:
+		msg = &MsgCandidateResp{}
+
+	case CmdSignature:
+		msg = &MsgSignature{}
 
 	default:
 		return nil, fmt.Errorf("unhandled command [%s]", command)

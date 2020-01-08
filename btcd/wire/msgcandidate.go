@@ -2,11 +2,10 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package consensus
+package wire
 
 import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
 	"io"
 )
 
@@ -23,7 +22,7 @@ func (msg * MsgCandidate) Block() int32 {
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidate) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgCandidate) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	err := readElement(r, &msg.Height)
 	if err != nil {
 		return err
@@ -50,7 +49,7 @@ func (msg * MsgCandidate) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEnco
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidate) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgCandidate) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {
@@ -121,13 +120,13 @@ func NewMsgCandidate(blk int32, f [20]byte, m chainhash.Hash) *MsgCandidate {
 }
 
 type MsgCandidateResp struct {
-	Height	  int32
-	Reply	  string
+	Height    int32
+	Reply     string
 	K         []int64	// knowledge, when rejected
-	better    int32
-	From	  [20]byte
-	M 		  chainhash.Hash
-	Signature      []byte
+	Better    int32
+	From      [20]byte
+	M         chainhash.Hash
+	Signature []byte
 }
 
 func (msg * MsgCandidateResp) Block() int32 {
@@ -136,7 +135,7 @@ func (msg * MsgCandidateResp) Block() int32 {
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	err := readElement(r, &msg.Height)
 	if err != nil {
 		return err
@@ -158,7 +157,7 @@ func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, _ wire.Message
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidateResp) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgCandidateResp) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {

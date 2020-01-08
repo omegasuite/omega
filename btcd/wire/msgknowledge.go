@@ -2,11 +2,10 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package consensus
+package wire
 
 import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcd/wire/common"
 	"io"
 )
@@ -22,7 +21,7 @@ type MsgKnowledge struct {
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	// Read filter type
 	err := common.ReadElement(r, &msg.Height)
 	if err != nil {
@@ -70,7 +69,7 @@ func (msg * MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEnco
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgKnowledge) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgKnowledge) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {

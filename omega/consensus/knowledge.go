@@ -22,7 +22,7 @@ func (k * Knowledgebase) ProcessTree(t int32) {
 	k.Knowledge[t][m] |= (1 << t) | (1 << m)
 	k.Knowledge[t][t] |= (1 << t) | (1 << m)
 
-	nmg := MsgKnowledge{}
+	nmg := wire.MsgKnowledge{}
 	nmg.K = []int64{int64(t), int64(m)}
 	nmg.From = k.syncer.Me
 	nmg.Finder = k.syncer.Names[t]
@@ -104,7 +104,7 @@ func (self *Knowledgebase) ProcFlatKnowledge(mp int32, k []int64) bool {
 	return more
 }
 
-func (self *Knowledgebase) ProcKnowledge(msg *MsgKnowledge) bool {
+func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 	k := msg.K
 	finder := msg.Finder
 	mp, ok := self.syncer.Members[finder]
@@ -158,7 +158,7 @@ func (self *Knowledgebase) ProcKnowledge(msg *MsgKnowledge) bool {
 	return false
 }
 
-func (self *Knowledgebase) sendout(msg *MsgKnowledge, mp int32, me int32, q int32) {
+func (self *Knowledgebase) sendout(msg *wire.MsgKnowledge, mp int32, me int32, q int32) {
 	if !miner.server.CommitteeMsg(q + self.syncer.Base, msg) {
 		// fail to send
 		return

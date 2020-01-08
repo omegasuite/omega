@@ -2,12 +2,10 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package consensus
+package wire
 
 import (
 	"io"
-
-	"github.com/btcsuite/btcd/wire"
 )
 
 type MsgMalice struct {
@@ -20,14 +18,14 @@ type MsgMalice struct {
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg *MsgMalice) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+func (msg *MsgMalice) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	// Read filter type
 	return nil
 }
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg *MsgMalice) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+func (msg *MsgMalice) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
 	// Write filter type
 	return nil
 }

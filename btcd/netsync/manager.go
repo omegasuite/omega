@@ -1459,7 +1459,7 @@ out:
 				}
 
 			case processConsusMsg:
-				consensus.ProcessBlock(sm.chain, msg.block, msg.flags)
+				consensus.ProcessBlock(msg.block, msg.flags)
 				if msg.reply != nil {
 					msg.reply <- processBlockResponse{
 						isOrphan: true,

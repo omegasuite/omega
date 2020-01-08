@@ -26,6 +26,8 @@ type PeerNotifier interface {
 	CommitteeCast(int32, wire.Message)
 	NewConsusBlock(block * btcutil.Block)
 	GetPrivKey([20]byte) * btcec.PrivateKey
+	BestSnapshot() * blockchain.BestState
+	MinerBlockByHeight(int32) (* wire.MinerBlock,error)
 }
 
 type Miner struct {
@@ -36,24 +38,26 @@ type Miner struct {
 }
 
 type newblock struct {
-	chain *blockchain.BlockChain
 	block *btcutil.Block
 	flags blockchain.BehaviorFlags
 }
 
+/*
 type newhead struct {
 	chain *blockchain.BlockChain
 	head *MsgMerkleBlock
 	flags blockchain.BehaviorFlags
 }
 
+ */
+
 var newblockch chan newblock
 // var newheadch chan newhead
 
-func ProcessBlock(b *blockchain.BlockChain, block *btcutil.Block, flags blockchain.BehaviorFlags) {
+func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 	flags |= blockchain.BFNoConnect
 	log.Infof("Consensus for block at %d", block.Height())
-	newblockch <- newblock { b,block, flags }
+	newblockch <- newblock { block, flags }
 }
 
 /*
@@ -82,28 +86,31 @@ func Consensus(s PeerNotifier) {
 
 	// this should run as a goroutine
 	out:
-	for {
+	for true {
 		select {
 		case height := <- miner.updateheight:
+			log.Infof("updateheight %d", height)
 			cleaner(height)
 			for _, t := range miner.Sync {
 				t.UpdateChainHeight(height)
 			}
 
 		case blk := <- newblockch:
-			top := blk.chain.BestSnapshot().Height
+			top := miner.server.BestSnapshot().Height
+			bh := blk.block.Height()
+			log.Infof("newblockch at %d vs. %d", top, bh)
 //			cleaner(top)
-			if blk.block.Height() < top {
+			if bh < top {
 				continue
 			}
 
-			if _, ok := miner.Sync[blk.block.Height()]; !ok {
-				miner.Sync[blk.block.Height()] = CreateSyncer()
+			if _, ok := miner.Sync[bh]; !ok {
+				miner.Sync[bh] = CreateSyncer()
 			}
-			if !miner.Sync[blk.block.Height()].Initialized {
-				miner.Sync[blk.block.Height()].Initialize(blk.chain, blk.block.Height())
+			if !miner.Sync[bh].Initialized {
+				miner.Sync[bh].Initialize(bh)
 			}
-			miner.Sync[blk.block.Height()].BlockInit(blk.block)
+			miner.Sync[bh].BlockInit(blk.block)
 /*
 		case head := <- newheadch:
 			top := head.chain.BestSnapshot().Height
@@ -131,7 +138,7 @@ func Consensus(s PeerNotifier) {
 		}
 	}
 
-	for {
+	for true {
 		select {
 		case <-miner.updateheight:
 		case <-newblockch:
@@ -149,6 +156,7 @@ func HandleMessage(m Message) {
 	s, ok := miner.Sync[m.Block()]
 	if !ok {
 		miner.Sync[m.Block()] = CreateSyncer()
+		s = miner.Sync[m.Block()]
 	}
 	s.messages <- m
 }
@@ -178,7 +186,7 @@ func cleaner(top int32) {
 	}
 }
 
-func VerifyMsg(msg OmegaMessage, pubkey * btcec.PublicKey) bool {
+func VerifyMsg(msg wire.OmegaMessage, pubkey * btcec.PublicKey) bool {
 	signature, err := btcec.ParseSignature(msg.GetSignature(), btcec.S256())
 	if err != nil {
 		return false

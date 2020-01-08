@@ -2,12 +2,11 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package consensus
+package wire
 
 import (
 	"bytes"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
 	"io"
 )
 
@@ -23,7 +22,7 @@ func (msg * MsgConsensus) Block() int32 {
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgConsensus) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgConsensus) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	// Read filter type
 	err := readElement(r, &msg.Height)
 	if err != nil {
@@ -45,7 +44,7 @@ func (msg * MsgConsensus) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEnco
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgConsensus) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgConsensus) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {
@@ -83,7 +82,7 @@ func (msg * MsgConsensus) DoubleHashB() []byte {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	var w bytes.Buffer
-	msg.BtcEncode(&w, 0, wire.BaseEncoding)
+	msg.BtcEncode(&w, 0, BaseEncoding)
 	return chainhash.DoubleHashB(w.Bytes())
 }
 
@@ -106,14 +105,14 @@ func (msg * MsgSignature) Block() int32 {
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgSignature) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
-	return (*MsgConsensus)(msg).BtcDecode(r, pver, wire.BaseEncoding)
+func (msg * MsgSignature) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
+	return (*MsgConsensus)(msg).BtcDecode(r, pver, BaseEncoding)
 }
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgSignature) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
-	return (*MsgConsensus)(msg).BtcEncode(w, pver, wire.BaseEncoding)
+func (msg * MsgSignature) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
+	return (*MsgConsensus)(msg).BtcEncode(w, pver, BaseEncoding)
 }
 
 // Command returns the protocol command string for the message.  This is part

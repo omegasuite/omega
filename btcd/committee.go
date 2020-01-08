@@ -347,6 +347,14 @@ func (s * server) makeInvitationMsg(me int32, miner []byte, conn []byte) * wire.
 	return &m
 }
 
+func (s *server) BestSnapshot() * blockchain.BestState {
+	return s.chain.BestSnapshot()
+}
+
+func (s *server) MinerBlockByHeight(n int32) (* wire.MinerBlock,error) {
+	return s.chain.Miners.BlockByHeight(n)
+}
+
 func (s *server) handleCommitteRotation(state *peerState, r int32) {
 	b := s.chain
 
@@ -456,7 +464,7 @@ func (s *server) AnnounceNewBlock(m * btcutil.Block) {
 func (s *server) CommitteeMsg(p int32, m wire.Message) bool {
 	if sp,ok := s.peerState.committee[p]; ok {
 		done := make(chan struct{})
-		sp.QueueMessage(m, nil)
+		sp.QueueMessageWithEncoding(m, nil, wire.SignatureEncoding)
 		<- done
 		return true
 	}
@@ -476,8 +484,7 @@ func (s *server) handleCommitteecastMsg(state *peerState, bmsg *broadcastMsg) {
 				return
 			}
 		}
-
-		sp.QueueMessage(bmsg.message, nil)
+		sp.QueueMessageWithEncoding(bmsg.message, nil, wire.SignatureEncoding)
 	})
 }
 
@@ -487,8 +494,7 @@ func (s *server) CommitteeCast(sender int32, msg wire.Message) {
 		if sdr == sp {
 				return
 			}
-
-		sp.QueueMessage(msg, nil)
+		sp.QueueMessageWithEncoding(msg, nil, wire.SignatureEncoding)
 	})
 }
 

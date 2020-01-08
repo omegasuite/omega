@@ -2,14 +2,13 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package consensus
+package wire
 
 import (
 	"bytes"
 	"io"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
 )
 
 type MsgRelease struct {
@@ -26,7 +25,7 @@ func (msg * MsgRelease) Block() int32 {
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgRelease) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncoding) error {
+func (msg * MsgRelease) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	// Read filter type
 	err := readElement(r, &msg.Height)
 	if err != nil {
@@ -58,7 +57,7 @@ func (msg * MsgRelease) BtcDecode(r io.Reader, pver uint32, _ wire.MessageEncodi
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg MsgRelease) BtcEncode(w io.Writer, pver uint32, _ wire.MessageEncoding) error {
+func (msg MsgRelease) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {
@@ -101,7 +100,7 @@ func (msg MsgRelease) MaxPayloadLength(pver uint32) uint32 {
 
 func (msg MsgRelease) DoubleHashB() []byte {
 	var w bytes.Buffer
-	msg.BtcEncode(&w, 0, wire.BaseEncoding)
+	msg.BtcEncode(&w, 0, BaseEncoding)
 	return chainhash.DoubleHashB(w.Bytes())
 }
 //func (msg MsgRelease) GetSignature() []byte {

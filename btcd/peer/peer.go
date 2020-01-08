@@ -1659,13 +1659,13 @@ out:
 			if p.cfg.Listeners.OnFilterLoad != nil {
 				p.cfg.Listeners.OnFilterLoad(p, msg)
 			}
-
+/*
 		case *wire.MsgMerkleBlock:
 //			log.Infof("inHandler MsgMerkleBlock")
 			if p.cfg.Listeners.OnMerkleBlock != nil {
 				p.cfg.Listeners.OnMerkleBlock(p, msg)
 			}
-
+*/
 		case *wire.MsgReject:
 //			log.Infof("inHandler MsgReject")
 			if p.cfg.Listeners.OnReject != nil {
@@ -2348,7 +2348,7 @@ func newPeerBase(origCfg *Config, inbound bool) *Peer {
 
 	p := Peer{
 		inbound:         inbound,
-		wireEncoding:    wire.BaseEncoding,
+		wireEncoding:    wire.SignatureEncoding,
 		knownInventory:  newMruInventoryMap(maxKnownInventory),
 		stallControl:    make(chan stallControlMsg, 1), // nonblocking sync
 		outputQueue:     make(chan outMsg, outputBufferSize),
