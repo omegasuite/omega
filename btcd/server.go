@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -234,7 +235,6 @@ type server struct {
 	query                chan interface{}
 	relayInv             chan relayMsg
 	broadcast            chan broadcastMsg
-	committeecast        chan broadcastMsg
 	peerHeightsUpdate    chan updatePeerHeightsMsg
 	peerMinerHeightsUpdate    chan updatePeerHeightsMsg
 	wg                   sync.WaitGroup
@@ -261,7 +261,8 @@ type server struct {
 	// messages for each filter type.
 	cfCheckptCaches    map[wire.FilterType][]cfHeaderKV
 	cfCheckptCachesMtx sync.RWMutex
-	privKeys 		   map[btcutil.Address]*btcec.PrivateKey
+	signAddress  	   btcutil.Address
+	privKeys 		   *btcec.PrivateKey
 	rsaPrivateKey	   *rsa.PrivateKey
 	peerState 		   * peerState
 
@@ -704,17 +705,17 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	// far more data than we can send in a reasonable time, wasting memory.
 	// The waiting occurs after the database fetch for the next one to
 	// provide a little pipelining.
-	var waitChan chan struct{}
-	doneChan := make(chan struct{}, 1)
+	var waitChan chan bool
+	doneChan := make(chan bool, 1)
 
 	for i, iv := range msg.InvList {
-		var c chan struct{}
+		var c chan bool
 		// If this will be the last message we send.
 		if i == length-1 && len(notFound.InvList) == 0 {
 			c = doneChan
 		} else if (i+1)%3 == 0 {
 			// Buffered so as to not make the send goroutine block.
-			c = make(chan struct{}, 1)
+			c = make(chan bool, 1)
 		}
 		var err error
 		switch iv.Type {
@@ -786,7 +787,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 	// Generate inventory message.
 	invMsg := wire.NewMsgInv()
 	for i := range hashList {
-		iv := wire.NewInvVect(common.InvTypeBlock, &hashList[i])
+		iv := wire.NewInvVect(common.InvTypeWitnessBlock, &hashList[i])
 		invMsg.AddInvVect(iv)
 	}
 
@@ -801,6 +802,11 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			continueHash := invMsg.InvList[invListLen-1].Hash
 			sp.continueHash = &continueHash
 		}
+		sp.QueueMessage(invMsg, nil)
+	} else if block := sp.server.cpuMiner.CurrentBlock(); block != nil && * block.Hash() == msg.HashStop {
+		// check if it is a block seeking consensus
+		iv := wire.NewInvVect(common.InvTypeWitnessBlock, &msg.HashStop)
+		invMsg.AddInvVect(iv)
 		sp.QueueMessage(invMsg, nil)
 	}
 }
@@ -1485,8 +1491,8 @@ func (s *server) TransactionConfirmed(tx *btcutil.Tx) {
 
 // pushTxMsg sends a tx message for the provided transaction hash to the
 // connected peer.  An error is returned if the transaction hash is not known.
-func (s *server) pushTxMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- struct{},
-	waitChan <-chan struct{}, encoding wire.MessageEncoding) error {
+func (s *server) pushTxMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- bool,
+	waitChan <-chan bool, encoding wire.MessageEncoding) error {
 
 	// Attempt to fetch the requested transaction from the pool.  A
 	// call could be made to check for existence first, but simply trying
@@ -1497,7 +1503,7 @@ func (s *server) pushTxMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<-
 			"pool: %v", hash, err)
 
 		if doneChan != nil {
-			doneChan <- struct{}{}
+			doneChan <- false
 		}
 		return err
 	}
@@ -1514,8 +1520,8 @@ func (s *server) pushTxMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<-
 
 // pushBlockMsg sends a block message for the provided block hash to the
 // connected peer.  An error is returned if the block hash is not known.
-func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- struct{},
-	waitChan <-chan struct{}, encoding wire.MessageEncoding) error {
+func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- bool,
+	waitChan <-chan bool, encoding wire.MessageEncoding) error {
 
 	// Fetch the raw block bytes from the database.
 	var blockBytes []byte
@@ -1533,12 +1539,15 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		if m != nil {
 			msgBlock = *m
 			err = nil
+		} else if block := s.cpuMiner.CurrentBlock(); block != nil && * block.Hash() == * hash {
+			msgBlock = * block.MsgBlock()
+			err = nil
 		} else {
 			peerLog.Tracef("Unable to fetch requested block hash %v: %v",
 				hash, err)
 
 			if doneChan != nil {
-				doneChan <- struct{}{}
+				doneChan <- false
 			}
 			return err
 		}
@@ -1550,7 +1559,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 				"%v: %v", hash, err)
 
 			if doneChan != nil {
-				doneChan <- struct{}{}
+				doneChan <- false
 			}
 			return err
 		}
@@ -1563,7 +1572,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 
 	// We only send the channel for this message if we aren't sending
 	// an inv straight after.
-	var dc chan<- struct{}
+	var dc chan<- bool
 	continueHash := sp.continueHash
 	sendInv := continueHash != nil && continueHash.IsEqual(hash)
 	if !sendInv {
@@ -1579,7 +1588,11 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 	if sendInv {
 		best := sp.server.chain.BestSnapshot()
 		invMsg := wire.NewMsgInvSizeHint(1)
-		iv := wire.NewInvVect(common.InvTypeBlock, &best.Hash)
+		t := common.InvTypeWitnessBlock
+		if encoding == wire.BaseEncoding {
+			t = common.InvTypeBlock
+		}
+		iv := wire.NewInvVect(t, &best.Hash)
 		invMsg.AddInvVect(iv)
 		sp.QueueMessage(invMsg, doneChan)
 		sp.continueHash = nil
@@ -1587,8 +1600,8 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 	return nil
 }
 
-func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- struct{},
-	waitChan <-chan struct{}, encoding wire.MessageEncoding) error {
+func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- bool,
+	waitChan <-chan bool, encoding wire.MessageEncoding) error {
 
 	// Fetch the raw block bytes from the database.
 	var blockBytes []byte
@@ -1602,7 +1615,7 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 			hash, err)
 
 		if doneChan != nil {
-			doneChan <- struct{}{}
+			doneChan <- false
 		}
 		return err
 	}
@@ -1615,7 +1628,7 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 			"%v: %v", hash, err)
 
 		if doneChan != nil {
-			doneChan <- struct{}{}
+			doneChan <- false
 		}
 		return err
 	}
@@ -1629,7 +1642,7 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 
 	// We only send the channel for this message if we aren't sending
 	// an inv straight after.
-	var dc chan<- struct{}
+	var dc chan<- bool
 	continueHash := sp.continueMinerHash
 	sendInv := continueHash != nil && continueHash.IsEqual(hash)
 	if !sendInv {
@@ -1658,12 +1671,12 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 // loaded, this call will simply be ignored if there is no filter loaded.  An
 // error is returned if the block hash is not known.
 func (s *server) pushMerkleBlockMsg(sp *serverPeer, hash *chainhash.Hash,
-	doneChan chan<- struct{}, waitChan <-chan struct{}, encoding wire.MessageEncoding) error {
+	doneChan chan<- bool, waitChan <-chan bool, encoding wire.MessageEncoding) error {
 
 	// Do not send a response if the peer doesn't have a filter loaded.
 	if !sp.filter.IsLoaded() {
 		if doneChan != nil {
-			doneChan <- struct{}{}
+			doneChan <- false
 		}
 		return nil
 	}
@@ -1675,7 +1688,7 @@ func (s *server) pushMerkleBlockMsg(sp *serverPeer, hash *chainhash.Hash,
 			hash, err)
 
 		if doneChan != nil {
-			doneChan <- struct{}{}
+			doneChan <- false
 		}
 		return err
 	}
@@ -1691,7 +1704,7 @@ func (s *server) pushMerkleBlockMsg(sp *serverPeer, hash *chainhash.Hash,
 
 	// Send the merkleblock.  Only send the done channel with this message
 	// if no transactions will be sent afterwards.
-	var dc chan<- struct{}
+	var dc chan<- bool
 	if len(matchedTxIndices) == 0 {
 		dc = doneChan
 	}
@@ -1701,7 +1714,7 @@ func (s *server) pushMerkleBlockMsg(sp *serverPeer, hash *chainhash.Hash,
 	blkTransactions := blk.MsgBlock().Transactions
 	for i, txIndex := range matchedTxIndices {
 		// Only send the done channel on the final transaction.
-		var dc chan<- struct{}
+		var dc chan<- bool
 		if i == len(matchedTxIndices)-1 {
 			dc = doneChan
 		}
@@ -1900,7 +1913,7 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 		// If the inventory is a block and the peer prefers headers,
 		// generate and send a headers message instead of an inventory
 		// message.
-		if msg.invVect.Type == common.InvTypeBlock && sp.WantsHeaders() {
+		if msg.invVect.Type & common.InvTypeBlock == common.InvTypeBlock && sp.WantsHeaders() {
 			blockHeader, ok := msg.data.(wire.BlockHeader)
 			if !ok {
 				peerLog.Warnf("Underlying data for headers" +
@@ -2299,6 +2312,9 @@ func (s *server) peerHandler() {
 out:
 	for {
 		select {
+		case r := <-newBlock:
+			s.handleCommitteRotation(state, r)
+
 		// New peers connected to the server.
 		case p := <-s.newPeers:
 			s.handleAddPeerMsg(state, p)
@@ -2327,14 +2343,8 @@ out:
 		case bmsg := <-s.broadcast:
 			s.handleBroadcastMsg(state, &bmsg)
 
-		case bmsg := <-s.committeecast:
-			s.handleCommitteecastMsg(state, &bmsg)
-
 		case qmsg := <-s.query:
 			s.handleQuery(state, qmsg)
-
-		case r := <-newBlock:
-			s.handleCommitteRotation(state, r)
 
 		case <-s.quit:
 			// Disconnect all peers on server shutdown.
@@ -2545,6 +2555,9 @@ func (s *server) Start() {
 	// Start the CPU miner if generation is enabled.
 	if cfg.Generate {
 		s.cpuMiner.Start()
+	}
+	if cfg.GenerateMiner {
+		btcdLog.Info("Start minging miner blocks.")
 		s.minerMiner.Start()
 	}
 }
@@ -2562,13 +2575,13 @@ func (s *server) Stop() error {
 	btcdLog.Info("Server shutting down")
 	srvrLog.Warnf("Server shutting down")
 
+	btcdLog.Info("Server minerMiner Stop")
+	s.minerMiner.Stop()
+
 	// Stop the CPU miner if needed
 	btcdLog.Info("Server cpuMiner Stop")
 
 	s.cpuMiner.Stop()
-
-	btcdLog.Info("Server minerMiner Stop")
-	s.minerMiner.Stop()
 
 	// Shutdown the RPC server if it's not disabled.
 	if !cfg.DisableRPC {
@@ -2647,6 +2660,9 @@ func parseListeners(addrs []string) ([]net.Addr, error) {
 		if err != nil {
 			// Shouldn't happen due to already being normalized.
 			return nil, err
+		}
+		if host == "localhost" {
+			host = "127.0.0.1"
 		}
 
 		// Empty host or host of * on plan9 is both IPv4 and IPv6.
@@ -2823,7 +2839,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		query:                make(chan interface{}),
 		relayInv:             make(chan relayMsg, cfg.MaxPeers),
 		broadcast:            make(chan broadcastMsg, cfg.MaxPeers),
-		committeecast:        make(chan broadcastMsg, cfg.MaxPeers),
 		quit:                 make(chan struct{}),
 		modifyRebroadcastInv: make(chan interface{}),
 		peerHeightsUpdate:    make(chan updatePeerHeightsMsg),
@@ -2836,6 +2851,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 //		sigCache:             NewSigCache(cfg.SigCacheMaxSize),
 //		hashCache:            NewHashCache(cfg.SigCacheMaxSize),
 		cfCheckptCaches:      make(map[wire.FilterType][]cfHeaderKV),
+		signAddress:		  cfg.signAddress,
 		privKeys:			  cfg.privateKeys,
 		BlackList:            make(map[[20]byte]struct{}),
 		PendingBlackList:     make(map[[20]byte]uint32),
@@ -3034,21 +3050,34 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		ChainParams:            chainParams,
 		BlockTemplateGenerator: blockTemplateGenerator,
 		MiningAddrs:            cfg.miningAddrs,
+		SignAddress:			cfg.signAddress,
 		PrivKeys:				cfg.privateKeys,
 		ProcessBlock:           s.syncManager.ProcessBlock,
 		ConnectedCount:         s.ConnectedCount,
 		IsCurrent:              s.syncManager.IsCurrent,
 	})
+
 	// This is the miner for miner chain
-	s.minerMiner = minerchain.NewMiner(&minerchain.Config{
-		ChainParams:            chainParams,
-		BlockTemplateGenerator: blockTemplateGenerator,
-		MiningAddrs:            cfg.miningAddrs,
-		PrivKeys:	            s.privKeys,
-		ProcessBlock:           s.syncManager.ProcessMinerBlock,
-		ConnectedCount:         s.ConnectedCount,
-		IsCurrent:              s.syncManager.IsCurrent,
-	})
+	var rsa []byte
+	if s.rsaPrivateKey != nil {
+		rsa, _ = json.Marshal(s.rsaPrivateKey.Public())
+	}
+
+	if cfg.privateKeys != nil {
+		s.minerMiner = minerchain.NewMiner(&minerchain.Config{
+			ChainParams:            chainParams,
+			BlockTemplateGenerator: blockTemplateGenerator,
+			MiningAddrs:            cfg.miningAddrs,
+			SignAddress:            cfg.signAddress,
+			ProcessBlock:           s.syncManager.ProcessMinerBlock,
+			ConnectedCount:         s.ConnectedCount,
+			IsCurrent:              s.syncManager.IsCurrent,
+			ExternalIPs:            cfg.ExternalIPs,
+			RSAPubKey:              string(rsa),
+		})
+	} else {
+		cfg.GenerateMiner = false
+	}
 
 	// Only setup a function to return new addresses to connect to when
 	// not running in connect-only mode.  The simulation network is always

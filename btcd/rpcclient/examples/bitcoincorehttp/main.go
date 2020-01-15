@@ -8,22 +8,50 @@ import (
 	"encoding/hex"
 	"log"
 
-	"github.com/btcsuite/btcd/rpcclient"
-	"github.com/btcsuite/btcd/btcjson"
-	"github.com/btcsuite/btcutil"
 	"bufio"
-	"os"
 	"fmt"
-	"strings"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/rpcclient"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcutil"
+	flags "github.com/jessevdk/go-flags"
+	"os"
+	"strings"
 )
 
+type Options struct {
+	Host string `short:"h" long:"host" description:"host"`
+
+	Port string `short:"p" long:"port" description:"port"`
+}
+
+var options = Options { Host: "localhost", Port: "18334"}
+
+var minerName = map[string]string{
+	"6beafade16563e9f87e5625708af74196d2a523c":"alice",
+	"638e212c048282aa3f8e04ffda0726e6131b17e3":"alice",
+	"241ef4f1427b2cb443d92aaa607d1f900d7a08e5":"bob",
+	"58d0219a31ca4902e42f5a657c87627905d1644d":"cathy",
+	"4e3b7e6fd416b92c0ff168712552479bae812a9d":"donald"}
+
+var detail = int(4)
+
 func main() {
+	var parser = flags.NewParser(&options, flags.Default)
+
+	if _, err := parser.Parse(); err != nil {
+		if flagsErr, ok := err.(*flags.Error); ok && flagsErr.Type == flags.ErrHelp {
+			os.Exit(0)
+		} else {
+			os.Exit(1)
+		}
+	}
+
 	// Connect to local bitcoin core RPC server using HTTP POST mode.
 	connCfg := &rpcclient.ConnConfig{
-		Host:         "localhost:18334",
+		Host:         options.Host + ":" + options.Port,
 		User:         "admin",
 		Pass:         "123456",
 		HTTPPostMode: true, // Bitcoin core only supports HTTP POST mode
@@ -36,6 +64,8 @@ func main() {
 		log.Fatal(err)
 	}
 	defer client.Shutdown()
+
+	fmt.Println("Using " + connCfg.Host)
 
 	reader := bufio.NewReader(os.Stdin)
 
@@ -277,6 +307,11 @@ func main() {
 			}
 			log.Printf("gettxout: %s", res)
 			break
+		case "lod":	//  "txid" ( verbose )
+			fmt.Println("Level of detail (0-4) -> ")
+			s, _ := reader.ReadString('\n')
+			fmt.Sscanf(s,"%d", &detail)
+			break
 		case "getrawtransaction":	//  "txid" ( verbose )
 			fmt.Println("Tx (any) hash -> ")
 			// 90039e47190579daf219d0ec2348d117126c73c812bdd06c3b2ccf62026ea5d7 (polygon)
@@ -429,14 +464,17 @@ func main() {
 			if err != nil {
 				log.Print(err)
 			} else {
+				mn := minerName[fmt.Sprintf("%x", res.Miner)]
+
 				log.Printf("Header.Version:%d\n", res.Version)
-				log.Printf("Header.Nonce:%d\n", res.Nonce)
-				log.Printf("Header.Bits:%d\n", res.Bits)
-				log.Printf("Header.Timestamp:%d\n", res.Timestamp)
-				log.Printf("Header.PrevBlock:%s\n", res.PrevBlock.String())
-				log.Printf("Header.ReferredBlock:%s\n", res.ReferredBlock.String())
-				log.Printf("Header.BestBlock:%s\n", res.BestBlock.String())
-				log.Printf("Header.Miner:%s\n", hex.EncodeToString(res.Miner))
+				log.Printf("Nonce:%d\n", res.Nonce)
+				log.Printf("Bits:%d\n", res.Bits)
+				log.Printf("Timestamp:%d\n", res.Timestamp)
+				log.Printf("PrevBlock:%s\n", res.PrevBlock.String())
+				log.Printf("ReferredBlock:%s\n", res.ReferredBlock.String())
+				log.Printf("BestBlock:%s\n", res.BestBlock.String())
+				log.Printf("Miner:%s (%s)\n", hex.EncodeToString(res.Miner), mn)
+				log.Printf("Connection:%s\n", string(res.Connection))
 //				log.Printf("Header.BlackList:%s\n", hex.EncodeToString(res.BlackList))
 			}
 			break
@@ -459,27 +497,35 @@ func main() {
 					log.Print(err)
 					break
 				}
-
+/*
 				s, _ := client.GetMinerBlockVerbose(res)
 				log.Print(string(s))
-/*
+*/
 				blk, err := client.GetMinerBlock(res)
 				if err != nil {
 					log.Print(err)
 				} else {
+					mn := minerName[fmt.Sprintf("%x", blk.Miner)]
+
 					log.Printf("\nBlock Height and Hash:%d %s\n", i, res.String())
-					log.Printf("Header.Version:%d\n", blk.Version)
-					log.Printf("Header.Nonce:%d\n", blk.Nonce)
-					log.Printf("Header.Bits:%d\n", blk.Bits)
-					log.Printf("Header.Timestamp:%d\n", blk.Timestamp)
-					log.Printf("Header.PrevBlock:%s\n", blk.PrevBlock.String())
-					log.Printf("Header.ReferredBlock:%s\n", blk.ReferredBlock.String())
-					log.Printf("Header.BestBlock:%s\n", blk.BestBlock.String())
-					log.Printf("Header.Miner:%s\n", hex.EncodeToString(blk.Miner))
+					if detail < 3 {
+						if detail < 1 {
+							log.Printf("Version:%d\n", blk.Version)
+							log.Printf("Timestamp:%d\n", blk.Timestamp)
+						}
+						if detail < 2 {
+							log.Printf("Nonce:%d\n", blk.Nonce)
+							log.Printf("Bits:%d\n", blk.Bits)
+						}
+						log.Printf("PrevBlock:%s\n", blk.PrevBlock.String())
+						log.Printf("ReferredBlock:%s\n", blk.ReferredBlock.String())
+						log.Printf("BestBlock:%s\n", blk.BestBlock.String())
+					}
+					log.Printf("Miner:%s (%s)\n", hex.EncodeToString(blk.Miner), mn)
+					log.Printf("Connection:%s\n", string(blk.Connection))
+
 //					log.Printf("Header.BlackList:%s\n", hex.EncodeToString(blk.BlackList))
 				}
-
- */
 			}
 
 			break
@@ -509,30 +555,34 @@ func main() {
 					log.Print(err)
 				} else {
 					log.Printf("\nBlock Height and Hash:%d %s\n", i, res.String())
-					log.Printf("Header.Version:%d\n", blk.Header.Version)
+					if detail < 1 {
+						log.Printf("Header.Version:%d\n", blk.Header.Version)
+						log.Printf("Header.Timestamp:%d\n", blk.Header.Timestamp)
+						log.Printf("Header.MerkleRoot:%d\n", blk.Header.MerkleRoot.String())
+					}
 					log.Printf("Header.Nonce:%d\n", blk.Header.Nonce)
-					log.Printf("Header.Timestamp:%d\n", blk.Header.Timestamp)
-					log.Printf("Header.MerkleRoot:%d\n", blk.Header.MerkleRoot.String())
 					log.Printf("Header.PrevBlock:%d\n", blk.Header.PrevBlock.String())
-					for _, t := range blk.Transactions {
-						log.Printf("-------------------------- Transaction ------------------------------\n")
-						log.Printf("TxHash: %s", t.TxHash().String())
-						log.Printf("Version: %d\n", t.Version)
-						log.Printf("LockTime: %d\n", t.LockTime)
-						log.Printf("TxIn: \n")
-						for _, in := range t.TxIn {
-							log.Printf("PreviousOutPoint: %s : %d\n", in.PreviousOutPoint.Hash.String(), in.PreviousOutPoint.Index)
-							log.Printf("Sequence: %d\n", in.Sequence)
-						}
-						log.Printf("TxDef: \n")
-						for _, d := range t.TxDef {
-							log.Printf("DefType: %s Hash: %s\n", d.DefType(), d.Hash().String())
-						}
-						log.Printf("TxOut: \n")
-						for _, out := range t.TxOut {
-							log.Printf("TokenType: \n", out.TokenType)
-							log.Printf("Value: \n", out.Value)
-							log.Printf("Rights: \n", out.Rights)
+					if detail < 2 {
+						for _, t := range blk.Transactions {
+							log.Printf("-------------------------- Transaction ------------------------------\n")
+							log.Printf("TxHash: %s", t.TxHash().String())
+							log.Printf("Version: %d\n", t.Version)
+							log.Printf("LockTime: %d\n", t.LockTime)
+							log.Printf("TxIn: \n")
+							for _, in := range t.TxIn {
+								log.Printf("PreviousOutPoint: %s : %d\n", in.PreviousOutPoint.Hash.String(), in.PreviousOutPoint.Index)
+								log.Printf("Sequence: %d\n", in.Sequence)
+							}
+							log.Printf("TxDef: \n")
+							for _, d := range t.TxDef {
+								log.Printf("DefType: %s Hash: %s\n", d.DefType(), d.Hash().String())
+							}
+							log.Printf("TxOut: \n")
+							for _, out := range t.TxOut {
+								log.Printf("TokenType: \n", out.TokenType)
+								log.Printf("Value: \n", out.Value)
+								log.Printf("Rights: \n", out.Rights)
+							}
 						}
 					}
 				}

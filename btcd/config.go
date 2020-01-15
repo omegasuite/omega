@@ -145,8 +145,9 @@ type config struct {
 	TrickleInterval      time.Duration `long:"trickleinterval" description:"Minimum time between attempts to send new inventory to a connected peer"`
 	MaxOrphanTxs         int           `long:"maxorphantx" description:"Max number of orphan transactions to keep in memory"`
 	Generate             bool          `long:"generate" description:"Generate (mine) bitcoins using the CPU"`
+	GenerateMiner        bool          `long:"generateminer" description:"Generate (mine) miner blocks using the CPU"`
 	MiningAddrs          []string      `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
-	PrivKeys  	         []string      `long:"privkeys" description:"Add the specified private key to the list of keys to sign for generated blocks -- At least one key is required if the generate option is set"`
+	PrivKeys  	         string        `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
 	RsaPrivateKey		 string		   `long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
 	BlockMinSize         uint32        `long:"blockminsize" description:"Mininum block size in bytes to be used when creating a block"`
 	BlockMaxSize         uint32        `long:"blockmaxsize" description:"Maximum block size in bytes to be used when creating a block"`
@@ -170,7 +171,10 @@ type config struct {
 	dial           func(string, string, time.Duration) (net.Conn, error)
 	addCheckpoints []chaincfg.Checkpoint
 	miningAddrs    []btcutil.Address
-	privateKeys    map[btcutil.Address]*btcec.PrivateKey
+
+	// signAddress is the address for privateKeys
+	signAddress    btcutil.Address
+	privateKeys    *btcec.PrivateKey
 
 	minRelayTxFee        btcutil.Amount
 	whitelists           []*net.IPNet
@@ -431,6 +435,7 @@ func loadConfig() (*config, []string, error) {
 		MaxOrphanTxs:         defaultMaxOrphanTransactions,
 		SigCacheMaxSize:      defaultSigCacheMaxSize,
 		Generate:             defaultGenerate,
+		GenerateMiner:        defaultGenerate,
 		TxIndex:              defaultTxIndex,
 		AddrIndex:            defaultAddrIndex,
 	}
@@ -892,39 +897,37 @@ func loadConfig() (*config, []string, error) {
 		cfg.miningAddrs = append(cfg.miningAddrs, addr)
 	}
 
-	cfg.privateKeys = make(map[btcutil.Address]*btcec.PrivateKey)
-	for _, strAddr := range cfg.PrivKeys {
-		// for main net
-		dwif,err := btcutil.DecodeWIF(strAddr)
-		if err != nil {
-			continue
-		}
-		privKey := dwif.PrivKey
-		pkaddr,err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
+	if len(cfg.PrivKeys) > 0 {
+		dwif,err := btcutil.DecodeWIF(cfg.PrivKeys)
+		if err == nil {
+			privKey := dwif.PrivKey
+			pkaddr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
 
-		if err != nil {
-			str := "%s: mining address '%s' failed to decode: %v"
-			err := fmt.Errorf(str, funcName, strAddr, err)
-			fmt.Fprintln(os.Stderr, err)
-			fmt.Fprintln(os.Stderr, usageMessage)
-			return nil, nil, err
-		}
+			if err != nil {
+				str := "%s: mining address '%s' failed to decode: %v"
+				err := fmt.Errorf(str, funcName, cfg.PrivKeys, err)
+				fmt.Fprintln(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, usageMessage)
+				return nil, nil, err
+			}
 
-		addr := pkaddr.AddressPubKeyHash()
-		if !addr.IsForNet(activeNetParams.Params) {
-			str := "%s: mining address '%s' is on the wrong network"
-			err := fmt.Errorf(str, funcName, strAddr)
-			fmt.Fprintln(os.Stderr, err)
-			fmt.Fprintln(os.Stderr, usageMessage)
-			return nil, nil, err
+			addr := pkaddr.AddressPubKeyHash()
+			if !addr.IsForNet(activeNetParams.Params) {
+				str := "%s: mining address '%s' is on the wrong network"
+				err := fmt.Errorf(str, funcName, cfg.PrivKeys)
+				fmt.Fprintln(os.Stderr, err)
+				fmt.Fprintln(os.Stderr, usageMessage)
+				return nil, nil, err
+			}
+			cfg.miningAddrs = append(cfg.miningAddrs, addr)
+			cfg.signAddress = addr
+			cfg.privateKeys = privKey
 		}
-		cfg.miningAddrs = append(cfg.miningAddrs, addr)
-		cfg.privateKeys[addr] = privKey
 	}
 
 	// Ensure there is at least one mining address when the generate flag is
 	// set.
-	if cfg.Generate && len(cfg.MiningAddrs) == 0 {
+	if cfg.GenerateMiner && len(cfg.MiningAddrs) == 0 {
 		str := "%s: the generate flag is set, but there are no mining " +
 			"addresses specified "
 		err := fmt.Errorf(str, funcName)

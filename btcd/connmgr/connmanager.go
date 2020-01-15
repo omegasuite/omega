@@ -437,7 +437,7 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 
 	conn, err := cm.cfg.Dial(c.Addr)
 	if err != nil {
-//		log.Infof(". Failed to connect to %s\n", c.Addr.String())
+		log.Infof(". Failed to connect to %s\n", c.Addr.String())
 		select {
 		case cm.requests <- handleFailed{c, err}:
 		case <-cm.quit:

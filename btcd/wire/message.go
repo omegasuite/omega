@@ -65,7 +65,7 @@ const (
 	CmdMerkleBlock  = "merkleblock"
 	CmdKnowledge = "knowledge"
 	CmdCandidate = "candidate"
-	CmdCandidateReply = "candidateReply"
+	CmdCandidateReply = "candidReply"
 	CmdRelease = "release"
 	CmdConsensus = "consensus"
 	CmdSignature = "signature"

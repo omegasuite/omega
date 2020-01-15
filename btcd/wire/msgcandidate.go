@@ -6,6 +6,7 @@ package wire
 
 import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/wire/common"
 	"io"
 )
 
@@ -121,7 +122,7 @@ func NewMsgCandidate(blk int32, f [20]byte, m chainhash.Hash) *MsgCandidate {
 
 type MsgCandidateResp struct {
 	Height    int32
-	Reply     string
+	Reply     string	// a 4 byte string
 	K         []int64	// knowledge, when rejected
 	Better    int32
 	From      [20]byte
@@ -141,12 +142,41 @@ func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, _ MessageEncod
 		return err
 	}
 
-	err = readElement(r, &msg.Reply)
+	var rp [4]byte
+	err = readElement(r, &rp)
+	if err != nil {
+		return err
+	}
+	msg.Reply = string(rp[:])
+
+	err = readElement(r, &msg.From)
 	if err != nil {
 		return err
 	}
 
-	// Read stop hash
+	err = readElement(r, &msg.M)
+	if err != nil {
+		return err
+	}
+
+	err = readElement(r, &msg.Better)
+	if err != nil {
+		return err
+	}
+
+	l, err := common.ReadVarInt(r, 0)
+	if err != nil {
+		return err
+	}
+	msg.K = make([]int64, l)
+	for i := 0; i < int(l); i++ {
+		n, err := common.ReadVarInt(r, 0)
+		msg.K[i] = int64(n)
+		if err != nil {
+			return err
+		}
+	}
+
 	err = readElement(r, &msg.Signature)
 	if err != nil {
 		return err
@@ -165,12 +195,39 @@ func (msg * MsgCandidateResp) BtcEncode(w io.Writer, pver uint32, _ MessageEncod
 	}
 
 	// Write stop hash
-	err = writeElement(w, msg.Reply)
+	var r [4]byte
+	copy(r[:], []byte(msg.Reply))
+	err = writeElement(w, r)
 	if err != nil {
 		return err
 	}
 
-	// Write stop hash
+	err = writeElement(w, msg.From)
+	if err != nil {
+		return err
+	}
+
+	err = writeElement(w, msg.M)
+	if err != nil {
+		return err
+	}
+
+	err = writeElement(w, msg.Better)
+	if err != nil {
+		return err
+	}
+
+	err = common.WriteVarInt(w, 0, uint64(len(msg.K)))
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(msg.K); i++ {
+		err = common.WriteVarInt(w, 0, uint64(msg.K[i]))
+		if err != nil {
+			return err
+		}
+	}
+
 	err = writeElement(w, msg.Signature)
 	if err != nil {
 		return err
@@ -198,12 +255,12 @@ func (msg * MsgCandidateResp) MaxPayloadLength(pver uint32) uint32 {
 func (msg * MsgCandidateResp) DoubleHashB() []byte {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
-	h := make([]byte, 8 + len(msg.Reply))
+	h := make([]byte, 12)
 	for i := uint(0); i < 4; i++ {
 		h[i] = byte((msg.Height >> (i * 8) & 0xFF))
 	}
 
-	copy(h[8:], msg.Reply)
+	copy(h[8:], msg.Reply[:])
 	return chainhash.DoubleHashB(h)
 }
 

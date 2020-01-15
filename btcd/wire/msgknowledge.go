@@ -32,6 +32,7 @@ func (msg * MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding)
 	if err != nil {
 		return err
 	}
+
 	msg.K = make([]int64, k)
 	for i := 0; i < int(k); i++ {
 		p, err := common.ReadVarInt(r, 0)
@@ -83,12 +84,6 @@ func (msg * MsgKnowledge) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding)
 		if err = common.WriteVarInt(w, 0, uint64(p)); err != nil {
 			return err
 		}
-	}
-
-	// Write stop hash
-	err = writeElement(w, msg.K)
-	if err != nil {
-		return err
 	}
 
 	err = writeElement(w, msg.M)

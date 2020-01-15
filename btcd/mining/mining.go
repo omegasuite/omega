@@ -277,9 +277,10 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addr btcut
 	tx := wire.NewMsgTx(wire.TxVersion)
 	tx.AddTxIn(&wire.TxIn{
 		// Coinbase transactions have no inputs, so previous outpoint is
-		// zero hash and max index.
-		PreviousOutPoint: *wire.NewOutPoint(&chainhash.Hash{},
-			wire.MaxPrevOutIndex),
+		// zero hash and we use index portion to store nextBlockHeight so Coinbase transactions
+		// for different blocks will have different hash even when they have same outputs.
+		PreviousOutPoint: *wire.NewOutPoint(&chainhash.Hash{}, uint32(nextBlockHeight)),
+//			wire.MaxPrevOutIndex),
 		SignatureIndex: 0xFFFFFFFF,
 		Sequence:        wire.MaxTxInSequenceNum,
 	})
@@ -1106,19 +1107,8 @@ func (g *BlkTmplGenerator) Committee() map[[20]byte]struct{} {
 	return adrs
 }
 
-func MakeMinerSigHash(height int32, hash chainhash.Hash) []byte {
-	s1 := "Omega chain miner block "
-	s2 := " at height "
-	lenth := 36 + len(s1) + len(s2)
-	t := make([]byte, lenth)
-	copy(t[:], []byte(s1))
-	copy(t[len(s1):], hash[:])
-	binary.LittleEndian.PutUint32(t[len(s1)+32:], uint32(height))
-	return chainhash.DoubleHashB(t[:])
-}
-
 func AddSignature(block * btcutil.Block, privkey *btcec.PrivateKey) {
-	hash := MakeMinerSigHash(block.Height(), *block.Hash())
+	hash := blockchain.MakeMinerSigHash(block.Height(), *block.Hash())
 
 	sig,_ := privkey.Sign(hash)
 	pubk := privkey.PubKey().SerializeCompressed()	// 33 bytes always

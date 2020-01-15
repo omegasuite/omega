@@ -51,6 +51,12 @@ type Config struct {
 	// ChainParams identifies which chain parameters the cpu miner is
 	// associated with.
 	ChainParams *chaincfg.Params
+	
+	// ExternalIPs, the ip we listen on
+	ExternalIPs []string
+	
+	// RSAPubKey for people to connect to us
+	RSAPubKey   string
 
 	// BlockTemplateGenerator identifies the instance to use in order to
 	// generate block templates that the miner will attempt to solve.
@@ -60,7 +66,7 @@ type Config struct {
 	// blocks.  Each generated block will randomly choose one of them.
 	MiningAddrs []btcutil.Address
 
-	PrivKeys map[btcutil.Address]*btcec.PrivateKey
+	SignAddress btcutil.Address
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -357,20 +363,11 @@ out:
 
 		// Choose a payment address at random.
 
-		var payToAddress btcutil.Address
-
-		good := false
-		for addr, _ := range m.cfg.PrivKeys {
-			good = true
-			for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
-				p, _ := m.g.Chain.Miners.BlockByHeight(curHeight - int32(i))
-				if bytes.Compare(p.MsgBlock().Miner, addr.ScriptAddress()) == 0 {
-					good = false
-					break
-				}
-			}
-			if good {
-				payToAddress = addr
+		good := true
+		for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
+			p, _ := m.g.Chain.Miners.BlockByHeight(curHeight - int32(i))
+			if bytes.Compare(p.MsgBlock().Miner, m.cfg.SignAddress.ScriptAddress()) == 0 {
+				good = false
 				break
 			}
 		}
@@ -381,12 +378,12 @@ out:
 		var template *mining.BlockTemplate
 		var err error
 		if good {
-			template, err = m.g.NewMinerBlockTemplate(payToAddress)
+			template, err = m.g.NewMinerBlockTemplate(m.cfg.SignAddress)
 		}
 		m.submitBlockLock.Unlock()
-
+		
 		if err != nil || template == nil {
-			log.Infof("generateBlocks: sleep on err != nil || template == nil, curHeight = %d", curHeight)
+			log.Infof("miner.generateBlocks: sleep on err != nil || template == nil, curHeight = %d", curHeight)
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -395,9 +392,15 @@ out:
 		// with false when conditions that trigger a stale block, so
 		// a new block template can be generated.  When the return is
 		// true a solution was found, so submit the solved block.
+		block := wire.NewMinerBlock(template.Block.(*wire.MingingRightBlock))
+		if len(m.cfg.ExternalIPs) > 0 {
+			block.MsgBlock().Connection = []byte(m.cfg.ExternalIPs[0])
+		} else if len(m.cfg.RSAPubKey) > 0 {
+			block.MsgBlock().Connection = []byte(m.cfg.RSAPubKey)
+		}
+		
 		if m.solveBlock(template, curHeight+1, ticker, quit) {
-			log.Infof("New miner block produced by %s at %d", payToAddress.String(), template.Height)
-			block := wire.NewMinerBlock(template.Block.(*wire.MingingRightBlock))
+			log.Infof("New miner block produced by %s at %d", m.cfg.SignAddress.String(), template.Height)
 			m.submitBlock(block)
 		} else {
 //			log.Info("No New block produced")

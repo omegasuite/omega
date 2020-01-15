@@ -11,7 +11,6 @@ import (
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/mining"
 	"github.com/btcsuite/btcd/wire"
 	"math/big"
 )
@@ -294,7 +293,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 				return err
 			}
 
-			h := mining.MakeMinerSigHash(int32(p.Height), p.Hashes[i])
+			h := blockchain.MakeMinerSigHash(int32(p.Height), p.Hashes[i])
 			if !sig.Verify(h, k) {
 				return fmt.Errorf("Incorrect balck list signature")
 			}

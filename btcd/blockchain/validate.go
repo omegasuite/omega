@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/wire/common"
 	"math"
 	"math/big"
 	"time"
@@ -18,10 +17,10 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-//	"sort"
+	"github.com/btcsuite/omega/token"
+	//	"sort"
 	"github.com/btcsuite/omega/validate"
 	"github.com/btcsuite/omega/viewpoint"
-	"github.com/btcsuite/omega/token"
 )
 
 const (
@@ -358,7 +357,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			case parent.nonce == -wire.MINER_RORATE_FREQ + 1:
 				// this is a rotation block, nonce must be -(height of next miner block)
 				if header.Nonce != - int32(rotate + 1 + wire.MINER_RORATE_FREQ) {
-					str := fmt.Sprintf("The this is a rotation block, nonce must be height of next miner block.")
+					str := fmt.Sprintf("The this is a rotation block, nonce %d must be height of next miner block %d.", -header.Nonce, rotate + 1 + wire.MINER_RORATE_FREQ)
 					return ruleError(ErrHighHash, str)
 				}
 
@@ -383,12 +382,18 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 		}
 
 		// examine signatures
-		w := bytes.NewBuffer(make([]byte, 0, 36))
-		binary.Write(w, common.LittleEndian, block.Height())
-		binary.Write(w, common.LittleEndian, block.Hash())
-		hash := chainhash.DoubleHashB(w.Bytes())
+		hash := MakeMinerSigHash(block.Height(), *block.Hash())
 
 		usigns := make(map[[20]byte]struct{})
+		miners := make([][20]byte, wire.CommitteeSize)
+
+		for i := int32(0); i < wire.CommitteeSize; i++ {
+			blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
+			if blk == nil {
+				return ruleError(ErrHighHash, "Unauthorized miner signature")
+			}
+			copy(miners[i][:], blk.MsgBlock().Miner[:])
+		}
 
 		for _,sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 			k,err := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
@@ -407,11 +412,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			// is the signer in committee?
 			matched := false
 			for i := int32(0); i < wire.CommitteeSize; i++ {
-				blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
-				if blk == nil {
-					return ruleError(ErrHighHash, "Unauthorized miner signature")
-				}
-				if bytes.Compare(pkh[:], blk.MsgBlock().Miner) == 0 {
+				if bytes.Compare(pkh[:], miners[i][:]) == 0 {
 					matched = true
 				}
 			}
@@ -456,6 +457,17 @@ func CheckProofOfWork(stubBlock * btcutil.Block, powLimit *big.Int) error {
 // txscript.
 func CountSigOps(tx *btcutil.Tx) int {
 	return len(tx.MsgTx().SignatureScripts)
+}
+
+func MakeMinerSigHash(height int32, hash chainhash.Hash) []byte {
+	s1 := "Omega chain miner block "
+	s2 := " at height "
+	lenth := 36 + len(s1) + len(s2)
+	t := make([]byte, lenth)
+	copy(t[:], []byte(s1))
+	copy(t[len(s1):], hash[:])
+	binary.LittleEndian.PutUint32(t[len(s1)+32:], uint32(height))
+	return chainhash.DoubleHashB(t[:])
 }
 
 // checkBlockHeaderSanity performs some preliminary checks on a block header to

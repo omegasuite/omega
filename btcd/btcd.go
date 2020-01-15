@@ -167,9 +167,11 @@ func btcdMain(serverChan chan<- *server) error {
 		return err
 	}
 	defer func() {
-		btcdLog.Infof("Gracefully shutting down consensus server...")
-		consensus.Quit <- struct{}{}
-		srvrLog.Infof("consensus Server shutdown complete")
+		if cfg.privateKeys != nil && cfg.Generate {
+			btcdLog.Infof("Gracefully shutting down consensus server...")
+			consensus.Quit <- struct{}{}
+			srvrLog.Infof("consensus Server shutdown complete")
+		}
 
 		btcdLog.Infof("Gracefully shutting down the server...")
 		server.Stop()
@@ -178,7 +180,10 @@ func btcdMain(serverChan chan<- *server) error {
 		srvrLog.Infof("Server shutdown complete")
 	}()
 
-	go consensus.Consensus(server)
+	if cfg.privateKeys != nil && cfg.Generate {
+		go consensus.Consensus(server, cfg.signAddress)
+		go server.trying()
+	}
 
 	server.Start()
 	if serverChan != nil {

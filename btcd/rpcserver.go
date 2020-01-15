@@ -1173,6 +1173,10 @@ func getDifficultyRatio(bits uint32, params *chaincfg.Params) float64 {
 	// work limit directly because the block difficulty is encoded in a block
 	// with the compact form which loses precision.
 	max := blockchain.CompactToBig(params.PowLimitBits)
+
+	if bits == 0 {
+		bits = params.PowLimitBits
+	}
 	target := blockchain.CompactToBig(bits)
 
 	difficulty := new(big.Rat).SetFrac(max, target)

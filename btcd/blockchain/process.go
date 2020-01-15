@@ -258,9 +258,10 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	state := b.BestSnapshot()
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
-		state.LastRotation++	// = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
+//		state.LastRotation++	// = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
+//		log.Infof("Update LastRotation to %d", state.LastRotation)
 		mstate := b.Miners.BestSnapshot()
-		if int32(state.LastRotation) - wire.CommitteeSize >= mstate.Height {
+		if int32(state.LastRotation) + 1 - wire.CommitteeSize >= mstate.Height {
 			b.AddOrphanBlock(block)
 			return isMainChain, true, nil
 		}

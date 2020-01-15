@@ -83,17 +83,20 @@ func init() {
 	addrmgr.UseLogger(btclog.Disabled)	// amgrLog)
 	connmgr.UseLogger(btclog.Disabled)	// cmgrLog)
 	database.UseLogger(btclog.Disabled)	// bcdbLog)
-	blockchain.UseLogger(chanLog)
+	blockchain.UseLogger(btclog.Disabled)	// chanLog)
 	indexers.UseLogger(btclog.Disabled)	// indxLog)
-	mining.UseLogger(minrLog)
-	cpuminer.UseLogger(minrLog)
+	mining.UseLogger(btclog.Disabled)	// minrLog)
+	cpuminer.UseLogger(btclog.Disabled)	// minrLog)
 	peer.UseLogger(btclog.Disabled)	// peerLog)
 //	UseLogger(scrpLog)
+
 	netsync.UseLogger(syncLog)
+//	syncLog.SetLevel(btclog.LevelError)
+
 	mempool.UseLogger(btclog.Disabled)	// txmpLog)
 	ovm.UseLogger(btclog.Disabled)	// ovmLog)
 	consensus.UseLogger(consensusLog)
-	minerchain.UseLogger(minerLog)
+	minerchain.UseLogger(btclog.Disabled)	// minerLog)
 	token.UseLogger(btclog.Disabled)	// tokenLog)
 }
 

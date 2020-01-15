@@ -338,7 +338,7 @@ func newNetAddress(addr net.Addr, services common.ServiceFlag) (*wire.NetAddress
 // shutdown)
 type outMsg struct {
 	msg      wire.Message
-	doneChan chan<- struct{}
+	doneChan chan<- bool
 	encoding wire.MessageEncoding
 }
 
@@ -1059,7 +1059,7 @@ func (p *Peer) PushRejectMsg(command string, code common.RejectCode, reason stri
 	}
 
 	// Send the message and block until it has been sent before returning.
-	doneChan := make(chan struct{}, 1)
+	doneChan := make(chan bool, 1)
 	p.QueueMessage(msg, doneChan)
 	<-doneChan
 }
@@ -1516,7 +1516,7 @@ out:
 			}
 
 		case *wire.MsgAckInvitation:
-			if p.cfg.Listeners.OnInvitation != nil {
+			if p.cfg.Listeners.OnAckInvitation != nil {
 				p.cfg.Listeners.OnAckInvitation(p, msg)
 			}
 
@@ -1827,7 +1827,7 @@ out:
 		val := pendingMsgs.Remove(e)
 		msg := val.(outMsg)
 		if msg.doneChan != nil {
-			msg.doneChan <- struct{}{}
+			msg.doneChan <- false
 		}
 	}
 cleanup:
@@ -1835,7 +1835,7 @@ cleanup:
 		select {
 		case msg := <-p.outputQueue:
 			if msg.doneChan != nil {
-				msg.doneChan <- struct{}{}
+				msg.doneChan <- false
 			}
 		case <-p.outputInvChan:
 			// Just drain channel
@@ -1899,7 +1899,7 @@ out:
 						"%s: %v", p, err)
 				}
 				if msg.doneChan != nil {
-					msg.doneChan <- struct{}{}
+					msg.doneChan <- false
 				}
 				continue
 			}
@@ -1911,7 +1911,7 @@ out:
 			// message.
 			atomic.StoreInt64(&p.lastSend, time.Now().Unix())
 			if msg.doneChan != nil {
-				msg.doneChan <- struct{}{}
+				msg.doneChan <- true
 			}
 			p.sendDoneQueue <- struct{}{}
 
@@ -1930,7 +1930,7 @@ cleanup:
 		select {
 		case msg := <-p.sendQueue:
 			if msg.doneChan != nil {
-				msg.doneChan <- struct{}{}
+				msg.doneChan <- false
 			}
 			// no need to send on sendDoneQueue since queueHandler
 			// has been waited on and already exited.
@@ -1967,7 +1967,7 @@ out:
 // QueueMessage adds the passed bitcoin message to the peer send queue.
 //
 // This function is safe for concurrent access.
-func (p *Peer) QueueMessage(msg wire.Message, doneChan chan<- struct{}) {
+func (p *Peer) QueueMessage(msg wire.Message, doneChan chan<- bool) {
 	p.QueueMessageWithEncoding(msg, doneChan, wire.BaseEncoding)
 }
 
@@ -1977,20 +1977,22 @@ func (p *Peer) QueueMessage(msg wire.Message, doneChan chan<- struct{}) {
 // encoding/decoding blocks and transactions.
 //
 // This function is safe for concurrent access.
-func (p *Peer) QueueMessageWithEncoding(msg wire.Message, doneChan chan<- struct{},
+func (p *Peer) QueueMessageWithEncoding(msg wire.Message, doneChan chan<- bool,
 	encoding wire.MessageEncoding) {
 
 	// Avoid risk of deadlock if goroutine already exited.  The goroutine
 	// we will be sending to hangs around until it knows for a fact that
 	// it is marked as disconnected and *then* it drains the channels.
 	if !p.Connected() {
+		log.Warnf("%s Message NOT sent because connection is broken!", msg.Command())
 		if doneChan != nil {
 			go func() {
-				doneChan <- struct{}{}
+				doneChan <- false
 			}()
 		}
 		return
 	}
+	log.Infof("%s Message added to outputQueue", msg.Command())
 	p.outputQueue <- outMsg{msg: msg, encoding: encoding, doneChan: doneChan}
 }
 

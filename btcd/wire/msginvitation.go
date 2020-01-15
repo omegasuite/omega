@@ -38,7 +38,7 @@ func (m * Invitation) Deserialize(r io.Reader) error {
 	}
 	m.Height = int32(h)
 
-	err = common.ReadElement(r, m.Pubkey)
+	err = common.ReadElement(r, &m.Pubkey)
 	if err != nil {
 		return err
 	}
@@ -47,6 +47,7 @@ func (m * Invitation) Deserialize(r io.Reader) error {
 	if err != nil {
 		return err
 	}
+	m.IP = make([]byte, len(t))
 	copy(m.IP[:], t)
 
 	return nil
@@ -96,12 +97,14 @@ func (msg *MsgInvitation) BtcDecode(r io.Reader, pver uint32, enc MessageEncodin
 	if err != nil {
 		return err
 	}
+	msg.Sig = make([]byte, len(t))
 	copy(msg.Sig[:], t)
 
 	t, err = common.ReadVarBytes(r, 0, 1024, "Msg")
 	if err != nil {
 		return err
 	}
+	msg.Msg = make([]byte, len(t))
 	copy(msg.Msg[:], t)
 
 	return nil
@@ -159,7 +162,7 @@ func NewMsgInvitation() *MsgInvitation {
 type MsgAckInvitation struct {
 	// acknowledgement to invitation, send back after connected on invitation
 	Invitation	// this does not have to be RSA encrypted since we know we are connected
-				// to confirmed committee member, but wu do have to sign to to prove ourself
+				// to confirmed committee member, but we do have to sign to to prove ourself
 	Sig []byte	// my signature (w/o pubkey) on invitation to prove I am the one
 }
 
@@ -172,6 +175,7 @@ func (msg *MsgAckInvitation) BtcDecode(r io.Reader, pver uint32, enc MessageEnco
 	if err != nil {
 		return err
 	}
+	msg.Sig = make([]byte, len(t))
 	copy(msg.Sig[:], t)
 
 	return nil

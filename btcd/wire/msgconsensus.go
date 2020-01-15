@@ -6,6 +6,7 @@ package wire
 
 import (
 	"bytes"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"io"
 )
@@ -13,7 +14,8 @@ import (
 type MsgConsensus struct {
 	Height    int32
 	From      [20]byte
-	Signature      [98]byte
+	M      	  chainhash.Hash
+	Signature      [btcec.PubKeyBytesLenCompressed + 80]byte
 }
 
 func (msg * MsgConsensus) Block() int32 {
@@ -29,12 +31,17 @@ func (msg * MsgConsensus) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding)
 		return err
 	}
 
-	err = readElement(r, msg.From)
+	err = readElement(r, &msg.From)
 	if err != nil {
 		return err
 	}
 
-	err = readElement(r, msg.Signature)
+	err = readElement(r, &msg.M)
+	if err != nil {
+		return err
+	}
+
+	err = readElement(r, &msg.Signature)
 	if err != nil {
 		return err
 	}
@@ -52,6 +59,11 @@ func (msg * MsgConsensus) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding)
 	}
 
 	err = writeElement(w, msg.From)
+	if err != nil {
+		return err
+	}
+
+	err = writeElement(w, msg.M)
 	if err != nil {
 		return err
 	}
@@ -97,22 +109,33 @@ func NewMsgConsensus() *MsgConsensus {
 }
 
 
-type MsgSignature MsgConsensus
+type MsgSignature struct {
+	MsgConsensus
+	For [20]byte
+}
 
 func (msg * MsgSignature) Block() int32 {
-	return (*MsgConsensus)(msg).Block()
+	return msg.MsgConsensus.Block()
 }
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg * MsgSignature) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
-	return (*MsgConsensus)(msg).BtcDecode(r, pver, BaseEncoding)
+	err := msg.MsgConsensus.BtcDecode(r, pver, BaseEncoding)
+	if err != nil {
+		return err
+	}
+	return readElement(r, &msg.For)
 }
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg * MsgSignature) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
-	return (*MsgConsensus)(msg).BtcEncode(w, pver, BaseEncoding)
+	err := msg.MsgConsensus.BtcEncode(w, pver, BaseEncoding)
+	if err != nil {
+		return err
+	}
+	return writeElement(w, &msg.For)
 }
 
 // Command returns the protocol command string for the message.  This is part
@@ -130,7 +153,7 @@ func (msg MsgSignature) MaxPayloadLength(pver uint32) uint32 {
 }
 
 func (msg * MsgSignature) DoubleHashB() []byte {
-	return (*MsgConsensus)(msg).DoubleHashB()
+	return msg.MsgConsensus.DoubleHashB()
 }
 
 func (msg * MsgSignature) GetSignature() []byte {

@@ -145,6 +145,9 @@ type Params struct {
 	// DefaultPort defines the default peer-to-peer port for the network.
 	DefaultPort string
 
+	// external IPs that peers can reach us
+	ExternalIPs []string
+
 	// DNSSeeds defines a list of DNS seeds for the network that are used
 	// as one method to discover peers.
 	DNSSeeds []DNSSeed

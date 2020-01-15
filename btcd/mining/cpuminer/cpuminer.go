@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/omega/ovm"
+	"math/rand"
+
 	//	"runtime"
 	"sync"
 	"time"
@@ -64,7 +66,8 @@ type Config struct {
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
 	MiningAddrs []btcutil.Address
-	PrivKeys	map[btcutil.Address]*btcec.PrivateKey
+	SignAddress btcutil.Address
+	PrivKeys    *btcec.PrivateKey
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -110,6 +113,9 @@ type CPUMiner struct {
 	speedMonitorQuit  chan struct{}
 	quit              chan struct{}
 	connch 			  chan int32
+
+	// the block being mined by committee
+	minedBlock		  * btcutil.Block
 }
 
 // speedMonitor handles tracking the number of hashes per second the mining
@@ -181,7 +187,14 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 
 	// Process this block using the same rules as blocks coming from other
 	// nodes.  This will in turn relay it to the network like normal.
-	isOrphan, err := m.cfg.ProcessBlock(block, blockchain.BFSubmission | blockchain.BFNoConnect)
+	flag := blockchain.BFNone
+
+	if block.MsgBlock().Header.Nonce < 0 {
+		flag = blockchain.BFSubmission | blockchain.BFNoConnect
+	}
+
+	isOrphan, err := m.cfg.ProcessBlock(block, flag)
+
 	if err != nil {
 		// Anything other than a rule violation is an unexpected error,
 		// so log that error as an internal error.
@@ -306,6 +319,10 @@ func (m *CPUMiner) notice (notification *blockchain.Notification) {
 	}
 }
 
+func (m *CPUMiner) CurrentBlock() * btcutil.Block {
+	return m.minedBlock
+}
+
 // generateBlocks is a worker that is controlled by the miningWorkerController.
 // It is self contained in that it creates block templates and attempts to solve
 // them while detecting when it is performing stale work and reacting
@@ -325,7 +342,10 @@ out:
 	for {
 		// Quit when the miner is stopped.
 		select {
-		case <-m.connch:	// prevent chan full & blocking
+		case _,ok := <-m.connch:	// prevent chan full & blocking
+			if !ok {				// chan closed. we have received stop sig.
+				break out
+			}
 		case <-quit:
 			break out
 		default:
@@ -384,7 +404,6 @@ out:
 		// the rule is that we don't do POW mining while in committee
 
 		var payToAddr * btcutil.Address
-		var activeAddr * btcutil.Address
 
 		pb := m.g.Chain.BestChain.Tip().Header().Nonce
 
@@ -393,28 +412,19 @@ out:
 //		m.g.Chain.ChainLock.Unlock()
 
 		var adr [20]byte
+		powMode := true
 
-		for i, addr := range m.cfg.MiningAddrs {
-			if _,ok := m.cfg.PrivKeys[addr]; !ok {
-				payToAddr = &m.cfg.MiningAddrs[i]
-				continue
-			}
-			copy(adr[:], addr.ScriptAddress())
-			if _,ok := committee[adr]; ok {
-				activeAddr = &m.cfg.MiningAddrs[i]
-				payToAddr = nil
-				break
-			}
-		}
-		if payToAddr == nil && activeAddr == nil {
+		copy(adr[:], m.cfg.SignAddress.ScriptAddress())
+		if _,ok := committee[adr]; m.cfg.PrivKeys != nil && ok {
+			powMode = false
+			payToAddr = &m.cfg.SignAddress
+			log.Infof("\n\nYeah, I am in committee. My name is %x\n\n", adr[:])
+		} else if len(m.cfg.MiningAddrs) > 0 {
+			payToAddr = &m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
+		} else {
 			m.submitBlockLock.Unlock()
 			time.Sleep(time.Millisecond * miningGap)
 			continue
-		}
-		powMode := true
-		if activeAddr != nil {
-			powMode = false
-			payToAddr = activeAddr
 		}
 
 //		payToAddr := m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
@@ -433,6 +443,7 @@ out:
 		}
 
 		if !powMode {
+//			consensus.SetMiner(adr)
 			nonce := pb
 			if nonce >= 0 || nonce <= -wire.MINER_RORATE_FREQ {
 				nonce = -1
@@ -457,7 +468,7 @@ out:
 
 			if wire.CommitteeSize == 1 {
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
-				mining.AddSignature(block, m.cfg.PrivKeys[*payToAddr])
+				mining.AddSignature(block, m.cfg.PrivKeys)
 			} else {
 				t0 := *block.MsgBlock().Transactions[0]
 				if !m.coinbaseByCommittee(block.MsgBlock().Transactions[0]) {
@@ -472,6 +483,7 @@ out:
 					block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
 				}
 			}
+			m.minedBlock = block
 
 			if !powMode {
 				log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
@@ -480,22 +492,25 @@ out:
 				}
 
 			connected:
-				for {
+				for true {
 					select {
-					case blk := <-m.connch:
-						if blk >= block.Height() {
+					case blk,ok := <-m.connch:
+						if !ok || blk >= block.Height() {
 							break connected
 						}
 					}
 				}
+				m.minedBlock = nil
 				// wait until a block at this height is connect to mainchain
 				//			time.Sleep(time.Millisecond * miningGap)
 				continue
 			}
 		}
 
+		m.minedBlock = nil
+
 		flushed:
-		for {
+		for true {
 			select {
 			case <- m.connch:
 			default:
@@ -506,6 +521,8 @@ out:
 // ???		if m.g.Chain.Miners.(*minerchain.MinerChain).QualifiedMier(m.cfg.PrivKeys) != nil {
 //			continue
 //		}
+//		time.Sleep(time.Second * 5)
+//continue		// debug: committee mining only
 
 		time.Sleep(time.Second * 20)
 
@@ -678,15 +695,19 @@ func (m *CPUMiner) Stop() {
 	close(m.quit)
 	m.wg.Wait()
 	m.started = false
-
-	for {
+/*
+	for true {
 		select {
 		case <- m.connch:
 		default:
+			close(m.connch)
 			log.Infof("CPU miner stopped")
 			return
 		}
 	}
+
+ */
+	close(m.connch)
 
 	log.Infof("CPU miner stopped")
 }

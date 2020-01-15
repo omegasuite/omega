@@ -5,6 +5,7 @@
 package blockchain
 
 import (
+	"fmt"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
@@ -45,8 +46,11 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
 		// make sure the rotate in miner block is there
-		if _, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.CommitteeSize); err != nil {
+		if _, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.CommitteeSize - 1); err != nil {
 			return false, err
+		}
+		if prevNode.nonce != -wire.MINER_RORATE_FREQ + 1 {
+			return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ + 1)
 		}
 	}
 

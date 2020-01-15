@@ -50,6 +50,18 @@ func CreateKnowledge(s *Syncer) *Knowledgebase {
 	return &k
 }
 
+func (self *Knowledgebase) print() {
+	if self.Knowledge != nil {
+		for i, k := range self.Knowledge {
+			s := fmt.Sprintf("%d: ", i)
+			for _, m := range k {
+				s += fmt.Sprintf(" 0x%x ", m)
+			}
+			log.Infof(s)
+		}
+	}
+}
+
 func (self *Knowledgebase) Debug(w http.ResponseWriter, r *http.Request) {
 	for ii, jj := range self.Knowledge {
 		fmt.Fprintf(w, "%d => ", ii)
@@ -88,6 +100,9 @@ func (self *Knowledgebase) Qualified(who int32) bool {
 }
 
 func (self *Knowledgebase) ProcFlatKnowledge(mp int32, k []int64) bool {
+	if len(k) == 0 {
+		return false
+	}
 	more := false
 	var s int
 	s = 0
@@ -113,8 +128,7 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 	}
 
 	from := msg.From
-	fm, ok := self.syncer.Members[from]
-	if !ok {
+	if _, ok = self.syncer.Members[from]; !ok {
 		return false
 	}
 
@@ -124,9 +138,10 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 		return self.ProcFlatKnowledge(mp, k[1:])
 	}
 
+/*
 	tmsg := *msg
 	tmsg.K = make([]int64, 0)
-/*
+
 	for _,i := range msg.K {
 		signature, err := btcec.ParseSignature(msg.Signatures[i], btcec.S256())
 		tmsg.K = append(tmsg.K, i)
@@ -138,28 +153,48 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 	}
 */
 	k = append(k, int64(me))
-	if self.gain(mp, k, make([][2]uint, 0)) {
+	res := false
+	if self.gain(mp, k, nil) {
 		nmg := *msg
 		nmg.K = k
 		nmg.From = self.syncer.Me
 
+		miner.server.CommitteeCastMG(me, &nmg, self.syncer.Height)
+		self.syncer.candidacy()
+
+//		miner.server.CommitteeCast(me, &nmg)
+
 //		sig, _ := self.Cfg.PrivKey.Sign(nmg.DoubleHashB())
 //		nmg.Signatures[me] = sig.Serialize()
-
+/*
 		for _, p := range self.syncer.Members {
-			if p == me || p == fm {
+			if p == me {
 				continue
 			}
 			go self.sendout(&nmg, mp, me, p)
 		}
-
-		return true
+*/
+		res = true
 	}
-	return false
+
+	// does he have knowledge about me? In case he is late comer
+	if _,ok := self.syncer.forest[self.syncer.Names[me]]; ok && self.Knowledge[me][mp] & (0x1 << me) == 0 {
+		// send knowledge about me
+		lmg := wire.MsgKnowledge{
+			From: self.syncer.Names[me],
+			Finder: self.syncer.Names[me],
+			M: self.syncer.forest[self.syncer.Names[me]].hash,
+			K: []int64{int64(me), int64(me)},
+			Height: msg.Height,
+		}
+		self.sendout(&lmg, me, me, mp)
+	}
+	return res
 }
 
 func (self *Knowledgebase) sendout(msg *wire.MsgKnowledge, mp int32, me int32, q int32) {
 	if !miner.server.CommitteeMsg(q + self.syncer.Base, msg) {
+		log.Infof("Fail to send knowledge to %d. Knowledge %v about %x", q, msg.K, msg.M)
 		// fail to send
 		return
 	}
@@ -190,6 +225,8 @@ func (self *Knowledgebase) gain(mp int32, k []int64, extra [][2]uint) bool {
 			self.Knowledge[mp][k[i-1]] |= (1 << uint(viewer))
 		}
 	}
+
+	log.Infof("gain = %d", newknowledge)
 
 	return newknowledge
 }
