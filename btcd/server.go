@@ -2554,6 +2554,7 @@ func (s *server) Start() {
 
 	// Start the CPU miner if generation is enabled.
 	if cfg.Generate {
+		btcdLog.Info("Start minging blocks.")
 		s.cpuMiner.Start()
 	}
 	if cfg.GenerateMiner {

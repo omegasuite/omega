@@ -6,15 +6,13 @@ package wire
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/wire/common"
+	"github.com/btcsuite/omega/token"
 	"io"
 	"strconv"
-	"math"
-
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/omega/token"
-	"github.com/btcsuite/btcd/wire/common"
-	"encoding/binary"
 )
 
 const (
@@ -976,10 +974,9 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 		return false
 	}
 
-	// The previous output of a coin base must have a max value index and
-	// a zero hash.
+	// The previous output of a coin base must have a zero hash. index is height of the block.
 	prevOut := &msgTx.TxIn[0].PreviousOutPoint
-	if prevOut.Index != math.MaxUint32 || !prevOut.Hash.IsEqual(&chainhash.Hash{}){
+	if !prevOut.Hash.IsEqual(&chainhash.Hash{}){	// prevOut.Index != math.MaxUint32 ||
 		return false
 	}
 

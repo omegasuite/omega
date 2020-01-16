@@ -221,10 +221,10 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 	// Ensure the difficulty specified in the block header matches
 	// the calculated difficulty based on the previous block and
 	// difficulty retarget rules.
-	expectedDifficulty, err := b.calcNextRequiredDifficulty(prevNode, header.Timestamp)
-	if err != nil {
-		return err
-	}
+	expectedDifficulty, _ := b.calcNextRequiredDifficulty(prevNode, header.Timestamp)
+//	if err != nil {
+//		return err
+//	}
 
 	blockDifficulty := header.Bits
 	if blockDifficulty != expectedDifficulty {

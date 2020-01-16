@@ -295,6 +295,8 @@ func (sm *SyncManager) startSync() {
 
 	// Start syncing from the best peer if one was selected.
 	if bestPeer != nil {
+		log.Infof("Start sync with bestPeer %s", bestPeer.String())
+
 		// sync miner chain and then tx chain
 		// Clear the requestedBlocks if the sync peer changes, otherwise
 		// we may ignore blocks we need that the last sync peer failed
@@ -635,6 +637,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
+	log.Infof("netsyc ProcessBlock %s at %d", bmsg.block.Hash().String(), bmsg.block.Height())
 	_, isOrphan, err := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
 	if err != nil {

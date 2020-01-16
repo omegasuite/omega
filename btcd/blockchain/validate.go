@@ -58,7 +58,7 @@ var (
 // isNullOutpoint determines whether or not a previous transaction output point
 // is set.
 func isNullOutpoint(outpoint *wire.OutPoint) bool {
-	if outpoint.Index == math.MaxUint32 && outpoint.Hash == zeroHash {
+	if outpoint.Hash == zeroHash {	// outpoint.Index == math.MaxUint32 &&
 		return true
 	}
 	return false

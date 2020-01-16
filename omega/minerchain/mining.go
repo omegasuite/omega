@@ -201,12 +201,12 @@ func (m *CPUMiner) factorPOW(baseh uint32, h0 chainhash.Hash) int64 {	// *big.In
 	}
 
 	d := int32(baseh) - int32(h)
-	if d > wire.SCALEFACTORCAP {
-		return int64(1) << wire.SCALEFACTORCAP
-	} else if d <= wire.DESIRABLE_MINER_CANDIDATES {
+	if d > wire.DESIRABLE_MINER_CANDIDATES {
+		return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
+	} else {
 		return 1
 	}
-	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
+//	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
 /*
 	factor := float64(1024.0)
 	if d > wire.DESIRABLE_MINER_CANDIDATES {
@@ -361,6 +361,13 @@ out:
 			continue
 		}
 
+		h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
+		d := curHeight - int32(h)
+		if d > wire.DESIRABLE_MINER_CANDIDATES + 3 {
+			time.Sleep(time.Minute * time.Duration(5 * (d -3 - wire.DESIRABLE_MINER_CANDIDATES )))
+			continue
+		}
+		
 		// Choose a payment address at random.
 
 		good := true

@@ -910,10 +910,10 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 	// the last several blocks per the Chain consensus rules.
 	ts := medianAdjustedTime(best, g.timeSource)
 
-	reqDifficulty, err := g.Chain.Miners.CalcNextRequiredDifficulty(ts)
-	if err != nil {
-		return nil, err
-	}
+	reqDifficulty, _ := g.Chain.Miners.CalcNextRequiredDifficulty(ts)
+//	if err != nil {
+//		return nil, err
+//	}
 
 	// Calculate the next expected block version based on the state of the
 	// rule change deployments.

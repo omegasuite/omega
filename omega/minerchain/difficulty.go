@@ -5,6 +5,7 @@
 package minerchain
 
 import (
+	"fmt"
 	"math/big"
 	"time"
 
@@ -223,46 +224,46 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *blockNode, newBlockTim
 	}
 
 	// scan the main chain backward until the first rotation was rotated in
-	h0 := firstNode.Header().BestBlock
-	mb,_ := b.blockChain.HeaderByHash(&h0)
-	baseh := uint32(firstNode.height)
-	for mb.Nonce == 0 {
-		mb,_ = b.blockChain.HeaderByHash(&mb.PrevBlock)
-	}
+//	h0 := firstNode.Header().BestBlock
+//	mb,_ := b.blockChain.HeaderByHash(&h0)
+//	baseh := uint32(firstNode.height)
+//	for mb.Nonce < 0 {
+//		mb,_ = b.blockChain.HeaderByHash(&mb.PrevBlock)
+//	}
 // tmp	if mb.Nonce == 1 {
 //		baseh = mb.Bits
 //	}
-	d := uint32(firstNode.height) - baseh
+	d := 0 // uint32(firstNode.height) - baseh
 
+	// normalize time span. account for difficulty adjust factor due to # of exceeding blocks in history
 	normalizedTimespan := int64(0)
 	pb := firstNode
+	mb := b.blockChain.BestChain.Tip()
 	for i := b.blocksPerRetarget - 2; i >= 0; i-- {
-		factor := uint32(0)
+//		factor := uint32(0)
+		for mb != nil && * mb.Hash() != pb.block.BestBlock {
+			mb = mb.Parent()
+		}
+		if mb == nil {
+			// error. abort recalculation
+			return lastNode.block.Bits, fmt.Errorf("unexpected BestBlock for %s", pb.hash)
+		}
+		for mb != nil && (*mb.Hash() != chainhash.Hash{}) && (mb.Nonce() > -wire.MINER_RORATE_FREQ) {
+			mb = mb.Parent()
+		}
+		if mb == nil {
+			// error. abort recalculation
+			return lastNode.block.Bits, fmt.Errorf("unexpected BestBlock for %s", pb.hash)
+		}
+		h := - mb.Nonce() - wire.MINER_RORATE_FREQ
+		d = int(pb.height - h)
+		nb := pb.parent
 		if d > wire.DESIRABLE_MINER_CANDIDATES {
-			factor = (d - wire.DESIRABLE_MINER_CANDIDATES)
-			if factor > wire.SCALEFACTORCAP {
-				factor = wire.SCALEFACTORCAP
-			}
-//			factor = math.Pow(powScaleFactor, float64(d - wire.DESIRABLE_MINER_CANDIDATES))
-		}
-		ob := pb
-		if i != 0 {
-			nb := lastNode.RelativeAncestor(i)
-			normalizedTimespan += int64(float64(nb.block.Timestamp.Unix() - pb.block.Timestamp.Unix())) >> factor  // / factor)
-			pb = nb
+			normalizedTimespan += int64(float64(nb.block.Timestamp.Unix() - pb.block.Timestamp.Unix())) >> (d - wire.DESIRABLE_MINER_CANDIDATES)  // / factor)
 		} else {
-			normalizedTimespan += int64(float64(lastNode.block.Timestamp.Unix() - pb.block.Timestamp.Unix())) >> factor // / factor)
+			normalizedTimespan += int64(float64(nb.block.Timestamp.Unix() - pb.block.Timestamp.Unix())) // / factor)
 		}
-		d++
-		h0 = pb.Header().BestBlock
-		mb,_ = b.blockChain.HeaderByHash(&h0)
-		mbh := mb.BlockHash()
-		for !ob.hash.IsEqual(&mbh) {
-			if mb.Nonce == 1 {
-				d--
-			}
-			mb,_ = b.blockChain.HeaderByHash(&mb.PrevBlock)
-		}
+		pb = nb
 	}
 
 	// Limit the amount of adjustment that can occur to the previous
