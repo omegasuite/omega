@@ -798,7 +798,7 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 		// the real miner block height of the previous miner block
 		mblock, err := b.Miners.BlockByHeight(realheight)
 		if err != nil {
-			return err		// impossible
+//			continue  // err		// impossible. only when database is corrupt
 		} else {
 			bits = mblock.MsgBlock().Bits
 		}
@@ -901,7 +901,9 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	// Prune fully spent entries and mark all entries in the view unmodified
 	// now that the modifications have been committed to the database.
 	view.Commit()
-	b.Blacklist.Rollback(uint32(node.height))
+	if b.Blacklist != nil {
+		b.Blacklist.Rollback(uint32(node.height))
+	}
 
 	// This node's parent is now the end of the best chain.
 	b.BestChain.SetTip(node.parent)

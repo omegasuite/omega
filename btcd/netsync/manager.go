@@ -256,10 +256,6 @@ func (sm *SyncManager) findNextHeaderCheckpoint(height int32) *chaincfg.Checkpoi
 // candidates and removes them as needed.
 func (sm *SyncManager) startSync() {
 	// Return now if we're already syncing.
-	if sm.syncPeer != nil {
-		return
-	}
-
 	best := sm.chain.Miners.BestSnapshot()
 	txbest := sm.chain.BestSnapshot()
 	var bestPeer *peerpkg.Peer
@@ -268,7 +264,7 @@ func (sm *SyncManager) startSync() {
 	// because miner block depends on tx block
 
 	for peer, state := range sm.peerStates {
-		if !state.syncCandidate {
+		if !state.syncCandidate || !peer.Connected() {
 			continue
 		}
 
@@ -293,6 +289,10 @@ func (sm *SyncManager) startSync() {
 		}
 	}
 
+	if bestPeer == sm.syncPeer {
+		return
+	}
+
 	// Start syncing from the best peer if one was selected.
 	if bestPeer != nil {
 		log.Infof("Start sync with bestPeer %s", bestPeer.String())
@@ -309,6 +309,10 @@ func (sm *SyncManager) startSync() {
 				"latest block: %v", err)
 			return
 		}
+
+		// TODO: Donn't request all miner block and then tx blocks. Instead, make request
+		// intewovenly to optimize use of memry and reduce the chanse that orphan gets kicked
+		// out.
 
 		log.Infof("Syncing miner chain to block height %d from peer %v",
 			bestPeer.LastMinerBlock(), bestPeer.Addr())
@@ -739,6 +743,13 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 				peer)
 		}
 	}
+
+	defer func() {
+		if len(sm.requestedBlocks) == 0 && len(sm.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+			sm.syncPeer = nil
+			sm.startSync()
+		}
+	}()
 
 	// Nothing more to do if we aren't in headers-first mode.
 	if !sm.headersFirstMode {
@@ -1468,11 +1479,11 @@ out:
 							isOrphan: false,
 							err:      err,
 						}
-					}
-
-					msg.reply <- processBlockResponse{
-						isOrphan: isOrphan,
-						err:      nil,
+					} else {
+						msg.reply <- processBlockResponse{
+							isOrphan: isOrphan,
+							err:      nil,
+						}
 					}
 				}
 
@@ -1491,16 +1502,18 @@ out:
 			case processMinerBlockMsg:
 				_, isOrphan, err := sm.chain.Miners.ProcessBlock(
 					msg.block, msg.flags)
-				if err != nil {
-					msg.reply <- processBlockResponse{
-						isOrphan: false,
-						err:      err,
+				if msg.reply != nil {
+					if err != nil {
+						msg.reply <- processBlockResponse{
+							isOrphan: false,
+							err:      err,
+						}
+					} else {
+						msg.reply <- processBlockResponse{
+							isOrphan: isOrphan,
+							err:      nil,
+						}
 					}
-				}
-
-				msg.reply <- processBlockResponse{
-					isOrphan: isOrphan,
-					err:      nil,
 				}
 
 			case isCurrentMsg:

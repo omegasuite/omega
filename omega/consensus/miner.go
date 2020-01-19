@@ -82,6 +82,7 @@ var errInvalidBlock error
 func Consensus(s PeerNotifier, addr btcutil.Address) {
 	miner = &Miner{}
 	miner.server = s
+	miner.updateheight = make(chan int32)
 
 	miner.Sync = make(map[int32]*Syncer, 0)
 	miner.syncMutex = sync.Mutex{}

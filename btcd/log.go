@@ -90,7 +90,7 @@ func init() {
 	peer.UseLogger(btclog.Disabled)	// peerLog)
 //	UseLogger(scrpLog)
 
-	netsync.UseLogger(syncLog)
+	netsync.UseLogger(btclog.Disabled)	// syncLog)
 //	syncLog.SetLevel(btclog.LevelError)
 
 	mempool.UseLogger(btclog.Disabled)	// txmpLog)
@@ -98,6 +98,8 @@ func init() {
 	consensus.UseLogger(consensusLog)
 	minerchain.UseLogger(btclog.Disabled)	// minerLog)
 	token.UseLogger(btclog.Disabled)	// tokenLog)
+
+	srvrLog = btclog.Disabled
 }
 
 // subsystemLoggers maps each subsystem identifier to its associated logger.

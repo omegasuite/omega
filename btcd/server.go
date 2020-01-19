@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/omega/consensus"
 	"github.com/btcsuite/omega/minerchain"
 	"math"
 	"net"
@@ -283,6 +282,7 @@ type serverPeer struct {
 	persistent     bool
 	continueHash   *chainhash.Hash
 	continueMinerHash   *chainhash.Hash
+	heightSent     [2]int32			// heights (tx, miner) of the best mainchain block send
 	relayMtx       sync.Mutex
 	disableRelayTx bool
 	sentAddrs      bool
@@ -1533,6 +1533,9 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 
 	var msgBlock wire.MsgBlock
 
+	heightSent := sp.heightSent[0]
+	minerHeightSent := sp.heightSent[1]
+
 	if err != nil {
 		// now check orphans
 		m := s.chain.GetOrphanBlock(hash)
@@ -1540,6 +1543,43 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 			msgBlock = *m
 			err = nil
 		} else if block := s.cpuMiner.CurrentBlock(); block != nil && * block.Hash() == * hash {
+			ht := s.chain.BestSnapshot().Height
+			if heightSent < ht {
+				// sending the requesting peer new inventory
+				inv := wire.NewMsgInv()
+				for i, n := heightSent, 0; i < ht; n++ {
+					i++
+					if n > wire.MaxInvPerMsg {
+						sp.Peer.QueueMessage(inv, nil)
+						inv = wire.NewMsgInv()
+						n = 0
+					}
+					h, _ := s.chain.BlockHashByHeight(i)
+					inv.AddInvVect(&wire.InvVect{common.InvTypeWitnessBlock, *h})
+				}
+				done := make(chan bool)
+				sp.Peer.QueueMessage(inv, done)
+				<-done
+
+				ht = s.chain.Miners.BestSnapshot().Height
+				if minerHeightSent < ht {
+					// sending the requesting peer new inventory
+					inv := wire.NewMsgInv()
+					for i, n := minerHeightSent, 0; i < ht; n++ {
+						i++
+						if n > wire.MaxInvPerMsg {
+							sp.Peer.QueueMessage(inv, nil)
+							inv = wire.NewMsgInv()
+							n = 0
+						}
+						h, _ := s.chain.Miners.(*minerchain.MinerChain).BlockHashByHeight(i)
+						inv.AddInvVect(&wire.InvVect{common.InvTypeMinerBlock, *h})
+					}
+					done := make(chan bool)
+					sp.Peer.QueueMessage(inv, done)
+					<-done
+				}
+			}
 			msgBlock = * block.MsgBlock()
 			err = nil
 		} else {
@@ -1563,6 +1603,10 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 			}
 			return err
 		}
+		h,_ := s.chain.BlockHeightByHash(hash)
+		if h > heightSent {
+			heightSent = h
+		}
 	}
 
 	// Once we have fetched data wait for any previous operation to finish.
@@ -1579,6 +1623,8 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		dc = doneChan
 	}
 	sp.QueueMessageWithEncoding(&msgBlock, dc, encoding)
+	sp.heightSent[0] = heightSent
+	sp.heightSent[1] = minerHeightSent
 
 	// When the peer requests the final block that was advertised in
 	// response to a getblocks message which requested more blocks than
@@ -2451,7 +2497,7 @@ func (s *server) UpdatePeerHeights(latestBlkHash *chainhash.Hash, latestHeight i
 		newHeight:  latestHeight,
 		originPeer: updateSource,
 	}
-	consensus.UpdateChainHeight(s.chain.BestSnapshot().Height)
+//	consensus.UpdateChainHeight(s.chain.BestSnapshot().Height)
 }
 
 func (s *server) UpdatePeerMinerHeights(latestBlkHash *chainhash.Hash, latestHeight int32, updateSource *peer.Peer) {

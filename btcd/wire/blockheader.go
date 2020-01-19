@@ -16,7 +16,7 @@ import (
 const (
 	CommitteeSize				= 3			// 3
 	MINER_RORATE_FREQ			= 20		// rotate committee every MINER_RORATE_FREQ blocks
-	DESIRABLE_MINER_CANDIDATES	= 20		// the desirable number of miner candidate we want to have
+	DESIRABLE_MINER_CANDIDATES	= 40		// the desirable number of miner candidate we want to have
 	MinerGap					= 3			// a miner must wait between to candidacies
 	SCALEFACTORCAP				= 48
 )

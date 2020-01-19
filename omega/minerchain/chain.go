@@ -971,7 +971,7 @@ func (b *MinerChain) BlockHeightByHash(hash *chainhash.Hash) (int32, error) {
 func (b *MinerChain) BlockHashByHeight(blockHeight int32) (*chainhash.Hash, error) {
 	node := b.BestChain.NodeByHeight(blockHeight)
 	if node == nil {
-		str := fmt.Sprintf("no block at height %d exists", blockHeight)
+		str := fmt.Sprintf("no miner miner block at height %d exists", blockHeight)
 		return nil, bccompress.ErrNotInMainChain(str)
 
 	}
@@ -1312,6 +1312,70 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 
 	b.blockChain = s
 	s.Miners = b
+
+	// verify chain state is not corrupted
+	best := s.BestSnapshot()
+	mbest := b.BestSnapshot()
+
+	mtop := b.BestChain.Tip()
+	ok := true
+	h := mtop.Header().BestBlock
+	if !s.MainChainHasBlock(&h) {
+		ok = false
+		detachNodes := list.New()
+
+		// Start from the end of the main chain and work backwards until
+		// the node whose bestblock is the tx chain's last block.
+		for n := mtop; n.parent != nil && n.Header().BestBlock != best.Hash; n = n.parent {
+			detachNodes.PushBack(n)
+		}
+
+		log.Warnf("miner chain is corrupted. roll back %d blocks", detachNodes.Len())
+
+		b.chainLock.Lock()
+		b.reorganizeChain(detachNodes, list.New())
+		b.chainLock.Unlock()
+	}
+	txtop := s.BestChain.Tip()
+	for txtop != nil && txtop.Nonce() > -wire.MINER_RORATE_FREQ {
+		txtop = txtop.Parent()
+	}
+	if txtop != nil && mbest.Height < -txtop.Nonce() - wire.MINER_RORATE_FREQ {
+		ok = false
+		// roll back tx chain to the point where a rotation references to a valid
+		// miner block and non rotation blocks that follows
+
+		rp, sp := txtop, txtop
+		for sp != nil {
+			if sp.Nonce() > -wire.MINER_RORATE_FREQ {
+				sp = sp.Parent()
+			} else if mbest.Height < -sp.Nonce() - wire.MINER_RORATE_FREQ {
+				rp = sp
+				sp = sp.Parent()
+			} else {
+				sp = nil
+			}
+		}
+
+		detachNodes := list.New()
+		for n := s.BestChain.Tip(); n.Parent() != nil && n != rp; n = n.Parent() {
+			detachNodes.PushBack(n)
+		}
+		detachNodes.PushBack(rp)
+
+		log.Warnf("tx chain is corrupted. roll back %d blocks", detachNodes.Len())
+		s.ChainLock.Lock()
+		s.ReorganizeChain(detachNodes, list.New())
+		s.ChainLock.Unlock()
+	}
+
+	if !ok {
+		log.Infof("commit to data base and exit")
+
+		config.DB.Close()
+		config.MinerDB.Close()
+		return nil, fmt.Errorf("databased was corrupted. please restart")
+	}
 
 	return s, nil
 }

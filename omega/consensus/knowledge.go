@@ -134,11 +134,12 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 
 	me := self.syncer.Myself
 
+/*
 	if k[0] < 0 {
 		return self.ProcFlatKnowledge(mp, k[1:])
 	}
 
-/*
+
 	tmsg := *msg
 	tmsg.K = make([]int64, 0)
 
@@ -153,14 +154,27 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 	}
 */
 	k = append(k, int64(me))
-	res := false
-	if self.gain(mp, k, nil) {
-		nmg := *msg
-		nmg.K = k
-		nmg.From = self.syncer.Me
+	res := self.gain(mp, k)
 
-		miner.server.CommitteeCastMG(me, &nmg, self.syncer.Height)
-		self.syncer.candidacy()
+	lmg := *msg
+	lmg.K = k
+	lmg.From = self.syncer.Me
+
+	if res {
+		miner.server.CommitteeCastMG(me + self.syncer.Base, &lmg, self.syncer.Height)
+	}
+/*
+	for j, m := range self.Knowledge[mp] {
+		if m != self.Knowledge[mp][me] {
+			t := self.sendout(&lmg, mp, me, int32(j))
+			res = res || t
+		}
+	}
+
+/*
+	nmg := *msg
+	nmg.K = k
+	nmg.From = self.syncer.Me
 
 //		miner.server.CommitteeCast(me, &nmg)
 
@@ -174,8 +188,6 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 			go self.sendout(&nmg, mp, me, p)
 		}
 */
-		res = true
-	}
 
 	// does he have knowledge about me? In case he is late comer
 	if _,ok := self.syncer.forest[self.syncer.Names[me]]; ok && self.Knowledge[me][mp] & (0x1 << me) == 0 {
@@ -184,49 +196,77 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 			From: self.syncer.Names[me],
 			Finder: self.syncer.Names[me],
 			M: self.syncer.forest[self.syncer.Names[me]].hash,
-			K: []int64{int64(me), int64(me)},
+			K: []int64{int64(me)},
 			Height: msg.Height,
 		}
-		self.sendout(&lmg, me, me, mp)
+		res = res || self.sendout(&lmg, me, me, mp)
 	}
+
 	return res
 }
 
-func (self *Knowledgebase) sendout(msg *wire.MsgKnowledge, mp int32, me int32, q int32) {
+func (self *Knowledgebase) improve(fact int32, k []int64, to int32) bool {
+	newknowledge := false
+
+	m := []int64{}
+	m = append(m, k...)
+	m = append(m, int64(self.syncer.Myself))
+	m = append(m, int64(to))
+
+	c := int64(0)
+	for i := 1; i < len(k); i++ {
+		viewer := k[i - 1]
+		for j := 0; j <= i; j++ {
+			c |= 1 << uint(k[j])
+		}
+		if (self.Knowledge[fact][viewer] & c) != c {
+			newknowledge = true
+		}
+	}
+	if (self.Knowledge[fact][k[len(k) - 1]] & c) != c {
+		newknowledge = true
+	}
+	if (self.Knowledge[fact][self.syncer.Myself] & c) != c {
+		newknowledge = true
+	}
+
+	return newknowledge
+}
+
+func (self *Knowledgebase) sendout(msg *wire.MsgKnowledge, mp int32, me int32, q int32) bool {
 	if !miner.server.CommitteeMsg(q + self.syncer.Base, msg) {
 		log.Infof("Fail to send knowledge to %d. Knowledge %v about %x", q, msg.K, msg.M)
 		// fail to send
-		return
+		return false
 	}
 
 	qm := int64((1<<uint(q)) | (1<<uint(me)))
 	if (self.Knowledge[mp][me] & qm) != qm || (self.Knowledge[mp][q] & qm) != qm {
 		self.Knowledge[mp][me] |= qm
 		self.Knowledge[mp][q] |= qm
-		self.syncer.candidacy()
+		return true
 	}
+	return false
 }
 
-func (self *Knowledgebase) gain(mp int32, k []int64, extra [][2]uint) bool {
+func (self *Knowledgebase) gain(mp int32, k []int64) bool {
 	newknowledge := false
-
-	for i := 0; i < len(k); i++ {
-		viewer := k[i]
-		c := int64(0)
+	c := int64(0)
+	for i := 1; i < len(k); i++ {
+		viewer := k[i - 1]
+		c = 0
 		for j := 0; j <= i; j++ {
 			c |= 1 << uint(k[j])
 		}
-		if (self.Knowledge[mp][viewer] & c) != c {
-			newknowledge = true
+		if self.Knowledge[mp][viewer] & c != c {
 			self.Knowledge[mp][viewer] |= c
-		}
-		if i > 0 && self.Knowledge[mp][k[i-1]]&(1<<uint(viewer)) == 0 {
 			newknowledge = true
-			self.Knowledge[mp][k[i-1]] |= (1 << uint(viewer))
 		}
 	}
-
-	log.Infof("gain = %d", newknowledge)
+	if self.Knowledge[mp][k[len(k) - 1]] & c != c {
+		self.Knowledge[mp][k[len(k)-1]] |= c
+		newknowledge = true
+	}
 
 	return newknowledge
 }

@@ -1565,7 +1565,9 @@ out:
 			}
 
 		case *wire.MsgInv:
-//	log.Infof("inHandler MsgInv %s %s %x", p.addr, msg.InvList[0].Type.String(), msg.InvList[0].Hash)
+			if msg.InvList[0].Type & common.InvTypeBlock == common.InvTypeBlock {
+				log.Infof("inHandler received %d MsgInv %s %s %x", len(msg.InvList), p.addr, msg.InvList[0].Type.String(), msg.InvList[0].Hash)
+			}
 			if p.cfg.Listeners.OnInv != nil {
 				p.cfg.Listeners.OnInv(p, msg)
 			}
@@ -2008,10 +2010,12 @@ func (p *Peer) QueueInventory(invVect *wire.InvVect) {
 		return
 	}
 
+	log.Infof("\nTry to relay %d inventory to %s", invVect.Type.String(), p.String())
 	// Avoid risk of deadlock if goroutine already exited.  The goroutine
 	// we will be sending to hangs around until it knows for a fact that
 	// it is marked as disconnected and *then* it drains the channels.
 	if !p.Connected() {
+		log.Infof("Inventry %s is not relayed because peer %s is not connected", invVect.Hash.String(), p.String())
 		return
 	}
 

@@ -253,6 +253,9 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 			case <-quit:
 				return false
 
+			case <- m.connch:
+				return false
+
 			case <-ticker.C:
 				m.updateHashes <- hashesCompleted
 				hashesCompleted = 0
@@ -374,9 +377,9 @@ out:
 		bs := m.g.BestSnapshot()
 		curHeight := bs.Height
 
-		if int32(bs.LastRotation) > m.g.Chain.Miners.BestSnapshot().Height {
+		if int32(bs.LastRotation) > m.g.Chain.Miners.BestSnapshot().Height - 2 * wire.CommitteeSize {
 			m.submitBlockLock.Unlock()
-			log.Infof("generateBlocks: sleep on LastRotation > Miners.Height")
+			log.Infof("generateBlocks: sleep on LastRotation %d > Miners.Height %d - 2 * CommitteeSize", bs.LastRotation, m.g.Chain.Miners.BestSnapshot().Height)
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -508,7 +511,7 @@ out:
 		}
 
 		m.minedBlock = nil
-
+/*
 		flushed:
 		for true {
 			select {
@@ -517,14 +520,13 @@ out:
 				break flushed
 			}
 		}
-
+*/
 // ???		if m.g.Chain.Miners.(*minerchain.MinerChain).QualifiedMier(m.cfg.PrivKeys) != nil {
 //			continue
 //		}
 //		time.Sleep(time.Second * 5)
 //continue		// debug: committee mining only
-
-		time.Sleep(time.Second * 20)
+		time.Sleep(time.Second * 4)
 
 		log.Info("Try to solve block ")
 
@@ -691,6 +693,7 @@ func (m *CPUMiner) Stop() {
 	if !m.started || m.discreteMining {
 		return
 	}
+	close(m.connch)
 
 	close(m.quit)
 	m.wg.Wait()
@@ -707,7 +710,6 @@ func (m *CPUMiner) Stop() {
 	}
 
  */
-	close(m.connch)
 
 	log.Infof("CPU miner stopped")
 }

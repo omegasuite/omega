@@ -595,7 +595,6 @@ func (s *server) CommitteeMsgMG(p int32, m wire.Message, h int32) {
 	}
 }
 
-
 func (s *server) CommitteeMsg(p int32, m wire.Message) bool {
 	srvrLog.Infof("CommitteeMsg: sending %s message to %d", m.Command(), p)
 
@@ -622,13 +621,13 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 
 	if _, _, err := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil {
 		srvrLog.Infof("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
-		msg := wire.NewMsgInv()
-		msg.AddInvVect(&wire.InvVect{
-			Type: common.InvTypeWitnessBlock,
-			Hash: *m.Hash(),
-		})
+//		msg := wire.NewMsgInv()
+//		msg.AddInvVect(&wire.InvVect{
+//			Type: common.InvTypeWitnessBlock,
+//			Hash: *m.Hash(),
+//		})
 
-		s.broadcast <- broadcastMsg { message: msg }
+//		s.broadcast <- broadcastMsg { message: msg }
 	} else {
 		srvrLog.Infof("consensus faield to pass ProcessBlock!!! %s", err.Error())
 	}

@@ -118,16 +118,17 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 				continue
 			}
 
-			// Remove the orphan from the orphan pool.
-			orphanHash := orphan.block.Hash()
-			b.removeOrphanBlock(orphan)
-			i--
-
 			// Potentially accept the block into the block chain.
 			_, err := b.maybeAcceptBlock(orphan.block, flags)
 			if err != nil {
 				return err
 			}
+
+			// Remove the orphan from the orphan pool.
+			orphanHash := orphan.block.Hash()
+
+			b.removeOrphanBlock(orphan)
+			i--
 
 			// Add this block to the list of blocks to process so
 			// any orphan blocks that depend on this block are

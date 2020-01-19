@@ -197,7 +197,7 @@ func dbFetchHashByHeight(dbTx database.Tx, height int32) (*chainhash.Hash, error
 	heightIndex := meta.Bucket(heightIndexBucketName)
 	hashBytes := heightIndex.Get(serializedHeight[:])
 	if hashBytes == nil {
-		str := fmt.Sprintf("no block at height %d exists", height)
+		str := fmt.Sprintf("no miner block at height %d exists", height)
 		return nil, bccompress.ErrNotInMainChain(str)
 	}
 
@@ -652,7 +652,7 @@ func (b *MinerChain) BlockByHeight(blockHeight int32) (*wire.MinerBlock, error) 
 	// Lookup the block height in the best chain.
 	node := b.BestChain.NodeByHeight(blockHeight)
 	if node == nil {
-		str := fmt.Sprintf("no block at height %d exists", blockHeight)
+		str := fmt.Sprintf("no miner block at height %d exists", blockHeight)
 		return nil, bccompress.ErrNotInMainChain(str)
 	}
 

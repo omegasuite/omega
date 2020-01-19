@@ -114,16 +114,17 @@ func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.Behav
 				continue
 			}
 
-			// Remove the orphan from the orphan pool.
-			orphanHash := orphan.block.Hash()
-			b.removeOrphanBlock(orphan)
-			i--
-
 			// Potentially accept the block into the block chain.
 			_, err := b.maybeAcceptBlock(orphan.block, flags)
 			if err != nil {
 				return err
 			}
+
+			// Remove the orphan from the orphan pool.
+			orphanHash := orphan.block.Hash()
+
+			b.removeOrphanBlock(orphan)
+			i--
 
 			// Add this block to the list of blocks to process so
 			// any orphan blocks that depend on this block are
@@ -156,6 +157,8 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 */
 
 	blockHash := block.Hash()
+
+	log.Infof("Block hash %s\nprevhash %s", blockHash.String(), block.MsgBlock().PrevBlock.String())
 
 	// The block must not already exist in the main chain or side chains.
 	exists, err := b.blockExists(blockHash)
@@ -202,7 +205,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, false, err
 	}
 	if !prevHashExists {
-//		log.Infof("Adding orphan block %v with parent %v", blockHash, prevHash)
+		log.Infof("block prevHash does not Exists Adding orphan block %x with parent %x", blockHash, prevHash)
 		b.addOrphanBlock(block)
 
 		return false, true, nil

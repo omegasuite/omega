@@ -396,6 +396,9 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 		}
 
 		for _,sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+			if len(sign) < btcec.PubKeyBytesLenCompressed {
+				return ruleError(ErrHighHash, "Incorrect miner signature")
+			}
 			k,err := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 //			k,err := btcutil.DecodeAddress(string(sign[:33]), b.chainParams)
 			if err != nil {

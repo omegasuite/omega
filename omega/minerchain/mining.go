@@ -364,7 +364,7 @@ out:
 		h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
 		d := curHeight - int32(h)
 		if d > wire.DESIRABLE_MINER_CANDIDATES + 3 {
-			time.Sleep(time.Minute * time.Duration(5 * (d -3 - wire.DESIRABLE_MINER_CANDIDATES )))
+			time.Sleep(time.Second * time.Duration(5 * (d -3 - wire.DESIRABLE_MINER_CANDIDATES )))
 			continue
 		}
 		
@@ -405,7 +405,8 @@ out:
 		} else if len(m.cfg.RSAPubKey) > 0 {
 			block.MsgBlock().Connection = []byte(m.cfg.RSAPubKey)
 		}
-		
+
+		log.Infof("miner Trying to solve block at %d with difficulty %d", template.Height, template.Bits)
 		if m.solveBlock(template, curHeight+1, ticker, quit) {
 			log.Infof("New miner block produced by %s at %d", m.cfg.SignAddress.String(), template.Height)
 			m.submitBlock(block)
