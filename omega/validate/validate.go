@@ -23,7 +23,7 @@ func saneVertex(v * token.VertexDef) bool {
 	if y < -90 || y > 90 {
 		return false
 	}
-
+  
 	var vertices = omega.IntlDateLine
 
 	k := 0
