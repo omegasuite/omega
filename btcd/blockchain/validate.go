@@ -310,6 +310,9 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 // The flags modify the behavior of this function as follows:
 //  - BFNoPoWCheck: The check to ensure the block hash is less than the target
 //    difficulty is not performed.
+
+// if return value is nil,false, the block is ok. if nil,true, it may be added as orphan
+// but can not be connected. if err,_, it is a bad block and should be discarded
 func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, powLimit *big.Int, flags BehaviorFlags) (error, bool) {
 	best := b.BestSnapshot()
 	bits := best.Bits
@@ -383,7 +386,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 				if header.Nonce != -1 {
 //					str := fmt.Sprintf("Previous block is a rotation block, this block nonce must be -1.")
 					return fmt.Errorf("Previous block is a rotation block, this block nonce must be -1."), true
-					// ruleError(ErrHighHash, str)
 				}
 
 			default:
@@ -391,7 +393,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 					// if parent.Nonce < 0 && header.Nonce != -((-parent.Nonce + 1) % ROT) { error }
 //					str := fmt.Sprintf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce)
 					return fmt.Errorf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce), true
-					// ruleError(ErrHighHash, str)
 				}
 			}
 		}
@@ -416,20 +417,18 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 
 		for _,sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 			if len(sign) < btcec.PubKeyBytesLenCompressed {
-				return fmt.Errorf("Incorrect miner signature: length = %d", len(sign)), false
+				return nil, true
 			}
 			k,err := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 //			k,err := btcutil.DecodeAddress(string(sign[:33]), b.chainParams)
 			if err != nil {
-				return fmt.Errorf("Incorrect miner signature. pubkey error"), false
+				return fmt.Errorf("Incorrect miner signature. pubkey error"), true
 			}
 
 			pk,_ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
-//			pk := k.(*btcutil.AddressPubKey)
-
 			pkh := pk.AddressPubKeyHash().Hash160()
 			if _,ok := usigns[*pkh]; ok {
-				return fmt.Errorf("Duplicated miner signature"), false
+				return fmt.Errorf("Duplicated miner signature"), true
 			}
 			// is the signer in committee?
 			matched := false
@@ -445,7 +444,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 
 			s,err := btcec.ParseSignature(sign[btcec.PubKeyBytesLenCompressed:], btcec.S256())
 			if err != nil {
-				return fmt.Errorf("Incorrect miner signature. Signature parse error"), false
+				return fmt.Errorf("Incorrect miner signature. Signature parse error"), true
 			}
 
 			if !s.Verify(hash, pk.PubKey()) {
@@ -455,7 +454,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			usigns[*pkh] = struct {}{}
 		}
 		if len(usigns) <= wire.CommitteeSize / 2 {
-			return fmt.Errorf("Insufficient number of miner signatures."), false
+			return fmt.Errorf("Insufficient number of miner signatures."), true
 		}
 	}
 

@@ -315,13 +315,12 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
 	if err != nil {
-		if !mkorphan {
-			return false, false, err
-		} else {
-			log.Infof("checkProofOfWork check error %s. Make block %s an orphan at %d", err.Error(), block.Hash().String(), block.Height())
-			b.AddOrphanBlock(block)
-			return isMainChain, true, nil
-		}
+		return isMainChain, true, err
+	}
+	if mkorphan {
+		log.Infof("checkProofOfWork check error %s. Make block %s an orphan at %d", err.Error(), block.Hash().String(), block.Height())
+		b.AddOrphanBlock(block)
+		return isMainChain, true, nil
 	}
 
 	//	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {

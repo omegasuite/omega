@@ -568,7 +568,6 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 		}
 		s.peerState.committee[miner].peers = np
 		if len(s.peerState.committee[miner].peers) > 0 {
-			s.peerState.cmutex.Unlock()
 			return
 		}
 	} else {
@@ -934,10 +933,25 @@ func (s *server) CommitteePolling() {
 			if sp.LastAnnouncedBlock() != nil {
 				hash = *sp.LastAnnouncedBlock()
 			}
-			cnd := "connected -- "
-			if !sp.Connected() {
-				cnd = "disconnected -- "
+			cnd := "disconnected -- "
+			if sp.Connected() {
+				cnd = "connected -- "
+				if sp.LastMinerBlock() > mht {
+					locator, err := s.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+					if err == nil {
+						sp.PushGetMinerBlocksMsg(locator, &zeroHash)
+					}
+					mht = sp.LastMinerBlock()
+				}
+				if sp.LastBlock() > ht {
+					locator, err := s.chain.LatestBlockLocator()
+					if err == nil {
+						sp.PushGetBlocksMsg(locator, &zeroHash)
+					}
+					ht = sp.LastBlock()
+				}
 			}
+
 			consensusLog.Infof("%s %s %d last blocks %d %d last hash %s\n\t\tcommittee %d %x", cnd,
 				sp.Addr(), sp.ID(), sp.LastBlock(), sp.LastMinerBlock(), hash.String(),
 				sp.Peer.Committee, sp.Peer.Miner)

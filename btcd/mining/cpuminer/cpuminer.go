@@ -7,6 +7,7 @@ package cpuminer
 import (
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/omega/consensus"
 	"github.com/btcsuite/omega/ovm"
 	"math/big"
 	"math/rand"
@@ -346,15 +347,21 @@ func (m *CPUMiner) generateBlocks(quit chan struct{}) {
 out:
 	for {
 		// Quit when the miner is stopped.
-		select {
-		case _,ok := <-m.connch:	// prevent chan full & blocking
-			if !ok {				// chan closed. we have received stop sig.
+flushconnch:
+		for true {
+			select {
+			case _, ok := <-m.connch: // prevent chan full & blocking
+				if !ok { // chan closed. we have received stop sig.
+					break out
+				}
+
+			case <-quit:
 				break out
+
+			default:
+				break flushconnch
+				// Non-blocking select to fall through
 			}
-		case <-quit:
-			break out
-		default:
-			// Non-blocking select to fall through
 		}
 
 		// Wait until there is a connection to at least one other peer
@@ -503,6 +510,10 @@ out:
 						if !ok || blk >= block.Height() {
 							break connected
 						}
+					default:
+						time.Sleep(time.Second)
+						consensus.DebugInfo()
+						log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
 					}
 				}
 				m.minedBlock = nil
