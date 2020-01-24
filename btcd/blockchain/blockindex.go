@@ -274,6 +274,17 @@ func newBlockIndex(db database.DB, chainParams *chaincfg.Params) *blockIndex {
 	}
 }
 
+func (bi *blockIndex) Highest() *blockNode {
+	h, high := int32(0), (*blockNode)(nil)
+	for _, node := range bi.index {
+		if node.height > h {
+			h = node.height
+			high = node
+		}
+	}
+	return high
+}
+
 // HaveBlock returns whether or not the block index contains the provided hash.
 //
 // This function is safe for concurrent access.

@@ -237,7 +237,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 
 	if isMainChain {
 //		log.Infof("b.blockChain.ProcessOrphans ready")
-		b.blockChain.ProcessOrphans(&b.blockChain.BestSnapshot().Hash, blockchain.BFNone)
+		b.blockChain.OnNewMinerNode()
 	}
 
 	// Accept any orphan blocks that depend on this block (they are

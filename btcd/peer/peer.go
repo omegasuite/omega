@@ -498,8 +498,11 @@ type Peer struct {
 	outQuit       chan struct{}
 	quit          chan struct{}
 
+	// identity of peer, if not set, -1 and nil
 	Committee     int32		// place in committee, i.e. miner chain height
 	Miner         [20]byte	// a copy of miner in the miner block to avoid lookup
+	TxSent		  int32		// highest tx block we have sent
+	MinerSent	  int32		// highest miner block we have sent
 }
 
 // String returns the peer's address and directionality as a human-readable
@@ -515,9 +518,11 @@ func (p *Peer) String() string {
 // This function is safe for concurrent access.
 func (p *Peer) UpdateLastBlockHeight(newHeight int32) {
 	p.statsMtx.Lock()
-	log.Tracef("Updating last block height of peer %v from %v to %v",
-		p.addr, p.lastBlock, newHeight)
-	p.lastBlock = newHeight
+	log.Infof("Updating last block height of peer %s from %v to %v",
+		p.Addr(), p.lastBlock, newHeight)
+	if p.lastBlock < newHeight {
+		p.lastBlock = newHeight
+	}
 	p.statsMtx.Unlock()
 }
 
@@ -525,7 +530,9 @@ func (p *Peer) UpdateLastMinerBlockHeight(newHeight int32) {
 	p.statsMtx.Lock()
 	log.Tracef("Updating last block height of peer %v from %v to %v",
 		p.addr, p.lastBlock, newHeight)
-	p.lastMinerBlock = newHeight
+	if p.lastMinerBlock < newHeight {
+		p.lastMinerBlock = newHeight
+	}
 	p.statsMtx.Unlock()
 }
 
@@ -534,7 +541,7 @@ func (p *Peer) UpdateLastMinerBlockHeight(newHeight int32) {
 //
 // This function is safe for concurrent access.
 func (p *Peer) UpdateLastAnnouncedBlock(blkHash *chainhash.Hash) {
-	log.Tracef("Updating last blk for peer %v, %v", p.addr, blkHash)
+	log.Infof("Updating last blk for peer %s, %s", p.Addr(), blkHash.String())
 
 	p.statsMtx.Lock()
 	p.lastAnnouncedBlock = blkHash
@@ -1376,6 +1383,11 @@ out:
 					continue
 				}
 
+				if p.Committee > 0 {
+					// keep connected if it is a committee member
+					continue
+				}
+
 				log.Debugf("Peer %s appears to be stalled or "+
 					"misbehaving, %s timeout -- "+
 					"disconnecting", p, command)
@@ -1423,8 +1435,10 @@ func (p *Peer) inHandler() {
 	// The timer is stopped when a new message is received and reset after it
 	// is processed.
 	idleTimer := time.AfterFunc(idleTimeout, func() {
-		log.Warnf("Peer %s no answer for %s -- disconnecting", p, idleTimeout)
-		p.Disconnect("inHandler @ idleTimeout")
+		if p.Committee <= 0 {
+			log.Warnf("Peer %s no answer for %s -- disconnecting", p, idleTimeout)
+			p.Disconnect("inHandler @ idleTimeout")
+		}
 	})
 
 out:
@@ -1433,8 +1447,6 @@ out:
 		// is done.  The timer is reset below for the next iteration if
 		// needed.
 		rmsg, buf, err := p.readMessage(p.wireEncoding)
-
-//		log.Infof("inHandler read: %V+ (%V+, %V+)", rmsg, buf, err)
 
 		idleTimer.Stop()
 		if err != nil {
@@ -1468,6 +1480,9 @@ out:
 			}
 			break out
 		}
+
+		log.Infof("inHandler read: %s", rmsg.Command())
+
 		atomic.StoreInt64(&p.lastRecv, time.Now().Unix())
 		p.stallControl <- stallControlMsg{sccReceiveMessage, rmsg}
 
@@ -1566,7 +1581,7 @@ out:
 
 		case *wire.MsgInv:
 			if msg.InvList[0].Type & common.InvTypeBlock == common.InvTypeBlock {
-				log.Infof("inHandler received %d MsgInv %s %s %x", len(msg.InvList), p.addr, msg.InvList[0].Type.String(), msg.InvList[0].Hash)
+				log.Infof("inHandler received %d MsgInv %s %s %s", len(msg.InvList), p.addr, msg.InvList[0].Type.String(), msg.InvList[0].Hash.String())
 			}
 			if p.cfg.Listeners.OnInv != nil {
 				p.cfg.Listeners.OnInv(p, msg)
@@ -1585,7 +1600,7 @@ out:
 			}
 
 		case *wire.MsgGetData:
-//			log.Infof("inHandler MsgGetData")
+			log.Infof("inHandler %s MsgGetData: %s", msg.InvList[0].Type.String(), msg.InvList[0].Hash.String())
 			if p.cfg.Listeners.OnGetData != nil {
 				p.cfg.Listeners.OnGetData(p, msg)
 			}
@@ -1685,7 +1700,11 @@ out:
 			}
 
 		case consensus.Message:
-			consensus.HandleMessage(msg)
+			h := consensus.HandleMessage(msg)
+			if h != nil {
+				nmsg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *h}}}
+				p.QueueMessageWithEncoding(&nmsg, nil, wire.SignatureEncoding)
+			}
 
 		default:
 //			log.Infof("inHandler default")
@@ -1892,10 +1911,14 @@ out:
 
 			p.stallControl <- stallControlMsg{sccSendMessage, msg.msg}
 
+			if msg.msg.Command() == wire.CmdInv && len(msg.msg.(*wire.MsgInv).InvList) == 1 {
+				log.Infof("invetory %s actually sent to %s", msg.msg.(*wire.MsgInv).InvList[0].Hash.String(), p.Addr())
+			}
+
 			err := p.writeMessage(msg.msg, msg.encoding)
 			if err != nil {
 				p.Disconnect("outHandler @ sendQueue")
-//				log.Infof("Failed to send message to %s: %v", p, err)
+				log.Infof("Failed to send message to %s: %v", p, err)
 				if p.shouldLogWriteError(err) {
 					log.Errorf("Failed to send message to "+
 						"%s: %v", p, err)
@@ -2038,7 +2061,7 @@ func (p *Peer) Disconnect(s string) {
 		return
 	}
 
-//	log.Infof("Disconnecting %s by %s", p, s)
+	log.Infof("Disconnecting %s by reason %s", p.String(), s)
 
 	log.Tracef("Disconnecting %s by %s", p, s)
 	if atomic.LoadInt32(&p.connected) != 0 {

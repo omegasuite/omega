@@ -33,7 +33,7 @@ func (k * Knowledgebase) ProcessTree(t int32) {
 		if q & (1 << t) != 0 {
 			continue
 		}
-		if miner.server.CommitteeMsg(int32(p) + k.syncer.Base, &nmg) {
+		if miner.server.CommitteeMsg(k.syncer.Names[int32(p)], &nmg) {
 			k.Knowledge[t][p] |= 1 << t
 		}
 	}
@@ -161,7 +161,7 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 	lmg.From = self.syncer.Me
 
 	if res {
-		miner.server.CommitteeCastMG(me + self.syncer.Base, &lmg, self.syncer.Height)
+		miner.server.CommitteeCastMG(self.syncer.Me, &lmg, self.syncer.Height)
 	}
 /*
 	for j, m := range self.Knowledge[mp] {
@@ -234,7 +234,7 @@ func (self *Knowledgebase) improve(fact int32, k []int64, to int32) bool {
 }
 
 func (self *Knowledgebase) sendout(msg *wire.MsgKnowledge, mp int32, me int32, q int32) bool {
-	if !miner.server.CommitteeMsg(q + self.syncer.Base, msg) {
+	if !miner.server.CommitteeMsg(self.syncer.Names[q], msg) {
 		log.Infof("Fail to send knowledge to %d. Knowledge %v about %x", q, msg.K, msg.M)
 		// fail to send
 		return false

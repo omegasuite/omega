@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/omega/minerchain"
+	"github.com/ethereum/go-ethereum/log"
 	"math"
 	"net"
 	"os"
@@ -158,6 +159,18 @@ type updatePeerHeightsMsg struct {
 	originPeer *peer.Peer
 }
 
+type committeeState struct {
+	peers []*serverPeer
+	bestBlock int32
+	bestMinerBlock  int32
+	lastBlockSent	int32
+	lastMinerBlockSent	int32
+}
+
+func newCommitteeState() * committeeState {
+	return &committeeState{	peers: make([]*serverPeer, 0) }
+}
+
 // peerState maintains state of inbound, persistent, outbound peers as well
 // as banned peers and outbound groups.
 type peerState struct {
@@ -168,7 +181,8 @@ type peerState struct {
 	outboundGroups  map[string]int
 
 	// connected committee members. it is a map into index of outboundPeers
-	committee       map[int32]*serverPeer
+	cmutex			sync.Mutex
+	committee       map[[20]byte]*committeeState
 }
 
 // Count returns the count of all known peers.
@@ -282,7 +296,7 @@ type serverPeer struct {
 	persistent     bool
 	continueHash   *chainhash.Hash
 	continueMinerHash   *chainhash.Hash
-	heightSent     [2]int32			// heights (tx, miner) of the best mainchain block send
+//	heightSent     [2]int32			// heights (tx, miner) of the best mainchain block send
 	relayMtx       sync.Mutex
 	disableRelayTx bool
 	sentAddrs      bool
@@ -405,6 +419,9 @@ func (sp *serverPeer) addBanScore(persistent, transient uint32, reason string) {
 		peerLog.Warnf("Misbehaving peer %s: %s -- ban score increased to %d",
 			sp, reason, score)
 		if score > cfg.BanThreshold {
+			if sp.Peer.Committee > 0 {
+				return
+			}
 			peerLog.Warnf("Misbehaving peer %s -- banning and disconnecting",
 				sp)
 			sp.server.BanPeer(sp)
@@ -614,6 +631,8 @@ func (sp *serverPeer) OnBlock(_ *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 	// the bitcoin block has been fully processed.
 	sp.server.syncManager.QueueBlock(block, sp.Peer, sp.blockProcessed)
 	<-sp.blockProcessed
+
+	log.Info("Blocks %s received", block.Hash().String())
 }
 
 // OnBlock is invoked when a peer receives a block bitcoin message.  It
@@ -1533,8 +1552,8 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 
 	var msgBlock wire.MsgBlock
 
-	heightSent := sp.heightSent[0]
-	minerHeightSent := sp.heightSent[1]
+	heightSent := sp.Peer.LastBlock()
+	minerHeightSent := sp.Peer.LastMinerBlock()
 
 	if err != nil {
 		// now check orphans
@@ -1558,28 +1577,29 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 					inv.AddInvVect(&wire.InvVect{common.InvTypeWitnessBlock, *h})
 				}
 				done := make(chan bool)
+				sp.Peer.QueueMessageWithEncoding(inv, done, wire.SignatureEncoding)
+				<-done
+			}
+
+			ht = s.chain.Miners.BestSnapshot().Height
+			if minerHeightSent < ht {
+				// sending the requesting peer new inventory
+				inv := wire.NewMsgInv()
+				for i, n := minerHeightSent, 0; i < ht; n++ {
+					i++
+					if n > wire.MaxInvPerMsg {
+						sp.Peer.QueueMessage(inv, nil)
+						inv = wire.NewMsgInv()
+						n = 0
+					}
+					h, _ := s.chain.Miners.(*minerchain.MinerChain).BlockHashByHeight(i)
+					inv.AddInvVect(&wire.InvVect{common.InvTypeMinerBlock, *h})
+				}
+				done := make(chan bool)
 				sp.Peer.QueueMessage(inv, done)
 				<-done
-
-				ht = s.chain.Miners.BestSnapshot().Height
-				if minerHeightSent < ht {
-					// sending the requesting peer new inventory
-					inv := wire.NewMsgInv()
-					for i, n := minerHeightSent, 0; i < ht; n++ {
-						i++
-						if n > wire.MaxInvPerMsg {
-							sp.Peer.QueueMessage(inv, nil)
-							inv = wire.NewMsgInv()
-							n = 0
-						}
-						h, _ := s.chain.Miners.(*minerchain.MinerChain).BlockHashByHeight(i)
-						inv.AddInvVect(&wire.InvVect{common.InvTypeMinerBlock, *h})
-					}
-					done := make(chan bool)
-					sp.Peer.QueueMessage(inv, done)
-					<-done
-				}
 			}
+
 			msgBlock = * block.MsgBlock()
 			err = nil
 		} else {
@@ -1623,8 +1643,8 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		dc = doneChan
 	}
 	sp.QueueMessageWithEncoding(&msgBlock, dc, encoding)
-	sp.heightSent[0] = heightSent
-	sp.heightSent[1] = minerHeightSent
+//	sp.heightSent[0] = heightSent
+//	sp.heightSent[1] = minerHeightSent
 
 	// When the peer requests the final block that was advertised in
 	// response to a getblocks message which requested more blocks than
@@ -1796,7 +1816,7 @@ func (s *server) handleUpdatePeerHeights(state *peerState, umsg updatePeerHeight
 		// height.
 		if *latestBlkHash == *umsg.newHash {
 			sp.UpdateLastBlockHeight(umsg.newHeight)
-			sp.UpdateLastAnnouncedBlock(nil)
+			sp.UpdateLastAnnouncedBlock(latestBlkHash)
 		}
 	})
 }
@@ -1846,7 +1866,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		sp.Disconnect("handleAddPeerMsg @ SplitHostPort")
 		return false
 	}
-	if banEnd, ok := state.banned[host]; ok {
+	if banEnd, ok := state.banned[host]; ok && sp.Peer.Committee <= 0 {
 		if time.Now().Before(banEnd) {
 			srvrLog.Debugf("Peer %s is banned for another %v - disconnecting",
 				host, time.Until(banEnd))
@@ -1861,7 +1881,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	// TODO: Check for max peers from a single IP.
 
 	// Limit max number of total peers.
-	if state.Count() >= cfg.MaxPeers {
+	if state.Count() >= cfg.MaxPeers  && sp.Peer.Committee <= 0 {
 		srvrLog.Infof("Max peers reached [%d] - disconnecting peer %s",
 			cfg.MaxPeers, sp)
 		sp.Disconnect("handleAddPeerMsg @ MaxPeers")
@@ -1882,14 +1902,22 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 			state.outboundPeers[sp.ID()] = sp
 		}
 		if sp.connReq.Committee > 0 {
-			state.committee[sp.connReq.Committee] = sp
+			consensusLog.Infof("handleAddPeerMsg Lock")
+			state.cmutex.Lock()
+			if _,ok := state.committee[sp.connReq.Miner]; !ok {
+				state.committee[sp.connReq.Miner] = newCommitteeState()
+			}
+			state.committee[sp.connReq.Miner].peers = append(state.committee[sp.connReq.Miner].peers, sp)
+			state.cmutex.Unlock()
+			consensusLog.Infof("handleAddPeerMsg Unlock")
+
 			sp.Peer.Committee = sp.connReq.Committee
 			sb, _ := s.chain.Miners.BlockByHeight(sp.connReq.Committee)
 			copy(sp.Peer.Miner[:], sb.MsgBlock().Miner[:])
 		}
 		if sp.connReq.Initcallback != nil {
 			// one time call back to allow us send msg immediately after successful connection
-			sp.connReq.Initcallback()
+			sp.connReq.Initcallback(sp)
 			sp.connReq.Initcallback = nil
 		}
 	}
@@ -1916,6 +1944,24 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 			s.connManager.Disconnect(sp.connReq.ID())
 		}
 		delete(list, sp.ID())
+
+		state.cmutex.Lock()
+		for _,m := range state.committee {
+			for i,p := range m.peers {
+				if p.ID() == sp.ID() {
+					if i == len(m.peers) - 1 {
+						m.peers = m.peers[:i]
+					} else if i == 0 {
+						m.peers = m.peers[i+1:]
+					} else {
+						m.peers = append(m.peers[:i], m.peers[i+1:]...)
+					}
+					break
+				}
+			}
+		}
+		state.cmutex.Unlock()
+
 		srvrLog.Debugf("Removed peer %s", sp)
 		return
 	}
@@ -2324,7 +2370,7 @@ func (s *server) peerHandler() {
 		outboundPeers:   make(map[int32]*serverPeer),
 		banned:          make(map[string]time.Time),
 		outboundGroups:  make(map[string]int),
-		committee: 		 make(map[int32]*serverPeer),
+		committee: 		 make(map[[20]byte]*committeeState),
 	}
 
 	s.peerState = state

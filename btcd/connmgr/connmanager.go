@@ -7,6 +7,7 @@ package connmgr
 import (
 	"errors"
 	"fmt"
+	"github.com/btcsuite/btcd/wire"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -52,6 +53,8 @@ const (
 	ConnDisconnected
 )
 
+type ServerPeer interface{}
+
 // ConnReq is the connection request to a network address. If permanent, the
 // connection will be retried on disconnection.
 type ConnReq struct {
@@ -66,8 +69,9 @@ type ConnReq struct {
 	stateMtx   sync.RWMutex
 	retryCount uint32
 
-	Committee  int32
-	Initcallback func()
+	Committee  int32		// place in current committee. if not, -1
+	Miner [20]byte
+	Initcallback func(ServerPeer)
 }
 
 // updateState updates the state of the connection request.
@@ -103,7 +107,7 @@ type Config struct {
 	// Listeners defines a slice of listeners for which the connection
 	// manager will take ownership of and accept connections.  When a
 	// connection is accepted, the OnAccept handler will be invoked with the
-	// connection.  Since tFailed to connecthe connection manager takes ownership of these
+	// connection.  Since the connection manager takes ownership of these
 	// listeners, they will be closed when the connection manager is
 	// stopped.
 	//
@@ -124,7 +128,7 @@ type Config struct {
 	OnAccept func(net.Conn)
 
 	// TargetOutbound is the number of outbound network connections to
-	// maintain. Defaults to 8.
+	// maintain. Defaults to 8 + committee size.
 	TargetOutbound uint32
 
 	// RetryDuration is the duration to wait before retrying connection
@@ -197,7 +201,7 @@ func (cm *ConnManager) handleFailedConn(c *ConnReq) {
 	if atomic.LoadInt32(&cm.stop) != 0 {
 		return
 	}
-	if c.Permanent {
+	if c.Permanent || c.Committee > 0 {
 		c.retryCount++
 		d := time.Duration(c.retryCount) * cm.cfg.RetryDuration
 		if d > maxRetryDuration {
@@ -229,7 +233,6 @@ func (cm *ConnManager) handleFailedConn(c *ConnReq) {
 // connections so that we remain connected to the network.  Connection requests
 // are processed and mapped by their assigned ids.
 func (cm *ConnManager) connHandler() {
-
 	var (
 		// pending holds all registered conn requests that have yet to
 		// succeed.
@@ -563,7 +566,7 @@ func New(cfg *Config) (*ConnManager, error) {
 		cfg.RetryDuration = defaultRetryDuration
 	}
 	if cfg.TargetOutbound == 0 {
-		cfg.TargetOutbound = defaultTargetOutbound
+		cfg.TargetOutbound = defaultTargetOutbound + wire.CommitteeSize
 	}
 	cm := ConnManager{
 		cfg:      *cfg, // Copy so caller can't mutate

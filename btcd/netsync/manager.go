@@ -187,7 +187,7 @@ type SyncManager struct {
 	// These fields should only be accessed from the blockHandler thread
 	rejectedTxns    map[chainhash.Hash]struct{}
 	requestedTxns   map[chainhash.Hash]struct{}
-	requestedBlocks map[chainhash.Hash]struct{}
+	requestedBlocks map[chainhash.Hash]int
 	requestedMinerBlocks map[chainhash.Hash]struct{}
 	syncPeer        *peerpkg.Peer
 	peerStates      map[*peerpkg.Peer]*peerSyncState
@@ -319,7 +319,7 @@ func (sm *SyncManager) startSync() {
 
 		bestPeer.PushGetMinerBlocksMsg(locator, &zeroHash)
 
-		sm.requestedBlocks = make(map[chainhash.Hash]struct{})
+		sm.requestedBlocks = make(map[chainhash.Hash]int)
 		// Now the tx chain
 		locator, err = sm.chain.LatestBlockLocator()
 		if err != nil {
@@ -600,7 +600,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		// the peer or ignore the block when we're in regression test
 		// mode in this case so the chain code is actually fed the
 		// duplicate blocks.
-		if sm.chainParams != &chaincfg.RegressionNetParams {
+		if sm.chainParams != &chaincfg.RegressionNetParams && peer.Committee <= 0 {
 			log.Warnf("Got unrequested block %s from %s -- "+
 				"disconnecting", blockHash.String(), peer.Addr())
 			peer.Disconnect("handleBlockMsg @ RegressionNetParams")
@@ -821,7 +821,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		// the peer or ignore the block when we're in regression test
 		// mode in this case so the chain code is actually fed the
 		// duplicate blocks.
-		if sm.chainParams != &chaincfg.RegressionNetParams {
+		if sm.chainParams != &chaincfg.RegressionNetParams && peer.Committee <= 0 {
 			log.Warnf("Got unrequested block %v from %s -- "+
 				"disconnecting", blockHash, peer.Addr())
 			peer.Disconnect("handleMinerBlockMsg @ RegressionNetParams")
@@ -946,7 +946,7 @@ func (sm *SyncManager) fetchHeaderBlocks() {
 		if !haveInv {
 			syncPeerState := sm.peerStates[sm.syncPeer]
 
-			sm.requestedBlocks[*node.hash] = struct{}{}
+			sm.requestedBlocks[*node.hash] = 1
 			syncPeerState.requestedBlocks[*node.hash] = struct{}{}
 
 			// If we're fetching from a witness enabled peer
@@ -1170,11 +1170,31 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	// announced block for this peer. We'll use this information later to
 	// update the heights of peers based on blocks we've accepted that they
 	// previously announced.
-	if lastBlock != -1 && (peer != sm.syncPeer || sm.current(0)) {
+	if lastBlock != -1 {
+//	if lastBlock != -1 && (peer != sm.syncPeer || sm.current(0)) {
 		peer.UpdateLastAnnouncedBlock(&invVects[lastBlock].Hash)
 	}
-	if lastMinerBlock != -1 && (peer != sm.syncPeer || sm.current(1)) {
+	if lastMinerBlock != -1 {
+//	if lastMinerBlock != -1 && (peer != sm.syncPeer || sm.current(1)) {
 		peer.UpdateLastAnnouncedMinerBlock(&invVects[lastMinerBlock].Hash)
+	}
+
+	// If our chain is current and a peer announces a block we already
+	// know of, then update their current block height.
+	if lastBlock != -1 {
+		//	if lastBlock != -1 && sm.current(0) {
+		blkHeight, err := sm.chain.BlockHeightByHash(&invVects[lastBlock].Hash)
+		//		log.Infof("last block height = %d", blkHeight)
+		if err == nil {
+			peer.UpdateLastBlockHeight(blkHeight)
+		}
+	}
+	if lastMinerBlock != -1 {
+		//	if lastMinerBlock != -1 && sm.current(1) {
+		blkHeight, err := sm.chain.Miners.(*minerchain.MinerChain).BlockHeightByHash(&invVects[lastMinerBlock].Hash)
+		if err == nil {
+			peer.UpdateLastMinerBlockHeight(blkHeight)
+		}
 	}
 
 	// Ignore invs from peers that aren't the sync if we are not current.
@@ -1184,21 +1204,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		return
 	}
 
-	// If our chain is current and a peer announces a block we already
-	// know of, then update their current block height.
-	if lastBlock != -1 && sm.current(0) {
-		blkHeight, err := sm.chain.BlockHeightByHash(&invVects[lastBlock].Hash)
-//		log.Infof("last block height = %d", blkHeight)
-		if err == nil {
-			peer.UpdateLastBlockHeight(blkHeight)
-		}
-	}
-	if lastMinerBlock != -1 && sm.current(1) {
-		blkHeight, err := sm.chain.Miners.(*minerchain.MinerChain).BlockHeightByHash(&invVects[lastMinerBlock].Hash)
-		if err == nil {
-			peer.UpdateLastMinerBlockHeight(blkHeight)
-		}
-	}
+	var lastIgnored * wire.InvVect
+	var ignorerun int
 
 	// Request the advertised inventory if we don't already have it.  Also,
 	// request parent blocks of orphans if we receive one we already have.
@@ -1244,7 +1251,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			}
 
 			// Add it to the request queue.
-//			log.Infof("%s does not exist add to requestQueue", iv.Hash.String())
+			log.Infof("%s does not exist add to requestQueue", iv.Hash.String())
 			state.requestQueue = append(state.requestQueue, iv)
 			continue
 		}
@@ -1261,6 +1268,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// to signal there are more missing blocks that need to
 			// be requested.
 			if sm.chain.IsKnownOrphan(&iv.Hash) {
+				log.Infof("request %s is known orphan", iv.Hash.String())
+
 				// Request blocks starting at the latest known
 				// up to the root of the orphan that just came
 				// in.
@@ -1275,6 +1284,11 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				peer.PushGetBlocksMsg(locator, orphanRoot)
 				continue
 			}
+
+//			log.Infof("request %s ignored", iv.Hash.String())
+
+			lastIgnored = iv
+			ignorerun++
 
 			// We already have the final block advertised by this
 			// inventory message, so force a request for more.  This
@@ -1331,6 +1345,18 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		}
 	}
 
+	if lastIgnored != nil && ignorerun > 1 {
+		log.Infof("send back %s for %d run of ignores inv to %s", lastIgnored.Hash.String(), ignorerun, peer.Addr())
+		// send back this one so the peer knows where we are
+		sbmsg := &wire.MsgInv{InvList: []*wire.InvVect{lastIgnored} }
+		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding)
+
+		// check if it causes a reorg
+		sm.chain.ChainLock.Lock()
+		sm.chain.CheckSideChain(&lastIgnored.Hash)
+		sm.chain.ChainLock.Unlock()
+	}
+
 	// Request as much as possible at once.  Anything that won't fit into
 	// the request will be requested on the next inv message.
 	numRequested := 0
@@ -1347,15 +1373,20 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		case common.InvTypeBlock:
 			// Request the block if there is not already a pending
 			// request.
-			if _, exists := sm.requestedBlocks[iv.Hash]; !exists {
-				sm.requestedBlocks[iv.Hash] = struct{}{}
+			if _, exists := sm.requestedBlocks[iv.Hash]; !exists || sm.requestedBlocks[iv.Hash] > 5 {
+				sm.requestedBlocks[iv.Hash] = 1
 				sm.limitMap(sm.requestedBlocks, maxRequestedBlocks)
 				state.requestedBlocks[iv.Hash] = struct{}{}
 
 				iv.Type = common.InvTypeWitnessBlock
 
+				log.Infof("request %s add to queue list", iv.Hash.String())
+
 				gdmsg.AddInvVect(iv)
 				numRequested++
+			} else {
+				log.Infof("Repeated %d request for %s", sm.requestedBlocks[iv.Hash], iv.Hash.String())
+				sm.requestedBlocks[iv.Hash]++
 			}
 
 		case common.InvTypeMinerBlock:
@@ -1398,6 +1429,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		}
 	}
 	state.requestQueue = requestQueue
+	log.Infof("%d requests sent", numRequested)
 	if len(gdmsg.InvList) > 0 {
 		peer.QueueMessage(gdmsg, nil)
 	}
@@ -1406,17 +1438,36 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 // limitMap is a helper function for maps that require a maximum limit by
 // evicting a random transaction if adding a new value would cause it to
 // overflow the maximum allowed.
-func (sm *SyncManager) limitMap(m map[chainhash.Hash]struct{}, limit int) {
-	if len(m)+1 > limit {
-		// Remove a random entry from the map.  For most compilers, Go's
-		// range statement iterates starting at a random item although
-		// that is not 100% guaranteed by the spec.  The iteration order
-		// is not important here because an adversary would have to be
-		// able to pull off preimage attacks on the hashing function in
-		// order to target eviction of specific entries anyways.
-		for txHash := range m {
-			delete(m, txHash)
-			return
+func (sm *SyncManager) limitMap(m interface{}, limit int) {
+	switch m.(type) {
+	case map[chainhash.Hash]int:
+		t := m.(map[chainhash.Hash]int)
+		if len(t)+1 > limit {
+			// Remove a random entry from the map.  For most compilers, Go's
+			// range statement iterates starting at a random item although
+			// that is not 100% guaranteed by the spec.  The iteration order
+			// is not important here because an adversary would have to be
+			// able to pull off preimage attacks on the hashing function in
+			// order to target eviction of specific entries anyways.
+			for txHash := range t {
+				delete(t, txHash)
+				return
+			}
+		}
+
+	case map[chainhash.Hash]struct{}:
+		t := m.(map[chainhash.Hash]struct{})
+		if len(t)+1 > limit {
+			// Remove a random entry from the map.  For most compilers, Go's
+			// range statement iterates starting at a random item although
+			// that is not 100% guaranteed by the spec.  The iteration order
+			// is not important here because an adversary would have to be
+			// able to pull off preimage attacks on the hashing function in
+			// order to target eviction of specific entries anyways.
+			for txHash := range t {
+				delete(t, txHash)
+				return
+			}
 		}
 	}
 }
@@ -1773,7 +1824,7 @@ func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.Behav
 
 			response := <-reply
 			if response.err != nil {
-				return response.isOrphan, response.err
+				return false, response.err
 			}
 
 			// notify others in comittee for consensus
@@ -1830,7 +1881,7 @@ func New(config *Config) (*SyncManager, error) {
 		chainParams:     config.ChainParams,
 		rejectedTxns:    make(map[chainhash.Hash]struct{}),
 		requestedTxns:   make(map[chainhash.Hash]struct{}),
-		requestedBlocks: make(map[chainhash.Hash]struct{}),
+		requestedBlocks: make(map[chainhash.Hash]int),
 		requestedMinerBlocks: make(map[chainhash.Hash]struct{}),
 		peerStates:      make(map[*peerpkg.Peer]*peerSyncState),
 		progressLogger:  newBlockProgressLogger("Processed", log),

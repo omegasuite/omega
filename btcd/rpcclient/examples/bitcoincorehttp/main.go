@@ -451,6 +451,10 @@ func main() {
 						log.Printf("Value: \n", out.Value)
 						log.Printf("Rights: \n", out.Rights)
 					}
+					log.Printf("SignatureScripts: \n")
+					for _, out := range t.SignatureScripts {
+						log.Printf("Signature: %x\n", out)
+					}
 				}
 			}
 			break

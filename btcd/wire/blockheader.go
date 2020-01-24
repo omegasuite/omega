@@ -15,10 +15,11 @@ import (
 
 const (
 	CommitteeSize				= 3			// 3
-	MINER_RORATE_FREQ			= 20		// rotate committee every MINER_RORATE_FREQ blocks
+	MINER_RORATE_FREQ			= 100		// rotate committee every MINER_RORATE_FREQ blocks
 	DESIRABLE_MINER_CANDIDATES	= 40		// the desirable number of miner candidate we want to have
 	MinerGap					= 3			// a miner must wait between to candidacies
 	SCALEFACTORCAP				= 48
+	DifficultyRatio				= 4			// ratio of difficulty for tx chain and miner chain
 )
 
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.

@@ -118,10 +118,20 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 				continue
 			}
 
-			// Potentially accept the block into the block chain.
-			_, err := b.maybeAcceptBlock(orphan.block, flags)
-			if err != nil {
-				return err
+			if prevNode := b.index.LookupNode(&orphan.block.MsgBlock().Header.PrevBlock); prevNode != nil {
+				orphan.block.SetHeight(prevNode.height + 1)
+				// Potentially accept the block into the block chain.
+				err, mkorphan := b.checkProofOfWork(orphan.block, prevNode, b.chainParams.PowLimit, flags)
+				if err != nil || mkorphan {
+					continue
+				}
+
+				_, err = b.maybeAcceptBlock(orphan.block, flags)
+				if err != nil {
+					continue
+				}
+			} else {
+				continue
 			}
 
 			// Remove the orphan from the orphan pool.
@@ -137,6 +147,38 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 		}
 	}
 	return nil
+}
+
+func (b *BlockChain) OnNewMinerNode() {
+	best := b.BestSnapshot()
+	b.ProcessOrphans(&best.Hash, BFNone)
+
+	high := b.index.Highest()
+	if high != nil {
+		b.CheckSideChain(&high.hash)
+	}
+}
+
+func (b *BlockChain) CheckSideChain(hash *chainhash.Hash) {
+	node := b.index.LookupNode(hash)
+
+	if node == nil {
+		return
+	}
+
+	tip := b.BestChain.Tip()
+	if node.workSum.Cmp(tip.workSum) < 0 ||
+		(node.workSum.Cmp(tip.workSum) == 0 && node.height <= tip.height) {
+		return
+	}
+
+	detachNodes, attachNodes := b.getReorganizeNodes(node)
+
+	// Reorganize the chain.
+	log.Infof("REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches", node.hash, detachNodes.Len(), attachNodes.Len())
+	b.ReorganizeChain(detachNodes, attachNodes)
+
+	b.index.flushToDB()
 }
 
 // ProcessBlock is the main workhorse for handling insertion of new blocks into
@@ -166,17 +208,18 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return false, false, err
 	}
 	if !prevHashExists {
-		//		log.Infof("Adding orphan block %v with parent %v", blockHash, prevHash)
-		b.AddOrphanBlock(block)
-
+		if flags & BFNoConnect == 0 {
+			log.Infof("Adding orphan block %s with parent %s", block.Hash().String(), prevHash.String())
+			b.AddOrphanBlock(block)
+		}
 		return false, true, nil
 	}
 
 	prevNode := b.index.LookupNode(prevHash)
 
 	if prevNode == nil {
-		str := fmt.Sprintf("previous block %s is unknown", prevHash)
-		return false, false, ruleError(ErrPreviousBlockUnknown, str)
+		//str := fmt.Sprintf("previous block %s is unknown", prevHash)
+		return false, false, fmt.Errorf("previous block %s is unknown", prevHash)	// ruleError(ErrPreviousBlockUnknown, str)
 	} else if b.index.NodeStatus(prevNode).KnownInvalid() {
 		str := fmt.Sprintf("previous block %s is known to be invalid", prevHash)
 		return false, false, ruleError(ErrInvalidAncestorBlock, str)
@@ -206,8 +249,8 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		if len(block.MsgBlock().Transactions[0].SignatureScripts) > len(p.block.MsgBlock().Transactions[0].SignatureScripts) {
 			b.removeOrphanBlock(p)
 		} else {
-			str := fmt.Sprintf("already have block (orphan) %v", blockHash)
-			return false, false, ruleError(ErrDuplicateBlock, str)
+//			str := fmt.Sprintf("already have block (orphan) %v", blockHash)
+			return false, true, fmt.Errorf("already have block (orphan) %v", blockHash)	// ruleError(ErrDuplicateBlock, str)
 		}
 	}
 
@@ -259,10 +302,23 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	state := b.BestSnapshot()
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
+		// this is a rotations block
 //		state.LastRotation++	// = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
-//		log.Infof("Update LastRotation to %d", state.LastRotation)
 		mstate := b.Miners.BestSnapshot()
-		if int32(state.LastRotation) + 1 - wire.CommitteeSize >= mstate.Height {
+		if int32(state.LastRotation) + 1 - wire.CommitteeSize > mstate.Height {
+			log.Infof("Next Rotation exceeds miner chain %d in a rotation block %s. Make it an orphan!!!", state.LastRotation, block.Hash().String())
+			// but we don't have the miner block that this rotation point to
+			b.AddOrphanBlock(block)
+			return isMainChain, true, nil
+		}
+	}
+
+	err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
+	if err != nil {
+		if !mkorphan {
+			return false, false, err
+		} else {
+			log.Infof("checkProofOfWork check error %s. Make block %s an orphan at %d", err.Error(), block.Hash().String(), block.Height())
 			b.AddOrphanBlock(block)
 			return isMainChain, true, nil
 		}
@@ -290,10 +346,10 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// Accept any orphan blocks that depend on this block (they are
 	// no longer orphans) and repeat for those accepted blocks until
 	// there are no more.
-	err = b.ProcessOrphans(blockHash, flags)
-	if err != nil {
-		return false, false, err
-	}
+	err = b.ProcessOrphans(blockHash, BFNone)	// flags)
+//	if err != nil {
+//		return false, false, err
+//	}
 
 	log.Debugf("Accepted block %v", blockHash)
 //	log.Infof("ProcessBlock: Tx chian = %d Miner chain = %d", b.BestSnapshot().Height, b.Miners.BestSnapshot().Height)

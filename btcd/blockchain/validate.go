@@ -310,10 +310,24 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 // The flags modify the behavior of this function as follows:
 //  - BFNoPoWCheck: The check to ensure the block hash is less than the target
 //    difficulty is not performed.
-func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, powLimit *big.Int, flags BehaviorFlags) error {
-	bits := b.BestSnapshot().Bits
-	rotate := b.BestSnapshot().LastRotation
+func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, powLimit *big.Int, flags BehaviorFlags) (error, bool) {
+	best := b.BestSnapshot()
+	bits := best.Bits
+	rotate := best.LastRotation
 	header := &block.MsgBlock().Header
+
+	if parent.hash != best.Hash {
+		// parent is not the tip, go back to find correct rotation
+		for p := b.BestChain.Tip(); p != nil && p != parent; p = p.parent {
+			switch {
+			case p.nonce > 0:
+				rotate -= wire.CommitteeSize / 2 + 1
+
+			case p.nonce <= -wire.MINER_RORATE_FREQ:
+				rotate--
+			}
+		}
+	}
 
 	if header.Nonce > 0 {
 		// The target difficulty must be larger than zero.
@@ -321,14 +335,14 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 		if target.Sign() <= 0 {
 			str := fmt.Sprintf("block target difficulty of %064x is too low",
 				target)
-			return ruleError(ErrUnexpectedDifficulty, str)
+			return ruleError(ErrUnexpectedDifficulty, str), false
 		}
 
 		// The target difficulty must be less than the maximum allowed.
 		if target.Cmp(powLimit) > 0 {
 			str := fmt.Sprintf("block target difficulty of %064x is "+
 				"higher than max of %064x", target, powLimit)
-			return ruleError(ErrUnexpectedDifficulty, str)
+			return ruleError(ErrUnexpectedDifficulty, str), false
 		}
 
 		// The block hash must be less than the claimed target unless the flag
@@ -337,10 +351,11 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			// The block hash must be less than the claimed target.
 			hash := header.BlockHash()
 			hashNum := HashToBig(&hash)
+			target = target.Div(target, big.NewInt(wire.DifficultyRatio))
 			if hashNum.Cmp(target) > 0 {
 				str := fmt.Sprintf("block hash of %064x is higher than "+
 					"expected max of %064x", hashNum, target)
-				return ruleError(ErrHighHash, str)
+				return ruleError(ErrHighHash, str), false
 			}
 		}
 	} else if parent != nil {
@@ -349,36 +364,40 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			// if previous block was a POW block, this block must be either a POW block, or a rotate
 			// block that phase out all the previous committee members
 			if header.Nonce != -1 {	// - int32(rotate + wire.MINER_RORATE_FREQ + 1) {
-				str := fmt.Sprintf("The previous block was a POW block, this block must be either a POW block, or a rotate block that phase out all the previous committee members.")
-				return ruleError(ErrHighHash, str)
+//				str := fmt.Sprintf("The previous block was a POW block, this block must be either a POW block, or a rotate block that phase out all the previous committee members.")
+				return fmt.Errorf("The previous block was a POW block, this block must be either a POW block, or a rotate block that phase out all the previous committee members."), true
+				// ruleError(ErrHighHash, str)
 			}
 		} else {
 			switch {
 			case parent.nonce == -wire.MINER_RORATE_FREQ + 1:
 				// this is a rotation block, nonce must be -(height of next miner block)
 				if header.Nonce != - int32(rotate + 1 + wire.MINER_RORATE_FREQ) {
-					str := fmt.Sprintf("The this is a rotation block, nonce %d must be height of next miner block %d.", -header.Nonce, rotate + 1 + wire.MINER_RORATE_FREQ)
-					return ruleError(ErrHighHash, str)
+//					str := fmt.Sprintf("The this is a rotation block, nonce %d must be height of next miner block %d.", -header.Nonce, rotate + 1 + wire.MINER_RORATE_FREQ)
+					return fmt.Errorf("The this is a rotation block, nonce %d must be height of next miner block %d.", -header.Nonce, rotate + 1 + wire.MINER_RORATE_FREQ), true
+					// ruleError(ErrHighHash, str)
 				}
 
 			case parent.nonce <= -wire.MINER_RORATE_FREQ:
 				// previous block is a rotation block, this block none must be -1
 				if header.Nonce != -1 {
-					str := fmt.Sprintf("Previous block is a rotation block, this block nonce must be -1.")
-					return ruleError(ErrHighHash, str)
+//					str := fmt.Sprintf("Previous block is a rotation block, this block nonce must be -1.")
+					return fmt.Errorf("Previous block is a rotation block, this block nonce must be -1."), true
+					// ruleError(ErrHighHash, str)
 				}
 
 			default:
 				if header.Nonce != parent.nonce - 1 {
 					// if parent.Nonce < 0 && header.Nonce != -((-parent.Nonce + 1) % ROT) { error }
-					str := fmt.Sprintf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce)
-					return ruleError(ErrHighHash, str)
+//					str := fmt.Sprintf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce)
+					return fmt.Errorf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce), true
+					// ruleError(ErrHighHash, str)
 				}
 			}
 		}
 
-		if wire.CommitteeSize > 1 && flags & BFSubmission == BFSubmission {
-			return nil
+		if wire.CommitteeSize > 1 && flags & (BFNoConnect | BFSubmission) != 0 {
+			return nil, true
 		}
 
 		// examine signatures
@@ -390,19 +409,19 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 		for i := int32(0); i < wire.CommitteeSize; i++ {
 			blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
 			if blk == nil {
-				return ruleError(ErrHighHash, "Unauthorized miner signature")
+				return fmt.Errorf("Unauthorized miner signature. No miner block at %d.", int32(rotate) - i), true
 			}
 			copy(miners[i][:], blk.MsgBlock().Miner[:])
 		}
 
 		for _,sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 			if len(sign) < btcec.PubKeyBytesLenCompressed {
-				return ruleError(ErrHighHash, "Incorrect miner signature")
+				return fmt.Errorf("Incorrect miner signature: length = %d", len(sign)), false
 			}
 			k,err := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 //			k,err := btcutil.DecodeAddress(string(sign[:33]), b.chainParams)
 			if err != nil {
-				return ruleError(ErrHighHash, "Incorrect miner signature")
+				return fmt.Errorf("Incorrect miner signature. pubkey error"), false
 			}
 
 			pk,_ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
@@ -410,7 +429,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 
 			pkh := pk.AddressPubKeyHash().Hash160()
 			if _,ok := usigns[*pkh]; ok {
-				return ruleError(ErrHighHash, "Duplicated miner signature")
+				return fmt.Errorf("Duplicated miner signature"), false
 			}
 			// is the signer in committee?
 			matched := false
@@ -421,33 +440,34 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			}
 
 			if !matched {
-				return ruleError(ErrHighHash, "Unauthorized miner signature")
+				return fmt.Errorf("Unauthorized miner signature"), true
 			}
 
 			s,err := btcec.ParseSignature(sign[btcec.PubKeyBytesLenCompressed:], btcec.S256())
 			if err != nil {
-				return ruleError(ErrHighHash, "Incorrect miner signature")
+				return fmt.Errorf("Incorrect miner signature. Signature parse error"), false
 			}
 
 			if !s.Verify(hash, pk.PubKey()) {
-				return ruleError(ErrHighHash, "Incorrect miner signature")
+				return fmt.Errorf("Incorrect miner signature. Verification doesn't match"), true
 			}
 
 			usigns[*pkh] = struct {}{}
 		}
 		if len(usigns) <= wire.CommitteeSize / 2 {
-			return ruleError(ErrHighHash, "Insufficient number of miner signatures.")
+			return fmt.Errorf("Insufficient number of miner signatures."), false
 		}
 	}
 
-	return nil
+	return nil, false
 }
 
 // CheckProofOfWork ensures the block header bits which indicate the target
 // difficulty is in min/max range and that the block hash is less than the
 // target difficulty as claimed.
 func (b *BlockChain) CheckProofOfWork(block *btcutil.Block, parent * blockNode, powLimit *big.Int) error {
-	return b.checkProofOfWork(block, parent, powLimit, BFNone)
+	err, _ := b.checkProofOfWork(block, parent, powLimit, BFNone)
+	return err
 }
 
 func CheckProofOfWork(stubBlock * btcutil.Block, powLimit *big.Int) error {
@@ -1223,7 +1243,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 
 	prevPows := uint(0)
 	if node.nonce > 0 {
-		for pw := b.BestChain.Tip(); pw != nil && pw.nonce > 0; pw = pw.parent {
+		for pw := node.parent; pw != nil && pw.nonce > 0; pw = pw.parent {
 			prevPows++
 		}
 	}

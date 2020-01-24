@@ -27,14 +27,9 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	prevHash := &block.MsgBlock().Header.PrevBlock
 	prevNode := b.index.LookupNode(prevHash)
 
-	err := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
-	if err != nil {
-		return false, err
-	}
-
 	// The block must pass all of the validation rules which depend on the
 	// position of the block within the block chain.
-	err = b.checkBlockContext(block, prevNode, flags)
+	err := b.checkBlockContext(block, prevNode, flags)
 	if err != nil {
 		return false, err
 	}
@@ -46,11 +41,11 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
 		// make sure the rotate in miner block is there
-		if _, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.CommitteeSize - 1); err != nil {
-			return false, err
-		}
 		if prevNode.nonce != -wire.MINER_RORATE_FREQ + 1 {
 			return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ + 1)
+		}
+		if _, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ); err != nil {
+			return false, err
 		}
 	}
 

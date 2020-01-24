@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"net/http"
 	"sync"
+	"time"
 )
 
 const (
@@ -22,14 +24,16 @@ var Debug        int // hash of last block
 
 type PeerNotifier interface {
 	MyPlaceInCommittee(r int32) int32
-	CommitteeMsg(int32, wire.Message) bool
-	CommitteeCast(int32, wire.Message)
-	CommitteeMsgMG(int32, wire.Message, int32)
-	CommitteeCastMG(int32, wire.Message, int32)
+	CommitteeMsg([20]byte, wire.Message) bool
+	CommitteeCast(wire.Message)
+	CommitteeMsgMG([20]byte, wire.Message, int32)
+	CommitteeCastMG([20]byte, wire.Message, int32)
 	NewConsusBlock(block * btcutil.Block)
 	GetPrivKey([20]byte) * btcec.PrivateKey
 	BestSnapshot() * blockchain.BestState
 	MinerBlockByHeight(int32) (* wire.MinerBlock,error)
+	SubscribeChain(func (*blockchain.Notification))
+	CommitteePolling()
 }
 
 type Miner struct {
@@ -79,10 +83,51 @@ var Quit chan struct{}
 var errMootBlock error
 var errInvalidBlock error
 
+func (m *Miner) notice (notification *blockchain.Notification) {
+	switch notification.Type {
+	case blockchain.NTBlockConnected:
+		switch notification.Data.(type) {
+		case *wire.MinerBlock:
+			b := notification.Data.(*wire.MinerBlock)
+			h := b.Height()
+
+			log.Infof("new miner block at %d connected", h)
+
+			miner.syncMutex.Lock()
+			for _,s := range miner.Sync {
+				if s.Base > h - wire.CommitteeSize && s.Base <= h && !s.Runnable {
+					s.SetCommittee()
+				}
+			}
+			miner.syncMutex.Unlock()
+
+		case *btcutil.Block:
+			b := notification.Data.(*btcutil.Block)
+			h := b.Height()
+
+			log.Infof("new tx block at %d connected", h)
+
+			miner.syncMutex.Lock()
+			if _, ok := miner.Sync[h]; ok && !miner.Sync[h].Runnable {
+				miner.Sync[h].SetCommittee()
+			}
+			for t,s := range miner.Sync {
+				if t < h {
+					s.Quit()
+					delete(miner.Sync, t)
+				}
+			}
+			miner.syncMutex.Unlock()
+		}
+	}
+}
+
 func Consensus(s PeerNotifier, addr btcutil.Address) {
 	miner = &Miner{}
 	miner.server = s
 	miner.updateheight = make(chan int32)
+
+	s.SubscribeChain(miner.notice)
 
 	miner.Sync = make(map[int32]*Syncer, 0)
 	miner.syncMutex = sync.Mutex{}
@@ -97,6 +142,36 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 	Quit = make(chan struct{})
 
 	log.Info("Consensus running")
+
+	go func() {
+		for true {
+			time.Sleep(time.Second * 10)
+			best := miner.server.BestSnapshot()
+			log.Infof("\nBest tx chain height: %d", best.Height)
+			log.Infof("\nLast rotation: %d", best.LastRotation)
+
+			top := int32(-1)
+			var tr * Syncer
+
+			miner.syncMutex.Lock()
+			for h,s := range miner.Sync {
+				if h > top {
+					top = h
+				}
+				if s.Runnable {
+					if tr == nil || s.Height > tr.Height {
+						tr = s
+					}
+				}
+			}
+			miner.syncMutex.Unlock()
+			log.Infof("\nTop Syncer: %d", top)
+			if tr != nil {
+				log.Infof("\nTop running Syncer: %d\n", tr.Height)
+			}
+			miner.server.CommitteePolling()
+		}
+	}()
 
 	// this should run as a goroutine
 	out:
@@ -188,9 +263,15 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 	}
 }
 
-func HandleMessage(m Message) {
+func HandleMessage(m Message) * chainhash.Hash {
 	// the messages here are consensus messages. specifically, it does not include block msg.
 	h := m.Block()
+	bh := miner.server.BestSnapshot().Height
+
+	if h < bh {
+		miner.server.CommitteePolling()
+		return nil
+	}
 
 	miner.syncMutex.Lock()
 	s, ok := miner.Sync[h]
@@ -201,19 +282,43 @@ func HandleMessage(m Message) {
 	} else if miner.Sync[h].Done {
 		miner.syncMutex.Unlock()
 		log.Infof("syncer has finished with %h. Ignore this message", h)
-		return
+		return nil
 	}
 	miner.syncMutex.Unlock()
-
+	
 //	log.Infof("miner dispatching Message for height %d", m.Block())
 
 	s.SetCommittee()
-	
+
+	var hash * chainhash.Hash
+
 	if !s.Runnable {
 		log.Infof("syncer is not ready for height %d, message will be queues. Current que len = %d", h, len(s.messages))
+
+		switch m.(type) {
+		case *wire.MsgKnowledge:
+			hash = &m.(*wire.MsgKnowledge).M
+
+		case *wire.MsgCandidate:
+			hash = &m.(*wire.MsgCandidate).M
+
+		case *wire.MsgCandidateResp:
+			hash = &m.(*wire.MsgCandidateResp).M
+
+		case *wire.MsgRelease:
+			hash = &m.(*wire.MsgRelease).M
+
+		case *wire.MsgConsensus:
+			hash = &m.(*wire.MsgConsensus).M
+
+		case *wire.MsgSignature:
+			hash = &m.(*wire.MsgSignature).M
+		}
 	}
 
 	s.messages <- m
+
+	return hash
 }
 
 func UpdateChainHeight(latestHeight int32) {

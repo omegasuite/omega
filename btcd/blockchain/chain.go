@@ -326,6 +326,7 @@ func (b *BlockChain) removeOrphanBlock(orphan *orphanBlock) {
 // blocks and will remove the oldest received orphan block if the limit is
 // exceeded.
 func (b *BlockChain) AddOrphanBlock(block *btcutil.Block) {
+	log.Infof("add block %s as orphan at %d", block.Hash().String(), block.Height())
 	// Remove expired orphan blocks.
 	for _, oBlock := range b.orphans {
 		if time.Now().After(oBlock.expiration) {
@@ -546,6 +547,20 @@ func (b *BlockChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 	// so they are attached in the appropriate order when iterating the list
 	// later.
 	forkNode := b.BestChain.FindFork(node)
+
+	for p := node; p != nil && p != forkNode; p = p.parent {
+		if p.nonce <= -wire.MINER_RORATE_FREQ {
+			h := -p.nonce - wire.MINER_RORATE_FREQ
+			mb, _ := b.Miners.BlockByHeight(h)
+			if mb == nil {
+				node = p.parent
+				if node == forkNode {
+					return detachNodes, attachNodes
+				}
+			}
+		}
+	}
+
 	invalidChain := false
 	for n := node; n != nil && n != forkNode; n = n.parent {
 		if b.index.NodeStatus(n).KnownInvalid() {
@@ -1335,7 +1350,7 @@ func (b *BlockChain) connectBestChain(node *blockNode, block *btcutil.Block, fla
 	detachNodes, attachNodes := b.getReorganizeNodes(node)
 
 	// Reorganize the chain.
-	log.Infof("REORGANIZE: Block %v is causing a reorganize.", node.hash)
+	log.Infof("REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches", node.hash, detachNodes.Len(), attachNodes.Len())
 	err := b.ReorganizeChain(detachNodes, attachNodes)
 
 	// Either getReorganizeNodes or ReorganizeChain could have made unsaved

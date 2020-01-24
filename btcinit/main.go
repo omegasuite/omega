@@ -428,7 +428,6 @@ func main() {
 			PrevBlock:  chainhash.Hash{},          // 0000000000000000000000000000000000000000000000000000000000000000
 			MerkleRoot: *testNet3GenesisMerkleRoot, // 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
 			Timestamp:  time.Now(),
-//			Bits:       0x1f00ffff,                // 486604799 [00000000ffff0000000000000000000000000000000000000000000000000000]
 			Nonce:      0,                // 414098458
 		},
 		Transactions: []*wire.MsgTx{&genesisCoinbaseTx, &genesisInitPolygonTx},
@@ -454,7 +453,7 @@ func main() {
 		ReferredBlock: testNet3GenesisHash,
 		BestBlock:     testNet3GenesisHash,
 		Timestamp:     testNet3GenesisBlock.Header.Timestamp,
-		Bits:          0x1f00ffff,
+		Bits:          0x1c00ffff,
 		Nonce:         0,
 		Miner:       addr.ScriptAddress(),
 	}

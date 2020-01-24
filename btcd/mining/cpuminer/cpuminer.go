@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/omega/ovm"
+	"math/big"
 	"math/rand"
 
 	//	"runtime"
@@ -238,6 +239,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	header := &msgBlock.Header
 
 	targetDifficulty := blockchain.CompactToBig(template.Bits)
+	targetDifficulty = targetDifficulty.Div(targetDifficulty, big.NewInt(wire.DifficultyRatio))
 
 	// Initial state.
 	lastGenerated := time.Now()
