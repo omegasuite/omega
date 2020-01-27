@@ -1381,6 +1381,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	numRequested := 0
 	gdmsg := wire.NewMsgGetData()
 	requestQueue := state.requestQueue
+	
+	tm := int(time.Now().Unix())
 	for len(requestQueue) != 0 {
 		iv := requestQueue[0]
 		requestQueue[0] = nil
@@ -1392,11 +1394,9 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		case common.InvTypeBlock:
 			// Request the block if there is not already a pending
 			// request.
-			if _, exists := state.requestedBlocks[iv.Hash]; !exists || state.requestedBlocks[iv.Hash] > 5 {
+			if _, exists := state.requestedBlocks[iv.Hash]; !exists || tm - state.requestedBlocks[iv.Hash] > 50 {
 				sm.requestedBlocks[iv.Hash] = 1
 				sm.limitMap(sm.requestedBlocks, maxRequestedBlocks)
-
-				state.requestedBlocks[iv.Hash] = 1
 
 				iv.Type = common.InvTypeWitnessBlock
 
@@ -1407,16 +1407,15 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			} else {
 				log.Infof("Repeated %d request for %s", state.requestedBlocks[iv.Hash], iv.Hash.String())
 				sm.requestedBlocks[iv.Hash]++
-				state.requestedBlocks[iv.Hash]++
 			}
+			state.requestedBlocks[iv.Hash] = tm
 
 		case common.InvTypeMinerBlock:
 			// Request the block if there is not already a pending
 			// request.
-			if _, exists := state.requestedMinerBlocks[iv.Hash]; !exists || state.requestedMinerBlocks[iv.Hash] > 5 {
+			if _, exists := state.requestedMinerBlocks[iv.Hash]; !exists || tm - state.requestedMinerBlocks[iv.Hash] > 50 {
 				sm.requestedMinerBlocks[iv.Hash] = 1
 				sm.limitMap(sm.requestedMinerBlocks, maxRequestedBlocks)
-				state.requestedMinerBlocks[iv.Hash] = 1
 
 				iv.Type = common.InvTypeMinerBlock
 
@@ -1425,8 +1424,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			} else {
 				log.Infof("Repeated %d miner request for %s", state.requestedMinerBlocks[iv.Hash], iv.Hash.String())
 				sm.requestedMinerBlocks[iv.Hash]++
-				state.requestedMinerBlocks[iv.Hash]++
 			}
+			state.requestedMinerBlocks[iv.Hash] = tm
 
 		case common.InvTypeWitnessTx:
 			fallthrough
