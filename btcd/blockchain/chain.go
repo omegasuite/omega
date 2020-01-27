@@ -361,6 +361,22 @@ func (b *BlockChain) AddOrphanBlock(block *btcutil.Block) {
 		block:      block,
 		expiration: expiration,
 	}
+
+	if ob,ok := b.orphans[*block.Hash()]; ok {
+		// check signatures
+		if block.MsgBlock().Header.Nonce < 0 {
+			nl := len(block.MsgBlock().Transactions[0].SignatureScripts)
+			ol := len(ob.block.MsgBlock().Transactions[0].SignatureScripts)
+			if nl > ol {
+				b.orphans[*block.Hash()].block = block
+			} else if nl == ol {
+				if len(block.MsgBlock().Transactions[0].SignatureScripts[1]) > len(ob.block.MsgBlock().Transactions[0].SignatureScripts[1]) {
+					b.orphans[*block.Hash()].block = block
+				}
+			}
+		}
+		return
+	}
 	b.orphans[*block.Hash()] = oBlock
 
 	// Add to previous hash lookup index for faster dependency lookups.
