@@ -297,31 +297,9 @@ func (sm *SyncManager) startSync() {
 	if bestPeer != nil {
 		log.Infof("Start sync with bestPeer %s", bestPeer.String())
 
-		// sync miner chain and then tx chain
-		// Clear the requestedBlocks if the sync peer changes, otherwise
-		// we may ignore blocks we need that the last sync peer failed
-		// to send.
-		sm.requestedMinerBlocks = make(map[chainhash.Hash]int)
-
-		locator, err := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
-		if err != nil {
-			log.Errorf("Failed to get block locator for the "+
-				"latest block: %v", err)
-			return
-		}
-
-		// TODO: Donn't request all miner block and then tx blocks. Instead, make request
-		// intewovenly to optimize use of memry and reduce the chanse that orphan gets kicked
-		// out.
-
-		log.Infof("Syncing miner chain to block height %d from peer %v",
-			bestPeer.LastMinerBlock(), bestPeer.Addr())
-
-		bestPeer.PushGetMinerBlocksMsg(locator, &zeroHash)
-
 		sm.requestedBlocks = make(map[chainhash.Hash]int)
 		// Now the tx chain
-		locator, err = sm.chain.LatestBlockLocator()
+		locator, err := sm.chain.LatestBlockLocator()
 		if err != nil {
 			log.Errorf("Failed to get block locator for the "+
 				"latest block: %v", err)
@@ -359,6 +337,28 @@ func (sm *SyncManager) startSync() {
 				sm.nextCheckpoint.Height, bestPeer.Addr())
 		}
 		bestPeer.PushGetBlocksMsg(locator, &zeroHash)
+
+		// sync miner chain and then tx chain
+		// Clear the requestedBlocks if the sync peer changes, otherwise
+		// we may ignore blocks we need that the last sync peer failed
+		// to send.
+		sm.requestedMinerBlocks = make(map[chainhash.Hash]int)
+
+		locator, err = sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+		if err != nil {
+			log.Errorf("Failed to get block locator for the "+
+				"latest block: %v", err)
+			return
+		}
+
+		// TODO: Donn't request all miner block and then tx blocks. Instead, make request
+		// intewovenly to optimize use of memry and reduce the chanse that orphan gets kicked
+		// out.
+
+		log.Infof("Syncing miner chain to block height %d from peer %v",
+			bestPeer.LastMinerBlock(), bestPeer.Addr())
+
+		bestPeer.PushGetMinerBlocksMsg(locator, &zeroHash)
 
 		sm.syncPeer = bestPeer
 	} else {

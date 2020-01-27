@@ -660,9 +660,9 @@ type bestChainState struct {
 // chain state.  This is data to be stored in the chain state bucket.
 func serializeBestChainState(state bestChainState) []byte {
 	// Calculate the full size needed to serialize the chain state.
-	workSumBytes := state.workSum.Bytes()
-	workSumBytesLen := uint32(len(workSumBytes))
-	serializedLen := chainhash.HashSize + 4 + 8 + 4 + 4 + 4 + workSumBytesLen
+//	workSumBytes := state.workSum.Bytes()
+//	workSumBytesLen := uint32(len(workSumBytes))
+	serializedLen := chainhash.HashSize + 4 + 8 + 4 + 4 + 4	// + workSumBytesLen
 
 	// Serialize the chain state.
 	serializedData := make([]byte, serializedLen)
@@ -675,10 +675,12 @@ func serializeBestChainState(state bestChainState) []byte {
 	byteOrder.PutUint32(serializedData[offset:], state.rotation)
 	offset += 4
 	byteOrder.PutUint64(serializedData[offset:], state.totalTxns)
+/*
 	offset += 8
 	byteOrder.PutUint32(serializedData[offset:], workSumBytesLen)
 	offset += 4
 	copy(serializedData[offset:], workSumBytes)
+ */
 	return serializedData[:]
 }
 
@@ -706,6 +708,7 @@ func deserializeBestChainState(serializedData []byte) (bestChainState, error) {
 	state.rotation = byteOrder.Uint32(serializedData[offset : offset+4])
 	offset += 4
 	state.totalTxns = byteOrder.Uint64(serializedData[offset : offset+8])
+/*
 	offset += 8
 	workSumBytesLen := byteOrder.Uint32(serializedData[offset : offset+4])
 	offset += 4
@@ -720,13 +723,14 @@ func deserializeBestChainState(serializedData []byte) (bestChainState, error) {
 	}
 	workSumBytes := serializedData[offset : offset+workSumBytesLen]
 	state.workSum = new(big.Int).SetBytes(workSumBytes)
+*/
 
 	return state, nil
 }
 
 // dbPutBestState uses an existing database transaction to update the best chain
 // state with the given parameters.
-func dbPutBestState(dbTx database.Tx, snapshot *BestState, workSum *big.Int) error {
+func dbPutBestState(dbTx database.Tx, snapshot *BestState) error {
 	// Serialize the current best chain state.
 	serializedData := serializeBestChainState(bestChainState{
 		hash:      snapshot.Hash,
@@ -734,7 +738,7 @@ func dbPutBestState(dbTx database.Tx, snapshot *BestState, workSum *big.Int) err
 		rotation:  snapshot.LastRotation,
 		height:    uint32(snapshot.Height),
 		totalTxns: snapshot.TotalTxns,
-		workSum:   workSum,
+		workSum:   big.NewInt(int64(snapshot.Height)),
 	})
 
 	// Store the current best chain state into the database.
@@ -845,7 +849,7 @@ func (b *BlockChain) createChainState() error {
 		}
 
 		// Store the current best chain state into the database.
-		if err = dbPutBestState(dbTx, b.stateSnapshot, node.workSum); err != nil {
+		if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
 			return err
 		}
 
@@ -982,6 +986,7 @@ func (b *BlockChain) initChainState() error {
 
 		if tip.parent == nil {
 			tip.bits = b.chainParams.PowLimitBits
+			state.bits = tip.bits
 		}
 
 		b.BestChain.SetTip(tip)

@@ -805,9 +805,35 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 
 	// Generate inventory message.
 	invMsg := wire.NewMsgInv()
+	w := int32(0)
+	m := 0
+	continueHash := chainhash.Hash{}
 	for i := range hashList {
+		if m == wire.MaxBlocksPerMsg {
+			break
+		}
+		continueHash = hashList[i]
+		// try best to send miner balk hashes also to reduce reorg over there
+		blk,err := chain.HeaderByHash(&hashList[i])
+		if err == nil {
+			if blk.Nonce <= -wire.MINER_RORATE_FREQ {
+				h := -blk.Nonce - wire.MINER_RORATE_FREQ
+				for j := h - w * (wire.CommitteeSize / 2 + 1); j <= h; j++ {
+					mh,_ := chain.Miners.BlockByHeight(j)
+					if mh != nil {
+						iv := wire.NewInvVect(common.InvTypeMinerBlock, mh.Hash())
+						invMsg.AddInvVect(iv)
+						m++
+					}
+				}
+				w = 0
+			} else if blk.Nonce > 0 {
+				w++
+			}
+		}
 		iv := wire.NewInvVect(common.InvTypeWitnessBlock, &hashList[i])
 		invMsg.AddInvVect(iv)
+		m++
 	}
 
 	// Send the inventory message if there is anything to send.
@@ -818,7 +844,6 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			// is not a reference into the inventory slice which
 			// would prevent the entire slice from being eligible
 			// for GC as soon as it's sent.
-			continueHash := invMsg.InvList[invListLen-1].Hash
 			sp.continueHash = &continueHash
 		}
 		sp.QueueMessage(invMsg, nil)

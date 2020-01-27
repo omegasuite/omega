@@ -682,7 +682,7 @@ func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 	// Atomically insert info into the database.
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
-		err := dbPutBestState(dbTx, state, node.workSum)
+		err := dbPutBestState(dbTx, state)
 		if err != nil {
 			return err
 		}
@@ -863,7 +863,7 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
-		err := dbPutBestState(dbTx, state, node.workSum)
+		err := dbPutBestState(dbTx, state)
 		if err != nil {
 			return err
 		}
@@ -1981,9 +1981,8 @@ func New(config *Config) (*BlockChain, error) {
 	b.ovm = ovm.NewOVM(ctx, params, vmcfg, config.DB)
 
 	bestNode := b.BestChain.Tip()
-	log.Infof("Chain state (height %d, hash %v, totaltx %d, work %v)",
-		bestNode.height, bestNode.hash, b.stateSnapshot.TotalTxns,
-		bestNode.workSum)
+	log.Infof("Chain state (height %d, hash %v, totaltx %d)",
+		bestNode.height, bestNode.hash, b.stateSnapshot.TotalTxns)
 
 	return &b, nil
 }

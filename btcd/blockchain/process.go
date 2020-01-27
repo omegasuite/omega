@@ -167,8 +167,7 @@ func (b *BlockChain) CheckSideChain(hash *chainhash.Hash) {
 	}
 
 	tip := b.BestChain.Tip()
-	if node.workSum.Cmp(tip.workSum) < 0 ||
-		(node.workSum.Cmp(tip.workSum) == 0 && node.height <= tip.height) {
+	if node.height <= tip.height {
 		return
 	}
 

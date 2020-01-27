@@ -5,7 +5,6 @@
 package blockchain
 
 import (
-	"math/big"
 	"sort"
 	"sync"
 	"time"
@@ -79,7 +78,7 @@ type blockNode struct {
 
 	// workSum is the total amount of work in the chain up to and including
 	// this node.
-	workSum *big.Int
+//	workSum *big.Int	we use height now
 
 	// height is the position in the block chain.
 	height int32
@@ -133,14 +132,14 @@ func initBlockNode(node *blockNode, blockHeader *wire.BlockHeader, parent *block
 		if node.bits == 0 {
 			node.bits = parent.bits // default is same as parent
 		}
-		node.workSum = CalcWork(node.bits)
+//		node.workSum = CalcWork(node.bits)
 		node.parent = parent
 		node.height = parent.height + 1
-		node.workSum = node.workSum.Add(parent.workSum, node.workSum)
+//		node.workSum = node.workSum.Add(parent.workSum, node.workSum)
 	} else {
 		// parent is nil only if the node is genesis block.
 		node.nextMiner = 0
-		node.workSum = big.NewInt(0)
+//		node.workSum = big.NewInt(0)
 		// bits should have been set to the pow limit of the chain
 	}
 }
