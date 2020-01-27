@@ -320,14 +320,30 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 	header := &block.MsgBlock().Header
 
 	if parent.hash != best.Hash {
+		pn := b.index.LookupNode(&parent.hash)
+		fork := b.BestChain.FindFork(pn)
+
+		if fork == nil {
+			return nil, true
+		}
+
 		// parent is not the tip, go back to find correct rotation
-		for p := b.BestChain.Tip(); p != nil && p != parent; p = p.parent {
+		for p := b.BestChain.Tip(); p != nil && p != fork; p = p.parent {
 			switch {
 			case p.nonce > 0:
 				rotate -= wire.CommitteeSize / 2 + 1
 
 			case p.nonce <= -wire.MINER_RORATE_FREQ:
 				rotate--
+			}
+		}
+		for p := pn; p != nil && p != fork; p = p.parent {
+			switch {
+			case p.nonce > 0:
+				rotate += wire.CommitteeSize / 2 + 1
+
+			case p.nonce <= -wire.MINER_RORATE_FREQ:
+				rotate++
 			}
 		}
 	}
@@ -398,7 +414,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 		}
 
 		if wire.CommitteeSize > 1 && flags & (BFNoConnect | BFSubmission) != 0 {
-			return nil, true
+			return nil, false
 		}
 
 		// examine signatures
@@ -410,7 +426,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 		for i := int32(0); i < wire.CommitteeSize; i++ {
 			blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
 			if blk == nil {
-				return fmt.Errorf("Unauthorized miner signature. No miner block at %d.", int32(rotate) - i), true
+				return nil, true
 			}
 			copy(miners[i][:], blk.MsgBlock().Miner[:])
 		}
@@ -422,13 +438,13 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			k,err := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 //			k,err := btcutil.DecodeAddress(string(sign[:33]), b.chainParams)
 			if err != nil {
-				return fmt.Errorf("Incorrect miner signature. pubkey error"), true
+				return fmt.Errorf("Incorrect miner signature. pubkey error"), false
 			}
 
 			pk,_ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
 			pkh := pk.AddressPubKeyHash().Hash160()
 			if _,ok := usigns[*pkh]; ok {
-				return fmt.Errorf("Duplicated miner signature"), true
+				return fmt.Errorf("Duplicated miner signature"), false
 			}
 			// is the signer in committee?
 			matched := false
@@ -439,22 +455,22 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			}
 
 			if !matched {
-				return fmt.Errorf("Unauthorized miner signature"), true
+				return fmt.Errorf("Unauthorized signer"), false
 			}
 
 			s,err := btcec.ParseSignature(sign[btcec.PubKeyBytesLenCompressed:], btcec.S256())
 			if err != nil {
-				return fmt.Errorf("Incorrect miner signature. Signature parse error"), true
+				return fmt.Errorf("Incorrect miner signature. Signature parse error"), false
 			}
 
 			if !s.Verify(hash, pk.PubKey()) {
-				return fmt.Errorf("Incorrect miner signature. Verification doesn't match"), true
+				return fmt.Errorf("Incorrect miner signature. Verification doesn't match"), false
 			}
 
 			usigns[*pkh] = struct {}{}
 		}
 		if len(usigns) <= wire.CommitteeSize / 2 {
-			return fmt.Errorf("Insufficient number of miner signatures."), true
+			return fmt.Errorf("Insufficient number of miner signatures."), false
 		}
 	}
 

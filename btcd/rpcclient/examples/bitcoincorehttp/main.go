@@ -85,6 +85,21 @@ func main() {
 		case "hi":
 			fmt.Println("hello, Yourself")
 			break
+		case "port":
+			fmt.Println("Port number -> ")
+			s, _ := reader.ReadString('\n')
+			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
+			if s == options.Port {
+				continue
+			}
+			client.Shutdown()
+			options.Port = s
+			connCfg.Host = options.Host + ":" + options.Port
+			client, err = rpcclient.New(connCfg, nil)
+			if err != nil {
+				log.Fatal(err)
+			}
+			break
 		// 一般性的命令
 		case "stop":
 			// Shutdown shuts down the client by disconnecting any connections associated
@@ -184,7 +199,7 @@ func main() {
 			s, _ := reader.ReadString('\n')
 			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
 			var i int
-			fmt.Scan(&i)
+			fmt.Sscanf(s, "%d", &i)
 
 			in := make([]btcjson.TransactionInput, 0)
 			defs := make([]btcjson.Definition, 0)

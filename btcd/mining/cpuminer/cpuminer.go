@@ -319,7 +319,15 @@ func (m *CPUMiner) notice (notification *blockchain.Notification) {
 //		case *wire.MinerBlock:
 		case *btcutil.Block:
 			if m.started {
-				m.connch <- notification.Data.(*btcutil.Block).Height()	// (*wire.MinerBlock).
+				select {
+				case _,ok := <-m.connch:
+					if ok {
+						m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
+					}
+
+				default:
+					m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
+				}
 			}
 		}
 	}

@@ -153,6 +153,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 			top := int32(-1)
 			var tr * Syncer
 
+			log.Infof("Poll Entering syncMutex.Lock")
 			miner.syncMutex.Lock()
 			for h,s := range miner.Sync {
 				if h > top {
@@ -165,6 +166,8 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 				}
 			}
 			miner.syncMutex.Unlock()
+			log.Infof("Poll Left syncMutex.Lock")
+
 			log.Infof("\nTop Syncer: %d", top)
 			if tr != nil {
 				log.Infof("\nTop running Syncer: %d\n", tr.Height)
@@ -351,7 +354,7 @@ func (self *Miner) Debug(w http.ResponseWriter, r *http.Request) {
 }
 
 func DebugInfo() {
-	log.Infof("Miner has %d Syncers\n\n", len(miner.Sync))
+	log.Infof("\nI am %x. Miner has %d Syncers\n\n", miner.name, len(miner.Sync))
 	top := int32(0)
 	miner.syncMutex.Lock()
 	for h,_ := range miner.Sync {

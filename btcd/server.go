@@ -827,6 +827,14 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		iv := wire.NewInvVect(common.InvTypeWitnessBlock, &msg.HashStop)
 		invMsg.AddInvVect(iv)
 		sp.QueueMessage(invMsg, nil)
+	} else {
+		btcdLog.Infof("OnGetBlocks: found no block meeting the criteria for %s\v\tBlock locator %s, stop hash %s", sp.Addr(), len(msg.BlockLocatorHashes), msg.HashStop.String())
+
+		locator, err := chain.LatestBlockLocator()
+		if err != nil {
+			return
+		}
+		sp.PushGetBlocksMsg(locator, &zeroHash)
 	}
 }
 
@@ -867,6 +875,14 @@ func (sp *serverPeer) OnGetMinerBlocks(_ *peer.Peer, msg *wire.MsgGetMinerBlocks
 			sp.continueMinerHash = &continueHash
 		}
 		sp.QueueMessage(invMsg, nil)
+	} else {
+		btcdLog.Infof("OnGetMinerBlocks: found no block meeting the criteria for %s\v\tBlock locator %s, stop hash %s", sp.Addr(), len(msg.BlockLocatorHashes), msg.HashStop.String())
+
+		locator, err := chain.LatestBlockLocator()
+		if err != nil {
+			return
+		}
+		sp.PushGetMinerBlocksMsg(locator, &zeroHash)
 	}
 }
 

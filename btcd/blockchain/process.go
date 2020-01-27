@@ -313,15 +313,23 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		}
 	}
 
-	err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
-	if err != nil {
-		return isMainChain, true, err
-	}
-	if mkorphan {
-		log.Infof("checkProofOfWork check error %s. Make block %s an orphan at %d", err.Error(), block.Hash().String(), block.Height())
-		b.AddOrphanBlock(block)
-		return isMainChain, true, nil
-	}
+//	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize/2 + 1 {
+//		return isMainChain, false, fmt.Errorf("Insufficient signatures")
+//	}
+
+//	if block.MsgBlock().Header.Nonce > 0 || b.BestChain.FindFork(prevNode) == nil {
+		// don't check POW if we are to extending a side chain and this is a comittee block
+		// leave the work to reorg
+		err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
+		if err != nil {
+			return isMainChain, true, err
+		}
+		if mkorphan {
+			log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
+			b.AddOrphanBlock(block)
+			return isMainChain, true, nil
+		}
+//	}
 
 	//	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {
 		isMainChain, err = b.maybeAcceptBlock(block, flags)

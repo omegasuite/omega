@@ -1072,6 +1072,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// at least a couple of ways accomplish that rollback, but both involve
 	// tweaking the chain and/or database.  This approach catches these
 	// issues before ever modifying the chain.
+
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*blockNode)
 
@@ -1085,25 +1086,10 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
+		b.index.UnsetStatusFlags(n, statusValid)
+
 		// Store the loaded block for later.
 		attachBlocks = append(attachBlocks, block)
-
-		// Skip checks if node has already been fully validated. Although
-		// checkConnectBlock gets skipped, we still need to update the UTXO
-		// view.
-		if b.index.NodeStatus(n).KnownValid() {
-			err = views.FetchInputUtxos(b.db, block)
-			if err != nil {
-				return err
-			}
-			err = views.ConnectTransactions(block, nil)
-			if err != nil {
-				return err
-			}
-
-			newBest = n
-			continue
-		}
 
 		// Notice the spent txout details are not requested here and
 		// thus will not be generated.  This is done because the state
@@ -1124,7 +1110,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			}
 			return err
 		}
-		b.index.SetStatusFlags(n, statusValid)
 
 		newBest = n
 	}
@@ -1169,14 +1154,25 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 	}
 
+	prevNode := forkNode
 	// Connect the new best chain blocks.
 	for i, e := 0, attachNodes.Front(); e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*blockNode)
+
+		if i >= len(attachBlocks) {
+			break
+		}
 		block := attachBlocks[i]
+
+		err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, BFNone)
+		if err != nil || mkorphan {
+			return fmt.Errorf("attach block failed to pass POW check")
+		}
+		prevNode = n
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err := views.FetchInputUtxos(b.db, block)
+		err = views.FetchInputUtxos(b.db, block)
 		if err != nil {
 			return err
 		}
@@ -1196,6 +1192,8 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		if err != nil {
 			return err
 		}
+
+		b.index.SetStatusFlags(n, statusValid)
 	}
 
 	// Log the point where the chain forked and old and new best chain
@@ -1323,8 +1321,9 @@ func (b *BlockChain) connectBestChain(node *blockNode, block *btcutil.Block, fla
 	// We're extending (or creating) a side chain, but the cumulative
 	// work for this new side chain is not enough to make it the new chain.
 	tip := b.BestChain.Tip()
-	if node.workSum.Cmp(tip.workSum) < 0 ||
-		(node.workSum.Cmp(tip.workSum) == 0 && node.height <= tip.height) {
+	if node.height <= tip.height {
+//	if node.workSum.Cmp(tip.workSum) < 0 ||
+//		(node.workSum.Cmp(tip.workSum) == 0 && node.height <= tip.height) {
 		// Log information about how the block is forking the chain.
 		fork := b.BestChain.FindFork(node)
 		if fork.hash.IsEqual(parentHash) {

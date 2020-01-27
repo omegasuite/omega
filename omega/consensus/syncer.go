@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -76,6 +77,11 @@ type Syncer struct {
 	messages chan Message
 	
 	mutex sync.Mutex
+
+	// debug only
+	knowRevd	[]int32
+	candRevd	[]int32
+	consRevd	[]int32
 }
 
 func (self *Syncer) repeater() {
@@ -86,22 +92,34 @@ func (self *Syncer) repeater() {
 			going = false
 		default:
 			// resend knowledge
+			allm := int64(0)
+			for _, k := range self.knowledges.Knowledge[self.Myself] {
+				allm |= k
+			}
 			for i, k := range self.knowledges.Knowledge[self.Myself] {
-				if k == self.knowledges.Knowledge[self.Myself][self.Myself] {
+				if int32(i) == self.Myself || k == allm {
 					continue
 				}
+//				if k == self.knowledges.Knowledge[self.Myself][self.Myself] {
+//					continue
+//				}
 				// about my tree, if I know somthing someone does not know, send him info
-				k = self.knowledges.Knowledge[self.Myself][self.Myself] ^ k
+				k = k ^ allm
 				for _, p := range self.knows[self.Me] {
-					m := int64(0)
+					m := int64((1 << self.Myself) | (1 << i))
 					for _, r := range p.K {
 						m |= 0x1 << r
 					}
-					if k & m != 0 {
+					if k & m != 0 && p.K[len(p.K) - 1] != int64(i) {
 						// send it
-						if miner.server.CommitteeMsg(self.Names[int32(i)], p) {
+						pp := *p
+						pp.K = append(pp.K, int64(self.Myself))
+						pp.From = self.Me
+						if miner.server.CommitteeMsg(self.Names[int32(i)], &pp) {
 							self.knowledges.Knowledge[self.Myself][i] |= m
+							self.knowledges.Knowledge[self.Myself][self.Myself] |= m
 						}
+						k ^= m
 					}
 					if k == 0 {
 						break
@@ -173,7 +191,11 @@ func (self *Syncer) run() {
 				if self.sigGiven >= 0 {
 					continue
 				}
+
 				k := m.(*wire.MsgKnowledge)
+
+				self.knowRevd[self.Members[k.From]] = self.Members[k.From]
+
 				log.Infof("MsgKnowledge: Finder = %x\nFrom = %x\nHeight = %d\nM = %s\nK = [%v]",
 					k.Finder, k.From, k.Height, k.M.String(), k.K)
 				if !self.validateMsg(k.Finder, &k.M, m) {
@@ -194,6 +216,9 @@ func (self *Syncer) run() {
 					continue
 				}
 				k := m.(*wire.MsgCandidate)
+
+				self.candRevd[self.Members[k.F]] = self.Members[k.F]
+
 				log.Infof("MsgCandidate: M = %s\nHeight = %d\nF = %x\nSignature = %x\n",
 					k.M.String(), k.Height, k.F, k.Signature)
 				if !self.validateMsg(k.F, &k.M, m) {
@@ -227,6 +252,8 @@ func (self *Syncer) run() {
 					continue
 				}
 				k := m.(*wire.MsgConsensus)
+				self.consRevd[self.Members[k.From]] = self.Members[k.From]
+
 				if !self.validateMsg(k.From, nil, m) {
 					continue
 				}
@@ -701,6 +728,12 @@ func CreateSyncer(h int32) *Syncer {
 //	p.Me = miner.name
 
 //	p.SetCommittee()
+	p.knowRevd = make([]int32, wire.CommitteeSize)
+	p.candRevd = make([]int32, wire.CommitteeSize)
+	p.consRevd = make([]int32, wire.CommitteeSize)
+	for i := 0; i < wire.CommitteeSize; i++ {
+		p.knowRevd[i], p.candRevd[i], p.consRevd[i] = -1, -1, -1
+	}
 
 	return &p
 }
@@ -943,12 +976,27 @@ func (self *Syncer) print() {
 	log.Infof("Runnable = %d Committee = %d Base = %d", self.Runnable, self.Committee, self.Base)
 	log.Infof("agreed = %d sigGiven = %d Height = %d", self.agreed, self.sigGiven, self.Height)
 	log.Infof("Done = %d # of agrees = %d: %v", self.Done, len(self.agrees), self.agrees)
-	log.Infof("knowledges = ")
 
-	self.knowledges.print()
+	knowRevd := "Knowledge received from: "
+	candRevd := "Candidacy anouncement received from: "
+	consRevd := "Consensus anouncement received from: "
+
+	for i := 0; i < wire.CommitteeSize; i++ {
+		knowRevd += fmt.Sprintf("%d ", self.knowRevd[i])
+		candRevd += fmt.Sprintf("%d ", self.candRevd[i])
+		consRevd += fmt.Sprintf("%d ", self.consRevd[i])
+	}
+	log.Infof("%s\n%s\n%s", knowRevd, candRevd, consRevd)
+
+	if self.knowledges != nil {
+		log.Infof("knowledges = ")
+
+		self.knowledges.print()
+	}
 }
 
 func (self *Syncer) DebugInfo() {
+	log.Infof("I am %x, %d", self.Me, self.Myself)
 	self.print()
 	log.Infof("Members & Names:")
 	for m,n := range self.Members {
