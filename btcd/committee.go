@@ -896,11 +896,8 @@ func (s *server) CommitteePolling() {
 //			sp.lastMinerBlockSent = mht
 
 			if len(inv.InvList) > 0 {
-				done := make(chan bool)
-				consensusLog.Infof("Sending %d tx and %d miner inventory to %x at %s with waiting", d, len(inv.InvList)-d, pname, r.Addr())
-				r.QueueMessage(inv, done)
-				<-done
-				consensusLog.Infof("Inventory sent!")
+				consensusLog.Infof("Sending %d tx and %d miner inventory to %x at %s", d, len(inv.InvList)-d, pname, r.Addr())
+				r.QueueMessage(inv, nil)
 			}
 
 			sp.lastBlockSent = ht
@@ -1005,10 +1002,8 @@ func (s *server) CommitteePolling() {
 				// sending the requesting peer new inventory
 
 				if len(inv.InvList) > 0 {
-					done2 := make(chan bool)
-					consensusLog.Infof("Sending %d tx and %d miner inventory to %s with waiting", d, len(inv.InvList)-d, sp.Addr())
-					sp.QueueMessage(inv, done2)
-					<-done2
+					consensusLog.Infof("Sending %d tx and %d miner inventory to %s", d, len(inv.InvList)-d, sp.Addr())
+					sp.QueueMessage(inv, nil)
 					consensusLog.Infof("Inventory sent!")
 				}
 			}

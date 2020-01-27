@@ -1763,6 +1763,7 @@ out:
 	for {
 		select {
 		case msg := <-p.outputQueue:
+			log.Infof("outputQueue len = %d", len(p.outputQueue))
 			waiting = queuePacket(msg, pendingMsgs, waiting)
 
 		// This channel is notified when a message has been sent across
@@ -2017,7 +2018,7 @@ func (p *Peer) QueueMessageWithEncoding(msg wire.Message, doneChan chan<- bool,
 		}
 		return
 	}
-	log.Infof("%s Message added to outputQueue", msg.Command())
+	log.Infof("%s Message added to outputQueue len = %d", msg.Command(), len(p.outputQueue))
 	p.outputQueue <- outMsg{msg: msg, encoding: encoding, doneChan: doneChan}
 }
 
