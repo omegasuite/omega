@@ -467,7 +467,9 @@ func (b *MinerChain) disconnectBlock(node *blockNode, block *wire.MinerBlock) er
 		var height [4]byte
 		common.LittleEndian.PutUint32(height[:], uint32(node.height))
 		bkt.Delete(height[:])
-		b.blockChain.Blacklist.Remove(uint32(node.height))
+		if b.blockChain.Blacklist != nil {
+			b.blockChain.Blacklist.Remove(uint32(node.height))
+		}
 
 		return nil
 	})
