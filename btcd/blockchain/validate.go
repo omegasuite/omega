@@ -303,6 +303,20 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 	return nil
 }
 
+func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
+	rotate := b.BestSnapshot().LastRotation
+	for p := b.BestChain.Tip(); p != nil && p.hash != hash; p = p.parent {
+		switch {
+		case p.nonce > 0:
+			rotate -= wire.CommitteeSize / 2 + 1
+
+		case p.nonce <= -wire.MINER_RORATE_FREQ:
+			rotate--
+		}
+	}
+	return int32(rotate)
+}
+
 // checkProofOfWork ensures the block header bits which indicate the target
 // difficulty is in min/max range and that the block hash is less than the
 // target difficulty as claimed.

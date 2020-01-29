@@ -177,8 +177,9 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 	}()
 
 	// this should run as a goroutine
+	polling := true
 	out:
-	for true {
+	for polling {
 		select {
 		case height := <- miner.updateheight:
 			log.Infof("updateheight %d", height)
@@ -242,6 +243,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 */
 		case <- Quit:
 			log.Info("consensus received Quit")
+			polling = false
 			miner.syncMutex.Lock()
 			for i, t := range miner.Sync {
 				log.Infof("Sync %d to Quit", i)

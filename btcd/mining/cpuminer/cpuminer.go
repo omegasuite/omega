@@ -118,6 +118,7 @@ type CPUMiner struct {
 
 	// the block being mined by committee
 	minedBlock		  * btcutil.Block
+	Stale			  bool
 }
 
 // speedMonitor handles tracking the number of hashes per second the mining
@@ -377,6 +378,7 @@ flushconnch:
 		// transactions to work on when there are no connected peers.
 		if m.cfg.ConnectedCount() == 0 {
 			log.Info("Sleep 5 sec because there is no connected peer.")
+			m.Stale = true
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -396,6 +398,7 @@ flushconnch:
 
 		if int32(bs.LastRotation) > m.g.Chain.Miners.BestSnapshot().Height - 2 * wire.CommitteeSize {
 			m.submitBlockLock.Unlock()
+			m.Stale = true
 			log.Infof("generateBlocks: sleep on LastRotation %d > Miners.Height %d - 2 * CommitteeSize", bs.LastRotation, m.g.Chain.Miners.BestSnapshot().Height)
 			time.Sleep(time.Second * 5)
 			continue
@@ -406,10 +409,13 @@ flushconnch:
 		if curHeight != 0 && !isCurrent {
 //			m.g.Chain.ChainLock.Unlock()
 			m.submitBlockLock.Unlock()
+			m.Stale = true
 			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent ")
 			time.Sleep(time.Second * 5)
 			continue
 		}
+
+		m.Stale = false
 /*
 		if time.Now().UnixNano() - m.g.BestSnapshot().Updated.UnixNano() <= miningGap * 1000000 {
 			m.g.Chain.ChainLock.Unlock()
@@ -443,6 +449,7 @@ flushconnch:
 			payToAddr = &m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
 		} else {
 			m.submitBlockLock.Unlock()
+			m.Stale = true
 			time.Sleep(time.Millisecond * miningGap)
 			continue
 		}

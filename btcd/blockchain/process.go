@@ -80,6 +80,19 @@ func (b *BlockChain) blockExists(hash *chainhash.Hash) (bool, error) {
 	return exists, err
 }
 
+func (b *BlockChain) TryConnectOrphan(hash *chainhash.Hash) bool {
+	block := b.orphans[*hash].block
+	n := b.index.LookupNode(&block.MsgBlock().Header.PrevBlock)
+	if n == nil {
+		return false
+	}
+
+	b.ChainLock.Lock()
+	defer b.ChainLock.Unlock()
+
+	return b.ProcessOrphans(&block.MsgBlock().Header.PrevBlock, BFNone) == nil
+}
+
 // ProcessOrphans determines if there are any orphans which depend on the passed
 // block hash (they are no longer orphans if true) and potentially accepts them.
 // It repeats the process for the newly accepted blocks (to detect further
@@ -173,8 +186,12 @@ func (b *BlockChain) CheckSideChain(hash *chainhash.Hash) {
 
 	detachNodes, attachNodes := b.getReorganizeNodes(node)
 
+	if detachNodes.Len() == 0 && attachNodes.Len() == 0 {
+		return
+	}
+
 	// Reorganize the chain.
-	log.Infof("REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches", node.hash, detachNodes.Len(), attachNodes.Len())
+	log.Infof("tx REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches", node.hash, detachNodes.Len(), attachNodes.Len())
 	b.ReorganizeChain(detachNodes, attachNodes)
 
 	b.index.flushToDB()

@@ -32,20 +32,33 @@ const MaxBlockLocatorsPerMsg = 500
 // exponentially decrease the number of hashes the further away from head and
 // closer to the genesis block you get.
 type MsgGetBlocks struct {
-	ProtocolVersion    uint32
-	BlockLocatorHashes []*chainhash.Hash
-	HashStop           chainhash.Hash
+	ProtocolVersion      uint32
+	TxBlockLocatorHashes []*chainhash.Hash
+	TxHashStop           chainhash.Hash
+	MinerBlockLocatorHashes []*chainhash.Hash
+	MinerHashStop           chainhash.Hash
 }
 
 // AddBlockLocatorHash adds a new block locator hash to the message.
 func (msg *MsgGetBlocks) AddBlockLocatorHash(hash *chainhash.Hash) error {
-	if len(msg.BlockLocatorHashes)+1 > MaxBlockLocatorsPerMsg {
+	if len(msg.TxBlockLocatorHashes)+len(msg.MinerBlockLocatorHashes)+2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message [max %v]",
 			MaxBlockLocatorsPerMsg)
 		return messageError("MsgGetBlocks.AddBlockLocatorHash", str)
 	}
 
-	msg.BlockLocatorHashes = append(msg.BlockLocatorHashes, hash)
+	msg.TxBlockLocatorHashes = append(msg.TxBlockLocatorHashes, hash)
+	return nil
+}
+
+func (msg *MsgGetBlocks) AddMinerBlockLocatorHash(hash *chainhash.Hash) error {
+	if len(msg.TxBlockLocatorHashes)+len(msg.MinerBlockLocatorHashes)+2 > MaxBlockLocatorsPerMsg {
+		str := fmt.Sprintf("too many block locator hashes for message [max %v]",
+			MaxBlockLocatorsPerMsg)
+		return messageError("MsgGetBlocks.AddMinerBlockLocatorHash", str)
+	}
+
+	msg.MinerBlockLocatorHashes = append(msg.MinerBlockLocatorHashes, hash)
 	return nil
 }
 
@@ -62,7 +75,7 @@ func (msg *MsgGetBlocks) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding
 	if err != nil {
 		return err
 	}
-	if count > MaxBlockLocatorsPerMsg {
+	if count + 2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count, MaxBlockLocatorsPerMsg)
 		return messageError("MsgGetBlocks.BtcDecode", str)
@@ -71,7 +84,7 @@ func (msg *MsgGetBlocks) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding
 	// Create a contiguous slice of hashes to deserialize into in order to
 	// reduce the number of allocations.
 	locatorHashes := make([]chainhash.Hash, count)
-	msg.BlockLocatorHashes = make([]*chainhash.Hash, 0, count)
+	msg.TxBlockLocatorHashes = make([]*chainhash.Hash, 0, count)
 	for i := uint64(0); i < count; i++ {
 		hash := &locatorHashes[i]
 		err := common.ReadElement(r, hash)
@@ -81,14 +94,46 @@ func (msg *MsgGetBlocks) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding
 		msg.AddBlockLocatorHash(hash)
 	}
 
-	return common.ReadElement(r, &msg.HashStop)
+	if err = common.ReadElement(r, &msg.TxHashStop); err != nil {
+		return err
+	}
+
+	// Read num block locator hashes and limit to max.
+	count2, err := common.ReadVarInt(r, pver)
+	if err != nil {
+		return err
+	}
+	if count + count2 + 2 > MaxBlockLocatorsPerMsg {
+		str := fmt.Sprintf("too many block locator hashes for message "+
+			"[count %v, max %v]", count, MaxBlockLocatorsPerMsg)
+		return messageError("MsgGetBlocks.BtcDecode", str)
+	}
+
+	// Create a contiguous slice of hashes to deserialize into in order to
+	// reduce the number of allocations.
+	locatorHashes = make([]chainhash.Hash, count2)
+	msg.MinerBlockLocatorHashes = make([]*chainhash.Hash, 0, count2)
+	for i := uint64(0); i < count2; i++ {
+		hash := &locatorHashes[i]
+		err := common.ReadElement(r, hash)
+		if err != nil {
+			return err
+		}
+		msg.AddMinerBlockLocatorHash(hash)
+	}
+
+	err = common.ReadElement(r, &msg.MinerHashStop)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg *MsgGetBlocks) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
-	count := len(msg.BlockLocatorHashes)
-	if count > MaxBlockLocatorsPerMsg {
+	count := len(msg.TxBlockLocatorHashes)
+	if count + 2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count, MaxBlockLocatorsPerMsg)
 		return messageError("MsgGetBlocks.BtcEncode", str)
@@ -104,14 +149,37 @@ func (msg *MsgGetBlocks) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding
 		return err
 	}
 
-	for _, hash := range msg.BlockLocatorHashes {
+	for _, hash := range msg.TxBlockLocatorHashes {
 		err = common.WriteElement(w, hash)
 		if err != nil {
 			return err
 		}
 	}
 
-	return common.WriteElement(w, &msg.HashStop)
+	if err = common.WriteElement(w, &msg.TxHashStop); err != nil {
+		return err
+	}
+
+	count2 := len(msg.MinerBlockLocatorHashes)
+	if count + count2 + 2 > MaxBlockLocatorsPerMsg {
+		str := fmt.Sprintf("too many block locator hashes for message "+
+			"[count %v, max %v]", count2, MaxBlockLocatorsPerMsg)
+		return messageError("MsgGetBlocks.BtcEncode", str)
+	}
+
+	err = common.WriteVarInt(w, pver, uint64(count2))
+	if err != nil {
+		return err
+	}
+
+	for _, hash := range msg.MinerBlockLocatorHashes {
+		err = common.WriteElement(w, hash)
+		if err != nil {
+			return err
+		}
+	}
+
+	return common.WriteElement(w, &msg.MinerHashStop)
 }
 
 // Command returns the protocol command string for the message.  This is part
@@ -125,16 +193,18 @@ func (msg *MsgGetBlocks) Command() string {
 func (msg *MsgGetBlocks) MaxPayloadLength(pver uint32) uint32 {
 	// Protocol version 4 bytes + num hashes (varInt) + max block locator
 	// hashes + hash stop.
-	return 4 + common.MaxVarIntPayload + (MaxBlockLocatorsPerMsg * chainhash.HashSize) + chainhash.HashSize
+	return 4 + 2 * common.MaxVarIntPayload + (MaxBlockLocatorsPerMsg * chainhash.HashSize) + 2 * chainhash.HashSize
 }
 
 // NewMsgGetBlocks returns a new bitcoin getblocks message that conforms to the
 // Message interface using the passed parameters and defaults for the remaining
 // fields.
-func NewMsgGetBlocks(hashStop *chainhash.Hash) *MsgGetBlocks {
+func NewMsgGetBlocks(hashStop, minerstop *chainhash.Hash) *MsgGetBlocks {
 	return &MsgGetBlocks{
-		ProtocolVersion:    ProtocolVersion,
-		BlockLocatorHashes: make([]*chainhash.Hash, 0, MaxBlockLocatorsPerMsg),
-		HashStop:           *hashStop,
+		ProtocolVersion:      ProtocolVersion,
+		TxBlockLocatorHashes: make([]*chainhash.Hash, 0, MaxBlockLocatorsPerMsg),
+		TxHashStop:           *hashStop,
+		MinerBlockLocatorHashes: make([]*chainhash.Hash, 0, MaxBlockLocatorsPerMsg),
+		MinerHashStop:        *minerstop,
 	}
 }

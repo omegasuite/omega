@@ -192,7 +192,7 @@ func messageSummary(msg wire.Message) string {
 		return invSummary(msg.InvList)
 
 	case *wire.MsgGetBlocks:
-		return locatorSummary(msg.BlockLocatorHashes, &msg.HashStop)
+		return locatorSummary(msg.TxBlockLocatorHashes, &msg.TxHashStop)
 
 	case *wire.MsgGetMinerBlocks:
 		return locatorSummary(msg.BlockLocatorHashes, &msg.HashStop)

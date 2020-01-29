@@ -34,9 +34,9 @@ func TestGetBlocks(t *testing.T) {
 
 	// Ensure we get the same data back out.
 	msg := NewMsgGetBlocks(hashStop)
-	if !msg.HashStop.IsEqual(hashStop) {
+	if !msg.TxHashStop.IsEqual(hashStop) {
 		t.Errorf("NewMsgGetBlocks: wrong stop hash - got %v, want %v",
-			msg.HashStop, hashStop)
+			msg.TxHashStop, hashStop)
 	}
 
 	// Ensure the command is expected value.
@@ -62,10 +62,10 @@ func TestGetBlocks(t *testing.T) {
 	if err != nil {
 		t.Errorf("AddBlockLocatorHash: %v", err)
 	}
-	if msg.BlockLocatorHashes[0] != locatorHash {
+	if msg.TxBlockLocatorHashes[0] != locatorHash {
 		t.Errorf("AddBlockLocatorHash: wrong block locator added - "+
 			"got %v, want %v",
-			spew.Sprint(msg.BlockLocatorHashes[0]),
+			spew.Sprint(msg.TxBlockLocatorHashes[0]),
 			spew.Sprint(locatorHash))
 	}
 
@@ -328,7 +328,7 @@ func TestGetBlocksWireErrors(t *testing.T) {
 	for i := 0; i < MaxBlockLocatorsPerMsg; i++ {
 		maxGetBlocks.AddBlockLocatorHash(&mainNetGenesisHash)
 	}
-	maxGetBlocks.BlockLocatorHashes = append(maxGetBlocks.BlockLocatorHashes,
+	maxGetBlocks.TxBlockLocatorHashes = append(maxGetBlocks.TxBlockLocatorHashes,
 		&mainNetGenesisHash)
 	maxGetBlocksEncoded := []byte{
 		0x62, 0xea, 0x00, 0x00, // Protocol version 60002

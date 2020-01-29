@@ -1159,6 +1159,17 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 		return makeDbErr(database.ErrTxNotWritable, str, nil)
 	}
 
+	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize/2 + 1 {
+		panic(fmt.Sprintf("insifficient signatures for block %s", block.Hash().String()))
+		os.Exit(-8)
+		return makeDbErr(database.ErrTxNotWritable, "insifficient signatures", nil)
+	}
+	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts[1]) < 33 {
+		panic(fmt.Sprintf("incorrect signatures for block %s", block.Hash().String()))
+		os.Exit(-9)
+		return makeDbErr(database.ErrTxNotWritable, "incorrect signatures", nil)
+	}
+
 	// Reject the block if it already exists.
 	blockHash := block.Hash()
 	if tx.hasBlock(blockHash) {

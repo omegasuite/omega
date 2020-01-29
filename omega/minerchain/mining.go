@@ -111,6 +111,7 @@ type CPUMiner struct {
 	updateHashes      chan uint64
 	speedMonitorQuit  chan struct{}
 	quit              chan struct{}
+	Stale			  bool
 }
 
 // speedMonitor handles tracking the number of hashes per second the mining
@@ -341,6 +342,7 @@ out:
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
 		if m.cfg.ConnectedCount() == 0 {
+			m.Stale = true
 			log.Info("generateBlocks: sleep because of no connection")
 			time.Sleep(time.Second * 5)
 			continue
@@ -356,6 +358,7 @@ out:
 		isCurrent := m.cfg.IsCurrent()
 		if curHeight != 0 && !isCurrent {
 			m.submitBlockLock.Unlock()
+			m.Stale = true
 			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent ")
 			time.Sleep(time.Second * 5)
 			continue
@@ -364,6 +367,7 @@ out:
 		h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
 		d := curHeight - int32(h)
 		if d > wire.DESIRABLE_MINER_CANDIDATES + 3 {
+			m.Stale = true
 			time.Sleep(time.Second * time.Duration(5 * (d -3 - wire.DESIRABLE_MINER_CANDIDATES )))
 			continue
 		}
@@ -384,16 +388,20 @@ out:
 		// include in the block.
 		var template *mining.BlockTemplate
 		var err error
+
 		if good {
 			template, err = m.g.NewMinerBlockTemplate(m.cfg.SignAddress)
 		}
 		m.submitBlockLock.Unlock()
 		
 		if err != nil || template == nil {
+			m.Stale = true
 			log.Infof("miner.generateBlocks: sleep on err != nil || template == nil, curHeight = %d", curHeight)
 			time.Sleep(time.Second * 5)
 			continue
 		}
+
+		m.Stale = false
 
 		// Attempt to solve the block.  The function will exit early
 		// with false when conditions that trigger a stale block, so

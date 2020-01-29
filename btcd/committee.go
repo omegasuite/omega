@@ -761,6 +761,8 @@ func (s *server) CommitteeMsg(p [20]byte, m wire.Message) bool {
 }
 
 func (s *server) CommitteePolling() {
+	return
+
 	best := s.chain.BestSnapshot()
 	ht := best.Height
 	mht := s.chain.Miners.BestSnapshot().Height
@@ -772,6 +774,7 @@ func (s *server) CommitteePolling() {
 	consensusLog.Infof("\n\nMy heights %d %d rotation at %d", ht, mht, best.LastRotation)
 
 	total := 0
+	in := false
 
 	// those we want to have connections
 	cmt := make(map[[20]byte]*wire.MinerBlock)
@@ -781,26 +784,11 @@ func (s *server) CommitteePolling() {
 			var nname [20]byte
 			copy(nname[:], blk.MsgBlock().Miner)
 			cmt[nname] = blk
+			if bytes.Compare(name[:], blk.MsgBlock().Miner) == 0 {
+				in = true
+			}
 		}
 	}
-
-/*
-	// take out those we already connected, what's left is those we need to connect
-	s.peerState.forAllPeers(func(sp * serverPeer) {
-		if _, ok := cmt[sp.Peer.Miner]; ok && sp.Connected() {
-			delete(cmt, sp.Peer.Miner)
-		}
-	})
-
-	// initiate connection by the new one. note, if we are not in committee, them my will be 0
-	my := s.MyPlaceInCommittee(int32(best.LastRotation))
-	for name, blk := range cmt {
-		if my > blk.Height() {
-			s.makeConnection(blk.MsgBlock().Connection, name, blk.Height(), my)
-		}
-	}
-
- */
 
 	s.peerState.cmutex.Lock()
 	for pname,sp := range s.peerState.committee {
@@ -813,9 +801,6 @@ func (s *server) CommitteePolling() {
 		delete(cmt, pname)
 
 		for _,r := range sp.peers {
-			if !r.Connected() {
-				continue
-			}
 			if r.LastBlock() > sp.bestBlock {
 				sp.bestBlock = r.LastBlock()
 				if sp.lastBlockSent < sp.bestBlock {
@@ -829,6 +814,37 @@ func (s *server) CommitteePolling() {
 				}
 			}
 		}
+
+		idmap := make(map[int32]struct{})
+		addrmap := make(map[string]int32)
+
+		for i,r := range sp.peers {
+			if _,ok := idmap[r.ID()]; ok && i < len(sp.peers) - 1 {
+				sp.peers = append(sp.peers[:i], sp.peers[i+1:]...)
+				continue
+			} else if ok {
+				sp.peers = sp.peers[:i]
+			}
+			if j,ok := addrmap[r.Addr()]; ok {
+				q := sp.peers[j]
+				if q.Connected() {
+					r.Disconnect("duplicated connection")
+					if i < len(sp.peers) - 1 {
+						sp.peers = append(sp.peers[:i], sp.peers[i+1:]...)
+					} else {
+						sp.peers = sp.peers[:i]
+					}
+				} else {
+					sp.peers = append(sp.peers[:j], sp.peers[j+1:]...)
+				}
+				continue
+			}
+			idmap[r.ID()] = struct{}{}
+			addrmap[r.Addr()] = int32(i)
+			r.UpdateLastBlockHeight(sp.bestBlock)
+			r.UpdateLastMinerBlockHeight(sp.bestMinerBlock)
+		}
+
 		heightSent := sp.lastBlockSent
 		minerHeightSent := sp.lastMinerBlockSent
 
@@ -944,75 +960,83 @@ func (s *server) CommitteePolling() {
 
 	bmht := mht
 	bht := ht
+	stale := !in && s.cpuMiner.Stale && s.minerMiner.Stale
 
-	//	if randomUint16Number(10) > 7 {
-		consensusLog.Infof("list of all peers")
-		s.peerState.forAllPeers(func(sp * serverPeer){
-			var hash chainhash.Hash
-			if sp.LastAnnouncedBlock() != nil {
-				hash = *sp.LastAnnouncedBlock()
-			}
-			cnd := "disconnected -- "
-			if sp.Connected() {
-				cnd = "connected -- "
-				inv := wire.NewMsgInv()
+	consensusLog.Infof("list of all peers")
+	refreshChain := false
 
-				if sp.LastMinerBlock() > mht {
-					consensusLog.Infof("Request miner blocks upto %d from %s", sp.LastMinerBlock(), sp.Addr())
-					locator, err := s.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
-					if err == nil {
-						sp.PushGetMinerBlocksMsg(locator, &zeroHash)
-						total += 300
+	s.peerState.forAllPeers(func(sp * serverPeer) {
+		if refreshChain {
+			return
+		}
+		var hash chainhash.Hash
+		if sp.LastAnnouncedBlock() != nil {
+			hash = *sp.LastAnnouncedBlock()
+		}
+		cnd := "disconnected -- "
+		if sp.Connected() {
+			cnd = "connected -- "
+			inv := wire.NewMsgInv()
+
+			if sp.LastMinerBlock() > mht {
+				consensusLog.Infof("Request miner blocks upto %d from %s", sp.LastMinerBlock(), sp.Addr())
+				refreshChain = true
+				mht = sp.LastMinerBlock()
+			} else if sp.LastMinerBlock() < bmht {
+				consensusLog.Infof("Send most miner recent blocks to %s", sp.Addr())
+				for i, n := sp.LastMinerBlock()-1, 0; i < bmht; n++ {
+					i++
+					h, _ := s.chain.Miners.(*minerchain.MinerChain).BlockHashByHeight(i)
+					if h != nil {
+						inv.AddInvVect(&wire.InvVect{common.InvTypeMinerBlock, *h})
 					}
-					mht = sp.LastMinerBlock()
-				} else if sp.LastMinerBlock() < bmht {
-					consensusLog.Infof("Send miner 5 most recent blocks to %s", sp.Addr())
-					for i, n := bmht-5, 0; i < bmht; n++ {
-						i++
-						h, _ := s.chain.Miners.(*minerchain.MinerChain).BlockHashByHeight(i)
-						if h != nil {
-							inv.AddInvVect(&wire.InvVect{common.InvTypeMinerBlock, *h})
-						}
-						total++
-					}
-				}
-
-				d := len(inv.InvList)
-
-				if sp.LastBlock() > ht {
-					consensusLog.Infof("Request tx blocks upto %d from %s", sp.LastBlock(), sp.Addr())
-					locator, err := s.chain.LatestBlockLocator()
-					if err == nil {
-						sp.PushGetBlocksMsg(locator, &zeroHash)
-						total += 300
-					}
-					ht = sp.LastBlock()
-				} else if sp.LastBlock() < bht {
-					consensusLog.Infof("Send tx 5 most recent blocks to %s", sp.Addr())
-					for i, n := bht-5, 0; i < bht; n++ {
-						i++
-						h, _ := s.chain.BlockHashByHeight(i)
-						if h != nil {
-							inv.AddInvVect(&wire.InvVect{common.InvTypeWitnessBlock, *h})
-						}
-						total++
-					}
-				}
-
-				// sending the requesting peer new inventory
-
-				if len(inv.InvList) > 0 {
-					consensusLog.Infof("Sending %d tx and %d miner inventory to %s", d, len(inv.InvList)-d, sp.Addr())
-					sp.QueueMessage(inv, nil)
-					consensusLog.Infof("Inventory sent!")
+					total++
 				}
 			}
 
-			consensusLog.Infof("%s %s %d last blocks %d %d last hash %s\n\t\tcommittee %d %x", cnd,
-				sp.Addr(), sp.ID(), sp.LastBlock(), sp.LastMinerBlock(), hash.String(),
-				sp.Peer.Committee, sp.Peer.Miner)
-		})
-//	}
+			d := len(inv.InvList)
+
+			if sp.LastBlock() > ht {
+				consensusLog.Infof("Request tx blocks upto %d from %s", sp.LastBlock(), sp.Addr())
+				refreshChain = true
+				ht = sp.LastBlock()
+			} else if sp.LastBlock() < bht {
+				consensusLog.Infof("Send most recent tx blocks to %s", sp.Addr())
+				for i, n := sp.LastBlock()-1, 0; i < bht; n++ {
+					i++
+					h, _ := s.chain.BlockHashByHeight(i)
+					if h != nil {
+						inv.AddInvVect(&wire.InvVect{common.InvTypeWitnessBlock, *h})
+					}
+					total++
+				}
+			}
+
+			// sending the requesting peer new inventory
+
+			if len(inv.InvList) > 0 {
+				consensusLog.Infof("Sending %d tx and %d miner inventory to %s", d, len(inv.InvList)-d, sp.Addr())
+//				sp.QueueMessage(inv, nil)
+				consensusLog.Infof("Inventory sent!")
+			}
+		} else if stale && sp.connReq != nil {
+			s.makeConnection([]byte(sp.connReq.Addr.String()), sp.connReq.Miner,
+				sp.connReq.Committee, my)
+			total += 100
+		}
+
+		consensusLog.Infof("%s %s %d last blocks %d %d last hash %s\n\t\tcommittee %d %x", cnd,
+			sp.Addr(), sp.ID(), sp.LastBlock(), sp.LastMinerBlock(), hash.String(),
+			sp.Peer.Committee, sp.Peer.Miner)
+
+		if refreshChain {
+//			mlocator, _ := s.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+//			tlocator, _ := s.chain.LatestBlockLocator()
+//			sp.PushGetBlocksMsg(tlocator, mlocator, &zeroHash, &zeroHash)
+			total += 300
+		}
+	})
+
 	time.Sleep(time.Second * time.Duration(total / 100))
 }
 

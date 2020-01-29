@@ -910,31 +910,45 @@ func (p *Peer) PushAddrMsg(addresses []*wire.NetAddress) ([]*wire.NetAddress, er
 // and stop hash.  It will ignore back-to-back duplicate requests.
 //
 // This function is safe for concurrent access.
-func (p *Peer) PushGetBlocksMsg(locator chainhash.BlockLocator, stopHash *chainhash.Hash) error {
+func (p *Peer) PushGetBlocksMsg(locator, mlocator chainhash.BlockLocator, stopHash, mstopHash *chainhash.Hash) error {
 	// Extract the begin hash from the block locator, if one was specified,
 	// to use for filtering duplicate getblocks requests.
 	var beginHash *chainhash.Hash
+	var mbeginHash *chainhash.Hash
+
 	if len(locator) > 0 {
 		beginHash = locator[0]
+	}
+	if len(mlocator) > 0 {
+		mbeginHash = mlocator[0]
 	}
 
 	// Filter duplicate getblocks requests.
 	p.prevGetBlocksMtx.Lock()
 	isDuplicate := p.prevGetBlocksStop != nil && p.prevGetBlocksBegin != nil &&
 		beginHash != nil && stopHash.IsEqual(p.prevGetBlocksStop) &&
-		beginHash.IsEqual(p.prevGetBlocksBegin)
+		beginHash.IsEqual(p.prevGetBlocksBegin) &&
+		p.prevGetMinerBlocksStop != nil && p.prevGetMinerBlocksBegin != nil &&
+		beginHash != nil && stopHash.IsEqual(p.prevGetMinerBlocksStop) &&
+		beginHash.IsEqual(p.prevGetMinerBlocksBegin)
 	p.prevGetBlocksMtx.Unlock()
 
 	if isDuplicate {
 		log.Tracef("Filtering duplicate [getblocks] with begin "+
-			"hash %v, stop hash %v", beginHash, stopHash)
+			"hash %, stop hash %v", beginHash, stopHash)
 		return nil
 	}
 
 	// Construct the getblocks request and queue it to be sent.
-	msg := wire.NewMsgGetBlocks(stopHash)
+	msg := wire.NewMsgGetBlocks(stopHash, mstopHash)
 	for _, hash := range locator {
 		err := msg.AddBlockLocatorHash(hash)
+		if err != nil {
+			return err
+		}
+	}
+	for _, hash := range mlocator {
+		err := msg.AddMinerBlockLocatorHash(hash)
 		if err != nil {
 			return err
 		}
@@ -946,46 +960,8 @@ func (p *Peer) PushGetBlocksMsg(locator chainhash.BlockLocator, stopHash *chainh
 	p.prevGetBlocksMtx.Lock()
 	p.prevGetBlocksBegin = beginHash
 	p.prevGetBlocksStop = stopHash
-	p.prevGetBlocksMtx.Unlock()
-	return nil
-}
-
-func (p *Peer) PushGetMinerBlocksMsg(locator chainhash.BlockLocator, stopHash *chainhash.Hash) error {
-	// Extract the begin hash from the block locator, if one was specified,
-	// to use for filtering duplicate getblocks requests.
-	var beginHash *chainhash.Hash
-	if len(locator) > 0 {
-		beginHash = locator[0]
-	}
-
-	// Filter duplicate getblocks requests.
-	p.prevGetBlocksMtx.Lock()
-	isDuplicate := p.prevGetMinerBlocksStop != nil && p.prevGetMinerBlocksBegin != nil &&
-		beginHash != nil && stopHash.IsEqual(p.prevGetMinerBlocksStop) &&
-		beginHash.IsEqual(p.prevGetMinerBlocksBegin)
-	p.prevGetBlocksMtx.Unlock()
-
-	if isDuplicate {
-		log.Tracef("Filtering duplicate [getblocks] with begin "+
-			"hash %v, stop hash %v", beginHash, stopHash)
-		return nil
-	}
-
-	// Construct the getblocks request and queue it to be sent.
-	msg := wire.NewMsgGetMinerBlocks(stopHash)
-	for _, hash := range locator {
-		err := msg.AddBlockLocatorHash(hash)
-		if err != nil {
-			return err
-		}
-	}
-	p.QueueMessage(msg, nil)
-
-	// Update the previous getblocks request information for filtering
-	// duplicates.
-	p.prevGetBlocksMtx.Lock()
-	p.prevGetMinerBlocksBegin = beginHash
-	p.prevGetMinerBlocksStop = stopHash
+	p.prevGetMinerBlocksBegin = mbeginHash
+	p.prevGetMinerBlocksStop = mstopHash
 	p.prevGetBlocksMtx.Unlock()
 	return nil
 }
@@ -1129,7 +1105,7 @@ func (p *Peer) readMessage(encoding wire.MessageEncoding) (wire.Message, []byte,
 		return fmt.Sprintf("Received %v%s from %s",
 			msg.Command(), summary, p)
 	}))
-	log.Tracef("%v", newLogClosure(func() string {
+	log.Infof("%v", newLogClosure(func() string {
 		return spew.Sdump(msg)
 	}))
 	log.Tracef("%v", newLogClosure(func() string {
@@ -1478,6 +1454,7 @@ out:
 				p.PushRejectMsg("malformed", common.RejectMalformed, errMsg, nil,
 					true)
 			}
+			log.Infof("message read error: %s in %x. terminate inhandler", err.Error(), buf)
 			break out
 		}
 
@@ -1490,7 +1467,7 @@ out:
 		p.stallControl <- stallControlMsg{sccHandlerStart, rmsg}
 		switch msg := rmsg.(type) {
 		case *wire.MsgVersion:
-//			log.Infof("inHandler MsgVersion")
+			log.Infof("duplicate version message -- terminate")
 			// Limit to one version message per peer.
 			p.PushRejectMsg(msg.Command(), common.RejectDuplicate,
 				"duplicate version message", nil, true)
@@ -1718,7 +1695,7 @@ out:
 		idleTimer.Reset(idleTimeout)
 	}
 
-//	log.Infof("atomic.LoadInt32(&p.disconnect) = %d", atomic.LoadInt32(&p.disconnect))
+	log.Infof("atomic.LoadInt32(&p.disconnect) = %d", atomic.LoadInt32(&p.disconnect))
 
 	// Ensure the idle timer is stopped to avoid leaking the resource.
 	idleTimer.Stop()
@@ -1919,7 +1896,7 @@ out:
 			err := p.writeMessage(msg.msg, msg.encoding)
 			if err != nil {
 				p.Disconnect("outHandler @ sendQueue")
-				log.Infof("Failed to send message to %s: %v", p, err)
+				log.Infof("Failed to send message to %s: %s", p, err.Error())
 				if p.shouldLogWriteError(err) {
 					log.Errorf("Failed to send message to "+
 						"%s: %v", p, err)
@@ -2010,7 +1987,7 @@ func (p *Peer) QueueMessageWithEncoding(msg wire.Message, doneChan chan<- bool,
 	// we will be sending to hangs around until it knows for a fact that
 	// it is marked as disconnected and *then* it drains the channels.
 	if !p.Connected() {
-		log.Warnf("%s Message NOT sent because connection is broken!", msg.Command())
+		log.Warnf("%s Message NOT sent to %s because connection is broken!", msg.Command(), p.String())
 		if doneChan != nil {
 			go func() {
 				doneChan <- false

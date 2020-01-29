@@ -8,6 +8,7 @@ package blockchain
 import (
 	"container/list"
 	"fmt"
+	"github.com/btcsuite/btcd/btcec"
 	"sync"
 	"time"
 
@@ -634,6 +635,13 @@ func (s * BlockChain) GetRollbackList(h int32) * list.List {
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) connectBlock(node *blockNode, block *btcutil.Block,
 	view *viewpoint.ViewPointSet, stxos []viewpoint.SpentTxOut) error {
+
+	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize/2 + 1 {
+		return fmt.Errorf("insifficient signatures")
+	}
+	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts[1]) < btcec.PubKeyBytesLenCompressed {
+		return fmt.Errorf("incorrect signatures")
+	}
 
 	// Make sure it's extending the end of the best chain.
 	prevHash := &block.MsgBlock().Header.PrevBlock
