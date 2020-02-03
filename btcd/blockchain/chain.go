@@ -92,6 +92,8 @@ type MinerChain interface {
 	ProcessOrphans (* chainhash.Hash, BehaviorFlags) error
 	IsCurrent () bool
 	Subscribe(callback NotificationCallback)
+	Tip() *wire.MinerBlock
+	DisconnectTip()
 }
 
 type BlackList interface {
@@ -363,22 +365,24 @@ func (b *BlockChain) AddOrphanBlock(block *btcutil.Block) {
 		expiration: expiration,
 	}
 
-	if ob,ok := b.orphans[*block.Hash()]; ok {
+	hash := *block.Hash()
+
+	if ob,ok := b.orphans[hash]; ok {
 		// check signatures
 		if block.MsgBlock().Header.Nonce < 0 {
 			nl := len(block.MsgBlock().Transactions[0].SignatureScripts)
 			ol := len(ob.block.MsgBlock().Transactions[0].SignatureScripts)
 			if nl > ol {
-				b.orphans[*block.Hash()].block = block
+				b.orphans[hash].block = block
 			} else if nl == ol {
 				if len(block.MsgBlock().Transactions[0].SignatureScripts[1]) > len(ob.block.MsgBlock().Transactions[0].SignatureScripts[1]) {
-					b.orphans[*block.Hash()].block = block
+					b.orphans[hash].block = block
 				}
 			}
 		}
 		return
 	}
-	b.orphans[*block.Hash()] = oBlock
+	b.orphans[hash] = oBlock
 
 	// Add to previous hash lookup index for faster dependency lookups.
 	prevHash := &block.MsgBlock().Header.PrevBlock
@@ -811,14 +815,14 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	// database and later memory if all database updates are successful.
 	b.StateLock.RLock()
 	curTotalTxns := b.stateSnapshot.TotalTxns
+	rotation := b.stateSnapshot.LastRotation
+	bits := b.stateSnapshot.Bits
 	b.StateLock.RUnlock()
+
 	numTxns := uint64(len(prevBlock.MsgBlock().Transactions))
 	blockSize := uint64(prevBlock.MsgBlock().SerializeSize())
 	blockWeight := uint64(GetBlockWeight(prevBlock))
 	newTotalTxns := curTotalTxns - uint64(len(block.MsgBlock().Transactions))
-
-	rotation := b.BestSnapshot().LastRotation
-	bits := prevNode.bits
 
 	if node.nonce <= -wire.MINER_RORATE_FREQ {
 		// the removed block was the first of a series rotated-in block, difficulty should be
@@ -1175,6 +1179,11 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		err = b.disconnectBlock(n, block, views)
 		if err != nil {
 			return err
+		}
+
+		for *block.Hash() == b.Miners.Tip().MsgBlock().BestBlock {
+			// also disconnect the miner chain tip. make it an orphan!
+			b.Miners.DisconnectTip()
 		}
 	}
 

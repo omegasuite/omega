@@ -1105,9 +1105,9 @@ func (p *Peer) readMessage(encoding wire.MessageEncoding) (wire.Message, []byte,
 		return fmt.Sprintf("Received %v%s from %s",
 			msg.Command(), summary, p)
 	}))
-	log.Infof("%v", newLogClosure(func() string {
-		return spew.Sdump(msg)
-	}))
+//	log.Infof("%v", newLogClosure(func() string {
+//		return spew.Sdump(msg)
+//	}))
 	log.Tracef("%v", newLogClosure(func() string {
 		return spew.Sdump(buf)
 	}))

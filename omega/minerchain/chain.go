@@ -1219,6 +1219,20 @@ func (b *MinerChain) LocateBlocks(locator chainhash.BlockLocator, hashStop *chai
 	return hashes
 }
 
+func (b *MinerChain) Tip() * wire.MinerBlock {
+	h := b.BestChain.Tip().Header()
+	return wire.NewMinerBlock(&h)
+}
+
+// This function MUST be called with the chain state lock held (for write).
+func (b *MinerChain) DisconnectTip() {
+	tip := b.BestChain.Tip()
+	h := tip.Header()
+	blk := wire.NewMinerBlock(&h)
+	b.disconnectBlock(tip, blk)
+	b.addOrphanBlock(blk)
+}
+
 // locateHeaders returns the headers of the blocks after the first known block
 // in the locator until the provided stop hash is reached, or up to the provided
 // max number of block headers.

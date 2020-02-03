@@ -183,3 +183,17 @@ func pickNoun(n uint64, singular, plural string) string {
 	}
 	return plural
 }
+
+
+// LogClosure is a closure that can be printed with %v to be used to
+// generate expensive-to-create data for a detailed log level and avoid doing
+// the work if the data isn't printed.
+type logClosure func() string
+
+func (c logClosure) String() string {
+	return c()
+}
+
+func newLogClosure(c func() string) logClosure {
+	return logClosure(c)
+}

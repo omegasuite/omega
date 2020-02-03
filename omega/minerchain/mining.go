@@ -169,6 +169,7 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 	// possible a block was found and submitted in between.
 	msgBlock := block.MsgBlock()
 	if !msgBlock.PrevBlock.IsEqual(&m.g.BestMinerSnapshot().Hash) {
+		log.Infof("PrevHash %s is not the best hash %s", msgBlock.PrevBlock.String(), m.g.BestMinerSnapshot().Hash.String())
 		return false
 	}
 
@@ -176,6 +177,7 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 	// nodes.  This will in turn relay it to the network like normal.
 	isOrphan, err := m.cfg.ProcessBlock(block, blockchain.BFNone)
 	if err != nil {
+		log.Infof("ProcessBlock error %s", err.Error())
 		// Anything other than a rule violation is an unexpected error,
 		// so log that error as an internal error.
 		if _, ok := err.(blockchain.RuleError); !ok {
@@ -259,7 +261,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 
 				// The current block is stale if the best block
 				// has changed.
-				best := m.g.BestSnapshot()
+				best := m.g.Chain.Miners.BestSnapshot()
 				if !header.Block.(*wire.MingingRightBlock).PrevBlock.IsEqual(&best.Hash) {
 					return false
 				}
@@ -377,7 +379,12 @@ out:
 		good := true
 		for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
 			p, _ := m.g.Chain.Miners.BlockByHeight(curHeight - int32(i))
+			if p == nil {
+				log.Infof("miner.generateBlocks incorrect height %d out of ", curHeight - int32(i), curHeight)
+				continue
+			}
 			if bytes.Compare(p.MsgBlock().Miner, m.cfg.SignAddress.ScriptAddress()) == 0 {
+				log.Infof("miner.generateBlocks won't mine because I am block %d before the best block %d", curHeight - int32(i), curHeight)
 				good = false
 				break
 			}
@@ -391,6 +398,9 @@ out:
 
 		if good {
 			template, err = m.g.NewMinerBlockTemplate(m.cfg.SignAddress)
+			if err != nil {
+				log.Infof("NewMinerBlockTemplate error: %s", err.Error())
+			}
 		}
 		m.submitBlockLock.Unlock()
 		
@@ -416,7 +426,7 @@ out:
 
 		log.Infof("miner Trying to solve block at %d with difficulty %d", template.Height, template.Bits)
 		if m.solveBlock(template, curHeight+1, ticker, quit) {
-			log.Infof("New miner block produced by %s at %d", m.cfg.SignAddress.String(), template.Height)
+			log.Infof("New miner block produced by %x at %d", m.cfg.SignAddress.ScriptAddress(), template.Height)
 			m.submitBlock(block)
 		} else {
 //			log.Info("No New block produced")

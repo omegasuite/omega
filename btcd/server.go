@@ -18,7 +18,8 @@ import (
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/omega/minerchain"
-	"github.com/ethereum/go-ethereum/log"
+	"github.com/davecgh/go-spew/spew"
+
 	"math"
 	"net"
 	"os"
@@ -632,7 +633,7 @@ func (sp *serverPeer) OnBlock(_ *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 	sp.server.syncManager.QueueBlock(block, sp.Peer, sp.blockProcessed)
 	<-sp.blockProcessed
 
-	log.Info("Blocks %s received", block.Hash().String())
+	btcdLog.Info("Blocks %s received", block.Hash().String())
 }
 
 // OnBlock is invoked when a peer receives a block bitcoin message.  It
@@ -1984,6 +1985,10 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 
 	// Limit max number of total peers.
 	if state.Count() >= cfg.MaxPeers  && sp.Peer.Committee <= 0 {
+		btcdLog.Infof("%v", newLogClosure(func() string {
+			return spew.Sdump(state)
+		}))
+
 		srvrLog.Infof("Max peers reached [%d] - disconnecting peer %s",
 			cfg.MaxPeers, sp)
 		sp.Disconnect("handleAddPeerMsg @ MaxPeers")

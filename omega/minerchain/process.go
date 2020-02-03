@@ -258,8 +258,10 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	eq2 := block.MsgBlock().BestBlock.IsEqual(best.Hash())
  */
 
-	if b.index.LookupNode(&block.MsgBlock().BestBlock) == nil || b.index.LookupNode(&block.MsgBlock().ReferredBlock) == nil {
-		log.Infof("Adding miner orphan block %s", blockHash.String())
+	bblk,_ := b.blockChain.BlockByHash(&block.MsgBlock().BestBlock)
+	rblk,_ := b.blockChain.BlockByHash(&block.MsgBlock().ReferredBlock)
+	if bblk == nil || rblk == nil {
+		log.Infof("Adding miner orphan block %s because BestBlock %s or ReferredBlock %s does not exist in tx chain", blockHash.String(), block.MsgBlock().BestBlock.String(), block.MsgBlock().ReferredBlock.String())
 		b.addOrphanBlock(block)
 
 		return false, true, nil

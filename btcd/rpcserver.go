@@ -3926,6 +3926,22 @@ func verifyChain(s *rpcServer, level, depth int32) error {
 				return err
 			}
 		}
+
+		// check signature
+		if block.MsgBlock().Header.Nonce < 0 {
+			if len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
+				rpcsLog.Errorf("Verify is unable to validate "+
+					"block at hash %s height %d: insufficient signatures",
+					block.Hash().String(), height)
+				return err
+			}
+			if len(block.MsgBlock().Transactions[0].SignatureScripts[1]) <= btcec.PubKeyBytesLenCompressed {
+				rpcsLog.Errorf("Verify is unable to validate "+
+					"block at hash %s height %d: incorrect signatures",
+					block.Hash().String(), height)
+				return err
+			}
+		}
 	}
 	rpcsLog.Infof("Chain verify completed successfully")
 

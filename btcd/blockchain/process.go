@@ -224,6 +224,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return false, false, err
 	}
 	if !prevHashExists {
+		log.Infof("block %s: prevHash block %s does not exist", block.Hash().String(), prevHash.String())
 		if flags & BFNoConnect == 0 {
 			log.Infof("Adding orphan block %s with parent %s", block.Hash().String(), prevHash.String())
 			b.AddOrphanBlock(block)
@@ -318,15 +319,24 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	state := b.BestSnapshot()
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
-		// this is a rotations block
-//		state.LastRotation++	// = uint32(-node.nonce - wire.MINER_RORATE_FREQ)
 		mstate := b.Miners.BestSnapshot()
-		if int32(state.LastRotation) + 1 - wire.CommitteeSize > mstate.Height {
+		if int32(state.LastRotation)+1-wire.CommitteeSize > mstate.Height {
 			log.Infof("Next Rotation exceeds miner chain %d in a rotation block %s. Make it an orphan!!!", state.LastRotation, block.Hash().String())
-			// but we don't have the miner block that this rotation point to
 			b.AddOrphanBlock(block)
 			return isMainChain, true, nil
 		}
+	}
+
+	// don't check POW if we are to extending a side chain and this is a comittee block
+	// leave the work to reorg
+	err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
+	if err != nil {
+		return isMainChain, true, err
+	}
+	if mkorphan {
+		log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
+		b.AddOrphanBlock(block)
+		return isMainChain, true, nil
 	}
 
 //	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize/2 + 1 {
@@ -334,17 +344,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 //	}
 
 //	if block.MsgBlock().Header.Nonce > 0 || b.BestChain.FindFork(prevNode) == nil {
-		// don't check POW if we are to extending a side chain and this is a comittee block
-		// leave the work to reorg
-		err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
-		if err != nil {
-			return isMainChain, true, err
-		}
-		if mkorphan {
-			log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
-			b.AddOrphanBlock(block)
-			return isMainChain, true, nil
-		}
 //	}
 
 	//	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {

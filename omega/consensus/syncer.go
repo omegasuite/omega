@@ -105,6 +105,8 @@ func (self *Syncer) repeater() {
 //				}
 				// about my tree, if I know somthing someone does not know, send him info
 				k = k ^ allm
+
+				self.mutex.Lock()
 				for _, p := range self.knows[self.Me] {
 					m := int64((1 << self.Myself) | (1 << i))
 					for _, r := range p.K {
@@ -125,6 +127,11 @@ func (self *Syncer) repeater() {
 						break
 					}
 				}
+				self.mutex.Unlock()
+			}
+			if self.knowledges.Qualified(self.Myself) && (self.agreed == -1 || self.agreed == self.Myself) {
+				self.candidacy()
+				self.ckconsensus()
 			}
 			time.Sleep(time.Millisecond * 200)
 		}
@@ -202,10 +209,13 @@ func (self *Syncer) run() {
 					log.Infof("MsgKnowledge invalid")
 					continue
 				}
+
+				self.mutex.Lock()
 				if self.knows[k.Finder] == nil {
 					self.knows[k.Finder] = make([]*wire.MsgKnowledge, 0)
 				}
 				self.knows[k.Finder] = append(self.knows[k.Finder], k)
+				self.mutex.Unlock()
 
 				if self.knowledges.ProcKnowledge(k) {
 					self.candidacy()
@@ -484,6 +494,10 @@ func (self *Syncer) dupKnowledge(fmp int32) {
 	agreed := self.Names[self.agreed]
 
 	ns := make([]*wire.MsgKnowledge, 0)
+
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+
 	for _, ks := range self.knows[agreed] {
 		if ks.K[len(ks.K)-1] != int64(fmp) {
 			m := int64((1 << fmp) | (1 << self.Myself))
@@ -719,7 +733,7 @@ func CreateSyncer(h int32) *Syncer {
 
 	p.agreed = -1
 	p.sigGiven = -1
-	p.mutex = sync.Mutex{}
+//	p.mutex = sync.Mutex{}
 
 //	p.consents = make(map[[20]byte]int32, wire.CommitteeSize)
 	p.forest = make(map[[20]byte]*tree, wire.CommitteeSize)

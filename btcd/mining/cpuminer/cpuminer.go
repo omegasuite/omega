@@ -106,15 +106,14 @@ type CPUMiner struct {
 	numWorkers        uint32
 	started           bool
 	discreteMining    bool
-	submitBlockLock   sync.Mutex
+	connLock          sync.Mutex
 	wg                sync.WaitGroup
-	workerWg          sync.WaitGroup
 	updateNumWorkers  chan struct{}
 	queryHashesPerSec chan float64
 	updateHashes      chan uint64
 	speedMonitorQuit  chan struct{}
 	quit              chan struct{}
-	connch 			  chan int32
+	connch            chan int32
 
 	// the block being mined by committee
 	minedBlock		  * btcutil.Block
@@ -171,9 +170,6 @@ out:
 // submitBlock submits the passed block to network after ensuring it passes all
 // of the consensus validation rules.
 func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
-	m.submitBlockLock.Lock()
-	defer m.submitBlockLock.Unlock()
-
 	// Ensure the block is not stale since a new block could have shown up
 	// while the solution was being found.  Typically that condition is
 	// detected and all work on the stale block is halted to start work on
@@ -195,6 +191,7 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 	if block.MsgBlock().Header.Nonce < 0 {
 		flag = blockchain.BFSubmission | blockchain.BFNoConnect
 	}
+	coinbaseTx := block.MsgBlock().Transactions[0].TxOut[0]
 
 	isOrphan, err := m.cfg.ProcessBlock(block, flag)
 
@@ -218,7 +215,6 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 	}
 
 	// The block was accepted.
-	coinbaseTx := block.MsgBlock().Transactions[0].TxOut[0]
 	log.Info("Block submitted via CPU miner accepted (hash %s, "+
 		"amount %v)", block.Hash(), btcutil.Amount(coinbaseTx.Value.(*token.NumToken).Val))
 	return true
@@ -316,18 +312,24 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 func (m *CPUMiner) notice (notification *blockchain.Notification) {
 	switch notification.Type {
 	case blockchain.NTBlockConnected:
-		switch notification.Data.(type) {
-//		case *wire.MinerBlock:
-		case *btcutil.Block:
-			if m.started {
-				select {
-				case _,ok := <-m.connch:
-					if ok {
-						m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
-					}
+		m.connLock.Lock()
+		defer m.connLock.Unlock()
 
-				default:
-					m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
+		for true {
+			switch notification.Data.(type) {
+			//		case *wire.MinerBlock:
+			case *btcutil.Block:
+				if m.started {
+					select {
+					case _, ok := <-m.connch:
+						if !ok {
+							return
+						}
+
+					default:
+						m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
+						return
+					}
 				}
 			}
 		}
@@ -345,8 +347,8 @@ func (m *CPUMiner) CurrentBlock() * btcutil.Block {
 // is submitted.
 //
 // It must be run as a goroutine.
-func (m *CPUMiner) generateBlocks(quit chan struct{}) {
-	log.Info("Starting generate blocks worker")
+func (m *CPUMiner) generateBlocks() {
+	log.Info("Starting generate blocks")
 
 	// Start a ticker which is used to signal checks for stale work and
 	// updates to the speed monitor.
@@ -364,7 +366,7 @@ flushconnch:
 					break out
 				}
 
-			case <-quit:
+			case <-m.quit:
 				break out
 
 			default:
@@ -388,7 +390,6 @@ flushconnch:
 		// submission, since the current block will be changing and
 		// this would otherwise end up building a new block template on
 		// a block that is in the process of becoming stale.
-		m.submitBlockLock.Lock()
 
 		isCurrent := m.cfg.IsCurrent()
 
@@ -397,7 +398,6 @@ flushconnch:
 		curHeight := bs.Height
 
 		if int32(bs.LastRotation) > m.g.Chain.Miners.BestSnapshot().Height - 2 * wire.CommitteeSize {
-			m.submitBlockLock.Unlock()
 			m.Stale = true
 			log.Infof("generateBlocks: sleep on LastRotation %d > Miners.Height %d - 2 * CommitteeSize", bs.LastRotation, m.g.Chain.Miners.BestSnapshot().Height)
 			time.Sleep(time.Second * 5)
@@ -408,7 +408,6 @@ flushconnch:
 
 		if curHeight != 0 && !isCurrent {
 //			m.g.Chain.ChainLock.Unlock()
-			m.submitBlockLock.Unlock()
 			m.Stale = true
 			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent ")
 			time.Sleep(time.Second * 5)
@@ -448,7 +447,6 @@ flushconnch:
 		} else if len(m.cfg.MiningAddrs) > 0 {
 			payToAddr = &m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
 		} else {
-			m.submitBlockLock.Unlock()
 			m.Stale = true
 			time.Sleep(time.Millisecond * miningGap)
 			continue
@@ -460,7 +458,6 @@ flushconnch:
 		// in the memory pool as a source of transactions to potentially
 		// include in the block.
 		template, err := m.g.NewBlockTemplate(*payToAddr)
-		m.submitBlockLock.Unlock()
 
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to create new block "+
@@ -525,12 +522,14 @@ flushconnch:
 						if !ok || blk >= block.Height() {
 							break connected
 						}
+
 					default:
 						time.Sleep(time.Second)
 						consensus.DebugInfo()
 						log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
 					}
 				}
+
 				m.minedBlock = nil
 				// wait until a block at this height is connect to mainchain
 				//			time.Sleep(time.Millisecond * miningGap)
@@ -562,7 +561,7 @@ flushconnch:
 		// with false when conditions that trigger a stale block, so
 		// a new block template can be generated.  When the return is
 		// true a solution was found, so submit the solved block.
-		if m.solveBlock(template, curHeight+1, ticker, quit) {
+		if m.solveBlock(template, curHeight+1, ticker, m.quit) {
 			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
 			log.Infof("New POW block produced nonce = %s at %d", block.MsgBlock().Header.Nonce, template.Height)
 			block.SetHeight(template.Height)
@@ -574,7 +573,9 @@ flushconnch:
 		}
 	}
 
-	m.workerWg.Done()
+	close(m.speedMonitorQuit)
+	m.wg.Done()
+
 	log.Tracef("Generate blocks worker done")
 }
 
@@ -620,68 +621,6 @@ func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
 	return good > wire.CommitteeSize / 2
 }
 
-// miningWorkerController launches the worker goroutines that are used to
-// generate block templates and solve them.  It also provides the ability to
-// dynamically adjust the number of running worker goroutines.
-//
-// It must be run as a goroutine.
-func (m *CPUMiner) miningWorkerController() {
-	// launchWorkers groups common code to launch a specified number of
-	// workers for generating blocks.
-	var runningWorkers []chan struct{}
-	launchWorkers := func(numWorkers uint32) {
-		for i := uint32(0); i < numWorkers; i++ {
-			quit := make(chan struct{})
-			runningWorkers = append(runningWorkers, quit)
-
-			m.workerWg.Add(1)
-			go m.generateBlocks(quit)
-		}
-	}
-
-	// Launch the current number of workers by default.
-	runningWorkers = make([]chan struct{}, 0, m.numWorkers)
-	launchWorkers(m.numWorkers)
-
-out:
-	for {
-		select {
-		// Update the number of running workers.
-		case <-m.updateNumWorkers:
-			// No change.
-			numRunning := uint32(len(runningWorkers))
-			if m.numWorkers == numRunning {
-				continue
-			}
-
-			// Add new workers.
-			if m.numWorkers > numRunning {
-				launchWorkers(m.numWorkers - numRunning)
-				continue
-			}
-
-			// Signal the most recently created goroutines to exit.
-			for i := numRunning - 1; i >= m.numWorkers; i-- {
-				close(runningWorkers[i])
-				runningWorkers[i] = nil
-				runningWorkers = runningWorkers[:i]
-			}
-
-		case <-m.quit:
-			for _, quit := range runningWorkers {
-				close(quit)
-			}
-			break out
-		}
-	}
-
-	// Wait until all workers shut down to stop the speed monitor since
-	// they rely on being able to send updates to it.
-	m.workerWg.Wait()
-	close(m.speedMonitorQuit)
-	m.wg.Done()
-}
-
 // Start begins the CPU mining process as well as the speed monitor used to
 // track hashing metrics.  Calling this function when the CPU miner has
 // already been started will have no effect.
@@ -701,7 +640,7 @@ func (m *CPUMiner) Start() {
 	m.speedMonitorQuit = make(chan struct{})
 	m.wg.Add(2)
 	go m.speedMonitor()
-	go m.miningWorkerController()
+	go m.generateBlocks()
 
 	m.started = true
 	log.Infof("CPU miner started")
@@ -721,23 +660,14 @@ func (m *CPUMiner) Stop() {
 	if !m.started || m.discreteMining {
 		return
 	}
+
+	m.connLock.Lock()
 	close(m.connch)
+	m.connLock.Unlock()
 
 	close(m.quit)
 	m.wg.Wait()
 	m.started = false
-/*
-	for true {
-		select {
-		case <- m.connch:
-		default:
-			close(m.connch)
-			log.Infof("CPU miner stopped")
-			return
-		}
-	}
-
- */
 
 	log.Infof("CPU miner stopped")
 }

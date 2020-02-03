@@ -1159,6 +1159,24 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 		return makeDbErr(database.ErrTxNotWritable, str, nil)
 	}
 
+	// Reject the block if it already exists.
+	blockHash := block.Hash()
+	if tx.hasBlock(blockHash) {
+		str := fmt.Sprintf("block %s already exists", blockHash)
+		return makeDbErr(database.ErrBlockExists, str, nil)
+	}
+	w := bytes.NewBuffer(make([]byte, 0, block.MsgBlock().SerializeSize()))
+	err := block.MsgBlock().Serialize(w)
+
+//	blockBytes, err := block.Bytes()
+	if err != nil {
+		str := fmt.Sprintf("failed to get serialized bytes for block %s",
+			blockHash)
+		return makeDbErr(database.ErrDriverSpecific, str, err)
+	}
+
+	blockBytes := w.Bytes()
+
 	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize/2 + 1 {
 		panic(fmt.Sprintf("insifficient signatures for block %s", block.Hash().String()))
 		os.Exit(-8)
@@ -1168,20 +1186,6 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 		panic(fmt.Sprintf("incorrect signatures for block %s", block.Hash().String()))
 		os.Exit(-9)
 		return makeDbErr(database.ErrTxNotWritable, "incorrect signatures", nil)
-	}
-
-	// Reject the block if it already exists.
-	blockHash := block.Hash()
-	if tx.hasBlock(blockHash) {
-		str := fmt.Sprintf("block %s already exists", blockHash)
-		return makeDbErr(database.ErrBlockExists, str, nil)
-	}
-
-	blockBytes, err := block.Bytes()
-	if err != nil {
-		str := fmt.Sprintf("failed to get serialized bytes for block %s",
-			blockHash)
-		return makeDbErr(database.ErrDriverSpecific, str, err)
 	}
 
 	// Add the block to be stored to the list of pending blocks to store

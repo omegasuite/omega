@@ -13,7 +13,8 @@ import (
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/wire/common"
-	"github.com/btcsuite/omega/minerchain"
+	"github.com/davecgh/go-spew/spew"
+	//	"github.com/btcsuite/omega/minerchain"
 	"math/big"
 	"net"
 	"sync"
@@ -693,6 +694,11 @@ func (s *server) AnnounceNewBlock(m * btcutil.Block) {
 	consensusLog.Infof("AnnounceNewBlock %d %s", m.Height(), m.Hash().String())
 	s.peerState.print()
 
+	// make a new Block so we don't use anything cached in m
+	blk := btcutil.NewBlock(m.MsgBlock())
+	blk.SetHeight(m.Height())
+	s.chain.ProcessBlock(blk, blockchain.BFNone)
+
 /*
 	h := consensus.MsgMerkleBlock{
 		Fees: 0,
@@ -708,13 +714,13 @@ func (s *server) AnnounceNewBlock(m * btcutil.Block) {
 	msg := wire.NewMsgInv()
 	msg.AddInvVect(&wire.InvVect{
 		Type: common.InvTypeWitnessBlock,
-		Hash: *m.Hash(),
+		Hash: *blk.Hash(),
 	})
 
 	var name [20]byte
 	copy(name[:], s.signAddress.ScriptAddress())
 
-	s.CommitteeCastMG(name, msg, m.Height())
+	s.CommitteeCastMG(name, msg, blk.Height())
 
 //	s.committeecast <- broadcastMsg { message: msg }
 }
@@ -761,11 +767,13 @@ func (s *server) CommitteeMsg(p [20]byte, m wire.Message) bool {
 }
 
 func (s *server) CommitteePolling() {
-	return
-
 	best := s.chain.BestSnapshot()
 	ht := best.Height
 	mht := s.chain.Miners.BestSnapshot().Height
+
+	consensusLog.Infof("%v", newLogClosure(func() string {
+		return spew.Sdump(s.peerState)
+	}))
 
 	my := s.MyPlaceInCommittee(int32(best.LastRotation))
 	var name [20]byte
@@ -774,7 +782,7 @@ func (s *server) CommitteePolling() {
 	consensusLog.Infof("\n\nMy heights %d %d rotation at %d", ht, mht, best.LastRotation)
 
 	total := 0
-	in := false
+//	in := false
 
 	// those we want to have connections
 	cmt := make(map[[20]byte]*wire.MinerBlock)
@@ -784,22 +792,22 @@ func (s *server) CommitteePolling() {
 			var nname [20]byte
 			copy(nname[:], blk.MsgBlock().Miner)
 			cmt[nname] = blk
-			if bytes.Compare(name[:], blk.MsgBlock().Miner) == 0 {
-				in = true
-			}
+//			if bytes.Compare(name[:], blk.MsgBlock().Miner) == 0 {
+//				in = true
+//			}
 		}
 	}
 
 	s.peerState.cmutex.Lock()
 	for pname,sp := range s.peerState.committee {
 		consensusLog.Infof("Peer %x", pname)
-		if _, ok := cmt[pname]; !ok {
+		if _, ok := cmt[pname]; !ok || name == pname {
 			continue
 		}
 
 		consensusLog.Infof("\tis in committee at %d", cmt[pname].Height())
 		delete(cmt, pname)
-
+/*
 		for _,r := range sp.peers {
 			if r.LastBlock() > sp.bestBlock {
 				sp.bestBlock = r.LastBlock()
@@ -814,6 +822,7 @@ func (s *server) CommitteePolling() {
 				}
 			}
 		}
+ */
 
 		idmap := make(map[int32]struct{})
 		addrmap := make(map[string]int32)
@@ -824,27 +833,28 @@ func (s *server) CommitteePolling() {
 				continue
 			} else if ok {
 				sp.peers = sp.peers[:i]
+				continue
 			}
-			if j,ok := addrmap[r.Addr()]; ok {
-				q := sp.peers[j]
-				if q.Connected() {
+			if _,ok := addrmap[r.Addr()]; ok {
+				if r.Connected() && !r.persistent {
 					r.Disconnect("duplicated connection")
-					if i < len(sp.peers) - 1 {
-						sp.peers = append(sp.peers[:i], sp.peers[i+1:]...)
-					} else {
-						sp.peers = sp.peers[:i]
-					}
+				}
+				if i < len(sp.peers) - 1 {
+					sp.peers = append(sp.peers[:i], sp.peers[i+1:]...)
 				} else {
-					sp.peers = append(sp.peers[:j], sp.peers[j+1:]...)
+					sp.peers = sp.peers[:i]
 				}
 				continue
 			}
 			idmap[r.ID()] = struct{}{}
+			if !r.Connected() {
+				continue
+			}
 			addrmap[r.Addr()] = int32(i)
-			r.UpdateLastBlockHeight(sp.bestBlock)
-			r.UpdateLastMinerBlockHeight(sp.bestMinerBlock)
+//			r.UpdateLastBlockHeight(sp.bestBlock)
+//			r.UpdateLastMinerBlockHeight(sp.bestMinerBlock)
 		}
-
+/*
 		heightSent := sp.lastBlockSent
 		minerHeightSent := sp.lastMinerBlockSent
 
@@ -924,8 +934,10 @@ func (s *server) CommitteePolling() {
 
 		if !sent {
 			consensusLog.Infof("Peer has %d connections, none good", len(sp.peers))
+
+ */
 			for _, r := range sp.peers {
-				if r.connReq != nil {
+				if r.connReq != nil && !r.Connected() {
 					s.makeConnection([]byte(r.connReq.Addr.String()), r.connReq.Miner,
 						r.connReq.Committee, my)
 					total += 100
@@ -936,7 +948,7 @@ func (s *server) CommitteePolling() {
 					break
 				}
 			}
-		}
+//		}
 
 /*
 		if !sp.Peer.Connected() {
@@ -957,7 +969,7 @@ func (s *server) CommitteePolling() {
 		}
 	}
 	s.peerState.cmutex.Unlock()
-
+/*
 	bmht := mht
 	bht := ht
 	stale := !in && s.cpuMiner.Stale && s.minerMiner.Stale
@@ -1036,6 +1048,8 @@ func (s *server) CommitteePolling() {
 			total += 300
 		}
 	})
+
+ */
 
 	time.Sleep(time.Second * time.Duration(total / 100))
 }
