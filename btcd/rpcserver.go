@@ -3897,7 +3897,7 @@ func handleValidateAddress(s *rpcServer, cmd interface{}, closeChan <-chan struc
 	return result, nil
 }
 
-func verifyChain(s *rpcServer, level, depth int32) error {
+func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 	best := s.cfg.Chain.BestSnapshot()
 	finishHeight := best.Height - depth
 	if finishHeight < 0 {
@@ -3906,13 +3906,15 @@ func verifyChain(s *rpcServer, level, depth int32) error {
 	rpcsLog.Infof("Verifying chain for %d blocks at level %d",
 		best.Height-finishHeight, level)
 
+	pows := 0
+
 	for height := best.Height; height > finishHeight; height-- {
 		// Level 0 just looks up the block.
 		block, err := s.cfg.Chain.BlockByHeight(height)
 		if err != nil {
 			rpcsLog.Errorf("Verify is unable to fetch block at "+
 				"height %d: %v", height, err)
-			return err
+			return err.Error(), err
 		}
 
 		// Level 1 does basic chain sanity checks.
@@ -3923,7 +3925,7 @@ func verifyChain(s *rpcServer, level, depth int32) error {
 				rpcsLog.Errorf("Verify is unable to validate "+
 					"block at hash %v height %d: %v",
 					block.Hash(), height, err)
-				return err
+				return err.Error(), err
 			}
 		}
 
@@ -3933,19 +3935,23 @@ func verifyChain(s *rpcServer, level, depth int32) error {
 				rpcsLog.Errorf("Verify is unable to validate "+
 					"block at hash %s height %d: insufficient signatures",
 					block.Hash().String(), height)
-				return err
+				return err.Error(), err
 			}
 			if len(block.MsgBlock().Transactions[0].SignatureScripts[1]) <= btcec.PubKeyBytesLenCompressed {
 				rpcsLog.Errorf("Verify is unable to validate "+
 					"block at hash %s height %d: incorrect signatures",
 					block.Hash().String(), height)
-				return err
+				return err.Error(), err
 			}
+		} else {
+			pows++
 		}
 	}
 	rpcsLog.Infof("Chain verify completed successfully")
 
-	return nil
+	t := fmt.Sprintf("Chain verify completed successfully for blocks from %d to %d. POW blocks: %d.", finishHeight + 1, best.Height, pows)
+
+	return t, nil
 }
 
 // handleVerifyChain implements the verifychain command.
@@ -3960,8 +3966,7 @@ func handleVerifyChain(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 		checkDepth = *c.CheckDepth
 	}
 
-	err := verifyChain(s, checkLevel, checkDepth)
-	return err == nil, nil
+	return verifyChain(s, checkLevel, checkDepth)
 }
 
 // handleVerifyMessage implements the verifymessage command.

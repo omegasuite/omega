@@ -263,6 +263,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 				// has changed.
 				best := m.g.Chain.Miners.BestSnapshot()
 				if !header.Block.(*wire.MingingRightBlock).PrevBlock.IsEqual(&best.Hash) {
+					log.Infof("quit solving block because best hash is not prev block")
 					return false
 				}
 
@@ -369,7 +370,9 @@ out:
 		h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
 		d := curHeight - int32(h)
 		if d > wire.DESIRABLE_MINER_CANDIDATES + 3 {
+			m.submitBlockLock.Unlock()
 			m.Stale = true
+			log.Infof("generateBlocks: sleep because of too many candidates %d", d)
 			time.Sleep(time.Second * time.Duration(5 * (d -3 - wire.DESIRABLE_MINER_CANDIDATES )))
 			continue
 		}
@@ -429,7 +432,7 @@ out:
 			log.Infof("New miner block produced by %x at %d", m.cfg.SignAddress.ScriptAddress(), template.Height)
 			m.submitBlock(block)
 		} else {
-//			log.Info("No New block produced")
+			log.Info("solveBlock: No New block produced")
 		}
 	}
 

@@ -600,7 +600,10 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 		}
 
 		isin := false
-		s.peerState.forAllOutboundPeers(func (ob *serverPeer) {
+		s.peerState.forAllPeers(func (ob *serverPeer) {
+			if _,ok := s.peerState.inboundPeers[ob.ID()]; ok {
+				return
+			}
 			if !isin && ob.Addr() == tcp.String() {
 				m.peers = append(m.peers, ob)
 
@@ -835,6 +838,8 @@ func (s *server) CommitteePolling() {
 				sp.peers = sp.peers[:i]
 				continue
 			}
+			idmap[r.ID()] = struct{}{}
+
 			if _,ok := addrmap[r.Addr()]; ok {
 				if r.Connected() && !r.persistent {
 					r.Disconnect("duplicated connection")
@@ -846,7 +851,6 @@ func (s *server) CommitteePolling() {
 				}
 				continue
 			}
-			idmap[r.ID()] = struct{}{}
 			if !r.Connected() {
 				continue
 			}
