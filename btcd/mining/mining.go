@@ -901,9 +901,11 @@ rotation
 }
 
 func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (*BlockTemplate, error) {
-	// Extend the most recently known best block.
+	// Extend the most recently known best block
 	best := g.Chain.Miners.BestSnapshot()
 	nextBlockHeight := best.Height + 1
+
+	last := g.Chain.Miners.Tip()
 
 	// Calculate the required difficulty for the block.  The timestamp
 	// is potentially adjusted to ensure it comes after the median time of
@@ -925,7 +927,6 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 	cbest := g.Chain.BestSnapshot()
 	bh := cbest.Height
 
-	last,_ := g.Chain.Miners.BlockByHash(&best.Hash)
 	h1,_ := g.Chain.BlockHeightByHash(&last.MsgBlock().ReferredBlock)
 	h0,_ := g.Chain.BlockHeightByHash(&last.MsgBlock().BestBlock)
 

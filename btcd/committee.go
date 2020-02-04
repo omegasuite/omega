@@ -570,7 +570,7 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 //			btcdLog.Infof("cmutex.Unlock")
 			s.peerState.cmutex.Unlock()
 			s.peerState.forAllPeers(func (sp * serverPeer) {
-				if sp == r {
+				if sp.ID() == r.ID() {
 					exist = true
 				}
 			})
@@ -814,7 +814,7 @@ func (s *server) CommitteePolling() {
 
 	consensusLog.Infof("\n\nMy heights %d %d rotation at %d", ht, mht, best.LastRotation)
 
-	total := 0
+	total := 100
 //	in := false
 
 	// those we want to have connections
@@ -861,12 +861,10 @@ func (s *server) CommitteePolling() {
 		idmap := make(map[int32]struct{})
 		addrmap := make(map[string]int32)
 
+		peers := make([]*serverPeer, 0, len(sp.peers))
+
 		for i,r := range sp.peers {
-			if _,ok := idmap[r.ID()]; ok && i < len(sp.peers) - 1 {
-				sp.peers = append(sp.peers[:i], sp.peers[i+1:]...)
-				continue
-			} else if ok {
-				sp.peers = sp.peers[:i]
+			if _,ok := idmap[r.ID()]; ok {
 				continue
 			}
 			idmap[r.ID()] = struct{}{}
@@ -875,20 +873,21 @@ func (s *server) CommitteePolling() {
 				if r.Connected() && !r.persistent {
 					r.Disconnect("duplicated connection")
 				}
-				if i < len(sp.peers) - 1 {
-					sp.peers = append(sp.peers[:i], sp.peers[i+1:]...)
-				} else {
-					sp.peers = sp.peers[:i]
-				}
 				continue
 			}
+
+			peers = append(peers, r)
+
 			if !r.Connected() {
 				continue
 			}
+
 			addrmap[r.Addr()] = int32(i)
 //			r.UpdateLastBlockHeight(sp.bestBlock)
 //			r.UpdateLastMinerBlockHeight(sp.bestMinerBlock)
 		}
+
+		sp.peers = peers
 /*
 		heightSent := sp.lastBlockSent
 		minerHeightSent := sp.lastMinerBlockSent
