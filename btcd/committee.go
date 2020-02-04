@@ -107,10 +107,12 @@ func senNewMsg(sp * serverPeer, msg wire.Message, h int32) {
 }
 
 func (ps *peerState) forAllCommittee(closure func(name [20]byte, sp *committeeState)) {
+//	btcdLog.Infof("cmutex.Lock @ forAllCommittee")
 	ps.cmutex.Lock()
 	for i, e := range ps.committee {
 		closure(i, e)
 	}
+//	btcdLog.Infof("cmutex.Unlock")
 	ps.cmutex.Unlock()
 }
 
@@ -190,11 +192,13 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 		return
 	}
 
+//	btcdLog.Infof("cmutex.Lock @ OnAckInvitation")
 	sp.server.peerState.cmutex.Lock()
 	if sp.server.peerState.committee[miner] == nil {
 		sp.server.peerState.committee[miner] = &committeeState{ peers: make([]*serverPeer, 0) }
 	}
 	m := sp.server.peerState.committee[miner]
+//	btcdLog.Infof("cmutex.Unlock")
 	sp.server.peerState.cmutex.Unlock()
 
 	m.peers = append(m.peers, sp)
@@ -312,11 +316,13 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 
 			isin := false
 
+//			btcdLog.Infof("cmutex.Lock @ OnInvitation")
 			sp.server.peerState.cmutex.Lock()
 			if _, ok := sp.server.peerState.committee[miner]; !ok {
 				sp.server.peerState.committee[miner] = newCommitteeState()
 			}
 			m := sp.server.peerState.committee[miner]
+//			btcdLog.Infof("cmutex.Unlock")
 			sp.server.peerState.cmutex.Unlock()
 
 			for _, p := range m.peers {
@@ -397,6 +403,7 @@ func (s *server) phaseoutCommittee(r int32) {
 		}
 	}
 
+//	btcdLog.Infof("cmutex.Lock @ phaseoutCommittee")
 	s.peerState.cmutex.Lock()
 	for i, _ := range s.peerState.committee {
 		if _, ok := keep[i]; !ok {
@@ -407,6 +414,7 @@ func (s *server) phaseoutCommittee(r int32) {
 			delete(s.peerState.committee, i)
 		}
 	}
+//	btcdLog.Infof("cmutex.Unlock")
 	s.peerState.cmutex.Unlock()
 }
 
@@ -558,11 +566,17 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 		for _,r := range s.peerState.committee[miner].peers {
 			// do they exist?
 			exist := false
+
+//			btcdLog.Infof("cmutex.Unlock")
+			s.peerState.cmutex.Unlock()
 			s.peerState.forAllPeers(func (sp * serverPeer) {
 				if sp == r {
 					exist = true
 				}
 			})
+//			btcdLog.Infof("cmutex.Lock")
+			s.peerState.cmutex.Lock()
+
 			if exist {
 				np = append(np, r)
 			}
@@ -577,6 +591,8 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 	m := s.peerState.committee[miner]
 
 	found := false
+//	btcdLog.Infof("cmutex.Unlock")
+	s.peerState.cmutex.Unlock()
 	s.peerState.forAllPeers(func(ob *serverPeer) {
 		if bytes.Compare(ob.Peer.Miner[:], miner[:]) == 0 {
 			m.peers = append(m.peers, ob)
@@ -585,6 +601,8 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 			return
 		}
 	})
+//	btcdLog.Infof("cmutex.Lock")
+	s.peerState.cmutex.Lock()
 
 	if found {
 		return
@@ -600,10 +618,9 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 		}
 
 		isin := false
-		s.peerState.forAllPeers(func (ob *serverPeer) {
-			if _,ok := s.peerState.inboundPeers[ob.ID()]; ok {
-				return
-			}
+//		btcdLog.Infof("cmutex.Unlock")
+		s.peerState.cmutex.Unlock()
+		s.peerState.forAllOutboundPeers(func (ob *serverPeer) {
 			if !isin && ob.Addr() == tcp.String() {
 				m.peers = append(m.peers, ob)
 
@@ -614,6 +631,8 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 				s.SendInvAck(miner, ob)
 			}
 		})
+//		btcdLog.Infof("cmutex.Lock")
+		s.peerState.cmutex.Lock()
 
 		if !isin {
 //		if !isin || !s.peerState.committee[j].Peer.Connected() {
@@ -658,6 +677,7 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 		bot = r - wire.CommitteeSize + 1
 	}
 
+//	btcdLog.Infof("cmutex.Lock @ handleCommitteRotation")
 	s.peerState.cmutex.Lock()
 	for j := bot; j < me + advanceCommitteeConnection; j++ {
 		if me == j || j < 0 || j >= minerTop {
@@ -675,7 +695,10 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 			state.committee[miner] = newCommitteeState()
 		}
 
+		s.peerState.cmutex.Unlock()
 		p := s.peerState.peerByName(miner[:])
+		s.peerState.cmutex.Lock()
+
 		if p != nil {
 			state.committee[miner].peers = append(state.committee[miner].peers, p)
 			p.Peer.Committee = j
@@ -690,6 +713,7 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 		conn := mb.MsgBlock().Connection
 		s.makeConnection(conn, miner, j, me)
 	}
+//	btcdLog.Infof("cmutex.Unlock")
 	s.peerState.cmutex.Unlock()
 }
 
@@ -731,8 +755,10 @@ func (s *server) AnnounceNewBlock(m * btcutil.Block) {
 func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message, h int32) {
 	s.peerState.print()
 
+//	btcdLog.Infof("cmutex.Lock @ CommitteeMsgMG")
 	s.peerState.cmutex.Lock()
 	if sp,ok := s.peerState.committee[p]; ok {
+//		btcdLog.Infof("cmutex.Unlock")
 		s.peerState.cmutex.Unlock()
 
 		for _,r := range sp.peers {
@@ -745,6 +771,7 @@ func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message, h int32) {
 		consensusLog.Infof("Failed to find a useful connection")
 	} else {
 		consensusLog.Infof("Failed to find a useful connection")
+//		btcdLog.Infof("cmutex.Unlock")
 		s.peerState.cmutex.Unlock()
 	}
 }
@@ -752,18 +779,21 @@ func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message, h int32) {
 func (s *server) CommitteeMsg(p [20]byte, m wire.Message) bool {
 	done := make(chan bool)
 
+//	btcdLog.Infof("cmutex.Lock @ CommitteeMsg")
 	s.peerState.cmutex.Lock()
 	if sp,ok := s.peerState.committee[p]; ok {
 		for _,r := range sp.peers {
 			if r.Connected() {
 				srvrLog.Infof("sending it to %s (remote = %s)", r.Peer.LocalAddr().String(), r.Peer.Addr())
 				r.QueueMessageWithEncoding(m, done, wire.SignatureEncoding)
+//				btcdLog.Infof("cmutex.Unlock")
 				s.peerState.cmutex.Unlock()
 
 				return <-done
 			}
 		}
 	}
+//	btcdLog.Infof("cmutex.Unlock")
 	s.peerState.cmutex.Unlock()
 
 	return false
@@ -801,6 +831,7 @@ func (s *server) CommitteePolling() {
 		}
 	}
 
+//	btcdLog.Infof("cmutex.Lock @ CommitteePolling")
 	s.peerState.cmutex.Lock()
 	for pname,sp := range s.peerState.committee {
 		consensusLog.Infof("Peer %x", pname)
@@ -972,6 +1003,7 @@ func (s *server) CommitteePolling() {
 			total += 100
 		}
 	}
+//	btcdLog.Infof("cmutex.Unlock")
 	s.peerState.cmutex.Unlock()
 /*
 	bmht := mht

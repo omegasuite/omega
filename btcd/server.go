@@ -195,20 +195,29 @@ func (ps *peerState) Count() int {
 // forAllOutboundPeers is a helper function that runs closure on all outbound
 // peers known to peerState.
 func (ps *peerState) forAllOutboundPeers(closure func(sp *serverPeer)) {
+//	btcdLog.Infof("cmutex.Lock @ forAllOutboundPeers")
+	ps.cmutex.Lock()
 	for _, e := range ps.outboundPeers {
 		closure(e)
 	}
 	for _, e := range ps.persistentPeers {
 		closure(e)
 	}
+//	btcdLog.Infof("cmutex.Unlock")
+	ps.cmutex.Unlock()
 }
 
 // forAllPeers is a helper function that runs closure on all peers known to
 // peerState.
 func (ps *peerState) forAllPeers(closure func(sp *serverPeer)) {
+//	btcdLog.Infof("cmutex.Lock @ forAllPeers")
+	ps.cmutex.Lock()
 	for _, e := range ps.inboundPeers {
 		closure(e)
 	}
+//	btcdLog.Infof("cmutex.Unlock")
+	ps.cmutex.Unlock()
+
 	ps.forAllOutboundPeers(closure)
 }
 
@@ -1999,6 +2008,9 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 
 	// Add the new peer and start it.
 	srvrLog.Debugf("New peer %s", sp)
+
+//	btcdLog.Infof("cmutex.Lock @ handleAddPeerMsg")
+	state.cmutex.Lock()
 	if sp.Inbound() {
 		state.inboundPeers[sp.ID()] = sp
 	} else {
@@ -2010,12 +2022,10 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		}
 		if sp.connReq.Committee > 0 {
 			consensusLog.Infof("handleAddPeerMsg Lock")
-			state.cmutex.Lock()
 			if _,ok := state.committee[sp.connReq.Miner]; !ok {
 				state.committee[sp.connReq.Miner] = newCommitteeState()
 			}
 			state.committee[sp.connReq.Miner].peers = append(state.committee[sp.connReq.Miner].peers, sp)
-			state.cmutex.Unlock()
 			consensusLog.Infof("handleAddPeerMsg Unlock")
 
 			sp.Peer.Committee = sp.connReq.Committee
@@ -2028,6 +2038,8 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 			sp.connReq.Initcallback = nil
 		}
 	}
+//	btcdLog.Infof("cmutex.Unlock")
+	state.cmutex.Unlock()
 
 	return true
 }
@@ -2043,6 +2055,9 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 	} else {
 		list = state.outboundPeers
 	}
+
+//	btcdLog.Infof("cmutex.Lock @ handleDonePeerMsg")
+	state.cmutex.Lock()
 	if _, ok := list[sp.ID()]; ok {
 		if !sp.Inbound() && sp.VersionKnown() {
 			state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
@@ -2052,7 +2067,6 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 		}
 		delete(list, sp.ID())
 
-		state.cmutex.Lock()
 		for _,m := range state.committee {
 			for i,p := range m.peers {
 				if p.ID() == sp.ID() {
@@ -2067,11 +2081,14 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 				}
 			}
 		}
+//		btcdLog.Infof("cmutex.Unlock")
 		state.cmutex.Unlock()
 
 		srvrLog.Debugf("Removed peer %s", sp)
 		return
 	}
+//	btcdLog.Infof("cmutex.Unlock")
+	state.cmutex.Unlock()
 
 	if sp.connReq != nil {
 		s.connManager.Disconnect(sp.connReq.ID())
@@ -2248,6 +2265,8 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 			msg.reply <- errors.New("max peers reached")
 			return
 		}
+//		btcdLog.Infof("cmutex.Lock @ connectNodeMsg")
+		state.cmutex.Lock()
 		for _, peer := range state.persistentPeers {
 			if peer.Addr() == msg.addr {
 				if msg.permanent {
@@ -2258,6 +2277,8 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 				return
 			}
 		}
+//		btcdLog.Infof("cmutex.Unlock")
+		state.cmutex.Unlock()
 
 		netAddr, err := addrStringToNetAddr(msg.addr)
 		if err != nil {
@@ -2272,11 +2293,15 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 		})
 		msg.reply <- nil
 	case removeNodeMsg:
+//		btcdLog.Infof("cmutex.Lock @ removeNodeMsg")
+		state.cmutex.Lock()
 		found := disconnectPeer(state.persistentPeers, msg.cmp, func(sp *serverPeer) {
 			// Keep group counts ok since we remove from
 			// the list now.
 			state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
 		})
+//		btcdLog.Infof("cmutex.Unlock")
+		state.cmutex.Unlock()
 
 		if found {
 			msg.reply <- nil
@@ -2293,34 +2318,51 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 	// Request a list of the persistent (added) peers.
 	case getAddedNodesMsg:
 		// Respond with a slice of the relevant peers.
+//		btcdLog.Infof("cmutex.Lock @ getAddedNodesMsg")
+		state.cmutex.Lock()
 		peers := make([]*serverPeer, 0, len(state.persistentPeers))
 		for _, sp := range state.persistentPeers {
 			peers = append(peers, sp)
 		}
+//		btcdLog.Infof("cmutex.Unlock")
+		state.cmutex.Unlock()
 		msg.reply <- peers
 	case disconnectNodeMsg:
 		// Check inbound peers. We pass a nil callback since we don't
 		// require any additional actions on disconnect for inbound peers.
+//		btcdLog.Infof("cmutex.Lock @ disconnectNodeMsg")
+		state.cmutex.Lock()
 		found := disconnectPeer(state.inboundPeers, msg.cmp, nil)
+//		btcdLog.Infof("cmutex.Unlock")
+		state.cmutex.Unlock()
 		if found {
 			msg.reply <- nil
 			return
 		}
 
 		// Check outbound peers.
+//		btcdLog.Infof("cmutex.Lock @ disconnectNodeMsg")
+		state.cmutex.Lock()
 		found = disconnectPeer(state.outboundPeers, msg.cmp, func(sp *serverPeer) {
 			// Keep group counts ok since we remove from
 			// the list now.
 			state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
 		})
+//		btcdLog.Infof("cmutex.Unlock")
+		state.cmutex.Unlock()
+
 		if found {
 			// If there are multiple outbound connections to the same
 			// ip:port, continue disconnecting them all until no such
 			// peers are found.
 			for found {
+//				btcdLog.Infof("cmutex.Lock @ disconnectNodeMsg")
+				state.cmutex.Lock()
 				found = disconnectPeer(state.outboundPeers, msg.cmp, func(sp *serverPeer) {
 					state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
 				})
+//				btcdLog.Infof("cmutex.Unlock")
+				state.cmutex.Unlock()
 			}
 			msg.reply <- nil
 			return
