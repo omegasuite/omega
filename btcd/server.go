@@ -917,7 +917,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			j++
 			if j < len(mhashList) {
 				mblock, _ = mchain.BlockByHash(&mhashList[j])
-				mcontinueHash = *mblock.Hash()
+				mcontinueHash = mhashList[j]
 			} else {
 				mblock = nil
 			}

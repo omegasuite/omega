@@ -453,6 +453,10 @@ func (self *Syncer) ckconsensus() {
 		return
 	}
 
+	if self.forest[self.Me] == nil || self.forest[self.Me].block == nil {
+		return
+	}
+
 	hash := blockchain.MakeMinerSigHash(self.Height, self.forest[self.Me].hash)
 
 	if privKey := miner.server.GetPrivKey(self.Me); privKey != nil && self.sigGiven == -1 {

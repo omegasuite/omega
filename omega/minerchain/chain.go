@@ -793,6 +793,9 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 	// a reorganization in miner chain may cause a reorg in tx chain
 	// but a reorg in tx chain will not cause reorg in mainer chain
 	var fork *blockNode
+
+	fork = b.BestChain.Tip()
+
 	for e := detachNodes.Front(); e != nil; e = e.Next() {
 		fork = e.Value.(*blockNode)
 	}
