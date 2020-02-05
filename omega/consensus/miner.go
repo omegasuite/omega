@@ -42,6 +42,9 @@ type Miner struct {
 	server		 PeerNotifier
 	updateheight chan int32
 	name [20]byte
+
+	// wait for end of task
+	wg          sync.WaitGroup
 }
 
 type newblock struct {
@@ -141,42 +144,54 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 	errInvalidBlock = fmt.Errorf("Invalid block")
 	Quit = make(chan struct{})
 
+	defer miner.wg.Wait()
+
 	log.Info("Consensus running")
+	miner.wg.Add(2)
 
 	go func() {
 		for true {
 			time.Sleep(time.Second * 10)
-			best := miner.server.BestSnapshot()
-			log.Infof("\nBest tx chain height: %d", best.Height)
-			log.Infof("\nLast rotation: %d", best.LastRotation)
 
-			top := int32(-1)
-			var tr * Syncer
+			select {
+			case <-Quit:
+				miner.wg.Done()
+				return
 
-			log.Infof("Poll Entering syncMutex.Lock")
-			miner.syncMutex.Lock()
-			for h,s := range miner.Sync {
-				if h > top {
-					top = h
-				}
-				if s.Runnable {
-					if tr == nil || s.Height > tr.Height {
-						tr = s
+			default:
+				best := miner.server.BestSnapshot()
+				log.Infof("\nBest tx chain height: %d", best.Height)
+				log.Infof("\nLast rotation: %d", best.LastRotation)
+
+				top := int32(-1)
+				var tr *Syncer
+
+				log.Infof("Poll Entering syncMutex.Lock")
+				miner.syncMutex.Lock()
+				for h, s := range miner.Sync {
+					if h > top {
+						top = h
+					}
+					if s.Runnable {
+						if tr == nil || s.Height > tr.Height {
+							tr = s
+						}
 					}
 				}
-			}
-			miner.syncMutex.Unlock()
-			log.Infof("Poll Left syncMutex.Lock")
+				miner.syncMutex.Unlock()
+				log.Infof("Poll Left syncMutex.Lock")
 
-			log.Infof("\nTop Syncer: %d", top)
-			if tr != nil {
-				log.Infof("\nTop running Syncer: %d\n", tr.Height)
+				log.Infof("\nTop Syncer: %d", top)
+				if tr != nil {
+					log.Infof("\nTop running Syncer: %d\n", tr.Height)
+				}
+				miner.server.CommitteePolling()
 			}
-			miner.server.CommitteePolling()
 		}
 	}()
 
-	// this should run as a goroutine
+	defer miner.wg.Done()
+
 	polling := true
 	out:
 	for polling {
@@ -341,6 +356,11 @@ func cleaner(top int32) {
 		}
 	}
 	miner.syncMutex.Unlock()
+}
+
+func Shutdown() {
+	close(Quit)
+	miner.wg.Wait()
 }
 
 func VerifyMsg(msg wire.OmegaMessage, pubkey * btcec.PublicKey) bool {

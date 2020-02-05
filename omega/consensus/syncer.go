@@ -82,6 +82,9 @@ type Syncer struct {
 	knowRevd	[]int32
 	candRevd	[]int32
 	consRevd	[]int32
+
+	// wait for end of task
+	wg          sync.WaitGroup
 }
 
 func (self *Syncer) repeater() {
@@ -91,6 +94,7 @@ func (self *Syncer) repeater() {
 		select {
 		case <-self.quit:
 			going = false
+
 		default:
 			// resend knowledge
 			allm := int64(0)
@@ -175,12 +179,15 @@ func (self *Syncer) repeater() {
 			time.Sleep(time.Millisecond * 200)
 		}
 	}
+	self.wg.Done()
 }
 
 func (self *Syncer) run() {
 	going := true
 
 	go self.repeater()
+
+	defer self.wg.Done()
 
 	for going {
 		select {
@@ -896,6 +903,7 @@ func (self *Syncer) SetCommittee() {
 	if in {
 		log.Infof("Consensus running block at %d", self.Height)
 		go self.run()
+		self.wg.Add(2)
 	}
 
 //	miner.updateheight <- self.Height
@@ -1023,6 +1031,7 @@ func (self *Syncer) Quit() {
 	if self.Runnable {
 		log.Info("sync quit")
 		close(self.quit)
+		self.wg.Wait()
 	}
 }
 

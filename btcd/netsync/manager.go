@@ -1407,7 +1407,9 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		case common.InvTypeBlock:
 			// Request the block if there is not already a pending
 			// request.
-			if _, exists := state.requestedBlocks[iv.Hash]; !exists || tm - state.requestedBlocks[iv.Hash] > 50 {
+			_, exists := sm.requestedBlocks[iv.Hash]
+			tm0, exists2 := state.requestedBlocks[iv.Hash]
+			if !exists || (exists2 && tm - tm0 > 50) {
 				sm.requestedBlocks[iv.Hash] = 1
 				sm.limitMap(sm.requestedBlocks, maxRequestedBlocks)
 
@@ -1426,7 +1428,9 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		case common.InvTypeMinerBlock:
 			// Request the block if there is not already a pending
 			// request.
-			if _, exists := state.requestedMinerBlocks[iv.Hash]; !exists || tm - state.requestedMinerBlocks[iv.Hash] > 50 {
+			_, exists := sm.requestedMinerBlocks[iv.Hash]
+			tm0, exists2 := state.requestedMinerBlocks[iv.Hash]
+			if !exists || (exists2 && tm - tm0 > 50) {
 				sm.requestedMinerBlocks[iv.Hash] = 1
 				sm.limitMap(sm.requestedMinerBlocks, maxRequestedBlocks)
 
