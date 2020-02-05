@@ -253,6 +253,11 @@ func (sm *SyncManager) findNextHeaderCheckpoint(height int32) *chaincfg.Checkpoi
 	return nextCheckpoint
 }
 
+func (sm *SyncManager) StartSync() {
+	if sm.syncPeer == nil {
+		sm.startSync()
+	}
+}
 // startSync will choose the best peer among the available candidate peers to
 // download/sync the blockchain from.  When syncing is already running, it
 // simply returns.  It also examines the candidates for any which are no longer
@@ -345,7 +350,7 @@ func (sm *SyncManager) startSync() {
 		// disabled, use standard inv messages learn about the blocks
 		// and fully validate them.  Finally, regression test mode does
 		// not support the headers-first approach so do normal block
-		// downloads when in regression test mode.
+		// downloads when in regression test mode.GetBlocks
 		if sm.nextCheckpoint != nil &&
 			best.Height < sm.nextCheckpoint.Height &&
 			sm.chainParams != &chaincfg.RegressionNetParams {

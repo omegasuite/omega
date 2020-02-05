@@ -815,7 +815,6 @@ func (s *server) CommitteePolling() {
 	consensusLog.Infof("\n\nMy heights %d %d rotation at %d", ht, mht, best.LastRotation)
 
 	total := 100
-//	in := false
 
 	// those we want to have connections
 	cmt := make(map[[20]byte]*wire.MinerBlock)
@@ -825,13 +824,9 @@ func (s *server) CommitteePolling() {
 			var nname [20]byte
 			copy(nname[:], blk.MsgBlock().Miner)
 			cmt[nname] = blk
-//			if bytes.Compare(name[:], blk.MsgBlock().Miner) == 0 {
-//				in = true
-//			}
 		}
 	}
 
-//	btcdLog.Infof("cmutex.Lock @ CommitteePolling")
 	s.peerState.cmutex.Lock()
 	for pname,sp := range s.peerState.committee {
 		consensusLog.Infof("Peer %x", pname)
@@ -841,7 +836,7 @@ func (s *server) CommitteePolling() {
 
 		consensusLog.Infof("\tis in committee at %d", cmt[pname].Height())
 		delete(cmt, pname)
-/*
+
 		for _,r := range sp.peers {
 			if r.LastBlock() > sp.bestBlock {
 				sp.bestBlock = r.LastBlock()
@@ -856,7 +851,10 @@ func (s *server) CommitteePolling() {
 				}
 			}
 		}
- */
+		for _,r := range sp.peers {
+			r.UpdateLastBlockHeight(sp.bestBlock)
+			r.UpdateLastMinerBlockHeight(sp.bestMinerBlock)
+		}
 
 		idmap := make(map[int32]struct{})
 		addrmap := make(map[string]int32)
@@ -1002,8 +1000,11 @@ func (s *server) CommitteePolling() {
 			total += 100
 		}
 	}
-//	btcdLog.Infof("cmutex.Unlock")
 	s.peerState.cmutex.Unlock()
+
+	// start sync if there is no sync peer
+	s.syncManager.StartSync()
+
 /*
 	bmht := mht
 	bht := ht

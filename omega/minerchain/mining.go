@@ -346,7 +346,7 @@ out:
 		// transactions to work on when there are no connected peers.
 		if m.cfg.ConnectedCount() == 0 {
 			m.Stale = true
-			log.Info("generateBlocks: sleep because of no connection")
+			log.Info("miner.generateBlocks: sleep because of no connection")
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -362,7 +362,7 @@ out:
 		if curHeight != 0 && !isCurrent {
 			m.submitBlockLock.Unlock()
 			m.Stale = true
-			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent ")
+			log.Infof("miner.generateBlocks: sleep on curHeight != 0 && !isCurrent ")
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -372,7 +372,7 @@ out:
 		if d > wire.DESIRABLE_MINER_CANDIDATES + 3 {
 			m.submitBlockLock.Unlock()
 			m.Stale = true
-			log.Infof("generateBlocks: sleep because of too many candidates %d", d)
+			log.Infof("miner.generateBlocks: sleep because of too many candidates %d", d)
 			time.Sleep(time.Second * time.Duration(5 * (d -3 - wire.DESIRABLE_MINER_CANDIDATES )))
 			continue
 		}
@@ -402,7 +402,7 @@ out:
 		if good {
 			template, err = m.g.NewMinerBlockTemplate(m.cfg.SignAddress)
 			if err != nil {
-				log.Infof("NewMinerBlockTemplate error: %s", err.Error())
+				log.Infof("miner.NewMinerBlockTemplate error: %s", err.Error())
 			}
 		}
 		m.submitBlockLock.Unlock()
@@ -432,7 +432,7 @@ out:
 			log.Infof("New miner block produced by %x at %d", m.cfg.SignAddress.ScriptAddress(), template.Height)
 			m.submitBlock(block)
 		} else {
-			log.Info("solveBlock: No New block produced")
+			log.Info("miner.solveBlock: No New block produced")
 		}
 	}
 
