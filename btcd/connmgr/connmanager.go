@@ -552,7 +552,7 @@ func (cm *ConnManager) Stop() {
 	}
 
 	close(cm.quit)
-	log.Trace("Connection manager stopped")
+	log.Infof("Connection manager stopped")
 }
 
 // New returns a new connection manager.

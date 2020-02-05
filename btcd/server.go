@@ -892,14 +892,14 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		mblock,_ = mchain.BlockByHash(&mhashList[0])
 	}
 
-	for i, j := 0,0; i < len(hashList) || j < len(mhashList); {
+	for i, j := 0,0; i < len(hashList) || j < len(mhashList); m++ {
 		if m == wire.MaxBlocksPerMsg {
 			break
 		}
 		if i < len(hashList) && (mblock == nil || rot < mblock.Height()) {
 			iv := wire.NewInvVect(common.InvTypeWitnessBlock, &hashList[i])
 			invMsg.AddInvVect(iv)
-			btcdLog.Infof("Sending tx block %s", hashList[i].String())
+			btcdLog.Infof("Sending tx block %s to %s", hashList[i].String(), sp.Addr())
 			i++
 			if i < len(hashList) {
 				h, _ := chain.HeaderByHash(&hashList[i])
@@ -913,7 +913,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		} else {
 			iv := wire.NewInvVect(common.InvTypeMinerBlock, &mhashList[j])
 			invMsg.AddInvVect(iv)
-			btcdLog.Infof("Sending miner block %s", mhashList[j].String())
+			btcdLog.Infof("Sending miner block %s to %s", mhashList[j].String(), sp.Addr())
 			j++
 			if j < len(mhashList) {
 				mblock, _ = mchain.BlockByHash(&mhashList[j])
@@ -922,7 +922,6 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 				mblock = nil
 			}
 		}
-		m++
 	}
 
 	// Send the inventory message if there is anything to send.
@@ -2759,6 +2758,7 @@ cleanup:
 		}
 	}
 	s.wg.Done()
+	srvrLog.Tracef("rebroadcastHandler done")
 }
 
 // Start begins accepting connections from peers.
@@ -2990,6 +2990,7 @@ out:
 	}
 
 	s.wg.Done()
+	srvrLog.Tracef("upnpUpdateThread done")
 }
 
 // setupRPCListeners returns a slice of listeners that are configured for use
