@@ -365,6 +365,7 @@ func (sm *SyncManager) startSync() {
 				"%d from peer %s", best.Height+1,
 				sm.nextCheckpoint.Height, bestPeer.Addr())
 		}
+		log.Warnf("startSync PushGetBlocksMsg")
 		bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 
 		sm.syncPeer = bestPeer
@@ -1191,20 +1192,20 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		//	if lastBlock != -1 && sm.current(0) {
 		blkHeight, err := sm.chain.BlockHeightByHash(&invVects[lastBlock].Hash)
 		if err == nil {
-			log.Infof("last tx block %s height = %d", invVects[lastBlock].Hash.String(), blkHeight)
+//			log.Infof("last tx block %s height = %d", invVects[lastBlock].Hash.String(), blkHeight)
 			peer.UpdateLastBlockHeight(blkHeight)
-		} else {
-			log.Infof("last tx block %s is new", invVects[lastBlock].Hash.String())
+//		} else {
+//			log.Infof("last tx block %s is new", invVects[lastBlock].Hash.String())
 		}
 	}
 	if lastMinerBlock != -1 {
 		//	if lastMinerBlock != -1 && sm.current(1) {
 		blkHeight, err := sm.chain.Miners.(*minerchain.MinerChain).BlockHeightByHash(&invVects[lastMinerBlock].Hash)
 		if err == nil {
-			log.Infof("last miner block %s height = %d", invVects[lastMinerBlock].Hash.String(), blkHeight)
+//			log.Infof("last miner block %s height = %d", invVects[lastMinerBlock].Hash.String(), blkHeight)
 			peer.UpdateLastMinerBlockHeight(blkHeight)
-		} else {
-			log.Infof("last miner block %s is new", invVects[lastMinerBlock].Hash.String())
+//		} else {
+//			log.Infof("last miner block %s is new", invVects[lastMinerBlock].Hash.String())
 		}
 	}
 
@@ -1296,6 +1297,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 							"%v", err)
 						continue
 					}
+					log.Infof("handleInvMsg PushGetBlocksMsg because encountered an orphan")
 					peer.PushGetBlocksMsg(locator, mlocator, orphanRoot, &zeroHash)
 				}
 				continue
@@ -1310,6 +1312,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// inventory message, so force a request for more.  This
 			// should only happen if we're on a really long side
 			// chain.
+/*
 			if i == lastBlock && len(imsg.inv.InvList) > 1 {
 //				log.Infof("Request blocks after %s from remote peer", iv.Hash.String())
 
@@ -1318,8 +1321,11 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				// stop hash).
 				locator := sm.chain.BlockLocatorFromHash(&iv.Hash)
 				mlocator, _ := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+				log.Infof("handleInvMsg PushGetBlocksMsg because done with the last inv")
 				peer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 			}
+
+ */
 		} else if iv.Type == common.InvTypeMinerBlock {
 			// The block is an orphan miner block that we already have.
 			// When the existing orphan was processed, it requested
@@ -1358,6 +1364,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// inventory message, so force a request for more.  This
 			// should only happen if we're on a really long side
 			// chain.
+/*
 			if i == lastMinerBlock && len(imsg.inv.InvList) > 1 {
 				// Request blocks after this one up to the
 				// final one the remote peer knows about (zero
@@ -1366,11 +1373,12 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				tlocator, _ := sm.chain.LatestBlockLocator()
 				peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, &zeroHash)
 			}
+ */
 		}
 	}
 
 	if lastIgnored != nil && ignorerun > 1 {
-		log.Infof("send back %s for %d run of ignores inv to %s", lastIgnored.Hash.String(), ignorerun, peer.Addr())
+//		log.Infof("send back %s for %d run of ignores inv to %s", lastIgnored.Hash.String(), ignorerun, peer.Addr())
 		// send back this one so the peer knows where we are
 		sbmsg := &wire.MsgInv{InvList: []*wire.InvVect{lastIgnored} }
 		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding)
@@ -1382,7 +1390,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	}
 
 	if lastMinerIgnored != nil && ignoreMinerrun > 1 {
-		log.Infof("send back %s for %d run of ignores miner inv to %s", lastMinerIgnored.Hash.String(), ignoreMinerrun, peer.Addr())
+//		log.Infof("send back %s for %d run of ignores miner inv to %s", lastMinerIgnored.Hash.String(), ignoreMinerrun, peer.Addr())
 		// send back this one so the peer knows where we are
 		sbmsg := &wire.MsgInv{InvList: []*wire.InvVect{lastMinerIgnored} }
 		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding)
@@ -1475,8 +1483,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		}
 	}
 	state.requestQueue = requestQueue
-	log.Infof("%d requests sent", numRequested)
 	if len(gdmsg.InvList) > 0 {
+		log.Infof("%d requests sent", numRequested)
 		peer.QueueMessage(gdmsg, nil)
 	}
 }

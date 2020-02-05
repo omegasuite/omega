@@ -899,7 +899,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		if i < len(hashList) && (mblock == nil || rot < mblock.Height()) {
 			iv := wire.NewInvVect(common.InvTypeWitnessBlock, &hashList[i])
 			invMsg.AddInvVect(iv)
-			btcdLog.Infof("Sending tx block %s to %s", hashList[i].String(), sp.Addr())
+//			btcdLog.Infof("Sending tx block %s to %s", hashList[i].String(), sp.Addr())
 			i++
 			if i < len(hashList) {
 				h, _ := chain.HeaderByHash(&hashList[i])
@@ -913,7 +913,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		} else {
 			iv := wire.NewInvVect(common.InvTypeMinerBlock, &mhashList[j])
 			invMsg.AddInvVect(iv)
-			btcdLog.Infof("Sending miner block %s to %s", mhashList[j].String(), sp.Addr())
+//			btcdLog.Infof("Sending miner block %s to %s", mhashList[j].String(), sp.Addr())
 			j++
 			if j < len(mhashList) {
 				mblock, _ = mchain.BlockByHash(&mhashList[j])
@@ -923,6 +923,8 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			}
 		}
 	}
+
+	btcdLog.Infof("OnGetBlocks: sending out %d blocks starting %s\n\tin response to: %s", m, invMsg.InvList[0].Hash.String(), msg.TxBlockLocatorHashes[0].String())
 
 	// Send the inventory message if there is anything to send.
 	if len(invMsg.InvList) > 0 {
@@ -1775,7 +1777,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 	}
 
 	sp.QueueMessageWithEncoding(&msgBlock, dc, encoding)
-	
+
 	return nil
 }
 
