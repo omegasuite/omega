@@ -807,6 +807,7 @@ func (s *server) CommitteePolling() {
 	consensusLog.Infof("%v", newLogClosure(func() string {
 		return spew.Sdump(s.peerState)
 	}))
+	consensusLog.Infof("My sync peer id is: %d", s.syncManager.SyncPeerID())
 
 	my := s.MyPlaceInCommittee(int32(best.LastRotation))
 	var name [20]byte

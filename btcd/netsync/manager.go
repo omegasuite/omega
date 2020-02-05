@@ -263,6 +263,10 @@ func (sm *SyncManager) StartSync() {
 // simply returns.  It also examines the candidates for any which are no longer
 // candidates and removes them as needed.
 func (sm *SyncManager) startSync() {
+	if sm.syncPeer != nil {
+		return
+	}
+
 	// Return now if we're already syncing.
 	best := sm.chain.Miners.BestSnapshot()
 	txbest := sm.chain.BestSnapshot()
