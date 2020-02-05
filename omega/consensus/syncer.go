@@ -86,6 +86,7 @@ type Syncer struct {
 
 func (self *Syncer) repeater() {
 	going := true
+	idles := 0
 	for going {
 		select {
 		case <-self.quit:
@@ -96,6 +97,14 @@ func (self *Syncer) repeater() {
 			for _, k := range self.knowledges.Knowledge[self.Myself] {
 				allm |= k
 			}
+
+			if allm == 0 {
+				time.Sleep(time.Millisecond * 200)
+				continue
+			}
+
+			sent := false
+
 			for i, k := range self.knowledges.Knowledge[self.Myself] {
 				if int32(i) == self.Myself || k == allm {
 					continue
@@ -122,6 +131,7 @@ func (self *Syncer) repeater() {
 							self.knowledges.Knowledge[self.Myself][self.Myself] |= m
 						}
 						k ^= m
+						sent = true
 					}
 					if k == 0 {
 						break
@@ -132,6 +142,35 @@ func (self *Syncer) repeater() {
 			if self.knowledges.Qualified(self.Myself) && (self.agreed == -1 || self.agreed == self.Myself) {
 				self.candidacy()
 				self.ckconsensus()
+			} else if !sent {
+				idles++
+			}
+			if idles > 2 {
+				// force to resend
+				for i, _ := range self.knowledges.Knowledge[self.Myself] {
+					if int32(i) == self.Myself {
+						continue
+					}
+
+					self.mutex.Lock()
+					for _, p := range self.knows[self.Me] {
+						m := int64((1 << self.Myself) | (1 << i))
+						for _, r := range p.K {
+							m |= 0x1 << r
+						}
+						if p.K[len(p.K) - 1] != int64(i) {
+							// send it
+							pp := *p
+							pp.K = append(pp.K, int64(self.Myself))
+							pp.From = self.Me
+							if miner.server.CommitteeMsg(self.Names[int32(i)], &pp) {
+								self.knowledges.Knowledge[self.Myself][i] |= m
+								self.knowledges.Knowledge[self.Myself][self.Myself] |= m
+							}
+						}
+					}
+					self.mutex.Unlock()
+				}
 			}
 			time.Sleep(time.Millisecond * 200)
 		}
@@ -301,7 +340,8 @@ func (self *Syncer) run() {
 				}
 			}
 			self.Done = true
-			close(self.messages)
+			self.Runnable = false
+//			close(self.messages)
 //			self.Names, self.forest, self.Malice, self.consents = nil, nil, nil, nil
 //			self.Members, self.pending, self.signed, self.agrees = nil, nil, nil, nil
 //			self.pulling, self.knowledges = nil, nil
