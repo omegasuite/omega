@@ -1753,7 +1753,6 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 	if !sendInv {
 		dc = doneChan
 	}
-	sp.QueueMessageWithEncoding(&msgBlock, dc, encoding)
 //	sp.heightSent[0] = heightSent
 //	sp.heightSent[1] = minerHeightSent
 
@@ -1774,6 +1773,9 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		sp.QueueMessage(invMsg, doneChan)
 		sp.continueHash = nil
 	}
+
+	sp.QueueMessageWithEncoding(&msgBlock, dc, encoding)
+	
 	return nil
 }
 
