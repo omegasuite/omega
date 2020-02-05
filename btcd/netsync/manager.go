@@ -1225,7 +1225,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	// request parent blocks of orphans if we receive one we already have.
 	// Finally, attempt to detect potential stalls due to long side chains
 	// we already have and request more blocks to prevent them.
-	for i, iv := range invVects {
+	for _, iv := range invVects {
 		// Ignore unsupported inventory types.
 		switch iv.Type {
 		case common.InvTypeBlock:
