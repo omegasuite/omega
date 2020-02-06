@@ -922,6 +922,11 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 				peer)
 		}
 	}
+
+	if len(sm.requestedBlocks) == 0 && len(sm.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+		sm.syncPeer = nil
+		sm.startSync()
+	}
 }
 
 // fetchHeaderBlocks creates and sends a request to the syncPeer for the next
