@@ -139,7 +139,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 	copy(name[:], addr.ScriptAddress())
 	miner.name = name
 
-	newblockch = make(chan newblock)
+	newblockch = make(chan newblock, 2 * wire.CommitteeSize)
 	errMootBlock = fmt.Errorf("Moot block.")
 	errInvalidBlock = fmt.Errorf("Invalid block")
 	Quit = make(chan struct{})
