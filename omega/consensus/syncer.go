@@ -179,6 +179,7 @@ func (self *Syncer) repeater() {
 func (self *Syncer) run() {
 	going := true
 
+	self.wg.Add(1)
 	defer self.wg.Done()
 
 	ticker := time.NewTicker(time.Millisecond * 200)
@@ -851,12 +852,12 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 }
 
 func (self *Syncer) SetCommittee() {
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+
 	if self.Runnable {
 		return
 	}
-
-	self.mutex.Lock()
-	defer self.mutex.Unlock()
 
 	best := miner.server.BestSnapshot()
 	self.Runnable = self.Height == best.Height + 1
@@ -902,7 +903,6 @@ func (self *Syncer) SetCommittee() {
 	if in {
 		log.Infof("Consensus running block at %d", self.Height)
 		go self.run()
-		self.wg.Add(1)
 	}
 
 //	miner.updateheight <- self.Height
