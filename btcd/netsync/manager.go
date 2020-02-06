@@ -321,6 +321,8 @@ func (sm *SyncManager) startSync() {
 		// to send.
 		sm.requestedMinerBlocks = make(map[chainhash.Hash]int)
 		sm.requestedBlocks = make(map[chainhash.Hash]int)
+		sm.requestedMinerOrphans = make(map[chainhash.Hash]int)
+		sm.requestedOrphans = make(map[chainhash.Hash]int)
 
 		mlocator, err := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 		if err != nil {
@@ -1952,6 +1954,8 @@ func New(config *Config) (*SyncManager, error) {
 		requestedTxns:   make(map[chainhash.Hash]struct{}),
 		requestedBlocks: make(map[chainhash.Hash]int),
 		requestedMinerBlocks: make(map[chainhash.Hash]int),
+		requestedOrphans: make(map[chainhash.Hash]int),
+		requestedMinerOrphans: make(map[chainhash.Hash]int),
 		peerStates:      make(map[*peerpkg.Peer]*peerSyncState),
 		progressLogger:  newBlockProgressLogger("Processed", log),
 		msgChan:         make(chan interface{}, config.MaxPeers*3),
