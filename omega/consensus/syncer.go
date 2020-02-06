@@ -72,7 +72,7 @@ type Syncer struct {
 	Height int32
 
 	pending map[string][]Message
-	pulling map[int32]struct{}
+	pulling map[int32]int
 
 	messages chan Message
 	
@@ -772,7 +772,7 @@ func CreateSyncer(h int32) *Syncer {
 	p.pending = make(map[string][]Message, 0)
 	p.newtree = make(chan tree, wire.CommitteeSize * 3)	// will hold trees before runnable
 	p.messages = make(chan Message, wire.CommitteeSize * 3)
-	p.pulling = make(map[int32]struct{})
+	p.pulling = make(map[int32]int)
 	p.agrees = make(map[int32]struct{})
 	p.asked = make(map[int32]struct{})
 	p.signed = make(map[[20]byte]struct{})
@@ -1011,17 +1011,18 @@ func (self *Syncer) makeAbout(better int32) *wire.MsgKnowledge {
 }
 
 func (self *Syncer) pull(hash chainhash.Hash, from int32) {
-	if _,ok := self.pulling[from]; !ok {
+	if _,ok := self.pulling[from]; !ok || self.pulling[from] == 0 {
 		// pull block
 		msg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, hash}}}
 		log.Infof("Pull request: to %d hash %s", from+self.Base, hash.String())
 		if miner.server.CommitteeMsg(self.Names[from], &msg) {
 			log.Infof("Pull request sent")
-			self.pulling[from] = struct{}{}
+			self.pulling[from] = 5
 		} else {
 			log.Infof("Fail to Pull !!!!!!!!")
 		}
 	} else {
+		self.pulling[from]--
 		log.Infof("Have pulled for %d at height %d", from, self.Height)
 	}
 }

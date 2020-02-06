@@ -367,7 +367,7 @@ func (sm *SyncManager) startSync() {
 				"%d from peer %s", best.Height+1,
 				sm.nextCheckpoint.Height, bestPeer.Addr())
 		}
-		log.Warnf("startSync PushGetBlocksMsg")
+		log.Infof("startSync PushGetBlocksMsg")
 		bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 
 		sm.syncPeer = bestPeer
