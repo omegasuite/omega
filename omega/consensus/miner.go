@@ -111,12 +111,12 @@ func (m *Miner) notice (notification *blockchain.Notification) {
 			log.Infof("new tx block at %d connected", h)
 
 			miner.syncMutex.Lock()
-			if _, ok := miner.Sync[h]; ok && !miner.Sync[h].Runnable {
-				miner.Sync[h].SetCommittee()
+			if _, ok := miner.Sync[h+1]; ok && !miner.Sync[h+1].Runnable {
+				miner.Sync[h+1].SetCommittee()
 			}
 			for t,s := range miner.Sync {
 				if t < h {
-					s.Quit()
+					go s.Quit()
 					delete(miner.Sync, t)
 				}
 			}
