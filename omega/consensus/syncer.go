@@ -85,115 +85,109 @@ type Syncer struct {
 
 	// wait for end of task
 	wg          sync.WaitGroup
+	idles		int
 }
 
 func (self *Syncer) repeater() {
-	going := true
-	idles := 0
-	for going {
-		select {
-		case <-self.quit:
-			going = false
+	// resend knowledge
+	allm := int64(0)
+	for _, k := range self.knowledges.Knowledge[self.Myself] {
+		allm |= k
+	}
 
-		default:
-			// resend knowledge
-			allm := int64(0)
-			for _, k := range self.knowledges.Knowledge[self.Myself] {
-				allm |= k
+	if allm == 0 {
+		return
+	}
+
+	sent := false
+
+	for i, k := range self.knowledges.Knowledge[self.Myself] {
+		if int32(i) == self.Myself || k == allm {
+			continue
+		}
+		//				if k == self.knowledges.Knowledge[self.Myself][self.Myself] {
+		//					continue
+		//				}
+		// about my tree, if I know somthing someone does not know, send him info
+		k = k ^ allm
+		if k == 0 {
+			continue
+		}
+
+		self.mutex.Lock()
+		for _, p := range self.knows[self.Me] {
+			m := int64((1 << self.Myself) | (1 << i))
+			for _, r := range p.K {
+				m |= 0x1 << r
 			}
+			if k&m != 0 && p.K[len(p.K)-1] != int64(i) {
+				// send it
+				pp := *p
+				pp.K = append(pp.K, int64(self.Myself))
+				pp.From = self.Me
+				if miner.server.CommitteeMsg(self.Names[int32(i)], &pp) {
+					self.knowledges.Knowledge[self.Myself][i] |= m
+					self.knowledges.Knowledge[self.Myself][self.Myself] |= m
+				}
+				k ^= m
+				sent = true
+				if k == 0 {
+					break
+				}
+			}
+		}
+		self.mutex.Unlock()
+	}
 
-			if allm == 0 {
-				time.Sleep(time.Millisecond * 200)
+	if self.knowledges.Qualified(self.Myself) && (self.agreed == -1 || self.agreed == self.Myself) {
+		self.candidacy()
+		self.ckconsensus()
+	} else if !sent {
+		self.idles++
+	}
+
+	if self.idles > 2 {
+		self.idles = 0
+		// force to resend
+		for i, _ := range self.knowledges.Knowledge[self.Myself] {
+			if int32(i) == self.Myself {
 				continue
 			}
 
-			sent := false
-
-			for i, k := range self.knowledges.Knowledge[self.Myself] {
-				if int32(i) == self.Myself || k == allm {
-					continue
+			self.mutex.Lock()
+			for _, p := range self.knows[self.Me] {
+				m := int64((1 << self.Myself) | (1 << i))
+				for _, r := range p.K {
+					m |= 0x1 << r
 				}
-//				if k == self.knowledges.Knowledge[self.Myself][self.Myself] {
-//					continue
-//				}
-				// about my tree, if I know somthing someone does not know, send him info
-				k = k ^ allm
-				if k == 0 {
-					continue
-				}
-
-				self.mutex.Lock()
-				for _, p := range self.knows[self.Me] {
-					m := int64((1 << self.Myself) | (1 << i))
-					for _, r := range p.K {
-						m |= 0x1 << r
+				if p.K[len(p.K)-1] != int64(i) {
+					// send it
+					pp := *p
+					pp.K = append(pp.K, int64(self.Myself))
+					pp.From = self.Me
+					if miner.server.CommitteeMsg(self.Names[int32(i)], &pp) {
+						self.knowledges.Knowledge[self.Myself][i] |= m
+						self.knowledges.Knowledge[self.Myself][self.Myself] |= m
 					}
-					if k & m != 0 && p.K[len(p.K) - 1] != int64(i) {
-						// send it
-						pp := *p
-						pp.K = append(pp.K, int64(self.Myself))
-						pp.From = self.Me
-						if miner.server.CommitteeMsg(self.Names[int32(i)], &pp) {
-							self.knowledges.Knowledge[self.Myself][i] |= m
-							self.knowledges.Knowledge[self.Myself][self.Myself] |= m
-						}
-						k ^= m
-						sent = true
-						if k == 0 {
-							break
-						}
-					}
-				}
-				self.mutex.Unlock()
-			}
-			if self.knowledges.Qualified(self.Myself) && (self.agreed == -1 || self.agreed == self.Myself) {
-				self.candidacy()
-				self.ckconsensus()
-			} else if !sent {
-				idles++
-			}
-			if idles > 2 {
-				// force to resend
-				for i, _ := range self.knowledges.Knowledge[self.Myself] {
-					if int32(i) == self.Myself {
-						continue
-					}
-
-					self.mutex.Lock()
-					for _, p := range self.knows[self.Me] {
-						m := int64((1 << self.Myself) | (1 << i))
-						for _, r := range p.K {
-							m |= 0x1 << r
-						}
-						if p.K[len(p.K) - 1] != int64(i) {
-							// send it
-							pp := *p
-							pp.K = append(pp.K, int64(self.Myself))
-							pp.From = self.Me
-							if miner.server.CommitteeMsg(self.Names[int32(i)], &pp) {
-								self.knowledges.Knowledge[self.Myself][i] |= m
-								self.knowledges.Knowledge[self.Myself][self.Myself] |= m
-							}
-						}
-					}
-					self.mutex.Unlock()
 				}
 			}
-			time.Sleep(time.Millisecond * 200)
+			self.mutex.Unlock()
 		}
 	}
-	self.wg.Done()
 }
 
 func (self *Syncer) run() {
 	going := true
 
-	go self.repeater()
-
 	defer self.wg.Done()
+
+	ticker := time.NewTicker(time.Millisecond * 200)
 
 	for going {
 		select {
+		case <-ticker.C:
+			self.repeater()
+
 		case tree := <- self.newtree:
 			if self.sigGiven >= 0 {
 				continue
@@ -329,6 +323,8 @@ func (self *Syncer) run() {
 			going = false
 		}
 	}
+
+	ticker.Stop()
 
 	for true {
 		select {
@@ -906,7 +902,7 @@ func (self *Syncer) SetCommittee() {
 	if in {
 		log.Infof("Consensus running block at %d", self.Height)
 		go self.run()
-		self.wg.Add(2)
+		self.wg.Add(1)
 	}
 
 //	miner.updateheight <- self.Height

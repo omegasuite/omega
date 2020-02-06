@@ -147,48 +147,9 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 	defer miner.wg.Wait()
 
 	log.Info("Consensus running")
-	miner.wg.Add(2)
+	miner.wg.Add(1)
 
-	go func() {
-		for true {
-			time.Sleep(time.Second * 10)
-
-			select {
-			case <-Quit:
-				miner.wg.Done()
-				return
-
-			default:
-				best := miner.server.BestSnapshot()
-				log.Infof("\nBest tx chain height: %d", best.Height)
-				log.Infof("\nLast rotation: %d", best.LastRotation)
-
-				top := int32(-1)
-				var tr *Syncer
-
-				log.Infof("Poll Entering syncMutex.Lock")
-				miner.syncMutex.Lock()
-				for h, s := range miner.Sync {
-					if h > top {
-						top = h
-					}
-					if s.Runnable {
-						if tr == nil || s.Height > tr.Height {
-							tr = s
-						}
-					}
-				}
-				miner.syncMutex.Unlock()
-				log.Infof("Poll Left syncMutex.Lock")
-
-				log.Infof("\nTop Syncer: %d", top)
-				if tr != nil {
-					log.Infof("\nTop running Syncer: %d\n", tr.Height)
-				}
-				miner.server.CommitteePolling()
-			}
-		}
-	}()
+	ticker := time.NewTicker(time.Second * 10)
 
 	defer miner.wg.Done()
 
@@ -196,6 +157,35 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 	out:
 	for polling {
 		select {
+		case <-ticker.C:
+			best := miner.server.BestSnapshot()
+			log.Infof("\nBest tx chain height: %d", best.Height)
+			log.Infof("\nLast rotation: %d", best.LastRotation)
+
+			top := int32(-1)
+			var tr *Syncer
+
+			log.Infof("Poll Entering syncMutex.Lock")
+			miner.syncMutex.Lock()
+			for h, s := range miner.Sync {
+				if h > top {
+					top = h
+				}
+				if s.Runnable {
+					if tr == nil || s.Height > tr.Height {
+						tr = s
+					}
+				}
+			}
+			miner.syncMutex.Unlock()
+			log.Infof("Poll Left syncMutex.Lock")
+
+			log.Infof("\nTop Syncer: %d", top)
+			if tr != nil {
+				log.Infof("\nTop running Syncer: %d\n", tr.Height)
+			}
+			miner.server.CommitteePolling()
+
 		case height := <- miner.updateheight:
 			log.Infof("updateheight %d", height)
 			cleaner(height)
@@ -259,6 +249,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 		case <- Quit:
 			log.Info("consensus received Quit")
 			polling = false
+			ticker.Stop()
 			miner.syncMutex.Lock()
 			for i, t := range miner.Sync {
 				log.Infof("Sync %d to Quit", i)
