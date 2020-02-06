@@ -189,6 +189,10 @@ type SyncManager struct {
 	requestedTxns   map[chainhash.Hash]struct{}
 	requestedBlocks map[chainhash.Hash]int
 	requestedMinerBlocks map[chainhash.Hash]int
+
+	requestedOrphans map[chainhash.Hash]int
+	requestedMinerOrphans map[chainhash.Hash]int
+
 	syncPeer        *peerpkg.Peer
 	peerStates      map[*peerpkg.Peer]*peerSyncState
 
@@ -1295,17 +1299,22 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				// up to the root of the orphan that just came
 				// in.
 				if !sm.chain.TryConnectOrphan(&iv.Hash) {
-					orphanRoot := sm.chain.GetOrphanRoot(&iv.Hash)
-					locator, err := sm.chain.LatestBlockLocator()
-					mlocator, err := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
-					if err != nil {
-						log.Errorf("PEER: Failed to get block "+
-							"locator for the latest block: "+
-							"%v", err)
-						continue
+					if _,ok := sm.requestedOrphans[iv.Hash]; !ok || sm.requestedOrphans[iv.Hash] > 10 {
+						sm.requestedOrphans[iv.Hash] = 1
+						orphanRoot := sm.chain.GetOrphanRoot(&iv.Hash)
+						locator, err := sm.chain.LatestBlockLocator()
+						mlocator, err := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+						if err != nil {
+							log.Errorf("PEER: Failed to get block "+
+								"locator for the latest block: "+
+								"%v", err)
+							continue
+						}
+						log.Infof("handleInvMsg PushGetBlocksMsg because encountered an orphan")
+						peer.PushGetBlocksMsg(locator, mlocator, orphanRoot, &zeroHash)
+					} else {
+						sm.requestedOrphans[iv.Hash]++
 					}
-					log.Infof("handleInvMsg PushGetBlocksMsg because encountered an orphan")
-					peer.PushGetBlocksMsg(locator, mlocator, orphanRoot, &zeroHash)
 				}
 				continue
 			}
@@ -1331,7 +1340,6 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				log.Infof("handleInvMsg PushGetBlocksMsg because done with the last inv")
 				peer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 			}
-
  */
 		} else if iv.Type == common.InvTypeMinerBlock {
 			// The block is an orphan miner block that we already have.
@@ -1350,17 +1358,22 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				// up to the root of the orphan that just came
 				// in.
 				if !ch.TryConnectOrphan(&iv.Hash) {
-					orphanRoot := ch.GetOrphanRoot(&iv.Hash)
-					locator, err := ch.LatestBlockLocator()
-					if err != nil {
-						log.Errorf("PEER: Failed to get block "+
-							"locator for the latest block: "+
-							"%v", err)
-						continue
+					if _,ok := sm.requestedMinerOrphans[iv.Hash]; !ok || sm.requestedMinerOrphans[iv.Hash] > 10 {
+						sm.requestedMinerOrphans[iv.Hash] = 1
+						orphanRoot := ch.GetOrphanRoot(&iv.Hash)
+						locator, err := ch.LatestBlockLocator()
+						if err != nil {
+							log.Errorf("PEER: Failed to get block "+
+								"locator for the latest block: "+
+								"%v", err)
+							continue
+						}
+						log.Infof("Request miner blocks up to orphan %s", orphanRoot.String())
+						tlocator, _ := sm.chain.LatestBlockLocator()
+						peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, orphanRoot)
+					} else {
+						sm.requestedMinerOrphans[iv.Hash]++
 					}
-					log.Infof("Request miner blocks up to orphan %s", orphanRoot.String())
-					tlocator, _ := sm.chain.LatestBlockLocator()
-					peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, orphanRoot)
 				}
 				continue
 			}
