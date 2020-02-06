@@ -7,7 +7,6 @@ package cpuminer
 import (
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/omega/consensus"
 	"github.com/btcsuite/omega/ovm"
 	"math/big"
 	"math/rand"
@@ -525,7 +524,7 @@ flushconnch:
 
 					default:
 						time.Sleep(time.Second)
-						consensus.DebugInfo()
+//						consensus.DebugInfo()
 						log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
 					}
 				}

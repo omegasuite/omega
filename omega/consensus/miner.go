@@ -162,6 +162,8 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 			log.Infof("\nBest tx chain height: %d", best.Height)
 			log.Infof("\nLast rotation: %d", best.LastRotation)
 
+			DebugInfo()
+
 			top := int32(-1)
 			var tr *Syncer
 
@@ -250,6 +252,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 			log.Info("consensus received Quit")
 			polling = false
 			ticker.Stop()
+			DebugInfo()
 			miner.syncMutex.Lock()
 			for i, t := range miner.Sync {
 				log.Infof("Sync %d to Quit", i)
@@ -280,7 +283,7 @@ func HandleMessage(m Message) * chainhash.Hash {
 	bh := miner.server.BestSnapshot().Height
 
 	if h < bh {
-		miner.server.CommitteePolling()
+//		miner.server.CommitteePolling()
 		return nil
 	}
 

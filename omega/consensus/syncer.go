@@ -694,7 +694,7 @@ func (self *Syncer) candidacy() {
 //	self.consents[self.Me] = 1
 
 	log.Infof("Announce candicacy by %d", self.Myself)
-	self.DebugInfo()
+//	self.DebugInfo()
 
 	msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
 
