@@ -305,6 +305,8 @@ func (sm *SyncManager) startSync() {
 		return
 	}
 
+	log.Infof("Syncing with %s", bestPeer.String())
+
 	// Start syncing from the best peer if one was selected.
 	if bestPeer != nil {
 		log.Infof("Start sync with bestPeer %s", bestPeer.String())

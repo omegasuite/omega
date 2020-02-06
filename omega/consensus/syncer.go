@@ -118,6 +118,9 @@ func (self *Syncer) repeater() {
 //				}
 				// about my tree, if I know somthing someone does not know, send him info
 				k = k ^ allm
+				if k == 0 {
+					continue
+				}
 
 				self.mutex.Lock()
 				for _, p := range self.knows[self.Me] {
@@ -136,9 +139,9 @@ func (self *Syncer) repeater() {
 						}
 						k ^= m
 						sent = true
-					}
-					if k == 0 {
-						break
+						if k == 0 {
+							break
+						}
 					}
 				}
 				self.mutex.Unlock()
@@ -496,7 +499,7 @@ func (self *Syncer) Release(msg * wire.MsgRelease) {
 }
 
 func (self *Syncer) ckconsensus() {
-	if len(self.agrees) + 1 <= wire.CommitteeSize / 2 {
+	if self.agreed != self.Myself || len(self.agrees) + 1 <= wire.CommitteeSize / 2 {
 		return
 	}
 
@@ -667,7 +670,7 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 }
 
 func (self *Syncer) candidacy() {
-	if self.agreed != -1 || !self.knowledges.Qualified(self.Myself) {
+	if (self.agreed != -1 && self.agreed != self.Myself) || !self.knowledges.Qualified(self.Myself) {
 		return
 	}
 
