@@ -203,7 +203,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 			for _, t := range miner.Sync {
 				t.UpdateChainHeight(height)
 			}
-			miner.syncMutex.Lock()
+			miner.syncMutex.Unlock()
 
 		case blk := <- newblockch:
 			top := miner.server.BestSnapshot().Height
