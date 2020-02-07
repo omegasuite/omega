@@ -938,6 +938,20 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			sp.continueMinerHash = &mcontinueHash
 		}
 		sp.QueueMessage(invMsg, nil)
+	} else if (continueHash != zeroHash && continueHash != sp.server.chain.BestSnapshot().Hash) ||
+			(mcontinueHash != zeroHash && mcontinueHash != sp.server.chain.Miners.BestSnapshot().Hash) {
+		mlocator, err := sp.server.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+		if err != nil {
+			return
+		}
+
+		locator, err := sp.server.chain.LatestBlockLocator()
+		if err != nil {
+			return
+		}
+
+		btcdLog.Infof("PushGetBlocksMsg from %s", sp.Addr())
+		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 	}
 }
 
