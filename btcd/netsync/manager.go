@@ -66,6 +66,10 @@ type minerBlockMsg struct {
 	reply chan struct{}
 }
 
+type updateSyncPeerMsg struct {
+	reply chan struct{}
+}
+
 // invMsg packages a bitcoin inv message and the peer it came from together
 // so the block handler has access to that information.
 type invMsg struct {
@@ -258,6 +262,12 @@ func (sm *SyncManager) findNextHeaderCheckpoint(height int32) *chaincfg.Checkpoi
 }
 
 func (sm *SyncManager) Update() {
+	m := updateSyncPeerMsg {}
+	sm.msgChan <- m
+	<-m.reply
+}
+
+func (sm *SyncManager) updateSyncPeer() {
 	if len(sm.requestedMinerBlocks) == 0 && len(sm.requestedBlocks) == 0 {
 		p := sm.syncPeer
 		sm.syncPeer = nil
@@ -1675,6 +1685,10 @@ out:
 					peerID = sm.syncPeer.ID()
 				}
 				msg.reply <- peerID
+
+			case updateSyncPeerMsg:
+				sm.updateSyncPeer()
+				msg.reply <- struct{}{}
 
 			case processBlockMsg:
 				_, isOrphan, err := sm.chain.ProcessBlock(
