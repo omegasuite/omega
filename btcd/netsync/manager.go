@@ -306,12 +306,24 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 	txbest := sm.chain.BestSnapshot()
 	var bestPeer *peerpkg.Peer
 
-	// Pick the one with longest miner chain, as it is likely to have longest tx chain
-	// because miner block depends on tx block
+	selit := false
 
+	// If p != nil, pick the one after p, otherwise Pick the one with longest miner chain,
+	// as it is likely to have longest tx chain because miner block depends on tx block
 	for peer, state := range sm.peerStates {
-		if !state.syncCandidate || !peer.Connected() || peer == p {
+		if !state.syncCandidate || !peer.Connected() {
 			continue
+		}
+
+		log.Infof("Check peer %d： %s", peer.ID(), peer.String())
+
+		if selit {
+			bestPeer = peer
+			break
+		}
+
+		if peer == p {
+			selit = true
 		}
 
 		// Remove sync candidate peers that are no longer candidates due
@@ -626,7 +638,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	}
 
 	defer func() {
-		if len(sm.requestedBlocks) == 0 && len(sm.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
 			p := sm.syncPeer
 			sm.syncPeer = nil
 			sm.startSync(p)
@@ -862,7 +874,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	}
 
 	defer func() {
-		if len(sm.requestedBlocks) == 0 && len(sm.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
 			p := sm.syncPeer
 			sm.syncPeer = nil
 			sm.startSync(p)

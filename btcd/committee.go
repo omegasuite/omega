@@ -811,6 +811,10 @@ func (s *server) CommitteeMsg(p [20]byte, m wire.Message) bool {
 	return false
 }
 
+func (s *server) UpdateSM() {
+	s.syncManager.Update()
+}
+
 func (s *server) CommitteePolling() {
 	best := s.chain.BestSnapshot()
 	ht := best.Height
@@ -845,8 +849,6 @@ func (s *server) CommitteePolling() {
 			cmt[nname] = blk
 		}
 	}
-
-	s.syncManager.Update()
 
 	s.peerState.cmutex.Lock()
 	for pname,sp := range s.peerState.committee {
