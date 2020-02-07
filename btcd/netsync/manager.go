@@ -295,7 +295,7 @@ func (sm *SyncManager) startSync() {
 		// and we check on chain only to avoid inconsistency
 		if peer.LastMinerBlock() < best.Height ||
 			(peer.LastMinerBlock() == best.Height && peer.LastBlock() < txbest.Height) {
-			state.syncCandidate = false
+//			state.syncCandidate = false
 			continue
 		}
 
