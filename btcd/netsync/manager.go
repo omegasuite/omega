@@ -676,9 +676,8 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		// mode in this case so the chain code is actually fed the
 		// duplicate blocks.
 		if sm.chainParams != &chaincfg.RegressionNetParams && peer.Committee <= 0 {
-			log.Warnf("Got unrequested block %s from %s -- "+
-				"disconnecting", blockHash.String(), peer.Addr())
-			peer.Disconnect("handleBlockMsg @ RegressionNetParams")
+			log.Warnf("Got unrequested block %s from %s", blockHash.String(), peer.Addr())
+//			peer.Disconnect("handleBlockMsg @ RegressionNetParams")
 			return
 		}
 	}
