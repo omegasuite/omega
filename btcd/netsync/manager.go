@@ -434,7 +434,8 @@ func (sm *SyncManager) handleNewPeerMsg(peer *peerpkg.Peer) {
 	}
 
 	// Start syncing by choosing the best candidate if needed.
-	if isSyncCandidate && sm.syncPeer == nil {
+	if sm.syncPeer == nil {
+//	if isSyncCandidate && sm.syncPeer == nil {
 		sm.startSync()
 	}
 }
@@ -588,6 +589,13 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		log.Warnf("Received block message from unknown peer %s", peer)
 		return
 	}
+
+	defer func() {
+		if len(sm.requestedBlocks) == 0 && len(sm.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+			sm.syncPeer = nil
+			sm.startSync()
+		}
+	}()
 
 	behaviorFlags := blockchain.BFNone
 
@@ -750,13 +758,6 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		}
 	}
 
-	defer func() {
-		if len(sm.requestedBlocks) == 0 && len(sm.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
-			sm.syncPeer = nil
-			sm.startSync()
-		}
-	}()
-
 	// Nothing more to do if we aren't in headers-first mode.
 	if !sm.headersFirstMode {
 		return
@@ -823,6 +824,13 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		log.Warnf("Received block message from unknown peer %s", peer)
 		return
 	}
+
+	defer func() {
+		if len(sm.requestedBlocks) == 0 && len(sm.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+			sm.syncPeer = nil
+			sm.startSync()
+		}
+	}()
 
 //	log.Infof("handleMinerBlockMsg: %v", bmsg.block.MsgBlock().PrevBlock)
 
@@ -927,11 +935,6 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 			go sm.peerNotifier.UpdatePeerMinerHeights(blkHashUpdate, heightUpdate,
 				peer)
 		}
-	}
-
-	if len(sm.requestedBlocks) == 0 && len(sm.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
-		sm.syncPeer = nil
-		sm.startSync()
 	}
 }
 
