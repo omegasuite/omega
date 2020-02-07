@@ -125,6 +125,11 @@ func (m *Miner) notice (notification *blockchain.Notification) {
 	}
 }
 
+func CommitteePolling() {
+	miner.server.CommitteePolling()
+	DebugInfo()
+}
+
 func Consensus(s PeerNotifier, addr btcutil.Address) {
 	miner = &Miner{}
 	miner.server = s
@@ -150,7 +155,6 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 	miner.wg.Add(1)
 
 	ticker := time.NewTicker(time.Second * 10)
-
 	defer miner.wg.Done()
 
 	polling := true
@@ -161,8 +165,6 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 			best := miner.server.BestSnapshot()
 			log.Infof("\nBest tx chain height: %d", best.Height)
 			log.Infof("\nLast rotation: %d", best.LastRotation)
-
-			DebugInfo()
 
 			top := int32(-1)
 			var tr *Syncer
@@ -180,13 +182,9 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 				}
 			}
 			miner.syncMutex.Unlock()
-			log.Infof("Poll Left syncMutex.Lock")
-
 			log.Infof("\nTop Syncer: %d", top)
-			if tr != nil {
-				log.Infof("\nTop running Syncer: %d\n", tr.Height)
-			}
-			miner.server.CommitteePolling()
+
+//			miner.server.CommitteePolling()
 
 		case height := <- miner.updateheight:
 			log.Infof("updateheight %d", height)
