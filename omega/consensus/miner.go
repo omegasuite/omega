@@ -256,7 +256,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 			miner.syncMutex.Lock()
 			for i, t := range miner.Sync {
 				log.Infof("Sync %d to Quit", i)
-				t.Quit()
+				go t.Quit()
 				delete(miner.Sync, i)
 			}
 			miner.syncMutex.Unlock()
@@ -345,7 +345,7 @@ func cleaner(top int32) {
 	miner.syncMutex.Lock()
 	for i, t := range miner.Sync {
 		if i < top {
-			t.Quit()
+			go t.Quit()
 			delete(miner.Sync, i)
 		}
 	}
@@ -380,7 +380,7 @@ func DebugInfo() {
 	log.Infof("\nI am %x. Miner has %d Syncers\n\nThe top syncer is %d:", miner.name, len(miner.Sync), top)
 	for h,s := range miner.Sync {
 		if h < top - 2 {
-			s.Quit()
+			go s.Quit()
 			delete(miner.Sync, h)
 		}
 	}

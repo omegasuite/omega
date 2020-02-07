@@ -356,6 +356,8 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 					sp.server.SendInvAck(miner, p)
 				}
 
+//				go sp.server.makeConnection(tcp.String(), miner, )
+
 				go sp.server.connManager.Connect(&connmgr.ConnReq{
 					Addr:      tcp,
 					Permanent: false,
@@ -635,6 +637,16 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 		s.peerState.cmutex.Lock()
 
 		if !isin {
+			addr := tcp.String()
+			for _,adr := range cfg.ConnectPeers {
+				if adr == addr {
+					// leave it for connmgr
+					return
+				}
+			}
+
+			btcdLog.Infof("makeConnection: new %s", addr)
+
 //		if !isin || !s.peerState.committee[j].Peer.Connected() {
 			go s.connManager.Connect(&connmgr.ConnReq{
 				Addr:      tcp,
@@ -1159,7 +1171,7 @@ func (s *server) CommitteeCast(msg wire.Message) {
 					srvrLog.Infof("casting %s message to %s (remote = %s)", msg.Command(), peer.Peer.LocalAddr().String(), peer.Peer.Addr())
 					peer.QueueMessageWithEncoding(msg, nil, wire.SignatureEncoding)
 				}
-				s.connManager.Connect(peer.connReq)
+//				s.connManager.Connect(peer.connReq)
 			}
 		}
 	})
