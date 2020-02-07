@@ -926,7 +926,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 
 	// Send the inventory message if there is anything to send.
 	if len(invMsg.InvList) > 0 {
-		btcdLog.Infof("OnGetBlocks: sending out %d blocks starting %s", m, invMsg.InvList[0].Hash.String())
+		btcdLog.Infof("OnGetBlocks: sending out %d blocks starting %s to %s", m, invMsg.InvList[0].Hash.String(), sp.Addr())
 
 		invListLen := len(invMsg.InvList)
 		if invListLen == wire.MaxBlocksPerMsg {

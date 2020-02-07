@@ -182,7 +182,7 @@ func (self *Syncer) run() {
 	self.wg.Add(1)
 	defer self.wg.Done()
 
-	ticker := time.NewTicker(time.Millisecond * 200)
+	ticker := time.NewTicker(time.Second * 2)
 
 	for going {
 		select {

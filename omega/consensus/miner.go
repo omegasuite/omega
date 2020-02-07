@@ -370,7 +370,6 @@ func (self *Miner) Debug(w http.ResponseWriter, r *http.Request) {
 }
 
 func DebugInfo() {
-	log.Infof("\nI am %x. Miner has %d Syncers\n\n", miner.name, len(miner.Sync))
 	top := int32(0)
 	miner.syncMutex.Lock()
 	for h,_ := range miner.Sync {
@@ -378,13 +377,14 @@ func DebugInfo() {
 			top = h
 		}
 	}
-	for h,_ := range miner.Sync {
+	log.Infof("\nI am %x. Miner has %d Syncers\n\nThe top syncer is %d:", miner.name, len(miner.Sync), top)
+	for h,s := range miner.Sync {
 		if h < top - 2 {
+			s.Quit()
 			delete(miner.Sync, h)
 		}
 	}
-	for h,s := range miner.Sync {
-		log.Infof("Syncer at %d", h)
+	if s,ok := miner.Sync[top]; ok {
 		s.DebugInfo()
 	}
 	miner.syncMutex.Unlock()

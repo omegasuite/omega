@@ -259,14 +259,14 @@ func (sm *SyncManager) findNextHeaderCheckpoint(height int32) *chaincfg.Checkpoi
 
 func (sm *SyncManager) StartSync() {
 	if sm.syncPeer == nil {
-		sm.startSync()
+		sm.startSync(nil)
 	}
 }
 // startSync will choose the best peer among the available candidate peers to
 // download/sync the blockchain from.  When syncing is already running, it
 // simply returns.  It also examines the candidates for any which are no longer
 // candidates and removes them as needed.
-func (sm *SyncManager) startSync() {
+func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 	if sm.syncPeer != nil {
 		return
 	}
@@ -280,7 +280,7 @@ func (sm *SyncManager) startSync() {
 	// because miner block depends on tx block
 
 	for peer, state := range sm.peerStates {
-		if !state.syncCandidate || !peer.Connected() {
+		if !state.syncCandidate || !peer.Connected() || peer == p {
 			continue
 		}
 
@@ -303,6 +303,11 @@ func (sm *SyncManager) startSync() {
 			(peer.LastMinerBlock() == bestPeer.LastMinerBlock() && peer.LastBlock() > bestPeer.LastBlock()) {
 			bestPeer = peer
 		}
+	}
+
+	if bestPeer == nil {
+		// make p the last choice
+		bestPeer = p
 	}
 
 	if bestPeer == sm.syncPeer {
@@ -434,9 +439,8 @@ func (sm *SyncManager) handleNewPeerMsg(peer *peerpkg.Peer) {
 	}
 
 	// Start syncing by choosing the best candidate if needed.
-	if sm.syncPeer == nil {
-//	if isSyncCandidate && sm.syncPeer == nil {
-		sm.startSync()
+	if isSyncCandidate && sm.syncPeer == nil {
+		sm.startSync(nil)
 	}
 }
 
@@ -477,12 +481,13 @@ func (sm *SyncManager) handleDonePeerMsg(peer *peerpkg.Peer) {
 	// sync peer.  Also, reset the headers-first state if in headers-first
 	// mode so
 	if sm.syncPeer == peer {
+		p := sm.syncPeer
 		sm.syncPeer = nil
 		if sm.headersFirstMode {
 			best := sm.chain.BestSnapshot()
 			sm.resetHeaderState(&best.Hash, best.Height)
 		}
-		sm.startSync()
+		sm.startSync(p)
 	}
 }
 
@@ -592,8 +597,9 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	defer func() {
 		if len(sm.requestedBlocks) == 0 && len(sm.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+			p := sm.syncPeer
 			sm.syncPeer = nil
-			sm.startSync()
+			sm.startSync(p)
 		}
 	}()
 
@@ -827,8 +833,9 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 
 	defer func() {
 		if len(sm.requestedBlocks) == 0 && len(sm.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+			p := sm.syncPeer
 			sm.syncPeer = nil
-			sm.startSync()
+			sm.startSync(p)
 		}
 	}()
 
@@ -1298,13 +1305,12 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// to signal there are more missing blocks that need to
 			// be requested.
 			if sm.chain.IsKnownOrphan(&iv.Hash) {
-				log.Infof("request %s is known orphan", iv.Hash.String())
-
 				// Request blocks starting at the latest known
 				// up to the root of the orphan that just came
 				// in.
 				if !sm.chain.TryConnectOrphan(&iv.Hash) {
 					if _,ok := sm.requestedOrphans[iv.Hash]; !ok || sm.requestedOrphans[iv.Hash] > 10 {
+						log.Infof("request %s is known orphan", iv.Hash.String())
 						sm.requestedOrphans[iv.Hash] = 1
 						orphanRoot := sm.chain.GetOrphanRoot(&iv.Hash)
 						locator, err := sm.chain.LatestBlockLocator()
@@ -1431,6 +1437,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	numRequested := 0
 	gdmsg := wire.NewMsgGetData()
 	requestQueue := state.requestQueue
+
+	resync := false
 	
 	tm := int(time.Now().Unix())
 	for len(requestQueue) != 0 {
@@ -1459,6 +1467,17 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			} else {
 //				log.Infof("tx Repeated %d request for %s", state.requestedBlocks[iv.Hash], iv.Hash.String())
 				sm.requestedBlocks[iv.Hash]++
+				if sm.requestedBlocks[iv.Hash] > 30 {
+					// too many tries. try another peer to sync
+					if !resync {
+						resync = true
+						defer func() {
+							p := sm.syncPeer
+							sm.syncPeer = nil
+							sm.startSync(p)
+						}()
+					}
+				}
 			}
 			state.requestedBlocks[iv.Hash] = tm
 
@@ -1479,6 +1498,17 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			} else {
 //				log.Infof("miner Repeated %d miner request for %s", state.requestedMinerBlocks[iv.Hash], iv.Hash.String())
 				sm.requestedMinerBlocks[iv.Hash]++
+				if sm.requestedMinerBlocks[iv.Hash] > 30 {
+					// too many tries. try another peer to sync
+					if !resync {
+						resync = true
+						defer func() {
+							p := sm.syncPeer
+							sm.syncPeer = nil
+							sm.startSync(p)
+						}()
+					}
+				}
 			}
 			state.requestedMinerBlocks[iv.Hash] = tm
 
