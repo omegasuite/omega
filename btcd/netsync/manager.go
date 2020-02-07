@@ -326,6 +326,11 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 			selit = true
 		}
 
+		if bestPeer == nil {
+			bestPeer = peer
+			continue
+		}
+
 		// Remove sync candidate peers that are no longer candidates due
 		// to passing their latest known block.  NOTE: The < is
 		// intentional as opposed to <=.  While technically the peer
