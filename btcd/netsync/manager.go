@@ -262,9 +262,10 @@ func (sm *SyncManager) findNextHeaderCheckpoint(height int32) *chaincfg.Checkpoi
 }
 
 func (sm *SyncManager) Update() {
-	m := updateSyncPeerMsg {}
-	sm.msgChan <- m
-	<-m.reply
+	reply := make(chan struct{})
+	sm.msgChan <- updateSyncPeerMsg { reply: reply }
+	<- reply
+	log.Infof("Sync peer updated")
 }
 
 func (sm *SyncManager) updateSyncPeer() {
