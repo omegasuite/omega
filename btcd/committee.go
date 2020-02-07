@@ -846,6 +846,8 @@ func (s *server) CommitteePolling() {
 		}
 	}
 
+	s.syncManager.Update()
+
 	s.peerState.cmutex.Lock()
 	for pname,sp := range s.peerState.committee {
 		consensusLog.Infof("Peer %x", pname)

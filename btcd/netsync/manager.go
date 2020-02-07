@@ -257,11 +257,41 @@ func (sm *SyncManager) findNextHeaderCheckpoint(height int32) *chaincfg.Checkpoi
 	return nextCheckpoint
 }
 
+func (sm *SyncManager) Update() {
+	if len(sm.requestedMinerBlocks) == 0 && len(sm.requestedBlocks) == 0 {
+		p := sm.syncPeer
+		sm.syncPeer = nil
+		sm.startSync(p)
+	} else {
+		t := int(0)
+		for h,_ := range sm.requestedBlocks {
+			for _,p := range sm.peerStates {
+				if s,ok := p.requestedBlocks[h]; ok && s > t {
+					t = s
+				}
+			}
+		}
+		for h,_ := range sm.requestedMinerBlocks {
+			for _,p := range sm.peerStates {
+				if s,ok := p.requestedMinerBlocks[h]; ok && s > t {
+					t = s
+				}
+			}
+		}
+		if t != 0 && int(time.Now().Unix()) - t > 30 {
+			p := sm.syncPeer
+			sm.syncPeer = nil
+			sm.startSync(p)
+		}
+	}
+}
+
 func (sm *SyncManager) StartSync() {
 	if sm.syncPeer == nil {
 		sm.startSync(nil)
 	}
 }
+
 // startSync will choose the best peer among the available candidate peers to
 // download/sync the blockchain from.  When syncing is already running, it
 // simply returns.  It also examines the candidates for any which are no longer
