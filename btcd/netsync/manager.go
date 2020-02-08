@@ -1315,7 +1315,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	// request parent blocks of orphans if we receive one we already have.
 	// Finally, attempt to detect potential stalls due to long side chains
 	// we already have and request more blocks to prevent them.
-	for _, iv := range invVects {
+	for i, iv := range invVects {
 		// Ignore unsupported inventory types.
 		switch iv.Type {
 		case common.InvTypeBlock:
@@ -1356,6 +1356,14 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 
 			// Add it to the request queue.
 			log.Infof("%s does not exist add to requestQueue", iv.Hash.String())
+			state.requestQueue = append(state.requestQueue, iv)
+			continue
+		}
+		if (i == lastBlock || i == lastMinerBlock) && len(imsg.inv.InvList) > 1 {
+			// in any case, we will request the last one in inv list to notify
+			// the peer to send us new batch of inv list if any
+			// TBD: optimization: instead of requesting a block which may be a waste,
+			// can we ask for something else?
 			state.requestQueue = append(state.requestQueue, iv)
 			continue
 		}

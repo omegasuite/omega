@@ -306,6 +306,9 @@ type serverPeer struct {
 	persistent     bool
 	continueHash   *chainhash.Hash
 	continueMinerHash   *chainhash.Hash
+	hashStop 	   chainhash.Hash
+	minerHashStop  chainhash.Hash
+
 //	heightSent     [2]int32			// heights (tx, miner) of the best mainchain block send
 	relayMtx       sync.Mutex
 	disableRelayTx bool
@@ -834,6 +837,8 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 	continueHash := chainhash.Hash{}
 	mcontinueHash := chainhash.Hash{}
 
+	sp.hashStop = msg.TxHashStop
+	sp.minerHashStop = msg.MinerHashStop
 	sp.continueHash = nil
 	sp.continueMinerHash = nil
 
@@ -1780,6 +1785,11 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 	// to trigger it to issue another getblocks message for the next
 	// batch of inventory.
 	if sendInv {
+		gmsg := wire.NewMsgGetBlocks(&sp.hashStop, &sp.minerHashStop)
+		gmsg.TxBlockLocatorHashes = []*chainhash.Hash{sp.continueHash}
+		gmsg.MinerBlockLocatorHashes = []*chainhash.Hash{sp.continueMinerHash}
+		sp.OnGetBlocks(sp.Peer, gmsg)
+/*
 		best := sp.server.chain.BestSnapshot()
 		invMsg := wire.NewMsgInvSizeHint(1)
 		t := common.InvTypeWitnessBlock
@@ -1790,6 +1800,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		invMsg.AddInvVect(iv)
 		sp.QueueMessage(invMsg, doneChan)
 		sp.continueHash = nil
+ */
 	}
 
 	sp.QueueMessageWithEncoding(&msgBlock, dc, encoding)
@@ -1853,12 +1864,18 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 	// to trigger it to issue another getblocks message for the next
 	// batch of inventory.
 	if sendInv {
+		gmsg := wire.NewMsgGetBlocks(&sp.hashStop, &sp.minerHashStop)
+		gmsg.TxBlockLocatorHashes = []*chainhash.Hash{sp.continueHash}
+		gmsg.MinerBlockLocatorHashes = []*chainhash.Hash{sp.continueMinerHash}
+		sp.OnGetBlocks(sp.Peer, gmsg)
+/*
 		best := sp.server.chain.Miners.BestSnapshot()
 		invMsg := wire.NewMsgInvSizeHint(1)
 		iv := wire.NewInvVect(common.InvTypeMinerBlock, &best.Hash)
 		invMsg.AddInvVect(iv)
 		sp.QueueMessage(invMsg, doneChan)
 		sp.continueMinerHash = nil
+ */
 	}
 	return nil
 }
