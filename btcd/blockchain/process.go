@@ -235,8 +235,8 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	prevNode := b.index.LookupNode(prevHash)
 
 	if prevNode == nil {
-		//str := fmt.Sprintf("previous block %s is unknown", prevHash)
-		return false, false, fmt.Errorf("previous block %s is unknown", prevHash)	// ruleError(ErrPreviousBlockUnknown, str)
+		str := fmt.Sprintf("previous block %s is unknown", prevHash)
+		return false, false, ruleError(ErrPreviousBlockUnknown, str)
 	} else if b.index.NodeStatus(prevNode).KnownInvalid() {
 		str := fmt.Sprintf("previous block %s is known to be invalid", prevHash)
 		return false, false, ruleError(ErrInvalidAncestorBlock, str)
@@ -257,7 +257,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	if exists {
-		return false, false, fmt.Errorf("Block already exists")
+		return false, false, ruleError(ErrDuplicateBlock, err.Error())
 	}
 
 	// The block must not already exist as an orphan.
@@ -266,8 +266,8 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		if len(block.MsgBlock().Transactions[0].SignatureScripts) > len(p.block.MsgBlock().Transactions[0].SignatureScripts) {
 			b.removeOrphanBlock(p)
 		} else {
-//			str := fmt.Sprintf("already have block (orphan) %v", blockHash)
-			return false, true, fmt.Errorf("already have block (orphan) %v", blockHash)	// ruleError(ErrDuplicateBlock, str)
+			str := fmt.Sprintf("already have block (orphan) %v", blockHash)
+			return false, true, ruleError(ErrDuplicateBlock, str)
 		}
 	}
 
