@@ -743,8 +743,8 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		// it as such.  Otherwise, something really did go wrong, so log
 		// it as an actual error.
 		if _, ok := err.(blockchain.RuleError); ok {
-			log.Infof("Rejected tx block %v from %s: %v", blockHash,
-				peer, err)
+			log.Infof("Rejected tx block %s at %d from %s: %v", blockHash.String(),
+				bmsg.block.Height(), peer, err)
 			if err.(blockchain.RuleError).ErrorCode == blockchain.ErrDuplicateBlock {
 				// still need to update height
 				peer.UpdateLastBlockHeight(bmsg.block.Height())
