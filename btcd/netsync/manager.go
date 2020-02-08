@@ -1010,7 +1010,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 				"latest block: %v", err)
 		} else {
 			tlocator, _ := sm.chain.LatestBlockLocator()
-			var zerohash chainhash.Hash
+
 			log.Infof("handleMinerBlockMsg: PushGetBlocksMsg from %s because received an miner orphan %s", peer.Addr(), orphanRoot.String())
 			sm.syncjobs = append(sm.syncjobs, &pendginGetBlocks{
 				peer: peer,
