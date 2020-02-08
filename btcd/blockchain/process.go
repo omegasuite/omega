@@ -257,7 +257,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	if exists {
-		return false, false, ruleError(ErrDuplicateBlock, err.Error())
+		return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock])
 	}
 
 	// The block must not already exist as an orphan.
