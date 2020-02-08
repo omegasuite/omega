@@ -408,7 +408,7 @@ flushconnch:
 		if curHeight != 0 && !isCurrent {
 //			m.g.Chain.ChainLock.Unlock()
 			m.Stale = true
-			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent ")
+			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent @ height %d", curHeight)
 			time.Sleep(time.Second * 5)
 			continue
 		}

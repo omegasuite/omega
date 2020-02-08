@@ -434,7 +434,7 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 				"%d from peer %s", best.Height+1,
 				sm.nextCheckpoint.Height, bestPeer.Addr())
 		}
-		log.Infof("startSync PushGetBlocksMsg")
+		log.Infof("startSync: PushGetBlocksMsg from %s", bestPeer.Addr())
 		bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 
 		sm.syncPeer = bestPeer
@@ -870,6 +870,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	locator := chainhash.BlockLocator([]*chainhash.Hash{blockHash})
 	mlocator := chainhash.BlockLocator([]*chainhash.Hash{mblockHash})
+	log.Infof("handleBlockMsg: PushGetBlocksMsg from %s because  -- switching to normal mode", peer.Addr())
 	err = peer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 	if err != nil {
 		log.Warnf("Failed to send getblocks message to peer %s: %v",
@@ -973,6 +974,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		} else {
 			tlocator, _ := sm.chain.LatestBlockLocator()
 			var zerohash chainhash.Hash
+			log.Infof("handleMinerBlockMsg: PushGetBlocksMsg from %s because received an miner orphan %s", peer.Addr(), orphanRoot.String())
 			peer.PushGetBlocksMsg(tlocator, locator, &zerohash, orphanRoot)
 		}
 	} else {
@@ -1376,11 +1378,13 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 								"%v", err)
 							continue
 						}
-						log.Infof("handleInvMsg PushGetBlocksMsg because encountered an orphan")
+						log.Infof("handleInvMsg: PushGetBlocksMsg from %s because encountered an tx orphan %s", peer.Addr(), iv.Hash.String())
 						peer.PushGetBlocksMsg(locator, mlocator, orphanRoot, &zeroHash)
 					} else {
 						sm.requestedOrphans[iv.Hash]++
 					}
+				} else {
+					delete(sm.requestedOrphans, iv.Hash)
 				}
 				continue
 			}
@@ -1434,12 +1438,14 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 								"%v", err)
 							continue
 						}
-						log.Infof("Request miner blocks up to orphan %s", orphanRoot.String())
+						log.Infof("handleInvMsg: PushGetBlocksMsg from %s because encountered an miner orphan %s", peer.Addr(), iv.Hash.String())
 						tlocator, _ := sm.chain.LatestBlockLocator()
 						peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, orphanRoot)
 					} else {
 						sm.requestedMinerOrphans[iv.Hash]++
 					}
+				} else {
+					delete(sm.requestedMinerOrphans, iv.Hash)
 				}
 				continue
 			}

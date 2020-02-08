@@ -926,7 +926,8 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 
 	// Send the inventory message if there is anything to send.
 	if len(invMsg.InvList) > 0 {
-		btcdLog.Infof("OnGetBlocks: sending out %d blocks starting %s to %s", m, invMsg.InvList[0].Hash.String(), sp.Addr())
+		h,_ := sp.server.chain.BlockHeightByHash(&invMsg.InvList[0].Hash)
+		btcdLog.Infof("OnGetBlocks: sending out %d blocks starting height %d to %s", m, h, sp.Addr())
 
 		invListLen := len(invMsg.InvList)
 		if invListLen == wire.MaxBlocksPerMsg {
@@ -950,7 +951,8 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			return
 		}
 
-		btcdLog.Infof("PushGetBlocksMsg from %s", sp.Addr())
+		btcdLog.Infof("OnGetBlocks: PushGetBlocksMsg from %s because it appears I have more (%d, %d) blocks than asked",
+			sp.Addr(), sp.server.chain.BestSnapshot().Height, sp.server.chain.Miners.BestSnapshot().Height)
 		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 	}
 }
