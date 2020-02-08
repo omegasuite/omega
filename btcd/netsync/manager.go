@@ -913,7 +913,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		if sm.chainParams != &chaincfg.RegressionNetParams && peer.Committee <= 0 {
 			log.Warnf("Got unrequested block %v from %s -- "+
 				"disconnecting", blockHash, peer.Addr())
-			peer.Disconnect("handleMinerBlockMsg @ RegressionNetParams")
+//			peer.Disconnect("handleMinerBlockMsg @ RegressionNetParams")
 			return
 		}
 	}
