@@ -213,9 +213,6 @@ type SyncManager struct {
 	// broadcasted is the inventory of message we have broadcasted,
 	// the purpose is to prevent rebroadcast
 	Broadcasted map[chainhash.Hash]int64
-
-	// SyncJob: the running sync jobs, to prevent resync
-	SyncJobs []*peerpkg.Peer
 }
 
 // resetHeaderState sets the headers-first mode state to values appropriate for
@@ -370,11 +367,6 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 	}
 
 	if bestPeer == nil {
-		// make p the last choice
-		bestPeer = p
-	}
-
-	if bestPeer == sm.syncPeer {
 		return
 	}
 

@@ -398,7 +398,7 @@ flushconnch:
 
 		if int32(bs.LastRotation) > m.g.Chain.Miners.BestSnapshot().Height - 2 * wire.CommitteeSize {
 			m.Stale = true
-			log.Infof("generateBlocks: sleep on LastRotation %d > Miners.Height %d - 2 * CommitteeSize", bs.LastRotation, m.g.Chain.Miners.BestSnapshot().Height)
+			log.Infof("generateBlocks: height %d sleep on LastRotation %d > Miners.Height %d - 2 * CommitteeSize", curHeight, bs.LastRotation, m.g.Chain.Miners.BestSnapshot().Height)
 			time.Sleep(time.Second * 5)
 			continue
 		}
