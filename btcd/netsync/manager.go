@@ -169,6 +169,7 @@ type peerSyncState struct {
 	requestedTxns   map[chainhash.Hash]struct{}
 	requestedBlocks map[chainhash.Hash]int
 	requestedMinerBlocks map[chainhash.Hash]int
+	syncTime	int64	// unix time this peer became a sync peer
 }
 
 // SyncManager is used to communicate block related messages with peers. The
@@ -312,18 +313,24 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 
 	// Return now if we're already syncing.
 	best := sm.chain.Miners.BestSnapshot()
-	txbest := sm.chain.BestSnapshot()
+//	txbest := sm.chain.BestSnapshot()
 	var bestPeer *peerpkg.Peer
 
-	selit := false
+//	selit := false
 
 	// If p != nil, pick the one after p, otherwise Pick the one with longest miner chain,
 	// as it is likely to have longest tx chain because miner block depends on tx block
+
+	// we always choose the one that was sync peer in the most distant past. so everyone
+	// has a chance to become sync peer
+	tm := int64(0xFFFFFFFFFFFFFFF)
 	for peer, state := range sm.peerStates {
-		if !state.syncCandidate || !peer.Connected() {
+		if !state.syncCandidate || !peer.Connected() || state.syncTime > tm {
 			continue
 		}
-
+		tm = state.syncTime
+		bestPeer = peer
+/*
 		log.Infof("Check peer %d： %s", peer.ID(), peer.String())
 
 		if selit {
@@ -359,6 +366,7 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 			(peer.LastMinerBlock() == bestPeer.LastMinerBlock() && peer.LastBlock() > bestPeer.LastBlock()) {
 			bestPeer = peer
 		}
+ */
 	}
 
 	if bestPeer == nil {
@@ -369,6 +377,8 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 	if bestPeer == sm.syncPeer {
 		return
 	}
+
+	sm.peerStates[bestPeer].syncTime = time.Now().Unix()
 
 	log.Infof("Syncing with %s", bestPeer.String())
 
