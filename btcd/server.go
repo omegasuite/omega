@@ -902,12 +902,13 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			break
 		}
 		if i < len(hashList) && (mblock == nil || rot < mblock.Height()) {
-			iv := wire.NewInvVect(common.InvTypeWitnessBlock, &hashList[i])
+			th := hashList[i]
+			iv := wire.NewInvVect(common.InvTypeWitnessBlock, &th)
 			invMsg.AddInvVect(iv)
 //			btcdLog.Infof("Sending tx block %s to %s", hashList[i].String(), sp.Addr())
 			i++
 			if i < len(hashList) {
-				h, _ := chain.HeaderByHash(&hashList[i])
+				h, _ := chain.HeaderByHash(&th)
 				if h.Nonce > 0 {
 					rot += wire.CommitteeSize/2 + 1
 				} else if h.Nonce <= -wire.MINER_RORATE_FREQ {
@@ -916,13 +917,14 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 				continueHash = h.BlockHash()
 			}
 		} else {
-			iv := wire.NewInvVect(common.InvTypeMinerBlock, &mhashList[j])
+			th := mhashList[j]
+			iv := wire.NewInvVect(common.InvTypeMinerBlock, &th)
 			invMsg.AddInvVect(iv)
 //			btcdLog.Infof("Sending miner block %s to %s", mhashList[j].String(), sp.Addr())
 			j++
 			if j < len(mhashList) {
-				mblock, _ = mchain.BlockByHash(&mhashList[j])
-				mcontinueHash = mhashList[j]
+				mblock, _ = mchain.BlockByHash(&th)
+				mcontinueHash = th
 			} else {
 				mblock = nil
 			}
