@@ -934,15 +934,15 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		h,_ := sp.server.chain.BlockHeightByHash(&invMsg.InvList[0].Hash)
 		btcdLog.Infof("OnGetBlocks: sending out %d blocks starting height %d to %s", m, h, sp.Addr())
 
-		invListLen := len(invMsg.InvList)
-		if invListLen == wire.MaxBlocksPerMsg {
+//		invListLen := len(invMsg.InvList)
+//		if invListLen == wire.MaxBlocksPerMsg {
 			// Intentionally use a copy of the final hash so there
 			// is not a reference into the inventory slice which
 			// would prevent the entire slice from being eligible
 			// for GC as soon as it's sent.
 			sp.continueHash = &continueHash
 			sp.continueMinerHash = &mcontinueHash
-		}
+//		}
 		sp.QueueMessage(invMsg, nil)
 	} else if (continueHash != zeroHash && continueHash != sp.server.chain.BestSnapshot().Hash) ||
 			(mcontinueHash != zeroHash && mcontinueHash != sp.server.chain.Miners.BestSnapshot().Hash) {
@@ -961,48 +961,6 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 	}
 }
-
-/*
-func (sp *serverPeer) OnGetMinerBlocks(_ *peer.Peer, msg *wire.MsgGetMinerBlocks) {
-	// Find the most recent known block in the best chain based on the block
-	// locator and fetch all of the block hashes after it until either
-	// wire.MaxBlocksPerMsg have been fetched or the provided stop hash is
-	// encountered.
-	//
-	// Use the block after the genesis block if no other blocks in the
-	// provided locator are known.  This does mean the client will start
-	// over with the genesis block if unknown block locators are provided.
-	//
-	// This mirrors the behavior in the reference implementation.
-	chain := sp.server.chain.Miners.(*minerchain.MinerChain)
-	hashList := chain.LocateBlocks(msg.BlockLocatorHashes, &msg.HashStop,
-		wire.MaxBlocksPerMsg)
-
-//	peerLog.Warnf("OnGetMinerBlocks [")
-
-	// Generate inventory message.
-	invMsg := wire.NewMsgInv()
-	for i := range hashList {
-//		peerLog.Warnf("[%v], ", hashList[i])
-		iv := wire.NewInvVect(common.InvTypeMinerBlock, &hashList[i])
-		invMsg.AddInvVect(iv)
-	}
-
-	// Send the inventory message if there is anything to send.
-	if len(invMsg.InvList) > 0 {
-		invListLen := len(invMsg.InvList)
-		if invListLen == wire.MaxBlocksPerMsg {
-			// Intentionally use a copy of the final hash so there
-			// is not a reference into the inventory slice which
-			// would prevent the entire slice from being eligible
-			// for GC as soon as it's sent.
-			continueHash := invMsg.InvList[invListLen-1].Hash
-			sp.continueMinerHash = &continueHash
-		}
-		sp.QueueMessage(invMsg, nil)
-	}
-}日哦他
- */
 
 // OnGetHeaders is invoked when a peer receives a getheaders bitcoin
 // message.

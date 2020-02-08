@@ -172,6 +172,14 @@ type peerSyncState struct {
 	syncTime	int64	// unix time this peer became a sync peer
 }
 
+type pendginGetBlocks struct {
+	peer		* peerpkg.Peer
+	locator		chainhash.BlockLocator
+	mlocator 	chainhash.BlockLocator
+	stopHash	*chainhash.Hash
+	mstopHash	*chainhash.Hash
+}
+
 // SyncManager is used to communicate block related messages with peers. The
 // SyncManager is started as by executing Start() in a goroutine. Once started,
 // it selects peers to sync from and starts the initial block download. Once the
@@ -213,6 +221,8 @@ type SyncManager struct {
 	// broadcasted is the inventory of message we have broadcasted,
 	// the purpose is to prevent rebroadcast
 	Broadcasted map[chainhash.Hash]int64
+
+	syncjobs []*pendginGetBlocks
 }
 
 // resetHeaderState sets the headers-first mode state to values appropriate for
@@ -265,7 +275,11 @@ func (sm *SyncManager) Update() {
 }
 
 func (sm *SyncManager) updateSyncPeer() {
-	if len(sm.requestedMinerBlocks) == 0 && len(sm.requestedBlocks) == 0 {
+	if len(sm.syncjobs) > 0 {
+		j := sm.syncjobs[0]
+		sm.syncjobs = sm.syncjobs[1:]
+		j.peer.PushGetBlocksMsg(j.locator, j.mlocator, j.stopHash, j.mstopHash)
+	} else if len(sm.requestedMinerBlocks) == 0 && len(sm.requestedBlocks) == 0 {
 		p := sm.syncPeer
 		sm.syncPeer = nil
 		sm.startSync(p)
@@ -542,6 +556,7 @@ func (sm *SyncManager) handleDonePeerMsg(peer *peerpkg.Peer) {
 	// sync peer.  Also, reset the headers-first state if in headers-first
 	// mode so
 	if sm.syncPeer == peer {
+		sm.syncjobs = make([]*pendginGetBlocks, 0)
 		p := sm.syncPeer
 		sm.syncPeer = nil
 		if sm.headersFirstMode {
@@ -658,9 +673,15 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	defer func() {
 		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
-			p := sm.syncPeer
-			sm.syncPeer = nil
-			sm.startSync(p)
+			if len(sm.syncjobs) > 0 {
+				j := sm.syncjobs[0]
+				sm.syncjobs = sm.syncjobs[1:]
+				j.peer.PushGetBlocksMsg(j.locator, j.mlocator, j.stopHash, j.mstopHash)
+			} else {
+				p := sm.syncPeer
+				sm.syncPeer = nil
+				sm.startSync(p)
+			}
 		}
 	}()
 
@@ -899,9 +920,15 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 
 	defer func() {
 		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
-			p := sm.syncPeer
-			sm.syncPeer = nil
-			sm.startSync(p)
+			if len(sm.syncjobs) > 0 {
+				j := sm.syncjobs[0]
+				sm.syncjobs = sm.syncjobs[1:]
+				j.peer.PushGetBlocksMsg(j.locator, j.mlocator, j.stopHash, j.mstopHash)
+			} else {
+				p := sm.syncPeer
+				sm.syncPeer = nil
+				sm.startSync(p)
+			}
 		}
 	}()
 
@@ -985,7 +1012,14 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 			tlocator, _ := sm.chain.LatestBlockLocator()
 			var zerohash chainhash.Hash
 			log.Infof("handleMinerBlockMsg: PushGetBlocksMsg from %s because received an miner orphan %s", peer.Addr(), orphanRoot.String())
-			peer.PushGetBlocksMsg(tlocator, locator, &zerohash, orphanRoot)
+			sm.syncjobs = append(sm.syncjobs, &pendginGetBlocks{
+				peer: peer,
+				locator: tlocator,
+				mlocator: locator,
+				stopHash: &zeroHash,
+				mstopHash: orphanRoot,
+			})
+//			peer.PushGetBlocksMsg(tlocator, locator, &zerohash, orphanRoot)
 		}
 	} else {
 		// When the block is not an orphan, log information about it and
@@ -1397,7 +1431,14 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 							continue
 						}
 						log.Infof("handleInvMsg: PushGetBlocksMsg from %s because encountered an tx orphan %s", peer.Addr(), iv.Hash.String())
-						peer.PushGetBlocksMsg(locator, mlocator, orphanRoot, &zeroHash)
+						sm.syncjobs = append(sm.syncjobs, &pendginGetBlocks{
+							peer: peer,
+							locator: locator,
+							mlocator: mlocator,
+							stopHash: orphanRoot,
+							mstopHash: &zeroHash,
+						})
+//						peer.PushGetBlocksMsg(locator, mlocator, orphanRoot, &zeroHash)
 					} else {
 						sm.requestedOrphans[iv.Hash]++
 					}
@@ -1458,7 +1499,14 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 						}
 						log.Infof("handleInvMsg: PushGetBlocksMsg from %s because encountered an miner orphan %s", peer.Addr(), iv.Hash.String())
 						tlocator, _ := sm.chain.LatestBlockLocator()
-						peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, orphanRoot)
+						sm.syncjobs = append(sm.syncjobs, &pendginGetBlocks{
+							peer: peer,
+							locator: tlocator,
+							mlocator: locator,
+							stopHash: &zeroHash,
+							mstopHash: orphanRoot,
+						})
+//						peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, orphanRoot)
 					} else {
 						sm.requestedMinerOrphans[iv.Hash]++
 					}
@@ -2078,6 +2126,7 @@ func New(config *Config) (*SyncManager, error) {
 		quit:            make(chan struct{}),
 		feeEstimator:    config.FeeEstimator,
 		Broadcasted:	 make(map[chainhash.Hash]int64),
+		syncjobs:		 make([]*pendginGetBlocks, 0),
 	}
 
 	best := sm.chain.BestSnapshot()
