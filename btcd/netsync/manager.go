@@ -387,6 +387,9 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 		sm.requestedMinerOrphans = make(map[chainhash.Hash]int)
 		sm.requestedOrphans = make(map[chainhash.Hash]int)
 
+		sm.peerStates[bestPeer].requestedBlocks = make(map[chainhash.Hash]int)
+		sm.peerStates[bestPeer].requestedMinerBlocks = make(map[chainhash.Hash]int)
+
 		mlocator, err := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 		if err != nil {
 			log.Errorf("Failed to get block locator for the "+
