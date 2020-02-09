@@ -380,7 +380,8 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
  */
 	}
 
-	if bestPeer == nil {
+	if bestPeer == nil || bestPeer == p {
+		sm.syncPeer = bestPeer
 		return
 	}
 
@@ -1398,8 +1399,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// the peer to send us new batch of inv list if any
 			// TBD: optimization: instead of requesting a block which may be a waste,
 			// can we ask for something else?
-			state.requestQueue = append(state.requestQueue, iv)
-			continue
+			tiv := *iv
+			state.requestQueue = append(state.requestQueue, &tiv)
 		}
 
 		if iv.Type & common.InvTypeBlock == common.InvTypeBlock {
