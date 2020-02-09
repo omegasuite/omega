@@ -1026,7 +1026,7 @@ func (s *server) CommitteePolling() {
 	s.peerState.cmutex.Unlock()
 
 	// start sync if there is no sync peer
-	s.syncManager.StartSync()
+//	s.syncManager.StartSync()
 
 /*
 	bmht := mht
