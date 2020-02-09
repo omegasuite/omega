@@ -1766,7 +1766,8 @@ out:
 				// out immediately, sipping the inv trickle
 				// queue.
 				if iv.Type == common.InvTypeBlock ||
-					iv.Type == common.InvTypeWitnessBlock {
+					iv.Type == common.InvTypeWitnessBlock ||
+					iv.Type == common.InvTypeMinerBlock {
 
 					invMsg := wire.NewMsgInvSizeHint(1)
 					invMsg.AddInvVect(iv)

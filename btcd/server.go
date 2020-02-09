@@ -802,7 +802,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 // OnGetBlocks is invoked when a peer receives a getblocks bitcoin
 // message.
 func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
-	invMsg := wire.NewMsgInv()
+  	invMsg := wire.NewMsgInv()
 
 	// a special request to get the block being mined by the committee
 /*
@@ -906,6 +906,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			iv := wire.NewInvVect(common.InvTypeWitnessBlock, &th)
 			invMsg.AddInvVect(iv)
 //			btcdLog.Infof("Sending tx block %s to %s", hashList[i].String(), sp.Addr())
+			continueHash = th
 			i++
 			if i < len(hashList) {
 				h, _ := chain.HeaderByHash(&th)
@@ -914,7 +915,6 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 				} else if h.Nonce <= -wire.MINER_RORATE_FREQ {
 					rot++
 				}
-				continueHash = h.BlockHash()
 			}
 		} else {
 			th := mhashList[j]
@@ -922,9 +922,9 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			invMsg.AddInvVect(iv)
 //			btcdLog.Infof("Sending miner block %s to %s", mhashList[j].String(), sp.Addr())
 			j++
+			mcontinueHash = th
 			if j < len(mhashList) {
 				mblock, _ = mchain.BlockByHash(&th)
-				mcontinueHash = th
 			} else {
 				mblock = nil
 			}
