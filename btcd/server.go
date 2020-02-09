@@ -19,7 +19,6 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/omega/minerchain"
 	"github.com/davecgh/go-spew/spew"
-
 	"math"
 	"net"
 	"os"
@@ -723,6 +722,8 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	numAdded := 0
 	notFound := wire.NewMsgNotFound()
 
+	btcdLog.Infof("OnGetData：getting % items", len(msg.InvList))
+
 	length := len(msg.InvList)
 	// A decaying ban score increase is applied to prevent exhausting resources
 	// with unusually large inventory queries.
@@ -741,6 +742,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	doneChan := make(chan bool, 1)
 
 	for i, iv := range msg.InvList {
+		btcdLog.Infof("getting %d-th item %s = %s", i, iv.Type.String(), iv.Hash.String())
 		var c chan bool
 		// If this will be the last message we send.
 		if i == length-1 && len(notFound.InvList) == 0 {
@@ -803,6 +805,8 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 // message.
 func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
   	invMsg := wire.NewMsgInv()
+
+  	btcdLog.Infof("OnGetBlocks: tx locator hash list = %d stop hash = %s", len(msg.TxBlockLocatorHashes), msg.TxHashStop.String())
 
 	// a special request to get the block being mined by the committee
 /*
@@ -934,7 +938,9 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 	// Send the inventory message if there is anything to send.
 	if len(invMsg.InvList) > 0 {
 		h,_ := sp.server.chain.BlockHeightByHash(&invMsg.InvList[0].Hash)
-		btcdLog.Infof("OnGetBlocks: sending out %d blocks starting height %d to %s", m, h, sp.Addr())
+		btcdLog.Infof("OnGetBlocks: sending out invMsg %d blocks starting height %d to %s", m, h, sp.Addr())
+		btcdLog.Infof("first = %s\nlast = %s\ncontinue=%s", invMsg.InvList[0].Hash.String(),
+			invMsg.InvList[len(invMsg.InvList) - 1].Hash.String(), continueHash.String())
 
 //		invListLen := len(invMsg.InvList)
 //		if invListLen == wire.MaxBlocksPerMsg {
@@ -1635,6 +1641,11 @@ func (s *server) pushTxMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<-
 // connected peer.  An error is returned if the block hash is not known.
 func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- bool,
 	waitChan <-chan bool, encoding wire.MessageEncoding) error {
+
+	btcdLog.Infof("pushBlockMsg: %s", hash.String())
+	if sp.continueHash != nil {
+		btcdLog.Infof("sp.continueHash = %s", sp.continueHash.String())
+	}
 
 	// Fetch the raw block bytes from the database.
 	var blockBytes []byte

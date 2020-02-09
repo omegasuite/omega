@@ -1275,7 +1275,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		return
 	}
 
-/*	log.Infof("handleInvMsg from %s: %d items", imsg.peer.String(), len(imsg.inv.InvList))
+	log.Infof("handleInvMsg from %s: %d items", imsg.peer.String(), len(imsg.inv.InvList))
+/*
 	for _,r := range imsg.inv.InvList {
 		if r.Type & common.InvTypeBlock == common.InvTypeBlock {
 			log.Infof("requested block: %s", r.Hash.String())
@@ -1574,6 +1575,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		requestQueue[0] = nil
 		requestQueue = requestQueue[1:]
 
+		log.Infof("handleInvMsg: send getDate %s = %s", iv.Type.String(), iv.Hash.String())
 		switch iv.Type {
 		case common.InvTypeWitnessBlock:
 			fallthrough
