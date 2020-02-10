@@ -1238,6 +1238,7 @@ func (p *Peer) maybeAddDeadline(pendingResponses map[string]time.Time, msgCmd st
 		// Expects a block, merkleblock, tx, or notfound message.
 		pendingResponses[wire.CmdBlock] = deadline
 		pendingResponses[wire.CmdMerkleBlock] = deadline
+		pendingResponses[wire.CmdMinerBlock] = deadline
 		pendingResponses[wire.CmdTx] = deadline
 		pendingResponses[wire.CmdNotFound] = deadline
 
@@ -1303,6 +1304,7 @@ out:
 				case wire.CmdNotFound:
 					delete(pendingResponses, wire.CmdBlock)
 					delete(pendingResponses, wire.CmdMerkleBlock)
+					delete(pendingResponses, wire.CmdMinerBlock)
 					delete(pendingResponses, wire.CmdTx)
 					delete(pendingResponses, wire.CmdNotFound)
 

@@ -60,9 +60,9 @@ const (
 	CmdCFilter      = "cfilter"
 	CmdCFHeaders    = "cfheaders"
 	CmdCFCheckpt    = "cfcheckpt"
+	CmdMerkleBlock  = "merkleblock"
 
 	// consensus protocol message
-	CmdMerkleBlock  = "merkleblock"
 	CmdKnowledge = "knowledge"
 	CmdCandidate = "candidate"
 	CmdCandidateReply = "candidReply"
