@@ -1764,7 +1764,7 @@ out:
 				msg.reply <- peerID
 
 			case updateSyncPeerMsg:
-//				sm.updateSyncPeer()
+				sm.updateSyncPeer()
 
 			case processBlockMsg:
 				_, isOrphan, err := sm.chain.ProcessBlock(
