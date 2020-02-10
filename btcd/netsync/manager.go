@@ -318,8 +318,6 @@ func (sm *SyncManager) StartSync() {
 // simply returns.  It also examines the candidates for any which are no longer
 // candidates and removes them as needed.
 func (sm *SyncManager) startSync(p *peerpkg.Peer) {
-	return
-
 	if sm.syncPeer != nil {
 		return
 	}
