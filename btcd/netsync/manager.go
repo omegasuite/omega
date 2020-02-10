@@ -1672,7 +1672,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			break
 		}
 	}
-	state.requestQueue = requestQueue
+//	state.requestQueue = requestQueue
 	if len(gdmsg.InvList) > 0 {
 		log.Infof("%d requests sent", numRequested)
 		peer.QueueMessage(gdmsg, nil)
