@@ -1741,12 +1741,12 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 
 	// We only send the channel for this message if we aren't sending
 	// an inv straight after.
-	var dc chan<- bool
+//	var dc chan<- bool
 	continueHash := sp.continueHash
 	sendInv := continueHash != nil && continueHash.IsEqual(hash)
-	if !sendInv {
-		dc = doneChan
-	}
+//	if !sendInv {
+//		dc = doneChan
+//	}
 //	sp.heightSent[0] = heightSent
 //	sp.heightSent[1] = minerHeightSent
 
@@ -1774,7 +1774,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
  */
 	}
 
-	sp.QueueMessageWithEncoding(&msgBlock, dc, encoding)
+	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)
 
 	return nil
 }
@@ -1823,13 +1823,12 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 
 	// We only send the channel for this message if we aren't sending
 	// an inv straight after.
-	var dc chan<- bool
+//	var dc chan<- bool
 	continueHash := sp.continueMinerHash
 	sendInv := continueHash != nil && continueHash.IsEqual(hash)
-	if !sendInv {
-		dc = doneChan
-	}
-	sp.QueueMessageWithEncoding(&msgBlock, dc, encoding)
+//	if !sendInv {
+//		dc = doneChan
+//	}
 
 	// When the peer requests the final block that was advertised in
 	// response to a getblocks message which requested more blocks than
@@ -1850,6 +1849,7 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 		sp.continueMinerHash = nil
  */
 	}
+	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)
 	return nil
 }
 
