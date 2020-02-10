@@ -641,10 +641,11 @@ func (sp *serverPeer) OnBlock(_ *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 	// reference implementation processes blocks in the same
 	// thread and therefore blocks further messages until
 	// the bitcoin block has been fully processed.
-	sp.server.syncManager.QueueBlock(block, sp.Peer, sp.blockProcessed)
-	<-sp.blockProcessed
 
 	btcdLog.Info("Blocks %s received", block.Hash().String())
+
+	sp.server.syncManager.QueueBlock(block, sp.Peer, sp.blockProcessed)
+	<-sp.blockProcessed
 }
 
 // OnBlock is invoked when a peer receives a block bitcoin message.  It

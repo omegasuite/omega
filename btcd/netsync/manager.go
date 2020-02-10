@@ -165,7 +165,7 @@ type headerNode struct {
 // about a peer.
 type peerSyncState struct {
 	syncCandidate   bool
-	requestQueue    []*wire.InvVect
+//	requestQueue    []*wire.InvVect
 	requestedTxns   map[chainhash.Hash]struct{}
 	requestedBlocks map[chainhash.Hash]int
 	requestedMinerBlocks map[chainhash.Hash]int
@@ -1347,6 +1347,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	var lastMinerIgnored * wire.InvVect
 	var ignoreMinerrun int
 
+	requestQueue := make([]* wire.InvVect, 0, 1000)
+
 	// Request the advertised inventory if we don't already have it.  Also,
 	// request parent blocks of orphans if we receive one we already have.
 	// Finally, attempt to detect potential stalls due to long side chains
@@ -1392,7 +1394,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 
 			// Add it to the request queue.
 			log.Infof("%s does not exist add to requestQueue", iv.Hash.String())
-			state.requestQueue = append(state.requestQueue, iv)
+//			state.requestQueue = append(state.requestQueue, iv)
+			requestQueue = append(requestQueue, iv)
 			continue
 		}
 		if (i == lastBlock || i == lastMinerBlock) && len(imsg.inv.InvList) > 1 {
@@ -1400,8 +1403,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// the peer to send us new batch of inv list if any
 			// TBD: optimization: instead of requesting a block which may be a waste,
 			// can we ask for something else?
-			tiv := *iv
-			state.requestQueue = append(state.requestQueue, &tiv)
+//			state.requestQueue = append(state.requestQueue, iv)
+			requestQueue = append(requestQueue, iv)
 		}
 
 		if iv.Type & common.InvTypeBlock == common.InvTypeBlock {
@@ -1565,7 +1568,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	// the request will be requested on the next inv message.
 	numRequested := 0
 	gdmsg := wire.NewMsgGetData()
-	requestQueue := state.requestQueue
+//	requestQueue := state.requestQueue
 
 	resync := false
 	
