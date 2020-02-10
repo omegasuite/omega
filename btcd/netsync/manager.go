@@ -1275,7 +1275,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		return
 	}
 
-	log.Infof("handleInvMsg from %s: %d items", imsg.peer.String(), len(imsg.inv.InvList))
+//	log.Infof("handleInvMsg from %s: %d items", imsg.peer.String(), len(imsg.inv.InvList))
 /*
 	for _,r := range imsg.inv.InvList {
 		if r.Type & common.InvTypeBlock == common.InvTypeBlock {
@@ -1393,7 +1393,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			}
 
 			// Add it to the request queue.
-			log.Infof("%s does not exist add to requestQueue", iv.Hash.String())
+//			log.Infof("%s does not exist add to requestQueue", iv.Hash.String())
 //			state.requestQueue = append(state.requestQueue, iv)
 			requestQueue = append(requestQueue, iv)
 			continue
@@ -1435,7 +1435,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 								"%v", err)
 							continue
 						}
-						log.Infof("handleInvMsg: PushGetBlocksMsg from %s because encountered an tx orphan %s", peer.Addr(), iv.Hash.String())
+//						log.Infof("handleInvMsg: PushGetBlocksMsg from %s because encountered an tx orphan %s", peer.Addr(), iv.Hash.String())
 						sm.syncjobs = append(sm.syncjobs, &pendginGetBlocks{
 							peer: peer,
 							locator: locator,
@@ -1578,7 +1578,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		requestQueue[0] = nil
 		requestQueue = requestQueue[1:]
 
-		log.Infof("handleInvMsg: send getDate %s %s", iv.Type.String(), iv.Hash.String())
+//		log.Infof("handleInvMsg: send getDate %s %s", iv.Type.String(), iv.Hash.String())
 		switch iv.Type {
 		case common.InvTypeWitnessBlock:
 			fallthrough
@@ -1593,7 +1593,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 
 				iv.Type = common.InvTypeWitnessBlock
 
-				log.Infof("tx request %s add to queue list", iv.Hash.String())
+//				log.Infof("tx request %s add to queue list", iv.Hash.String())
 
 				gdmsg.AddInvVect(iv)
 				numRequested++
@@ -1625,7 +1625,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 
 				iv.Type = common.InvTypeMinerBlock
 
-				log.Infof("miner request %s add to queue list", iv.Hash.String())
+//				log.Infof("miner request %s add to queue list", iv.Hash.String())
 				gdmsg.AddInvVect(iv)
 				numRequested++
 			} else {
@@ -1672,7 +1672,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	}
 //	state.requestQueue = requestQueue
 	if len(gdmsg.InvList) > 0 {
-		log.Infof("%d requests sent", numRequested)
+//		log.Infof("%d requests sent", numRequested)
 		peer.QueueMessage(gdmsg, nil)
 	}
 }

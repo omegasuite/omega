@@ -743,7 +743,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	doneChan := make(chan bool, 1)
 
 	for i, iv := range msg.InvList {
-		btcdLog.Infof("getting %d-th item %s = %s", i, iv.Type.String(), iv.Hash.String())
+//		btcdLog.Infof("getting %d-th item %s = %s", i, iv.Type.String(), iv.Hash.String())
 		var c chan bool
 		// If this will be the last message we send.
 		if i == length-1 && len(notFound.InvList) == 0 {
@@ -807,7 +807,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
   	invMsg := wire.NewMsgInv()
 
-  	btcdLog.Infof("OnGetBlocks: tx locator hash list = %d stop hash = %s", len(msg.TxBlockLocatorHashes), msg.TxHashStop.String())
+ // 	btcdLog.Infof("OnGetBlocks: tx locator hash list = %d stop hash = %s", len(msg.TxBlockLocatorHashes), msg.TxHashStop.String())
 
 	// a special request to get the block being mined by the committee
 /*
@@ -938,10 +938,10 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 
 	// Send the inventory message if there is anything to send.
 	if len(invMsg.InvList) > 0 {
-		h,_ := sp.server.chain.BlockHeightByHash(&invMsg.InvList[0].Hash)
-		btcdLog.Infof("OnGetBlocks: sending out invMsg %d blocks starting height %d to %s", m, h, sp.Addr())
-		btcdLog.Infof("first = %s\nlast = %s\ntxcontinue=%s\nminer continue = %s", invMsg.InvList[0].Hash.String(),
-			invMsg.InvList[len(invMsg.InvList) - 1].Hash.String(), continueHash.String(), mcontinueHash.String())
+//		h,_ := sp.server.chain.BlockHeightByHash(&invMsg.InvList[0].Hash)
+//		btcdLog.Infof("OnGetBlocks: sending out invMsg %d blocks starting height %d to %s", m, h, sp.Addr())
+//		btcdLog.Infof("first = %s\nlast = %s\ntxcontinue=%s\nminer continue = %s", invMsg.InvList[0].Hash.String(),
+//			invMsg.InvList[len(invMsg.InvList) - 1].Hash.String(), continueHash.String(), mcontinueHash.String())
 
 //		invListLen := len(invMsg.InvList)
 //		if invListLen == wire.MaxBlocksPerMsg {
@@ -965,8 +965,8 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			return
 		}
 
-		btcdLog.Infof("OnGetBlocks: PushGetBlocksMsg from %s because it appears I have more (%d, %d) blocks than asked",
-			sp.Addr(), sp.server.chain.BestSnapshot().Height, sp.server.chain.Miners.BestSnapshot().Height)
+//		btcdLog.Infof("OnGetBlocks: PushGetBlocksMsg from %s because it appears I have more (%d, %d) blocks than asked",
+//			sp.Addr(), sp.server.chain.BestSnapshot().Height, sp.server.chain.Miners.BestSnapshot().Height)
 		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 	}
 }
@@ -1643,10 +1643,10 @@ func (s *server) pushTxMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<-
 func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- bool,
 	waitChan <-chan bool, encoding wire.MessageEncoding) error {
 
-	btcdLog.Infof("pushBlockMsg: %s", hash.String())
-	if sp.continueHash != nil {
-		btcdLog.Infof("sp.continueHash = %s", sp.continueHash.String())
-	}
+//	btcdLog.Infof("pushBlockMsg: %s", hash.String())
+//	if sp.continueHash != nil {
+//		btcdLog.Infof("sp.continueHash = %s", sp.continueHash.String())
+//	}
 
 	// Fetch the raw block bytes from the database.
 	var blockBytes []byte
@@ -1783,7 +1783,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- bool,
 	waitChan <-chan bool, encoding wire.MessageEncoding) error {
 
-	btcdLog.Infof("pushMinerBlockMsg: %s", hash.String())
+//	btcdLog.Infof("pushMinerBlockMsg: %s", hash.String())
 
 	// Fetch the raw block bytes from the database.
 	var blockBytes []byte

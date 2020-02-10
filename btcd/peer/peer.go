@@ -1460,7 +1460,7 @@ out:
 			break out
 		}
 
-		log.Infof("inHandler read: %s", rmsg.Command())
+//		log.Infof("inHandler read: %s", rmsg.Command())
 
 		atomic.StoreInt64(&p.lastRecv, time.Now().Unix())
 		p.stallControl <- stallControlMsg{sccReceiveMessage, rmsg}
@@ -1697,7 +1697,7 @@ out:
 		idleTimer.Reset(idleTimeout)
 	}
 
-	log.Infof("atomic.LoadInt32(&p.disconnect) = %d", atomic.LoadInt32(&p.disconnect))
+//	log.Infof("atomic.LoadInt32(&p.disconnect) = %d", atomic.LoadInt32(&p.disconnect))
 
 	// Ensure the idle timer is stopped to avoid leaking the resource.
 	idleTimer.Stop()
