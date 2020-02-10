@@ -811,10 +811,6 @@ func (s *server) CommitteeMsg(p [20]byte, m wire.Message) bool {
 	return false
 }
 
-func (s *server) UpdateSM() {
-	s.syncManager.Update()
-}
-
 func (s *server) CommitteePolling() {
 	best := s.chain.BestSnapshot()
 	ht := best.Height

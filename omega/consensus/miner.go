@@ -34,7 +34,6 @@ type PeerNotifier interface {
 	MinerBlockByHeight(int32) (* wire.MinerBlock,error)
 	SubscribeChain(func (*blockchain.Notification))
 	CommitteePolling()
-	UpdateSM()
 }
 
 type Miner struct {
@@ -184,8 +183,6 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 			}
 			miner.syncMutex.Unlock()
 			log.Infof("\nTop Syncer: %d", top)
-
-			miner.server.UpdateSM()
 
 //			miner.server.CommitteePolling()
 
