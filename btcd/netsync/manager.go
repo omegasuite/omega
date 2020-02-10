@@ -299,8 +299,8 @@ func (sm *SyncManager) addSyncJob(peer *peerpkg.Peer, locator, mlocator chainhas
 
 func (sm *SyncManager) updateSyncPeer() {
 	if sm.syncPeer != nil {
-		state := sm.peerStates[sm.syncPeer]
-		if len(state.requestedMinerBlocks) > 0 || len(state.requestedBlocks) > 0 {
+		state,ok := sm.peerStates[sm.syncPeer]
+		if ok && (len(state.requestedMinerBlocks) > 0 || len(state.requestedBlocks) > 0) {
 			tm := int(time.Now().Unix())
 			for _, t := range state.requestedBlocks {
 				if t > tm+30 {
