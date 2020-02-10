@@ -318,6 +318,8 @@ func (sm *SyncManager) StartSync() {
 // simply returns.  It also examines the candidates for any which are no longer
 // candidates and removes them as needed.
 func (sm *SyncManager) startSync(p *peerpkg.Peer) {
+	return
+
 	if sm.syncPeer != nil {
 		return
 	}
@@ -1575,7 +1577,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		requestQueue[0] = nil
 		requestQueue = requestQueue[1:]
 
-		log.Infof("handleInvMsg: send getDate %s = %s", iv.Type.String(), iv.Hash.String())
+		log.Infof("handleInvMsg: send getDate %s %s", iv.Type.String(), iv.Hash.String())
 		switch iv.Type {
 		case common.InvTypeWitnessBlock:
 			fallthrough
@@ -1761,7 +1763,7 @@ out:
 				msg.reply <- peerID
 
 			case updateSyncPeerMsg:
-				sm.updateSyncPeer()
+//				sm.updateSyncPeer()
 
 			case processBlockMsg:
 				_, isOrphan, err := sm.chain.ProcessBlock(

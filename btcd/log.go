@@ -87,7 +87,7 @@ func init() {
 	indexers.UseLogger(btclog.Disabled)	// indxLog)
 	mining.UseLogger(btclog.Disabled)	// minrLog)
 	cpuminer.UseLogger(btclog.Disabled)	// minrLog)
-	peer.UseLogger(btclog.Disabled)	// peerLog)
+	peer.UseLogger(peerLog)
 //	UseLogger(scrpLog)
 
 	netsync.UseLogger(syncLog)

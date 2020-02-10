@@ -939,8 +939,8 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 	if len(invMsg.InvList) > 0 {
 		h,_ := sp.server.chain.BlockHeightByHash(&invMsg.InvList[0].Hash)
 		btcdLog.Infof("OnGetBlocks: sending out invMsg %d blocks starting height %d to %s", m, h, sp.Addr())
-		btcdLog.Infof("first = %s\nlast = %s\ncontinue=%s", invMsg.InvList[0].Hash.String(),
-			invMsg.InvList[len(invMsg.InvList) - 1].Hash.String(), continueHash.String())
+		btcdLog.Infof("first = %s\nlast = %s\ntxcontinue=%s\nminer continue = %s", invMsg.InvList[0].Hash.String(),
+			invMsg.InvList[len(invMsg.InvList) - 1].Hash.String(), continueHash.String(), mcontinueHash.String())
 
 //		invListLen := len(invMsg.InvList)
 //		if invListLen == wire.MaxBlocksPerMsg {
@@ -1782,6 +1782,8 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- bool,
 	waitChan <-chan bool, encoding wire.MessageEncoding) error {
 
+	btcdLog.Infof("pushMinerBlockMsg: %s", hash.String())
+
 	// Fetch the raw block bytes from the database.
 	var blockBytes []byte
 	err := sp.server.minerdb.View(func(dbTx database.Tx) error {
@@ -1790,8 +1792,8 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 		return err
 	})
 	if err != nil {
-		peerLog.Tracef("Unable to fetch requested block hash %v: %v",
-			hash, err)
+		btcdLog.Infof("Unable to fetch requested block hash %s: %s",
+			hash.String(), err.Error())
 
 		if doneChan != nil {
 			doneChan <- false
@@ -1803,8 +1805,8 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 	var msgBlock wire.MingingRightBlock
 	err = msgBlock.Deserialize(bytes.NewReader(blockBytes))
 	if err != nil {
-		peerLog.Tracef("Unable to deserialize requested block hash "+
-			"%v: %v", hash, err)
+		btcdLog.Infof("Unable to deserialize requested block hash "+
+			"%s: %s", hash.String(), err.Error())
 
 		if doneChan != nil {
 			doneChan <- false
