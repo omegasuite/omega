@@ -642,7 +642,7 @@ func (sp *serverPeer) OnBlock(_ *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 	// thread and therefore blocks further messages until
 	// the bitcoin block has been fully processed.
 
-	btcdLog.Info("Blocks %s received", block.Hash().String())
+//	btcdLog.Infof("Blocks %s received", block.Hash().String())
 
 	sp.server.syncManager.QueueBlock(block, sp.Peer, sp.blockProcessed)
 	<-sp.blockProcessed
@@ -723,7 +723,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	numAdded := 0
 	notFound := wire.NewMsgNotFound()
 
-	btcdLog.Infof("OnGetData：getting % items", len(msg.InvList))
+//	btcdLog.Infof("OnGetData：getting % items", len(msg.InvList))
 
 	length := len(msg.InvList)
 	// A decaying ban score increase is applied to prevent exhausting resources
