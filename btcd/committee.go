@@ -657,8 +657,8 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 }
 
 func (s *server) handleCommitteRotation(state *peerState, r int32) {
-	consensusLog.Infof("handleCommitteRotation at %d", r)
-	s.peerState.print()
+//	consensusLog.Infof("handleCommitteRotation at %d", r)
+//	s.peerState.print()
 
 	b := s.chain
 

@@ -807,18 +807,21 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
   	invMsg := wire.NewMsgInv()
 
- // 	btcdLog.Infof("OnGetBlocks: tx locator hash list = %d stop hash = %s", len(msg.TxBlockLocatorHashes), msg.TxHashStop.String())
+  	ht := int32(len(msg.TxBlockLocatorHashes))
+  	if ht > 13 {
+  		ht = 12 * (1 << (ht - 12)) - 12
+	}
+	mt := int32(len(msg.MinerBlockLocatorHashes))
+	if mt > 13 {
+		mt = 12 * (1 << (mt - 12)) - 12
+	}
 
-	// a special request to get the block being mined by the committee
-/*
-	if block := sp.server.cpuMiner.CurrentBlock(); block != nil && * block.Hash() == msg.TxHashStop {
-		// check if it is a block seeking consensus
-		iv := wire.NewInvVect(common.InvTypeWitnessBlock, &msg.TxHashStop)
-		invMsg.AddInvVect(iv)
-		sp.QueueMessage(invMsg, nil)
+	chain := sp.server.chain
+	mchain := sp.server.chain.Miners.(*minerchain.MinerChain)
+
+	if ht > chain.BestSnapshot().Height + wire.MaxBlocksPerMsg && mt > mchain.BestSnapshot().Height + wire.MaxBlocksPerMsg {
 		return
 	}
- */
 
 	// Find the most recent known block in the best chain based on the block
 	// locator and fetch all of the block hashes after it until either
@@ -830,8 +833,6 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 	// over with the genesis block if unknown block locators are provided.
 	//
 	// This mirrors the behavior in the reference implementation.
-	chain := sp.server.chain
-	mchain := sp.server.chain.Miners.(*minerchain.MinerChain)
 	hashList := chain.LocateBlocks(msg.TxBlockLocatorHashes, &msg.TxHashStop,
 		wire.MaxBlocksPerMsg)
 	mhashList := mchain.LocateBlocks(msg.MinerBlockLocatorHashes, &msg.MinerHashStop,
@@ -848,47 +849,6 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 	sp.continueMinerHash = nil
 
 	var rot int32
-/*
-	if len(hashList) > 0 && len(mhashList) > 0 {
-		// ensure the miner list will include the rotation block for the first tx block
-		isin := false
-		rot = chain.Rotation(hashList[0])
-
-		fh,_ := mchain.BlockHeightByHash(&mhashList[0])
-		if fh < rot {
-			r0, _ := mchain.BlockByHeight(rot)
-			if r0 != nil {
-				h0 := r0.Hash()
-				for _, h := range mhashList {
-					if h == *h0 {
-						isin = true
-					}
-				}
-
-				if !isin {
-					prelist := mchain.LocateBlocks([]*chainhash.Hash{h0}, &mhashList[0],
-						wire.MaxBlocksPerMsg)
-					mhashList = append(prelist, mhashList...)
-				}
-			}
-		}
-
-		// ensure the tx hash list has the best block in the first miner block
-		mblk,_ := mchain.HeaderByHash(&mhashList[0])
-		isin = false
-		for _,h := range hashList {
-			if h == mblk.BestBlock {
-				isin = true
-			}
-		}
-		if !isin {
-			prelist := chain.LocateBlocks([]*chainhash.Hash{&mblk.BestBlock}, &hashList[0],
-				wire.MaxBlocksPerMsg)
-			hashList = append(prelist, hashList...)
-			rot = chain.Rotation(hashList[0])
-		}
-	}
- */
 
 	var mblock * wire.MinerBlock
 
@@ -910,7 +870,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			th := hashList[i]
 			iv := wire.NewInvVect(common.InvTypeWitnessBlock, &th)
 			invMsg.AddInvVect(iv)
-//			btcdLog.Infof("Sending tx block %s to %s", hashList[i].String(), sp.Addr())
+
 			continueHash = th
 			i++
 			if i < len(hashList) {
@@ -925,7 +885,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			th := mhashList[j]
 			iv := wire.NewInvVect(common.InvTypeMinerBlock, &th)
 			invMsg.AddInvVect(iv)
-//			btcdLog.Infof("Sending miner block %s to %s", mhashList[j].String(), sp.Addr())
+
 			j++
 			mcontinueHash = th
 			if j < len(mhashList) {
@@ -938,22 +898,12 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 
 	// Send the inventory message if there is anything to send.
 	if len(invMsg.InvList) > 0 {
-//		h,_ := sp.server.chain.BlockHeightByHash(&invMsg.InvList[0].Hash)
-//		btcdLog.Infof("OnGetBlocks: sending out invMsg %d blocks starting height %d to %s", m, h, sp.Addr())
-//		btcdLog.Infof("first = %s\nlast = %s\ntxcontinue=%s\nminer continue = %s", invMsg.InvList[0].Hash.String(),
-//			invMsg.InvList[len(invMsg.InvList) - 1].Hash.String(), continueHash.String(), mcontinueHash.String())
-
-//		invListLen := len(invMsg.InvList)
-//		if invListLen == wire.MaxBlocksPerMsg {
-			// Intentionally use a copy of the final hash so there
-			// is not a reference into the inventory slice which
-			// would prevent the entire slice from being eligible
-			// for GC as soon as it's sent.
-			sp.continueHash = &continueHash
-			sp.continueMinerHash = &mcontinueHash
-//		}
+		sp.continueHash = &continueHash
+		sp.continueMinerHash = &mcontinueHash
 		sp.QueueMessage(invMsg, nil)
-	} else if (continueHash != zeroHash && continueHash != sp.server.chain.BestSnapshot().Hash) ||
+	}
+/*
+	else if (continueHash != zeroHash && continueHash != sp.server.chain.BestSnapshot().Hash) ||
 			(mcontinueHash != zeroHash && mcontinueHash != sp.server.chain.Miners.BestSnapshot().Hash) {
 		mlocator, err := sp.server.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 		if err != nil {
@@ -964,11 +914,9 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		if err != nil {
 			return
 		}
-
-//		btcdLog.Infof("OnGetBlocks: PushGetBlocksMsg from %s because it appears I have more (%d, %d) blocks than asked",
-//			sp.Addr(), sp.server.chain.BestSnapshot().Height, sp.server.chain.Miners.BestSnapshot().Height)
 		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 	}
+ */
 }
 
 // OnGetHeaders is invoked when a peer receives a getheaders bitcoin
