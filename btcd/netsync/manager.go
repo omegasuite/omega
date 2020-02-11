@@ -694,7 +694,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		log.Warnf("Received block message from unknown peer %s", peer)
 		return
 	}
-
+/*
 	defer func() {
 		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
 			if len(sm.syncjobs) > 0 {
@@ -708,6 +708,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 			}
 		}
 	}()
+ */
 
 	behaviorFlags := blockchain.BFNone
 
@@ -837,6 +838,12 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		heightUpdate = int32(bmsg.block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
 		blkHashUpdate = blockHash
 
+		// add a sync jon
+		tlocator, _ := sm.chain.LatestBlockLocator()
+		orphanRoot := sm.chain.GetOrphanRoot(blockHash)
+		locator, _ := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+		sm.addSyncJob(peer, tlocator, locator, orphanRoot, &zeroHash)
+
 /*
 		orphanRoot := sm.chain.GetOrphanRoot(blockHash)
 		locator, err := sm.chain.LatestBlockLocator()
@@ -941,7 +948,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		log.Warnf("Received block message from unknown peer %s", peer)
 		return
 	}
-
+/*
 	defer func() {
 		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
 			if len(sm.syncjobs) > 0 {
@@ -955,6 +962,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 			}
 		}
 	}()
+ */
 
 //	log.Infof("handleMinerBlockMsg: %v", bmsg.block.MsgBlock().PrevBlock)
 
