@@ -901,9 +901,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		sp.continueHash = &continueHash
 		sp.continueMinerHash = &mcontinueHash
 		sp.QueueMessage(invMsg, nil)
-	}
-/*
-	else if (continueHash != zeroHash && continueHash != sp.server.chain.BestSnapshot().Hash) ||
+	} else if (continueHash != zeroHash && continueHash != sp.server.chain.BestSnapshot().Hash) ||
 			(mcontinueHash != zeroHash && mcontinueHash != sp.server.chain.Miners.BestSnapshot().Hash) {
 		mlocator, err := sp.server.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 		if err != nil {
@@ -916,7 +914,6 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		}
 		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 	}
- */
 }
 
 // OnGetHeaders is invoked when a peer receives a getheaders bitcoin
@@ -1705,11 +1702,13 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 	// to trigger it to issue another getblocks message for the next
 	// batch of inventory.
 	if sendInv {
+/*
 		gmsg := wire.NewMsgGetBlocks(&sp.hashStop, &sp.minerHashStop)
 		gmsg.TxBlockLocatorHashes = []*chainhash.Hash{sp.continueHash}
 		gmsg.MinerBlockLocatorHashes = []*chainhash.Hash{sp.continueMinerHash}
 		sp.OnGetBlocks(sp.Peer, gmsg)
-/*
+ */
+
 		best := sp.server.chain.BestSnapshot()
 		invMsg := wire.NewMsgInvSizeHint(1)
 		t := common.InvTypeWitnessBlock
@@ -1720,7 +1719,6 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		invMsg.AddInvVect(iv)
 		sp.QueueMessage(invMsg, doneChan)
 		sp.continueHash = nil
- */
 	}
 
 	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)
@@ -1785,18 +1783,19 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 	// to trigger it to issue another getblocks message for the next
 	// batch of inventory.
 	if sendInv {
+/*
 		gmsg := wire.NewMsgGetBlocks(&sp.hashStop, &sp.minerHashStop)
 		gmsg.TxBlockLocatorHashes = []*chainhash.Hash{sp.continueHash}
 		gmsg.MinerBlockLocatorHashes = []*chainhash.Hash{sp.continueMinerHash}
 		sp.OnGetBlocks(sp.Peer, gmsg)
-/*
+ */
+
 		best := sp.server.chain.Miners.BestSnapshot()
 		invMsg := wire.NewMsgInvSizeHint(1)
 		iv := wire.NewInvVect(common.InvTypeMinerBlock, &best.Hash)
 		invMsg.AddInvVect(iv)
 		sp.QueueMessage(invMsg, doneChan)
 		sp.continueMinerHash = nil
- */
 	}
 	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)
 	return nil

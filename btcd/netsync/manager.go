@@ -2011,6 +2011,8 @@ func (sm *SyncManager) Stop() error {
 	return nil
 }
 
+
+
 // SyncPeerID returns the ID of the current sync peer, or 0 if there is none.
 func (sm *SyncManager) SyncPeerID() int32 {
 	reply := make(chan int32)
