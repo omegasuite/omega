@@ -808,12 +808,12 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
   	invMsg := wire.NewMsgInv()
 
   	ht := int32(len(msg.TxBlockLocatorHashes))
-  	if ht > 13 {
-  		ht = 12 * (1 << (ht - 12)) - 12
+  	if ht > 12 {
+  		ht = (1 << (ht - 12)) + 11
 	}
 	mt := int32(len(msg.MinerBlockLocatorHashes))
-	if mt > 13 {
-		mt = 12 * (1 << (mt - 12)) - 12
+	if mt > 12 {
+		mt = (1 << (mt - 12)) + 11
 	}
 
 	chain := sp.server.chain

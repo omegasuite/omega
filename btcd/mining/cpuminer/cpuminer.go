@@ -523,7 +523,7 @@ flushconnch:
 						}
 
 					default:
-						time.Sleep(time.Second)
+						time.Sleep(time.Second * 5)
 //						consensus.DebugInfo()
 						log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
 					}

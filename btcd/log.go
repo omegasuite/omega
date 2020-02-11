@@ -86,7 +86,7 @@ func init() {
 	blockchain.UseLogger(chanLog)
 	indexers.UseLogger(btclog.Disabled)	// indxLog)
 	mining.UseLogger(btclog.Disabled)	// minrLog)
-	cpuminer.UseLogger(btclog.Disabled)	// minrLog)
+	cpuminer.UseLogger(minrLog)
 	peer.UseLogger(btclog.Disabled)	// peerLog)
 //	UseLogger(scrpLog)
 
@@ -96,7 +96,7 @@ func init() {
 	mempool.UseLogger(btclog.Disabled)	// txmpLog)
 	ovm.UseLogger(btclog.Disabled)	// ovmLog)
 	consensus.UseLogger(btclog.Disabled)	// consensusLog)
-	minerchain.UseLogger(btclog.Disabled)	// minerLog)
+	minerchain.UseLogger(minerLog)
 	token.UseLogger(btclog.Disabled)	// tokenLog)
 
 	srvrLog = btclog.Disabled
