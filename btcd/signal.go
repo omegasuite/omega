@@ -37,19 +37,21 @@ func interruptListener() <-chan struct{} {
 			select {
 			case sig := <-interruptChannel:
 				btcdLog.Infof("Received signal (%s).  Shutting down...", sig)
+				t := time.Now().Unix()
+				if t-last < 20 {
+					break
+				}
+				last = t
+
+				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+				consensus.CommitteePolling()
 
 			case <-shutdownRequestChannel:
 				btcdLog.Info("Shutdown requested.  Shutting down...")
-			}
-
-			t := time.Now().Unix()
-			if t-last < 20 {
+				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+				consensus.CommitteePolling()
 				break
 			}
-			last = t
-
-			pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
-			consensus.CommitteePolling()
 		}
 
 		close(c)
@@ -74,6 +76,7 @@ func interruptListener() <-chan struct{} {
 
 			if repeats > 5 {
 				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+				repeats = 0
 			}
 		}
 	}()
