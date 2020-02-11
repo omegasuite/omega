@@ -191,8 +191,8 @@ func (b *BlockChain) CheckSideChain(hash *chainhash.Hash) {
 	}
 
 	// Reorganize the chain.
-	log.Infof("tx REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches", node.hash, detachNodes.Len(), attachNodes.Len())
 	b.ReorganizeChain(detachNodes, attachNodes)
+	log.Infof("CheckSideChain: tx REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches. New chain height = %d", node.hash, detachNodes.Len(), attachNodes.Len(), b.BestSnapshot().Height)
 
 	b.index.flushToDB()
 }
@@ -226,7 +226,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	if !prevHashExists {
 		log.Infof("block %s: prevHash block %s does not exist", block.Hash().String(), prevHash.String())
 		if flags & BFNoConnect == 0 {
-			log.Infof("Adding orphan block %s with parent %s", block.Hash().String(), prevHash.String())
+			log.Infof("Adding orphan block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
 			b.AddOrphanBlock(block)
 		}
 		return false, true, nil
@@ -244,6 +244,10 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	blockHeight := prevNode.height + 1
 	block.SetHeight(blockHeight)
+
+	if blockHeight != int32(block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index) {
+		return false, false, ruleError(ErrInvalidAncestorBlock, "Block height inconsistent with ostensible height")
+	}
 
 //	fastAdd := flags&BFFastAdd == BFFastAdd
 

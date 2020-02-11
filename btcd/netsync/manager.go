@@ -341,19 +341,13 @@ func (sm *SyncManager) StartSync() {
 // simply returns.  It also examines the candidates for any which are no longer
 // candidates and removes them as needed.
 func (sm *SyncManager) startSync(p *peerpkg.Peer) {
+	// Return now if we're already syncing.
 	if sm.syncPeer != nil {
 		return
 	}
 
-	// Return now if we're already syncing.
 	best := sm.chain.Miners.BestSnapshot()
-//	txbest := sm.chain.BestSnapshot()
 	var bestPeer *peerpkg.Peer
-
-//	selit := false
-
-	// If p != nil, pick the one after p, otherwise Pick the one with longest miner chain,
-	// as it is likely to have longest tx chain because miner block depends on tx block
 
 	// we always choose the one that was sync peer in the most distant past. so everyone
 	// has a chance to become sync peer
@@ -364,43 +358,6 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 		}
 		tm = state.syncTime
 		bestPeer = peer
-/*
-		log.Infof("Check peer %d： %s", peer.ID(), peer.String())
-
-		if selit {
-			bestPeer = peer
-			break
-		}
-
-		if peer == p {
-			selit = true
-		}
-
-		if bestPeer == nil {
-			bestPeer = peer
-			continue
-		}
-
-		// Remove sync candidate peers that are no longer candidates due
-		// to passing their latest known block.  NOTE: The < is
-		// intentional as opposed to <=.  While technically the peer
-		// doesn't have a later block when it's equal, it will likely
-		// have one soon so it is a reasonable choice.  It also allows
-		// the case where both are at 0 such as during regression test.
-
-		// we only check miner chain because longer miner chain means longer tx chain
-		// and we check on chain only to avoid inconsistency
-		if peer.LastMinerBlock() < best.Height ||
-			(peer.LastMinerBlock() == best.Height && peer.LastBlock() < txbest.Height) {
-//			state.syncCandidate = false
-			continue
-		}
-
-		if bestPeer == nil || peer.LastMinerBlock() > bestPeer.LastMinerBlock() ||
-			(peer.LastMinerBlock() == bestPeer.LastMinerBlock() && peer.LastBlock() > bestPeer.LastBlock()) {
-			bestPeer = peer
-		}
- */
 	}
 
 	if bestPeer == nil || bestPeer == p {
@@ -410,11 +367,9 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 
 	sm.peerStates[bestPeer].syncTime = time.Now().Unix()
 
-	log.Infof("Syncing with %s", bestPeer.String())
-
 	// Start syncing from the best peer if one was selected.
 	if bestPeer != nil {
-		log.Infof("Start sync with bestPeer %s", bestPeer.String())
+		log.Warnf("Start sync with bestPeer %s", bestPeer.String())
 
 		// sync miner chain and then tx chain
 		// Clear the requestedBlocks if the sync peer changes, otherwise
@@ -427,6 +382,8 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 
 		sm.peerStates[bestPeer].requestedBlocks = make(map[chainhash.Hash]int)
 		sm.peerStates[bestPeer].requestedMinerBlocks = make(map[chainhash.Hash]int)
+
+		sm.syncPeer = bestPeer
 
 		mlocator, err := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 		if err != nil {
@@ -442,10 +399,6 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 				"latest block: %v", err)
 			return
 		}
-
-		// TODO: Donn't request all miner block and then tx blocks. Instead, make request
-		// intewovenly to optimize use of memry and reduce the chanse that orphan gets kicked
-		// out.
 
 		log.Infof("Syncing tx chain to block height %d  and miner height %d from peer %v",
 			bestPeer.LastBlock(), bestPeer.LastMinerBlock(), bestPeer.Addr())
@@ -479,8 +432,6 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 		}
 		log.Infof("startSync: PushGetBlocksMsg from %s", bestPeer.Addr())
 		bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
-
-		sm.syncPeer = bestPeer
 	} else {
 		log.Warnf("No sync peer candidates available or this node has the longest chain")
 	}

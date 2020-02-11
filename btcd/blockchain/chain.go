@@ -1382,8 +1382,8 @@ func (b *BlockChain) connectBestChain(node *blockNode, block *btcutil.Block, fla
 	detachNodes, attachNodes := b.getReorganizeNodes(node)
 
 	// Reorganize the chain.
-	log.Infof("REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches", node.hash, detachNodes.Len(), attachNodes.Len())
 	err := b.ReorganizeChain(detachNodes, attachNodes)
+	log.Infof("connectBestChain: tx REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches. New chain height = %d", node.hash, detachNodes.Len(), attachNodes.Len(), b.BestSnapshot().Height)
 
 	// Either getReorganizeNodes or ReorganizeChain could have made unsaved
 	// changes to the block index, so flush regardless of whether there was an
@@ -1447,7 +1447,7 @@ func (b *BlockChain) IsCurrent() bool {
 	} ()
 */
 
-	return b.isCurrent() && b.Miners.IsCurrent()
+	return b.isCurrent()	// && b.Miners.IsCurrent()
 }
 
 // BestSnapshot returns information about the current best chain block and

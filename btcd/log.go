@@ -90,8 +90,8 @@ func init() {
 	peer.UseLogger(btclog.Disabled)	// peerLog)
 //	UseLogger(scrpLog)
 
-	netsync.UseLogger(btclog.Disabled)	//syncLog)
-//	syncLog.SetLevel(btclog.LevelError)
+	netsync.UseLogger(syncLog)
+	syncLog.SetLevel(btclog.LevelWarn)
 
 	mempool.UseLogger(btclog.Disabled)	// txmpLog)
 	ovm.UseLogger(btclog.Disabled)	// ovmLog)

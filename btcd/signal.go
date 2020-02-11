@@ -33,13 +33,14 @@ func interruptListener() <-chan struct{} {
 
 		// Listen for initial shutdown signal and close the returned
 		// channel to notify the caller.
+	shutdown:
 		for true {
 			select {
 			case sig := <-interruptChannel:
 				btcdLog.Infof("Received signal (%s).  Shutting down...", sig)
 				t := time.Now().Unix()
 				if t-last < 20 {
-					break
+					break shutdown
 				}
 				last = t
 
@@ -50,7 +51,7 @@ func interruptListener() <-chan struct{} {
 				btcdLog.Info("Shutdown requested.  Shutting down...")
 				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 				consensus.CommitteePolling()
-				break
+				break shutdown
 			}
 		}
 
