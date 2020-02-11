@@ -315,16 +315,19 @@ func (sm *SyncManager) updateSyncPeer() {
 		}
 	}
 
-	if len(sm.syncjobs) > 0 {
+	for len(sm.syncjobs) > 0 {
 		j := sm.syncjobs[0]
 		sm.syncjobs = sm.syncjobs[1:]
-		sm.syncPeer = j.peer
-		j.peer.PushGetBlocksMsg(j.locator, j.mlocator, j.stopHash, j.mstopHash)
-	} else {
-		p := sm.syncPeer
-		sm.syncPeer = nil
-		sm.startSync(p)
+		if j.peer.Connected() {
+			sm.syncPeer = j.peer
+			j.peer.PushGetBlocksMsg(j.locator, j.mlocator, j.stopHash, j.mstopHash)
+			return
+		}
 	}
+
+	p := sm.syncPeer
+	sm.syncPeer = nil
+	sm.startSync(p)
 }
 
 func (sm *SyncManager) StartSync() {
