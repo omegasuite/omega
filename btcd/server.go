@@ -2023,6 +2023,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	state.cmutex.Lock()
 	if sp.Inbound() {
 		state.inboundPeers[sp.ID()] = sp
+		state.cmutex.Unlock()
 	} else {
 		state.outboundGroups[addrmgr.GroupKey(sp.NA())]++
 		if sp.persistent {
@@ -2042,14 +2043,14 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 			sb, _ := s.chain.Miners.BlockByHeight(sp.connReq.Committee)
 			copy(sp.Peer.Miner[:], sb.MsgBlock().Miner[:])
 		}
+		state.cmutex.Unlock()
+
 		if sp.connReq.Initcallback != nil {
 			// one time call back to allow us send msg immediately after successful connection
 			sp.connReq.Initcallback(sp)
 			sp.connReq.Initcallback = nil
 		}
 	}
-//	btcdLog.Infof("cmutex.Unlock")
-	state.cmutex.Unlock()
 
 	return true
 }
