@@ -196,7 +196,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 
 	blockHash := block.Hash()
 
-	log.Infof("Block hash %s\nprevhash %s", blockHash.String(), block.MsgBlock().PrevBlock.String())
+	log.Infof("miner Block hash %s\nprevhash %s", blockHash.String(), block.MsgBlock().PrevBlock.String())
 
 	// The block must not already exist in the main chain or side chains.
 	exists, err := b.blockExists(blockHash)
@@ -215,7 +215,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
-	err = checkBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
+	err = CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return false, false, err
 	}
@@ -264,7 +264,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		log.Infof("Adding miner orphan block %s because BestBlock %s or ReferredBlock %s does not exist in tx chain", blockHash.String(), block.MsgBlock().BestBlock.String(), block.MsgBlock().ReferredBlock.String())
 		b.addOrphanBlock(block)
 
-		return false, true, nil
+		return true, true, nil
 	}
 
 //	log.Infof("maybeAcceptBlock ready")
@@ -301,7 +301,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 //
 // The flags do not modify the behavior of this function directly, however they
 // are needed to pass along to checkBlockHeaderSanity.
-func checkBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource blockchain.MedianTimeSource, flags blockchain.BehaviorFlags) error {
+func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource blockchain.MedianTimeSource, flags blockchain.BehaviorFlags) error {
 	// Ensure the proof of work bits in the block header is in min/max range
 	// and the block hash is less than the target value described by the
 	// bits.

@@ -303,12 +303,12 @@ func (sm *SyncManager) updateSyncPeer() {
 		if ok && (len(state.requestedMinerBlocks) > 0 || len(state.requestedBlocks) > 0) {
 			tm := int(time.Now().Unix())
 			for _, t := range state.requestedBlocks {
-				if t > tm+30 {
+				if t > tm - 30 {
 					return
 				}
 			}
 			for _, t := range state.requestedMinerBlocks {
-				if t > tm+30 {
+				if t > tm - 30 {
 					return
 				}
 			}
@@ -645,9 +645,11 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		log.Warnf("Received block message from unknown peer %s", peer)
 		return
 	}
-/*
+
 	defer func() {
 		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+			sm.updateSyncPeer()
+/*
 			if len(sm.syncjobs) > 0 {
 				j := sm.syncjobs[0]
 				sm.syncjobs = sm.syncjobs[1:]
@@ -657,9 +659,9 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 				sm.syncPeer = nil
 				sm.startSync(p)
 			}
+ */
 		}
 	}()
- */
 
 	behaviorFlags := blockchain.BFNone
 
@@ -732,7 +734,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
 	log.Infof("netsyc ProcessBlock %s at %d", bmsg.block.Hash().String(), bmsg.block.Height())
-	_, isOrphan, err := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
+	isMainchain, isOrphan, err := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
 	if err != nil {
 		// When the error is a rule error, it means the block was simply
@@ -783,17 +785,25 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	// Request the parents for the orphan block from the peer that sent it.
 	if isOrphan {
-		// We've just received an orphan block from a peer. In order
-		// to update the height of the peer, we try to extract the
-		// block height from the scriptSig of the coinbase transaction.
-		heightUpdate = int32(bmsg.block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
-		blkHashUpdate = blockHash
+		if isMainchain {
+			// if isMainchain is true, it is because we don't have the best TX block, so
+			// there is no need to get blocks before the orphan
+			return
+		} else {
+			// We've just received an orphan block from a peer. In order
+			// to update the height of the peer, we try to extract the
+			// block height from the scriptSig of the coinbase transaction.
+			heightUpdate = int32(bmsg.block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
+			blkHashUpdate = blockHash
 
-		// add a sync jon
-		tlocator, _ := sm.chain.LatestBlockLocator()
-		orphanRoot := sm.chain.GetOrphanRoot(blockHash)
-		locator, _ := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
-		sm.addSyncJob(peer, tlocator, locator, orphanRoot, &zeroHash)
+			// add a sync jon
+			tlocator, _ := sm.chain.LatestBlockLocator()
+			orphanRoot := sm.chain.GetOrphanRoot(blockHash)
+			if *orphanRoot == *blockHash {
+				locator, _ := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+				sm.addSyncJob(peer, tlocator, locator, orphanRoot, &zeroHash)
+			}
+		}
 
 /*
 		orphanRoot := sm.chain.GetOrphanRoot(blockHash)
@@ -899,9 +909,11 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		log.Warnf("Received block message from unknown peer %s", peer)
 		return
 	}
-/*
+
 	defer func() {
 		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+			sm.updateSyncPeer()
+/*
 			if len(sm.syncjobs) > 0 {
 				j := sm.syncjobs[0]
 				sm.syncjobs = sm.syncjobs[1:]
@@ -911,9 +923,9 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 				sm.syncPeer = nil
 				sm.startSync(p)
 			}
+ */
 		}
 	}()
- */
 
 //	log.Infof("handleMinerBlockMsg: %v", bmsg.block.MsgBlock().PrevBlock)
 
@@ -945,8 +957,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	// handling, etc.
 
 	log.Infof("sm.chain.Miners.ProcessBlock")
-	_, isOrphan, err := sm.chain.Miners.ProcessBlock(bmsg.block, behaviorFlags)
-	log.Infof("Processed")
+	isMainchain, isOrphan, err := sm.chain.Miners.ProcessBlock(bmsg.block, behaviorFlags)
 
 	if err != nil {
 		// When the error is a rule error, it means the block was simply
@@ -986,17 +997,25 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 
 	// Request the parents for the orphan block from the peer that sent it.
 	if isOrphan {
-		orphanRoot := sm.chain.Miners.(*minerchain.MinerChain).GetOrphanRoot(blockHash)
-		locator, err := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
-		if err != nil {
-			log.Warnf("Failed to get block locator for the "+
-				"latest block: %v", err)
+		if isMainchain {
+			// if isMainchain is true, it is because we don't have the best TX block, so
+			// there is no need to get blocks before the orphan
+			return
 		} else {
-			tlocator, _ := sm.chain.LatestBlockLocator()
+			orphanRoot := sm.chain.Miners.(*minerchain.MinerChain).GetOrphanRoot(blockHash)
+			if *orphanRoot == *blockHash {
+				locator, err := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+				if err != nil {
+					log.Warnf("Failed to get block locator for the "+
+						"latest block: %v", err)
+				} else {
+					tlocator, _ := sm.chain.LatestBlockLocator()
 
-			log.Infof("handleMinerBlockMsg: PushGetBlocksMsg from %s because received an miner orphan %s", peer.Addr(), orphanRoot.String())
-			sm.addSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot)
-//			peer.PushGetBlocksMsg(tlocator, locator, &zerohash, orphanRoot)
+					log.Infof("handleMinerBlockMsg: PushGetBlocksMsg from %s because received an miner orphan %s", peer.Addr(), orphanRoot.String())
+					sm.addSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot)
+					//			peer.PushGetBlocksMsg(tlocator, locator, &zerohash, orphanRoot)
+				}
+			}
 		}
 	} else {
 		// When the block is not an orphan, log information about it and

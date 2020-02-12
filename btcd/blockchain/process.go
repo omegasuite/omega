@@ -163,15 +163,26 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 }
 
 func (b *BlockChain) OnNewMinerNode() {
-	for _,p := range b.orphans {
+	added := false
+	root := make(map[chainhash.Hash]struct{}, 0)
+	for q,_ := range b.orphans {
+		r := b.GetOrphanRoot(&q)
+		if _,ok := root[*r]; ok {
+			continue
+		}
+		root[*r] = struct{}{}
+		p := b.orphans[*r]
 		f := p.block.MsgBlock().Header.PrevBlock
 		if b.index.LookupNode(&f) != nil {
 			b.ProcessOrphans(&f, BFNone)
 		}
+		if !added && b.index.LookupNode(r) != nil {
+			added = true
+		}
 	}
 
-	high := b.index.Highest()
-	if high != nil {
+	if added {
+		high := b.index.Highest()
 		b.CheckSideChain(&high.hash)
 	}
 }
@@ -331,7 +342,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		if int32(state.LastRotation)+1-wire.CommitteeSize > mstate.Height {
 			log.Infof("Next Rotation exceeds miner chain %d in a rotation block %s. Make it an orphan!!!", state.LastRotation, block.Hash().String())
 			b.AddOrphanBlock(block)
-			return isMainChain, true, nil
+			return true, true, nil
 		}
 	}
 

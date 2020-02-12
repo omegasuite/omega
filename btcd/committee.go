@@ -728,7 +728,11 @@ func (s *server) AnnounceNewBlock(m * btcutil.Block) {
 	// make a new Block so we don't use anything cached in m
 	blk := btcutil.NewBlock(m.MsgBlock())
 	blk.SetHeight(m.Height())
-	s.chain.ProcessBlock(blk, blockchain.BFNone)
+
+	isMainChain, orphan, err := s.chain.ProcessBlock(blk, blockchain.BFNone)
+	if err != nil || orphan || !isMainChain {
+		return
+	}
 
 	msg := wire.NewMsgInv()
 	msg.AddInvVect(&wire.InvVect{
@@ -912,7 +916,7 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 	consensusLog.Infof("NewConsusBlock at %d", m.Height())
 	s.peerState.print()
 
-	if _, _, err := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil {
+	if isMainchain, orphan, err := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil && !orphan && isMainchain {
 		srvrLog.Infof("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
 		msg := wire.NewMsgInv()
 		msg.AddInvVect(&wire.InvVect{
@@ -922,7 +926,7 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 
 		s.broadcast <- broadcastMsg { message: msg }
 	} else {
-		srvrLog.Infof("consensus faield to pass ProcessBlock!!! %s", err.Error())
+		srvrLog.Infof("consensus faield to process ProcessBlock!!! %s", err.Error())
 	}
 }
 

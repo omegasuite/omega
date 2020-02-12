@@ -333,7 +333,7 @@ func (b *MinerChain) CheckConnectBlockTemplate(block *wire.MinerBlock) error {
 		return ruleError(ErrPrevBlockNotBest, str)
 	}
 
-	err := checkBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
+	err := CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return err
 	}

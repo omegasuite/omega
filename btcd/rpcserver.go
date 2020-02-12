@@ -3898,7 +3898,8 @@ func handleValidateAddress(s *rpcServer, cmd interface{}, closeChan <-chan struc
 }
 
 func verifyChain(s *rpcServer, level, depth int32) (string, error) {
-	best := s.cfg.Chain.BestSnapshot()
+	chain := s.cfg.Chain
+	best := chain.BestSnapshot()
 	finishHeight := best.Height - depth
 	if finishHeight < 0 {
 		finishHeight = 0
@@ -3910,10 +3911,10 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 
 	for height := best.Height; height > finishHeight; height-- {
 		// Level 0 just looks up the block.
-		block, err := s.cfg.Chain.BlockByHeight(height)
+		block, err := chain.BlockByHeight(height)
 		if err != nil {
 			rpcsLog.Errorf("Verify is unable to fetch block at "+
-				"height %d: %v", height, err)
+				"height %d: %s", height, err.Error())
 			return err.Error(), err
 		}
 
@@ -3923,8 +3924,8 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 				s.cfg.ChainParams.PowLimit, s.cfg.TimeSource)
 			if err != nil {
 				rpcsLog.Errorf("Verify is unable to validate "+
-					"block at hash %v height %d: %v",
-					block.Hash(), height, err)
+					"block at hash %s height %d: %s",
+					block.Hash().String(), height, err.Error())
 				return err.Error(), err
 			}
 		}
@@ -3947,11 +3948,55 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 			pows++
 		}
 	}
+
+	result := fmt.Sprintf("tx Chain verify completed successfully for blocks from %d to %d. POW blocks: %d.", finishHeight + 1, best.Height, pows)
+
+	mchain := s.cfg.Chain.Miners.(*minerchain.MinerChain)
+	best = mchain.BestSnapshot()
+	mfinishHeight := best.Height - depth
+	if mfinishHeight < 0 {
+		mfinishHeight = 0
+	}
+	rpcsLog.Infof("Verifying miner chain for %d blocks at level %d",
+		best.Height-mfinishHeight, level)
+
+	for height := best.Height; height > mfinishHeight; height-- {
+		// Level 0 just looks up the block.
+		block, err := mchain.BlockByHeight(height)
+		if err != nil {
+			rpcsLog.Errorf("Verify is unable to fetch miner block at "+
+				"height %d: %s", height, err.Error())
+			return err.Error(), err
+		}
+
+		// Level 1 does basic chain sanity checks.
+		err = minerchain.CheckBlockSanity(block, s.cfg.ChainParams.PowLimit, s.cfg.TimeSource, blockchain.BFNone)
+		if err != nil {
+			rpcsLog.Errorf("Verify is unable to validate miner block at hash %s height %d: %s",
+				block.Hash().String(), height, err.Error())
+			return err.Error(), err
+		}
+		var name[20]byte
+		copy(name[:], block.MsgBlock().Miner)
+		if chain.Blacklist.IsGrey(name) {
+			rpcsLog.Errorf("Blacklised Miner %x", name[:])
+			t := fmt.Sprintf("Blacklised Miner %x", name[:])
+			return t, nil
+		}
+
+		bblk,_ := chain.BlockByHash(&block.MsgBlock().BestBlock)
+		rblk,_ := chain.BlockByHash(&block.MsgBlock().ReferredBlock)
+		if bblk == nil || rblk == nil {
+			t := fmt.Sprintf("BestBlock %s or ReferredBlock %s does not exist in tx chain @ height %d", block.MsgBlock().BestBlock.String(), block.MsgBlock().ReferredBlock.String(), height)
+			rpcsLog.Errorf("BestBlock %s or ReferredBlock %s does not exist in tx chain @ height %d", block.MsgBlock().BestBlock.String(), block.MsgBlock().ReferredBlock.String(), height)
+			return t, nil
+		}
+	}
 	rpcsLog.Infof("Chain verify completed successfully")
 
-	t := fmt.Sprintf("Chain verify completed successfully for blocks from %d to %d. POW blocks: %d.", finishHeight + 1, best.Height, pows)
+	result += fmt.Sprintf("\n<br>miner Chain verify completed successfully for blocks from %d to %d.", mfinishHeight + 1, best.Height)
 
-	return t, nil
+	return result, nil
 }
 
 // handleVerifyChain implements the verifychain command.
