@@ -163,8 +163,12 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 }
 
 func (b *BlockChain) OnNewMinerNode() {
-	best := b.BestSnapshot()
-	b.ProcessOrphans(&best.Hash, BFNone)
+	for _,p := range b.orphans {
+		f := p.block.MsgBlock().Header.PrevBlock
+		if b.index.LookupNode(&f) != nil {
+			b.ProcessOrphans(&f, BFNone)
+		}
+	}
 
 	high := b.index.Highest()
 	if high != nil {
