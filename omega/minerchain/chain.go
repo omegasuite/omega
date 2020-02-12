@@ -24,7 +24,7 @@ import (
 const (
 	// maxOrphanBlocks is the maximum number of orphan blocks that can be
 	// queued.
-	maxOrphanBlocks = 100
+	maxOrphanBlocks = 2 * wire.MaxBlocksPerMsg
 )
 
 // orphanBlock represents a block that we don't yet have the parent for.  It
@@ -641,6 +641,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	// disconnected.
 	//	views.Utxo = NewUtxoViewpoint()
 	// Disconnect blocks from the main chain.
+	detachedHeight := tip.height + 1
 	for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*blockNode)
 		if n.parent == nil {
@@ -651,10 +652,37 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		block := detachBlocks[i]
 
 		// Update the database and chain state.
+		detachedHeight = block.Height()
 		err := b.disconnectBlock(n, block)
 		if err != nil {
 			return err
 		}
+	}
+
+	// roll back tx chain if necessary
+	rot := int32(b.blockChain.BestSnapshot().LastRotation)
+	txtip := b.blockChain.BestChain.Tip()
+	if rot >= detachedHeight {
+		txdetachNodes := list.New()
+		restore := 0
+		for rot >= detachedHeight {
+			txdetachNodes.PushBack(txtip)
+			if txtip.Nonce() > 0 {
+				rot -= 2
+				restore++
+			} else if txtip.Nonce() <= -wire.MINER_RORATE_FREQ {
+				rot--
+				restore = 0
+			}
+			txtip = txtip.Parent()
+		}
+		for e := txdetachNodes.Back(); restore > 0; {
+			f := e.Prev()
+			txdetachNodes.Remove(e)
+			e = f
+			restore--
+		}
+		b.blockChain.ReorganizeChain(txdetachNodes, list.New())
 	}
 
 	// Connect the new best chain blocks.
@@ -762,7 +790,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 
 	// We're extending (or creating) a side chain, but thconnectBlock must be called with a blocke cumulative
 	// work for this new side chain is not enough to make it the new chain.
-	if node.height < b.BestChain.Tip().height {
+	if node.height <= b.BestChain.Tip().height {
 		// Log information about how the block is forking the chain.
 		fork := b.BestChain.FindFork(node)
 		if fork.hash.IsEqual(parentHash) {

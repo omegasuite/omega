@@ -25,7 +25,7 @@ import (
 const (
 	// maxOrphanBlocks is the maximum number of orphan blocks that can be
 	// queued.
-	maxOrphanBlocks = 100
+	maxOrphanBlocks = 2 * wire.MaxBlocksPerMsg
 )
 
 // orphanBlock represents a block that we don't yet have the parent for.  It
