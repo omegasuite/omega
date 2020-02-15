@@ -253,7 +253,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 	if err := b.checkProofOfWork(header, b.chainParams.PowLimit, flags); err != nil {
 		return err
 	}
-
+/*
 	refh,_ := b.blockChain.BlockHeightByHash(&header.ReferredBlock)
 	best,_ := b.blockChain.BlockHeightByHash(&header.BestBlock)
 	prev := b.index.LookupNode(&header.PrevBlock)
@@ -273,6 +273,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 		str = fmt.Sprintf(str, best)
 		return ruleError(ErrTimeTooOld, str)
 	}
+ */
 
 	for _, p := range block.MsgBlock().BlackList {
 		// verify the signatures

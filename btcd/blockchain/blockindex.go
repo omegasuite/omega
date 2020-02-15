@@ -259,6 +259,9 @@ type blockIndex struct {
 	sync.RWMutex
 	index map[chainhash.Hash]*blockNode
 	dirty map[*blockNode]struct{}
+
+	// tips of side chains
+	tips map[chainhash.Hash]*blockNode
 }
 
 // newBlockIndex returns a new empty instance of a block index.  The index will
@@ -270,6 +273,7 @@ func newBlockIndex(db database.DB, chainParams *chaincfg.Params) *blockIndex {
 		chainParams: chainParams,
 		index:       make(map[chainhash.Hash]*blockNode),
 		dirty:       make(map[*blockNode]struct{}),
+		tips:		 make(map[chainhash.Hash]*blockNode),
 	}
 }
 
@@ -321,6 +325,10 @@ func (bi *blockIndex) AddNode(node *blockNode) {
 //
 // This function is NOT safe for concurrent access.
 func (bi *blockIndex) addNode(node *blockNode) {
+	if node.parent != nil {
+		delete(bi.tips, node.parent.hash)
+	}
+	bi.tips[node.hash] = node
 	bi.index[node.hash] = node
 }
 

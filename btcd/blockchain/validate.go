@@ -5,7 +5,6 @@
 package blockchain
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
@@ -446,15 +445,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 		hash := MakeMinerSigHash(block.Height(), *block.Hash())
 
 		usigns := make(map[[20]byte]struct{})
-		miners := make([][20]byte, wire.CommitteeSize)
-
-		for i := int32(0); i < wire.CommitteeSize; i++ {
-			blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
-			if blk == nil {
-				return nil, true
-			}
-			copy(miners[i][:], blk.MsgBlock().Miner[:])
-		}
 
 		for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 			if len(sign) < btcec.PubKeyBytesLenCompressed {
@@ -470,17 +460,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 			pkh := pk.AddressPubKeyHash().Hash160()
 			if _, ok := usigns[*pkh]; ok {
 				return fmt.Errorf("Duplicated miner signature"), false
-			}
-			// is the signer in committee?
-			matched := false
-			for i := int32(0); i < wire.CommitteeSize; i++ {
-				if bytes.Compare(pkh[:], miners[i][:]) == 0 {
-					matched = true
-				}
-			}
-
-			if !matched {
-				return fmt.Errorf("Unauthorized signer"), false
 			}
 
 			s, err := btcec.ParseSignature(sign[btcec.PubKeyBytesLenCompressed:], btcec.S256())

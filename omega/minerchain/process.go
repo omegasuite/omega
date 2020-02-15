@@ -127,6 +127,11 @@ func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.Behav
 				continue
 			}
 
+			parent := b.index.LookupNode(processHash)
+			if !b.blockChain.SameChain(orphan.block.MsgBlock().BestBlock, orphan.block.MsgBlock().ReferredBlock, parent.Header().BestBlock) {
+				continue
+			}
+
 			// Potentially accept the block into the block chain.
 			_, err := b.maybeAcceptBlock(orphan.block, flags)
 			if err != nil {
@@ -160,7 +165,7 @@ func (b *MinerChain) CheckSideChain(hash *chainhash.Hash) {
 		return
 	}
 
-	detachNodes, attachNodes := b.getReorganizeNodes(node)
+	detachNodes, attachNodes, txdetachNodes, txattachNodes := b.getReorganizeNodes(node)
 
 	if detachNodes.Len() == 0 && attachNodes.Len() == 0 {
 		return
@@ -168,7 +173,16 @@ func (b *MinerChain) CheckSideChain(hash *chainhash.Hash) {
 
 	// Reorganize the chain.
 	log.Infof("miner REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches", node.hash, detachNodes.Len(), attachNodes.Len())
-	b.reorganizeChain(detachNodes, attachNodes)
+	if err := b.reorganizeChain(detachNodes, attachNodes); err != nil {
+		return
+	}
+	if err := b.blockChain.ReorganizeChain(txdetachNodes, txattachNodes); err != nil {
+		b.reorganizeChain(attachNodes, detachNodes)
+		return
+	}
+
+//	b.reorganizeChain(detachNodes, attachNodes)
+//	b.blockChain.ReorganizeChain(txdetachNodes, txattachNodes)
 
 	b.index.flushToDB()
 }
@@ -248,6 +262,13 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 
 		return false, true, nil
 	}
+
+	parent := b.index.LookupNode(prevHash)
+	if !b.blockChain.SameChain(block.MsgBlock().BestBlock, block.MsgBlock().ReferredBlock, parent.Header().BestBlock) {
+		log.Infof("block and parent tx reference not in the same chain.")
+		b.addOrphanBlock(block)
+		return false, true, nil
+	}
 /*
 	height1,_ := b.blockChain.BlockHeightByHash(&block.MsgBlock().ReferredBlock)
 	ref := b.blockChain.BestChain.NodeByHeight(height1)
@@ -257,15 +278,6 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	eq1 := block.MsgBlock().ReferredBlock.IsEqual(ref.Hash())
 	eq2 := block.MsgBlock().BestBlock.IsEqual(best.Hash())
  */
-
-	bblk,_ := b.blockChain.BlockByHash(&block.MsgBlock().BestBlock)
-	rblk,_ := b.blockChain.BlockByHash(&block.MsgBlock().ReferredBlock)
-	if bblk == nil || rblk == nil {
-		log.Infof("Adding miner orphan block %s because BestBlock %s or ReferredBlock %s does not exist in tx chain", blockHash.String(), block.MsgBlock().BestBlock.String(), block.MsgBlock().ReferredBlock.String())
-		b.addOrphanBlock(block)
-
-		return true, true, nil
-	}
 
 //	log.Infof("maybeAcceptBlock ready")
 
@@ -290,7 +302,8 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, false, err
 	}
 
-	log.Infof("miner.ProcessBlock finished with height = %d tx height = %d orphans = %d", b.BestSnapshot().Height,
+	log.Infof("miner.ProcessBlock finished with height = %d (%d) tx height = %d orphans = %d",
+		b.BestSnapshot().Height, block.Height(),
 		b.blockChain.BestSnapshot().Height, len(b.orphans))
 
 	return isMainChain, false, nil

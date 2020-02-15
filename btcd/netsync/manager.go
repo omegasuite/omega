@@ -965,11 +965,11 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		// it as such.  Otherwise, something really did go wrong, so log
 		// it as an actual error.
 		if _, ok := err.(blockchain.RuleError); ok {
-			log.Infof("Rejected miner block %v from %s: %v", blockHash,
-				peer, err)
+			log.Infof("Rejected miner block %s from %s: %s", blockHash.String(),
+				peer.String(), err.Error())
 		} else {
-			log.Errorf("Failed to process block %v: %v",
-				blockHash, err)
+			log.Errorf("Failed to process miner block %s: %s",
+				blockHash.String(), err.Error())
 		}
 		if dbErr, ok := err.(database.Error); ok && dbErr.ErrorCode ==
 			database.ErrCorruption {

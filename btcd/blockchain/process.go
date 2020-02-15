@@ -6,6 +6,7 @@ package blockchain
 
 import (
 	"fmt"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/wire"
 	"time"
 
@@ -267,7 +268,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 //	fastAdd := flags&BFFastAdd == BFFastAdd
 
 	blockHash := block.Hash()
-	log.Tracef("Processing block %v", blockHash)
 
 	// The block must not already exist in the main chain or side chains.
 	exists, err := b.blockExists(blockHash)
@@ -336,16 +336,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return isMainChain, false, nil
 	}
 
-	state := b.BestSnapshot()
-	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
-		mstate := b.Miners.BestSnapshot()
-		if int32(state.LastRotation)+1-wire.CommitteeSize > mstate.Height {
-			log.Infof("Next Rotation exceeds miner chain %d in a rotation block %s. Make it an orphan!!!", state.LastRotation, block.Hash().String())
-			b.AddOrphanBlock(block)
-			return true, true, nil
-		}
-	}
-
 	// don't check POW if we are to extending a side chain and this is a comittee block
 	// leave the work to reorg
 	err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
@@ -399,4 +389,73 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		b.Miners.BestSnapshot().Height, len(b.orphans))
 
 	return isMainChain, false, nil
+}
+
+func (b *BlockChain) consistent(block *btcutil.Block, parent * blockNode) bool {
+//	state := b.BestSnapshot()
+	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
+		mstate := b.Miners.BestSnapshot()
+		if -block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ > mstate.Height {
+			return false
+		}
+	}
+
+	if wire.CommitteeSize == 1 || block.MsgBlock().Header.Nonce > 0 {
+		return true
+	}
+
+	best := b.BestSnapshot()
+	rotate := best.LastRotation
+	if parent.hash != best.Hash {
+		pn := b.index.LookupNode(&parent.hash)
+		fork := b.BestChain.FindFork(pn)
+
+		if fork == nil {
+			return false
+		}
+
+		// parent is not the tip, go back to find correct rotation
+		for p := b.BestChain.Tip(); p != nil && p != fork; p = p.parent {
+			switch {
+			case p.nonce > 0:
+				rotate -= wire.CommitteeSize / 2 + 1
+
+			case p.nonce <= -wire.MINER_RORATE_FREQ:
+				rotate--
+			}
+		}
+		for p := pn; p != nil && p != fork; p = p.parent {
+			switch {
+			case p.nonce > 0:
+				rotate += wire.CommitteeSize / 2 + 1
+
+			case p.nonce <= -wire.MINER_RORATE_FREQ:
+				rotate++
+			}
+		}
+	}
+
+	// examine signers are in committee
+	miners := make(map[[20]byte]struct{}, wire.CommitteeSize)
+
+	for i := int32(0); i < wire.CommitteeSize; i++ {
+		blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
+		if blk == nil {
+			return false
+		}
+		var n [20]byte
+		copy(n[:], blk.MsgBlock().Miner)
+		miners[n] = struct{}{}
+	}
+
+	for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+		k, _ := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
+		// is the signer in committee?
+		if _,ok := miners[*pk.AddressPubKeyHash().Hash160()]; !ok {
+			return false
+		}
+	}
+
+	return true
 }

@@ -267,6 +267,14 @@ func (b *MinerChain) addOrphanBlock(block *wire.MinerBlock) {
 	b.prevOrphans[*prevHash] = append(b.prevOrphans[*prevHash], oBlock)
 }
 
+func skipList(lst * list.List, y * list.Element) {
+	for y != nil {
+		z := y.Next()
+		lst.Remove(y)
+		y = z
+	}
+}
+
 // getReorganizeNodes finds the fork point between the main chain and the passed
 // node and returns a list of block nodes that would need to be detached from
 // the main chain and a list of block nodes that would need to be attached to
@@ -278,16 +286,18 @@ func (b *MinerChain) addOrphanBlock(block *wire.MinerBlock) {
 // This function may modify node statuses in the block index without flushing.
 //
 // This function MUST be called with the chain state lock held (for reads).
-func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List) {
+func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List, *list.List, *list.List) {
 	attachNodes := list.New()
 	detachNodes := list.New()
+	txattachNodes := list.New()
+	txdetachNodes := list.New()
 
 	// Do not reorganize to a known invalid chain. Ancestors deeper than the
 	// direct parent are checked below but this is a quick check before doing
 	// more unnecessary work.
 	if b.index.NodeStatus(node.parent).KnownInvalid() {
 		b.index.SetStatusFlags(node, statusInvalidAncestor)
-		return detachNodes, attachNodes
+		return detachNodes, attachNodes, txdetachNodes, txattachNodes
 	}
 
 	// Find the fork point (if any) adding each block to the list of nodes
@@ -295,35 +305,119 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 	// so they are attached in the appropriate order when iterating the list
 	// later.
 	forkNode := b.BestChain.FindFork(node)
-	invalidChain := false
-	for n := node; n != nil && n != forkNode; n = n.parent {
+	newtip := node
+	for n := node; n != nil && n != forkNode; {
+		invalidChain := false
 		if b.index.NodeStatus(n).KnownInvalid() {
 			invalidChain = true
-			break
+		}
+		p := n.parent
+		if !b.blockChain.SameChain(n.Header().BestBlock, n.Header().ReferredBlock, p.Header().BestBlock) {
+			// if any node is inconsistent, ignore all nodes after it by clearing attachNodes list
+//			b.index.SetStatusFlags(n, statusInvalidAncestor)
+			invalidChain = true
+		}
+		if invalidChain {
+			var next *list.Element
+			for e := attachNodes.Front(); e != nil; e = next {
+				next = e.Next()
+				attachNodes.Remove(e)
+//				_ := attachNodes.Remove(e).(*blockNode)
+//				b.index.SetStatusFlags(n, statusInvalidAncestor)
+			}
+			if p.height <= b.BestChain.height() {
+				// if we would detach more than attach, don't do it
+				return detachNodes, attachNodes, txdetachNodes, txattachNodes
+			}
+			newtip = p
 		}
 		attachNodes.PushFront(n)
-	}
-
-	// If any of the node's ancestors are invalid, unwind attachNodes, marking
-	// each one as invalid for future reference.
-	if invalidChain {
-		var next *list.Element
-		for e := attachNodes.Front(); e != nil; e = next {
-			next = e.Next()
-			n := attachNodes.Remove(e).(*blockNode)
-			b.index.SetStatusFlags(n, statusInvalidAncestor)
-		}
-		return detachNodes, attachNodes
+		n = p
 	}
 
 	// Start from the end of the main chain and work backwards until the
 	// common ancestor adding each block to the list of nodes to detach from
 	// the main chain.
+	// verify that the node is consistent
 	for n := b.BestChain.Tip(); n != nil && n != forkNode; n = n.parent {
 		detachNodes.PushBack(n)
 	}
 
-	return detachNodes, attachNodes
+	txdetachNodes, txattachNodes = b.blockChain.GetReorganizeSideChain(newtip.Header().BestBlock)
+
+	if txattachNodes.Len() == 0 {
+		return detachNodes, attachNodes, txdetachNodes, txattachNodes
+	}
+
+	best := b.blockChain.BestSnapshot()
+	rotate := int32(best.LastRotation) - b.blockChain.TotalRotate(txdetachNodes)
+
+	// examine signers are in committee
+	miners := make([][20]byte, wire.CommitteeSize)
+	for i := int32(0); i < wire.CommitteeSize; i++ {
+		if blk, _ := b.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
+			copy(miners[i][:], blk.MsgBlock().Miner)
+		}
+	}
+
+	x, y, p := attachNodes.Front(), txattachNodes.Front(), forkNode
+	for x != nil && rotate >= p.height {
+		if p.height > rotate - wire.CommitteeSize {
+			copy(miners[p.height - (rotate - wire.CommitteeSize + 1)][:], p.Header().Miner)
+		}
+		x = x.Next()
+		p = x.Value.(*blockNode)
+	}
+	contain := false
+	for y != nil {
+		if x == nil {
+			for y != nil && b.blockChain.Advance(y) != 1 && b.blockChain.SignedBy(y, miners) {
+				y = y.Next()
+			}
+			skipList(txattachNodes, y)
+			y = nil
+			continue
+		}
+		n := x.Value.(*blockNode)
+		if !contain {
+			contain = b.blockChain.SideChainContains(y, n.Header().BestBlock)
+		}
+		if !contain {
+			skipList(attachNodes, x)
+			x = nil
+			continue
+		}
+		if !b.blockChain.SignedBy(y, miners) {
+			skipList(txattachNodes, y)
+			y = nil
+			continue
+		}
+
+		shift := b.blockChain.Advance(y)
+		// try to rotate miners
+		if shift > 0 {
+			contain = false
+			j := 0
+			for k := shift; k < wire.CommitteeSize; k++ {
+				copy(miners[j][:], miners[k][:])
+				j++
+			}
+			for k := int32(0); k < shift; k++ {
+				rotate++
+				copy(miners[j][:], n.Header().Miner)
+				x = x.Next()
+				if x != nil {
+					n = x.Value.(*blockNode)
+				} else {
+					break
+				}
+				j++
+			}
+		}
+		y = y.Next()
+	}
+
+	return detachNodes, attachNodes, txdetachNodes, txattachNodes
 }
 
 // connectBlock handles connecting the passed node/block to the end of the main
@@ -634,14 +728,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		newBest = n
 	}
 
-	// Reset the view for the actual connection code below.  This is
-	// required because the view was previously modified when checking if
-	// the reorg would be successful and the connection code requires the
-	// view to be valid from the viewpoint of each block being connected or
-	// disconnected.
-	//	views.Utxo = NewUtxoViewpoint()
 	// Disconnect blocks from the main chain.
-	detachedHeight := tip.height + 1
 	for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*blockNode)
 		if n.parent == nil {
@@ -652,13 +739,12 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		block := detachBlocks[i]
 
 		// Update the database and chain state.
-		detachedHeight = block.Height()
 		err := b.disconnectBlock(n, block)
 		if err != nil {
 			return err
 		}
 	}
-
+/*
 	// roll back tx chain if necessary
 	rot := int32(b.blockChain.BestSnapshot().LastRotation)
 	txtip := b.blockChain.BestChain.Tip()
@@ -668,7 +754,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		for rot >= detachedHeight {
 			txdetachNodes.PushBack(txtip)
 			if txtip.Nonce() > 0 {
-				rot -= 2
+				rot -= wire.CommitteeSize / 2 + 1
 				restore++
 			} else if txtip.Nonce() <= -wire.MINER_RORATE_FREQ {
 				rot--
@@ -684,6 +770,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 		b.blockChain.ReorganizeChain(txdetachNodes, list.New())
 	}
+ */
 
 	// Connect the new best chain blocks.
 	for i, e := 0, attachNodes.Front(); e != nil; i, e = i+1, e.Next() {
@@ -695,11 +782,6 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		if err != nil {
 			return err
 		}
-
-		// then process orphans in tx chain, as they may become valid, and new
-		// miner block may depend on new tx block, thus for each new miner block added
-		// we need to process tx orphans once
-		b.blockChain.ProcessOrphans(&b.blockChain.BestSnapshot().Hash, blockchain.BFNone)
 	}
 
 	// Log the point where the chain forked and old and new best chain
@@ -744,7 +826,10 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 	// We are extending the main (best) chain with a new block.  This is the
 	// most common case.
 	parentHash := &block.MsgBlock().PrevBlock
-	if parentHash.IsEqual(&b.BestChain.Tip().hash) {
+	parent := b.index.LookupNode(parentHash)
+	if parentHash.IsEqual(&b.BestChain.Tip().hash) &&
+		b.blockChain.SameChain(block.MsgBlock().BestBlock, block.MsgBlock().ReferredBlock, parent.Header().BestBlock) &&
+		b.blockChain.InBestChain(&block.MsgBlock().BestBlock) {
 		// Skip checks if node has already been fully validated.
 		fastAdd = fastAdd || b.index.NodeStatus(node).KnownValid()
 
@@ -813,27 +898,26 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 	// blocks that form the (now) old fork from the main chain, and attach
 	// the blocks that form the new chain to the main chain starting at the
 	// common ancenstor (the point where the chain forked).
-	detachNodes, attachNodes := b.getReorganizeNodes(node)
+	detachNodes, attachNodes, txdetachNodes, txattachNodes := b.getReorganizeNodes(node)
+
+	if attachNodes.Len() == 0 {
+		return false, nil
+	}
 
 	// Reorganize the chain.
 	log.Infof("REORGANIZE: Block %v is causing a reorganize.", node.hash)
 
 	// a reorganization in miner chain may cause a reorg in tx chain
 	// but a reorg in tx chain will not cause reorg in mainer chain
-	var fork *blockNode
-
-	fork = b.BestChain.Tip()
-
-	for e := detachNodes.Front(); e != nil; e = e.Next() {
-		fork = e.Value.(*blockNode)
-	}
-
-	forkheight := fork.height
 
 	if err := b.reorganizeChain(detachNodes, attachNodes); err != nil {
 		return false, err
 	}
-
+	if err := b.blockChain.ReorganizeChain(txdetachNodes, txattachNodes); err != nil {
+		b.reorganizeChain(attachNodes, detachNodes)
+		return false, err
+	}
+/*
 	if forkheight <= int32(b.blockChain.BestSnapshot().LastRotation) {
 		// a reorg is required
 		detach := list.New()
@@ -859,6 +943,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 		}
 		b.blockChain.ReorganizeChain(detach, list.New())
 	}
+ */
 
 	// Either getReorganizeNodes or reorganizeChain could have made unsaved
 	// changes to the block index, so flush regardless of whether there was an

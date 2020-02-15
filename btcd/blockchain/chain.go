@@ -6,6 +6,7 @@
 package blockchain
 
 import (
+	"bytes"
 	"container/list"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
@@ -540,6 +541,43 @@ func LockTimeToSequence(isSeconds bool, locktime uint32) uint32 {
 		locktime>>wire.SequenceLockTimeGranularity
 }
 
+func (b *BlockChain) TotalRotate(lst * list.List) int32 {
+	s := int32(0)
+	for e := lst.Front(); e != nil; e = e.Next() {
+		n := e.Value.(*blockNode)
+		if n.nonce > 0 {
+			s += wire.CommitteeSize / 2 + 1
+		} else if n.nonce <= -wire.MINER_RORATE_FREQ {
+			s++
+		}
+	}
+	return s
+}
+
+func (b *BlockChain) GetReorganizeSideChain(hash chainhash.Hash) (*list.List, *list.List) {
+	attachNodes := list.New()
+	detachNodes := list.New()
+
+	node := b.index.LookupNode(&hash)
+	if b.BestChain.Contains(node) {
+		return detachNodes, attachNodes
+	}
+
+	// find the best side chain
+	bs := node
+	for _, t := range b.index.tips {
+		if t.height <= bs.height {
+			continue
+		}
+		s := t
+		for ; s.height > node.height; s = s.parent {}
+		if s == node && t.height > bs.height {
+			bs = t
+		}
+	}
+	return b.getReorganizeNodes(bs)
+}
+
 // getReorganizeNodes finds the fork point between the main chain and the passed
 // node and returns a list of block nodes that would need to be detached from
 // the main chain and a list of block nodes that would need to be attached to
@@ -970,6 +1008,61 @@ func (b *BlockChain) disconnectBlock(node *blockNode, block *btcutil.Block, view
 	return nil
 }
 
+func (b *BlockChain) Advance(x * list.Element) int32 {
+	m := x.Value.(*blockNode)
+	shift := int32(0)
+	if m.Nonce() > 0 {
+		shift = wire.CommitteeSize / 2 + 1
+	} else if m.Nonce() <= -wire.MINER_RORATE_FREQ {
+		shift = 1
+	}
+	return shift
+}
+
+func (b *BlockChain) SideChainContains(x * list.Element, hash chainhash.Hash) bool {
+	n := x.Value.(*blockNode)
+	for n != nil && n.hash != hash {
+		n = n.parent
+	}
+	return n != nil
+}
+
+func (b *BlockChain) SignedBy(x * list.Element, miners [][20]byte) bool {
+	n := x.Value.(*blockNode)
+	if n.nonce > 0 {
+		return true
+	}
+
+	var block *btcutil.Block
+	b.db.View(func(dbTx database.Tx) error {
+		var err error
+		block, err = dbFetchBlockByNode(dbTx, n)
+		return err
+	})
+
+	return b.signedBy(block, miners)
+}
+
+func (b *BlockChain) signedBy(block * btcutil.Block, miners [][20]byte) bool {
+	for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+		k, _ := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
+		// is the signer in committee?
+		signer := *pk.AddressPubKeyHash().Hash160()
+		matched := false
+		for _, sig := range miners {
+			if bytes.Compare(signer[:], sig[:]) != 0 {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	return true
+}
+
 // ReorganizeChain reorganizes the block chain by disconnecting the nodes in the
 // detachNodes list and connecting the nodes in the attach list.  It expects
 // that the lists are already in the correct order and are in sync with the
@@ -1101,6 +1194,17 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// tweaking the chain and/or database.  This approach catches these
 	// issues before ever modifying the chain.
 
+	state := b.BestSnapshot()
+	rotate := state.LastRotation
+
+	// examine signers are in committee
+	miners := make([][20]byte, wire.CommitteeSize)
+	for i := int32(0); i < wire.CommitteeSize; i++ {
+		if blk, _ := b.Miners.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
+			copy(miners[i][:], blk.MsgBlock().Miner)
+		}
+	}
+
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*blockNode)
 
@@ -1112,6 +1216,34 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		})
 		if err != nil {
 			return err
+		}
+
+		if !b.signedBy(block, miners) {
+			return fmt.Errorf("Incorrect signer")
+		}
+
+		shift := 0
+		if n.nonce > 0 {
+			shift = wire.CommitteeSize/2 + 1
+		} else if n.nonce <= -wire.MINER_RORATE_FREQ {
+			shift = 1
+		}
+		if shift > 0 {
+			j := 0
+			for k := shift; k < wire.CommitteeSize; k++ {
+				copy(miners[j][:], miners[k][:])
+				j++
+			}
+
+			for k := 0; k < shift; k++ {
+				rotate++
+				if blk, _ := b.Miners.BlockByHeight(int32(rotate)); blk != nil {
+					copy(miners[j][:], blk.MsgBlock().Miner)
+				} else if shift == 1 {
+					return fmt.Errorf("Incorrect rotation")
+				}
+				j++
+			}
 		}
 
 		b.index.UnsetStatusFlags(n, statusValid)
@@ -1197,15 +1329,19 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 		block := attachBlocks[i]
 
-		err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, BFNone)
-		if err != nil || mkorphan {
-			return fmt.Errorf("attach block failed to pass POW check")
+//		err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, BFNone)
+//		if err != nil || mkorphan {
+//			return fmt.Errorf("attach block failed to pass POW check")
+//		}
+
+		if !b.consistent(block, prevNode) {
+			return fmt.Errorf("attach block failed to pass consistency check")
 		}
 		prevNode = n
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err = views.FetchInputUtxos(b.db, block)
+		err := views.FetchInputUtxos(b.db, block)
 		if err != nil {
 			return err
 		}
@@ -1274,7 +1410,8 @@ func (b *BlockChain) connectBestChain(node *blockNode, block *btcutil.Block, fla
 	// We are extending the main (best) chain with a new block.  This is the
 	// most common case.
 	parentHash := &block.MsgBlock().Header.PrevBlock
-	if parentHash.IsEqual(&b.BestChain.Tip().hash) {
+	parent := b.index.LookupNode(parentHash)
+	if parentHash.IsEqual(&b.BestChain.Tip().hash) && b.consistent(block, parent) {
 		// Skip checks if node has already been fully validated.
 		fastAdd = fastAdd || b.index.NodeStatus(node).KnownValid()
 
@@ -1424,9 +1561,38 @@ func (b *BlockChain) isCurrent() bool {
 	return true
 }
 
+func (b *BlockChain) InBestChain(u * chainhash.Hash) bool {
+	nu := b.index.LookupNode(u)
+	return nu != nil && b.BestChain.Contains(nu)
+}
+
 func (b *BlockChain) SameChain(u, v, w chainhash.Hash) bool {
 	// whether the tree blocks identified by hashes are in the same chain
-	return true
+	// u is the last of the 3
+	nu := b.index.LookupNode(&u)
+	if nu == nil {
+		return false
+	}
+	nv := b.index.LookupNode(&v)
+	if nv == nil {
+		return false
+	}
+	nw := b.index.LookupNode(&w)
+	if nw == nil {
+		return false
+	}
+
+	m := 0
+	for nu != nil && (nu.height >= nv.height || nu.height >= nw.height) && m != 3 {
+		if nu == nv {
+			m |= 1
+		}
+		if nu == nw {
+			m |= 2
+		}
+		nu = nu.parent
+	}
+	return m == 3
 }
 
 // IsCurrent returns whether or not the chain believes it is current.  Several
