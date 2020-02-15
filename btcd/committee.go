@@ -743,7 +743,8 @@ func (s *server) AnnounceNewBlock(m * btcutil.Block) {
 	var name [20]byte
 	copy(name[:], s.signAddress.ScriptAddress())
 
-	s.CommitteeCastMG(name, msg, blk.Height())
+	s.BroadcastMessage(msg)
+//	s.CommitteeCastMG(name, msg, blk.Height())
 }
 
 func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message, h int32) {
