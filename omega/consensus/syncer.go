@@ -600,7 +600,7 @@ func (self *Syncer) yield(better int32) bool {
 }
 
 func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
-	if msg.Reply == "cnst" {
+	if msg.Reply == "cnst" && self.agreed != -1 {
 		if self.agreed != self.Myself {
 			// release the node from obligation and notify him about new agreed
 			log.Infof("consent received from %x but I am not taking it", msg.From)
@@ -953,7 +953,6 @@ func (self *Syncer) HeaderInit(block *MsgMerkleBlock) {
 		block: nil,
 	}
 }
-
  */
 
 func (self *Syncer) BlockInit(block *btcutil.Block) {
@@ -996,6 +995,10 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 		hash: * block.Hash(),
 		header: &block.MsgBlock().Header,
 		block: block,
+	}
+
+	if miner.server.BestSnapshot().Hash != block.MsgBlock().Header.PrevBlock {
+		miner.server.ChainSync(block.MsgBlock().Header.PrevBlock, adr)
 	}
 }
 

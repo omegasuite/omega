@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/omega/minerchain"
 	"github.com/davecgh/go-spew/spew"
 
 	//	"github.com/btcsuite/omega/minerchain"
@@ -767,6 +768,30 @@ func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message, h int32) {
 		consensusLog.Infof("Failed to find a useful connection")
 	} else {
 		consensusLog.Infof("Failed to find a useful connection")
+	}
+}
+
+func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {
+	mlocator, err := s.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+	if err != nil {
+		return
+	}
+	locator, err := s.chain.LatestBlockLocator()
+	if err != nil {
+		return
+	}
+
+	s.peerState.cmutex.Lock()
+	sp,ok := s.peerState.committee[p]
+	s.peerState.cmutex.Unlock()
+
+	if ok {
+		for _,r := range sp.peers {
+			if r.Connected() {
+				r.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
+				return
+			}
+		}
 	}
 }
 

@@ -6,6 +6,7 @@ package netsync
 
 import (
 	"container/list"
+	"fmt"
 	"github.com/btcsuite/omega/minerchain"
 	"net"
 	"reflect"
@@ -216,6 +217,7 @@ type SyncManager struct {
 	feeEstimator *mempool.FeeEstimator
 
 	syncjobs []*pendginGetBlocks
+	lastBlockOp string	// for debug
 }
 
 // resetHeaderState sets the headers-first mode state to values appropriate for
@@ -312,6 +314,9 @@ func (sm *SyncManager) updateSyncPeer() {
 	}
 
 	n := len(sm.syncjobs)
+
+	log.Infof("updateSyncPeer: %d outstanfing jobs", n)
+
 	for n > 0 {
 		j := sm.syncjobs[n - 1]
 		sm.syncjobs = sm.syncjobs[:n-1]
@@ -1718,6 +1723,8 @@ func (sm *SyncManager) limitMap(m interface{}, limit int) {
 func (sm *SyncManager) blockHandler() {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
+	
+	sm.lastBlockOp = ""
 
 out:
 	for {
@@ -1727,10 +1734,12 @@ out:
 
 		select {
 		case <-ticker.C:
+			sm.lastBlockOp = "ticker.C"
 			sm.updateSyncPeer()
 
 		case m := <-sm.msgChan:
 //			log.Infof("blockHandler took a message from sm.msgChan: ", reflect.TypeOf(m).String())
+			sm.lastBlockOp = fmt.Sprint("%v", m)
 
 			switch msg := m.(type) {
 			case *newPeerMsg:
@@ -1869,7 +1878,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 	case blockchain.NTBlockConnected:
 		block, ok := notification.Data.(*btcutil.Block)
 		if !ok {
-			log.Warnf("Chain NTBlockConnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
+//			log.Warnf("Chain NTBlockConnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
 			break
 		}
 
@@ -1907,7 +1916,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 	case blockchain.NTBlockDisconnected:
 		block, ok := notification.Data.(*btcutil.Block)
 		if !ok {
-			log.Warnf("Chain NTBlockDisconnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
+//			log.Warnf("Chain NTBlockDisconnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
 			break
 		}
 
@@ -2036,7 +2045,8 @@ func (sm *SyncManager) Stop() error {
 		return nil
 	}
 
-	log.Infof("Sync manager shutting down")
+	log.Infof("Sync manager shutting down. Last message was:\n%s", sm.lastBlockOp)
+
 	close(sm.quit)
 	sm.wg.Wait()
 	return nil

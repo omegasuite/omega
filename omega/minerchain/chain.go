@@ -1508,6 +1508,8 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		config.MinerDB.Close()
 		return nil, fmt.Errorf("databased was corrupted. please restart")
 	}
+	log.Infof("Miner Chain state (height %d, hash %s)",
+		mtop.height, mtop.hash.String())
 
 	return s, nil
 }

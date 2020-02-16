@@ -34,6 +34,7 @@ type PeerNotifier interface {
 	MinerBlockByHeight(int32) (* wire.MinerBlock,error)
 	SubscribeChain(func (*blockchain.Notification))
 	CommitteePolling()
+	ChainSync(chainhash.Hash, [20]byte)
 }
 
 type Miner struct {
