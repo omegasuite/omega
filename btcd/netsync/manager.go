@@ -317,6 +317,30 @@ func (sm *SyncManager) updateSyncPeer() {
 		sm.syncjobs = sm.syncjobs[:n-1]
 		n--
 		if j.peer.Connected() {
+			txmoot := false
+			if *j.stopHash != zeroHash {
+				txmoot,_ = sm.chain.HaveBlock(j.stopHash)
+			} else if *j.locator[0] != sm.chain.BestSnapshot().Hash {
+				txmoot = true
+			}
+			mnmoot := false
+			if *j.mstopHash != zeroHash {
+				mnmoot,_ = sm.chain.HaveBlock(j.stopHash)
+			} else if *j.mlocator[0] != sm.chain.Miners.BestSnapshot().Hash {
+				mnmoot = true
+			}
+			if txmoot && mnmoot {
+				continue
+			}
+			if mnmoot {
+				j.stopHash = &zeroHash
+				j.locator[0] = &sm.chain.BestSnapshot().Hash
+			}
+			if txmoot {
+				j.mstopHash = &zeroHash
+				j.mlocator[0] = &sm.chain.Miners.BestSnapshot().Hash
+			}
+
 			sm.syncPeer = j.peer
 			j.peer.PushGetBlocksMsg(j.locator, j.mlocator, j.stopHash, j.mstopHash)
 			return
@@ -530,13 +554,14 @@ func (sm *SyncManager) handleDonePeerMsg(peer *peerpkg.Peer) {
 	// mode so
 	if sm.syncPeer == peer {
 		sm.syncjobs = make([]*pendginGetBlocks, 0)
-		p := sm.syncPeer
+//		p := sm.syncPeer
 		sm.syncPeer = nil
 		if sm.headersFirstMode {
 			best := sm.chain.BestSnapshot()
 			sm.resetHeaderState(&best.Hash, best.Height)
 		}
-		sm.startSync(p)
+		sm.updateSyncPeer()
+//		sm.startSync(p)
 	}
 }
 
@@ -1568,11 +1593,14 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 					// too many tries. try another peer to sync
 					if !resync {
 						resync = true
+						defer sm.updateSyncPeer()
+/*
 						defer func() {
 							p := sm.syncPeer
 							sm.syncPeer = nil
 							sm.startSync(p)
 						}()
+ */
 					}
 				}
 			}
@@ -1599,11 +1627,14 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 					// too many tries. try another peer to sync
 					if !resync {
 						resync = true
-						defer func() {
+						defer sm.updateSyncPeer()
+/*
+						func() {
 							p := sm.syncPeer
 							sm.syncPeer = nil
 							sm.startSync(p)
 						}()
+ */
 					}
 				}
 			}
