@@ -645,19 +645,8 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	}
 
 	defer func() {
-		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 {	// && sm.syncPeer == peer {
 			sm.updateSyncPeer()
-/*
-			if len(sm.syncjobs) > 0 {
-				j := sm.syncjobs[0]
-				sm.syncjobs = sm.syncjobs[1:]
-				j.peer.PushGetBlocksMsg(j.locator, j.mlocator, j.stopHash, j.mstopHash)
-			} else {
-				p := sm.syncPeer
-				sm.syncPeer = nil
-				sm.startSync(p)
-			}
- */
 		}
 	}()
 
@@ -909,19 +898,8 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	}
 
 	defer func() {
-		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 && sm.syncPeer == peer {
+		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 {	// && sm.syncPeer == peer {
 			sm.updateSyncPeer()
-/*
-			if len(sm.syncjobs) > 0 {
-				j := sm.syncjobs[0]
-				sm.syncjobs = sm.syncjobs[1:]
-				j.peer.PushGetBlocksMsg(j.locator, j.mlocator, j.stopHash, j.mstopHash)
-			} else {
-				p := sm.syncPeer
-				sm.syncPeer = nil
-				sm.startSync(p)
-			}
- */
 		}
 	}()
 
@@ -1265,7 +1243,12 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	state, exists := sm.peerStates[peer]
 	if !exists {
 		log.Warnf("Received inv message from unknown peer %s", peer)
+		sm.updateSyncPeer()
 		return
+	}
+
+	if len(imsg.inv.InvList) == 0 {
+		sm.updateSyncPeer()
 	}
 
 //	log.Infof("handleInvMsg from %s: %d items", imsg.peer.String(), len(imsg.inv.InvList))

@@ -917,6 +917,8 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			return
 		}
 		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
+	} else {
+		sp.QueueMessage(invMsg, nil)
 	}
 }
 

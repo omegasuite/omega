@@ -1559,9 +1559,6 @@ out:
 			}
 
 		case *wire.MsgInv:
-			if msg.InvList[0].Type & common.InvTypeBlock == common.InvTypeBlock {
-				log.Infof("inHandler received %d MsgInv %s %s %s", len(msg.InvList), p.addr, msg.InvList[0].Type.String(), msg.InvList[0].Hash.String())
-			}
 			if p.cfg.Listeners.OnInv != nil {
 				p.cfg.Listeners.OnInv(p, msg)
 			}
