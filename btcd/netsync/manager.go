@@ -315,6 +315,7 @@ func (sm *SyncManager) updateSyncPeer() {
 	for n > 0 {
 		j := sm.syncjobs[n - 1]
 		sm.syncjobs = sm.syncjobs[:n-1]
+		n--
 		if j.peer.Connected() {
 			sm.syncPeer = j.peer
 			j.peer.PushGetBlocksMsg(j.locator, j.mlocator, j.stopHash, j.mstopHash)
