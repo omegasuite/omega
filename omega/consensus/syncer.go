@@ -84,7 +84,7 @@ type Syncer struct {
 	consRevd	[]int32
 
 	// wait for end of task
-	wg          sync.WaitGroup
+//	wg          sync.WaitGroup
 	idles		int
 }
 
@@ -179,8 +179,8 @@ func (self *Syncer) repeater() {
 func (self *Syncer) run() {
 	going := true
 
-	self.wg.Add(1)
-	defer self.wg.Done()
+	miner.wg.Add(1)
+	defer miner.wg.Done()
 
 	ticker := time.NewTicker(time.Second * 2)
 
@@ -318,7 +318,7 @@ func (self *Syncer) run() {
 					going = false
 				}
 			}
-			self.print()
+//			self.print()
 
 		case <-self.quit:
 			going = false
@@ -330,14 +330,18 @@ func (self *Syncer) run() {
 	for true {
 		select {
 		case <-self.newtree:
+		case <- self.messages:
+/*
 		case m := <- self.messages:
 			switch m.(type) {
 			case *wire.MsgSignature:
 				log.Info("handling MsgSignature on quit")
 				self.Signature(m.(*wire.MsgSignature))
 			}
+ */
 
 		default:
+/*
 			if self.sigGiven != -1 {
 				owner := self.Names[self.sigGiven]
 				if self.Runnable && self.forest[owner] != nil && self.forest[owner].block != nil &&
@@ -346,6 +350,7 @@ func (self *Syncer) run() {
 					miner.server.NewConsusBlock(self.forest[owner].block)
 				}
 			}
+ */
 			self.Done = true
 			self.Runnable = false
 //			close(self.messages)
@@ -1028,10 +1033,13 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 }
 
 func (self *Syncer) Quit() {
-	if self.Runnable {
-		log.Info("sync quit")
+	log.Info("sync quit")
+	// to prevent entering SetCommittee
+	self.Runnable = true
+	select {
+	case <-self.quit:
+	default:
 		close(self.quit)
-		self.wg.Wait()
 	}
 }
 

@@ -26,7 +26,7 @@ type PeerNotifier interface {
 	RelayInventory(invVect *wire.InvVect, data interface{})
 
 	TransactionConfirmed(tx *btcutil.Tx)
-	AnnounceNewBlock(block * btcutil.Block)
+//	AnnounceNewBlock(block * btcutil.Block)
 }
 
 // Config is a configuration struct used to initialize a new SyncManager.

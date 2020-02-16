@@ -1063,6 +1063,14 @@ func (b *BlockChain) signedBy(block * btcutil.Block, miners [][20]byte) bool {
 	return true
 }
 
+func skipList(lst * list.List, y * list.Element) {
+	for y != nil {
+		z := y.Next()
+		lst.Remove(y)
+		y = z
+	}
+}
+
 // ReorganizeChain reorganizes the block chain by disconnecting the nodes in the
 // detachNodes list and connecting the nodes in the attach list.  It expects
 // that the lists are already in the correct order and are in sync with the
@@ -1205,6 +1213,8 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 	}
 
+	prevNode := forkNode
+	skipped := false
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*blockNode)
 
@@ -1218,9 +1228,13 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
-		if !b.signedBy(block, miners) {
-			return fmt.Errorf("Incorrect signer")
+		if !b.signedBy(block, miners) || !b.consistent(block, prevNode) {
+			skipList(attachNodes, e)
+			skipped = true
+			continue
+//			return fmt.Errorf("attach block failed to pass consistency check")
 		}
+		prevNode = n
 
 		shift := 0
 		if n.nonce > 0 {
@@ -1274,6 +1288,10 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		newBest = n
 	}
 
+	if skipped && attachNodes.Len() <= detachNodes.Len() {
+		return fmt.Errorf("attach block failed to pass consistency check")
+	}
+
 	// Reset the view for the actual connection code below.  This is
 	// required because the view was previously modified when checking if
 	// the reorg would be successful and the connection code requires the
@@ -1319,7 +1337,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 	}
 
-	prevNode := forkNode
 	// Connect the new best chain blocks.
 	for i, e := 0, attachNodes.Front(); e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*blockNode)
@@ -1333,11 +1350,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 //		if err != nil || mkorphan {
 //			return fmt.Errorf("attach block failed to pass POW check")
 //		}
-
-		if !b.consistent(block, prevNode) {
-			return fmt.Errorf("attach block failed to pass consistency check")
-		}
-		prevNode = n
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.

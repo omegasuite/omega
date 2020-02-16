@@ -14,6 +14,7 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/wire/common"
 	"github.com/davecgh/go-spew/spew"
+
 	//	"github.com/btcsuite/omega/minerchain"
 	"math/big"
 	"net"
@@ -367,21 +368,21 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 
 	// 3. if not, check if the message is in inventory, if yes, ignore it
 	mh := msg.Hash()
-	if _, ok := sp.server.syncManager.Broadcasted[mh]; ok {
-		sp.server.syncManager.Broadcasted[mh] = time.Now().Unix() + 300
+	if _, ok := sp.server.Broadcasted[mh]; ok {
+		sp.server.Broadcasted[mh] = time.Now().Unix() + 300
 		return
 	}
 
 	// 4. otherwise, broadcast it
 	// remove expired inventory
-	for i, t := range sp.server.syncManager.Broadcasted {
+	for i, t := range sp.server.Broadcasted {
 		if time.Now().Unix() > t {
-			delete(sp.server.syncManager.Broadcasted, i)
+			delete(sp.server.Broadcasted, i)
 		}
 	}
 
 	// inventory expires 5 minutes
-	sp.server.syncManager.Broadcasted[mh] = time.Now().Unix() + 300
+	sp.server.Broadcasted[mh] = time.Now().Unix() + 300
 	sp.server.broadcast <- broadcastMsg{msg, []*serverPeer{sp} }
 }
 
@@ -721,6 +722,7 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 	s.peerState.cmutex.Unlock()
 }
 
+/*
 func (s *server) AnnounceNewBlock(m * btcutil.Block) {
 	consensusLog.Infof("AnnounceNewBlock %d %s", m.Height(), m.Hash().String())
 	s.peerState.print()
@@ -746,6 +748,7 @@ func (s *server) AnnounceNewBlock(m * btcutil.Block) {
 	s.BroadcastMessage(msg)
 //	s.CommitteeCastMG(name, msg, blk.Height())
 }
+ */
 
 func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message, h int32) {
 	s.peerState.print()

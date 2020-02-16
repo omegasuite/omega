@@ -111,14 +111,17 @@ func (m *Miner) notice (notification *blockchain.Notification) {
 			log.Infof("new tx block at %d connected", h)
 
 			miner.syncMutex.Lock()
-			if _, ok := miner.Sync[h+1]; ok && !miner.Sync[h+1].Runnable {
-				miner.Sync[h+1].SetCommittee()
-			}
-			for t,s := range miner.Sync {
-				if t < h {
+			next := int32(0x7FFFFFFF)
+			for n,s := range miner.Sync {
+				if n > h && n < next {
+					next = n
+				} else if n <= h {
 					go s.Quit()
-					delete(miner.Sync, t)
+					delete(miner.Sync, n)
 				}
+			}
+			if next != 0x7FFFFFFF && !miner.Sync[next].Runnable {
+				miner.Sync[next].SetCommittee()
 			}
 			miner.syncMutex.Unlock()
 		}
@@ -148,8 +151,6 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 	errMootBlock = fmt.Errorf("Moot block.")
 	errInvalidBlock = fmt.Errorf("Invalid block")
 	Quit = make(chan struct{})
-
-	defer miner.wg.Wait()
 
 	log.Info("Consensus running")
 	miner.wg.Add(1)
@@ -251,16 +252,17 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 			polling = false
 			ticker.Stop()
 			DebugInfo()
-			miner.syncMutex.Lock()
-			for i, t := range miner.Sync {
-				log.Infof("Sync %d to Quit", i)
-				go t.Quit()
-				delete(miner.Sync, i)
-			}
-			miner.syncMutex.Unlock()
 			break out
 		}
 	}
+
+	miner.syncMutex.Lock()
+	for i, t := range miner.Sync {
+		log.Infof("Sync %d to Quit", i)
+		go t.Quit()
+		delete(miner.Sync, i)
+	}
+	miner.syncMutex.Unlock()
 
 	for true {
 		select {
@@ -351,7 +353,11 @@ func cleaner(top int32) {
 }
 
 func Shutdown() {
-	close(Quit)
+	select {
+	case <-Quit:
+	default:
+		close(Quit)
+	}
 	miner.wg.Wait()
 }
 
