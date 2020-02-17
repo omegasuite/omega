@@ -165,7 +165,6 @@ type peerSyncState struct {
 //	requestQueue    []*wire.InvVect
 	requestedTxns   map[chainhash.Hash]struct{}
 	requestedBlocks map[chainhash.Hash]int
-	requestedMinerBlocks map[chainhash.Hash]int
 	syncTime	int64	// unix time this peer became a sync peer
 }
 
@@ -199,10 +198,7 @@ type SyncManager struct {
 	rejectedTxns    map[chainhash.Hash]struct{}
 	requestedTxns   map[chainhash.Hash]struct{}
 	requestedBlocks map[chainhash.Hash]int
-	requestedMinerBlocks map[chainhash.Hash]int
-
 	requestedOrphans map[chainhash.Hash]int
-	requestedMinerOrphans map[chainhash.Hash]int
 
 	syncPeer        *peerpkg.Peer
 	peerStates      map[*peerpkg.Peer]*peerSyncState
@@ -298,14 +294,9 @@ func (sm *SyncManager) addSyncJob(peer *peerpkg.Peer, locator, mlocator chainhas
 func (sm *SyncManager) updateSyncPeer() {
 	if sm.syncPeer != nil {
 		state,ok := sm.peerStates[sm.syncPeer]
-		if ok && (len(state.requestedMinerBlocks) > 0 || len(state.requestedBlocks) > 0) {
+		if ok && len(state.requestedBlocks) > 0 {
 			tm := int(time.Now().Unix())
 			for _, t := range state.requestedBlocks {
-				if t > tm - 30 {
-					return
-				}
-			}
-			for _, t := range state.requestedMinerBlocks {
 				if t > tm - 30 {
 					return
 				}
@@ -402,13 +393,10 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 		// Clear the requestedBlocks if the sync peer changes, otherwise
 		// we may ignore blocks we need that the last sync peer failed
 		// to send.
-		sm.requestedMinerBlocks = make(map[chainhash.Hash]int)
 		sm.requestedBlocks = make(map[chainhash.Hash]int)
-		sm.requestedMinerOrphans = make(map[chainhash.Hash]int)
 		sm.requestedOrphans = make(map[chainhash.Hash]int)
 
 		sm.peerStates[bestPeer].requestedBlocks = make(map[chainhash.Hash]int)
-		sm.peerStates[bestPeer].requestedMinerBlocks = make(map[chainhash.Hash]int)
 
 		sm.syncPeer = bestPeer
 
@@ -512,7 +500,6 @@ func (sm *SyncManager) handleNewPeerMsg(peer *peerpkg.Peer) {
 		syncCandidate:   isSyncCandidate,
 		requestedTxns:   make(map[chainhash.Hash]struct{}),
 		requestedBlocks: make(map[chainhash.Hash]int),
-		requestedMinerBlocks: make(map[chainhash.Hash]int),
 	}
 
 	// Start syncing by choosing the best candidate if needed.
@@ -549,9 +536,6 @@ func (sm *SyncManager) handleDonePeerMsg(peer *peerpkg.Peer) {
 	// and request them now to speed things up a little.
 	for blockHash := range state.requestedBlocks {
 		delete(sm.requestedBlocks, blockHash)
-	}
-	for blockHash := range state.requestedMinerBlocks {
-		delete(sm.requestedMinerBlocks, blockHash)
 	}
 
 	// Attempt to find a new peer to sync from if the quitting peer is the
@@ -675,7 +659,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	}
 
 	defer func() {
-		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 {	// && sm.syncPeer == peer {
+		if len(state.requestedBlocks) == 0 {	// && sm.syncPeer == peer {
 			sm.updateSyncPeer()
 		}
 	}()
@@ -928,7 +912,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	}
 
 	defer func() {
-		if len(state.requestedBlocks) == 0 && len(state.requestedMinerBlocks) == 0 {	// && sm.syncPeer == peer {
+		if len(state.requestedBlocks) == 0 {	// && sm.syncPeer == peer {
 			sm.updateSyncPeer()
 		}
 	}()
@@ -937,7 +921,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 
 	// If we didn't ask for this block then the peer is misbehaving.
 	blockHash := bmsg.block.Hash()
-	if _, exists = state.requestedMinerBlocks[*blockHash]; !exists {
+	if _, exists = state.requestedBlocks[*blockHash]; !exists {
 		// The regression test intentionally sends some blocks twice
 		// to test duplicate block insertion fails.  Don't disconnect
 		// the peer or ignore the block when we're in regression test
@@ -956,8 +940,8 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	// Remove block from request maps. Either chain will know about it and
 	// so we shouldn't have any more instances of trying to fetch it, or we
 	// will fail the insert and thus we'll retry next time we get an inv.
-	delete(state.requestedMinerBlocks, *blockHash)
-	delete(sm.requestedMinerBlocks, *blockHash)
+	delete(state.requestedBlocks, *blockHash)
+	delete(sm.requestedBlocks, *blockHash)
 
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
@@ -1409,7 +1393,6 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// the peer to send us new batch of inv list if any
 			// TBD: optimization: instead of requesting a block which may be a waste,
 			// can we ask for something else?
-//			state.requestQueue = append(state.requestQueue, iv)
 			requestQueue = append(requestQueue, iv)
 		}
 
@@ -1492,8 +1475,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				// up to the root of the orphan that just came
 				// in.
 				if !ch.TryConnectOrphan(&iv.Hash) {
-					if _,ok := sm.requestedMinerOrphans[iv.Hash]; !ok || sm.requestedMinerOrphans[iv.Hash] > 10 {
-						sm.requestedMinerOrphans[iv.Hash] = 1
+					if _,ok := sm.requestedOrphans[iv.Hash]; !ok || sm.requestedOrphans[iv.Hash] > 10 {
+						sm.requestedOrphans[iv.Hash] = 1
 						orphanRoot := ch.GetOrphanRoot(&iv.Hash)
 						locator, err := ch.LatestBlockLocator()
 						if err != nil {
@@ -1507,10 +1490,10 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 						sm.addSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot)
 //						peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, orphanRoot)
 					} else {
-						sm.requestedMinerOrphans[iv.Hash]++
+						sm.requestedOrphans[iv.Hash]++
 					}
 				} else {
-					delete(sm.requestedMinerOrphans, iv.Hash)
+					delete(sm.requestedOrphans, iv.Hash)
 				}
 				continue
 			}
@@ -1574,18 +1557,21 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 
 //		log.Infof("handleInvMsg: send getDate %s %s", iv.Type.String(), iv.Hash.String())
 		switch iv.Type {
+		case common.InvTypeBlock:
+			iv.Type = common.InvTypeWitnessBlock
+			fallthrough
 		case common.InvTypeWitnessBlock:
 			fallthrough
-		case common.InvTypeBlock:
+		case common.InvTypeMinerBlock:
 			// Request the block if there is not already a pending
 			// request.
 			_, exists := sm.requestedBlocks[iv.Hash]
 			tm0, exists2 := state.requestedBlocks[iv.Hash]
 			if !exists || (exists2 && tm - tm0 > 50) {
 				sm.requestedBlocks[iv.Hash] = 1
-				sm.limitMap(sm.requestedBlocks, maxRequestedBlocks)
+				state.requestedBlocks[iv.Hash] = tm
 
-				iv.Type = common.InvTypeWitnessBlock
+				sm.limitMap(sm.requestedBlocks, 2 * maxRequestedBlocks)
 
 //				log.Infof("tx request %s add to queue list", iv.Hash.String())
 
@@ -1593,57 +1579,22 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				numRequested++
 			} else {
 //				log.Infof("tx Repeated %d request for %s", state.requestedBlocks[iv.Hash], iv.Hash.String())
-				sm.requestedBlocks[iv.Hash]++
-				if sm.requestedBlocks[iv.Hash] > 30 {
+				if sm.requestedBlocks[iv.Hash] >= 10 {
+					delete(sm.requestedBlocks, iv.Hash)
+					delete(state.requestedBlocks, iv.Hash)
 					// too many tries. try another peer to sync
 					if !resync {
 						resync = true
-						defer sm.updateSyncPeer()
-/*
 						defer func() {
 							p := sm.syncPeer
 							sm.syncPeer = nil
 							sm.startSync(p)
 						}()
- */
 					}
+				} else {
+					sm.requestedBlocks[iv.Hash]++
 				}
 			}
-			state.requestedBlocks[iv.Hash] = tm
-
-		case common.InvTypeMinerBlock:
-			// Request the block if there is not already a pending
-			// request.
-			_, exists := sm.requestedMinerBlocks[iv.Hash]
-			tm0, exists2 := state.requestedMinerBlocks[iv.Hash]
-			if !exists || (exists2 && tm - tm0 > 50) {
-				sm.requestedMinerBlocks[iv.Hash] = 1
-				sm.limitMap(sm.requestedMinerBlocks, maxRequestedBlocks)
-
-				iv.Type = common.InvTypeMinerBlock
-
-//				log.Infof("miner request %s add to queue list", iv.Hash.String())
-				gdmsg.AddInvVect(iv)
-				numRequested++
-			} else {
-//				log.Infof("miner Repeated %d miner request for %s", state.requestedMinerBlocks[iv.Hash], iv.Hash.String())
-				sm.requestedMinerBlocks[iv.Hash]++
-				if sm.requestedMinerBlocks[iv.Hash] > 30 {
-					// too many tries. try another peer to sync
-					if !resync {
-						resync = true
-						defer sm.updateSyncPeer()
-/*
-						func() {
-							p := sm.syncPeer
-							sm.syncPeer = nil
-							sm.startSync(p)
-						}()
- */
-					}
-				}
-			}
-			state.requestedMinerBlocks[iv.Hash] = tm
 
 		case common.InvTypeWitnessTx:
 			fallthrough
@@ -2132,9 +2083,7 @@ func New(config *Config) (*SyncManager, error) {
 		rejectedTxns:    make(map[chainhash.Hash]struct{}),
 		requestedTxns:   make(map[chainhash.Hash]struct{}),
 		requestedBlocks: make(map[chainhash.Hash]int),
-		requestedMinerBlocks: make(map[chainhash.Hash]int),
 		requestedOrphans: make(map[chainhash.Hash]int),
-		requestedMinerOrphans: make(map[chainhash.Hash]int),
 		peerStates:      make(map[*peerpkg.Peer]*peerSyncState),
 		progressLogger:  newBlockProgressLogger("Processed", log),
 		msgChan:         make(chan interface{}, config.MaxPeers*3),
