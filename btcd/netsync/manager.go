@@ -688,6 +688,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	// If we didn't ask for this block then the peer is misbehaving.
 	blockHash := bmsg.block.Hash()
+/*
 	if _, exists = state.requestedBlocks[*blockHash]; !exists && behaviorFlags & blockchain.BFNoConnect != blockchain.BFNoConnect {
 		// The regression test intentionally sends some blocks twice
 		// to test duplicate block insertion fails.  Don't disconnect
@@ -696,10 +697,10 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		// duplicate blocks.
 		if sm.chainParams != &chaincfg.RegressionNetParams && peer.Committee <= 0 {
 			log.Warnf("Got unrequested block %s from %s", blockHash.String(), peer.Addr())
-//			peer.Disconnect("handleBlockMsg @ RegressionNetParams")
 			return
 		}
 	}
+ */
 
 	// When in headers-first mode, if the block matches the hash of the
 	// first header in the list of headers that are being fetched, it's
@@ -921,6 +922,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 
 	// If we didn't ask for this block then the peer is misbehaving.
 	blockHash := bmsg.block.Hash()
+/*
 	if _, exists = state.requestedBlocks[*blockHash]; !exists {
 		// The regression test intentionally sends some blocks twice
 		// to test duplicate block insertion fails.  Don't disconnect
@@ -928,12 +930,11 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		// mode in this case so the chain code is actually fed the
 		// duplicate blocks.
 		if sm.chainParams != &chaincfg.RegressionNetParams && peer.Committee <= 0 {
-			log.Warnf("Got unrequested block %v from %s -- "+
-				"disconnecting", blockHash, peer.Addr())
-//			peer.Disconnect("handleMinerBlockMsg @ RegressionNetParams")
+			log.Warnf("Got unrequested block %v from %s", blockHash, peer.Addr())
 			return
 		}
 	}
+ */
 
 	behaviorFlags := blockchain.BFNone
 
@@ -1690,7 +1691,7 @@ out:
 
 		case m := <-sm.msgChan:
 //			log.Infof("blockHandler took a message from sm.msgChan: ", reflect.TypeOf(m).String())
-			sm.lastBlockOp = fmt.Sprint("%v", m)
+			sm.lastBlockOp = fmt.Sprint("%V+", m)
 
 			switch msg := m.(type) {
 			case *newPeerMsg:

@@ -331,17 +331,14 @@ func (self *Syncer) run() {
 		select {
 		case <-self.newtree:
 		case <- self.messages:
-/*
 		case m := <- self.messages:
 			switch m.(type) {
 			case *wire.MsgSignature:
 				log.Info("handling MsgSignature on quit")
 				self.Signature(m.(*wire.MsgSignature))
 			}
- */
 
 		default:
-/*
 			if self.sigGiven != -1 {
 				owner := self.Names[self.sigGiven]
 				if self.Runnable && self.forest[owner] != nil && self.forest[owner].block != nil &&
@@ -350,7 +347,6 @@ func (self *Syncer) run() {
 					miner.server.NewConsusBlock(self.forest[owner].block)
 				}
 			}
- */
 			self.Done = true
 			self.Runnable = false
 //			close(self.messages)
