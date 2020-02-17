@@ -1399,11 +1399,6 @@ func (b *MinerChain) LocateHeaders(locator chainhash.BlockLocator, hashStop *cha
 
 // New returns a BlockChain instance using the provided configuration details.
 func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
-	s, err := blockchain.New(config)
-	if err != nil {
-		return nil, err
-	}
-
 	// Enforce required config fields.
 	if config.DB == nil || config.MinerDB == nil {
 		return nil, AssertError("blockchain.New database is nil")
@@ -1416,10 +1411,16 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		return nil, AssertError("blockchain.New timesource is nil")
 	}
 
+	s, err := blockchain.New(config)
+	if err != nil {
+		return nil, err
+	}
+
 	params := config.ChainParams
 	targetTimespan := int64(params.TargetTimespan / time.Second)
 	targetTimePerBlock := int64(params.TargetTimePerBlock / time.Second)
 	adjustmentFactor := params.RetargetAdjustmentFactor
+
 	b := & MinerChain{
 		db:                  config.MinerDB,
 		chainParams:         params,
@@ -1446,28 +1447,40 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	s.Miners = b
 
 	// verify chain state is not corrupted
-	best := s.BestSnapshot()
+//	best := s.BestSnapshot()
 	mbest := b.BestSnapshot()
 
 	mtop := b.BestChain.Tip()
 	ok := true
-	h := mtop.Header().BestBlock
-	if !s.MainChainHasBlock(&h) {
+
+	// Start from the end of the main chain and work backwards until
+	// the node whose bestblock is the tx chain's last block.
+	n := mtop
+	h := n.Header().BestBlock
+	detachNodes := list.New()
+	for n.parent != nil && !s.MainChainHasBlock(&h) {
+		//			&& n.Header().BestBlock != best.Hash
+		detachNodes.PushBack(n)
+		n = n.parent
+		h = n.Header().BestBlock
 		ok = false
-		detachNodes := list.New()
+	}
 
-		// Start from the end of the main chain and work backwards until
-		// the node whose bestblock is the tx chain's last block.
-		for n := mtop; n.parent != nil && n.Header().BestBlock != best.Hash; n = n.parent {
-			detachNodes.PushBack(n)
-		}
-
+	if !ok {
 		log.Warnf("miner chain is corrupted. roll back %d blocks", detachNodes.Len())
-
 		b.chainLock.Lock()
 		b.reorganizeChain(detachNodes, list.New())
 		b.chainLock.Unlock()
+
+		detachNodes := list.New()
+		for m := s.BestChain.Tip(); * m.Hash() != n.Header().BestBlock; m = m.Parent() {
+			detachNodes.PushBack(n)
+		}
+		s.ChainLock.Lock()
+		s.ReorganizeChain(detachNodes, list.New())
+		s.ChainLock.Unlock()
 	}
+
 	txtop := s.BestChain.Tip()
 	for txtop != nil && txtop.Nonce() > -wire.MINER_RORATE_FREQ {
 		txtop = txtop.Parent()
