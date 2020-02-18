@@ -14,9 +14,8 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/omega/minerchain"
 	"github.com/davecgh/go-spew/spew"
-
-	//	"github.com/btcsuite/omega/minerchain"
 	"math/big"
+
 	"net"
 	"sync"
 	"time"
@@ -246,8 +245,8 @@ func (s *server) SendInvAck(peer [20]byte, sp *serverPeer) {
 func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 	sp.server.peerState.print()
 
-	// 1. check if the message has expired, if yes, do nothing
-	if sp.server.chain.BestSnapshot().LastRotation > msg.Expire {
+	// 1. check if the message has expired or too far out, if yes, do nothing
+	if sp.server.chain.BestSnapshot().LastRotation > msg.Expire || msg.Expire - sp.server.chain.BestSnapshot().LastRotation > 5 * wire.CommitteeSize {
 		return
 	}
 
@@ -368,8 +367,9 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 
 	// 3. if not, check if the message is in inventory, if yes, ignore it
 	mh := msg.Hash()
+	mt := time.Now().Unix()
 	if _, ok := sp.server.Broadcasted[mh]; ok {
-		sp.server.Broadcasted[mh] = time.Now().Unix() + 300
+		sp.server.Broadcasted[mh] = mt + 300
 		return
 	}
 
@@ -383,7 +383,9 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 
 	// inventory expires 5 minutes
 	sp.server.Broadcasted[mh] = time.Now().Unix() + 300
-	sp.server.broadcast <- broadcastMsg{msg, []*serverPeer{sp} }
+
+	sp.server.BroadcastMessage(msg, sp)
+//	sp.server.broadcast <- broadcastMsg{msg, []*serverPeer{sp} }
 }
 
 func (s *server) phaseoutCommittee(r int32) {
@@ -653,7 +655,8 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 	} else if len(cfg.ExternalIPs) == 0 {
 		return
 	} else if m := s.makeInvitationMsg(me, miner[:], conn); m != nil {
-		s.broadcast <- broadcastMsg { message: m}
+		s.BroadcastMessage(m)
+//		s.broadcast <- broadcastMsg { message: m}
 	}
 }
 

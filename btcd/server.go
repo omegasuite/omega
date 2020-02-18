@@ -2151,25 +2151,6 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 // handleBroadcastMsg deals with broadcasting messages to peers.  It is invoked
 // from the peerHandler goroutine.
 func (s *server) handleBroadcastMsg(state *peerState, bmsg *broadcastMsg) {
-	mt := time.Now().Unix()
-
-	var w bytes.Buffer
-	bmsg.message.BtcEncode(&w, 0, wire.SignatureEncoding)
-	mh := chainhash.DoubleHashH(w.Bytes())
-	if _, ok := s.Broadcasted[mh]; ok {
-		s.Broadcasted[mh] = mt + 3000
-		return
-	}
-
-	for i, t := range s.Broadcasted {
-		if mt > t {
-			delete(s.Broadcasted, i)
-		}
-	}
-
-	// inventory expires after 50 minutes
-	s.Broadcasted[mh] = mt + 3000
-
 	state.forAllPeers(func(sp *serverPeer) {
 		if !sp.Connected() {
 			return

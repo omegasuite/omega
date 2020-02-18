@@ -6,8 +6,8 @@ package netsync
 
 import (
 	"container/list"
-	"fmt"
 	"github.com/btcsuite/omega/minerchain"
+	"github.com/davecgh/go-spew/spew"
 	"net"
 	"reflect"
 	"sync"
@@ -1691,7 +1691,7 @@ out:
 
 		case m := <-sm.msgChan:
 //			log.Infof("blockHandler took a message from sm.msgChan: ", reflect.TypeOf(m).String())
-			sm.lastBlockOp = fmt.Sprint("%V+", m)
+			sm.lastBlockOp = spew.Sdump(m)
 
 			switch msg := m.(type) {
 			case *newPeerMsg:
@@ -1729,6 +1729,7 @@ out:
 				_, isOrphan, err := sm.chain.ProcessBlock(
 					msg.block, msg.flags)
 				if msg.reply != nil {
+					sm.lastBlockOp += " ... waiting reply from sm.chain.ProcessBlock "
 					if err != nil {
 						msg.reply <- processBlockResponse{
 							isOrphan: false,
@@ -1745,6 +1746,7 @@ out:
 			case processConsusMsg:
 				consensus.ProcessBlock(msg.block, msg.flags)
 				if msg.reply != nil {
+					sm.lastBlockOp += " ... waiting reply from consensus.ProcessBlock "
 					msg.reply <- processBlockResponse{
 						isOrphan: true,
 						err:      nil,
@@ -1758,6 +1760,7 @@ out:
 				_, isOrphan, err := sm.chain.Miners.ProcessBlock(
 					msg.block, msg.flags)
 				if msg.reply != nil {
+					sm.lastBlockOp += " ... waiting reply from sm.chain.Miners.ProcessBlock "
 					if err != nil {
 						msg.reply <- processBlockResponse{
 							isOrphan: false,
@@ -1788,6 +1791,7 @@ out:
 		case <-sm.quit:
 			break out
 		}
+		sm.lastBlockOp += " ... Done."
 	}
 
 	sm.wg.Done()
