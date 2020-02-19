@@ -1594,6 +1594,7 @@ func (b *BlockChain) SameChain(u, w chainhash.Hash) bool {
 		if nu == nw {
 			return true
 		}
+		nu = nu.parent
 	}
 	return false
 }
