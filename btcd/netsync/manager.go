@@ -121,7 +121,6 @@ type processBlockMsg struct {
 type processConsusMsg struct {
 	block *btcutil.Block
 	flags blockchain.BehaviorFlags
-	reply chan processBlockResponse
 }
 
 type processConsusPull struct {
@@ -1745,16 +1744,6 @@ out:
 
 			case processConsusMsg:
 				consensus.ProcessBlock(msg.block, msg.flags)
-				if msg.reply != nil {
-					sm.lastBlockOp += " ... waiting reply from consensus.ProcessBlock "
-					msg.reply <- processBlockResponse{
-						isOrphan: true,
-						err:      nil,
-					}
-				}
-
-//			case *consensus.MsgMerkleBlock:
-//				consensus.ProcessHeader(sm.chain, msg)
 
 			case processMinerBlockMsg:
 				_, isOrphan, err := sm.chain.Miners.ProcessBlock(
@@ -2025,19 +2014,19 @@ func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.Behav
 	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
 		log.Infof("procssing a comittee block, height = %d", block.Height())
 		// need to go through a committee to finalize it
-		if flags & blockchain.BFSubmission == blockchain.BFSubmission {
-			log.Infof("this is a local submission")
+//		if flags & blockchain.BFSubmission == blockchain.BFSubmission {
+//			log.Infof("this is a local submission")
 			// this is a locally mined block
 			// this would add the block to the chain as an orphan
-			log.Infof("send for local ProcessBlock")
+//			log.Infof("send for local ProcessBlock")
 
-			sm.msgChan <- processBlockMsg{block: block, flags: flags, reply: reply}
+			sm.msgChan <- processBlockMsg{block: block, flags: flags | blockchain.BFSubmission, reply: reply}
 
 			response := <-reply
 			if response.err != nil {
 				return false, response.err
 			}
-		}
+//		}
 		// for local consensus generation
 		log.Infof("send for consensus generation")
 		sm.msgChan <- processConsusMsg{block: block, flags: flags }

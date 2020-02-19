@@ -62,7 +62,6 @@ type GetMinerBlockVerboseResult struct {
 	Bits          string        `json:"bits"`
 	Difficulty    float64       `json:"difficulty"`
 	Address       string        `json:"address"`
-	Referred	  string        `json:"referred"`
 	Best		  string        `json:"best"`
 //	BlackList	  string        `json:"blacklist"`
 }

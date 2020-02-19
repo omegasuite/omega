@@ -1578,15 +1578,11 @@ func (b *BlockChain) InBestChain(u * chainhash.Hash) bool {
 	return nu != nil && b.BestChain.Contains(nu)
 }
 
-func (b *BlockChain) SameChain(u, v, w chainhash.Hash) bool {
+func (b *BlockChain) SameChain(u, w chainhash.Hash) bool {
 	// whether the tree blocks identified by hashes are in the same chain
 	// u is the last of the 3
 	nu := b.index.LookupNode(&u)
 	if nu == nil {
-		return false
-	}
-	nv := b.index.LookupNode(&v)
-	if nv == nil {
 		return false
 	}
 	nw := b.index.LookupNode(&w)
@@ -1594,17 +1590,12 @@ func (b *BlockChain) SameChain(u, v, w chainhash.Hash) bool {
 		return false
 	}
 
-	m := 0
-	for nu != nil && (nu.height >= nv.height || nu.height >= nw.height) && m != 3 {
-		if nu == nv {
-			m |= 1
-		}
+	for nu != nil && nu.height >= nw.height {
 		if nu == nw {
-			m |= 2
+			return true
 		}
-		nu = nu.parent
 	}
-	return m == 3
+	return false
 }
 
 // IsCurrent returns whether or not the chain believes it is current.  Several

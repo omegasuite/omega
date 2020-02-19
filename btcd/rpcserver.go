@@ -1368,7 +1368,6 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 		NextHash:      nextHashString,
 		Address:	   d.String(),	// hex.EncodeToString(blockHeader.Miner),
-		Referred:	   blockHeader.ReferredBlock.String(),
 		Best:		   blockHeader.BestBlock.String(),
 //		BlackList:	   hex.EncodeToString(blockHeader.BlackList),
 	}
@@ -3985,10 +3984,9 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 		}
 
 		bblk,_ := chain.BlockByHash(&block.MsgBlock().BestBlock)
-		rblk,_ := chain.BlockByHash(&block.MsgBlock().ReferredBlock)
-		if bblk == nil || rblk == nil {
-			t := fmt.Sprintf("BestBlock %s or ReferredBlock %s does not exist in tx chain @ height %d", block.MsgBlock().BestBlock.String(), block.MsgBlock().ReferredBlock.String(), height)
-			rpcsLog.Errorf("BestBlock %s or ReferredBlock %s does not exist in tx chain @ height %d", block.MsgBlock().BestBlock.String(), block.MsgBlock().ReferredBlock.String(), height)
+		if bblk == nil {
+			t := fmt.Sprintf("BestBlock %s does not exist in tx chain @ height %d", block.MsgBlock().BestBlock.String(), height)
+			rpcsLog.Errorf("BestBlock %s does not exist in tx chain @ height %d", block.MsgBlock().BestBlock.String(), height)
 			return t, nil
 		}
 	}

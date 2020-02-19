@@ -927,16 +927,11 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 	cbest := g.Chain.BestSnapshot()
 	bh := cbest.Height
 
-	h1,_ := g.Chain.BlockHeightByHash(&last.MsgBlock().ReferredBlock)
 	h0,_ := g.Chain.BlockHeightByHash(&last.MsgBlock().BestBlock)
 
-	h2 := (bh + h1) / 2
-
-	if bh < h0 || h2 < h1 {
+	if bh < h0  {
 		return nil, nil
 	}
-
-	h3,_ := g.Chain.BlockHashByHeight(h2)
 
 	// Create a new block ready to be solved.
 	msgBlock := wire.MingingRightBlock{
@@ -944,7 +939,6 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 		PrevBlock:     best.Hash,
 		Timestamp:     ts,
 		Bits:          reqDifficulty,
-		ReferredBlock: *h3,
 		BestBlock:     cbest.Hash,
 		Miner:         payToAddress.ScriptAddress(),
 		BlackList:     make([]wire.BlackList, 0),

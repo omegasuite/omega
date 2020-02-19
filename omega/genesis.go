@@ -1204,7 +1204,6 @@ chainhash.Hash{
 var GenesisMinerBlock = wire.MingingRightBlock{
 	Version:    GenesisBlock.Header.Version,
 	PrevBlock:  chainhash.Hash{},
-	ReferredBlock: GenesisHash[0],
 	BestBlock: GenesisHash[0],
 	Timestamp:  GenesisBlock.Header.Timestamp, 
 	Bits:      0x1f00ffff,
@@ -1245,7 +1244,6 @@ var RegTestGenesisBlock = wire.MsgBlock{
 var RegTestGenesisMinerBlock = wire.MingingRightBlock{
 	Version:    RegTestGenesisBlock.Header.Version,
 	PrevBlock:  chainhash.Hash{},
-	ReferredBlock: RegTestGenesisHash[0],
 	BestBlock: RegTestGenesisHash[0],
 	Timestamp:  RegTestGenesisBlock.Header.Timestamp, 
 	Bits:      0x1f7fffff,
@@ -1286,7 +1284,6 @@ var TestNet3GenesisBlock = wire.MsgBlock{
 var TestNet3GenesisMinerBlock = wire.MingingRightBlock{
 	Version:    TestNet3GenesisBlock.Header.Version,
 	PrevBlock:  chainhash.Hash{},
-	ReferredBlock: TestNet3GenesisHash[0],
 	BestBlock: TestNet3GenesisHash[0],
 	Timestamp:  TestNet3GenesisBlock.Header.Timestamp, 
 	Bits:      0x1f00ffff,
@@ -1327,7 +1324,6 @@ var SimNetGenesisBlock = wire.MsgBlock{
 var SimNetGenesisMinerBlock = wire.MingingRightBlock{
 	Version:    SimNetGenesisBlock.Header.Version,
 	PrevBlock:  chainhash.Hash{},
-	ReferredBlock: SimNetGenesisHash[0],
 	BestBlock: SimNetGenesisHash[0],
 	Timestamp:  SimNetGenesisBlock.Header.Timestamp, 
 	Bits:      0x1f7fffff,

@@ -312,7 +312,7 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 			invalidChain = true
 		}
 		p := n.parent
-		if !b.blockChain.SameChain(n.Header().BestBlock, n.Header().ReferredBlock, p.Header().BestBlock) {
+		if !b.blockChain.SameChain(n.Header().BestBlock, p.Header().BestBlock) {
 			// if any node is inconsistent, ignore all nodes after it by clearing attachNodes list
 //			b.index.SetStatusFlags(n, statusInvalidAncestor)
 			invalidChain = true
@@ -828,7 +828,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 	parentHash := &block.MsgBlock().PrevBlock
 	parent := b.index.LookupNode(parentHash)
 	if parentHash.IsEqual(&b.BestChain.Tip().hash) &&
-		b.blockChain.SameChain(block.MsgBlock().BestBlock, block.MsgBlock().ReferredBlock, parent.Header().BestBlock) &&
+		b.blockChain.SameChain(block.MsgBlock().BestBlock, parent.Header().BestBlock) &&
 		b.blockChain.InBestChain(&block.MsgBlock().BestBlock) {
 		// Skip checks if node has already been fully validated.
 		fastAdd = fastAdd || b.index.NodeStatus(node).KnownValid()

@@ -99,10 +99,6 @@ type MingingRightBlock struct {
 	// Hash of the previous MingingRightBlock block in the block chain.
 	PrevBlock chainhash.Hash
 
-	// ReferredBlock hash of regular block. must be a block after ReferredBlock in the previous MingingRightBlock
-	// and before half way between the ReferredBlock in the previous MingingRightBlock and most recent regular block (BestBlock)
-	ReferredBlock chainhash.Hash
-
 	// The best main chain block known to the miner. Must not be before the BestBlock of the previous MingingRightBlock.
 	BestBlock chainhash.Hash
 
@@ -337,7 +333,6 @@ func NewMinerNodeBlock(version int32, prevHash, referredHash, bestHash *chainhas
 	return &MingingRightBlock{
 		Version:       version,
 		PrevBlock:     *prevHash,
-		ReferredBlock: *referredHash,
 		BestBlock:     *bestHash,
 		Timestamp:     time.Unix(time.Now().Unix(), 0),
 		Bits:          bits,
@@ -350,7 +345,7 @@ func NewMinerNodeBlock(version int32, prevHash, referredHash, bestHash *chainhas
 // decoding block headers stored to disk, such as in a database, as opposed to
 // decoding from the wire.
 func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
-	if err := common.ReadElements(r, &bh.Version, &bh.PrevBlock, &bh.ReferredBlock,
+	if err := common.ReadElements(r, &bh.Version, &bh.PrevBlock,
 		&bh.BestBlock, (*common.Uint32Time)(&bh.Timestamp), &bh.Bits, &bh.Nonce); err != nil {
 		return err
 	}
@@ -388,7 +383,7 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 	sec := uint32(bh.Timestamp.Unix())
 
 	if err := common.WriteElements(w, bh.Version, &bh.PrevBlock,
-		&bh.ReferredBlock,	bh.BestBlock, sec, bh.Bits, bh.Nonce); err != nil {
+		bh.BestBlock, sec, bh.Bits, bh.Nonce); err != nil {
 		return err
 	}
 	if err := common.WriteVarBytes(w, 0, bh.Miner); err != nil {

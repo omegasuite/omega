@@ -46,6 +46,7 @@ type Miner struct {
 
 	// wait for end of task
 	wg          sync.WaitGroup
+	shutdown bool
 }
 
 type newblock struct {
@@ -66,6 +67,10 @@ var newblockch chan newblock
 // var newheadch chan newhead
 
 func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
+	if miner.shutdown {
+		return
+	}
+
 	flags |= blockchain.BFNoConnect
 	log.Infof("Consensus.ProcessBlock for block %s at %d, flags=%x",
 		block.Hash().String(), block.Height(), flags)
@@ -211,19 +216,8 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 				// should never gets here
 				log.Infof("Block is a consensus. Accept it and close processing for height %d.", bh)
 				continue
-/*
-				miner.syncMutex.Lock()
-				if _, ok := miner.Sync[bh]; ok {
-					miner.Sync[bh].Quit()
-					miner.syncMutex.Unlock()
-//					delete(miner.Sync, bh)
-					continue
-				}
-				miner.syncMutex.Unlock()
- */
 			}
 
-//			cleaner(top)
 			miner.syncMutex.Lock()
 			if _, ok := miner.Sync[bh]; !ok {
 				log.Infof(" CreateSyncer at %d", bh)
@@ -232,22 +226,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 			log.Infof(" BlockInit at %d for block %s", bh, blk.block.Hash().String())
 			miner.Sync[bh].BlockInit(blk.block)
 			miner.syncMutex.Unlock()
-/*
-		case head := <- newheadch:
-			top := head.chain.BestSnapshot().Height
-//			cleaner(top)
-			if head.head.Height < top {
-				continue
-			}
 
-			if _, ok := miner.Sync[head.head.Height]; !ok {
-				miner.Sync[head.head.Height] = CreateSyncer()
-			}
-			if !miner.Sync[head.head.Height].Initialized {
-				miner.Sync[head.head.Height].Initialize(head.chain, head.head.Height)
-			}
-			miner.Sync[head.head.Height].HeaderInit(head.head)
-*/
 		case <- Quit:
 			log.Info("consensus received Quit")
 			polling = false
@@ -269,7 +248,6 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 		select {
 		case <-miner.updateheight:
 		case <-newblockch:
-//		case <-newheadch:
 
 		default:
 			log.Info("consensus quits")
@@ -354,6 +332,7 @@ func cleaner(top int32) {
 }
 
 func Shutdown() {
+	miner.shutdown = true
 	select {
 	case <-Quit:
 	default:

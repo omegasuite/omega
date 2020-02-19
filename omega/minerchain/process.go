@@ -128,7 +128,7 @@ func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.Behav
 			}
 
 			parent := b.index.LookupNode(processHash)
-			if !b.blockChain.SameChain(orphan.block.MsgBlock().BestBlock, orphan.block.MsgBlock().ReferredBlock, parent.Header().BestBlock) {
+			if !b.blockChain.SameChain(orphan.block.MsgBlock().BestBlock, parent.Header().BestBlock) {
 				continue
 			}
 
@@ -264,7 +264,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	}
 
 	parent := b.index.LookupNode(prevHash)
-	if !b.blockChain.SameChain(block.MsgBlock().BestBlock, block.MsgBlock().ReferredBlock, parent.Header().BestBlock) {
+	if !b.blockChain.SameChain(block.MsgBlock().BestBlock, parent.Header().BestBlock) {
 		log.Infof("block and parent tx reference not in the same chain.")
 		b.addOrphanBlock(block)
 		return false, true, nil
