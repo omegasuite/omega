@@ -310,7 +310,6 @@ func main() {
 	var minerBlock = wire.MingingRightBlock{
 		Version:       0x10000000,
 		PrevBlock:     chainhash.Hash{},
-		ReferredBlock: genesisHash,
 		BestBlock:     genesisHash,
 		Timestamp:     genesisBlock.Header.Timestamp,
 		Bits:          0x1f00ffff,
@@ -335,7 +334,6 @@ func main() {
 	fmt.Printf("\n\nvar GenesisMinerBlock = wire.MingingRightBlock{" +
 		"\n\tVersion:    GenesisBlock.Header.Version," +
 		"\n\tPrevBlock:  chainhash.Hash{}," +
-		"\n\tReferredBlock: GenesisHash[0]," +
 		"\n\tBestBlock: GenesisHash[0]," +
 		"\n\tTimestamp:  GenesisBlock.Header.Timestamp, " +
 		"\n\tBits:      0x%x," +
@@ -379,7 +377,6 @@ func main() {
 	var regTestGenesisMinerBlock = wire.MingingRightBlock{
 		Version:       0x10000000,
 		PrevBlock:     chainhash.Hash{},
-		ReferredBlock: regTestGenesisHash,
 		BestBlock:     regTestGenesisHash,
 		Timestamp:     regTestGenesisBlock.Header.Timestamp,
 		Bits:          0x1f7fffff,
@@ -407,7 +404,6 @@ func main() {
 	fmt.Printf("\n\nvar RegTestGenesisMinerBlock = wire.MingingRightBlock{" +
 		"\n\tVersion:    RegTestGenesisBlock.Header.Version," +
 		"\n\tPrevBlock:  chainhash.Hash{}," +
-		"\n\tReferredBlock: RegTestGenesisHash[0]," +
 		"\n\tBestBlock: RegTestGenesisHash[0]," +
 		"\n\tTimestamp:  RegTestGenesisBlock.Header.Timestamp, " +
 		"\n\tBits:      0x%x," +
@@ -450,10 +446,9 @@ func main() {
 	var testNet3GenesisMinerBlock = wire.MingingRightBlock{
 		Version:       0x10000000,
 		PrevBlock:     chainhash.Hash{},
-		ReferredBlock: testNet3GenesisHash,
 		BestBlock:     testNet3GenesisHash,
 		Timestamp:     testNet3GenesisBlock.Header.Timestamp,
-		Bits:          0x1c00ffff,
+		Bits:          0x1f00ffff,
 		Nonce:         0,
 		Miner:       addr.ScriptAddress(),
 	}
@@ -478,7 +473,6 @@ func main() {
 	fmt.Printf("\n\nvar TestNet3GenesisMinerBlock = wire.MingingRightBlock{" +
 		"\n\tVersion:    TestNet3GenesisBlock.Header.Version," +
 		"\n\tPrevBlock:  chainhash.Hash{}," +
-		"\n\tReferredBlock: TestNet3GenesisHash[0]," +
 		"\n\tBestBlock: TestNet3GenesisHash[0]," +
 		"\n\tTimestamp:  TestNet3GenesisBlock.Header.Timestamp, " +
 		"\n\tBits:      0x%x," +
@@ -522,7 +516,6 @@ func main() {
 	var simNetGenesisMinerBlock = wire.MingingRightBlock{
 		Version:       0x10000000,
 		PrevBlock:     chainhash.Hash{},
-		ReferredBlock: simNetGenesisHash,
 		BestBlock:     simNetGenesisHash,
 		Timestamp:     simNetGenesisBlock.Header.Timestamp,
 		Bits:          0x1f7fffff,
@@ -550,7 +543,6 @@ func main() {
 	fmt.Printf("\n\nvar SimNetGenesisMinerBlock = wire.MingingRightBlock{" +
 		"\n\tVersion:    SimNetGenesisBlock.Header.Version," +
 		"\n\tPrevBlock:  chainhash.Hash{}," +
-		"\n\tReferredBlock: SimNetGenesisHash[0]," +
 		"\n\tBestBlock: SimNetGenesisHash[0]," +
 		"\n\tTimestamp:  SimNetGenesisBlock.Header.Timestamp, " +
 		"\n\tBits:      0x%x," +
@@ -628,8 +620,8 @@ func printhash(h chainhash.Hash) {
 }
 
 func printminerblock(blk wire.MingingRightBlock) {
-	fmt.Printf("Header {\n\tVersion:%d,\n\tPrevBlock: %s\n\tReferredBlock: %s\n\tBestBlock: %s\n\tTimestamp: 0x%x\n\tBits: 0x%x\n\tNonce: %d",
-		blk.Version, blk.PrevBlock.String(), blk.ReferredBlock.String(), blk.BestBlock.String(), blk.Timestamp.Unix(),
+	fmt.Printf("Header {\n\tVersion:%d,\n\tPrevBlock: %s\n\tBestBlock: %s\n\tTimestamp: 0x%x\n\tBits: 0x%x\n\tNonce: %d",
+		blk.Version, blk.PrevBlock.String(), blk.BestBlock.String(), blk.Timestamp.Unix(),
 		blk.Bits, blk.Nonce)
 	fmt.Printf("\n\tMiner:[")
 	for _,b := range blk.Miner {
