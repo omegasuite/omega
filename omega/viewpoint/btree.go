@@ -1,3 +1,13 @@
+/* Copyright (C) 2019-2020 omega-chain.com - All Rights Reserved
+* This file is part of the omega chain library.
+*
+* Use of this source code is governed by license that can be
+* found in the LICENSE file.
+*
+* You should have received a copy of the license with this file.
+* If not, please visit: <https://omega-chain.com/license.html>
+ */
+
 package viewpoint
 
 import (
