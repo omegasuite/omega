@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
-	"math/big"
 	"time"
 
 	"github.com/btcsuite/btcd/blockchain/bccompress"
@@ -652,7 +651,6 @@ type bestChainState struct {
 	height    uint32
 	totalTxns uint64
 	rotation  uint32
-	workSum   *big.Int
 }
 
 // serializeBestChainState returns the serialization of the passed block best
@@ -737,7 +735,6 @@ func dbPutBestState(dbTx database.Tx, snapshot *BestState) error {
 		rotation:  snapshot.LastRotation,
 		height:    uint32(snapshot.Height),
 		totalTxns: snapshot.TotalTxns,
-		workSum:   big.NewInt(int64(snapshot.Height)),
 	})
 
 	// Store the current best chain state into the database.
