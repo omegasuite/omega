@@ -213,6 +213,7 @@ type SyncManager struct {
 
 	syncjobs []*pendginGetBlocks
 	lastBlockOp string	// for debug
+	bshutdown bool
 }
 
 // resetHeaderState sets the headers-first mode state to values appropriate for
@@ -291,6 +292,9 @@ func (sm *SyncManager) addSyncJob(peer *peerpkg.Peer, locator, mlocator chainhas
 }
 
 func (sm *SyncManager) updateSyncPeer() {
+	if sm.bshutdown {
+		return
+	}
 	if sm.syncPeer != nil {
 		state,ok := sm.peerStates[sm.syncPeer]
 		if ok && len(state.requestedBlocks) > 0 {
@@ -358,6 +362,9 @@ func (sm *SyncManager) StartSync() {
 // simply returns.  It also examines the candidates for any which are no longer
 // candidates and removes them as needed.
 func (sm *SyncManager) startSync(p *peerpkg.Peer) {
+	if sm.bshutdown {
+		return
+	}
 	// Return now if we're already syncing.
 	if sm.syncPeer != nil {
 		return
@@ -799,7 +806,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 			// add a sync jon
 			tlocator, _ := sm.chain.LatestBlockLocator()
-			orphanRoot := sm.chain.GetOrphanRoot(blockHash)
+			orphanRoot := sm.chain.Orphans.GetOrphanRoot(blockHash)
 			if *orphanRoot == *blockHash {
 				locator, _ := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 				sm.addSyncJob(peer, tlocator, locator, orphanRoot, &zeroHash)
@@ -992,7 +999,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 			// there is no need to get blocks before the orphan
 			return
 		} else {
-			orphanRoot := sm.chain.Miners.(*minerchain.MinerChain).GetOrphanRoot(blockHash)
+			orphanRoot := sm.chain.Miners.(*minerchain.MinerChain).Orphans.GetOrphanRoot(blockHash)
 			if *orphanRoot == *blockHash {
 				locator, err := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 				if err != nil {
@@ -1407,7 +1414,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// resending the orphan block as an available block
 			// to signal there are more missing blocks that need to
 			// be requested.
-			if sm.chain.IsKnownOrphan(&iv.Hash) {
+			if sm.chain.Orphans.IsKnownOrphan(&iv.Hash) {
 				// Request blocks starting at the latest known
 				// up to the root of the orphan that just came
 				// in.
@@ -1415,7 +1422,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 					if _,ok := sm.requestedOrphans[iv.Hash]; !ok || sm.requestedOrphans[iv.Hash] > 10 {
 						log.Infof("request %s is known orphan", iv.Hash.String())
 						sm.requestedOrphans[iv.Hash] = 1
-						orphanRoot := sm.chain.GetOrphanRoot(&iv.Hash)
+						orphanRoot := sm.chain.Orphans.GetOrphanRoot(&iv.Hash)
 						locator, err := sm.chain.LatestBlockLocator()
 						mlocator, err := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 						if err != nil {
@@ -1470,14 +1477,14 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// to signal there are more missing blocks that need to
 			// be requested.
 			ch := sm.chain.Miners.(*minerchain.MinerChain)
-			if ch.IsKnownOrphan(&iv.Hash) {
+			if ch.Orphans.IsKnownOrphan(&iv.Hash) {
 				// Request blocks starting at the latest known
 				// up to the root of the orphan that just came
 				// in.
 				if !ch.TryConnectOrphan(&iv.Hash) {
 					if _,ok := sm.requestedOrphans[iv.Hash]; !ok || sm.requestedOrphans[iv.Hash] > 10 {
 						sm.requestedOrphans[iv.Hash] = 1
-						orphanRoot := ch.GetOrphanRoot(&iv.Hash)
+						orphanRoot := ch.Orphans.GetOrphanRoot(&iv.Hash)
 						locator, err := ch.LatestBlockLocator()
 						if err != nil {
 							log.Errorf("PEER: Failed to get block "+
@@ -1990,14 +1997,14 @@ func (sm *SyncManager) Stop() error {
 		return nil
 	}
 
+	sm.bshutdown = true
+
 	log.Infof("Sync manager shutting down. Last message was:\n%s", sm.lastBlockOp)
 
 	close(sm.quit)
 	sm.wg.Wait()
 	return nil
 }
-
-
 
 // SyncPeerID returns the ID of the current sync peer, or 0 if there is none.
 func (sm *SyncManager) SyncPeerID() int32 {

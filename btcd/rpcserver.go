@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/omega/minerchain"
 	"io"
 	"io/ioutil"
@@ -356,12 +357,12 @@ type gbtWorkState struct {
 	minTimestamp  time.Time
 	template      *mining.BlockTemplate
 	notifyMap     map[chainhash.Hash]map[int64]chan struct{}
-	timeSource    blockchain.MedianTimeSource
+	timeSource    chainutil.MedianTimeSource
 }
 
 // newGbtWorkState returns a new instance of a gbtWorkState with all internal
 // fields initialized and ready to use.
-func newGbtWorkState(timeSource blockchain.MedianTimeSource) *gbtWorkState {
+func newGbtWorkState(timeSource chainutil.MedianTimeSource) *gbtWorkState {
 	return &gbtWorkState{
 		notifyMap:  make(map[chainhash.Hash]map[int64]chan struct{}),
 		timeSource: timeSource,
@@ -4742,7 +4743,7 @@ type rpcserverConfig struct {
 
 	// These fields allow the RPC server to interface with the local block
 	// chain data and state.
-	TimeSource  blockchain.MedianTimeSource
+	TimeSource  chainutil.MedianTimeSource
 	Chain       *blockchain.BlockChain
 	ChainParams *chaincfg.Params
 	DB          database.DB

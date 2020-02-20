@@ -6,6 +6,7 @@ package blockchain
 
 import (
 	"fmt"
+	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/wire"
 	"time"
@@ -71,8 +72,8 @@ func (b *BlockChain) blockExists(hash *chainhash.Hash) (bool, error) {
 		// Ultimately the entire block index should be serialized
 		// instead of only the current main chain so it can be consulted
 		// directly.
-		_, err = dbFetchHeightByHash(dbTx, hash)
-		if isNotInMainChainErr(err) {
+		_, err = DbFetchHeightByHash(dbTx, hash)
+		if IsNotInMainChainErr(err) {
 			exists = false
 			return nil
 		}
@@ -82,109 +83,60 @@ func (b *BlockChain) blockExists(hash *chainhash.Hash) (bool, error) {
 }
 
 func (b *BlockChain) TryConnectOrphan(hash *chainhash.Hash) bool {
-	block := b.orphans[*hash].block
-	n := b.index.LookupNode(&block.MsgBlock().Header.PrevBlock)
+	b.ChainLock.Lock()
+	defer b.ChainLock.Unlock()
+
+	block := b.Orphans.GetOrphanBlock(hash).(*wire.MsgBlock)
+
+	n := b.index.LookupNode(&block.Header.PrevBlock)
 	if n == nil {
 		return false
 	}
 
-	b.ChainLock.Lock()
-	defer b.ChainLock.Unlock()
-
-	return b.ProcessOrphans(&block.MsgBlock().Header.PrevBlock, BFNone) == nil
+	return b.ProcessOrphans(&block.Header.PrevBlock, BFNone) == nil
 }
 
-// ProcessOrphans determines if there are any orphans which depend on the passed
-// block hash (they are no longer orphans if true) and potentially accepts them.
+// ProcessOrphans determines if there are any Orphans which depend on the passed
+// block hash (they are no longer Orphans if true) and potentially accepts them.
 // It repeats the process for the newly accepted blocks (to detect further
-// orphans which may no longer be orphans) until there are no more.
+// Orphans which may no longer be Orphans) until there are no more.
 //
 // The flags do not modify the behavior of this function directly, however they
 // are needed to pass along to maybeAcceptBlock.
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) error {
-	// Start with processing at least the passed hash.  Leave a little room
-	// for additional orphan blocks that need to be processed without
-	// needing to grow the array in the common case.
-	processHashes := make([]*chainhash.Hash, 0, 10)
-	processHashes = append(processHashes, hash)
-	for len(processHashes) > 0 {
-		// Pop the first hash to process from the slice.
-		processHash := processHashes[0]
-		processHashes[0] = nil // Prevent GC leak.
-		processHashes = processHashes[1:]
-
-		// Look up all orphans that are parented by the block we just
-		// accepted.  This will typically only be one, but it could
-		// be multiple if multiple blocks are mined and broadcast
-		// around the same time.  The one with the most proof of work
-		// will eventually win out.  An indexing for loop is
-		// intentionally used over a range here as range does not
-		// reevaluate the slice on each iteration nor does it adjust the
-		// index for the modified slice.
-		for i := 0; i < len(b.prevOrphans[*processHash]); i++ {
-			orphan := b.prevOrphans[*processHash][i]
-			if orphan == nil {
-				log.Warnf("Found a nil entry at index %d in the "+
-					"orphan dependency list for block %v", i,
-					processHash)
-				continue
+	b.Orphans.ProcessOrphans(hash, func(_ *chainhash.Hash, blk interface{}) bool {
+		block := (*btcutil.Block)(blk.(*orphanBlock))
+		if prevNode := b.index.LookupNode(&block.MsgBlock().Header.PrevBlock); prevNode != nil {
+			block.SetHeight(prevNode.Height + 1)
+			// Potentially accept the block into the block chain.
+			err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
+			if err != nil || mkorphan {
+				return true
 			}
 
-			if prevNode := b.index.LookupNode(&orphan.block.MsgBlock().Header.PrevBlock); prevNode != nil {
-				orphan.block.SetHeight(prevNode.height + 1)
-				// Potentially accept the block into the block chain.
-				err, mkorphan := b.checkProofOfWork(orphan.block, prevNode, b.chainParams.PowLimit, flags)
-				if err != nil || mkorphan {
-					continue
-				}
-
-				_, err = b.maybeAcceptBlock(orphan.block, flags)
-				if err != nil {
-					continue
-				}
-			} else {
-				continue
-			}
-
-			// Remove the orphan from the orphan pool.
-			orphanHash := orphan.block.Hash()
-
-			b.removeOrphanBlock(orphan)
-			i--
-
-			// Add this block to the list of blocks to process so
-			// any orphan blocks that depend on this block are
-			// handled too.
-			processHashes = append(processHashes, orphanHash)
+			_, err = b.maybeAcceptBlock(block, flags)
+			return err != nil
 		}
-	}
+		return true
+	})
+
 	return nil
 }
 
 func (b *BlockChain) OnNewMinerNode() {
-	added := false
-	root := make(map[chainhash.Hash]struct{}, 0)
-	for q,_ := range b.orphans {
-		r := b.GetOrphanRoot(&q)
-		if _,ok := root[*r]; ok {
-			continue
-		}
-		root[*r] = struct{}{}
-		p := b.orphans[*r]
-		f := p.block.MsgBlock().Header.PrevBlock
-		if b.index.LookupNode(&f) != nil {
-			b.ProcessOrphans(&f, BFNone)
+	if b.Orphans.OnNewMinerNode(func (f * chainhash.Hash, r *chainhash.Hash, added bool) bool {
+		if b.index.LookupNode(f) != nil {
+			b.ProcessOrphans(f, BFNone)
 		}
 		if !added && b.index.LookupNode(r) != nil {
 			added = true
 		}
-	}
-
-	if added {
+		return added
+	}) {
 		high := b.index.Highest()
-		b.CheckSideChain(&high.hash)
+		b.CheckSideChain(&high.Hash)
 	}
 }
 
@@ -196,7 +148,7 @@ func (b *BlockChain) CheckSideChain(hash *chainhash.Hash) {
 	}
 
 	tip := b.BestChain.Tip()
-	if node.height <= tip.height {
+	if node.Height <= tip.Height {
 		return
 	}
 
@@ -208,9 +160,46 @@ func (b *BlockChain) CheckSideChain(hash *chainhash.Hash) {
 
 	// Reorganize the chain.
 	b.ReorganizeChain(detachNodes, attachNodes)
-	log.Infof("CheckSideChain: tx REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches. New chain height = %d", node.hash, detachNodes.Len(), attachNodes.Len(), b.BestSnapshot().Height)
+	log.Infof("CheckSideChain: tx REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches. New chain height = %d", node.Hash, detachNodes.Len(), attachNodes.Len(), b.BestSnapshot().Height)
 
-	b.index.flushToDB()
+	b.index.FlushToDB(dbStoreBlockNode)
+}
+
+type orphanBlock btcutil.Block
+
+func (b * orphanBlock) PrevBlock() * chainhash.Hash {
+	return & (*btcutil.Block)(b).MsgBlock().Header.PrevBlock
+}
+
+func (b * orphanBlock) MsgBlock() wire.Message {
+	return (*btcutil.Block)(b).MsgBlock()
+}
+
+func (b * orphanBlock) Hash() * chainhash.Hash {
+	return (*btcutil.Block)(b).Hash()
+}
+
+func (b * orphanBlock) Removable(ob chainutil.Orphaned) bool {
+	block := b.MsgBlock().(*wire.MsgBlock)
+	oblock := ob.MsgBlock().(*wire.MsgBlock)
+	return len(block.Transactions[0].SignatureScripts) > len(oblock.Transactions[0].SignatureScripts)
+}
+
+func (b * orphanBlock) NeedUpdate(ob chainutil.Orphaned) bool {
+	block := b.MsgBlock().(*wire.MsgBlock)
+	if block.Header.Nonce < 0 {
+		nl := len(block.Transactions[0].SignatureScripts)
+		oblock := ob.MsgBlock().(*wire.MsgBlock)
+		ol := len(oblock.Transactions[0].SignatureScripts)
+		if nl > ol {
+			return true
+		} else if nl == ol {
+			if len(block.Transactions[0].SignatureScripts[1]) > len(oblock.Transactions[0].SignatureScripts[1]) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // ProcessBlock is the main workhorse for handling insertion of new blocks into
@@ -243,7 +232,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		log.Infof("block %s: prevHash block %s does not exist", block.Hash().String(), prevHash.String())
 		if flags & BFNoConnect == 0 {
 			log.Infof("Adding orphan block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
-			b.AddOrphanBlock(block)
+			b.Orphans.AddOrphanBlock((* orphanBlock)(block))
 		}
 		return false, true, nil
 	}
@@ -258,7 +247,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return false, false, ruleError(ErrInvalidAncestorBlock, str)
 	}
 
-	blockHeight := prevNode.height + 1
+	blockHeight := prevNode.Height + 1
 	block.SetHeight(blockHeight)
 
 	if blockHeight != int32(block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index) {
@@ -280,14 +269,9 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	// The block must not already exist as an orphan.
-	if p, exists := b.orphans[*blockHash]; exists {
-		// check if the orphan is a pre-consus block and this is a consensus block
-		if len(block.MsgBlock().Transactions[0].SignatureScripts) > len(p.block.MsgBlock().Transactions[0].SignatureScripts) {
-			b.removeOrphanBlock(p)
-		} else {
-			str := fmt.Sprintf("already have block (orphan) %v", blockHash)
-			return false, true, ruleError(ErrDuplicateBlock, str)
-		}
+	if !b.Orphans.CheckOrphan(blockHash, (*orphanBlock)(block)) {
+		str := fmt.Sprintf("already have block (orphan) %v", blockHash)
+		return false, true, ruleError(ErrDuplicateBlock, str)
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
@@ -308,7 +292,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 	if checkpointNode != nil {
 		// Ensure the block timestamp is after the checkpoint timestamp.
-		checkpointTime := time.Unix(checkpointNode.timestamp, 0)
+		checkpointTime := time.Unix(checkpointNode.Data.TimeStamp(), 0)
 		if blockHeader.Timestamp.Before(checkpointTime) {
 			str := fmt.Sprintf("block %v has timestamp %v before "+
 				"last checkpoint timestamp %v", blockHash,
@@ -344,7 +328,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 	if mkorphan {
 		log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
-		b.AddOrphanBlock(block)
+		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
 		return isMainChain, true, nil
 	}
 
@@ -375,7 +359,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// enough to potentially accept it into the block chain.
 
 	// Accept any orphan blocks that depend on this block (they are
-	// no longer orphans) and repeat for those accepted blocks until
+	// no longer Orphans) and repeat for those accepted blocks until
 	// there are no more.
 	err = b.ProcessOrphans(blockHash, BFNone)	// flags)
 //	if err != nil {
@@ -385,13 +369,13 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	log.Debugf("Accepted block %v", blockHash)
 //	log.Infof("ProcessBlock: Tx chian = %d Miner chain = %d", b.BestSnapshot().Height, b.Miners.BestSnapshot().Height)
 
-	log.Infof("ProcessBlock finished with height = %d miner height = %d orphans = %d", b.BestSnapshot().Height,
-		b.Miners.BestSnapshot().Height, len(b.orphans))
+	log.Infof("ProcessBlock finished with height = %d miner height = %d Orphans = %d", b.BestSnapshot().Height,
+		b.Miners.BestSnapshot().Height, b.Orphans.Count())
 
 	return isMainChain, false, nil
 }
 
-func (b *BlockChain) consistent(block *btcutil.Block, parent * blockNode) bool {
+func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNode) bool {
 //	state := b.BestSnapshot()
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
 		mstate := b.Miners.BestSnapshot()
@@ -406,8 +390,8 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * blockNode) bool {
 
 	best := b.BestSnapshot()
 	rotate := best.LastRotation
-	if parent.hash != best.Hash {
-		pn := b.index.LookupNode(&parent.hash)
+	if parent.Hash != best.Hash {
+		pn := b.index.LookupNode(&parent.Hash)
 		fork := b.BestChain.FindFork(pn)
 
 		if fork == nil {
@@ -415,21 +399,21 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * blockNode) bool {
 		}
 
 		// parent is not the tip, go back to find correct rotation
-		for p := b.BestChain.Tip(); p != nil && p != fork; p = p.parent {
+		for p := b.BestChain.Tip(); p != nil && p != fork; p = p.Parent {
 			switch {
-			case p.nonce > 0:
+			case p.Data.GetNonce() > 0:
 				rotate -= wire.CommitteeSize / 2 + 1
 
-			case p.nonce <= -wire.MINER_RORATE_FREQ:
+			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate--
 			}
 		}
-		for p := pn; p != nil && p != fork; p = p.parent {
+		for p := pn; p != nil && p != fork; p = p.Parent {
 			switch {
-			case p.nonce > 0:
+			case p.Data.GetNonce() > 0:
 				rotate += wire.CommitteeSize / 2 + 1
 
-			case p.nonce <= -wire.MINER_RORATE_FREQ:
+			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate++
 			}
 		}

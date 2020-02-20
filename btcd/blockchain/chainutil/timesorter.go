@@ -2,7 +2,7 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package blockchain
+package chainutil
 
 // timeSorter implements sort.Interface to allow a slice of timestamps to
 // be sorted.
@@ -21,7 +21,7 @@ func (s TimeSorter) Swap(i, j int) {
 }
 
 // Less returns whether the timstamp with index i should sort before the
-// timestamp with index j.  It is part of the sort.Interface implementation.
+// Timestamp with index j.  It is part of the sort.Interface implementation.
 func (s TimeSorter) Less(i, j int) bool {
 	return s[i] < s[j]
 }

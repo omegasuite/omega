@@ -6,6 +6,7 @@ package blockchain
 
 import (
 	"fmt"
+	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
@@ -41,7 +42,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
 		// make sure the rotate in miner block is there
-		if prevNode.nonce != -wire.MINER_RORATE_FREQ + 1 {
+		if prevNode.Data.GetNonce() != -wire.MINER_RORATE_FREQ + 1 {
 			return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ + 1)
 		}
 		if _, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ); err != nil {
@@ -70,11 +71,11 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	// if the block ultimately gets connected to the main chain, it starts out
 	// on a side chain.
 	blockHeader := &block.MsgBlock().Header
-	newNode := newBlockNode(blockHeader, prevNode)
-	newNode.status = statusDataStored
+	newNode := NewBlockNode(blockHeader, prevNode)
+	newNode.Status = chainutil.StatusDataStored
 
 	b.index.AddNode(newNode)
-	err = b.index.flushToDB()
+	err = b.index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
 		return false, err
 	}

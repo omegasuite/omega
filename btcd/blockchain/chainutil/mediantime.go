@@ -2,9 +2,10 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package blockchain
+package chainutil
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"sync"
@@ -74,7 +75,7 @@ func (s int64Sorter) Less(i, j int) bool {
 // It is limited to maxMedianTimeEntries includes the same buggy behavior as
 // the time offset mechanism in Bitcoin Core.  This is necessary because it is
 // used in the consensus code.
-type medianTime struct {
+type MedianTime struct {
 	mtx                sync.Mutex
 	knownIDs           map[string]struct{}
 	offsets            []int64
@@ -83,14 +84,14 @@ type medianTime struct {
 }
 
 // Ensure the medianTime type implements the MedianTimeSource interface.
-var _ MedianTimeSource = (*medianTime)(nil)
+var _ MedianTimeSource = (*MedianTime)(nil)
 
 // AdjustedTime returns the current time adjusted by the median time offset as
 // calculated from the time samples added by AddTimeSample.
 //
 // This function is safe for concurrent access and is part of the
 // MedianTimeSource interface implementation.
-func (m *medianTime) AdjustedTime() time.Time {
+func (m *MedianTime) AdjustedTime() time.Time {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -104,7 +105,7 @@ func (m *medianTime) AdjustedTime() time.Time {
 //
 // This function is safe for concurrent access and is part of the
 // MedianTimeSource interface implementation.
-func (m *medianTime) AddTimeSample(sourceID string, timeVal time.Time) {
+func (m *MedianTime) AddTimeSample(sourceID string, timeVal time.Time) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -133,9 +134,9 @@ func (m *medianTime) AddTimeSample(sourceID string, timeVal time.Time) {
 	copy(sortedOffsets, m.offsets)
 	sort.Sort(int64Sorter(sortedOffsets))
 
-	offsetDuration := time.Duration(offsetSecs) * time.Second
-	log.Debugf("Added time sample of %v (total: %v)", offsetDuration,
-		numOffsets)
+//	offsetDuration := time.Duration(offsetSecs) * time.Second
+//	log.Debugf("Added time sample of %v (total: %v)", offsetDuration,
+//		numOffsets)
 
 	// NOTE: The following code intentionally has a bug to mirror the
 	// buggy behavior in Bitcoin Core since the median time is used in the
@@ -182,15 +183,15 @@ func (m *medianTime) AddTimeSample(sourceID string, timeVal time.Time) {
 
 			// Warn if none of the time samples are close.
 			if !remoteHasCloseTime {
-				log.Warnf("Please check your date and time " +
+				fmt.Printf("Please check your date and time " +
 					"are correct!  btcd will not work " +
 					"properly with an invalid time")
 			}
 		}
 	}
 
-	medianDuration := time.Duration(m.offsetSecs) * time.Second
-	log.Debugf("New time offset: %v", medianDuration)
+//	medianDuration := time.Duration(m.offsetSecs) * time.Second
+//	log.Debugf("New time offset: %v", medianDuration)
 }
 
 // Offset returns the number of seconds to adjust the local clock based upon the
@@ -198,7 +199,7 @@ func (m *medianTime) AddTimeSample(sourceID string, timeVal time.Time) {
 //
 // This function is safe for concurrent access and is part of the
 // MedianTimeSource interface implementation.
-func (m *medianTime) Offset() time.Duration {
+func (m *MedianTime) Offset() time.Duration {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -206,12 +207,12 @@ func (m *medianTime) Offset() time.Duration {
 }
 
 // NewMedianTime returns a new instance of concurrency-safe implementation of
-// the MedianTimeSource interface.  The returned implementation contains the
+// the MedianTimeSource interface.  The returned implementation ContainsUL the
 // rules necessary for proper time handling in the chain consensus rules and
-// expects the time samples to be added from the timestamp field of the version
+// expects the time samples to be added from the Timestamp field of the Version
 // message received from remote peers that successfully connect and negotiate.
 func NewMedianTime() MedianTimeSource {
-	return &medianTime{
+	return &MedianTime{
 		knownIDs: make(map[string]struct{}),
 		offsets:  make([]int64, 0, maxMedianTimeEntries),
 	}

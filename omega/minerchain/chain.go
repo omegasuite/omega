@@ -19,6 +19,7 @@ import (
 
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/blockchain/bccompress"
+	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
@@ -32,20 +33,34 @@ const (
 	maxOrphanBlocks = 2 * wire.MaxBlocksPerMsg
 )
 
-// orphanBlock represents a block that we don't yet have the parent for.  It
-// is a normal block plus an expiration time to prevent caching the orphan
-// forever.
-type orphanBlock struct {
-	block      *wire.MinerBlock
-	expiration time.Time
+type orphanBlock wire.MinerBlock
+
+func (b * orphanBlock) PrevBlock() * chainhash.Hash {
+	return & (*wire.MinerBlock)(b).MsgBlock().PrevBlock
+}
+
+func (b * orphanBlock) MsgBlock() wire.Message {
+	return (*wire.MinerBlock)(b).MsgBlock()
+}
+
+func (b * orphanBlock) Hash() * chainhash.Hash {
+	return (*wire.MinerBlock)(b).Hash()
+}
+
+func (b * orphanBlock) NeedUpdate(ob chainutil.Orphaned) bool {
+	return false
+}
+
+func (b * orphanBlock) Removable(ob chainutil.Orphaned) bool {
+	return false
 }
 
 // newBestState returns a new best stats instance for the given parameters.
-func newBestState(node *blockNode, medianTime time.Time) *blockchain.BestState {
+func newBestState(node *chainutil.BlockNode, medianTime time.Time) *blockchain.BestState {
 	return &blockchain.BestState{
-		Hash:        node.hash,
-		Height:      node.height,
-		Bits:        node.block.Bits,
+		Hash:        node.Hash,
+		Height:      node.Height,
+		Bits:        node.Data.GetBits(),
 		MedianTime:  medianTime,
 	}
 }
@@ -63,7 +78,7 @@ type MinerChain struct {
 	// separate mutex.
 	db                  database.DB
 	chainParams         *chaincfg.Params
-	timeSource          blockchain.MedianTimeSource
+	timeSource          chainutil.MedianTimeSource
 
 	// The following fields are calculated based upon the provided chain
 	// parameters.  They are also set when the instance is created and
@@ -86,15 +101,12 @@ type MinerChain struct {
 	//
 	// BestChain tracks the current active chain by making use of an
 	// efficient chain view into the block index.
-	index     *blockIndex
-	BestChain *chainView
+	index     *chainutil.BlockIndex
+	BestChain *chainutil.ChainView
 
 	// These fields are related to handling of orphan blocks.  They are
 	// protected by a combination of the chain lock and the orphan lock.
-	orphanLock   sync.RWMutex
-	orphans      map[chainhash.Hash]*orphanBlock
-	prevOrphans  map[chainhash.Hash][]*orphanBlock
-	oldestOrphan *orphanBlock
+	Orphans      * chainutil.Orphans
 
 	// The state is used as a fairly efficient way to cache information
 	// about the current best chain state that is returned to callers when
@@ -116,10 +128,6 @@ type MinerChain struct {
 	notifications     []blockchain.NotificationCallback
 }
 
-func (m * MinerChain) NextMiner (b * blockchain.BlockChain) ([]byte, []byte) {
-	return nil, nil
-}
-
 // HaveBlock returns whether or not the chain instance has the block represented
 // by the passed hash.  This includes checking the various places a block can
 // be like part of the main chain, on a side chain, or in the orphan pool.
@@ -130,7 +138,7 @@ func (b *MinerChain) HaveBlock(hash *chainhash.Hash) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return exists || b.IsKnownOrphan(hash), nil
+	return exists || b.Orphans.IsKnownOrphan(hash), nil
 }
 
 func (b *MinerChain) LatestMinerBlockLocator() (chainhash.BlockLocator, error) {
@@ -141,135 +149,6 @@ func (b *MinerChain) LatestMinerBlockLocator() (chainhash.BlockLocator, error) {
 //	log.Infof("MinerChain.LatestMinerBlockLocator: ChainLock.RUnlock")
 
 	return locator, nil
-}
-
-// IsKnownOrphan returns whether the passed hash is currently a known orphan.
-// Keep in mind that only a limited number of orphans are held onto for a
-// limited amount of time, so this function must not be used as an absolute
-// way to test if a block is an orphan block.  A full block (as opposed to just
-// its hash) must be passed to ProcessBlock for that purpose.  However, calling
-// ProcessBlock with an orphan that already exists results in an error, so this
-// function provides a mechanism for a caller to intelligently detect *recent*
-// duplicate orphans and react accordingly.
-//
-// This function is safe for concurrent access.
-func (b *MinerChain) IsKnownOrphan(hash *chainhash.Hash) bool {
-	// Protect concurrent access.  Using a read lock only so multiple
-	// readers can query without blocking each other.
-	b.orphanLock.RLock()
-	_, exists := b.orphans[*hash]
-	b.orphanLock.RUnlock()
-
-	return exists
-}
-
-// GetOrphanRoot returns the head of the chain for the provided hash from the
-// map of orphan blocks.
-//
-// This function is safe for concurrent access.
-func (b *MinerChain) GetOrphanRoot(hash *chainhash.Hash) *chainhash.Hash {
-	// Protect concurrent access.  Using a read lock only so multiple
-	// readers can query without blocking each other.
-	b.orphanLock.RLock()
-	defer b.orphanLock.RUnlock()
-
-	// Keep looping while the parent of each orphaned block is
-	// known and is an orphan itself.
-	orphanRoot := hash
-	prevHash := hash
-	for {
-		orphan, exists := b.orphans[*prevHash]
-		if !exists {
-			break
-		}
-		orphanRoot = prevHash
-		prevHash = &orphan.block.MsgBlock().PrevBlock
-	}
-
-	return orphanRoot
-}
-
-// removeOrphanBlock removes the passed orphan block from the orphan pool and
-// previous orphan index.
-func (b *MinerChain) removeOrphanBlock(orphan *orphanBlock) {
-	// Protect concurrent access.
-	b.orphanLock.Lock()
-	defer b.orphanLock.Unlock()
-
-	// Remove the orphan block from the orphan pool.
-	orphanHash := orphan.block.Hash()
-	delete(b.orphans, *orphanHash)
-
-	// Remove the reference from the previous orphan index too.  An indexing
-	// for loop is intentionally used over a range here as range does not
-	// reevaluate the slice on each iteration nor does it adjust the index
-	// for the modified slice.
-	prevHash := &orphan.block.MsgBlock().PrevBlock
-	orphans := b.prevOrphans[*prevHash]
-	for i := 0; i < len(orphans); i++ {
-		hash := orphans[i].block.Hash()
-		if hash.IsEqual(orphanHash) {
-			copy(orphans[i:], orphans[i+1:])
-			orphans[len(orphans)-1] = nil
-			orphans = orphans[:len(orphans)-1]
-			i--
-		}
-	}
-	b.prevOrphans[*prevHash] = orphans
-
-	// Remove the map entry altogether if there are no longer any orphans
-	// which depend on the parent hash.
-	if len(b.prevOrphans[*prevHash]) == 0 {
-		delete(b.prevOrphans, *prevHash)
-	}
-}
-
-// addOrphanBlock adds the passed block (which is already determined to be
-// an orphan prior calling this function) to the orphan pool.  It lazily cleans
-// up any expired blocks so a separate cleanup poller doesn't need to be run.
-// It also imposes a maximum limit on the number of outstanding orphan
-// blocks and will remove the oldest received orphan block if the limit is
-// exceeded.
-func (b *MinerChain) addOrphanBlock(block *wire.MinerBlock) {
-	// Remove expired orphan blocks.
-	for _, oBlock := range b.orphans {
-		if time.Now().After(oBlock.expiration) {
-			b.removeOrphanBlock(oBlock)
-			continue
-		}
-
-		// Update the oldest orphan block pointer so it can be discarded
-		// in case the orphan pool fills up.
-		if b.oldestOrphan == nil || oBlock.expiration.Before(b.oldestOrphan.expiration) {
-			b.oldestOrphan = oBlock
-		}
-	}
-
-	// Limit orphan blocks to prevent memory exhaustion.
-	if len(b.orphans)+1 > maxOrphanBlocks {
-		// Remove the oldest orphan to make room for the new one.
-		b.removeOrphanBlock(b.oldestOrphan)
-		b.oldestOrphan = nil
-	}
-
-	// Protect concurrent access.  This is intentionally done here instead
-	// of near the top since removeOrphanBlock does its own locking and
-	// the range iterator is not invalidated by removing map entries.
-	b.orphanLock.Lock()
-	defer b.orphanLock.Unlock()
-
-	// Insert the block into the orphan map with an expiration time
-	// 1 hour from now.
-	expiration := time.Now().Add(time.Hour)
-	oBlock := &orphanBlock{
-		block:      block,
-		expiration: expiration,
-	}
-	b.orphans[*block.Hash()] = oBlock
-
-	// Add to previous hash lookup index for faster dependency lookups.
-	prevHash := &block.MsgBlock().PrevBlock
-	b.prevOrphans[*prevHash] = append(b.prevOrphans[*prevHash], oBlock)
 }
 
 func skipList(lst * list.List, y * list.Element) {
@@ -291,7 +170,7 @@ func skipList(lst * list.List, y * list.Element) {
 // This function may modify node statuses in the block index without flushing.
 //
 // This function MUST be called with the chain state lock held (for reads).
-func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List, *list.List, *list.List) {
+func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, *list.List, *list.List, *list.List) {
 	attachNodes := list.New()
 	detachNodes := list.New()
 	txattachNodes := list.New()
@@ -300,8 +179,8 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 	// Do not reorganize to a known invalid chain. Ancestors deeper than the
 	// direct parent are checked below but this is a quick check before doing
 	// more unnecessary work.
-	if b.index.NodeStatus(node.parent).KnownInvalid() {
-		b.index.SetStatusFlags(node, statusInvalidAncestor)
+	if b.index.NodeStatus(node.Parent).KnownInvalid() {
+		b.index.SetStatusFlags(node, chainutil.StatusInvalidAncestor)
 		return detachNodes, attachNodes, txdetachNodes, txattachNodes
 	}
 
@@ -316,8 +195,8 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 		if b.index.NodeStatus(n).KnownInvalid() {
 			invalidChain = true
 		}
-		p := n.parent
-		if !b.blockChain.SameChain(n.Header().BestBlock, p.Header().BestBlock) {
+		p := n.Parent
+		if !b.blockChain.SameChain(NodetoHeader(n).BestBlock, NodetoHeader(p).BestBlock) {
 			// if any node is inconsistent, ignore all nodes after it by clearing attachNodes list
 //			b.index.SetStatusFlags(n, statusInvalidAncestor)
 			invalidChain = true
@@ -330,7 +209,7 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 //				_ := attachNodes.Remove(e).(*blockNode)
 //				b.index.SetStatusFlags(n, statusInvalidAncestor)
 			}
-			if p.height <= b.BestChain.height() {
+			if p.Height <= b.BestChain.Height() {
 				// if we would detach more than attach, don't do it
 				return detachNodes, attachNodes, txdetachNodes, txattachNodes
 			}
@@ -344,11 +223,11 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 	// common ancestor adding each block to the list of nodes to detach from
 	// the main chain.
 	// verify that the node is consistent
-	for n := b.BestChain.Tip(); n != nil && n != forkNode; n = n.parent {
+	for n := b.BestChain.Tip(); n != nil && n != forkNode; n = n.Parent {
 		detachNodes.PushBack(n)
 	}
 
-	txdetachNodes, txattachNodes = b.blockChain.GetReorganizeSideChain(newtip.Header().BestBlock)
+	txdetachNodes, txattachNodes = b.blockChain.GetReorganizeSideChain(NodetoHeader(newtip).BestBlock)
 
 	if txattachNodes.Len() == 0 {
 		return detachNodes, attachNodes, txdetachNodes, txattachNodes
@@ -366,12 +245,12 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 	}
 
 	x, y, p := attachNodes.Front(), txattachNodes.Front(), forkNode
-	for x != nil && rotate >= p.height {
-		if p.height > rotate - wire.CommitteeSize {
-			copy(miners[p.height - (rotate - wire.CommitteeSize + 1)][:], p.Header().Miner)
+	for x != nil && rotate >= p.Height {
+		if p.Height > rotate - wire.CommitteeSize {
+			copy(miners[p.Height - (rotate - wire.CommitteeSize + 1)][:], NodetoHeader(p).Miner)
 		}
 		x = x.Next()
-		p = x.Value.(*blockNode)
+		p = x.Value.(*chainutil.BlockNode)
 	}
 	contain := false
 	for y != nil {
@@ -383,9 +262,9 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 			y = nil
 			continue
 		}
-		n := x.Value.(*blockNode)
+		n := x.Value.(*chainutil.BlockNode)
 		if !contain {
-			contain = b.blockChain.SideChainContains(y, n.Header().BestBlock)
+			contain = b.blockChain.SideChainContains(y, NodetoHeader(n).BestBlock)
 		}
 		if !contain {
 			skipList(attachNodes, x)
@@ -409,10 +288,10 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 			}
 			for k := int32(0); k < shift; k++ {
 				rotate++
-				copy(miners[j][:], n.Header().Miner)
+				copy(miners[j][:], NodetoHeader(n).Miner)
 				x = x.Next()
 				if x != nil {
-					n = x.Value.(*blockNode)
+					n = x.Value.(*chainutil.BlockNode)
 				} else {
 					break
 				}
@@ -436,16 +315,16 @@ func (b *MinerChain) getReorganizeNodes(node *blockNode) (*list.List, *list.List
 // it would be inefficient to repeat it.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *MinerChain) connectBlock(node *blockNode, block *wire.MinerBlock) error {
+func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBlock) error {
 	// Make sure it's extending the end of the best chain.
 	prevHash := &block.MsgBlock().PrevBlock
-	if !prevHash.IsEqual(&b.BestChain.Tip().hash) {
+	if !prevHash.IsEqual(&b.BestChain.Tip().Hash) {
 		return AssertError("connectBlock must be called with a block " +
 			"that extends the main chain")
 	}
 
 	// Write any block status changes to DB before updating best state.
-	err := b.index.flushToDB()
+	err := b.index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
 		return err
 	}
@@ -457,7 +336,7 @@ func (b *MinerChain) connectBlock(node *blockNode, block *wire.MinerBlock) error
 	// Atomically insert info into the database.
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
-		err := dbPutBestState(dbTx, state, node.workSum)
+		err := dbPutBestState(dbTx, state, node.Data.(*blockchainNodeData).workSum)
 		if err != nil {
 			return err
 		}
@@ -465,21 +344,21 @@ func (b *MinerChain) connectBlock(node *blockNode, block *wire.MinerBlock) error
 		// Add the block hash and height to the block index which tracks
 		// the main chain.
 		h := block.Hash()
-		err = dbPutBlockIndex(dbTx, h, node.height)
+		err = blockchain.DbPutBlockIndex(dbTx, h, node.Height)
 		if err != nil {
 			return err
 		}
 
-		if len(node.block.BlackList) > 0 {
+		if len(NodetoHeader(node).BlackList) > 0 {
 			meta := dbTx.Metadata()
 
 			bkt := meta.Bucket(BlacklistKeyName)
 			var height [4]byte
-			common.LittleEndian.PutUint32(height[:], uint32(node.height))
-			ser := make([]byte, len(node.block.BlackList) * 20)
-			for i, p := range node.block.BlackList {
+			common.LittleEndian.PutUint32(height[:], uint32(node.Height))
+			ser := make([]byte, len(NodetoHeader(node).BlackList) * 20)
+			for i, p := range NodetoHeader(node).BlackList {
 				copy(ser[20 * i:], p.Address[:])
-				b.blockChain.Blacklist.Add(uint32(node.height), p.Address)
+				b.blockChain.Blacklist.Add(uint32(node.Height), p.Address)
 			}
 			if err := bkt.Put(height[:], ser); err != nil {
 				return err
@@ -518,15 +397,15 @@ func (b *MinerChain) connectBlock(node *blockNode, block *wire.MinerBlock) error
 // the main (best) chain.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *MinerChain) disconnectBlock(node *blockNode, block *wire.MinerBlock) error {
+func (b *MinerChain) disconnectBlock(node *chainutil.BlockNode, block *wire.MinerBlock) error {
 	// Make sure the node being disconnected is the end of the best chain.
-	if !node.hash.IsEqual(&b.BestChain.Tip().hash) {
+	if !node.Hash.IsEqual(&b.BestChain.Tip().Hash) {
 		return AssertError("disconnectBlock must be called with the " +
 			"block at the end of the main chain")
 	}
 
 	// Load the previous block since some details for it are needed below.
-	prevNode := node.parent
+	prevNode := node.Parent
 	var prevBlock *wire.MinerBlock
 	err := b.db.View(func(dbTx database.Tx) error {
 		var err error
@@ -538,7 +417,7 @@ func (b *MinerChain) disconnectBlock(node *blockNode, block *wire.MinerBlock) er
 	}
 
 	// Write any block status changes to DB before updating best state.
-	err = b.index.flushToDB()
+	err = b.index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
 		return err
 	}
@@ -549,14 +428,14 @@ func (b *MinerChain) disconnectBlock(node *blockNode, block *wire.MinerBlock) er
 
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
-		err := dbPutBestState(dbTx, state, node.workSum)
+		err := dbPutBestState(dbTx, state, node.Data.(*blockchainNodeData).workSum)
 		if err != nil {
 			return err
 		}
 
 		// Remove the block hash and height from the block index which
 		// tracks the main chain.
-		err = dbRemoveBlockIndex(dbTx, block.Hash(), node.height)
+		err = blockchain.DbRemoveBlockIndex(dbTx, block.Hash(), node.Height)
 		if err != nil {
 			return err
 		}
@@ -564,10 +443,10 @@ func (b *MinerChain) disconnectBlock(node *blockNode, block *wire.MinerBlock) er
 		meta := dbTx.Metadata()
 		bkt := meta.Bucket(BlacklistKeyName)
 		var height [4]byte
-		common.LittleEndian.PutUint32(height[:], uint32(node.height))
+		common.LittleEndian.PutUint32(height[:], uint32(node.Height))
 		bkt.Delete(height[:])
 		if b.blockChain.Blacklist != nil {
-			b.blockChain.Blacklist.Remove(uint32(node.height))
+			b.blockChain.Blacklist.Remove(uint32(node.Height))
 		}
 
 		return nil
@@ -577,7 +456,7 @@ func (b *MinerChain) disconnectBlock(node *blockNode, block *wire.MinerBlock) er
 	}
 
 	// This node's parent is now the end of the best chain.
-	b.BestChain.SetTip(node.parent)
+	b.BestChain.SetTip(node.Parent)
 
 	// Update the state for the best block.  Notice how this replaces the
 	// entire struct instead of updating the existing one.  This effectively
@@ -618,23 +497,23 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	// Ensure the provided nodes match the current best chain.
 	tip := b.BestChain.Tip()
 	if detachNodes.Len() != 0 {
-		firstDetachNode := detachNodes.Front().Value.(*blockNode)
-		if firstDetachNode.hash != tip.hash {
+		firstDetachNode := detachNodes.Front().Value.(*chainutil.BlockNode)
+		if firstDetachNode.Hash != tip.Hash {
 			return AssertError(fmt.Sprintf("reorganize nodes to detach are "+
 				"not for the current best chain -- first detach node %v, "+
-				"current chain %v", &firstDetachNode.hash, &tip.hash))
+				"current chain %v", &firstDetachNode.Hash, &tip.Hash))
 		}
 	}
 
 	// Ensure the provided nodes are for the same fork point.
 	if attachNodes.Len() != 0 && detachNodes.Len() != 0 {
-		firstAttachNode := attachNodes.Front().Value.(*blockNode)
-		lastDetachNode := detachNodes.Back().Value.(*blockNode)
-		if firstAttachNode.parent.hash != lastDetachNode.parent.hash {
+		firstAttachNode := attachNodes.Front().Value.(*chainutil.BlockNode)
+		lastDetachNode := detachNodes.Back().Value.(*chainutil.BlockNode)
+		if firstAttachNode.Parent.Hash != lastDetachNode.Parent.Hash {
 			return AssertError(fmt.Sprintf("reorganize nodes do not have the "+
 				"same fork point -- first attach parent %v, last detach "+
-				"parent %v", &firstAttachNode.parent.hash,
-				&lastDetachNode.parent.hash))
+				"parent %v", &firstAttachNode.Parent.Hash,
+				&lastDetachNode.Parent.Hash))
 		}
 	}
 
@@ -651,8 +530,8 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	attachBlocks := make([]*wire.MinerBlock, 0, attachNodes.Len())
 
 	for e := detachNodes.Front(); e != nil; e = e.Next() {
-		n := e.Value.(*blockNode)
-		if n.parent == nil {
+		n := e.Value.(*chainutil.BlockNode)
+		if n.Parent == nil {
 			// never remove genesis block
 			continue
 		}
@@ -665,21 +544,21 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		if err != nil {
 			return err
 		}
-		if n.hash != *block.Hash() {
+		if n.Hash != *block.Hash() {
 			return AssertError(fmt.Sprintf("detach block node hash %v (height "+
-				"%v) does not match previous parent block hash %v", &n.hash,
-				n.height, block.Hash()))
+				"%v) does not match previous parent block hash %v", &n.Hash,
+				n.Height, block.Hash()))
 		}
 
 		// Store the loaded block and spend journal entry for later.
 		detachBlocks = append(detachBlocks, block)
 
-		newBest = n.parent
+		newBest = n.Parent
 	}
 
 	// Set the fork point only if there are nodes to attach since otherwise
 	// blocks are only being disconnected and thus there is no fork point.
-	var forkNode *blockNode
+	var forkNode *chainutil.BlockNode
 	if attachNodes.Len() > 0 {
 		forkNode = newBest
 	}
@@ -697,7 +576,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	// tweaking the chain and/or database.  This approach catches these
 	// issues before ever modifying the chain.
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
-		n := e.Value.(*blockNode)
+		n := e.Value.(*chainutil.BlockNode)
 
 		var block *wire.MinerBlock
 		err := b.db.View(func(dbTx database.Tx) error {
@@ -728,15 +607,15 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		// In the case the block is determined to be invalid due to a
 		// rule violation, mark it as invalid and mark all of its
 		// descendants as having an invalid ancestor.
-		b.index.SetStatusFlags(n, statusValid)
+		b.index.SetStatusFlags(n, chainutil.StatusValid)
 
 		newBest = n
 	}
 
 	// Disconnect blocks from the main chain.
 	for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
-		n := e.Value.(*blockNode)
-		if n.parent == nil {
+		n := e.Value.(*chainutil.BlockNode)
+		if n.Parent == nil {
 			// never remove genesis block
 			continue
 		}
@@ -779,7 +658,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 
 	// Connect the new best chain blocks.
 	for i, e := 0, attachNodes.Front(); e != nil; i, e = i+1, e.Next() {
-		n := e.Value.(*blockNode)
+		n := e.Value.(*chainutil.BlockNode)
 		block := attachBlocks[i]
 
 		// Update the database and chain state.
@@ -792,13 +671,13 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 	// Log the point where the chain forked and old and new best chain
 	// heads.
 	if forkNode != nil {
-		log.Infof("REORGANIZE: Chain forks at %v (height %v)", forkNode.hash,
-			forkNode.height)
+		log.Infof("REORGANIZE: Chain forks at %v (height %v)", forkNode.Hash,
+			forkNode.Height)
 	}
 	log.Infof("REORGANIZE: Old best chain head was %v (height %v)",
-		&oldBest.hash, oldBest.height)
+		&oldBest.Hash, oldBest.Height)
 	log.Infof("REORGANIZE: New best chain head is %v (height %v)",
-		newBest.hash, newBest.height)
+		newBest.Hash, newBest.Height)
 
 	return nil
 }
@@ -817,7 +696,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 //    This is useful when using checkpoints.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, flags blockchain.BehaviorFlags) (bool, error) {
+func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.MinerBlock, flags blockchain.BehaviorFlags) (bool, error) {
 	fastAdd := flags&blockchain.BFFastAdd == blockchain.BFFastAdd
 
 	flushIndexState := func() {
@@ -825,15 +704,15 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 		// it fails to write, it's not the end of the world. If the block is
 		// valid, we flush in connectBlock and if the block is invalid, the
 		// worst that can happen is we revalidate the block after a restart.
-		b.index.flushToDB()
+		b.index.FlushToDB(dbStoreBlockNode)
 	}
 
 	// We are extending the main (best) chain with a new block.  This is the
 	// most common case.
 	parentHash := &block.MsgBlock().PrevBlock
 	parent := b.index.LookupNode(parentHash)
-	if parentHash.IsEqual(&b.BestChain.Tip().hash) &&
-		b.blockChain.SameChain(block.MsgBlock().BestBlock, parent.Header().BestBlock) &&
+	if parentHash.IsEqual(&b.BestChain.Tip().Hash) &&
+		b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) &&
 		b.blockChain.InBestChain(&block.MsgBlock().BestBlock) {
 		// Skip checks if node has already been fully validated.
 		fastAdd = fastAdd || b.index.NodeStatus(node).KnownValid()
@@ -842,7 +721,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 		// to the main chain without violating any rules and without
 		// actually connecting the block.
 		if !fastAdd {
-			b.index.SetStatusFlags(node, statusValid)
+			b.index.SetStatusFlags(node, chainutil.StatusValid)
 			flushIndexState()
 		}
 
@@ -854,7 +733,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 			// index state to disk before returning with the error.
 			if _, ok := err.(RuleError); ok {
 				b.index.SetStatusFlags(
-					node, statusValidateFailed,
+					node, chainutil.StatusValidateFailed,
 				)
 			}
 
@@ -867,7 +746,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 		// valid, then we'll update its status and flush the state to
 		// disk again.
 		if fastAdd || !b.index.NodeStatus(node).KnownValid() {
-			b.index.SetStatusFlags(node, statusValid)
+			b.index.SetStatusFlags(node, chainutil.StatusValid)
 			flushIndexState()
 		}
 
@@ -880,17 +759,17 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 
 	// We're extending (or creating) a side chain, but thconnectBlock must be called with a blocke cumulative
 	// work for this new side chain is not enough to make it the new chain.
-	if node.height <= b.BestChain.Tip().height {
+	if node.Height <= b.BestChain.Tip().Height {
 		// Log information about how the block is forking the chain.
 		fork := b.BestChain.FindFork(node)
-		if fork.hash.IsEqual(parentHash) {
+		if fork.Hash.IsEqual(parentHash) {
 			log.Infof("FORK: Block %v forks the chain at height %d"+
 				"/block %v, but does not cause a reorganize",
-				node.hash, fork.height, fork.hash)
+				node.Hash, fork.Height, fork.Hash)
 		} else {
 			log.Infof("EXTEND FORK: Block %v extends a side chain "+
 				"which forks the chain at height %d/block %v",
-				node.hash, fork.height, fork.hash)
+				node.Hash, fork.Height, fork.Hash)
 		}
 
 		return false, nil
@@ -910,7 +789,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 	}
 
 	// Reorganize the chain.
-	log.Infof("REORGANIZE: Block %v is causing a reorganize.", node.hash)
+	log.Infof("REORGANIZE: Block %v is causing a reorganize.", node.Hash)
 
 	// a reorganization in miner chain may cause a reorg in tx chain
 	// but a reorg in tx chain will not cause reorg in mainer chain
@@ -954,7 +833,7 @@ func (b *MinerChain) connectBestChain(node *blockNode, block *wire.MinerBlock, f
 	// changes to the block index, so flush regardless of whether there was an
 	// error. The index would only be dirty if the block failed to connect, so
 	// we can ignore any errors writing.
-	if writeErr := b.index.flushToDB(); writeErr != nil {
+	if writeErr := b.index.FlushToDB(dbStoreBlockNode); writeErr != nil {
 		log.Warnf("Error flushing block index changes to disk: %v", writeErr)
 	}
 
@@ -979,7 +858,7 @@ func (b *MinerChain) IsCurrent() bool {
 		// otherwise.
 		minus24Hours := b.timeSource.AdjustedTime().Add(-24 * time.Hour).Unix()
 
-		return b.BestChain.Tip().block.Timestamp.Unix() >= minus24Hours
+		return b.BestChain.Tip().Data.TimeStamp() >= minus24Hours
 	}
 	return true
 }
@@ -1029,7 +908,7 @@ func (b *MinerChain) HeaderByHash(hash *chainhash.Hash) (wire.MingingRightBlock,
 		return wire.MingingRightBlock{}, err
 	}
 
-	return node.Header(), nil
+	return NodetoHeader(node), nil
 }
 
 // MainChainHasBlock returns whether or not the block with the given hash is in
@@ -1053,7 +932,7 @@ func (b *MinerChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockL
 //	log.Infof("MinerChain.BlockLocatorFromHash: ChainLock.RLock")
 	b.chainLock.RLock()
 	node := b.index.LookupNode(hash)
-	locator := b.BestChain.blockLocator(node)
+	locator := b.BestChain.BlockLocator(node)
 	b.chainLock.RUnlock()
 //	log.Infof("MinerChain.BlockLocatorFromHash: ChainLock.RUnlock")
 
@@ -1084,7 +963,7 @@ func (b *MinerChain) BlockHeightByHash(hash *chainhash.Hash) (int32, error) {
 		return 0, bccompress.ErrNotInMainChain(str)
 	}
 
-	return node.height, nil
+	return node.Height, nil
 }
 
 // BlockHashByHeight returns the hash of the block at the given height in the
@@ -1099,7 +978,7 @@ func (b *MinerChain) BlockHashByHeight(blockHeight int32) (*chainhash.Hash, erro
 
 	}
 
-	return &node.hash, nil
+	return &node.Hash, nil
 }
 
 // HeightRange returns a range of block hashes for the given start and end
@@ -1127,12 +1006,12 @@ func (b *MinerChain) HeightRange(startHeight, endHeight int32) ([]chainhash.Hash
 
 	// Grab a lock on the chain view to prevent it from changing due to a
 	// reorg while building the hashes.
-	b.BestChain.mtx.Lock()
-	defer b.BestChain.mtx.Unlock()
+	b.BestChain.Lock()
+	defer b.BestChain.Unlock()
 
 	// When the requested start height is after the most recent best chain
 	// height, there is nothing to do.
-	latestHeight := b.BestChain.tip().height
+	latestHeight := b.BestChain.Tip().Height
 	if startHeight > latestHeight {
 		return nil, nil
 	}
@@ -1145,7 +1024,7 @@ func (b *MinerChain) HeightRange(startHeight, endHeight int32) ([]chainhash.Hash
 	// Fetch as many as are available within the specified range.
 	hashes := make([]chainhash.Hash, 0, endHeight-startHeight)
 	for i := startHeight; i < endHeight; i++ {
-		hashes = append(hashes, b.BestChain.nodeByHeight(i).hash)
+		hashes = append(hashes, b.BestChain.NodeByHeightUL(i).Hash)
 	}
 	return hashes, nil
 }
@@ -1166,7 +1045,7 @@ func (b *MinerChain) HeightToHashRange(startHeight int32,
 	if !b.index.NodeStatus(endNode).KnownValid() {
 		return nil, fmt.Errorf("block %v is not yet validated", endHash)
 	}
-	endHeight := endNode.height
+	endHeight := endNode.Height
 
 	if startHeight < 0 {
 		return nil, fmt.Errorf("start height (%d) is below 0", startHeight)
@@ -1186,8 +1065,8 @@ func (b *MinerChain) HeightToHashRange(startHeight int32,
 	node := endNode
 	hashes := make([]chainhash.Hash, resultsLength)
 	for i := resultsLength - 1; i >= 0; i-- {
-		hashes[i] = node.hash
-		node = node.parent
+		hashes[i] = node.Hash
+		node = node.Parent
 	}
 	return hashes, nil
 }
@@ -1204,26 +1083,26 @@ func (b *MinerChain) IntervalBlockHashes(endHash *chainhash.Hash, interval int) 
 	if !b.index.NodeStatus(endNode).KnownValid() {
 		return nil, fmt.Errorf("block %v is not yet validated", endHash)
 	}
-	endHeight := endNode.height
+	endHeight := endNode.Height
 
 	resultsLength := int(endHeight) / interval
 	hashes := make([]chainhash.Hash, resultsLength)
 
-	b.BestChain.mtx.Lock()
-	defer b.BestChain.mtx.Unlock()
+	b.BestChain.Lock()
+	defer b.BestChain.Unlock()
 
 	blockNode := endNode
 	for index := int(endHeight) / interval; index > 0; index-- {
 		// Use the BestChain chainView for faster lookups once lookup intersects
 		// the best chain.
 		blockHeight := int32(index * interval)
-		if b.BestChain.contains(blockNode) {
-			blockNode = b.BestChain.nodeByHeight(blockHeight)
+		if b.BestChain.ContainsUL(blockNode) {
+			blockNode = b.BestChain.NodeByHeightUL(blockHeight)
 		} else {
 			blockNode = blockNode.Ancestor(blockHeight)
 		}
 
-		hashes[index-1] = blockNode.hash
+		hashes[index-1] = blockNode.Hash
 	}
 
 	return hashes, nil
@@ -1245,7 +1124,7 @@ func (b *MinerChain) IntervalBlockHashes(endHash *chainhash.Hash, interval int) 
 // functions.
 //
 // This function MUST be called with the chain state lock held (for reads).
-func (b *MinerChain) locateInventory(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxEntries uint32) (*blockNode, uint32) {
+func (b *MinerChain) locateInventory(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxEntries uint32) (*chainutil.BlockNode, uint32) {
 	// There are no block locators so a specific block is being requested
 	// as identified by the stop hash.
 	stopNode := b.index.LookupNode(hashStop)
@@ -1279,11 +1158,11 @@ func (b *MinerChain) locateInventory(locator chainhash.BlockLocator, hashStop *c
 	}
 
 	// Calculate how many entries are needed.
-	total := uint32((b.BestChain.Tip().height - startNode.height) + 1)
+	total := uint32((b.BestChain.Tip().Height - startNode.Height) + 1)
 	if stopNode != nil && b.BestChain.Contains(stopNode) &&
-		stopNode.height >= startNode.height {
+		stopNode.Height >= startNode.Height {
 
-		total = uint32((stopNode.height - startNode.height) + 1)
+		total = uint32((stopNode.Height - startNode.Height) + 1)
 	}
 	if total > maxEntries {
 		total = maxEntries
@@ -1311,7 +1190,7 @@ func (b *MinerChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 	// Populate and return the found hashes.
 	hashes := make([]chainhash.Hash, 0, total)
 	for i := uint32(0); i < total; i++ {
-		hashes = append(hashes, node.hash)
+		hashes = append(hashes, node.Hash)
 		node = b.BestChain.Next(node)
 	}
 	return hashes
@@ -1341,17 +1220,17 @@ func (b *MinerChain) LocateBlocks(locator chainhash.BlockLocator, hashStop *chai
 }
 
 func (b *MinerChain) Tip() * wire.MinerBlock {
-	h := b.BestChain.Tip().Header()
+	h := NodetoHeader(b.BestChain.Tip())
 	return wire.NewMinerBlock(&h)
 }
 
 // This function MUST be called with the chain state lock held (for write).
 func (b *MinerChain) DisconnectTip() {
 	tip := b.BestChain.Tip()
-	h := tip.Header()
+	h := NodetoHeader(tip)
 	blk := wire.NewMinerBlock(&h)
 	b.disconnectBlock(tip, blk)
-	b.addOrphanBlock(blk)
+	b.Orphans.AddOrphanBlock((*orphanBlock)(blk))
 }
 
 // locateHeaders returns the headers of the blocks after the first known block
@@ -1373,7 +1252,7 @@ func (b *MinerChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 	// Populate and return the found headers.
 	headers := make([]wire.MingingRightBlock, 0, total)
 	for i := uint32(0); i < total; i++ {
-		headers = append(headers, node.Header())
+		headers = append(headers, NodetoHeader(node))
 		node = b.BestChain.Next(node)
 	}
 	return headers
@@ -1433,10 +1312,9 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		minRetargetTimespan: targetTimespan / adjustmentFactor,
 		maxRetargetTimespan: targetTimespan * adjustmentFactor,
 		blocksPerRetarget:   int32(targetTimespan / targetTimePerBlock),
-		index:               newBlockIndex(config.MinerDB, params),
-		BestChain:           newChainView(nil),
-		orphans:             make(map[chainhash.Hash]*orphanBlock),
-		prevOrphans:         make(map[chainhash.Hash][]*orphanBlock),
+		index:               chainutil.NewBlockIndex(config.MinerDB, params),
+		BestChain:           chainutil.NewChainView(nil),
+		Orphans:             chainutil.NewOrphanMgr(),
 		stateLock:           &s.StateLock,
 		chainLock:			 &s.ChainLock,
 	}
@@ -1461,13 +1339,13 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	// Start from the end of the main chain and work backwards until
 	// the node whose bestblock is the tx chain's last block.
 	n := mtop
-	h := n.Header().BestBlock
+	h := NodetoHeader(n).BestBlock
 	detachNodes := list.New()
-	for n.parent != nil && !s.MainChainHasBlock(&h) {
+	for n.Parent != nil && !s.MainChainHasBlock(&h) {
 		//			&& n.Header().BestBlock != best.Hash
 		detachNodes.PushBack(n)
-		n = n.parent
-		h = n.Header().BestBlock
+		n = n.Parent
+		h = NodetoHeader(n).BestBlock
 		ok = false
 	}
 
@@ -1478,7 +1356,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		b.chainLock.Unlock()
 
 		detachNodes := list.New()
-		for m := s.BestChain.Tip(); * m.Hash() != n.Header().BestBlock; m = m.Parent() {
+		for m := s.BestChain.Tip(); m.Hash != NodetoHeader(n).BestBlock; m = m.Parent {
 			detachNodes.PushBack(n)
 		}
 		s.ChainLock.Lock()
@@ -1487,28 +1365,28 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	}
 
 	txtop := s.BestChain.Tip()
-	for txtop != nil && txtop.Nonce() > -wire.MINER_RORATE_FREQ {
-		txtop = txtop.Parent()
+	for txtop != nil && txtop.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
+		txtop = txtop.Parent
 	}
-	if txtop != nil && mbest.Height < -txtop.Nonce() - wire.MINER_RORATE_FREQ {
+	if txtop != nil && mbest.Height < -txtop.Data.GetNonce() - wire.MINER_RORATE_FREQ {
 		ok = false
 		// roll back tx chain to the point where a rotation references to a valid
 		// miner block and non rotation blocks that follows
 
 		rp, sp := txtop, txtop
 		for sp != nil {
-			if sp.Nonce() > -wire.MINER_RORATE_FREQ {
-				sp = sp.Parent()
-			} else if mbest.Height < -sp.Nonce() - wire.MINER_RORATE_FREQ {
+			if sp.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
+				sp = sp.Parent
+			} else if mbest.Height < -sp.Data.GetNonce() - wire.MINER_RORATE_FREQ {
 				rp = sp
-				sp = sp.Parent()
+				sp = sp.Parent
 			} else {
 				sp = nil
 			}
 		}
 
 		detachNodes := list.New()
-		for n := s.BestChain.Tip(); n.Parent() != nil && n != rp; n = n.Parent() {
+		for n := s.BestChain.Tip(); n.Parent != nil && n != rp; n = n.Parent {
 			detachNodes.PushBack(n)
 		}
 		detachNodes.PushBack(rp)
@@ -1527,7 +1405,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		return nil, fmt.Errorf("databased was corrupted. please restart")
 	}
 	log.Infof("Miner Chain state (height %d, hash %s)",
-		mtop.height, mtop.hash.String())
+		mtop.Height, mtop.Hash.String())
 
 	return s, nil
 }

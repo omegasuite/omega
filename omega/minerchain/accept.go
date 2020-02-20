@@ -1,6 +1,12 @@
-// Copyright (c) 2013-2017 The btcsuite developers
-// Use of this source code is governed by an ISC
-// license that can be found in the LICENSE file.
+/* Copyright (C) 2019-2020 omega-chain.com - All Rights Reserved
+* This file is part of the omega chain library.
+*
+* Use of this source code is governed by license that can be
+* found in the LICENSE file.
+*
+* You should have received a copy of the license with this file.
+* If not, please visit: <https://omega-chain.com/license.html>
+ */
 
 package minerchain
 
@@ -9,13 +15,12 @@ import (
 	"fmt"
 
 	"github.com/btcsuite/btcd/blockchain"
+	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
 	"math/big"
 )
-
-// const powScaleFactor = 1.2		// the pow scale factor when the number of miner candidate is more than DESIRABLE_MINER_CANDIDATES
 
 // maybeAcceptBlock potentially accepts a block into the miner chain and, if
 // accepted, returns whether or not it is on the main chain.  It performs
@@ -40,10 +45,8 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 		return false, ruleError(ErrInvalidAncestorBlock, str)
 	}
 
-	blockHeight := prevNode.height + 1
+	blockHeight := prevNode.Height + 1
 	block.SetHeight(blockHeight)
-
-//	log.Infof("maybeAcceptBlock at %d hash %x", blockHeight, block.Hash())
 
 	// The block must pass all of the validation rules which depend on the
 	// position of the block within the block chain.
@@ -72,11 +75,11 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	// if the block ultimately gets connected to the main chain, it starts out
 	// on a side chain.
 	blockHeader := block.MsgBlock()
-	newNode := newBlockNode(blockHeader, prevNode)
-	newNode.status = statusDataStored
+	newNode := NewBlockNode(blockHeader, prevNode)
+	newNode.Status = chainutil.StatusDataStored
 
 	b.index.AddNode(newNode)
-	err = b.index.flushToDB()
+	err = b.index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
 		return false, err
 	}
@@ -148,10 +151,8 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 		hashNum := HashToBig(&hash)
 
 		factor := m.factorPOW(m.index.LookupNode(&header.PrevBlock))
-//		if factor != nil {
-			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-//			hashNum = hashNum.Div(hashNum, big.NewInt(1024))
-//		}
+		hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+
 		if hashNum.Cmp(target) > 0 {
 			str := fmt.Sprintf("block hash of %064x is higher than "+
 				"expected max of %064x", hashNum, target)
@@ -162,11 +163,10 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 	return nil
 }
 
-func (m *MinerChain) factorPOW(firstNode *blockNode) int64 {
-//	h0 := firstNode.Header().BestBlock
-	baseh := uint32(firstNode.height)
+func (m *MinerChain) factorPOW(firstNode *chainutil.BlockNode) int64 {
+	baseh := uint32(firstNode.Height)
 
-	h := m.blockChain.BestSnapshot().LastRotation	// .LastRotation(h0)
+	h := m.blockChain.BestSnapshot().LastRotation
 	if h == 0 {
 		return 1 	// nil
 	}
@@ -180,13 +180,6 @@ func (m *MinerChain) factorPOW(firstNode *blockNode) int64 {
 	}
 
 	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
-/*
-	factor := float64(1024.0)
-	if d > wire.DESIRABLE_MINER_CANDIDATES {
-		factor *= math.Pow(powScaleFactor, float64(d - wire.DESIRABLE_MINER_CANDIDATES))
-	}
-	return big.NewInt(int64(factor))
- */
 }
 
 // checkBlockContext peforms several validation checks on the block which depend
@@ -200,7 +193,7 @@ func (m *MinerChain) factorPOW(firstNode *blockNode) int64 {
 // for how the flags modify its behavior.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNode, flags blockchain.BehaviorFlags) error {
+func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainutil.BlockNode, flags blockchain.BehaviorFlags) error {
 	fastAdd := flags&blockchain.BFFastAdd == blockchain.BFFastAdd
 
 	if fastAdd {
@@ -210,21 +203,19 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 	header := block.MsgBlock()
 
 	for p, i := prevNode, 0; p != nil && i < wire.MinerGap; i++ {
-		if bytes.Compare(p.Header().Miner, block.MsgBlock().Miner) == 0 {
+		h := NodetoHeader(p)
+		if bytes.Compare(h.Miner, block.MsgBlock().Miner) == 0 {
 			str := "Miner has appeared in the past %d blocks"
 			str = fmt.Sprintf(str, wire.MinerGap)
 			return ruleError(ErrUnexpectedDifficulty, str)
 		}
-		p = p.parent
+		p = p.Parent
 	}
 
 	// Ensure the difficulty specified in the block header matches
 	// the calculated difficulty based on the previous block and
 	// difficulty retarget rules.
 	expectedDifficulty, _ := b.calcNextRequiredDifficulty(prevNode, header.Timestamp)
-//	if err != nil {
-//		return err
-//	}
 
 	blockDifficulty := header.Bits
 	if blockDifficulty != expectedDifficulty {
@@ -253,27 +244,6 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 	if err := b.checkProofOfWork(header, b.chainParams.PowLimit, flags); err != nil {
 		return err
 	}
-/*
-	refh,_ := b.blockChain.BlockHeightByHash(&header.ReferredBlock)
-	best,_ := b.blockChain.BlockHeightByHash(&header.BestBlock)
-	prev := b.index.LookupNode(&header.PrevBlock)
-	phd := prev.Header().ReferredBlock
-	prevh,_ := b.blockChain.BlockHeightByHash(&phd)
-	phd = prev.Header().BestBlock
-	pbh,_ := b.blockChain.BlockHeightByHash(&phd)
-
-	if refh < prevh || 2 * refh > (best + prevh) || best < pbh {
-		str := "referred main chain block height of %d is not in proper range [%d, %d]"
-		str = fmt.Sprintf(str, refh, prevh, best)
-		return ruleError(ErrTimeTooOld, str)
-	}
-
-	if best < pbh {
-		str := "referred main chain best block height of %d is less that previous"
-		str = fmt.Sprintf(str, best)
-		return ruleError(ErrTimeTooOld, str)
-	}
- */
 
 	for _, p := range block.MsgBlock().BlackList {
 		// verify the signatures
@@ -304,7 +274,6 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *blockNo
 	return nil
 }
 
-
 // CheckConnectBlockTemplate fully validates that connecting the passed block to
 // the main chain does not violate any consensus rules, aside from the proof of
 // work requirement. The block must connect to the current tip of the main chain.
@@ -314,12 +283,6 @@ func (b *MinerChain) CheckConnectBlockTemplate(block *wire.MinerBlock) error {
 //	log.Infof("MinerChain.CheckConnectBlockTemplate: ChainLock.RLock")
 	b.chainLock.Lock()
 	defer b.chainLock.Unlock()
-/*
-	func() {
-		b.chainLock.Unlock()
-		log.Infof("MinerChain.CheckConnectBlockTemplate: ChainLock.Unlock")
-	} ()
-*/
 
 	// Skip the proof of work check as this is just a block template.
 	flags := blockchain.BFNoPoWCheck
@@ -328,9 +291,9 @@ func (b *MinerChain) CheckConnectBlockTemplate(block *wire.MinerBlock) error {
 	// current chain.
 	tip := b.BestChain.Tip()
 	header := block.MsgBlock()
-	if tip.hash != header.PrevBlock {
+	if tip.Hash != header.PrevBlock {
 		str := fmt.Sprintf("previous block must be the current chain tip %v, "+
-			"instead got %v", tip.hash, header.PrevBlock)
+			"instead got %v", tip.Hash, header.PrevBlock)
 		return ruleError(ErrPrevBlockNotBest, str)
 	}
 

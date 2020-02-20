@@ -7,6 +7,7 @@ package mining
 import (
 	"bytes"
 	"container/heap"
+	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/omega/ovm"
 	"time"
 
@@ -337,7 +338,7 @@ func MinimumMedianTime(chainState *blockchain.BestState) time.Time {
 // medianAdjustedTime returns the current time adjusted to ensure it is at least
 // one second after the median timestamp of the last several blocks per the
 // Chain consensus rules.
-func medianAdjustedTime(chainState *blockchain.BestState, timeSource blockchain.MedianTimeSource) time.Time {
+func medianAdjustedTime(chainState *blockchain.BestState, timeSource chainutil.MedianTimeSource) time.Time {
 	// The timestamp for the block must not be before the median timestamp
 	// of the last several blocks.  Thus, choose the maximum between the
 	// current time and one second after the past median time.  The current
@@ -362,7 +363,7 @@ type BlkTmplGenerator struct {
 	chainParams *chaincfg.Params
 	txSource    TxSource
 	Chain       *blockchain.BlockChain
-	timeSource  blockchain.MedianTimeSource
+	timeSource  chainutil.MedianTimeSource
 //	sigCache    *txscript.SigCache
 //	hashCache   *txscript.HashCache
 }
@@ -375,7 +376,7 @@ type BlkTmplGenerator struct {
 // consensus rules.
 func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 	txSource TxSource, chain *blockchain.BlockChain,
-	timeSource blockchain.MedianTimeSource) *BlkTmplGenerator {
+	timeSource chainutil.MedianTimeSource) *BlkTmplGenerator {
 //	sigCache *txscript.SigCache,
 //	hashCache *txscript.HashCache) *BlkTmplGenerator {
 
@@ -469,7 +470,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress btcutil.Address) (*Bloc
 	// before potentially doing a lot of work below.
 
 	prevPows := uint(0)
-	for pw := g.Chain.BestChain.Tip(); pw != nil && pw.Nonce() > 0; pw = pw.Parent() {
+	for pw := g.Chain.BestChain.Tip(); pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
 		prevPows++
 	}
 

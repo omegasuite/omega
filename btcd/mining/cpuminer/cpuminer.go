@@ -429,7 +429,7 @@ flushconnch:
 
 		var payToAddr * btcutil.Address
 
-		pb := m.g.Chain.BestChain.Tip().Header().Nonce
+		pb := m.g.Chain.BestChain.Tip().Data.GetNonce()
 
 		committee := m.g.Committee()
 
@@ -584,7 +584,7 @@ func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
 
 	best := m.g.Chain.BestSnapshot()
 	bh := best.LastRotation
-	for pw := m.g.Chain.BestChain.Tip(); pw != nil && pw.Nonce() > 0; pw = pw.Parent() {
+	for pw := m.g.Chain.BestChain.Tip(); pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
 		prevPows++
 	}
 	if prevPows != 0 {

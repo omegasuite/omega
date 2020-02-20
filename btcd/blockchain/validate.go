@@ -7,6 +7,7 @@ package blockchain
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/btcd/btcec"
 	"math"
 	"math/big"
@@ -33,10 +34,6 @@ const (
 
 	// MaxCoinbaseScriptLen is the maximum length a coinbase script can be.
 	MaxCoinbaseScriptLen = 100
-
-	// medianTimeBlocks is the number of previous blocks which should be
-	// used to calculate the median time used to validate block timestamps.
-	medianTimeBlocks = 11
 
 	// serializedHeightVersion is the block version which changed block
 	// coinbases to start with the serialized block height.
@@ -304,12 +301,12 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 
 func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
 	rotate := b.BestSnapshot().LastRotation
-	for p := b.BestChain.Tip(); p != nil && p.hash != hash; p = p.parent {
+	for p := b.BestChain.Tip(); p != nil && p.Hash != hash; p = p.Parent {
 		switch {
-		case p.nonce > 0:
+		case p.Data.GetNonce() > 0:
 			rotate -= wire.CommitteeSize / 2 + 1
 
-		case p.nonce <= -wire.MINER_RORATE_FREQ:
+		case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 			rotate--
 		}
 	}
@@ -326,14 +323,14 @@ func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
 
 // if return value is nil,false, the block is ok. if nil,true, it may be added as orphan
 // but can not be connected. if err,_, it is a bad block and should be discarded
-func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, powLimit *big.Int, flags BehaviorFlags) (error, bool) {
+func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.BlockNode, powLimit *big.Int, flags BehaviorFlags) (error, bool) {
 	best := b.BestSnapshot()
 	bits := best.Bits
 	rotate := best.LastRotation
 	header := &block.MsgBlock().Header
 
-	if parent.hash != best.Hash {
-		pn := b.index.LookupNode(&parent.hash)
+	if parent.Hash != best.Hash {
+		pn := b.index.LookupNode(&parent.Hash)
 		fork := b.BestChain.FindFork(pn)
 
 		if fork == nil {
@@ -341,21 +338,21 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 		}
 
 		// parent is not the tip, go back to find correct rotation
-		for p := b.BestChain.Tip(); p != nil && p != fork; p = p.parent {
+		for p := b.BestChain.Tip(); p != nil && p != fork; p = p.Parent {
 			switch {
-			case p.nonce > 0:
+			case p.Data.GetNonce() > 0:
 				rotate -= wire.CommitteeSize / 2 + 1
 
-			case p.nonce <= -wire.MINER_RORATE_FREQ:
+			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate--
 			}
 		}
-		for p := pn; p != nil && p != fork; p = p.parent {
+		for p := pn; p != nil && p != fork; p = p.Parent {
 			switch {
-			case p.nonce > 0:
+			case p.Data.GetNonce() > 0:
 				rotate += wire.CommitteeSize / 2 + 1
 
-			case p.nonce <= -wire.MINER_RORATE_FREQ:
+			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate++
 			}
 		}
@@ -393,7 +390,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 	} else {
 		if parent != nil {
 			// examine nonce
-			if parent.nonce > 0 {
+			if parent.Data.GetNonce() > 0 {
 				// if previous block was a POW block, this block must be either a POW block, or a rotate
 				// block that phase out all the previous committee members
 				if header.Nonce != -1 { // - int32(rotate + wire.MINER_RORATE_FREQ + 1) {
@@ -403,7 +400,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 				}
 			} else {
 				switch {
-				case parent.nonce == -wire.MINER_RORATE_FREQ+1:
+				case parent.Data.GetNonce() == -wire.MINER_RORATE_FREQ+1:
 					// this is a rotation block, nonce must be -(height of next miner block)
 					if header.Nonce != - int32(rotate+1+wire.MINER_RORATE_FREQ) {
 						//					str := fmt.Sprintf("The this is a rotation block, nonce %d must be height of next miner block %d.", -header.Nonce, rotate + 1 + wire.MINER_RORATE_FREQ)
@@ -411,7 +408,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 						// ruleError(ErrHighHash, str)
 					}
 
-				case parent.nonce <= -wire.MINER_RORATE_FREQ:
+				case parent.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 					// previous block is a rotation block, this block none must be -1
 					if header.Nonce != -1 {
 						//					str := fmt.Sprintf("Previous block is a rotation block, this block nonce must be -1.")
@@ -419,10 +416,10 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 					}
 
 				default:
-					if header.Nonce != parent.nonce-1 {
+					if header.Nonce != parent.Data.GetNonce()-1 {
 						// if parent.Nonce < 0 && header.Nonce != -((-parent.Nonce + 1) % ROT) { error }
 						//					str := fmt.Sprintf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce)
-						return fmt.Errorf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce), true
+						return fmt.Errorf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.Data.GetNonce()), true
 					}
 				}
 			}
@@ -484,7 +481,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * blockNode, 
 // CheckProofOfWork ensures the block header bits which indicate the target
 // difficulty is in min/max range and that the block hash is less than the
 // target difficulty as claimed.
-func (b *BlockChain) CheckProofOfWork(block *btcutil.Block, parent * blockNode, powLimit *big.Int) error {
+func (b *BlockChain) CheckProofOfWork(block *btcutil.Block, parent * chainutil.BlockNode, powLimit *big.Int) error {
 	err, _ := b.checkProofOfWork(block, parent, powLimit, BFNone)
 	return err
 }
@@ -518,7 +515,7 @@ func MakeMinerSigHash(height int32, hash chainhash.Hash) []byte {
 //
 // The flags do not modify the behavior of this function directly, however they
 // are needed to pass along to checkProofOfWork.
-func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSource MedianTimeSource, flags BehaviorFlags) error {
+func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSource chainutil.MedianTimeSource, flags BehaviorFlags) error {
 	// Ensure the proof of work bits in the block header is in min/max range
 	// and the block hash is less than the target value described by the
 	// bits.
@@ -555,7 +552,7 @@ func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSou
 //
 // The flags do not modify the behavior of this function directly, however they
 // are needed to pass along to checkBlockHeaderSanity.
-func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource MedianTimeSource, flags BehaviorFlags) error {
+func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainutil.MedianTimeSource, flags BehaviorFlags) error {
 	msgBlock := block.MsgBlock()
 	header := &msgBlock.Header
 	err := checkBlockHeaderSanity(header, powLimit, timeSource, flags)
@@ -661,7 +658,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource Median
 
 // CheckBlockSanity performs some preliminary checks on a block to ensure it is
 // sane before continuing with block processing.  These checks are context free.
-func CheckBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource MedianTimeSource) error {
+func CheckBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainutil.MedianTimeSource) error {
 	return checkBlockSanity(block, powLimit, timeSource, BFNone)
 }
 
@@ -705,7 +702,7 @@ func checkSerializedHeight(coinbaseTx *btcutil.Tx, wantHeight int32) error {
 //    the checkpoints are not performed.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode *blockNode, flags BehaviorFlags) error {
+func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode *chainutil.BlockNode, flags BehaviorFlags) error {
 	fastAdd := flags&BFFastAdd == BFFastAdd
 	if !fastAdd {
 		// Ensure the difficulty specified in the block header matches
@@ -742,7 +739,7 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 
 	// The height of this block is one more than the referenced previous
 	// block.
-	blockHeight := prevNode.height + 1
+	blockHeight := prevNode.Height + 1
 
 	// Ensure chain matches up to predetermined checkpoints.
 	blockHash := header.BlockHash()
@@ -760,10 +757,10 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 	if err != nil {
 		return err
 	}
-	if checkpointNode != nil && blockHeight < checkpointNode.height {
+	if checkpointNode != nil && blockHeight < checkpointNode.Height {
 		str := fmt.Sprintf("block at height %d forks the main chain "+
 			"before the previous checkpoint at height %d",
-			blockHeight, checkpointNode.height)
+			blockHeight, checkpointNode.Height)
 		return ruleError(ErrForkTooOld, str)
 	}
 
@@ -781,7 +778,7 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 // for how the flags modify its behavior.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *blockNode, flags BehaviorFlags) error {
+func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil.BlockNode, flags BehaviorFlags) error {
 	// Perform all block header related validation checks.
 	header := &block.MsgBlock().Header
 	err := b.checkBlockHeaderContext(header, prevNode, flags)
@@ -802,7 +799,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *blockNode
 
 		// The height of this block is one more than the referenced
 		// previous block.
-		blockHeight := prevNode.height + 1
+		blockHeight := prevNode.Height + 1
 
 		// Ensure all transactions in the block are finalized.
 		for _, tx := range block.Transactions() {
@@ -1109,7 +1106,7 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.View
 // with that node.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut) error {
+func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut) error {
 	// If the side chain blocks end up in the database, a call to
 	// CheckBlockSanity should be done here in case a previous version
 	// allowed a block that is no longer valid.  However, since the
@@ -1118,7 +1115,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 
 	// The coinbase for the Genesis block is not spendable, so just return
 	// an error now.
-	if node.hash.IsEqual(b.chainParams.GenesisHash) {
+	if node.Hash.IsEqual(b.chainParams.GenesisHash) {
 		str := "the coinbase for the genesis block is not spendable"
 		return ruleError(ErrMissingTxOut, str)
 	}
@@ -1181,7 +1178,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 	// portion of block handling.
 	checkpoint := b.LatestCheckpoint()
 	runScripts := true
-	if checkpoint != nil && node.height <= checkpoint.Height {
+	if checkpoint != nil && node.Height <= checkpoint.Height {
 		runScripts = false
 	}
 
@@ -1194,13 +1191,13 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 	// bounds.
 	var totalFees int64
 	for _, tx := range transactions[1:] {
-		err := CheckTransactionInputs(tx, node.height, views, b.chainParams)
+		err := CheckTransactionInputs(tx, node.Height, views, b.chainParams)
 		if err != nil {
 			return err
 		}
 
 		if runScripts {
-			err = b.ovm.VerifySigs(tx, node.height)
+			err = b.ovm.VerifySigs(tx, node.Height)
 			if err != nil {
 				return err
 			}
@@ -1210,7 +1207,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 		// in transaction, a new copy of tx will be returned.
 		cleantx := tx.CleanCopy()
 
-		otx, err := b.ovm.ExecContract(cleantx, 0, node.height, b.chainParams)
+		otx, err := b.ovm.ExecContract(cleantx, 0, node.Height, b.chainParams)
 		if err != nil {
 			return err
 		}
@@ -1225,7 +1222,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 			return err
 		}
 
-		txFee, err := CheckTransactionFees(tx, node.height, views, b.chainParams)
+		txFee, err := CheckTransactionFees(tx, node.Height, views, b.chainParams)
 		if err != nil {
 			return err
 		}
@@ -1243,7 +1240,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 		// provably unspendable as available utxos.  Also, the passed
 		// spent txos slice is updated to contain an entry for each
 		// spent txout in the order each transaction spends them.
-		err = views.ConnectTransaction(tx, node.height, stxos)
+		err = views.ConnectTransaction(tx, node.Height, stxos)
 		if err != nil {
 			return err
 		}
@@ -1261,13 +1258,13 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 	}
 
 	prevPows := uint(0)
-	if node.nonce > 0 {
-		for pw := node.parent; pw != nil && pw.nonce > 0; pw = pw.parent {
+	if node.Data.GetNonce() > 0 {
+		for pw := node.Parent; pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
 			prevPows++
 		}
 	}
 
-	expectedSatoshiOut := CalcBlockSubsidy(node.height, b.chainParams, prevPows) + totalFees
+	expectedSatoshiOut := CalcBlockSubsidy(node.Height, b.chainParams, prevPows) + totalFees
 	if totalSatoshiOut > expectedSatoshiOut {
 		str := fmt.Sprintf("coinbase transaction for block pays %v "+
 			"which is more than expected value of %v",
@@ -1286,7 +1283,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 
 		// We obtain the MTP of the *previous* block in order to
 		// determine if transactions in the current block are final.
-		medianTime := node.parent.CalcPastMedianTime()
+		medianTime := node.Parent.CalcPastMedianTime()
 
 		// Additionally, if the CSV soft-fork package is now active,
 		// then we also enforce the relative sequence number based
@@ -1301,7 +1298,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 			if err != nil {
 				return err
 			}
-			if !SequenceLockActive(sequenceLock, node.height,
+			if !SequenceLockActive(sequenceLock, node.Height,
 				medianTime) {
 				str := fmt.Sprintf("block contains " +
 					"transaction whose input sequence " +
@@ -1347,7 +1344,7 @@ func (b *BlockChain) checkConnectBlock(node *blockNode, block *btcutil.Block, vi
 
 	// Update the best hash for view to include this block since all of its
 	// transactions have been connected.
-	views.Utxo.SetBestHash(&node.hash)
+	views.Utxo.SetBestHash(&node.Hash)
 
 	return nil
 }
@@ -1375,9 +1372,9 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 	// current chain.
 	tip := b.BestChain.Tip()
 	header := block.MsgBlock().Header
-	if tip.hash != header.PrevBlock {
+	if tip.Hash != header.PrevBlock {
 		str := fmt.Sprintf("previous block must be the current chain tip %v, "+
-			"instead got %v", tip.hash, header.PrevBlock)
+			"instead got %v", tip.Hash, header.PrevBlock)
 		return ruleError(ErrPrevBlockNotBest, str)
 	}
 
@@ -1395,7 +1392,7 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 	// is not needed and thus extra work can be avoided.
 	views := b.NewViewPointSet()
 //	views.db = &b.db
-	views.Utxo.SetBestHash(&tip.hash)
-	newNode := newBlockNode(&header, tip)
+	views.Utxo.SetBestHash(&tip.Hash)
+	newNode := NewBlockNode(&header, tip)
 	return b.checkConnectBlock(newNode, block, views, nil)
 }

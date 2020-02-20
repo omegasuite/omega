@@ -16,6 +16,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/omega/minerchain"
 	"github.com/davecgh/go-spew/spew"
@@ -264,7 +265,7 @@ type server struct {
 	nat                  NAT
 	db                   database.DB
 	minerdb              database.DB
-	timeSource           blockchain.MedianTimeSource
+	timeSource           chainutil.MedianTimeSource
 	services             common.ServiceFlag
 
 	// The following fields are used for optional indexes.  They will be nil
@@ -1614,9 +1615,12 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 
 	if err != nil {
 		// now check orphans
-		m := s.chain.GetOrphanBlock(hash)
+		s.chain.ChainLock.RLock()
+		m := s.chain.Orphans.GetOrphanBlock(hash)
+		s.chain.ChainLock.RUnlock()
+
 		if m != nil {
-			msgBlock = *m
+			msgBlock = *m.(*wire.MsgBlock)
 			err = nil
 		} else if block := s.cpuMiner.CurrentBlock(); block != nil && * block.Hash() == * hash {
 			ht := s.chain.BestSnapshot().Height
@@ -3054,7 +3058,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		nat:                  nat,
 		db:                   db,
 		minerdb:			  minerdb,
-		timeSource:           blockchain.NewMedianTime(),
+		timeSource:           chainutil.NewMedianTime(),
 		services:             services,
 //		sigCache:             NewSigCache(cfg.SigCacheMaxSize),
 //		hashCache:            NewHashCache(cfg.SigCacheMaxSize),

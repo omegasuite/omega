@@ -28,12 +28,12 @@ func TestErrNotInMainChain(t *testing.T) {
 	}
 
 	// Ensure error is detected as the correct type.
-	if !isNotInMainChainErr(err) {
-		t.Fatalf("isNotInMainChainErr did not detect as expected type")
+	if !IsNotInMainChainErr(err) {
+		t.Fatalf("IsNotInMainChainErr did not detect as expected type")
 	}
 	err = errors.New("something else")
-	if isNotInMainChainErr(err) {
-		t.Fatalf("isNotInMainChainErr detected incorrect type")
+	if IsNotInMainChainErr(err) {
+		t.Fatalf("IsNotInMainChainErr detected incorrect type")
 	}
 }
 
