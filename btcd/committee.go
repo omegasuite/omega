@@ -140,6 +140,9 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 //		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
+	if sp.server.chain.Miners.CheckCollateral(mb, blockchain.BFNone) != nil {
+		return
+	}
 
 	// check signature
 	var miner [20]byte
@@ -506,58 +509,6 @@ func (s *server) MinerBlockByHeight(n int32) (* wire.MinerBlock,error) {
 	return s.chain.Miners.BlockByHeight(n)
 }
 
-func (s *server) uniConn() {
-	return
-	// close connection to keep one for each committee member. conflict resolution:
-	// the one with higher miner block height get to be server
-/*
-	best := int32(s.chain.BestSnapshot().LastRotation)
-	adrmap := make(map[string]int32)
-	if len(s.peerState.committee) > wire.CommitteeSize {
-		for i, p := range s.peerState.committee {
-			if j, ok := adrmap[p.Addr()]; !ok {
-				adrmap[p.Addr()] = i
-			} else {
-				if j <= best-wire.CommitteeSize || j > best {
-					delete(s.peerState.committee, j)
-				} else {
-					delete(s.peerState.committee, i)
-				}
-			}
-		}
-	}
-
-	s.peerState.forAllPeers(func (p * serverPeer) {
-		if p.Committee <= 0 {
-			return
-		}
-		s.peerState.forAllPeers(func (q * serverPeer) {
-			if q.Committee <= 0 {
-				return
-			}
-			if p.Peer.ID() == q.Peer.ID() || bytes.Compare(p.Peer.Miner[:], q.Peer.Miner[:]) != 0 {
-				return
-			}
-			if !p.Connected() || !q.Connected() {
-				if q.Connected() {
-					s.handleDonePeerMsg(s.peerState, p)
-					return
-				} else if p.Connected() {
-					s.handleDonePeerMsg(s.peerState, q)
-					return
-				}
-			}
-
-			if p.Peer.LastBlock() > q.Peer.LastBlock() {
-				s.handleDonePeerMsg(s.peerState, q)
-			} else {
-				s.handleDonePeerMsg(s.peerState, p)
-			}
-		})
-	})
- */
-}
-
 func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 	if _, ok := s.peerState.committee[miner]; ok {
 		np := make([]*serverPeer, 0, len(s.peerState.committee[miner].peers))
@@ -697,6 +648,11 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 			break
 		}
 		var miner [20]byte
+
+		if s.chain.Miners.CheckCollateral(mb, blockchain.BFNone) != nil {
+			continue
+		}
+
 		copy(miner[:], mb.MsgBlock().Miner)
 
 		if _, ok := state.committee[miner]; !ok {
@@ -724,34 +680,6 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 
 	s.peerState.cmutex.Unlock()
 }
-
-/*
-func (s *server) AnnounceNewBlock(m * btcutil.Block) {
-	consensusLog.Infof("AnnounceNewBlock %d %s", m.Height(), m.Hash().String())
-	s.peerState.print()
-
-	// make a new Block so we don't use anything cached in m
-	blk := btcutil.NewBlock(m.MsgBlock())
-	blk.SetHeight(m.Height())
-
-	isMainChain, orphan, err := s.chain.ProcessBlock(blk, blockchain.BFNone)
-	if err != nil || orphan || !isMainChain {
-		return
-	}
-
-	msg := wire.NewMsgInv()
-	msg.AddInvVect(&wire.InvVect{
-		Type: common.InvTypeWitnessBlock,
-		Hash: *blk.Hash(),
-	})
-
-	var name [20]byte
-	copy(name[:], s.signAddress.ScriptAddress())
-
-	s.BroadcastMessage(msg)
-//	s.CommitteeCastMG(name, msg, blk.Height())
-}
- */
 
 func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message, h int32) {
 	s.peerState.print()
@@ -967,24 +895,6 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 		consensusLog.Infof("consensus faield to process ProcessBlock!!! %s", err.Error())
 	}
 }
-
-/*
-func (s *server) handleCommitteecastMsg(state *peerState, bmsg *broadcastMsg) {
-	srvrLog.Infof("handleCommitteecastMsg %s message", bmsg.message.Command())
-
-	s.peerState.print()
-
-	state.forAllCommittee(func(sp *serverPeer) {
-		for _, ep := range bmsg.excludePeers {
-			if sp == ep {
-				return
-			}
-		}
-		srvrLog.Infof("casting %s message to %s (remote = %s)", bmsg.message.Command(), sp.Peer.LocalAddr().String(), sp.Peer.Addr())
-		sp.QueueMessageWithEncoding(bmsg.message, nil, wire.SignatureEncoding)
-	})
-}
- */
 
 func (s *server) CommitteeCast(msg wire.Message) {
 	var name [20]byte

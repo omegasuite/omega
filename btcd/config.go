@@ -178,6 +178,8 @@ type config struct {
 
 	minRelayTxFee        btcutil.Amount
 	whitelists           []*net.IPNet
+	DropMycoins    bool   `long:"DropMycoins" description:"Purge record of coins to be used for collateral."`
+	BuildMycoins   bool   `long:"BuildMycoins" description:"Rebuild record of coins to be used for collateral."`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on

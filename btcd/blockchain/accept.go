@@ -41,7 +41,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	}
 
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
-		// make sure the rotate in miner block is there
+		// make sure the rotate in Miner block is there
 		if prevNode.Data.GetNonce() != -wire.MINER_RORATE_FREQ + 1 {
 			return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ + 1)
 		}

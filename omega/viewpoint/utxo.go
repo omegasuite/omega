@@ -189,6 +189,7 @@ type SpentTxOut struct {
 // The unspent outputs are needed by other transactions for things such as
 // script validation and double spend prevention.
 type UtxoViewpoint struct {
+	miner []byte
 	entries  map[wire.OutPoint]*UtxoEntry
 	bestHash chainhash.Hash
 }
@@ -576,7 +577,7 @@ func (view *ViewPointSet) FindMonitor(addr []byte, hash chainhash.Hash) *UtxoEnt
 	}
 
 	// Deserialize the utxo entry and return it.
-	entry, _ := deserializeUtxoEntry(serialized)
+	entry, _ := DeserializeUtxoEntry(serialized)
 
 	return entry
 }
@@ -616,13 +617,13 @@ func dbFetchUtxoEntryByHash(dbTx database.Tx, hash *chainhash.Hash) (*UtxoEntry,
 		return nil, nil
 	}
 
-	return deserializeUtxoEntry(cursor.Value())
+	return DeserializeUtxoEntry(cursor.Value())
 }
 
-// deserializeUtxoEntry decodes a utxo entry from the passed serialized byte
+// DeserializeUtxoEntry decodes a utxo entry from the passed serialized byte
 // slice into a new UtxoEntry using a format that is suitable for long-term
 // storage.  The format is described in detail above.
-func deserializeUtxoEntry(serialized []byte) (*UtxoEntry, error) {
+func DeserializeUtxoEntry(serialized []byte) (*UtxoEntry, error) {
 	// Ensure there are bytes to decode.
 	if len(serialized) == 0 {
 		return nil, bccompress.ErrDeserialize("no serialized bytes")
@@ -731,7 +732,7 @@ func DbFetchUtxoEntry(dbTx database.Tx, outpoint wire.OutPoint) (*UtxoEntry, err
 	}
 
 	// Deserialize the utxo entry and return it.
-	entry, err := deserializeUtxoEntry(serializedUtxo)
+	entry, err := DeserializeUtxoEntry(serializedUtxo)
 	if err != nil {
 		// Ensure any deserialization errors are returned as database
 		// corruption errors.
@@ -894,8 +895,9 @@ func (view *ViewPointSet) FetchInputUtxos(db database.DB, block *btcutil.Block) 
 }
 
 // NewUtxoViewpoint returns a new empty unspent transaction output view.
-func NewUtxoViewpoint() *UtxoViewpoint {
+func NewUtxoViewpoint(m []byte) *UtxoViewpoint {
 	return &UtxoViewpoint{
+		miner: m,
 		entries: make(map[wire.OutPoint]*UtxoEntry),
 	}
 }
@@ -905,6 +907,7 @@ func NewUtxoViewpoint() *UtxoViewpoint {
 // particular, only the entries that have been marked as modified are written
 // to the database.
 func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
+	mycoins := dbTx.Metadata().Bucket(mycoinsBucketName)
 	utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
 	for outpoint, entry := range view.entries {
 		// No need to update the database if the entry was not modified.
@@ -916,6 +919,9 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 		if entry.IsSpent() {
 			key := outpointKey(outpoint)
 			err := utxoBucket.Delete(*key)
+			if bytes.Compare(entry.pkScript[:21], view.miner) == 0 {
+				mycoins.Delete(*key)
+			}
 			recycleOutpointKey(key)
 			if err != nil {
 				return err
@@ -935,6 +941,9 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 		}
 		key := outpointKey(outpoint)
 		err = utxoBucket.Put(*key, serialized)
+
+		CheckMyCoin(mycoins, entry, view.miner, *key)
+
 		// NOTE: The key is intentionally not recycled here since the
 		// database interface contract prohibits modifications.  It will
 		// be garbage collected normally when the database is done with
@@ -949,6 +958,14 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 	}
 
 	return nil
+}
+
+func CheckMyCoin(mycoins database.Bucket, entry * UtxoEntry, miner []byte, key []byte) {
+	if bytes.Compare(entry.pkScript[:21], miner) == 0 && entry.TokenType == 0 {
+		var mc [8]byte
+		offset := bccompress.PutVLQ(mc[:], bccompress.CompressTxOutAmount(uint64(entry.Amount.(*token.NumToken).Val)))
+		mycoins.Put(key, mc[:offset])
+	}
 }
 
 // serializeUtxoEntry returns the entry serialized to a format that is suitable

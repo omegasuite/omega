@@ -594,26 +594,34 @@ func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
 
 	oldtxo := tx.TxOut[0]
 
-	award := (adj + oldtxo.Value.(*token.NumToken).Val) / wire.CommitteeSize
-	good := 0
+	good := int64(0)
 
 	tx.TxOut = make([]*wire.TxOut, 0, wire.CommitteeSize)
 
-	tok := token.NumToken{Val:award}
 	txo := wire.TxOut{}
 	txo.TokenType = 0
 	txo.Rights = nil
-	txo.Value = &tok
 	txo.PkScript = make([]byte, 25)
 	txo.PkScript[0] = m.cfg.ChainParams.PubKeyHashAddrID
 	txo.PkScript[21] = ovm.OP_PAY2PKH
 
 	for i := -int32(wire.CommitteeSize - 1); i <= 0; i++ {
 		if mb,_ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
+			if m.g.Chain.Miners.CheckCollateral(mb, blockchain.BFNone) != nil {
+				continue
+			}
 			ntx := txo
 			copy(ntx.PkScript[1:21], mb.MsgBlock().Miner)
 			tx.TxOut = append(tx.TxOut, &ntx)
 			good++
+		}
+	}
+
+	if good > 0 {
+		award := (adj + oldtxo.Value.(*token.NumToken).Val) / good
+		q := &token.NumToken{Val: award}
+		for _, txo := range tx.TxOut {
+			txo.Value = q
 		}
 	}
 

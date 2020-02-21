@@ -28,6 +28,9 @@ const (
 	// maxOrphanBlocks is the maximum number of orphan blocks that can be
 	// queued.
 	maxOrphanBlocks = 2 * wire.MaxBlocksPerMsg
+
+	// time (blocks) to hold miner account
+	MinerHoldingPeriod = 3 * wire.MINER_RORATE_FREQ
 )
 
 // BestState houses information about the current best block and other info
@@ -45,11 +48,11 @@ type BestState struct {
 	Bits        uint32         // The difficulty bits of the block.
 	TotalTxns   uint64         // The total number of txns in the chain.
 	MedianTime  time.Time      // Median time as per CalcPastMedianTime.
-	LastRotation uint32		   // height of the last rotate in miner. normally
+	LastRotation uint32		   // height of the last rotate in Miner. normally
 							   // it is nonce in last rotation block.
 							   // for every POW block, it increase by CommitteeSize
 							   // to phase out the last committee EVEN it means to pass the
-							   // end of miner chain (for consistency among nodes)
+							   // end of Miner chain (for consistency among nodes)
 
 	// values below are not store in DB
 	BlockSize   uint64         // The size of the block.
@@ -87,6 +90,7 @@ type MinerChain interface {
 	Subscribe(callback NotificationCallback)
 	Tip() *wire.MinerBlock
 	DisconnectTip()
+	CheckCollateral(*wire.MinerBlock, BehaviorFlags) error
 }
 
 type BlackList interface {
@@ -113,7 +117,7 @@ type BlockChain struct {
 	timeSource          chainutil.MedianTimeSource
 	indexManager        IndexManager
 
-	Miners 				MinerChain		// The miner chain to provide the next miner
+	Miners 				MinerChain		// The Miner chain to provide the next Miner
 
 	// The following fields are calculated based upon the provided chain
 	// parameters.  They are also set when the instance is created and
@@ -198,6 +202,8 @@ type BlockChain struct {
 	// The virtual machine
 	ovm * ovm.OVM
 	Blacklist BlackList
+
+	Miner btcutil.Address
 }
 
 func (b *BlockChain) Ovm() * ovm.OVM {
@@ -703,7 +709,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 			realheight = -p.Data.GetNonce() - wire.MINER_RORATE_FREQ
 		}
 
-		// the real miner block height of the previous miner block
+		// the real Miner block height of the previous Miner block
 		mblock, err := b.Miners.BlockByHeight(realheight)
 		if err != nil {
 //			continue  // err		// impossible. only when database is corrupt
@@ -1130,13 +1136,29 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 
 		for *block.Hash() == b.Miners.Tip().MsgBlock().BestBlock {
-			// also disconnect the miner chain tip. make it an orphan!
+			// also disconnect the Miner chain tip. make it an orphan!
 			b.Miners.DisconnectTip()
 		}
 	}
 
 	// Connect the new best chain blocks.
-	for i, e := 0, attachNodes.Front(); e != nil; i, e = i+1, e.Next() {
+
+	e := attachNodes.Front()
+	// check if it is within holding period: a miner can not do any transaction
+	// within MinerHoldingPeriod blocks since he becomes a member
+	minersonhold := make(map[[20]byte]int32)
+	p := e.Value.(*chainutil.BlockNode)
+	for i := int32(0); p != nil && i < MinerHoldingPeriod; i++ {
+		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
+			mb,_ := b.Miners.BlockByHeight(-p.Data.GetNonce() - wire.MINER_RORATE_FREQ)
+			var u [20]byte
+			copy(u[:], mb.MsgBlock().Miner)
+			minersonhold[u] = p.Height
+		}
+		p = p.Parent
+	}
+
+	for i := 0; e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 
 		if i >= len(attachBlocks) {
@@ -1161,7 +1183,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		// to it.  Also, provide an stxo slice so the spent txout
 		// details are generated.
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
-		err = views.ConnectTransactions(block, &stxos)
+		err = views.ConnectTransactions(block, &stxos, minersonhold)
 		if err != nil {
 			return err
 		}
@@ -1170,6 +1192,18 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		err = b.connectBlock(n, block, views, stxos)
 		if err != nil {
 			return err
+		}
+
+		for u,v := range minersonhold {
+			if v + MinerHoldingPeriod < n.Height {
+				delete(minersonhold, u)
+			}
+		}
+		if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
+			mb,_ := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ)
+			var u [20]byte
+			copy(u[:], mb.MsgBlock().Miner)
+			minersonhold[u] = block.Height()
 		}
 
 		b.index.SetStatusFlags(n, chainutil.StatusValid)
@@ -1217,6 +1251,19 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		}
 	}
 
+	// check if it is within holding period: a miner can not do any transaction
+	// within MinerHoldingPeriod blocks since he becomes a member
+	minersonhold := make(map[[20]byte]int32)
+	for i, p := int32(0), node.Parent; p != nil && i < MinerHoldingPeriod; i++ {
+		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
+			mb,_ := b.Miners.BlockByHeight(-p.Data.GetNonce() - wire.MINER_RORATE_FREQ)
+			var u [20]byte
+			copy(u[:], mb.MsgBlock().Miner)
+			minersonhold[u] = p.Height
+		}
+		p = p.Parent
+	}
+
 	// We are extending the main (best) chain with a new block.  This is the
 	// most common case.
 	parentHash := &block.MsgBlock().Header.PrevBlock
@@ -1259,7 +1306,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			if err != nil {
 				return false, err
 			}
-			err = views.ConnectTransactions(block, &stxos)
+			err = views.ConnectTransactions(block, &stxos, minersonhold)
 			if err != nil {
 				return false, err
 			}
@@ -1876,6 +1923,8 @@ type Config struct {
 	// index manager.
 	IndexManager IndexManager
 
+	Miner	btcutil.Address
+
 	// HashCache defines a transaction hash mid-state cache to use when
 	// validating transactions. This cache has the potential to greatly
 	// speed up transaction validation as re-using the pre-calculated
@@ -1937,6 +1986,7 @@ func New(config *Config) (*BlockChain, error) {
 		Orphans:             chainutil.NewOrphanMgr(),
 		warningCaches:       NewThresholdCaches(vbNumBits),
 		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
+		Miner:               config.Miner,
 	}
 
 	// Initialize the chain state from the passed database.  When the db
@@ -1986,32 +2036,3 @@ func New(config *Config) (*BlockChain, error) {
 
 	return &b, nil
 }
-/*
-func (b *BlockChain) LastRotation(h0 chainhash.Hash) int32 {
-	mb, err := b.HeaderByHash(&h0)
-	// because all main chain headers are already loaded, so it must be in block index
-
-	for err == nil && mb.Nonce > 0 {
-		mb, err = b.HeaderByHash(&mb.PrevBlock)
-	}
-
-	if err != nil {
-		return 0
-	}
-
-	if mb.Nonce > -wire.MINER_RORATE_FREQ {
-		h0, err := b.BlockHeightByHash(&mb.PrevBlock)
-		if err != nil {
-			return 0
-		}
-		node := b.BestChain.NodeByHeight(h0 + 1 + mb.Nonce)
-		if node == nil {
-			return 0
-		}
-
-		mb = node.Header()
-	}
-	return -mb.Nonce - wire.MINER_RORATE_FREQ
-}
-
- */

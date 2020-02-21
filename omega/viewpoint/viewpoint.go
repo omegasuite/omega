@@ -45,6 +45,10 @@ var (
 	// byteOrder is the preferred byte order used for serializing numeric
 	// fields for storage in the database.
 	byteOrder = binary.LittleEndian
+
+	// MycoinsBucketName is the name of the db bucket used to house the
+	// my (Miner) coins that may be used for collateral.
+	mycoinsBucketName = []byte("mycoins")
 )
 
 type txoFlags uint8
@@ -59,10 +63,10 @@ type ViewPointSet struct {
 	Miners * MinersViewpoint
 }
 
-func NewViewPointSet(db database.DB) * ViewPointSet {
+func NewViewPointSet(db database.DB, miner []byte) * ViewPointSet {
 	t := ViewPointSet {}
 	t.Db = db
-	t.Utxo = NewUtxoViewpoint()
+	t.Utxo = NewUtxoViewpoint(miner)
 	t.Vertex = NewVtxViewpoint()
 	t.Border = NewBorderViewpoint()
 	t.Polygon = NewPolygonViewpoint()
@@ -194,7 +198,7 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 // ConnectTransactions updates the view by adding all new vertices created by all
 // of the transactions in the passed block, and setting the best hash for the view
 // to the passed block.
-func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut) error {
+func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut, minersonhold map[[20]byte]int32) error {
 	for _, tx := range block.Transactions() {
 		view.Vertex.AddVertices(tx)
 		if !view.AddBorder(tx) {
@@ -216,6 +220,12 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 
 				if entry.TokenType&3 == 3 {
 					view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).deReference(view)
+				} else if entry.TokenType == 0 {
+					var ou [20]byte
+					copy(ou[:], entry.pkScript[1:21])
+					if _,ok := minersonhold[ou]; ok {
+						return fmt.Errorf("Miner attempts to spend in holding period.")
+					}
 				}
 			}
 		}

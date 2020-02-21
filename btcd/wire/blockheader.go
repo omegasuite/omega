@@ -20,6 +20,7 @@ const (
 	MinerGap					= 3			// a miner must wait between to candidacies
 	SCALEFACTORCAP				= 48
 	DifficultyRatio				= 4			// ratio of difficulty for tx chain and miner chain
+	Collateral					= 20		// collateral provided by miner
 )
 
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.
@@ -64,7 +65,6 @@ func (b * BlackList) Read(r io.Reader) error {
 
 	return nil
 }
-
 
 func (b * BlackList) Write(w io.Writer) error {
 	if err := common.WriteElement(w, b.Address); err != nil {
@@ -115,19 +115,21 @@ type MingingRightBlock struct {
 
 	Connection []byte	// connection info. either an IP:port address or an RSA pubkey
 
+	Utxos 	[]OutPoint		  // assurance provided by the miner. Accumulated sum must
+	 						  // be at least Collateral in OTC.
+
 	BlackList []BlackList		  // the double signers and proof
 
 	// the following condition must be met before MingingRightBlock may be accepted
-	// hash of: PrevBlock + ReferredBlock + BestBlock + Miner + Nonce must be within Bits Difficulty target, which is
-	// set periodically according to MingingRightBlock chain data. The target is to set based on the number of miner
-	// candidates as decided by the height of MingingRightBlock chain and the height of MingingRightBlock referred by
-	// latest committee in main chain upto ReferredBlock. If this is below MINER_RORATE_FREQ, the difficulty
-	// is set to generate 2 MingingRightBlock every MINER_RORATE_FREQ block time. Once number of miner candidates reaches
-	// MINER_RORATE_FREQ, the difficulty increases 20% for every one more candidate.
-
-	// if current block is a POW block, the next block is either a POW block or a rotation block
-
-	// this struct is broadcasted to everyone with the longest-chain-win rule
+	// hash of everything in this struct must be within adjusted difficulty from Bits
+	// Difficulty target of the previous block, which is adjusted periodically according to
+	// MingingRightBlock chain data. The target of adjusted difficulty is to set based on
+	// the number of miner candidates as decided by the height of MingingRightBlock chain
+	// and the height of MingingRightBlock referred by latest committee in main chain upto
+	// ReferredBlock. If this is below MINER_RORATE_FREQ, the difficulty is set to generate
+	// 2 MingingRightBlock every MINER_RORATE_FREQ block time. Once number of miner
+	// candidates reaches DESIRABLE_MINER_CANDIDATES, the difficulty double for every one
+	// more candidate.
 }
 
 // difficulty target for new node submission is 1 min.
@@ -364,7 +366,17 @@ func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
 	if err != nil {
 		return err
 	}
+	bh.Utxos = make([]OutPoint, d)
+	for i := 0; i < int(d); i++ {
+		if err = readOutPoint(r, 0, 0, &bh.Utxos[i]); err != nil {
+			return err
+		}
+	}
 
+	d, err = common.ReadVarInt(r, 0)
+	if err != nil {
+		return err
+	}
 	bh.BlackList = make([]BlackList, d)
 
 	for i := 0; i < int(d); i++ {
@@ -393,11 +405,18 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 		return err
 	}
 
-	err := common.WriteVarInt(w, 0, uint64(len(bh.BlackList)))
-	if err != nil {
+	if err := common.WriteVarInt(w, 0, uint64(len(bh.Utxos))); err != nil {
 		return err
 	}
+	for _, p := range bh.Utxos {
+		if err := writeOutPoint(w, 0, 0, &p); err != nil {
+			return err
+		}
+	}
 
+	if err := common.WriteVarInt(w, 0, uint64(len(bh.BlackList))); err != nil {
+		return err
+	}
 	for _, p := range bh.BlackList {
 		if err := p.Write(w); err != nil {
 			return err

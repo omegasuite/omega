@@ -5,6 +5,7 @@
 package blockchain
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
@@ -401,10 +402,10 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			} else {
 				switch {
 				case parent.Data.GetNonce() == -wire.MINER_RORATE_FREQ+1:
-					// this is a rotation block, nonce must be -(height of next miner block)
+					// this is a rotation block, nonce must be -(height of next Miner block)
 					if header.Nonce != - int32(rotate+1+wire.MINER_RORATE_FREQ) {
-						//					str := fmt.Sprintf("The this is a rotation block, nonce %d must be height of next miner block %d.", -header.Nonce, rotate + 1 + wire.MINER_RORATE_FREQ)
-						return fmt.Errorf("The this is a rotation block, nonce %d must be height of next miner block %d.", -header.Nonce, rotate+1+wire.MINER_RORATE_FREQ), true
+						//					str := fmt.Sprintf("The this is a rotation block, nonce %d must be height of next Miner block %d.", -header.Nonce, rotate + 1 + wire.MINER_RORATE_FREQ)
+						return fmt.Errorf("The this is a rotation block, nonce %d must be height of next Miner block %d.", -header.Nonce, rotate+1+wire.MINER_RORATE_FREQ), true
 						// ruleError(ErrHighHash, str)
 					}
 
@@ -438,6 +439,29 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			return fmt.Errorf("Incorrect signature"), false
 		}
 
+		minerSet :=	make([][]byte, 0)
+		for mi := int32(0); mi < wire.CommitteeSize; mi++ {
+			mb,_ :=  b.Miners.BlockByHeight(int32(rotate) - mi)
+			// ensure miner has sufficient collateral
+			if err := b.Miners.CheckCollateral(mb, BFNone); err == nil {
+				minerSet = append(minerSet, mb.MsgBlock().Miner)
+			}
+		}
+
+		if len(block.MsgBlock().Transactions[0].TxOut) != len(minerSet) {
+			return fmt.Errorf("Coinbase output is not the same a qualified miners."), false
+		}
+
+		_,awd := block.MsgBlock().Transactions[0].TxOut[0].Value.Value()
+		for _, txo := range block.MsgBlock().Transactions[0].TxOut {
+			if txo.TokenType != 0 {
+				return fmt.Errorf("Coinbase output tokentype is not 0."), false
+			}
+			if txo.Value.(*token.NumToken).Val != awd {
+				return fmt.Errorf("Award is not evenly distributed among quanlified miners."), false
+			}
+		}
+
 		// examine signatures
 		hash := MakeMinerSigHash(block.Height(), *block.Hash())
 
@@ -450,28 +474,41 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			k, err := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 			//			k,err := btcutil.DecodeAddress(string(sign[:33]), b.chainParams)
 			if err != nil {
-				return fmt.Errorf("Incorrect miner signature. pubkey error"), false
+				return fmt.Errorf("Incorrect Miner signature. pubkey error"), false
 			}
 
 			pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
 			pkh := pk.AddressPubKeyHash().Hash160()
 			if _, ok := usigns[*pkh]; ok {
-				return fmt.Errorf("Duplicated miner signature"), false
+				return fmt.Errorf("Duplicated Miner signature"), false
+			}
+
+			inMinerSet := false
+			for _,mn := range minerSet {
+				if bytes.Compare(pkh[:], mn) == 0 {
+					inMinerSet = true
+				}
+			}
+			if !inMinerSet {
+				return fmt.Errorf("Incorrect Miner signature. Unauthorized signer."), false
 			}
 
 			s, err := btcec.ParseSignature(sign[btcec.PubKeyBytesLenCompressed:], btcec.S256())
 			if err != nil {
-				return fmt.Errorf("Incorrect miner signature. Signature parse error"), false
+				return fmt.Errorf("Incorrect Miner signature. Signature parse error"), false
 			}
 
 			if !s.Verify(hash, pk.PubKey()) {
-				return fmt.Errorf("Incorrect miner signature. Verification doesn't match"), false
+				return fmt.Errorf("Incorrect Miner signature. Verification doesn't match"), false
 			}
 
 			usigns[*pkh] = struct{}{}
 		}
 		if len(usigns) <= wire.CommitteeSize/2 {
-			return fmt.Errorf("Insufficient number of miner signatures."), false
+			return fmt.Errorf("Insufficient number of Miner signatures."), false
+		}
+		if len(usigns) != len(minerSet) {
+			return fmt.Errorf("Number of Miner signatures is not the same a qualified miners."), false
 		}
 	}
 
@@ -499,7 +536,7 @@ func CountSigOps(tx *btcutil.Tx) int {
 }
 
 func MakeMinerSigHash(height int32, hash chainhash.Hash) []byte {
-	s1 := "Omega chain miner block "
+	s1 := "Omega chain Miner block "
 	s2 := " at height "
 	lenth := 36 + len(s1) + len(s2)
 	t := make([]byte, lenth)
@@ -516,14 +553,6 @@ func MakeMinerSigHash(height int32, hash chainhash.Hash) []byte {
 // The flags do not modify the behavior of this function directly, however they
 // are needed to pass along to checkProofOfWork.
 func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSource chainutil.MedianTimeSource, flags BehaviorFlags) error {
-	// Ensure the proof of work bits in the block header is in min/max range
-	// and the block hash is less than the target value described by the
-	// bits.
-//	err := checkProofOfWork(header, powLimit, flags, bits)
-//	if err != nil {
-//		return err
-//	}
-
 	// A block timestamp must not have a greater precision than one second.
 	// This check is necessary because Go time.Time values support
 	// nanosecond precision whereas the consensus rules only apply to
@@ -662,38 +691,6 @@ func CheckBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	return checkBlockSanity(block, powLimit, timeSource, BFNone)
 }
 
-// ExtractCoinbaseHeight attempts to extract the height of the block from the
-// scriptSig of a coinbase transaction.  Coinbase heights are only present in
-// blocks of version 2 or later.  This was added as part of BIP0034.
-/*
-func ExtractCoinbaseHeight(coinbaseTx *btcutil.Tx) (int32, error) {
-		str := "the coinbase signature script for blocks of " +
-			"version %d or greater must start with the " +
-			"length of the serialized block height"
-		str = fmt.Sprintf(str, serializedHeightVersion)
-		return 0, ruleError(ErrMissingCoinbaseHeight, str)
-}
-*/
-
-// checkSerializedHeight checks if the signature script in the passed
-// transaction starts with the serialized block height of wantHeight.
-/*
-func checkSerializedHeight(coinbaseTx *btcutil.Tx, wantHeight int32) error {
-	serializedHeight, err := ExtractCoinbaseHeight(coinbaseTx)
-	if err != nil {
-		return err
-	}
-
-	if serializedHeight != wantHeight {
-		str := fmt.Sprintf("the coinbase signature script serialized "+
-			"block height is %d when %d was expected",
-			serializedHeight, wantHeight)
-		return ruleError(ErrBadCoinbaseHeight, str)
-	}
-	return nil
-}
-*/
-
 // checkBlockHeaderContext performs several validation checks on the block header
 // which depend on its position within the block chain.
 //
@@ -705,28 +702,6 @@ func checkSerializedHeight(coinbaseTx *btcutil.Tx, wantHeight int32) error {
 func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode *chainutil.BlockNode, flags BehaviorFlags) error {
 	fastAdd := flags&BFFastAdd == BFFastAdd
 	if !fastAdd {
-		// Ensure the difficulty specified in the block header matches
-		// the calculated difficulty based on the previous block and
-		// difficulty retarget rules.
-
-		// for main chain, difficulty is always the one come with the last rotate in miner.
-
-/*		for main chain, difficulty is always the one come with the last rotate in miner.
-		so we check difficulty by scanning the chain backward
-		if bits != 0 {
-			expectedDifficulty, err := b.calcNextRequiredDifficulty(prevNode,
-				header.Timestamp)
-			if err != nil {
-				return err
-			}
-			blockDifficulty := bits
-			if blockDifficulty != expectedDifficulty {
-				str := "block difficulty of %d is not the expected value of %d"
-				str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
-				return ruleError(ErrUnexpectedDifficulty, str)
-			}
-		}
-*/
 		// Ensure the timestamp for the block header is after the
 		// median time of the last several blocks (medianTimeBlocks).
 		medianTime := prevNode.CalcPastMedianTime()

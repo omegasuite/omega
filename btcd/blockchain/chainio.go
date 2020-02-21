@@ -66,9 +66,9 @@ var (
 	// version of the utxo set currently in the database.
 	utxoSetVersionKeyName = []byte("utxosetversion")
 
-	// utxoSetBucketName is the name of the db bucket used to house the
+	// UtxoSetBucketName is the name of the db bucket used to house the
 	// unspent transaction output set.
-	utxoSetBucketName = []byte("utxosetv2")
+	UtxoSetBucketName = []byte("utxosetv2")
 
 	// vertexSetBucketName is the name of the db bucket used to house the
 	// vertex definition set.
@@ -93,6 +93,10 @@ var (
 	// rightSetBucketName is the name of the db bucket used to house the
 	// right definition set.
 	rightSetBucketName = []byte("rights")
+
+	// MycoinsBucketName is the name of the db bucket used to house the
+	// my (Miner) coins that may be used for collateral.
+	MycoinsBucketName = []byte("mycoins")
 
 	// byteOrder is the preferred byte order used for serializing numeric
 	// fields for storage in the database.
@@ -186,7 +190,7 @@ func (b *BlockChain) FetchUtxoEntry(outpoint wire.OutPoint) (*viewpoint.UtxoEntr
 
 
 func (b *BlockChain) NewViewPointSet() * viewpoint.ViewPointSet {
-	return viewpoint.NewViewPointSet(b.db)
+	return viewpoint.NewViewPointSet(b.db, b.Miner.ScriptAddress())
 }
 
 // -----------------------------------------------------------------------------
@@ -791,6 +795,11 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
+		// Create the bucket that houses my coins.
+		if _, err = meta.CreateBucket(MycoinsBucketName); err != nil {
+			return err
+		}
+
 		// Create the bucket that houses the spend journal data and
 		// store its version.
 		if _, err = meta.CreateBucket(spendJournalBucketName); err != nil {
@@ -804,7 +813,7 @@ func (b *BlockChain) createChainState() error {
 		// version.  Note that the genesis block coinbase transaction is
 		// intentionally not inserted here since it is not spendable by
 		// consensus rules.
-		if _, err = meta.CreateBucket(utxoSetBucketName); err != nil {
+		if _, err = meta.CreateBucket(UtxoSetBucketName); err != nil {
 			return err
 		}
 		if err = DbPutVersion(dbTx, spendJournalVersionKeyName,	latestSpendJournalBucketVersion); err != nil {
@@ -1418,7 +1427,7 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.UtxoViewpoint, er
 
 	// Request the utxos from the point of view of the end of the main
 	// chain.
-	view := viewpoint.NewUtxoViewpoint()
+	view := viewpoint.NewUtxoViewpoint(b.Miner.ScriptAddress())
 	b.ChainLock.RLock()
 	err := view.FetchUtxosMain(b.db, neededSet)
 	b.ChainLock.RUnlock()
@@ -1453,4 +1462,33 @@ func (b *BlockChain) FetchVtxEntry(hash chainhash.Hash) (*viewpoint.VtxEntry, er
 	}
 
 	return entry, nil
+}
+
+
+func (b *BlockChain) FetchMycoins(sum int64) []wire.OutPoint {
+	utxos := make([]wire.OutPoint, 0)
+	b.db.View(func(dbTx database.Tx) error {
+		cursor := dbTx.Metadata().Bucket(MycoinsBucketName).Cursor()
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			// An entry was found, but it could just be an entry with the next
+			// highest hash after the requested one, so make sure the hashes
+			// actually match.
+			cursorKey := cursor.Key()
+			if len(cursorKey) < chainhash.HashSize + 4 {
+				return nil
+			}
+			cs := cursor.Value()
+			compressedAmount, _ := bccompress.DeserializeVLQ(cs)
+			amount := bccompress.DecompressTxOutAmount(compressedAmount)
+			sum -= int64(amount)
+			if sum <= 0 {
+				return nil
+			}
+		}
+		return nil
+	})
+	if sum <= 0 {
+		return utxos
+	}
+	return nil
 }

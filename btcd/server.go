@@ -3137,6 +3137,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		TimeSource:   s.timeSource,
 //		SigCache:     s.sigCache,
 		IndexManager: indexManager,
+		Miner:		  cfg.signAddress,
 //		HashCache:    s.hashCache,
 	})
 	if err != nil {

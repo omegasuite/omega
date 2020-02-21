@@ -7,6 +7,7 @@ package mining
 import (
 	"bytes"
 	"container/heap"
+	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/omega/ovm"
 	"time"
@@ -759,7 +760,7 @@ mempoolLoop:
 
 		prioItem.fee = fees
 
-		//		err = blockchain.ValidateTransactionScripts(tx, blockUtxos)
+//		err = blockchain.ValidateTransactionScripts(tx, blockUtxos)
 //			0, g.sigCache,			g.hashCache)
 //		if err != nil {
 //			log.Tracef("Skipping tx %s due to error in "+
@@ -913,10 +914,10 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 	// the last several blocks per the Chain consensus rules.
 	ts := medianAdjustedTime(best, g.timeSource)
 
-	reqDifficulty, _ := g.Chain.Miners.CalcNextRequiredDifficulty(ts)
-//	if err != nil {
-//		return nil, err
-//	}
+	reqDifficulty, err := g.Chain.Miners.CalcNextRequiredDifficulty(ts)
+	if err != nil {
+		return nil, err
+	}
 
 	// Calculate the next expected block version based on the state of the
 	// rule change deployments.
@@ -929,9 +930,14 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 	bh := cbest.Height
 
 	h0,_ := g.Chain.BlockHeightByHash(&last.MsgBlock().BestBlock)
-
 	if bh < h0  {
 		return nil, nil
+	}
+
+	utxos := g.Chain.FetchMycoins(wire.Collateral)
+
+	if utxos == nil {
+		return nil, fmt.Errorf("Insufficient collateral.")
 	}
 
 	// Create a new block ready to be solved.
@@ -942,6 +948,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 		Bits:          reqDifficulty,
 		BestBlock:     cbest.Hash,
 		Miner:         payToAddress.ScriptAddress(),
+		Utxos:		   utxos,
 		BlackList:     make([]wire.BlackList, 0),
 	}
 

@@ -301,17 +301,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		}
 	}
 
-	// Handle orphan blocks.
-/*
-	requiredRotate := b.BestSnapshot().LastRotation
-	header := &block.MsgBlock().Header
-	if header.Nonce > 0 {
-		requiredRotate += wire.CommitteeSize / 2 + 1
-	} else if header.Nonce == -(wire.MINER_RORATE_FREQ - 1){
-		requiredRotate++
-	}
-*/
-
 	isMainChain := false
 
 	if flags & BFNoConnect == BFNoConnect {
@@ -332,20 +321,13 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return isMainChain, true, nil
 	}
 
-//	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize/2 + 1 {
-//		return isMainChain, false, fmt.Errorf("Insufficient signatures")
-//	}
-
-//	if block.MsgBlock().Header.Nonce > 0 || b.BestChain.FindFork(prevNode) == nil {
-//	}
-
 	//	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {
 		isMainChain, err = b.maybeAcceptBlock(block, flags)
 		if err != nil {
 			return false, false, err
 		}
 //	} else {
-		// add it as an orphan. whenever a miner block is added,
+		// add it as an orphan. whenever a Miner block is added,
 		// we shall call ProcessOrphans with tip of best tx chain hash as param.
 //		b.AddOrphanBlock(block)
 //		return false, true, nil
@@ -369,7 +351,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	log.Debugf("Accepted block %v", blockHash)
 //	log.Infof("ProcessBlock: Tx chian = %d Miner chain = %d", b.BestSnapshot().Height, b.Miners.BestSnapshot().Height)
 
-	log.Infof("ProcessBlock finished with height = %d miner height = %d Orphans = %d", b.BestSnapshot().Height,
+	log.Infof("ProcessBlock finished with height = %d Miner height = %d Orphans = %d", b.BestSnapshot().Height,
 		b.Miners.BestSnapshot().Height, b.Orphans.Count())
 
 	return isMainChain, false, nil
