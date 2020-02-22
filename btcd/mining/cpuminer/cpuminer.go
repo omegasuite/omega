@@ -486,7 +486,8 @@ flushconnch:
 
 			template.Block.(*wire.MsgBlock).Header.Nonce = nonce
 
-			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
+			wb := * template.Block.(*wire.MsgBlock)
+			block := btcutil.NewBlock(&wb)
 			block.SetHeight(template.Height)
 
 			if wire.CommitteeSize == 1 {
@@ -568,7 +569,8 @@ flushconnch:
 		// a new block template can be generated.  When the return is
 		// true a solution was found, so submit the solved block.
 		if m.solveBlock(template, curHeight+1, ticker, m.quit) {
-			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
+			wb := * template.Block.(*wire.MsgBlock)
+			block := btcutil.NewBlock(&wb)
 			log.Infof("New POW block produced nonce = %s at %d", block.MsgBlock().Header.Nonce, template.Height)
 			block.SetHeight(template.Height)
 			m.submitBlock(block)
