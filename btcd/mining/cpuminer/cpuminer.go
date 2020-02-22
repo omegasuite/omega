@@ -552,7 +552,14 @@ flushconnch:
 //		}
 //		time.Sleep(time.Second * 5)
 //continue		// debug: committee mining only
-		time.Sleep(time.Second * 4)
+
+		pows := 0
+		blk := m.g.Chain.BestChain.Tip()
+		for blk != nil && blk.Data.GetNonce() > 0 {
+			pows++
+			blk = blk.Parent
+		}
+		time.Sleep(time.Second * time.Duration(4 * (1 << pows)))
 
 		log.Info("Try to solve block ")
 
