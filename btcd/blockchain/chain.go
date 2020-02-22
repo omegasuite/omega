@@ -1241,7 +1241,7 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags
 		}
 		sum += e.Amount.(*token.NumToken).Val
 	}
-	if sum < wire.Collateral {
+	if sum < wire.Collateral(block.Height()) {
 		return fmt.Errorf("Insufficient Collateral.")
 	}
 	return nil

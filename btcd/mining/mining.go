@@ -934,7 +934,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 		return nil, nil
 	}
 
-	utxos := g.Chain.FetchMycoins(wire.Collateral)
+	utxos := g.Chain.FetchMycoins(wire.Collateral(nextBlockHeight))
 
 	if utxos == nil {
 		return nil, fmt.Errorf("Insufficient collateral.")

@@ -7,6 +7,7 @@ package wire
 import (
 	"bytes"
 	"io"
+	"math"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -20,7 +21,6 @@ const (
 	MinerGap					= 3			// a miner must wait between to candidacies
 	SCALEFACTORCAP				= 48
 	DifficultyRatio				= 4			// ratio of difficulty for tx chain and miner chain
-	Collateral					= 20		// collateral provided by miner
 )
 
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.
@@ -29,7 +29,6 @@ const (
 //const MaxBlockHeaderPayload = 16 + (chainhash.HashSize * 2)
 const MaxBlockHeaderPayload = 24 + (chainhash.HashSize * 2)
 const MaxMinerBlockHeaderPayload = 5000
-
 
 type BlackList struct {
 	// blacklist format：
@@ -501,4 +500,11 @@ func (msg *MingingRightBlock) MaxPayloadLength(pver uint32) uint32 {
 	// which can vary up to the MaxBlockPayload (including the block header
 	// and transaction count).
 	return MaxMinerBlockHeaderPayload
+}
+
+func Collateral(h int32) int64 {
+	if h < 10 {
+		return 0
+	}
+	return int64(math.Log(float64(h) - 9.0) * 500000000)
 }
