@@ -503,8 +503,8 @@ func (msg *MingingRightBlock) MaxPayloadLength(pver uint32) uint32 {
 }
 
 func Collateral(h int32) int64 {
-	if h < 10 {
+	if h < 20 {
 		return 0
 	}
-	return int64(math.Log(float64(h) - 9.0) * 500000000)
+	return int64(math.Log(float64(h) - 19.0) * 500000000)
 }
