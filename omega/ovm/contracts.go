@@ -22,13 +22,11 @@ import (
 
 	"golang.org/x/crypto/ripemd160"
 	"github.com/btcsuite/omega/token"
-	"github.com/btcsuite/btcd/wire"
 	"encoding/binary"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/btcec"
 	"bytes"
-	"fmt"
 )
 
 // PrecompiledContract is the basic interface for native Go contracts. The implementation
@@ -74,8 +72,8 @@ var PrecompiledContracts = map[[4]byte]PrecompiledContract{
 	([4]byte{OP_MINT, 0, 0, 0}): &mint{},				// mint a coin
 
 	// miner selection contract
-	([4]byte{OP_MINER_APPLY, 0, 0, 0}): &addminer{},
-	([4]byte{OP_MINRE_QUIT, 0, 0, 0}): &quitminer{},
+//	([4]byte{OP_MINER_APPLY, 0, 0, 0}): &addminer{},
+//	([4]byte{OP_MINRE_QUIT, 0, 0, 0}): &quitminer{},
 
 	// pk script functions
 	([4]byte{OP_PAY2PKH, 0, 0, 0}): &pay2pkh{},			// pay to pubkey hash script
@@ -93,6 +91,7 @@ var PrecompiledContracts = map[[4]byte]PrecompiledContract{
 	([4]byte{5, 0, 0, 0}): &bigModExp{},
 }
 
+/*
 type addminer struct {
 	ovm * OVM
 	contract *Contract
@@ -128,9 +127,9 @@ func (p *addminer) Run(input []byte) ([]byte, error) {
 		return nil, fmt.Errorf("Payment must be exactly %d satoshi.", MinerFeeRate(p.ovm.BlockNumber()))
 	}
 
-	if !p.ovm.views.Miners.Insert(input, uint64(p.contract.value.Value.(*token.NumToken).Val)) {
-		return nil, fmt.Errorf("Miner already exists.")
-	}
+//	if !p.ovm.views.Miners.Insert(input, uint64(p.contract.value.Value.(*token.NumToken).Val)) {
+//		return nil, fmt.Errorf("Miner already exists.")
+//	}
 
 	p.ovm.StateDB[d].Credit(*p.contract.value)
 
@@ -154,9 +153,8 @@ func (p *quitminer) Run(input []byte) ([]byte, error) {
 		p.ovm.StateDB[d].LoadWallet()
 	}
 
-	f := p.ovm.views.Miners.Remove(input)
-
-	if f == 0 {
+//	f := p.ovm.views.Miners.Remove(input)
+//	if f == 0 {
 		return nil, fmt.Errorf("Miner does not exists.")
 	}
 
@@ -216,6 +214,7 @@ func MinerAward(height uint64) uint64 { // miner award in satoshi at height
 		return award
 	}
 }
+ */
 
 type payanyone struct {}
 

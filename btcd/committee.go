@@ -140,7 +140,7 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 //		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
-	if sp.server.chain.Miners.CheckCollateral(mb, blockchain.BFNone) != nil {
+	if sp.server.chain.CheckCollateral(mb, blockchain.BFNone) != nil {
 		return
 	}
 
@@ -649,7 +649,7 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 		}
 		var miner [20]byte
 
-		if s.chain.Miners.CheckCollateral(mb, blockchain.BFNone) != nil {
+		if s.chain.CheckCollateral(mb, blockchain.BFNone) != nil {
 			continue
 		}
 

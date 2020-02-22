@@ -69,8 +69,8 @@ func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
 		precompiles := PrecompiledContracts
 		precompiles[[4]byte{0,0,0,0}] = &create{evm, contract }
 		precompiles[[4]byte{OP_MINT,0,0,0}] = &mint{evm, contract }
-		precompiles[[4]byte{OP_MINER_APPLY,0,0,0}] = &addminer{evm, contract }
-		precompiles[[4]byte{OP_MINRE_QUIT,0,0,0}] = &quitminer{evm, contract }
+//		precompiles[[4]byte{OP_MINER_APPLY,0,0,0}] = &addminer{evm, contract }
+//		precompiles[[4]byte{OP_MINRE_QUIT,0,0,0}] = &quitminer{evm, contract }
 		var abi [4]byte
 		copy(abi[:], contract.CodeAddr)
 		if p := precompiles[abi]; p != nil {

@@ -538,6 +538,14 @@ func outpointKey(outpoint wire.OutPoint) *[]byte {
 	return key
 }
 
+func Key2Outpoint(key []byte) wire.OutPoint {
+	var outpoint wire.OutPoint
+	copy(outpoint.Hash[:], key[:chainhash.HashSize])
+	x,_ := bccompress.DeserializeVLQ(key[chainhash.HashSize:])
+	outpoint.Index = uint32(x)
+	return outpoint
+}
+
 // maxUint32VLQSerializeSize is the maximum number of bytes a max uint32 takes
 // to serialize as a VLQ.
 var maxUint32VLQSerializeSize = bccompress.SerializeSizeVLQ(1<<32 - 1)
@@ -919,7 +927,7 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 		if entry.IsSpent() {
 			key := outpointKey(outpoint)
 			err := utxoBucket.Delete(*key)
-			if bytes.Compare(entry.pkScript[:21], view.miner) == 0 {
+			if bytes.Compare(entry.pkScript[1:21], view.miner) == 0 {
 				mycoins.Delete(*key)
 			}
 			recycleOutpointKey(key)
@@ -961,7 +969,8 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 }
 
 func CheckMyCoin(mycoins database.Bucket, entry * UtxoEntry, miner []byte, key []byte) {
-	if bytes.Compare(entry.pkScript[:21], miner) == 0 && entry.TokenType == 0 {
+//	fmt.Printf("CheckMyCoin: %x vs. %x", entry.pkScript[1:21], miner)
+	if bytes.Compare(entry.pkScript[1:21], miner) == 0 && entry.TokenType == 0 {
 		var mc [8]byte
 		offset := bccompress.PutVLQ(mc[:], bccompress.CompressTxOutAmount(uint64(entry.Amount.(*token.NumToken).Val)))
 		mycoins.Put(key, mc[:offset])

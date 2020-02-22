@@ -60,7 +60,7 @@ type ViewPointSet struct {
 	Border * BorderViewpoint
 	Polygon * PolygonViewpoint
 	Rights * RightViewpoint
-	Miners * MinersViewpoint
+//	Miners * MinersViewpoint
 }
 
 func NewViewPointSet(db database.DB, miner []byte) * ViewPointSet {
@@ -71,7 +71,7 @@ func NewViewPointSet(db database.DB, miner []byte) * ViewPointSet {
 	t.Border = NewBorderViewpoint()
 	t.Polygon = NewPolygonViewpoint()
 	t.Rights = NewRightViewpoint()
-	t.Miners = NewMinersViewpoint()
+//	t.Miners = NewMinersViewpoint()
 	return &t
 }
 
@@ -81,7 +81,7 @@ func (t * ViewPointSet) SetBestHash(hash * chainhash.Hash) {
 	t.Polygon.bestHash = *hash
 	t.Border.bestHash = *hash
 	t.Utxo.bestHash = *hash
-	t.Miners.bestHash = *hash
+//	t.Miners.bestHash = *hash
 }
 
 func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Block, stxos []SpentTxOut) error {
@@ -130,11 +130,11 @@ func (t * ViewPointSet) Commit() {
 	t.Polygon.commit()
 	t.Border.commit()
 	t.Utxo.commit()
-	t.Miners.commit()
+//	t.Miners.commit()
 }
 
 func DbPutViews(dbTx database.Tx,  view * ViewPointSet) error {
-	DbPutMinersView(view.Miners)
+//	DbPutMinersView(view.Miners)
 
 	DbPutUtxoView(dbTx, view.Utxo)
 	DbPutPolygonView(dbTx, view.Polygon)

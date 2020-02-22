@@ -22,8 +22,6 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/omega/token"
-	"github.com/btcsuite/omega/viewpoint"
 )
 
 // blockExists determines whether a block with the given hash exists either in
@@ -182,7 +180,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
-	err = b.CheckCollateral(block, flags)
+	err = b.blockChain.CheckCollateral(block, flags)
 	if err != nil {
 		return false, false, err
 	}
@@ -240,27 +238,6 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		b.blockChain.BestSnapshot().Height, b.Orphans.Count())
 
 	return isMainChain, false, nil
-}
-
-// checkBlockSanity check whether the miner has provided sufficient collateral
-func (b *MinerChain) CheckCollateral(block *wire.MinerBlock, flags blockchain.BehaviorFlags) error {
-	utxos := viewpoint.NewUtxoViewpoint(b.blockChain.Miner.ScriptAddress())
-	sum := int64(0)
-	for _,p := range block.MsgBlock().Utxos {
-		if err := utxos.FetchUtxosMain(b.db, map[wire.OutPoint]struct{}{p: struct{}{}}); err != nil {
-			return err
-		}
-	}
-	for _,e := range utxos.Entries() {
-		if e.TokenType != 0 {
-			return fmt.Errorf("Collateral is not OTC.")
-		}
-		sum += e.Amount.(*token.NumToken).Val
-	}
-	if sum < wire.Collateral {
-		return fmt.Errorf("Insufficient Collateral.")
-	}
-	return nil
 }
 
 // checkBlockSanity performs some preliminary checks on a block to ensure it is

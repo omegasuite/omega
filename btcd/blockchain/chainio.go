@@ -1056,6 +1056,8 @@ type blockchainNodeData struct {
 	Bits      uint32
 	Nonce     int32
 	Timestamp int64
+	MerkleRoot chainhash.Hash
+	ContractExec uint64
 }
 
 func (d * blockchainNodeData) GetData(s interface{}) {
@@ -1103,6 +1105,8 @@ func NodetoHeader(node *chainutil.BlockNode) wire.BlockHeader {
 		PrevBlock:  *prevHash,
 		Timestamp:  time.Unix(d.Timestamp, 0),
 		Nonce:      d.Nonce,
+		MerkleRoot: d.MerkleRoot,
+		ContractExec: d.ContractExec,
 	}
 }
 
@@ -1115,6 +1119,8 @@ func InitBlockNode(node *chainutil.BlockNode, blockHeader *wire.BlockHeader, par
 		Version:    blockHeader.Version,
 		Nonce:      blockHeader.Nonce,
 		Timestamp:  blockHeader.Timestamp.Unix(),
+		MerkleRoot: blockHeader.MerkleRoot,
+		ContractExec: blockHeader.ContractExec,
 	}
 	*node = chainutil.BlockNode{
 		Hash:       blockHeader.BlockHash(),
@@ -1473,13 +1479,11 @@ func (b *BlockChain) FetchMycoins(sum int64) []wire.OutPoint {
 			// An entry was found, but it could just be an entry with the next
 			// highest hash after the requested one, so make sure the hashes
 			// actually match.
-			cursorKey := cursor.Key()
-			if len(cursorKey) < chainhash.HashSize + 4 {
-				return nil
-			}
 			cs := cursor.Value()
+			p := viewpoint.Key2Outpoint(cursor.Key())
 			compressedAmount, _ := bccompress.DeserializeVLQ(cs)
 			amount := bccompress.DecompressTxOutAmount(compressedAmount)
+			utxos = append(utxos, p)
 			sum -= int64(amount)
 			if sum <= 0 {
 				return nil

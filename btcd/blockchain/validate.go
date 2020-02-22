@@ -443,7 +443,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		for mi := int32(0); mi < wire.CommitteeSize; mi++ {
 			mb,_ :=  b.Miners.BlockByHeight(int32(rotate) - mi)
 			// ensure miner has sufficient collateral
-			if err := b.Miners.CheckCollateral(mb, BFNone); err == nil {
+			if err := b.CheckCollateral(mb, BFNone); err == nil {
 				minerSet = append(minerSet, mb.MsgBlock().Miner)
 			}
 		}
@@ -1165,41 +1165,45 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// against all the inputs when the signature operations are out of
 	// bounds.
 	var totalFees int64
-	for _, tx := range transactions[1:] {
+	for i, tx := range transactions {
 		err := CheckTransactionInputs(tx, node.Height, views, b.chainParams)
 		if err != nil {
 			return err
 		}
 
-		if runScripts {
-			err = b.ovm.VerifySigs(tx, node.Height)
+		txFee := int64(0)
+
+		if i != 0 {
+			if runScripts {
+				err = b.ovm.VerifySigs(tx, node.Height)
+				if err != nil {
+					return err
+				}
+			}
+
+			// excute contracts if necessary. note, if the execution causes any change in
+			// in transaction, a new copy of tx will be returned.
+			cleantx := tx.CleanCopy()
+
+			otx, err := b.ovm.ExecContract(cleantx, 0, node.Height, b.chainParams)
 			if err != nil {
 				return err
 			}
-		}
 
-		// excute contracts if necessary. note, if the execution causes any change in
-		// in transaction, a new copy of tx will be returned.
-		cleantx := tx.CleanCopy()
+			// verify that tx and otx are the same
+			if !otx.VerifyContractOut(tx) {
+				return fmt.Errorf("Contract execution result is not the same as transaction in block.")
+			}
 
-		otx, err := b.ovm.ExecContract(cleantx, 0, node.Height, b.chainParams)
-		if err != nil {
+			err = CheckTransactionIntegrity(tx, views)
+			if err != nil {
+				return err
+			}
+
+			txFee, err = CheckTransactionFees(tx, node.Height, views, b.chainParams)
+			if err != nil {
 			return err
 		}
-
-		// verify that tx and otx are the same
-		if !otx.VerifyContractOut(tx) {
-			return fmt.Errorf("Contract execution result is not the same as transaction in block.")
-		}
-
-		err = CheckTransactionIntegrity(tx, views)
-		if err != nil {
-			return err
-		}
-
-		txFee, err := CheckTransactionFees(tx, node.Height, views, b.chainParams)
-		if err != nil {
-			return err
 		}
 
 		// Sum the total fees and ensure we don't overflow the

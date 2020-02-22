@@ -51,12 +51,7 @@ func interruptListener() <-chan struct{} {
 				btcdLog.Info("Shutdown requested.  Shutting down...")
 //				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 //				consensus.CommitteePolling()
-				t := time.Now().Unix()
-				if t-last < 20 {
-					break shutdown
-				}
-				last = t
-//				break shutdown
+				break shutdown
 			}
 		}
 

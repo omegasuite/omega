@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/omega/token"
 	"sync"
 	"time"
 
@@ -90,7 +91,6 @@ type MinerChain interface {
 	Subscribe(callback NotificationCallback)
 	Tip() *wire.MinerBlock
 	DisconnectTip()
-	CheckCollateral(*wire.MinerBlock, BehaviorFlags) error
 }
 
 type BlackList interface {
@@ -1220,6 +1220,30 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	log.Infof("REORGANIZE: New best chain head is %v (height %v)",
 		newBest.Hash, newBest.Height)
 
+	return nil
+}
+
+// checkBlockSanity check whether the miner has provided sufficient collateral
+func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags) error {
+	utxos := viewpoint.NewUtxoViewpoint(block.MsgBlock().Miner)
+	sum := int64(0)
+	for _,p := range block.MsgBlock().Utxos {
+		if err := utxos.FetchUtxosMain(b.db, map[wire.OutPoint]struct{}{p: struct{}{}}); err != nil {
+			return err
+		}
+	}
+	for _,e := range utxos.Entries() {
+		if e == nil {
+			continue
+		}
+		if e.TokenType != 0 {
+			return fmt.Errorf("Collateral is not OTC.")
+		}
+		sum += e.Amount.(*token.NumToken).Val
+	}
+	if sum < wire.Collateral {
+		return fmt.Errorf("Insufficient Collateral.")
+	}
 	return nil
 }
 

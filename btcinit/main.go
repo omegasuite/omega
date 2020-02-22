@@ -197,7 +197,7 @@ func main() {
 			{
 				PreviousOutPoint: wire.OutPoint{
 					Hash:  chainhash.Hash{},
-					Index: 0xffffffff,
+					Index: 0,
 				},
 				SignatureIndex: 0xffffffff,
 				Sequence: 0xffffffff,
@@ -314,7 +314,9 @@ func main() {
 		Timestamp:     genesisBlock.Header.Timestamp,
 		Bits:          0x1f00ffff,
 		Nonce:         0,
-		Miner:       addr.ScriptAddress(),
+		Miner:         addr.ScriptAddress(),
+		BlackList:     make([]wire.BlackList, 0),
+		Utxos:		   make([]wire.OutPoint, 0),
 	}
 	solveMinerBlock(&minerBlock)
 
@@ -381,7 +383,9 @@ func main() {
 		Timestamp:     regTestGenesisBlock.Header.Timestamp,
 		Bits:          0x1f7fffff,
 		Nonce:         0,
-		Miner:       addr.ScriptAddress(),
+		Miner:         addr.ScriptAddress(),
+		BlackList:     make([]wire.BlackList, 0),
+		Utxos:		   make([]wire.OutPoint, 0),
 	}
 	solveMinerBlock(&regTestGenesisMinerBlock)
 	var regTestGenesisMinerHash = regTestGenesisMinerBlock.BlockHash()
@@ -450,7 +454,9 @@ func main() {
 		Timestamp:     testNet3GenesisBlock.Header.Timestamp,
 		Bits:          0x1f00ffff,
 		Nonce:         0,
-		Miner:       addr.ScriptAddress(),
+		Miner:         addr.ScriptAddress(),
+		BlackList:     make([]wire.BlackList, 0),
+		Utxos:		   make([]wire.OutPoint, 0),
 	}
 	solveMinerBlock(&testNet3GenesisMinerBlock)
 	var testNet3GenesisMinerHash = testNet3GenesisMinerBlock.BlockHash()
@@ -493,7 +499,6 @@ func main() {
 			PrevBlock:  chainhash.Hash{},         // 0000000000000000000000000000000000000000000000000000000000000000
 			MerkleRoot: *simNetGenesisMerkleRoot,  // 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
 			Timestamp:  time.Now(),
-//			Bits:       0x1f7fffff,               // 545259519 [7fffff0000000000000000000000000000000000000000000000000000000000]
 			Nonce:      2,
 		},
 		Transactions: []*wire.MsgTx{&genesisCoinbaseTx, &genesisInitPolygonTx},
@@ -521,6 +526,8 @@ func main() {
 		Bits:          0x1f7fffff,
 		Nonce:         0,
 		Miner:       addr.ScriptAddress(),
+		BlackList:     make([]wire.BlackList, 0),
+		Utxos:		   make([]wire.OutPoint, 0),
 	}
 	solveMinerBlock(&simNetGenesisMinerBlock)
 	var simNetGenesisMinerHash = simNetGenesisMinerBlock.BlockHash()
@@ -565,7 +572,7 @@ func printCoinbase(name string, gotSigBytes []byte, full bool) {
 			"\n\t\t{"+
 			"\n\t\t\tPreviousOutPoint: wire.OutPoint{"+
 			"\n\t\t\tHash:  chainhash.Hash{},"+
-			"\n\t\t\tIndex: 0xffffffff,"+
+			"\n\t\t\tIndex: 0,"+
 			"\n\t\t},"+
 			"\n\t\tSignatureIndex: 0xffffffff,"+
 			"\n\t\tSequence: 0xffffffff,"+

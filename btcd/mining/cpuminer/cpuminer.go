@@ -9,8 +9,6 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/omega/ovm"
 	"math/big"
-	"math/rand"
-
 	//	"runtime"
 	"sync"
 	"time"
@@ -395,13 +393,14 @@ flushconnch:
 //		m.g.Chain.ChainLock.Lock()
 		bs := m.g.BestSnapshot()
 		curHeight := bs.Height
-
-		if int32(bs.LastRotation) > m.g.Chain.Miners.BestSnapshot().Height - 2 * wire.CommitteeSize {
+/*
+		if int32(bs.LastRotation) > 2 * wire.CommitteeSize && int32(bs.LastRotation) > m.g.Chain.Miners.BestSnapshot().Height - 2 * wire.CommitteeSize {
 			m.Stale = true
 			log.Infof("generateBlocks: height %d sleep on LastRotation %d > Miners.Height %d - 2 * CommitteeSize", curHeight, bs.LastRotation, m.g.Chain.Miners.BestSnapshot().Height)
 			time.Sleep(time.Second * 5)
 			continue
 		}
+ */
 
 //		log.Infof("Preparing for minging at height = %d last rotation = %d", curHeight, bs.LastRotation)
 
@@ -439,17 +438,18 @@ flushconnch:
 		powMode := true
 
 		copy(adr[:], m.cfg.SignAddress.ScriptAddress())
+		payToAddr = &m.cfg.SignAddress
 		if _,ok := committee[adr]; m.cfg.PrivKeys != nil && ok {
 			powMode = false
-			payToAddr = &m.cfg.SignAddress
 			log.Infof("\n\nYeah, I am in committee. My name is %x\n\n", adr[:])
-		} else if len(m.cfg.MiningAddrs) > 0 {
+		} /* else if len(m.cfg.MiningAddrs) > 0 {
 			payToAddr = &m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
 		} else {
 			m.Stale = true
 			time.Sleep(time.Millisecond * miningGap)
 			continue
 		}
+		*/
 
 //		payToAddr := m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
 
@@ -607,7 +607,7 @@ func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
 
 	for i := -int32(wire.CommitteeSize - 1); i <= 0; i++ {
 		if mb,_ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
-			if m.g.Chain.Miners.CheckCollateral(mb, blockchain.BFNone) != nil {
+			if m.g.Chain.CheckCollateral(mb, blockchain.BFNone) != nil {
 				continue
 			}
 			ntx := txo
