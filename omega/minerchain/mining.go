@@ -15,7 +15,6 @@ import (
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/mining"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
@@ -203,18 +202,20 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 	return true
 }
 
-func (m *CPUMiner) factorPOW(baseh uint32, h0 chainhash.Hash) int64 {	// *big.Int {
+func (m *CPUMiner) factorPOW(baseh uint32) int64 {	// *big.Int {
 	h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
 	if h == 0 {
 		return 1 	// nil
 	}
 
 	d := int32(baseh) - int32(h)
-	if d > wire.DESIRABLE_MINER_CANDIDATES {
-		return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
-	} else {
+	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
+		return int64(1) << wire.SCALEFACTORCAP
+	} else if d <= wire.DESIRABLE_MINER_CANDIDATES {
 		return 1
 	}
+
+	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
 //	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
 /*
 	factor := float64(1024.0)
@@ -241,7 +242,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 	targetDifficulty := blockchain.CompactToBig(header.Bits)
 	header.Block.(*wire.MingingRightBlock).Bits = header.Bits
 
-	factorPOW := m.factorPOW(uint32(header.Height), header.Block.(*wire.MingingRightBlock).PrevBlock)
+	factorPOW := m.factorPOW(uint32(header.Height) - 1)
 /*
 	if factorPOW != nil {
 		targetDifficulty.Mul(targetDifficulty, big.NewInt(1024))
