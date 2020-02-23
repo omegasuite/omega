@@ -80,7 +80,7 @@ func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
 	return evm.interpreter.Run(contract, input)
 }
 
-// Context provides the EVM with auxiliary information. Once provided
+// Context provides the OVM with auxiliary information. Once provided
 // it shouldn't be modified.
 type Context struct {
 	GetTx GetTxFunc
@@ -91,22 +91,22 @@ type Context struct {
 	GetCurrentOutput GetCurrentOutputFunc
 
 	// GetHash returns the hash corresponding to number n
-	GetHash GetHashFunc
+//	GetHash GetHashFunc
 
 	// Block information
 	GasLimit    uint64         // GASLIMIT policy
 	BlockNumber GetBlockNumberFunc    // Provides information for NUMBER
 }
 
-// EVM is the Ethereum Virtual Machine base object and provides
+// OVM is the Omega Virtual Machine base object and provides
 // the necessary tools to run a contract on the given state with
 // the provided context. It should be noted that any error
 // generated through any of the calls should be considered a
-// revert-state-and-consume-all-gas operation, no checks on
-// specific errors should ever be performed. The interpreter makes
-// sure that any errors generated are to be considered faulty code.
+// revert-state operation, no checks on specific errors should
+// ever be performed. The interpreter makes sure that any errors
+// generated are to be considered faulty code.
 //
-// The EVM should never be reused and is not thread safe.
+// The OVM should never be reused and is not thread safe.
 type OVM struct {
 	// Context provides auxiliary blockchain related information
 	Context

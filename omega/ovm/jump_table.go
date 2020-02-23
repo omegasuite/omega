@@ -358,6 +358,7 @@ func NewOmegaInstructionSet() [256]operation {
 			memorySize:    memoryExtCodeCopy,
 			valid:         true,
 		},
+/*
 		BLOCKHASH: {
 			execute:       opBlockhash,
 			validateStack: makeStackFunc(1, 1),

@@ -291,7 +291,7 @@ func validateMsgTx(tx *wire.MsgTx, prevScripts [][]byte, inputValues []btcutil.A
 	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
 	ctx.AddRight = func(t *token.RightDef) bool { return false }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
-	ctx.GetHash = ovm.GetHash
+//	ctx.GetHash = ovm.GetHash
 	ctx.BlockNumber = func() uint64 { return 0 }
 	intp := ovm.NewInterpreter(ovm.NewOVM(ctx, nil, ovm.Config{}, nil),
 		ovm.Config{})

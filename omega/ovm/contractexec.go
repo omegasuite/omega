@@ -73,7 +73,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	ctx.GetTx = func () * wire.MsgTx {	return tx	}
 	ctx.Spend = func(t token.Token) bool { return false }
 	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
-	ctx.GetHash = func(d uint64) *chainhash.Hash { return nil }
+//	ctx.GetHash = func(d uint64) *chainhash.Hash { return nil }
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ctx.AddRight = func(t *token.RightDef) bool { return false }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
@@ -123,7 +123,7 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 	ovm.GetTx = func () * wire.MsgTx {	return tx.MsgTx()	}
 	ovm.Spend = func(t token.Token) bool { return false }
 	ovm.AddTxOutput = func(t wire.TxOut) bool { return false	}
-	ovm.GetHash = func(d uint64) *chainhash.Hash { return nil }
+//	ovm.GetHash = func(d uint64) *chainhash.Hash { return nil }
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ovm.AddRight = func(t *token.RightDef) bool { return false }
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
@@ -367,7 +367,7 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainPa
 		return e.ToTxOut()
 	}
 
-	ovm.GetHash = GetHash
+//	ovm.GetHash = GetHash
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 
 	ovm.vmConfig.NoLoop = false

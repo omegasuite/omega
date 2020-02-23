@@ -91,9 +91,9 @@ const (
 
 const (
 	// 0x40 range - block operations
-	BLOCKHASH OpCode = 0x40 + iota
-	COINBASE
-	TIMESTAMP
+//	BLOCKHASH OpCode = 0x40 + iota
+//	COINBASE OpCode = 0x41 + iota
+	TIMESTAMP OpCode = 0x42 + iota
 	NUMBER
 	DIFFICULTY
 	GASLIMIT
@@ -277,8 +277,8 @@ var opCodeToString = map[OpCode]string{
 	RETURNDATACOPY: "RETURNDATACOPY",
 
 	// 0x40 range - block operations
-	BLOCKHASH:  "BLOCKHASH",
-	COINBASE:   "COINBASE",
+//	BLOCKHASH:  "BLOCKHASH",
+//	COINBASE:   "COINBASE",
 	TIMESTAMP:  "TIMESTAMP",
 	NUMBER:     "NUMBER",
 	DIFFICULTY: "DIFFICULTY",
@@ -453,8 +453,8 @@ var stringToOp = map[string]OpCode{
 	"EXTCODECOPY":    EXTCODECOPY,
 	"RETURNDATASIZE": RETURNDATASIZE,
 	"RETURNDATACOPY": RETURNDATACOPY,
-	"BLOCKHASH":      BLOCKHASH,
-	"COINBASE":       COINBASE,
+//	"BLOCKHASH":      BLOCKHASH,
+//	"COINBASE":       COINBASE,
 	"TIMESTAMP":      TIMESTAMP,
 	"NUMBER":         NUMBER,
 	"DIFFICULTY":     DIFFICULTY,

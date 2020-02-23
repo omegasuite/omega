@@ -584,6 +584,7 @@ func opGasprice(pc *uint64, evm *OVM, contract *Contract, memory *Memory, stack 
 //	return nil, nil
 }
 
+/*
 func opBlockhash(pc *uint64, evm *OVM, contract *Contract, memory *Memory, stack *Stack) ([]byte, error) {
 	num := stack.pop()
 	bigblknum := big.NewInt(int64(evm.BlockNumber()))
@@ -597,6 +598,7 @@ func opBlockhash(pc *uint64, evm *OVM, contract *Contract, memory *Memory, stack
 	evm.interpreter.intPool.put(num, n)
 	return nil, nil
 }
+ */
 
 /*
 func opCoinbase(pc *uint64, evm *OVM, contract *Contract, memory *Memory, stack *Stack) ([]byte, error) {

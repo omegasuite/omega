@@ -783,7 +783,7 @@ func CreateSyncer(h int32) *Syncer {
 	p.Height = h
 	p.pending = make(map[string][]Message, 0)
 	p.newtree = make(chan tree, wire.CommitteeSize * 3)	// will hold trees before runnable
-	p.messages = make(chan Message, wire.CommitteeSize * 3)
+	p.messages = make(chan Message, wire.CommitteeSize * 10)
 	p.pulling = make(map[int32]int)
 	p.agrees = make(map[int32]struct{})
 	p.asked = make(map[int32]struct{})
@@ -1045,10 +1045,14 @@ func (self *Syncer) Quit() {
 	log.Info("sync quit")
 	// to prevent entering SetCommittee
 	self.Runnable = true
-	select {
-	case <-self.quit:
-	default:
-		close(self.quit)
+	for true {
+		select {
+		case <-self.messages:
+//		case <-self.quit:
+		default:
+			close(self.quit)
+			return
+		}
 	}
 }
 
