@@ -379,7 +379,14 @@ flushconnch:
 		if m.cfg.ConnectedCount() == 0 {
 			log.Info("Sleep 5 sec because there is no connected peer.")
 			m.Stale = true
-			time.Sleep(time.Second * 5)
+			select {
+			case <-m.connch:
+
+			case <-m.quit:
+				break out
+
+			case <-time.After(time.Second * 5):
+			}
 			continue
 		}
 
@@ -409,7 +416,15 @@ flushconnch:
 //			m.g.Chain.ChainLock.Unlock()
 			m.Stale = true
 			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent @ height %d", curHeight)
-			time.Sleep(time.Second * 5)
+
+			select {
+			case <-m.connch:
+
+			case <-m.quit:
+				break out
+
+			case <-time.After(time.Second * 5):
+			}
 			continue
 		}
 
@@ -564,6 +579,9 @@ flushconnch:
 			blk = blk.Parent
 		}
 		select {
+		case <-m.connch:
+			continue
+
 		case <-m.quit:
 			break out
 
