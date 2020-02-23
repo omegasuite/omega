@@ -1354,6 +1354,11 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 	blockHeader := blk.MsgBlock()
 
 	d,_ := btcutil.NewAddressPubKeyHash(blockHeader.Miner, params)
+	collateral := make([]string, 0)
+	for _,c := range blockHeader.Utxos {
+		s := fmt.Sprintf("%s:%d", c.Hash.String(), c.Index)
+		collateral = append(collateral, s)
+	}
 
 	blockReply := btcjson.GetMinerBlockVerboseResult{
 		Hash:          c.Hash,
@@ -1370,6 +1375,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		NextHash:      nextHashString,
 		Address:	   d.String(),	// hex.EncodeToString(blockHeader.Miner),
 		Best:		   blockHeader.BestBlock.String(),
+		Collateral:    collateral,
 //		BlackList:	   hex.EncodeToString(blockHeader.BlackList),
 	}
 
