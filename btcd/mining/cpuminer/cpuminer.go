@@ -276,9 +276,9 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 
 				m.g.UpdateBlockTime(msgBlock)
 
-				if m.cfg.ChainParams.ReduceMinDifficulty {
-					targetDifficulty = blockchain.CompactToBig(template.Bits)
-				}
+//				if m.cfg.ChainParams.ReduceMinDifficulty {
+//					targetDifficulty = blockchain.CompactToBig(template.Bits)
+//				}
 
 			default:
 				// Non-blocking select to fall through
@@ -294,7 +294,8 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 
 			// The block is solved when the new block hash is less
 			// than the target difficulty.  Yay!
-			if blockchain.HashToBig(&hash).Cmp(targetDifficulty) <= 0 {
+			hashNum := blockchain.HashToBig(&hash)
+			if hashNum.Cmp(targetDifficulty) <= 0 {
 				log.Info("Block solved ", hash, " vs ", targetDifficulty)
 				m.updateHashes <- hashesCompleted
 				return true
@@ -523,8 +524,10 @@ flushconnch:
 							break connected
 						}
 
-					default:
-						time.Sleep(time.Second * 5)
+					case <-m.quit:
+						break out
+
+					case <-time.After(time.Second * 5):
 //						consensus.DebugInfo()
 						log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
 					}
@@ -556,11 +559,16 @@ flushconnch:
 
 		pows := 0
 		blk := m.g.Chain.BestChain.Tip()
-		for blk != nil && blk.Data.GetNonce() > 0 {
+		for blk != nil && blk.Data.GetNonce() > 0 && pows < 5 {
 			pows++
 			blk = blk.Parent
 		}
-		time.Sleep(time.Second * time.Duration(4 * (1 << pows)))
+		select {
+		case <-m.quit:
+			break out
+
+		case <-time.After(time.Second * time.Duration(1 << pows)):
+		}
 
 		log.Info("Try to solve block ")
 
