@@ -970,7 +970,7 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 
 func CheckMyCoin(mycoins database.Bucket, entry * UtxoEntry, miner []byte, key []byte) {
 //	fmt.Printf("CheckMyCoin: %x vs. %x", entry.pkScript[1:21], miner)
-	if bytes.Compare(entry.pkScript[1:21], miner) == 0 && entry.TokenType == 0 {
+	if bytes.Compare(entry.pkScript[1:21], miner) == 0 && entry.TokenType == 0 && entry.Amount.(*token.NumToken).Val > 0 {
 		var mc [8]byte
 		offset := bccompress.PutVLQ(mc[:], bccompress.CompressTxOutAmount(uint64(entry.Amount.(*token.NumToken).Val)))
 		mycoins.Put(key, mc[:offset])
