@@ -137,44 +137,6 @@ func BuildMerkleTreeStore(transactions []*btcutil.Tx, witness bool) []*chainhash
 	return merkles
 }
 
-// ExtractWitnessCommitment attempts to locate, and return the witness
-// commitment for a block. The witness commitment is of the form:
-// SHA256(witness root || witness nonce). The function additionally returns a
-// boolean indicating if the witness root was located within any of the txOut's
-// in the passed transaction. The witness commitment is stored as the data push
-// for an OP_RETURN with special magic bytes to aide in location.
-func ExtractWitnessCommitment(tx *btcutil.Tx) ([]byte, bool) {
-	// The witness commitment *must* be located within one of the coinbase
-	// transaction's outputs.
-	if !IsCoinBase(tx) {
-		return nil, false
-	}
-
-	msgTx := tx.MsgTx()
-	return msgTx.SignatureScripts[0], true
-/*
-	for i := len(msgTx.TxOut) - 1; i >= 0; i-- {
-		// The public key script that contains the witness commitment
-		// must shared a prefix with the WitnessMagicBytes, and be at
-		// least 38 bytes.
-		pkScript := msgTx.TxOut[i].PkScript
-		if len(pkScript) >= CoinbaseWitnessPkScriptLength &&
-			bytes.HasPrefix(pkScript, WitnessMagicBytes) {
-
-			// The witness commitment itself is a 32-byte hash
-			// directly after the WitnessMagicBytes. The remaining
-			// bytes beyond the 38th byte currently have no consensus
-			// meaning.
-			start := len(WitnessMagicBytes)
-			end := CoinbaseWitnessPkScriptLength
-			return msgTx.TxOut[i].PkScript[start:end], true
-		}
-	}
-
-	return nil, false
-*/
-}
-
 // ValidateWitnessCommitment validates the witness commitment (if any) found
 // within the coinbase transaction of the passed block.
 func ValidateWitnessCommitment(blk *btcutil.Block) error {
@@ -192,14 +154,8 @@ func ValidateWitnessCommitment(blk *btcutil.Block) error {
 		return ruleError(ErrNoTxInputs, "transaction has no inputs")
 	}
 
-	witnessCommitment, witnessFound := ExtractWitnessCommitment(coinbaseTx)
+	witnessCommitment := blk.MsgBlock().Transactions[0].SignatureScripts[0]
 
-	// If we can't find a witness commitment in any of the coinbase's
-	// outputs, then the block MUST NOT contain any transactions with
-	// witness data.
-	if !witnessFound {
-		return nil
-	}
 /*
 	// At this point the block contains a witness commitment, so the
 	// coinbase transaction MUST have exactly one witness element within

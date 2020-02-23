@@ -5,7 +5,6 @@
 package blockchain
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
@@ -439,19 +438,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			return fmt.Errorf("Incorrect signature"), false
 		}
 
-		minerSet :=	make([][]byte, 0)
-		for mi := int32(0); mi < wire.CommitteeSize; mi++ {
-			mb,_ :=  b.Miners.BlockByHeight(int32(rotate) - mi)
-			// ensure miner has sufficient collateral
-			if err := b.CheckCollateral(mb, BFNone); err == nil {
-				minerSet = append(minerSet, mb.MsgBlock().Miner)
-			}
-		}
-
-		if len(block.MsgBlock().Transactions[0].TxOut) != len(minerSet) {
-			return fmt.Errorf("Coinbase output is not the same a qualified miners."), false
-		}
-
 		_,awd := block.MsgBlock().Transactions[0].TxOut[0].Value.Value()
 		for _, txo := range block.MsgBlock().Transactions[0].TxOut {
 			if txo.TokenType != 0 {
@@ -483,16 +469,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 				return fmt.Errorf("Duplicated Miner signature"), false
 			}
 
-			inMinerSet := false
-			for _,mn := range minerSet {
-				if bytes.Compare(pkh[:], mn) == 0 {
-					inMinerSet = true
-				}
-			}
-			if !inMinerSet {
-				return fmt.Errorf("Incorrect Miner signature. Unauthorized signer."), false
-			}
-
 			s, err := btcec.ParseSignature(sign[btcec.PubKeyBytesLenCompressed:], btcec.S256())
 			if err != nil {
 				return fmt.Errorf("Incorrect Miner signature. Signature parse error"), false
@@ -506,9 +482,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		}
 		if len(usigns) <= wire.CommitteeSize/2 {
 			return fmt.Errorf("Insufficient number of Miner signatures."), false
-		}
-		if len(usigns) != len(minerSet) {
-			return fmt.Errorf("Number of Miner signatures is not the same a qualified miners."), false
 		}
 	}
 

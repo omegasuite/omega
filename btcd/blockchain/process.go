@@ -401,7 +401,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 		}
 	}
 
-	// examine signers are in committee
+	// examine signers are in committee and have sufficient collateral
 	miners := make(map[[20]byte]struct{}, wire.CommitteeSize)
 
 	for i := int32(0); i < wire.CommitteeSize; i++ {
@@ -409,6 +409,11 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 		if blk == nil {
 			return false
 		}
+
+		if err := b.CheckCollateral(blk, BFNone); err != nil {
+			return false
+		}
+
 		var n [20]byte
 		copy(n[:], blk.MsgBlock().Miner)
 		miners[n] = struct{}{}
