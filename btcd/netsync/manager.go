@@ -789,7 +789,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	if behaviorFlags & blockchain.BFNoConnect == blockchain.BFNoConnect {
 		// passing it consus
-		sm.msgChan <- processConsusMsg{block: bmsg.block, flags: behaviorFlags }
+		consensus.ProcessBlock(bmsg.block, behaviorFlags)
 		return
 	}
 
