@@ -380,7 +380,10 @@ out:
 			m.submitBlockLock.Unlock()
 			m.Stale = true
 			log.Infof("miner.generateBlocks: sleep because of too many candidates %d", d)
-			time.Sleep(time.Second * time.Duration(5 * (d -3 - wire.DESIRABLE_MINER_CANDIDATES )))
+			select {
+			case <-m.quit:
+			case <-time.After(time.Second * time.Duration(5 * (d -3 - wire.DESIRABLE_MINER_CANDIDATES ))):
+			}
 			continue
 		}
 		

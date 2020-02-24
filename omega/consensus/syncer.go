@@ -340,7 +340,7 @@ func (self *Syncer) run() {
 	for true {
 		select {
 		case <-self.newtree:
-		case <- self.messages:
+//		case <- self.messages:
 		case m := <- self.messages:
 			switch m.(type) {
 			case *wire.MsgSignature:
@@ -1048,6 +1048,7 @@ func (self *Syncer) Quit() {
 	for true {
 		select {
 		case <-self.messages:
+		case <-self.newtree:
 //		case <-self.quit:
 		default:
 			close(self.quit)
