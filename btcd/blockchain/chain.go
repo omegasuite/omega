@@ -928,6 +928,9 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	detachSpentTxOuts := make([][]viewpoint.SpentTxOut, 0, detachNodes.Len())
 	attachBlocks := make([]*btcutil.Block, 0, attachNodes.Len())
 
+	state := b.BestSnapshot()
+	rotate := state.LastRotation
+
 	// Disconnect all of the blocks back to the point of the fork.  This
 	// entails loading the blocks and their associated spent txos from the
 	// database and using that information to unspend all of the spent txos
@@ -983,6 +986,12 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
+		if n.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
+			rotate--
+		} else if n.Data.GetNonce() > 0 {
+			rotate -= wire.CommitteeSize / 2 + 1
+		}
+
 		newBest = n.Parent
 	}
 
@@ -1006,18 +1015,18 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// tweaking the chain and/or database.  This approach catches these
 	// issues before ever modifying the chain.
 
-	state := b.BestSnapshot()
-	rotate := state.LastRotation
-
 	// examine signers are in committee
 	miners := make([][20]byte, wire.CommitteeSize)
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		if blk, _ := b.Miners.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
+			if err := b.CheckCollateral(blk, BFNone); err != nil {
+				return err
+			}
 			copy(miners[i][:], blk.MsgBlock().Miner)
 		}
 	}
 
-	prevNode := forkNode
+//	prevNode := forkNode
 	skipped := false
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
@@ -1032,13 +1041,13 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
-		if !b.signedBy(block, miners) || !b.consistent(block, prevNode) {
+		if !b.signedBy(block, miners) {
 			skipList(attachNodes, e)
 			skipped = true
 			continue
 //			return fmt.Errorf("attach block failed to pass consistency check")
 		}
-		prevNode = n
+//		prevNode = n
 
 		shift := 0
 		if n.Data.GetNonce() > 0 {
@@ -1056,6 +1065,9 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			for k := 0; k < shift; k++ {
 				rotate++
 				if blk, _ := b.Miners.BlockByHeight(int32(rotate)); blk != nil {
+					if err := b.CheckCollateral(blk, BFNone); err != nil {
+						return err
+					}
 					copy(miners[j][:], blk.MsgBlock().Miner)
 				} else if shift == 1 {
 					return fmt.Errorf("Incorrect rotation")

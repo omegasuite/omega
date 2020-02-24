@@ -405,7 +405,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 	}
 
 	// examine signers are in committee and have sufficient collateral
-	miners := make(map[[20]byte]struct{}, wire.CommitteeSize)
+	miners := make(map[[20]byte]struct{})
 
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
@@ -427,6 +427,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
 		// is the signer in committee?
 		if _,ok := miners[*pk.AddressPubKeyHash().Hash160()]; !ok {
+//			b.index.RemoveNode(b.index.LookupNode(block.Hash()))
 			return false
 		}
 	}

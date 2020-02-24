@@ -177,7 +177,7 @@ type BlockIndex struct {
 
 	sync.RWMutex
 	index map[chainhash.Hash]*BlockNode
-	dirty map[*BlockNode]struct{}
+	dirty map[*BlockNode]bool
 
 	// Tips of side chains
 	Tips map[chainhash.Hash]*BlockNode
@@ -191,7 +191,7 @@ func NewBlockIndex(db database.DB, chainParams *chaincfg.Params) *BlockIndex {
 		db:          db,
 		chainParams: chainParams,
 		index:       make(map[chainhash.Hash]*BlockNode),
-		dirty:       make(map[*BlockNode]struct{}),
+		dirty:       make(map[*BlockNode]bool),
 		Tips:        make(map[chainhash.Hash]*BlockNode),
 	}
 }
@@ -235,9 +235,17 @@ func (bi *BlockIndex) LookupNode(hash *chainhash.Hash) *BlockNode {
 func (bi *BlockIndex) AddNode(node *BlockNode) {
 	bi.Lock()
 	bi.AddNodeUL(node)
-	bi.dirty[node] = struct{}{}
+	bi.dirty[node] = true
 	bi.Unlock()
 }
+
+/*
+func (bi *BlockIndex) RemoveNode(node *BlockNode) {
+	bi.Lock()
+	bi.dirty[node] = false
+	bi.Unlock()
+}
+ */
 
 // AddNodeUL adds the provided node to the block index, but does not mark it as
 // dirty. This can be used while initializing the block index.
@@ -269,7 +277,7 @@ func (bi *BlockIndex) NodeStatus(node *BlockNode) BlockStatus {
 func (bi *BlockIndex) SetStatusFlags(node *BlockNode, flags BlockStatus) {
 	bi.Lock()
 	node.Status |= flags
-	bi.dirty[node] = struct{}{}
+	bi.dirty[node] = true
 	bi.Unlock()
 }
 
@@ -280,7 +288,7 @@ func (bi *BlockIndex) SetStatusFlags(node *BlockNode, flags BlockStatus) {
 func (bi *BlockIndex) UnsetStatusFlags(node *BlockNode, flags BlockStatus) {
 	bi.Lock()
 	node.Status &^= flags
-	bi.dirty[node] = struct{}{}
+	bi.dirty[node] = true
 	bi.Unlock()
 }
 
@@ -294,10 +302,16 @@ func (bi *BlockIndex) FlushToDB(dbStoreBlockNode func(dbTx database.Tx, node *Bl
 	}
 
 	err := bi.db.Update(func(dbTx database.Tx) error {
-		for node := range bi.dirty {
-			err := dbStoreBlockNode(dbTx, node)
-			if err != nil {
-				return err
+//		blockIndexBucket := dbTx.Metadata().Bucket(blockIndexBucketName)
+		for node, b := range bi.dirty {
+			if b {
+				err := dbStoreBlockNode(dbTx, node)
+				if err != nil {
+					return err
+				}
+//			} else {
+//				key := blockchain.BlockIndexKey(&node.Hash, uint32(node.Height))
+//				return blockIndexBucket.Delete(key)
 			}
 		}
 		return nil
@@ -305,7 +319,7 @@ func (bi *BlockIndex) FlushToDB(dbStoreBlockNode func(dbTx database.Tx, node *Bl
 
 	// If write was successful, clear the dirty set.
 	if err == nil {
-		bi.dirty = make(map[*BlockNode]struct{})
+		bi.dirty = make(map[*BlockNode]bool)
 	}
 
 	bi.Unlock()
