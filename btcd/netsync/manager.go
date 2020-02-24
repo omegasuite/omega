@@ -319,13 +319,13 @@ func (sm *SyncManager) updateSyncPeer() {
 			txmoot := false
 			if *j.stopHash != zeroHash {
 				txmoot,_ = sm.chain.HaveBlock(j.stopHash)
-			} else if *j.locator[0] != sm.chain.BestSnapshot().Hash {
+			} else if len(j.locator) > 0 && *j.locator[0] != sm.chain.BestSnapshot().Hash {
 				txmoot = true
 			}
 			mnmoot := false
 			if *j.mstopHash != zeroHash {
 				mnmoot,_ = sm.chain.HaveBlock(j.stopHash)
-			} else if *j.mlocator[0] != sm.chain.Miners.BestSnapshot().Hash {
+			} else if len(j.mlocator) > 0 && *j.mlocator[0] != sm.chain.Miners.BestSnapshot().Hash {
 				mnmoot = true
 			}
 			if txmoot && mnmoot {
@@ -333,11 +333,11 @@ func (sm *SyncManager) updateSyncPeer() {
 			}
 			if mnmoot {
 				j.stopHash = &zeroHash
-				j.locator[0] = &sm.chain.BestSnapshot().Hash
+				j.locator = make([]*chainhash.Hash, 0)
 			}
 			if txmoot {
 				j.mstopHash = &zeroHash
-				j.mlocator[0] = &sm.chain.Miners.BestSnapshot().Hash
+				j.mlocator = make([]*chainhash.Hash, 0)
 			}
 
 			sm.syncPeer = j.peer
@@ -742,7 +742,16 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
 	log.Infof("netsyc ProcessBlock %s at %d", bmsg.block.Hash().String(), bmsg.block.Height())
-	isMainchain, isOrphan, err := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
+	isMainchain, isOrphan, err, missing := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
+
+	if missing > 0 {
+		var h chainhash.Hash
+		h = sm.chain.Miners.BestSnapshot().Hash
+		sm.addSyncJob(peer,
+			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
+			chainhash.BlockLocator([]*chainhash.Hash{&h}),
+			&zeroHash, &zeroHash)
+	}
 
 	if err != nil {
 		// When the error is a rule error, it means the block was simply
@@ -954,7 +963,14 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	// handling, etc.
 
 	log.Infof("sm.chain.Miners.ProcessBlock")
-	isMainchain, isOrphan, err := sm.chain.Miners.ProcessBlock(bmsg.block, behaviorFlags)
+	isMainchain, isOrphan, err, h := sm.chain.Miners.ProcessBlock(bmsg.block, behaviorFlags)
+
+	if h != nil {
+		sm.addSyncJob(peer,
+			sm.chain.BlockLocatorFromHash(&zeroHash),
+			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
+			h, &zeroHash)
+	}
 
 	if err != nil {
 		// When the error is a rule error, it means the block was simply
@@ -1732,7 +1748,7 @@ out:
 				msg.reply <- peerID
 
 			case processBlockMsg:
-				_, isOrphan, err := sm.chain.ProcessBlock(
+				_, isOrphan, err,_ := sm.chain.ProcessBlock(
 					msg.block, msg.flags)
 				if msg.reply != nil {
 					sm.lastBlockOp += " ... waiting reply from sm.chain.ProcessBlock "
@@ -1753,7 +1769,7 @@ out:
 				consensus.ProcessBlock(msg.block, msg.flags)
 
 			case processMinerBlockMsg:
-				_, isOrphan, err := sm.chain.Miners.ProcessBlock(
+				_, isOrphan, err, _ := sm.chain.Miners.ProcessBlock(
 					msg.block, msg.flags)
 				if msg.reply != nil {
 					sm.lastBlockOp += " ... waiting reply from sm.chain.Miners.ProcessBlock "

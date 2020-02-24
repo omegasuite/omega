@@ -142,7 +142,7 @@ func (b *MinerChain) CheckSideChain(hash *chainhash.Hash) {
 // whether or not the block is an orphan.
 //
 // This function is safe for concurrent access.
-func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.BehaviorFlags) (bool, bool, error) {
+func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.BehaviorFlags) (bool, bool, error, *chainhash.Hash) {
 //	log.Infof("MinerChain.ProcessBlock: ChainLock.RLock")
 	b.chainLock.Lock()
 	defer b.chainLock.Unlock()
@@ -154,35 +154,35 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// The block must not already exist in the main chain or side chains.
 	exists, err := b.blockExists(blockHash)
 	if err != nil {
-		return false, false, err
+		return false, false, err, nil
 	}
 	if exists {
 		str := fmt.Sprintf("already have block %v", blockHash)
-		return false, false, ruleError(ErrDuplicateBlock, str)
+		return false, false, ruleError(ErrDuplicateBlock, str), nil
 	}
 
 	// The block must not already exist as an orphan.
 	if !b.Orphans.CheckOrphan(blockHash, (*orphanBlock)(block)) {
 		str := fmt.Sprintf("already have block (orphan) %v", blockHash)
-		return false, false, ruleError(ErrDuplicateBlock, str)
+		return false, false, ruleError(ErrDuplicateBlock, str), nil
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
 	err = CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
-		return false, false, err
+		return false, false, err, nil
 	}
 
 	var name[20]byte
 	copy(name[:], block.MsgBlock().Miner)
 	if b.blockChain.Blacklist.IsGrey(name) {
-		return false, false, fmt.Errorf("Blacklised Miner")
+		return false, false, fmt.Errorf("Blacklised Miner"), nil
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
 	err = b.blockChain.CheckCollateral(block, flags)
 	if err != nil {
-		return false, false, err
+		return false, false, err, nil
 	}
 
 	// Find the previous checkpoint and perform some additional checks based
@@ -197,27 +197,30 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	prevHash := &blockHeader.PrevBlock
 	prevHashExists, err := b.blockExists(prevHash)
 	if err != nil {
-		return false, false, err
+		return false, false, err, nil
 	}
 	if !prevHashExists {
 		log.Infof("block prevHash does not Exists Adding orphan block %s with parent %s", blockHash.String(), prevHash.String())
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
 
-		return false, true, nil
+		return false, true, nil, nil
 	}
 
 	parent := b.index.LookupNode(prevHash)
+	if have,_ := b.blockChain.HaveBlock(&block.MsgBlock().BestBlock); !have {
+		return false, true, nil, &block.MsgBlock().BestBlock
+	}
 	if !b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) {
 		log.Infof("block and parent tx reference not in the same chain.")
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-		return false, true, nil
+		return false, true, nil, nil
 	}
 
 	// The block has passed all context independent checks and appears sane
 	// enough to potentially accept it into the block chain.
 	isMainChain, err := b.maybeAcceptBlock(block, flags)
 	if err != nil {
-		return false, false, err
+		return false, false, err, nil
 	}
 
 	if isMainChain {
@@ -230,14 +233,14 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	err = b.ProcessOrphans(blockHash, flags)
 	if err != nil {
 //		log.Infof("b.ProcessOrphans error %s", err)
-		return false, false, err
+		return false, false, err, nil
 	}
 
 	log.Infof("miner.ProcessBlock finished with height = %d (%d) tx height = %d orphans = %d",
 		b.BestSnapshot().Height, block.Height(),
 		b.blockChain.BestSnapshot().Height, b.Orphans.Count())
 
-	return isMainChain, false, nil
+	return isMainChain, false, nil, nil
 }
 
 // checkBlockSanity performs some preliminary checks on a block to ensure it is

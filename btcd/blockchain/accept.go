@@ -22,7 +22,7 @@ import (
 // their documentation for how the flags modify their behavior.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags) (bool, error) {
+func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags) (bool, error, int32) {
 	// The height of this block is one more than the referenced previous
 	// block.
 	prevHash := &block.MsgBlock().Header.PrevBlock
@@ -32,21 +32,21 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	// position of the block within the block chain.
 	err := b.checkBlockContext(block, prevNode, flags)
 	if err != nil {
-		return false, err
+		return false, err, -1
 	}
 
 	if flags & BFNoConnect == BFNoConnect {
 		// now we have passed all the tests
-		return true, nil
+		return true, nil, -1
 	}
 
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
 		// make sure the rotate in Miner block is there
 		if prevNode.Data.GetNonce() != -wire.MINER_RORATE_FREQ + 1 {
-			return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ + 1)
+			return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ + 1), -1
 		}
 		if _, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ); err != nil {
-			return false, err
+			return false, err, -block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ
 		}
 	}
 
@@ -64,7 +64,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	})
 
 	if err != nil {
-		return false, err
+		return false, err, -1
 	}
 
 	// Create a new block node for the block and add it to the node index. Even
@@ -77,7 +77,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	b.index.AddNode(newNode)
 	err = b.index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
-		return false, err
+		return false, err, -1
 	}
 
 	// Connect the passed block to the chain while respecting proper chain
@@ -85,7 +85,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	// also handles validation of the transaction scripts.
 	isMainChain, err := b.connectBestChain(newNode, block, flags)
 	if err != nil {
-		return false, err
+		return false, err, -1
 	}
 
 	// Notify the caller that the new block was accepted into the block
@@ -95,5 +95,5 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	b.sendNotification(NTBlockAccepted, block)
 	b.ChainLock.Lock()
 
-	return isMainChain, nil
+	return isMainChain, nil, -1
 }

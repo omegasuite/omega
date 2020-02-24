@@ -838,10 +838,20 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 	// over with the genesis block if unknown block locators are provided.
 	//
 	// This mirrors the behavior in the reference implementation.
-	hashList := chain.LocateBlocks(msg.TxBlockLocatorHashes, &msg.TxHashStop,
-		wire.MaxBlocksPerMsg)
-	mhashList := mchain.LocateBlocks(msg.MinerBlockLocatorHashes, &msg.MinerHashStop,
-		wire.MaxBlocksPerMsg)
+	var hashList []chainhash.Hash
+	var mhashList []chainhash.Hash
+	if len(msg.TxBlockLocatorHashes) > 0 {
+		hashList = chain.LocateBlocks(msg.TxBlockLocatorHashes, &msg.TxHashStop,
+			wire.MaxBlocksPerMsg)
+	} else {
+		hashList = make([]chainhash.Hash, 0)
+	}
+	if len(msg.MinerBlockLocatorHashes) > 0 {
+		mhashList = mchain.LocateBlocks(msg.MinerBlockLocatorHashes, &msg.MinerHashStop,
+			wire.MaxBlocksPerMsg)
+	} else {
+		mhashList = make([]chainhash.Hash, 0)
+	}
 
 	// Generate inventory message.
 	m := 0

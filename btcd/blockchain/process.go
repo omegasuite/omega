@@ -116,7 +116,7 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 				return true
 			}
 
-			_, err = b.maybeAcceptBlock(block, flags)
+			_, err, _ = b.maybeAcceptBlock(block, flags)
 			return err != nil
 		}
 		return true
@@ -212,7 +212,7 @@ func (b * orphanBlock) NeedUpdate(ob chainutil.Orphaned) bool {
 // whether or not the block is an orphan.
 //
 // This function is safe for concurrent access.
-func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error) {
+func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error, int32) {
 //	log.Infof("ProcessBlock: ChainLock.RLock")
 	b.ChainLock.Lock()
 	defer b.ChainLock.Unlock()
@@ -226,7 +226,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	prevHash := &blockHeader.PrevBlock
 	prevHashExists, err := b.blockExists(prevHash)
 	if err != nil {
-		return false, false, err
+		return false, false, err, -1
 	}
 	if !prevHashExists {
 		log.Infof("block %s: prevHash block %s does not exist", block.Hash().String(), prevHash.String())
@@ -234,24 +234,24 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 			log.Infof("Adding orphan block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
 			b.Orphans.AddOrphanBlock((* orphanBlock)(block))
 		}
-		return false, true, nil
+		return false, true, nil, -1
 	}
 
 	prevNode := b.index.LookupNode(prevHash)
 
 	if prevNode == nil {
 		str := fmt.Sprintf("previous block %s is unknown", prevHash)
-		return false, false, ruleError(ErrPreviousBlockUnknown, str)
+		return false, false, ruleError(ErrPreviousBlockUnknown, str), -1
 	} else if b.index.NodeStatus(prevNode).KnownInvalid() {
 		str := fmt.Sprintf("previous block %s is known to be invalid", prevHash)
-		return false, false, ruleError(ErrInvalidAncestorBlock, str)
+		return false, false, ruleError(ErrInvalidAncestorBlock, str), -1
 	}
 
 	blockHeight := prevNode.Height + 1
 	block.SetHeight(blockHeight)
 
 	if blockHeight != int32(block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index) {
-		return false, false, ruleError(ErrInvalidAncestorBlock, "Block height inconsistent with ostensible height")
+		return false, false, ruleError(ErrInvalidAncestorBlock, "Block height inconsistent with ostensible height"), -1
 	}
 
 //	fastAdd := flags&BFFastAdd == BFFastAdd
@@ -261,23 +261,23 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// The block must not already exist in the main chain or side chains.
 	exists, err := b.blockExists(blockHash)
 	if err != nil {
-		return false, false, err
+		return false, false, err, -1
 	}
 
 	if exists {
-		return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock])
+		return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1
 	}
 
 	// The block must not already exist as an orphan.
 	if !b.Orphans.CheckOrphan(blockHash, (*orphanBlock)(block)) {
 		str := fmt.Sprintf("already have block (orphan) %v", blockHash)
-		return false, true, ruleError(ErrDuplicateBlock, str)
+		return false, true, ruleError(ErrDuplicateBlock, str), -1
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
 	err = checkBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
-		return false, false, err
+		return false, false, err, -1
 	}
 
 	// Find the previous checkpoint and perform some additional checks based
@@ -288,7 +288,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// work requirements since the previous checkpoint are met.
 	checkpointNode, err := b.findPreviousCheckpoint()
 	if err != nil {
-		return false, false, err
+		return false, false, err, -1
 	}
 	if checkpointNode != nil {
 		// Ensure the block timestamp is after the checkpoint timestamp.
@@ -297,7 +297,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 			str := fmt.Sprintf("block %v has timestamp %v before "+
 				"last checkpoint timestamp %v", blockHash,
 				blockHeader.Timestamp, checkpointTime)
-			return false, false, ruleError(ErrCheckpointTimeTooOld, str)
+			return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1
 		}
 	}
 
@@ -306,25 +306,28 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	if flags & BFNoConnect == BFNoConnect {
 		// this mark an pre-consus block
 //		b.AddOrphanBlock(block)
-		return isMainChain, false, nil
+		return isMainChain, false, nil, -1
 	}
 
 	// don't check POW if we are to extending a side chain and this is a comittee block
 	// leave the work to reorg
 	err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
 	if err != nil {
-		return isMainChain, true, err
+		return isMainChain, true, err, -1
 	}
 	if mkorphan {
 		log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-		return isMainChain, true, nil
+		return isMainChain, true, nil, -1
 	}
 
 	//	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {
-		isMainChain, err = b.maybeAcceptBlock(block, flags)
+		isMainChain, err, missing := b.maybeAcceptBlock(block, flags)
+		if missing > 0 {
+			return false, false, err, missing
+		}
 		if err != nil {
-			return false, false, err
+			return false, false, err, -1
 		}
 //	} else {
 		// add it as an orphan. whenever a Miner block is added,
@@ -354,7 +357,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	log.Infof("ProcessBlock finished with height = %d Miner height = %d Orphans = %d", b.BestSnapshot().Height,
 		b.Miners.BestSnapshot().Height, b.Orphans.Count())
 
-	return isMainChain, false, nil
+	return isMainChain, false, nil, -1
 }
 
 func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNode) bool {

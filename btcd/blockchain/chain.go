@@ -80,7 +80,7 @@ func newBestState(node *chainutil.BlockNode, blockSize, blockWeight, numTxns,
 }
 
 type MinerChain interface {
-	ProcessBlock (*wire.MinerBlock, BehaviorFlags) (bool, bool, error)
+	ProcessBlock (*wire.MinerBlock, BehaviorFlags) (bool, bool, error, *chainhash.Hash)
 	BestSnapshot () *BestState
 	BlockByHash (hash *chainhash.Hash) (*wire.MinerBlock, error)
 	BlockByHeight (height int32) (*wire.MinerBlock, error)

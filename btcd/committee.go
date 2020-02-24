@@ -875,22 +875,8 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 //	consensusLog.Infof("NewConsusBlock at %d", m.Height())
 //	s.peerState.print()
 
-	if isMainchain, orphan, err := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil && !orphan && isMainchain {
+	if isMainchain, orphan, err, _ := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil && !orphan && isMainchain {
 		consensusLog.Infof("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
-/*
-		msg := wire.NewMsgInv()
-		msg.AddInvVect(&wire.InvVect{
-			Type: common.InvTypeWitnessBlock,
-			Hash: *m.Hash(),
-		})
-
-		s.RelayInventory(&wire.InvVect{
-			Type: common.InvTypeWitnessBlock,
-			Hash: *m.Hash(),
-		}, m.MsgBlock())
- */
-
-//		s.broadcast <- broadcastMsg { message: msg }
 	} else if err != nil {
 		consensusLog.Infof("consensus faield to process ProcessBlock!!! %s", err.Error())
 	}
