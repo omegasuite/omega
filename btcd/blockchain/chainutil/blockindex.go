@@ -5,6 +5,7 @@
 package chainutil
 
 import (
+	"math/big"
 	"sort"
 	"sync"
 	"time"
@@ -72,6 +73,7 @@ type NodeData interface {
 	GetBits() uint32
 	SetBits(uint32)
 	GetVersion() int32
+	WorkSum() *big.Int
 }
 
 // BlockNode represents a block within the block chain and is primarily used to

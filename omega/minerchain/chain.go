@@ -757,9 +757,10 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 //			block.Hash())
 //	}
 
-	// We're extending (or creating) a side chain, but thconnectBlock must be called with a blocke cumulative
+	// We're extending (or creating) a side chain, but the WorkSum is not sufficient
+	//// to cause a reorganization. connectBlock must be called with a blocke cumulative
 	// work for this new side chain is not enough to make it the new chain.
-	if node.Height <= b.BestChain.Tip().Height {
+	if b.WorkSum(node).Cmp(b.WorkSum(b.BestChain.Tip())) <= 0 {
 		// Log information about how the block is forking the chain.
 		fork := b.BestChain.FindFork(node)
 		if fork.Hash.IsEqual(parentHash) {
@@ -838,6 +839,22 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 	}
 
 	return true, nil
+}
+
+func (b *MinerChain) WorkSum(node *chainutil.BlockNode) * big.Int {
+	s := node.Data.WorkSum()
+	bb := b.blockChain.NodeByHash(&node.Data.(*blockchainNodeData).block.BestBlock)
+	for bb != nil && bb.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
+		bb = bb.Parent
+	}
+	if bb == nil {
+		return s
+	}
+	mb := b.BestChain.NodeByHeight(-bb.Data.GetNonce() - wire.MINER_RORATE_FREQ)
+	if mb == nil {
+		return s
+	}
+	return s.Add(s, mb.Data.WorkSum())
 }
 
 // isCurrent returns whether or not the chain believes it is current.  Several

@@ -276,9 +276,9 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 
 				m.g.UpdateMinerBlockTime(header.Block.(*wire.MingingRightBlock))
 
-				if m.cfg.ChainParams.ReduceMinDifficulty {
-					targetDifficulty = blockchain.CompactToBig(header.Bits)
-				}
+//				if m.cfg.ChainParams.ReduceMinDifficulty {
+//					targetDifficulty = blockchain.CompactToBig(header.Bits)
+//				}
 
 			default:
 				// Non-blocking select to fall through

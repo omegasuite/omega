@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
+	"math/big"
 	"time"
 
 	"github.com/btcsuite/btcd/blockchain/bccompress"
@@ -1088,6 +1089,10 @@ func (d * blockchainNodeData) GetBits() uint32 {
 
 func (d * blockchainNodeData) GetVersion() int32 {
 	return d.Version
+}
+
+func (d * blockchainNodeData) WorkSum() *big.Int {
+	return big.NewInt(0)
 }
 
 // Header constructs a block header from the node and returns it.

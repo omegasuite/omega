@@ -234,8 +234,10 @@ func Consensus(s PeerNotifier, addr btcutil.Address) {
 				miner.Sync[bh] = CreateSyncer(bh)
 			}
 			log.Infof(" BlockInit at %d for block %s", bh, blk.block.Hash().String())
-			miner.Sync[bh].BlockInit(blk.block)
+			snr := miner.Sync[bh]
 			miner.syncMutex.Unlock()
+
+			snr.BlockInit(blk.block)
 
 		case <- Quit:
 			log.Info("consensus received Quit")

@@ -44,6 +44,10 @@ func (d * blockchainNodeData) GetVersion() int32 {
 	return d.block.Version
 }
 
+func (d * blockchainNodeData) WorkSum() *big.Int {
+	return d.workSum
+}
+
 // Header constructs a block header from the node and returns it.
 //
 // This function is safe for concurrent access.

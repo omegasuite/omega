@@ -2072,3 +2072,7 @@ func New(config *Config) (*BlockChain, error) {
 
 	return &b, nil
 }
+
+func (b *BlockChain) NodeByHash(h *chainhash.Hash) * chainutil.BlockNode {
+	return b.index.LookupNode(h)
+}
