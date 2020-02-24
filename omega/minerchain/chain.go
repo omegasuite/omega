@@ -250,7 +250,9 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 			copy(miners[p.Height - (rotate - wire.CommitteeSize + 1)][:], NodetoHeader(p).Miner)
 		}
 		x = x.Next()
-		p = x.Value.(*chainutil.BlockNode)
+		if x != nil {
+			p = x.Value.(*chainutil.BlockNode)
+		}
 	}
 	contain := false
 	for y != nil {
