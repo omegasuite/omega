@@ -745,16 +745,16 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	isMainchain, isOrphan, err, missing := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
 	if missing > 0 {
-		var h chainhash.Hash
+		var h chainhash.BlockLocator
 		if missing <= sm.chain.Miners.BestSnapshot().Height {
 			mb, _ := sm.chain.Miners.BlockByHeight(missing - 1)
-			h = mb.MsgBlock().PrevBlock
+			h = chainhash.BlockLocator([]*chainhash.Hash{&mb.MsgBlock().PrevBlock})
 		} else {
-			h = sm.chain.Miners.BestSnapshot().Hash
+			h = sm.chain.Miners.(*minerchain.MinerChain).BlockLocatorFromHash(&zeroHash)
 		}
 		sm.addSyncJob(peer,
 			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
-			chainhash.BlockLocator([]*chainhash.Hash{&h}),
+			h,
 			&zeroHash, &zeroHash)
 	}
 
