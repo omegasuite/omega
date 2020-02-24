@@ -93,7 +93,9 @@ func (msg *MsgBlock) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) er
 
 	if enc == SignatureEncoding {
 		for _, tx := range msg.Transactions {
-			tx.ReadSignature(r, pver)
+			if err := tx.ReadSignature(r, pver); err != nil {
+				return err
+			}
 		}
 	}
 
