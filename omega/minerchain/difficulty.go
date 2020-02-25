@@ -189,9 +189,12 @@ func (b *MinerChain) findPrevTestNetDifficulty(startNode *chainutil.BlockNode) u
 // This function differs from the exported CalcNextRequiredDifficulty in that
 // the exported version uses the current best chain as the previous block node
 // while this function accepts any block node.
-func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, error) {
+func (b *MinerChain) 
+
+3we.............................
+	.calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, error) {
 	// Genesis block.
-	if lastNode == nil || lastNode.Height < 100 {
+	if lastNode == nil || lastNode.Height < b.blocksPerRetarget + 10 {
 		return b.chainParams.PowLimitBits, nil
 	}
 

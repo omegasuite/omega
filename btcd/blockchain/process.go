@@ -86,7 +86,12 @@ func (b *BlockChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 	b.ChainLock.Lock()
 	defer b.ChainLock.Unlock()
 
-	block := b.Orphans.GetOrphanBlock(hash).(*wire.MsgBlock)
+	m := b.Orphans.GetOrphanBlock(hash)
+	if m == nil {
+		return true
+	}
+
+	block := m.(*wire.MsgBlock)
 
 	n := b.index.LookupNode(&block.Header.PrevBlock)
 	if n == nil {
