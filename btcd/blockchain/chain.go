@@ -1293,6 +1293,9 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 	for i, p := int32(0), node.Parent; p != nil && i < MinerHoldingPeriod; i++ {
 		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			mb,_ := b.Miners.BlockByHeight(-p.Data.GetNonce() - wire.MINER_RORATE_FREQ)
+			if mb == nil {
+				return false, fmt.Errorf("missing miner block")
+			}
 			var u [20]byte
 			copy(u[:], mb.MsgBlock().Miner)
 			minersonhold[u] = p.Height

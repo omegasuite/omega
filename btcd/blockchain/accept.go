@@ -45,7 +45,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		if prevNode.Data.GetNonce() != -wire.MINER_RORATE_FREQ + 1 {
 			return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ + 1), -1
 		}
-		if _, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ); err != nil {
+		if mb, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ); err != nil || mb == nil {
 			return false, err, -block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ
 		}
 	}
