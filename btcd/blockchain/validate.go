@@ -88,7 +88,7 @@ func IsCoinBaseTx(msgTx *wire.MsgTx) bool {
 	// The previous output of a coin base must have a max value index and
 	// a zero hash.
 	prevOut := &msgTx.TxIn[0].PreviousOutPoint
-	if prevOut.Index != math.MaxUint32 || prevOut.Hash != zeroHash {
+	if prevOut.Hash != zeroHash {		// prevOut.Index != math.MaxUint32 ||
 		return false
 	}
 

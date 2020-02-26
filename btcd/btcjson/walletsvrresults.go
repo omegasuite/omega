@@ -65,6 +65,7 @@ type ListTransactionsResult struct {
 	Account           string   `json:"account"`
 	Address           string   `json:"address,omitempty"`
 	Amount            float64  `json:"amount"`
+	Hash              string   `json:"hash"`
 	BIP125Replaceable string   `json:"bip125-replaceable,omitempty"`
 	BlockHash         string   `json:"blockhash,omitempty"`
 	BlockIndex        *int64   `json:"blockindex,omitempty"`

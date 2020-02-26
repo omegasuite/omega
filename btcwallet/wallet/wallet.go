@@ -1954,11 +1954,16 @@ outputs:
 				}
 			}
 		}
-		if !output.Value.IsNumeric() {
-			panic("Not a numeric token")
+
+		amountF64 := float64(0)
+		hash := ""
+
+		if output.Value.IsNumeric() {
+			amountF64 = btcutil.Amount(output.Value.(*token.NumToken).Val).ToBTC()
+		} else {
+			hash = output.Value.(*token.HashToken).Hash.String()
 		}
 
-		amountF64 := btcutil.Amount(output.Value.(*token.NumToken).Val).ToBTC()
 		result := btcjson.ListTransactionsResult{
 			// Fields left zeroed:
 			//   InvolvesWatchOnly
@@ -1979,6 +1984,7 @@ outputs:
 			WalletConflicts: []string{},
 			Time:            received,
 			TimeReceived:    received,
+			Hash: hash,
 		}
 
 		// Add a received/generated/immature result if this is a credit.

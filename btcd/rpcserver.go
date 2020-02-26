@@ -722,13 +722,19 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		return vinList
 	}
 
-	for i, txIn := range mtx.TxIn {
+	j := 0
+
+	for _, txIn := range mtx.TxIn {
 		// The disassembled string will contain [error] inline
 		// if the script doesn't fully parse, so ignore the
 		// error here.
 //		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
+		if txIn.SignatureIndex == 0xFFFFFFFF {
+			continue
+		}
 		disbuf := hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
-		vinEntry := &vinList[i]
+		vinEntry := &vinList[j]
+		j++
 		vinEntry.Txid = txIn.PreviousOutPoint.Hash.String()
 		vinEntry.Vout = txIn.PreviousOutPoint.Index
 		vinEntry.Sequence = txIn.Sequence
@@ -739,6 +745,8 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 
 		vinEntry.SignatureIndex = txIn.SignatureIndex
 	}
+
+	vinList = vinList[:j]
 
 	return vinList
 }
@@ -818,7 +826,11 @@ func createVoutList(mtx *wire.MsgTx, chainParams *chaincfg.Params, filterAddrMap
 			}
 		}
 		vout.TokenType = v.TokenType
-		vout.Rights = (*v.Rights).String()
+		if v.Rights == nil {
+			vout.Rights = ""
+		} else {
+			vout.Rights = (*v.Rights).String()
+		}
 
 		vout.ScriptPubKey.Addresses = encodedAddrs
 		vout.ScriptPubKey.Asm = disbuf
