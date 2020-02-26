@@ -1492,15 +1492,19 @@ func handleGetBlockHash(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	c := cmd.(*btcjson.GetBlockHashCmd)
 	hash, err := s.cfg.Chain.BlockHashByHeight(int32(c.Index))
 	if err != nil {
-		return nil, err
-		/*
-		&btcjson.RPCError{
+//		fmt.Printf("handleGetBlockHash = %s", err.Error())
+//		return nil, err
+		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCOutOfRange,
 			Message: "Block number out of range",
-		}*/
+		}
 	}
 
-	return hash.String(), nil
+	t := hash.String()
+
+//	fmt.Printf("handleGetBlockHash = %s", t)
+
+	return t, nil
 }
 
 func handleGetMinerBlockHash(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {

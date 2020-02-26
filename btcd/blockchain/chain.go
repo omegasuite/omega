@@ -1628,7 +1628,8 @@ func (b *BlockChain) HeightRange(startHeight, endHeight int32) ([]chainhash.Hash
 
 	// When the requested start height is after the most recent best chain
 	// height, there is nothing to do.
-	latestHeight := b.BestChain.Tip().Height
+	latestHeight := b.BestChain.TipUL().Height
+
 	if startHeight > latestHeight {
 		return nil, nil
 	}

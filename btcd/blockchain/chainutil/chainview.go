@@ -105,6 +105,10 @@ func (c *ChainView) Tip() *BlockNode {
 	return tip
 }
 
+func (c *ChainView) TipUL() *BlockNode {
+	return c.tip()
+}
+
 // setTip sets the chain view to use the provided block node as the current tip
 // and ensures the view is consistent by populating it with the nodes obtained
 // by walking backwards all the way to genesis block as necessary.  Further

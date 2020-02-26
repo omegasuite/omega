@@ -53,13 +53,13 @@ var (
 	// is written to by the Write method of the logWriter type.
 	logRotatorPipe *io.PipeWriter
 
-	log          = backendLog.Logger("BTCW")
-	walletLog    = backendLog.Logger("WLLT")
-	txmgrLog     = backendLog.Logger("TMGR")
-	chainLog     = backendLog.Logger("CHNS")
-	grpcLog      = backendLog.Logger("GRPC")
-	legacyRPCLog = backendLog.Logger("RPCS")
-	btcnLog      = backendLog.Logger("BTCN")
+	log          = backendLog.Logger("BTCW", 0)
+	walletLog    = backendLog.Logger("WLLT", 0)
+	txmgrLog     = backendLog.Logger("TMGR", 0)
+	chainLog     = backendLog.Logger("CHNS", 0)
+	grpcLog      = backendLog.Logger("GRPC", 0)
+	legacyRPCLog = backendLog.Logger("RPCS", 0)
+	btcnLog      = backendLog.Logger("BTCN", 0)
 )
 
 // Initialize package-global logger variables.
