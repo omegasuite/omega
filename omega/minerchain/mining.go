@@ -551,8 +551,9 @@ func (m *CPUMiner) Stop() {
 	}
 
 	close(m.quit)
-	m.wg.Wait()
 	m.started = false
+
+	m.wg.Wait()
 }
 
 // IsMining returns whether or not the CPU miner has been started and is

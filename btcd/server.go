@@ -3409,6 +3409,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 			TxMemPool:    s.txMemPool,
 			Generator:    blockTemplateGenerator,
 			CPUMiner:     s.cpuMiner,
+			MinerMiner:   s.minerMiner,
 			TxIndex:      s.txIndex,
 			AddrIndex:    s.addrIndex,
 			CfIndex:      s.cfIndex,

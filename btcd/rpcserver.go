@@ -996,6 +996,7 @@ func handleEstimateFee(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 // handleGenerate handles generate commands.
 func handleGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	return nil, fmt.Errorf("This interface has been disabled.")
 	// Respond with an error if there are no addresses to pay the
 	// created blocks to.
 	if len(cfg.miningAddrs) == 0 {
@@ -2461,7 +2462,7 @@ func handleGetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 // handleGetHashesPerSec implements the gethashespersec command.
 func handleGetHashesPerSec(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	return int64(s.cfg.CPUMiner.HashesPerSecond()), nil
+	return int64(s.cfg.CPUMiner.HashesPerSecond()) + int64(s.cfg.MinerMiner.HashesPerSecond()), nil
 }
 
 // handleGetHeaders implements the getheaders command.
@@ -3821,6 +3822,7 @@ func handleSetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 	if !generate {
 		s.cfg.CPUMiner.Stop()
+		s.cfg.MinerMiner.Stop()
 	} else {
 		// Respond with an error if there are no addresses to pay the
 		// created blocks to.
@@ -3835,6 +3837,9 @@ func handleSetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 		// It's safe to call start even if it's already started.
 		s.cfg.CPUMiner.SetNumWorkers(int32(genProcLimit))
 		s.cfg.CPUMiner.Start()
+
+		s.cfg.MinerMiner.SetNumWorkers(int32(genProcLimit))
+		s.cfg.MinerMiner.Start()
 	}
 	return nil, nil
 }
@@ -4765,6 +4770,7 @@ type rpcserverConfig struct {
 	// doing regression or simulation testing.
 	Generator *mining.BlkTmplGenerator
 	CPUMiner  *cpuminer.CPUMiner
+	MinerMiner *minerchain.CPUMiner
 
 	// These fields define any optional indexes the RPC server can make use
 	// of to provide additional data when queried.

@@ -245,31 +245,39 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	// normalize time span. account for difficulty adjust factor due to # of exceeding blocks in history
 	normalizedTimespan := int64(0)
 	pb := firstNode
-	mb := b.blockChain.BestChain.Tip()
+	bb := b.blockChain.BestChain.Tip()
 	for i := b.blocksPerRetarget - 2; i >= 0; i-- {
 //		factor := uint32(0)
-		for mb != nil && mb.Hash != pb.Data.(*blockchainNodeData).block.BestBlock {
-			mb = mb.Parent
+		for bb != nil && bb.Hash != pb.Data.(*blockchainNodeData).block.BestBlock {
+			bb = bb.Parent
 		}
-		if mb == nil {
+		if bb == nil {
 			// error. abort recalculation
 			return lastNode.Data.(*blockchainNodeData).block.Bits, fmt.Errorf("unexpected BestBlock for %s", pb.Hash)
 		}
-		for mb != nil && (mb.Hash != chainhash.Hash{}) && (mb.Data.GetNonce() > -wire.MINER_RORATE_FREQ) {
+		mb := bb
+		for mb != nil && (mb.Data.GetNonce() > -wire.MINER_RORATE_FREQ) {
 			mb = mb.Parent
 		}
-		if mb == nil {
+		var h int32
+		if mb != nil {
+			h = - mb.Data.GetNonce() - wire.MINER_RORATE_FREQ
 			// error. abort recalculation
-			return lastNode.Data.(*blockchainNodeData).block.Bits, fmt.Errorf("unexpected BestBlock for %s", pb.Hash)
+//			return lastNode.Data.(*blockchainNodeData).block.Bits, fmt.Errorf("unexpected BestBlock for %s", pb.Hash)
 		}
-		h := - mb.Data.GetNonce() - wire.MINER_RORATE_FREQ
 		d = int(pb.Height - h)
 		nb := pb.Parent
-		if d > wire.DESIRABLE_MINER_CANDIDATES {
-			normalizedTimespan += int64(float64(nb.Data.(*blockchainNodeData).block.Timestamp.Unix() - pb.Data.(*blockchainNodeData).block.Timestamp.Unix())) >> (d - wire.DESIRABLE_MINER_CANDIDATES)  // / factor)
-		} else {
-			normalizedTimespan += int64(float64(nb.Data.(*blockchainNodeData).block.Timestamp.Unix() - pb.Data.(*blockchainNodeData).block.Timestamp.Unix())) // / factor)
+
+		dt := int64(float64(pb.Data.(*blockchainNodeData).block.Timestamp.Unix() - nb.Data.(*blockchainNodeData).block.Timestamp.Unix()))
+
+		if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
+			dt = dt >> wire.SCALEFACTORCAP
+		} else if d > wire.DESIRABLE_MINER_CANDIDATES {
+			dt = dt >> (d - wire.DESIRABLE_MINER_CANDIDATES)
 		}
+
+		normalizedTimespan += dt
+
 		pb = nb
 	}
 

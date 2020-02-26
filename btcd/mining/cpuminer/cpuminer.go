@@ -706,8 +706,9 @@ func (m *CPUMiner) Stop() {
 	m.connLock.Unlock()
 
 	close(m.quit)
-	m.wg.Wait()
 	m.started = false
+
+	m.wg.Wait()
 
 	log.Infof("CPU miner stopped")
 }
