@@ -183,8 +183,14 @@ func (t * Token) ConvertTo(mtx * wire.MsgTx) * wire.TxOut {
 	v.Rights,_ = chainhash.NewHashFromStr(t.Rights)
 
 	if t.TokenType & 1 == 0 {
-		nm,_ := btcutil.NewAmount((t.Value["value"].(float64)))
-		v.Value = &token.NumToken{Val:int64(nm)}
+		if i,ok := t.Value["val"]; ok {
+			if f, ok := i.(float64); ok {
+				nm, _ := btcutil.NewAmount(f)
+				v.Value = &token.NumToken{Val: int64(nm)}
+				return &v
+			}
+		}
+		return nil
 	} else {
 		hh := t.Value["hash"]
 		s := hh.(string)

@@ -215,7 +215,7 @@ func (view *VtxViewpoint) commit() {
 			continue
 		}
 
-		entry.packedFlags ^= TfModified
+		entry.packedFlags &^= TfModified
 	}
 }
 

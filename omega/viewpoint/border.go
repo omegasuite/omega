@@ -414,7 +414,7 @@ func (view * BorderViewpoint) commit() {
 			continue
 		}
 
-		entry.PackedFlags ^= TfModified
+		entry.PackedFlags &^= TfModified
 	}
 }
 

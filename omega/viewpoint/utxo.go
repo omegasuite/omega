@@ -779,7 +779,7 @@ func (view *UtxoViewpoint) commit() {
 			continue
 		}
 
-		entry.packedFlags ^= TfModified
+		entry.packedFlags &^= TfModified
 	}
 }
 

@@ -287,7 +287,7 @@ func credit(wallet []WalletItem, t token.Token) error {
 		case 0:
 			if r.flag & deleteFlag == deleteFlag {
 				r.Token.Value.(*token.NumToken).Val = t.Value.(*token.NumToken).Val
-				r.flag ^= deleteFlag
+				r.flag &^= deleteFlag
 				r.flag |= dirtyFlag
 				wallet[i] = r
 			} else {
@@ -309,7 +309,7 @@ func credit(wallet []WalletItem, t token.Token) error {
 				// TBD: right merge
 				if r.flag & deleteFlag == deleteFlag {
 					r.Token.Value.(*token.NumToken).Val = t.Value.(*token.NumToken).Val
-					r.flag ^= deleteFlag
+					r.flag &^= deleteFlag
 					r.flag |= dirtyFlag
 					wallet[i] = r
 				} else {
@@ -331,7 +331,7 @@ func credit(wallet []WalletItem, t token.Token) error {
 				// TBD: right merge
 				if r.flag & deleteFlag == deleteFlag {
 					r.Token.Value.(*token.NumToken).Val = t.Value.(*token.NumToken).Val
-					r.flag ^= deleteFlag
+					r.flag &^= deleteFlag
 					r.flag |= dirtyFlag
 					wallet[i] = r
 				} else {
@@ -745,7 +745,7 @@ func (d * stateDB) SetState(loc * chainhash.Hash, val chainhash.Hash) {
 	if _,ok := d.data[*loc]; ok {
 		e := d.data[*loc]
 		if e.flag & deleteFlag != 0 {
-			e.flag ^= deleteFlag
+			e.flag &^= deleteFlag
 			d.data[*loc] = e
 		}
 
@@ -900,7 +900,7 @@ func (d * stateDB) Commit(block uint64) {
 					return err
 				}
 				t.flag = inStoreFlag
-				t.flag ^= dirtyFlag | outStoreFlag
+				t.flag &^= dirtyFlag | outStoreFlag
 				d.data[k] = t
 			}
 		}
@@ -927,7 +927,7 @@ func (d * stateDB) Commit(block uint64) {
 					return err
 				}
 				t.flag = inStoreFlag
-				t.flag ^= dirtyFlag | outStoreFlag
+				t.flag &^= dirtyFlag | outStoreFlag
 				d.meta[k] = t
 			}
 		}

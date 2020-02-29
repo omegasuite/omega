@@ -648,6 +648,9 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 			}
 */
 			txOut := amount.ConvertTo(mtx)
+			if txOut == nil {
+				return nil, fmt.Errorf("Unable to convert txout")
+			}
 			txOut.PkScript = pkScript
 			mtx.AddTxOut(mtx.RemapTxout(txOut))
 		}

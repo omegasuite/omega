@@ -1011,7 +1011,7 @@ ret:
 			}
 		}
 		buf := wbuf.Bytes()
-		for p := ((len(buf) + 31) ^ 0x1F) - 32; p >= 0; p -= 32 {
+		for p := ((len(buf) + 31) &^ 0x1F) - 32; p >= 0; p -= 32 {
 			var hash chainhash.Hash
 			copy(hash[:], buf[p:])
 
@@ -1045,7 +1045,7 @@ ret:
 			}
 			if bytes.Compare(wbuf.Bytes(), contract.Code[*pc + 1:uint64(*pc) + clen]) == 0 {
 				buf := wbuf.Bytes()
-				for p := ((len(buf) + 31) ^ 0x1F) - 32; p >= 0; p -= 32 {
+				for p := ((len(buf) + 31) &^ 0x1F) - 32; p >= 0; p -= 32 {
 					var hash chainhash.Hash
 					copy(hash[:], buf[p:])
 
@@ -1072,7 +1072,7 @@ ret:
 		for _, txi := range ovm.GetTx().TxIn {
 			buf := txi.PreviousOutPoint.ToBytes()
 			if bytes.Compare(buf, contract.Code[*pc + 1:uint64(*pc) + clen]) == 0 {
-				for p := ((len(buf) + 31) ^ 0x1F) - 32; p >= 0; p -= 32 {
+				for p := ((len(buf) + 31) &^ 0x1F) - 32; p >= 0; p -= 32 {
 					var hash chainhash.Hash
 					copy(hash[:], buf[p:])
 
@@ -1096,7 +1096,7 @@ ret:
 	case 4:		// specific script
 		l := binary.LittleEndian.Uint32(contract.Code[*pc + 1:])
 		buf := contract.Code[*pc + 5:uint32(*pc) + 5 + l]
-		for p := ((len(buf) + 31) ^ 0x1F) - 32; p >= 0; p -= 32 {
+		for p := ((len(buf) + 31) &^ 0x1F) - 32; p >= 0; p -= 32 {
 			var hash chainhash.Hash
 			copy(hash[:], buf[p:])
 

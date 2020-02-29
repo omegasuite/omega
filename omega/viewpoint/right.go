@@ -70,14 +70,14 @@ func (entry * RightEntry) toRightSet() * token.RightSetDef {
 func (entry * RightEntry) Sibling() chainhash.Hash {
 	s := entry.ToToken()
 	if s.Attrib & (token.Monitor | token.Monitored) == 0 {
-		s.Attrib ^= token.NegativeRight
+		s.Attrib &^= token.NegativeRight
 	} else if s.Attrib & token.IsMonitorCall != 0 {
-		s.Attrib ^= token.Monitor | token.Monitored | token.NegativeRight
+		s.Attrib &^= token.Monitor | token.Monitored | token.NegativeRight
 		if (s.Attrib & token.Monitor) != 0 {
 			s.Attrib |= token.Unsplittable
 		}
 	} else {
-		s.Attrib ^= token.NegativeRight
+		s.Attrib &^= token.NegativeRight
 	}
 
 	return s.Hash()
@@ -89,7 +89,7 @@ func (entry * RightEntry) Monitoring() chainhash.Hash {
 		return chainhash.Hash{}
 	}
 
-	s.Attrib ^= token.Monitor | token.Monitored | token.NegativeRight
+	s.Attrib &^= token.Monitor | token.Monitored | token.NegativeRight
 
 	return s.Hash()
 }
@@ -453,7 +453,7 @@ func (view * RightViewpoint) commit() {
 			continue
 		}
 
-		entry.(*RightEntry).PackedFlags ^= TfModified
+		entry.(*RightEntry).PackedFlags &^= TfModified
 	}
 }
 

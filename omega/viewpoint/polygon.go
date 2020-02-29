@@ -234,7 +234,7 @@ func (view * PolygonViewpoint) commit() {
 			continue
 		}
 
-		entry.PackedFlags ^= TfModified
+		entry.PackedFlags &^= TfModified
 	}
 }
 

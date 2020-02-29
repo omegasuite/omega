@@ -119,7 +119,7 @@ func (self *Syncer) repeater() {
 		//					continue
 		//				}
 		// about my tree, if I know somthing someone does not know, send him info
-		k = k ^ allm
+		k = k &^ allm
 		if k == 0 {
 			continue
 		}
@@ -139,7 +139,7 @@ func (self *Syncer) repeater() {
 					self.knowledges.Knowledge[self.Myself][i] |= m
 					self.knowledges.Knowledge[self.Myself][self.Myself] |= m
 				}
-				k ^= m
+				k &^= m
 				sent = true
 				if k == 0 {
 					break

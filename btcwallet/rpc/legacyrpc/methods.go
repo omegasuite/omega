@@ -1673,7 +1673,7 @@ func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.R
 		return nil, err
 	}
 	var tx wire.MsgTx
-	err = tx.Deserialize(bytes.NewBuffer(serializedTx))
+	err = tx.DeserializeNoWitness(bytes.NewBuffer(serializedTx))
 	if err != nil {
 		e := errors.New("TX decode failed")
 		return nil, DeserializationError{e}

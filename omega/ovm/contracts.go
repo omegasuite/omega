@@ -256,7 +256,7 @@ func (p *pay2scripths) Run(input []byte) ([]byte, error) {
 	for pos < len(input) {
 		l := binary.LittleEndian.Uint32(input[pos:])
 		text := input[pos + 32:pos + 32 + int(l)]
-		pos = pos + 32 + int((l + 31) ^ 0x1F)
+		pos = pos + 32 + int((l + 31) &^ 0x1F)
 
 		hash := Hash160(text)
 
@@ -302,7 +302,7 @@ func (p *pay2pkhs) Run(input []byte) ([]byte, error) {
 	l := binary.LittleEndian.Uint32(input[pos:])
 	pos += 32
 	text := input[pos:pos + int(l)]
-	pos += int(((l + 31) ^ 0x1F))
+	pos += int(((l + 31) &^ 0x1F))
 
 	hash := chainhash.DoubleHashB(text)
 
@@ -320,7 +320,7 @@ func (p *pay2pkhs) Run(input []byte) ([]byte, error) {
 		siglen := binary.LittleEndian.Uint32(input[pos:])
 		sigBytes := input[pos+32 : pos+32+int(siglen)]
 
-		pos = (pos+32+int(siglen)+31) ^ 0x1F
+		pos = (pos+32+int(siglen)+31) &^ 0x1F
 
 		pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
 		if err != nil {
@@ -502,7 +502,7 @@ func (m * mint) Run(input []byte) ([]byte, error) {
 
 			mtype, issue = version, 0
 
-			return DbPutVersion(dbTx, key, (version+4)^3)
+			return DbPutVersion(dbTx, key, (version+4)&^3)
 		})
 
 		m.ovm.StateDB[contract].SetMint(mtype, md)
