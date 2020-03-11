@@ -976,7 +976,7 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 
 	// The previous output of a coin base must have a zero hash. index is height of the block.
 	prevOut := &msgTx.TxIn[0].PreviousOutPoint
-	if !prevOut.Hash.IsEqual(&chainhash.Hash{}) || prevOut.Index != 0xFFFFFFFF {	// prevOut.Index != math.MaxUint32 ||
+	if !prevOut.Hash.IsEqual(&chainhash.Hash{}) {	// prevOut.Index != math.MaxUint32 ||
 		return false
 	}
 
