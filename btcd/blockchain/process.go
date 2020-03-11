@@ -260,7 +260,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 //	fastAdd := flags&BFFastAdd == BFFastAdd
-
 	blockHash := block.Hash()
 
 	// The block must not already exist in the main chain or side chains.
@@ -308,14 +307,14 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	isMainChain := false
 
+	// don't check POW if we are to extending a side chain and this is a comittee block
+	// leave the work to reorg
 	if flags & BFNoConnect == BFNoConnect {
 		// this mark an pre-consus block
 //		b.AddOrphanBlock(block)
 		return isMainChain, false, nil, -1
 	}
 
-	// don't check POW if we are to extending a side chain and this is a comittee block
-	// leave the work to reorg
 	err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
 	if err != nil {
 		return isMainChain, true, err, -1
@@ -326,20 +325,13 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return isMainChain, true, nil, -1
 	}
 
-	//	if b.Miners.BestSnapshot().Height >= int32(requiredRotate) {
-		isMainChain, err, missing := b.maybeAcceptBlock(block, flags)
-		if missing > 0 {
+	isMainChain, err, missing := b.maybeAcceptBlock(block, flags)
+	if missing > 0 {
 			return false, false, err, missing
 		}
-		if err != nil {
+	if err != nil {
 			return false, false, err, -1
 		}
-//	} else {
-		// add it as an orphan. whenever a Miner block is added,
-		// we shall call ProcessOrphans with tip of best tx chain hash as param.
-//		b.AddOrphanBlock(block)
-//		return false, true, nil
-//	}
 
 	if isMainChain {
 		b.Miners.ProcessOrphans(&b.Miners.BestSnapshot().Hash, BFNone)
@@ -353,10 +345,10 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// there are no more.
 	err = b.ProcessOrphans(blockHash, BFNone)	// flags)
 //	if err != nil {
-//		return false, false, err
+//		return false, false, err, -1
 //	}
 
-	log.Debugf("Accepted block %v", blockHash)
+//	log.Debugf("Accepted block %v", blockHash)
 //	log.Infof("ProcessBlock: Tx chian = %d Miner chain = %d", b.BestSnapshot().Height, b.Miners.BestSnapshot().Height)
 
 	log.Infof("ProcessBlock finished with height = %d Miner height = %d Orphans = %d", b.BestSnapshot().Height,
@@ -422,16 +414,14 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 			return false
 		}
 
-		var n [20]byte
-		copy(n[:], blk.MsgBlock().Miner)
-		miners[n] = struct{}{}
+		miners[blk.MsgBlock().Miner] = struct{}{}
 	}
 
 	for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 		k, _ := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
 		// is the signer in committee?
-		if _,ok := miners[*pk.AddressPubKeyHash().Hash160()]; !ok {
+		if _,ok := miners[*(pk.AddressPubKeyHash().Hash160())]; !ok {
 //			b.index.RemoveNode(b.index.LookupNode(block.Hash()))
 			return false
 		}

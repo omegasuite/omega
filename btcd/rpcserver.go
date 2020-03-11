@@ -1369,7 +1369,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 	params := s.cfg.ChainParams
 	blockHeader := blk.MsgBlock()
 
-	d,_ := btcutil.NewAddressPubKeyHash(blockHeader.Miner, params)
+	d,_ := btcutil.NewAddressPubKeyHash(blockHeader.Miner[:], params)
 	collateral := make([]string, 0)
 	for _,c := range blockHeader.Utxos {
 		s := fmt.Sprintf("%s:%d", c.Hash.String(), c.Index)
@@ -4006,11 +4006,10 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 				block.Hash().String(), height, err.Error())
 			return err.Error(), err
 		}
-		var name[20]byte
-		copy(name[:], block.MsgBlock().Miner)
-		if chain.Blacklist.IsGrey(name) {
-			rpcsLog.Errorf("Blacklised Miner %x", name[:])
-			t := fmt.Sprintf("Blacklised Miner %x", name[:])
+
+		if chain.Blacklist.IsGrey(block.MsgBlock().Miner) {
+			rpcsLog.Errorf("Blacklised Miner %x", block.MsgBlock().Miner[:])
+			t := fmt.Sprintf("Blacklised Miner %x", block.MsgBlock().Miner[:])
 			return t, nil
 		}
 

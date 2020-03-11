@@ -240,14 +240,14 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	miners := make([][20]byte, wire.CommitteeSize)
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		if blk, _ := b.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
-			copy(miners[i][:], blk.MsgBlock().Miner)
+			miners[i] = blk.MsgBlock().Miner
 		}
 	}
 
 	x, y, p := attachNodes.Front(), txattachNodes.Front(), forkNode
 	for x != nil && rotate >= p.Height {
 		if p.Height > rotate - wire.CommitteeSize {
-			copy(miners[p.Height - (rotate - wire.CommitteeSize + 1)][:], NodetoHeader(p).Miner)
+			miners[p.Height - (rotate - wire.CommitteeSize + 1)] = NodetoHeader(p).Miner
 		}
 		x = x.Next()
 		if x != nil {
@@ -290,7 +290,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 			}
 			for k := int32(0); k < shift; k++ {
 				rotate++
-				copy(miners[j][:], NodetoHeader(n).Miner)
+				miners[j] = NodetoHeader(n).Miner
 				x = x.Next()
 				if x != nil {
 					n = x.Value.(*chainutil.BlockNode)

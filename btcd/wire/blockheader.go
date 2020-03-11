@@ -110,7 +110,7 @@ type MingingRightBlock struct {
 	Nonce int32
 
 	// new committee member.
-	Miner []byte // address (pubkey hash) of new member for next committee
+	Miner [20]byte // address (pubkey hash) of new member for next committee
 
 	Connection []byte	// connection info. either an IP:port address or an RSA pubkey
 
@@ -331,15 +331,16 @@ func NewMinerNodeBlock(version int32, prevHash, referredHash, bestHash *chainhas
 
 	// Limit the timestamp to one second precision since the protocol
 	// doesn't support better.
-	return &MingingRightBlock{
+	t := &MingingRightBlock{
 		Version:       version,
 		PrevBlock:     *prevHash,
 		BestBlock:     *bestHash,
 		Timestamp:     time.Unix(time.Now().Unix(), 0),
 		Bits:          bits,
 		Nonce:         nonce,
-		Miner:         address,
 	}
+	copy(t.Miner[:], address)
+	return t
 }
 
 // readBlockHeader reads a bitcoin block header from r.  See Deserialize for
@@ -354,7 +355,7 @@ func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
 	if err != nil {
 		return err
 	}
-	bh.Miner = t
+	copy(bh.Miner[:], t)
 	t, err = common.ReadVarBytes(r, 0, 80, "Connection")
 	if err != nil {
 		return err
@@ -397,7 +398,7 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 		bh.BestBlock, sec, bh.Bits, bh.Nonce); err != nil {
 		return err
 	}
-	if err := common.WriteVarBytes(w, 0, bh.Miner); err != nil {
+	if err := common.WriteVarBytes(w, 0, bh.Miner[:]); err != nil {
 		return err
 	}
 	if err := common.WriteVarBytes(w, 0, bh.Connection); err != nil {

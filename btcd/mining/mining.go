@@ -947,10 +947,10 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 		Timestamp:     ts,
 		Bits:          reqDifficulty,
 		BestBlock:     cbest.Hash,
-		Miner:         payToAddress.ScriptAddress(),
 		Utxos:		   utxos,
 		BlackList:     make([]wire.BlackList, 0),
 	}
+	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())
 
 	// Finally, perform a full check on the created block against the Chain
 	// consensus rules to ensure it properly connects to the current best
@@ -1080,7 +1080,7 @@ func (g *BlkTmplGenerator) ActiveMiner(address btcutil.Address) bool {
 	for n < h {
 		n++
 		m,_ := g.Chain.Miners.BlockByHeight(int32(n))
-		if bytes.Compare(address.ScriptAddress(), m.MsgBlock().Miner) == 0 {
+		if bytes.Compare(address.ScriptAddress(), m.MsgBlock().Miner[:]) == 0 {
 			// if it is in committee, not allowed to do POW mining
 			return true
 		}
@@ -1101,9 +1101,7 @@ func (g *BlkTmplGenerator) Committee() map[[20]byte]struct{} {
 	for n < h {
 		n++
 		if m,_ := g.Chain.Miners.BlockByHeight(int32(n)); m != nil {
-			var adr [20]byte
-			copy(adr[:], m.MsgBlock().Miner)
-			adrs[adr] = struct{}{}
+			adrs[m.MsgBlock().Miner] = struct{}{}
 		}
 	}
 

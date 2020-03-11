@@ -483,16 +483,15 @@ func main() {
 			if err != nil {
 				log.Print(err)
 			} else {
-				mn := minerName[fmt.Sprintf("%x", res.Miner)]
+				mn := minerName[fmt.Sprintf("%x", res.Miner[:])]
 
 				log.Printf("Header.Version:%d\n", res.Version)
 				log.Printf("Nonce:%d\n", res.Nonce)
 				log.Printf("Bits:%d\n", res.Bits)
 				log.Printf("Timestamp:%d\n", res.Timestamp)
 				log.Printf("PrevBlock:%s\n", res.PrevBlock.String())
-				log.Printf("ReferredBlock:%s\n", res.ReferredBlock.String())
 				log.Printf("BestBlock:%s\n", res.BestBlock.String())
-				log.Printf("Miner:%s (%s)\n", hex.EncodeToString(res.Miner), mn)
+				log.Printf("Miner:%s (%s)\n", hex.EncodeToString(res.Miner[:]), mn)
 				log.Printf("Connection:%s\n", string(res.Connection))
 //				log.Printf("Header.BlackList:%s\n", hex.EncodeToString(res.BlackList))
 			}
@@ -540,7 +539,7 @@ func main() {
 						log.Printf("ReferredBlock:%s\n", blk.ReferredBlock.String())
 						log.Printf("BestBlock:%s\n", blk.BestBlock.String())
 					}
-					log.Printf("Miner:%s (%s)\n", hex.EncodeToString(blk.Miner), mn)
+					log.Printf("Miner:%s (%s)\n", hex.EncodeToString(blk.Miner[:]), mn)
 					log.Printf("Connection:%s\n", string(blk.Connection))
 
 //					log.Printf("Header.BlackList:%s\n", hex.EncodeToString(blk.BlackList))

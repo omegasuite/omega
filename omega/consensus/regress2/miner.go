@@ -295,16 +295,15 @@ func main() {
 
 	server.minerBlocks = make([]wire.MinerBlock, 0)
 	i := int32(0)
-	var name [20]byte
+
 	log.Infof("I am %d. all key holders:", options.Myself)
 	for _, mnr := range privKeys {
 		log.Infof("%x", mnr.address)
-		blk := wire.NewMinerBlock(&wire.MingingRightBlock {Miner: make([]byte, 20)})
-		copy(blk.MsgBlock().Miner, mnr.address[:])
+		blk := wire.NewMinerBlock(&wire.MingingRightBlock {})
+		copy(blk.MsgBlock().Miner[:], mnr.address[:])
 		blk.SetHeight(i)
 		if i == int32(options.Myself) {
-			name = mnr.address
-			consensus.SetMiner(name)
+			consensus.SetMiner(blk.MsgBlock().Miner)
 		}
 		i++
 		t := *blk

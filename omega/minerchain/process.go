@@ -173,9 +173,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, false, err, nil
 	}
 
-	var name[20]byte
-	copy(name[:], block.MsgBlock().Miner)
-	if b.blockChain.Blacklist.IsGrey(name) {
+	if b.blockChain.Blacklist.IsGrey(block.MsgBlock().Miner) {
 		return false, false, fmt.Errorf("Blacklised Miner"), nil
 	}
 

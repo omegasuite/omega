@@ -893,20 +893,19 @@ func (self *Syncer) SetCommittee() {
 		if blk == nil {
 			return
 		}
-		var adr [20]byte
-		copy(adr[:], blk.MsgBlock().Miner)
+
 		who := i - (c - wire.CommitteeSize + 1)
 
-		self.Members[adr] = who
-		self.Names[who] = adr
+		self.Members[blk.MsgBlock().Miner] = who
+		self.Names[who] = blk.MsgBlock().Miner
 
-		if bytes.Compare(self.Me[:], adr[:]) == 0 {
+		if bytes.Compare(self.Me[:], blk.MsgBlock().Miner[:]) == 0 {
 			self.Myself = who
 			in = true
 			log.Infof("My local designation in committee is %d", self.Myself)
 		}
 
-		log.Infof("Member %d is %x", who, adr)
+		log.Infof("Member %d is %x", who, blk.MsgBlock().Miner)
 	}
 
 	self.knowledges = CreateKnowledge(self)

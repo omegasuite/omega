@@ -56,7 +56,6 @@ func (s* server) trying() {
 
 					done := make(chan bool)
 					q.sp.QueueMessageWithEncoding(m, done, wire.SignatureEncoding)
-//					q.sp.QueueMessageWithEncoding(m, done, wire.SignatureEncoding)
 					r := <- done
 
 					if !r {
@@ -145,12 +144,10 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	}
 
 	// check signature
-	var miner [20]byte
-	copy(miner[:], mb.MsgBlock().Miner)
 	pk, _ := btcutil.NewAddressPubKeyPubKey(*k, sp.server.chainParams)
 	pkh := pk.AddressPubKeyHash().Hash160()
 
-	if bytes.Compare(pkh[:], miner[:]) != 0 {
+	if bytes.Compare(pkh[:], mb.MsgBlock().Miner[:]) != 0 {
 		// refuse by disconnect
 		consensusLog.Infof("refuses AckInv. disconnect from %s", sp.Addr())
 //		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
@@ -184,7 +181,7 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	// have we already connected to it?
 	refused := false
 	sp.server.peerState.forAllPeers(func(ob * serverPeer) {
-		if sp != ob && bytes.Compare(ob.Peer.Miner[:], miner[:]) == 0 {
+		if sp != ob && bytes.Compare(ob.Peer.Miner[:], mb.MsgBlock().Miner[:]) == 0 {
 			// refuse by disconnect
 			refused = true
 		}
@@ -195,10 +192,10 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	}
 
 	sp.server.peerState.cmutex.Lock()
-	if sp.server.peerState.committee[miner] == nil {
-		sp.server.peerState.committee[miner] = &committeeState{ peers: make([]*serverPeer, 0) }
+	if sp.server.peerState.committee[mb.MsgBlock().Miner] == nil {
+		sp.server.peerState.committee[mb.MsgBlock().Miner] = &committeeState{ peers: make([]*serverPeer, 0) }
 	}
-	m := sp.server.peerState.committee[miner]
+	m := sp.server.peerState.committee[mb.MsgBlock().Miner]
 	sp.server.peerState.cmutex.Unlock()
 
 	m.peers = append(m.peers, sp)
@@ -216,7 +213,7 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	}
 
 	sp.Peer.Committee = msg.Invitation.Height
-	copy(sp.Peer.Miner[:], miner[:])
+	copy(sp.Peer.Miner[:], mb.MsgBlock().Miner[:])
 }
 
 func (s *server) SendInvAck(peer [20]byte, sp *serverPeer) {
@@ -282,13 +279,10 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 			}
 
 			// check signature
-			var miner [20]byte
-			copy(miner[:], mb.MsgBlock().Miner)
-
 			pk, _ := btcutil.NewAddressPubKeyPubKey(*k, sp.server.chainParams)
 			pkh := pk.AddressPubKeyHash().Hash160()
 
-			if bytes.Compare(pkh[:], miner[:]) != 0 {
+			if bytes.Compare(pkh[:], mb.MsgBlock().Miner[:]) != 0 {
 				return
 			}
 
@@ -317,15 +311,15 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 			isin := false
 
 			sp.server.peerState.cmutex.Lock()
-			if _, ok := sp.server.peerState.committee[miner]; !ok {
-				sp.server.peerState.committee[miner] = newCommitteeState()
+			if _, ok := sp.server.peerState.committee[mb.MsgBlock().Miner]; !ok {
+				sp.server.peerState.committee[mb.MsgBlock().Miner] = newCommitteeState()
 			}
-			m := sp.server.peerState.committee[miner]
+			m := sp.server.peerState.committee[mb.MsgBlock().Miner]
 			sp.server.peerState.cmutex.Unlock()
 
 			for _, p := range m.peers {
 				if p.Connected() {
-					sp.server.SendInvAck(miner, p)
+					sp.server.SendInvAck(mb.MsgBlock().Miner, p)
 					return
 				}
 			}
@@ -335,9 +329,9 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 					m.peers = append(m.peers, ob)
 
 					ob.Peer.Committee = inv.Height
-					copy(ob.Peer.Miner[:], miner[:])
+					copy(ob.Peer.Miner[:], mb.MsgBlock().Miner[:])
 
-					sp.server.SendInvAck(miner, ob)
+					sp.server.SendInvAck(mb.MsgBlock().Miner, ob)
 
 					isin = true
 				}
@@ -349,9 +343,9 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 					m.peers = append(m.peers, p)
 
 					p.Peer.Committee = inv.Height
-					copy(p.Peer.Miner[:], miner[:])
+					copy(p.Peer.Miner[:], mb.MsgBlock().Miner[:])
 
-					sp.server.SendInvAck(miner, p)
+					sp.server.SendInvAck(mb.MsgBlock().Miner, p)
 				}
 
 //				go sp.server.makeConnection(tcp.String(), miner, )
@@ -360,7 +354,7 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 					Addr:      tcp,
 					Permanent: false,
 					Committee: inv.Height,
-					Miner: miner,
+					Miner: mb.MsgBlock().Miner,
 					Initcallback: callback,
 				})
 			}
@@ -398,9 +392,7 @@ func (s *server) phaseoutCommittee(r int32) {
 	for j := r; j < r + advanceCommitteeConnection + wire.CommitteeSize; j++ {
 		mb, _ := b.Miners.BlockByHeight(j)
 		if mb != nil {
-			var name [20]byte
-			copy(name[:], mb.MsgBlock().Miner)
-			keep[name] = struct{}{}
+			keep[mb.MsgBlock().Miner] = struct{}{}
 		} else {
 			break
 		}
@@ -647,26 +639,23 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 		if mb == nil {
 			break
 		}
-		var miner [20]byte
 
 		if s.chain.CheckCollateral(mb, blockchain.BFNone) != nil {
 			continue
 		}
 
-		copy(miner[:], mb.MsgBlock().Miner)
-
-		if _, ok := state.committee[miner]; !ok {
-			state.committee[miner] = newCommitteeState()
+		if _, ok := state.committee[mb.MsgBlock().Miner]; !ok {
+			state.committee[mb.MsgBlock().Miner] = newCommitteeState()
 		}
 
 		s.peerState.cmutex.Unlock()
-		p := s.peerState.peerByName(miner[:])
+		p := s.peerState.peerByName(mb.MsgBlock().Miner[:])
 		s.peerState.cmutex.Lock()
 
 		if p != nil {
-			state.committee[miner].peers = append(state.committee[miner].peers, p)
+			state.committee[mb.MsgBlock().Miner].peers = append(state.committee[mb.MsgBlock().Miner].peers, p)
 			p.Peer.Committee = j
-			s.SendInvAck(miner, p)
+			s.SendInvAck(mb.MsgBlock().Miner, p)
 			continue
 		}
 
@@ -675,7 +664,7 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 		// if it is an IP address, connect directly,
 		// otherwise, broadcast q request for connection msg.
 		conn := mb.MsgBlock().Connection
-		s.makeConnection(conn, miner, j, me)
+		s.makeConnection(conn, mb.MsgBlock().Miner, j, me)
 	}
 
 	s.peerState.cmutex.Unlock()
@@ -775,9 +764,7 @@ func (s *server) CommitteePolling() {
 	for i := 0; i < wire.CommitteeSize; i++ {
 		blk,_ := s.chain.Miners.BlockByHeight(int32(best.LastRotation) - int32(i))
 		if blk != nil {
-			var nname [20]byte
-			copy(nname[:], blk.MsgBlock().Miner)
-			cmt[nname] = blk
+			cmt[blk.MsgBlock().Miner] = blk
 		}
 	}
 

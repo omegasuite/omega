@@ -80,12 +80,16 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		return false, err, -1
 	}
 
-	// Connect the passed block to the chain while respecting proper chain
-	// selection according to the chain with the most proof of work.  This
-	// also handles validation of the transaction scripts.
-	isMainChain, err := b.connectBestChain(newNode, block, flags)
-	if err != nil {
-		return false, err, -1
+	isMainChain := false
+	wm, _ := b.BlockHeightByHash(&b.Miners.Tip().MsgBlock().BestBlock)
+	if block.Height() > wm {
+		// Connect the passed block to the chain while respecting proper chain
+		// selection according to the chain with the most proof of work.  This
+		// also handles validation of the transaction scripts.
+		isMainChain, err = b.connectBestChain(newNode, block, flags)
+		if err != nil {
+			return false, err, -1
+		}
 	}
 
 	// Notify the caller that the new block was accepted into the block

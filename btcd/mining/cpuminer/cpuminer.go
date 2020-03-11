@@ -644,7 +644,7 @@ func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
 			ntx.PkScript = make([]byte, 25)
 			ntx.PkScript[0] = m.cfg.ChainParams.PubKeyHashAddrID
 			ntx.PkScript[21] = ovm.OP_PAY2PKH
-			copy(ntx.PkScript[1:21], mb.MsgBlock().Miner)
+			copy(ntx.PkScript[1:21], mb.MsgBlock().Miner[:])
 			tx.TxOut = append(tx.TxOut, &ntx)
 			good++
 		}

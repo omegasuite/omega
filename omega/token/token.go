@@ -29,7 +29,7 @@ const (
 	// definition related consts. to defined a new vertes, border, polygon, rightset, or a right
 	DefTypeVertex = 0
 	DefTypeBorder = 1
-	DefTypePolygon = 2		// also a loop, canbe mixed
+	DefTypePolygon = 2		// also a loop, can be mixed
 	//	DefTypePolyhedron = 3
 	DefTypeRight = 4
 	DefTypeRightSet = 5
@@ -42,7 +42,7 @@ const (
 // right flag masks
 const (
 	NegativeRight	=		1		// define whether the desc is positive or nagative
-	Unsplittable =		2		// whether this right may be aplitted futher
+	Unsplittable =			2		// whether this right may be aplitted futher
 	Monitored	=			4		// whether token with this right is monitored, splitted subrights inherits this flag
 	Monitor =				8		// this is for the monitoring token
 	IsMonitorCall	 =		16		// whether desc defines a coontract call for monitoring
@@ -64,7 +64,6 @@ type VertexDef struct {
 	Lat int32
 	Lng int32
 	Alt int32
-//	Desc []byte
 }
 
 func (t * VertexDef) DefType() uint8 {
@@ -73,15 +72,11 @@ func (t * VertexDef) DefType() uint8 {
 
 func (t * VertexDef) Hash() chainhash.Hash {
 	if t.hash == nil {
-//		buf := bytes.NewBuffer(make([]byte, 0, t.SerializeSize() - VarIntSerializeSize(uint64(len(t.Desc)))))
-//		writeElements(buf, DefTypeVertex, t.Lat, t.Lng, t.Desc)
-//		hash := chainhash.DoubleHashH(buf.Bytes())
-
 		b := make([]byte, 12)	// + len(t.Desc))
 		binary.LittleEndian.PutUint32(b[0:], uint32(t.Lat))
 		binary.LittleEndian.PutUint32(b[4:], uint32(t.Lng))
 		binary.LittleEndian.PutUint32(b[8:], uint32(t.Alt))
-//		copy(b[8:], t.Desc)
+
 		hash := chainhash.HashH(b)
 
 		t.hash = &hash
@@ -90,17 +85,16 @@ func (t * VertexDef) Hash() chainhash.Hash {
 }
 
 func (t * VertexDef) SerializeSize() int {
-	return 1 + 4 + 4	// + common.VarIntSerializeSize(uint64(len(t.Desc))) + len(t.Desc)
+	return 4 + 4 + 4
 }
 
 func (t * VertexDef) Size() int {
-	return 1 + 4 + 4	// + 4	+ len(t.Desc)
+	return 4 + 4 + 4
 }
 
 func NewVertexDef(lat, lng, alt int32) (* VertexDef) {
 	t := VertexDef{}
-//	t.Desc = make([]byte, len(desc))
-//	copy(t.Desc, desc)
+
 	t.Lat = lat
 	t.Lng = lng
 	t.Alt = alt
@@ -127,16 +121,6 @@ func (msg * VertexDef) MemRead(r io.Reader, pver uint32) error {
 	}
 	msg.Alt = int32(alt)
 
-//	count, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
-//	if err != nil {
-//		return err
-//	}
-
-//	msg.Desc = make([]byte, count, count)
-//	if _, err = io.ReadFull(r, msg.Desc[:]); err != nil {
-//		return err
-//	}
-
 	return nil
 }
 
@@ -159,16 +143,6 @@ func (msg * VertexDef) Read(r io.Reader, pver uint32) error {
 	}
 	msg.Alt = int32(alt)
 
-	//	count, err := common.ReadVarInt(r, pver)
-//	if err != nil {
-//		return err
-//	}
-
-//	msg.Desc = make([]byte, count, count)
-//	if _, err = io.ReadFull(r, msg.Desc[:]); err != nil {
-//		return err
-//	}
-
 	return nil
 }
 
@@ -187,13 +161,6 @@ func (msg * VertexDef) Write(w io.Writer, pver uint32) error {
 		return err
 	}
 
-	//	count := uint64(len(msg.Desc))
-//	err = common.WriteVarInt(w, pver, count)
-//	if err != nil {
-//		return err
-//	}
-//	_, err = w.Write(msg.Desc)
-
 	return err
 }
 
@@ -211,14 +178,6 @@ func (msg * VertexDef) MemWrite(w io.Writer, pver uint32) error {
 	if err != nil {
 		return err
 	}
-
-
-//	count := uint64(len(msg.Desc))
-//	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(count))
-//	if err != nil {
-//		return err
-//	}
-//	_, err = w.Write(msg.Desc)
 
 	return err
 }

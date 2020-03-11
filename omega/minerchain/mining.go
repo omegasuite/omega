@@ -314,7 +314,7 @@ func (g * MinerChain) QualifiedMier(privKeys map[btcutil.Address]*btcec.PrivateK
 		good = true
 		for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
 			p, _ := g.BlockByHeight(curHeight - int32(i))
-			if bytes.Compare(p.MsgBlock().Miner, addr.ScriptAddress()) == 0 {
+			if bytes.Compare(p.MsgBlock().Miner[:], addr.ScriptAddress()) == 0 {
 				good = false
 				break
 			}
@@ -396,7 +396,7 @@ out:
 				log.Infof("miner.generateBlocks incorrect height %d out of ", curHeight - int32(i), curHeight)
 				continue
 			}
-			if bytes.Compare(p.MsgBlock().Miner, m.cfg.SignAddress.ScriptAddress()) == 0 {
+			if bytes.Compare(p.MsgBlock().Miner[:], m.cfg.SignAddress.ScriptAddress()) == 0 {
 				log.Infof("miner.generateBlocks won't mine because I am block %d before the best block %d", curHeight - int32(i), curHeight)
 				good = false
 				break

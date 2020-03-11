@@ -1022,7 +1022,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			if err := b.CheckCollateral(blk, BFNone); err != nil {
 				return err
 			}
-			copy(miners[i][:], blk.MsgBlock().Miner)
+			miners[i] = blk.MsgBlock().Miner
 		}
 	}
 
@@ -1068,7 +1068,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 					if err := b.CheckCollateral(blk, BFNone); err != nil {
 						return err
 					}
-					copy(miners[j][:], blk.MsgBlock().Miner)
+					miners[j] = blk.MsgBlock().Miner
 				} else if shift == 1 {
 					return fmt.Errorf("Incorrect rotation")
 				}
@@ -1163,9 +1163,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	for i := int32(0); p != nil && i < MinerHoldingPeriod; i++ {
 		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			mb,_ := b.Miners.BlockByHeight(-p.Data.GetNonce() - wire.MINER_RORATE_FREQ)
-			var u [20]byte
-			copy(u[:], mb.MsgBlock().Miner)
-			minersonhold[u] = p.Height
+			minersonhold[mb.MsgBlock().Miner] = p.Height
 		}
 		p = p.Parent
 	}
@@ -1213,9 +1211,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 		if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
 			mb,_ := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ)
-			var u [20]byte
-			copy(u[:], mb.MsgBlock().Miner)
-			minersonhold[u] = block.Height()
+			minersonhold[mb.MsgBlock().Miner] = block.Height()
 		}
 
 		b.index.SetStatusFlags(n, chainutil.StatusValid)
@@ -1237,7 +1233,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 // checkBlockSanity check whether the miner has provided sufficient collateral
 func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags) error {
-	utxos := viewpoint.NewUtxoViewpoint(block.MsgBlock().Miner)
+	utxos := viewpoint.NewUtxoViewpoint(block.MsgBlock().Miner[:])
 	sum := int64(0)
 	for _,p := range block.MsgBlock().Utxos {
 		if err := utxos.FetchUtxosMain(b.db, map[wire.OutPoint]struct{}{p: struct{}{}}); err != nil {
@@ -1296,9 +1292,8 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			if mb == nil {
 				return false, fmt.Errorf("missing miner block")
 			}
-			var u [20]byte
-			copy(u[:], mb.MsgBlock().Miner)
-			minersonhold[u] = p.Height
+
+			minersonhold[mb.MsgBlock().Miner] = p.Height
 		}
 		p = p.Parent
 	}

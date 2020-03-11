@@ -304,7 +304,7 @@ func main() {
 		"\n\tTransactions: []*wire.MsgTx{&genesisCoinbaseTx, &genesisInitPolygonTx}," +
 		"\n}", genesisBlock.Header.Timestamp.Unix(), genesisBlock.Header.Nonce)
 
-	fmt.Printf("\n\nvar creator = []byte{0x2f, 0xe0, 0xef, 0x92, 0x85, 0xa1, 0xe, 0x86, 0xc, 0x25," +
+	fmt.Printf("\n\nvar creator = [20]byte{0x2f, 0xe0, 0xef, 0x92, 0x85, 0xa1, 0xe, 0x86, 0xc, 0x25," +
 		"\n\t0xe0, 0x3c, 0x3f, 0xf8, 0x59, 0x93, 0xd3, 0xff, 0xc3, 0x5e, }")
 
 	var minerBlock = wire.MingingRightBlock{
@@ -314,10 +314,10 @@ func main() {
 		Timestamp:     genesisBlock.Header.Timestamp,
 		Bits:          0x1f00ffff,
 		Nonce:         0,
-		Miner:         addr.ScriptAddress(),
 		BlackList:     make([]wire.BlackList, 0),
 		Utxos:		   make([]wire.OutPoint, 0),
 	}
+	copy(minerBlock.Miner[:], addr.ScriptAddress())
 	solveMinerBlock(&minerBlock)
 
 	// genesisHash is the hash of the first block in the block chain for the main
@@ -383,10 +383,10 @@ func main() {
 		Timestamp:     regTestGenesisBlock.Header.Timestamp,
 		Bits:          0x1f7fffff,
 		Nonce:         0,
-		Miner:         addr.ScriptAddress(),
 		BlackList:     make([]wire.BlackList, 0),
 		Utxos:		   make([]wire.OutPoint, 0),
 	}
+	copy(regTestGenesisMinerBlock.Miner[:], addr.ScriptAddress())
 	solveMinerBlock(&regTestGenesisMinerBlock)
 	var regTestGenesisMinerHash = regTestGenesisMinerBlock.BlockHash()
 	printhash(regTestGenesisMinerHash)
@@ -454,10 +454,10 @@ func main() {
 		Timestamp:     testNet3GenesisBlock.Header.Timestamp,
 		Bits:          0x1f00ffff,
 		Nonce:         0,
-		Miner:         addr.ScriptAddress(),
 		BlackList:     make([]wire.BlackList, 0),
 		Utxos:		   make([]wire.OutPoint, 0),
 	}
+	copy(testNet3GenesisMinerBlock.Miner[:], addr.ScriptAddress())
 	solveMinerBlock(&testNet3GenesisMinerBlock)
 	var testNet3GenesisMinerHash = testNet3GenesisMinerBlock.BlockHash()
 	printhash(testNet3GenesisMinerHash)
@@ -525,10 +525,10 @@ func main() {
 		Timestamp:     simNetGenesisBlock.Header.Timestamp,
 		Bits:          0x1f7fffff,
 		Nonce:         0,
-		Miner:       addr.ScriptAddress(),
 		BlackList:     make([]wire.BlackList, 0),
 		Utxos:		   make([]wire.OutPoint, 0),
 	}
+	copy(simNetGenesisMinerBlock.Miner[:], addr.ScriptAddress())
 	solveMinerBlock(&simNetGenesisMinerBlock)
 	var simNetGenesisMinerHash = simNetGenesisMinerBlock.BlockHash()
 	printhash(simNetGenesisMinerHash)
@@ -631,9 +631,7 @@ func printminerblock(blk wire.MingingRightBlock) {
 		blk.Version, blk.PrevBlock.String(), blk.BestBlock.String(), blk.Timestamp.Unix(),
 		blk.Bits, blk.Nonce)
 	fmt.Printf("\n\tMiner:[")
-	for _,b := range blk.Miner {
-		fmt.Printf("0x%x, ", b)
-	}
+	fmt.Printf("0x%x, ", blk.Miner)
 	fmt.Printf("]\n\tBlackList: %s\n", blk.BlackList)
 }
 
