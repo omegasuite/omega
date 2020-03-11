@@ -9,7 +9,6 @@ import (
 	"io"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire/common"
 )
 
 type MsgRelease struct {
@@ -17,8 +16,7 @@ type MsgRelease struct {
 	From      [20]byte
 	Better 	  int32
 	M  	      chainhash.Hash
-	K         []int64
-//	Signature      [65]byte
+	Signature      [65]byte
 }
 
 func (msg * MsgRelease) Block() int32 {
@@ -47,30 +45,31 @@ func (msg * MsgRelease) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) e
 	if err != nil {
 		return err
 	}
-
+/*
 	d,err := common.ReadVarInt(r, 0)
 	if err != nil {
 		return err
 	}
-	msg.K = make([]int64, d)
+	msg.K = make([]int32, d)
 	for i := uint64(0); i < d; i++{
 		t,err := common.ReadVarInt(r, 0)
 		if err != nil {
 			return err
 		}
-		msg.K[i] = int64(t)
+		msg.K[i] = int32(t)
 	}
 
 	err = readElement(r, &msg.K)
 	if err != nil {
 		return err
 	}
+ */
 
 	// Read stop hash
-//	err = readElement(r, msg.Signature)
-//	if err != nil {
-//		return err
-//	}
+	err = readElement(r, msg.Signature)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -96,7 +95,7 @@ func (msg *MsgRelease) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) er
 	if err != nil {
 		return err
 	}
-
+/*
 	err = common.WriteVarInt(w, 0, uint64(len(msg.K)))
 	if err != nil {
 		return err
@@ -107,11 +106,12 @@ func (msg *MsgRelease) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) er
 			return err
 		}
 	}
+ */
 
-//	err = writeElement(w, msg.Signature)
-//	if err != nil {
-//		return err
-//	}
+	err = writeElement(w, msg.Signature)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

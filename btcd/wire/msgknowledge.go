@@ -5,6 +5,8 @@
 package wire
 
 import (
+	"bytes"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire/common"
 	"io"
@@ -12,11 +14,24 @@ import (
 
 type MsgKnowledge struct {
 	Height    int32
-	K         []int64
+	K         []int32
 	M         chainhash.Hash
 	Finder    [20]byte
 	From      [20]byte
-//	Signatures      map[int][]byte
+	Signatures [][]byte
+}
+
+func (msg * MsgKnowledge) AddK(k int32, key *btcec.PrivateKey) {
+	sig, _ := key.Sign(msg.DoubleHashB())
+
+	ss := sig.Serialize()
+	ssig := make([]byte, btcec.PubKeyBytesLenCompressed + len(ss))
+
+	copy(ssig, key.PubKey().SerializeCompressed())
+	copy(ssig[btcec.PubKeyBytesLenCompressed:], ss)
+
+	msg.Signatures = append(msg.Signatures, ssig)
+	msg.K = append(msg.K, k)
 }
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
@@ -33,13 +48,13 @@ func (msg * MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding)
 		return err
 	}
 
-	msg.K = make([]int64, k)
+	msg.K = make([]int32, k)
 	for i := 0; i < int(k); i++ {
 		p, err := common.ReadVarInt(r, 0)
 		if err != nil {
 			return err
 		}
-		msg.K[i] = int64(p)
+		msg.K[i] = int32(p)
 	}
 
 	err = readElement(r, &msg.M)
@@ -47,23 +62,20 @@ func (msg * MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding)
 		return err
 	}
 
-	// Read stop hash
 	err = readElement(r, &msg.Finder)
 	if err != nil {
 		return err
 	}
 
-	// Read stop hash
 	err = readElement(r, &msg.From)
 	if err != nil {
 		return err
 	}
 
-	// Read stop hash
-//	err = readElement(r, &msg.Signatures)
-//	if err != nil {
-//		return err
-//	}
+	err = readElement(r, &msg.Signatures)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -91,23 +103,20 @@ func (msg * MsgKnowledge) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding)
 		return err
 	}
 
-	// Write stop hash
 	err = writeElement(w, msg.Finder)
 	if err != nil {
 		return err
 	}
 
-	// Write stop hash
 	err = writeElement(w, msg.From)
 	if err != nil {
 		return err
 	}
 
-	// Write stop hash
-//	err = writeElement(w, msg.Signatures)
-//	if err != nil {
-//		return err
-//	}
+	err = writeElement(w, msg.Signatures)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -126,39 +135,25 @@ func (msg * MsgKnowledge) MaxPayloadLength(pver uint32) uint32 {
 	return MaxMessagePayload
 }
 
-// MaxPayloadLength returns the maximum length the payload can be for the
-// receiver. This is part of the Message interface implementation.
 func (msg * MsgKnowledge) DoubleHashB() []byte {
-	// Message size depends on the blockchain height, so return general limit
-	// for all messages.
-	h := make([]byte, 64 + 4 * len(msg.K))
-	for i := uint(0); i < 4; i++ {
-		h[i] = byte((msg.Height >> (i * 8) & 0xFF))
-	}
-	for _,k := range msg.K {
-		for i := uint(0); i < 4; i++ {
-			h[i] = byte((k >> (i * 8) & 0xFF))
-		}
-	}
-	copy(h[(len(msg.K) + 1) * 4:], msg.Finder[:])
-	copy(h[(len(msg.K) + 1) * 4 + 20:], msg.From[:])
-	copy(h[(len(msg.K) + 1) * 4 + 40:], msg.M[:])
-	return chainhash.DoubleHashB(h)
+	var w bytes.Buffer
+	msg.BtcEncode(&w, 0, BaseEncoding)
+	return chainhash.DoubleHashB(w.Bytes())
 }
 
 func (msg * MsgKnowledge) Block() int32 {
 	return msg.Height
 }
 
-//func (msg MsgKnowledge) GetSignature() []byte {
-//	return msg.Signatures[msg.K[len(msg.K) - 1]]
-//}
+func (msg *MsgKnowledge) GetSignature() []byte {
+	return msg.Signatures[msg.K[len(msg.K) - 1]]
+}
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to
 // the Message interface. See MsgCFCheckpt for details.
 func NewMsgKnowledge() *MsgKnowledge {
 	return &MsgKnowledge{
-		K:      make([]int64, 0),
-//		Signatures: make(map[int][]byte),
+		K:      make([]int32, 0),
+		Signatures: make([][]byte, 0),
 	}
 }

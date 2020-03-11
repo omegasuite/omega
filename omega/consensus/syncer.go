@@ -130,10 +130,11 @@ func (self *Syncer) repeater() {
 			for _, r := range p.K {
 				m |= 0x1 << r
 			}
-			if k&m != 0 && p.K[len(p.K)-1] != int64(i) {
+			if k&m != 0 && p.K[len(p.K)-1] != int32(i) {
 				// send it
 				pp := *p
-				pp.K = append(pp.K, int64(self.Myself))
+//				pp.K = append(pp.K, self.Myself)
+				pp.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
 				pp.From = self.Me
 				if miner.server.CommitteeMsg(self.Names[int32(i)], &pp) {
 					self.knowledges.Knowledge[self.Myself][i] |= m
@@ -170,10 +171,11 @@ func (self *Syncer) repeater() {
 				for _, r := range p.K {
 					m |= 0x1 << r
 				}
-				if p.K[len(p.K)-1] != int64(i) {
+				if p.K[len(p.K)-1] != int32(i) {
 					// send it
 					pp := *p
-					pp.K = append(pp.K, int64(self.Myself))
+//					pp.K = append(pp.K, self.Myself)
+					pp.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
 					pp.From = self.Me
 					if miner.server.CommitteeMsg(self.Names[int32(i)], &pp) {
 						self.knowledges.Knowledge[self.Myself][i] |= m
@@ -240,7 +242,7 @@ func (self *Syncer) run() {
 				k.Height = self.Height
 				k.Finder = self.Me
 				k.M = tree.hash
-				k.K = []int64{int64(self.Myself)}
+				k.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
 				self.messages <- k
 			}
 			self.print()
@@ -488,13 +490,8 @@ func (self *Syncer) Release(msg * wire.MsgRelease) {
 	delete(self.asked, self.Members[msg.From])
 
 	if self.agreed == self.Members[msg.From] {
-		self.knowledges.ProcFlatKnowledge(msg.Better, msg.K)
+//		self.knowledges.ProcFlatKnowledge(msg.Better, msg.K)
 
-		if _, ok := self.forest[self.Names[msg.Better]]; !ok {
-			self.pull(msg.M, msg.Better)
-//			self.pending[wire.CmdBlock] = append(self.pending[wire.CmdBlock], msg)
-//			return
-		}
 		self.agreed = -1
 /*
 		self.agreed = msg.Better
@@ -545,8 +542,8 @@ func (self *Syncer) ckconsensus() {
 func (self *Syncer) makeRelease(better int32) *wire.MsgRelease {
 	return &wire.MsgRelease{
 		Better: better,
-		K:      self.makeAbout(better).K,
-		M:      self.makeAbout(better).M,
+//		K:      self.makeAbout(better).K,
+		M:      self.forest[self.Names[better]].hash,	//self.makeAbout(better).M,
 		Height: self.Height,
 		From:   self.Me,
 	}
@@ -561,14 +558,15 @@ func (self *Syncer) dupKnowledge(fmp int32) {
 	defer self.mutex.Unlock()
 
 	for _, ks := range self.knows[agreed] {
-		if ks.K[len(ks.K)-1] != int64(fmp) {
+		if ks.K[len(ks.K)-1] != fmp {
 			m := int64((1 << fmp) | (1 << self.Myself))
 			for _, w := range ks.K {
 				m = 1 << w
 			}
 
 			t := *ks
-			t.K = append(t.K, int64(self.Myself))
+//			t.K = append(t.K, self.Myself)
+			t.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
 
 			if self.knowledges.gain(self.agreed, t.K) {
 				if miner.server.CommitteeMsg(self.Names[fmp], &t) {
@@ -817,9 +815,9 @@ func CreateSyncer(h int32) *Syncer {
 func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message) bool {
 	if !self.Runnable || self.Done {
 		log.Infof("validate failed. I'm not runnable")
-		time.Sleep(time.Second)
-//		self.pending[wire.CmdBlock] = append(self.pending[wire.CmdBlock], msg)
-//		return false
+//		time.Sleep(time.Second)
+		self.pending[wire.CmdBlock] = append(self.pending[wire.CmdBlock], msg)
+		return false
 	}
 
 	if _, ok := self.Malice[finder]; ok {
@@ -834,6 +832,39 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 		return false
 	}
 
+	switch msg.(type) {
+	case *wire.MsgKnowledge:
+		tmsg := *msg.(*wire.MsgKnowledge)
+		tmsg.K = make([]int32, 0)
+		tmsg.Signatures = make([][]byte, 0)
+
+		for j,i := range msg.(*wire.MsgKnowledge).K {
+			sig := msg.(*wire.MsgKnowledge).Signatures[j]
+			p,_ := btcutil.NewAddressPubKey(sig[:btcec.PubKeyBytesLenCompressed], miner.cfg)
+			signature, err := btcec.ParseSignature(sig[btcec.PubKeyBytesLenCompressed:], btcec.S256())
+			if err != nil || !signature.Verify(tmsg.DoubleHashB(), p.PubKey()) {
+				return false
+			}
+
+			tmsg.K = append(tmsg.K, i)
+			tmsg.Signatures = append(tmsg.Signatures, sig)
+			tmsg.From = self.Names[int32(i)]
+			if bytes.Compare(tmsg.From[:], p.AddressPubKeyHash().Hash160()[:]) != 0 {
+				return false
+			}
+		}
+
+	case *wire.MsgCandidate:
+
+	case *wire.MsgCandidateResp:
+
+	case *wire.MsgRelease:
+
+	case *wire.MsgConsensus:
+
+	case *wire.MsgSignature:
+	}
+
 	if _, ok = self.forest[finder]; m != nil && !ok {
 		self.forest[finder] = &tree{
 			creator: finder,
@@ -842,10 +873,6 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 			header:  nil,
 			block:   nil,
 		}
-//		if _, ok := self.pending[wire.CmdBlock]; !ok {
-//			self.pending[wire.CmdBlock] = make([]Message, 0)
-//		}
-//		self.pending[wire.CmdBlock] = append(self.pending[wire.CmdBlock], msg)
 
 		log.Infof("Pull block %s from %d", m.String(), c)
 		self.pull(*m, c)
@@ -854,9 +881,7 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 
 	if m != nil && self.forest[finder].hash != *m {
 		log.Infof("block is not the same as registered %x", self.forest[finder].hash)
-//		self.Malice[finder] = struct {}{}
-//		delete(self.forest, finder)
-//		self.knowledges.Malice(c)
+
 		return false
 	}
 	return true
@@ -1007,8 +1032,9 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	}
 }
 
+/*
 func (self *Syncer) makeAbout(better int32) *wire.MsgKnowledge {
-	k := []int64{-1024} // indicate we are sending a map
+	k := []int32{-1024} // indicate we are sending a map
 	for _, p := range self.knowledges.Knowledge[better] {
 		k = append(k, p)
 	}
@@ -1019,9 +1045,10 @@ func (self *Syncer) makeAbout(better int32) *wire.MsgKnowledge {
 		K:      k,
 		Finder: t.creator,
 		From:   self.Me,
-		//	Signatures      map[int][]byte
+		Signatures:   make(map[int32][]byte),
 	}
 }
+*/
 
 func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 	if _,ok := self.pulling[from]; !ok || self.pulling[from] == 0 {

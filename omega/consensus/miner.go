@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
@@ -53,6 +54,8 @@ type Miner struct {
 	server		 PeerNotifier
 	updateheight chan int32
 	name [20]byte
+
+	cfg *chaincfg.Params
 
 	// wait for end of task
 	wg          sync.WaitGroup
@@ -149,9 +152,10 @@ func CommitteePolling() {
 	DebugInfo()
 }
 
-func Consensus(s PeerNotifier, addr btcutil.Address) {
+func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 	miner = &Miner{}
 	miner.server = s
+	miner.cfg = cfg
 	miner.updateheight = make(chan int32)
 
 	s.SubscribeChain(miner.notice)

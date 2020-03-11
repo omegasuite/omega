@@ -32,8 +32,8 @@ func (k * Knowledgebase) ProcessTree(t int32) {
 	k.Knowledge[t][m] |= (1 << t) | (1 << m)
 	k.Knowledge[t][t] |= (1 << t) | (1 << m)
 
-	nmg := wire.MsgKnowledge{}
-	nmg.K = []int64{int64(t), int64(m)}
+	nmg := wire.NewMsgKnowledge()	// wire.MsgKnowledge{}
+	nmg.AddK(m, miner.server.GetPrivKey(k.syncer.Me))
 	nmg.From = k.syncer.Me
 	nmg.Finder = k.syncer.Names[t]
 	nmg.Height = k.syncer.Height
@@ -43,7 +43,7 @@ func (k * Knowledgebase) ProcessTree(t int32) {
 		if q & (1 << t) != 0 {
 			continue
 		}
-		if miner.server.CommitteeMsg(k.syncer.Names[int32(p)], &nmg) {
+		if miner.server.CommitteeMsg(k.syncer.Names[int32(p)], nmg) {
 			k.Knowledge[t][p] |= 1 << t
 		}
 	}
@@ -130,7 +130,7 @@ func (self *Knowledgebase) ProcFlatKnowledge(mp int32, k []int64) bool {
 }
 
 func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
-	k := msg.K
+//	k := msg.K
 	finder := msg.Finder
 	mp, ok := self.syncer.Members[finder]
 	if !ok {
@@ -163,11 +163,11 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 		}
 	}
 */
-	k = append(k, int64(me))
-	res := self.gain(mp, k)
 
 	lmg := *msg
-	lmg.K = k
+	lmg.AddK(me, miner.server.GetPrivKey(self.syncer.Me))
+
+	res := self.gain(mp, lmg.K)
 	lmg.From = self.syncer.Me
 
 	if res {
@@ -202,13 +202,12 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 	// does he have knowledge about me? In case he is late comer
 	if _,ok := self.syncer.forest[self.syncer.Names[me]]; ok && self.Knowledge[me][mp] & (0x1 << me) == 0 {
 		// send knowledge about me
-		lmg := wire.MsgKnowledge{
-			From: self.syncer.Names[me],
-			Finder: self.syncer.Names[me],
-			M: self.syncer.forest[self.syncer.Names[me]].hash,
-			K: []int64{int64(me)},
-			Height: msg.Height,
-		}
+		lmg := wire.NewMsgKnowledge()
+		lmg.From = self.syncer.Names[me]
+		lmg.Finder = self.syncer.Names[me]
+		lmg.M = self.syncer.forest[self.syncer.Names[me]].hash
+		lmg.Height = msg.Height
+		lmg.AddK(me, miner.server.GetPrivKey(self.syncer.Me))
 		res = res || self.sendout(&lmg, me, me, mp)
 	}
 
@@ -259,7 +258,7 @@ func (self *Knowledgebase) sendout(msg *wire.MsgKnowledge, mp int32, me int32, q
 	return false
 }
 
-func (self *Knowledgebase) gain(mp int32, k []int64) bool {
+func (self *Knowledgebase) gain(mp int32, k []int32) bool {
 	newknowledge := false
 	c := int64(0)
 	for i := 1; i < len(k); i++ {
