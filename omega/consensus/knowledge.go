@@ -208,7 +208,7 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 		lmg.M = self.syncer.forest[self.syncer.Names[me]].hash
 		lmg.Height = msg.Height
 		lmg.AddK(me, miner.server.GetPrivKey(self.syncer.Me))
-		res = res || self.sendout(&lmg, me, me, mp)
+		res = res || self.sendout(lmg, me, me, mp)
 	}
 
 	return res
