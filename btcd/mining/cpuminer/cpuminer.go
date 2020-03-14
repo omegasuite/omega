@@ -556,16 +556,8 @@ flushconnch:
 		}
 
 		m.minedBlock = nil
-/*
-		flushed:
-		for true {
-			select {
-			case <- m.connch:
-			default:
-				break flushed
-			}
-		}
-*/
+
+
 // ???		if m.g.Chain.Miners.(*minerchain.MinerChain).QualifiedMier(m.cfg.PrivKeys) != nil {
 //			continue
 //		}

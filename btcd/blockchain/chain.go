@@ -430,7 +430,7 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	// direct parent are checked below but this is a quick check before doing
 	// more unnecessary work.
 	if b.index.NodeStatus(node.Parent).KnownInvalid() {
-		b.index.SetStatusFlags(node, chainutil.StatusInvalidAncestor)
+//		b.index.SetStatusFlags(node, chainutil.StatusInvalidAncestor)
 		return detachNodes, attachNodes
 	}
 
@@ -468,8 +468,11 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 		var next *list.Element
 		for e := attachNodes.Front(); e != nil; e = next {
 			next = e.Next()
-			n := attachNodes.Remove(e).(*chainutil.BlockNode)
-			b.index.SetStatusFlags(n, chainutil.StatusInvalidAncestor)
+			attachNodes.Remove(e)
+
+
+//			n := attachNodes.Remove(e).(*chainutil.BlockNode)
+//			b.index.SetStatusFlags(n, chainutil.StatusInvalidAncestor)
 		}
 		return detachNodes, attachNodes
 	}

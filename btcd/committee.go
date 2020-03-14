@@ -653,7 +653,15 @@ func (s *server) handleCommitteRotation(state *peerState, r int32) {
 		s.peerState.cmutex.Lock()
 
 		if p != nil {
-			state.committee[mb.MsgBlock().Miner].peers = append(state.committee[mb.MsgBlock().Miner].peers, p)
+			hasp := false
+			for _,q := range state.committee[mb.MsgBlock().Miner].peers {
+				if q == p {
+					hasp = true
+				}
+			}
+			if !hasp {
+				state.committee[mb.MsgBlock().Miner].peers = append(state.committee[mb.MsgBlock().Miner].peers, p)
+			}
 			p.Peer.Committee = j
 			s.SendInvAck(mb.MsgBlock().Miner, p)
 			continue

@@ -180,7 +180,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	// direct parent are checked below but this is a quick check before doing
 	// more unnecessary work.
 	if b.index.NodeStatus(node.Parent).KnownInvalid() {
-		b.index.SetStatusFlags(node, chainutil.StatusInvalidAncestor)
+//		b.index.SetStatusFlags(node, chainutil.StatusInvalidAncestor)
 		return detachNodes, attachNodes, txdetachNodes, txattachNodes
 	}
 
