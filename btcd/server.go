@@ -2034,7 +2034,6 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 		list = state.outboundPeers
 	}
 
-//	btcdLog.Infof("cmutex.Lock @ handleDonePeerMsg")
 	state.cmutex.Lock()
 	if _, ok := list[sp.ID()]; ok {
 		if !sp.Inbound() && sp.VersionKnown() {
@@ -2046,20 +2045,23 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 		delete(list, sp.ID())
 
 		for _,m := range state.committee {
-			for i,p := range m.peers {
-				if p.ID() == sp.ID() {
-					if i == len(m.peers) - 1 {
-						m.peers = m.peers[:i]
-					} else if i == 0 {
-						m.peers = m.peers[i+1:]
-					} else {
-						m.peers = append(m.peers[:i], m.peers[i+1:]...)
+			for todel := true; todel; {
+				todel = false
+				for i, p := range m.peers {
+					if p.ID() == sp.ID() {
+						if i == len(m.peers)-1 {
+							m.peers = m.peers[:i]
+						} else if i == 0 {
+							m.peers = m.peers[i+1:]
+						} else {
+							m.peers = append(m.peers[:i], m.peers[i+1:]...)
+						}
+						todel = true
+						break
 					}
-					break
 				}
 			}
 		}
-//		btcdLog.Infof("cmutex.Unlock")
 		state.cmutex.Unlock()
 
 		srvrLog.Debugf("Removed peer %s", sp)
