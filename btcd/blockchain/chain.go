@@ -1236,7 +1236,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 // checkBlockSanity check whether the miner has provided sufficient collateral
 func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags) error {
-	utxos := viewpoint.NewUtxoViewpoint(block.MsgBlock().Miner[:])
+	utxos := viewpoint.NewUtxoViewpoint()
 	sum := int64(0)
 	for _,p := range block.MsgBlock().Utxos {
 		if err := utxos.FetchUtxosMain(b.db, map[wire.OutPoint]struct{}{p: struct{}{}}); err != nil {

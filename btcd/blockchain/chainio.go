@@ -97,7 +97,7 @@ var (
 
 	// MycoinsBucketName is the name of the db bucket used to house the
 	// my (Miner) coins that may be used for collateral.
-	MycoinsBucketName = []byte("mycoins")
+//	MycoinsBucketName = []byte("mycoins")
 
 	// byteOrder is the preferred byte order used for serializing numeric
 	// fields for storage in the database.
@@ -191,7 +191,7 @@ func (b *BlockChain) FetchUtxoEntry(outpoint wire.OutPoint) (*viewpoint.UtxoEntr
 
 
 func (b *BlockChain) NewViewPointSet() * viewpoint.ViewPointSet {
-	return viewpoint.NewViewPointSet(b.db, b.Miner.ScriptAddress())
+	return viewpoint.NewViewPointSet(b.db)
 }
 
 // -----------------------------------------------------------------------------
@@ -797,9 +797,9 @@ func (b *BlockChain) createChainState() error {
 		}
 
 		// Create the bucket that houses my coins.
-		if _, err = meta.CreateBucket(MycoinsBucketName); err != nil {
-			return err
-		}
+//		if _, err = meta.CreateBucket(MycoinsBucketName); err != nil {
+//			return err
+//		}
 
 		// Create the bucket that houses the spend journal data and
 		// store its version.
@@ -1438,7 +1438,7 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.UtxoViewpoint, er
 
 	// Request the utxos from the point of view of the end of the main
 	// chain.
-	view := viewpoint.NewUtxoViewpoint(b.Miner.ScriptAddress())
+	view := viewpoint.NewUtxoViewpoint()
 	b.ChainLock.RLock()
 	err := view.FetchUtxosMain(b.db, neededSet)
 	b.ChainLock.RUnlock()
@@ -1475,7 +1475,7 @@ func (b *BlockChain) FetchVtxEntry(hash chainhash.Hash) (*viewpoint.VtxEntry, er
 	return entry, nil
 }
 
-
+/*
 func (b *BlockChain) FetchMycoins(sum int64) []wire.OutPoint {
 	utxos := make([]wire.OutPoint, 0)
 	b.db.View(func(dbTx database.Tx) error {
@@ -1501,3 +1501,4 @@ func (b *BlockChain) FetchMycoins(sum int64) []wire.OutPoint {
 	}
 	return nil
 }
+*/

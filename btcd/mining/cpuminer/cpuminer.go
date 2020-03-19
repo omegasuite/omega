@@ -5,6 +5,7 @@
 package cpuminer
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/omega/ovm"
@@ -625,6 +626,10 @@ func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
 
 	tx.TxOut = make([]*wire.TxOut, 0, wire.CommitteeSize)
 
+	// check collateral, any miner who has collateral spent will not
+	// be qualified for award, his signature will not be accepted. award
+	// will be distributed only among those whose collateral are intact.
+	qualified := false
 	for i := -int32(wire.CommitteeSize - 1); i <= 0; i++ {
 		if mb,_ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
 			if m.g.Chain.CheckCollateral(mb, blockchain.BFNone) != nil {
@@ -638,19 +643,24 @@ func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
 			ntx.PkScript[21] = ovm.OP_PAY2PKH
 			copy(ntx.PkScript[1:21], mb.MsgBlock().Miner[:])
 			tx.TxOut = append(tx.TxOut, &ntx)
+
+			if bytes.Compare(ntx.PkScript[1:21], oldtxo.PkScript[1:21]) == 0 {
+				qualified = true
+			}
 			good++
 		}
 	}
 
-	if good > 0 {
+	if qualified && good > wire.CommitteeSize / 2 {
 		award := (adj + oldtxo.Value.(*token.NumToken).Val) / good
 		q := &token.NumToken{Val: award}
 		for _, txo := range tx.TxOut {
 			txo.Value = q
 		}
+		return true
 	}
 
-	return good > wire.CommitteeSize / 2
+	return false
 }
 
 // Start begins the CPU mining process as well as the speed monitor used to

@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/btcsuite/btcd/btcec"
 	"io"
 	"net"
 	"os"
@@ -19,7 +20,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"github.com/btcsuite/btcd/btcec"
 	//	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -28,6 +28,7 @@ import (
 	_ "github.com/btcsuite/btcd/database/ffldb"
 	"github.com/btcsuite/btcd/mempool"
 	"github.com/btcsuite/btcd/peer"
+	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/go-socks/socks"
 	flags "github.com/jessevdk/go-flags"
@@ -176,10 +177,10 @@ type config struct {
 	signAddress    btcutil.Address
 	privateKeys    *btcec.PrivateKey
 
-	minRelayTxFee        btcutil.Amount
-	whitelists           []*net.IPNet
-	DropMycoins    bool   `long:"DropMycoins" description:"Purge record of coins to be used for collateral."`
-	BuildMycoins   bool   `long:"BuildMycoins" description:"Rebuild record of coins to be used for collateral."`
+	minRelayTxFee btcutil.Amount
+	whitelists    []*net.IPNet
+	Collateral    []string `long:"Collateral" description:"Mining collateral"`
+	collateral    []wire.OutPoint
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -924,6 +925,27 @@ func loadConfig() (*config, []string, error) {
 			cfg.miningAddrs = append(cfg.miningAddrs, addr)
 			cfg.signAddress = addr
 			cfg.privateKeys = privKey
+		}
+	}
+
+	cfg.collateral = make([]wire.OutPoint, 0, len(cfg.Collateral))
+	if len(cfg.Collateral) > 0 {
+		for _, op := range cfg.Collateral {
+			i := strings.Index(op, ":")
+			if i < 0 {
+				continue
+			}
+			rs := []byte(op)
+			h,_ := chainhash.NewHashFromStr(string(rs[:i]))
+			if h == nil {
+				continue
+			}
+			var d uint32
+			fmt.Sscanf(string(rs[i+1:]), "%d", &d)
+			cfg.collateral = append(cfg.collateral, wire.OutPoint{
+				Hash: *h,
+				Index: d,
+			})
 		}
 	}
 

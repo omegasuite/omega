@@ -2067,7 +2067,6 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 		srvrLog.Debugf("Removed peer %s", sp)
 		return
 	}
-//	btcdLog.Infof("cmutex.Unlock")
 	state.cmutex.Unlock()
 
 	if sp.connReq != nil {
@@ -2781,7 +2780,7 @@ func (s *server) Start() {
 	}
 	if cfg.GenerateMiner {
 		btcdLog.Info("Start minging miner blocks.")
-		s.minerMiner.Start()
+		s.minerMiner.Start(cfg.collateral)
 	}
 }
 

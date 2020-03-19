@@ -6,9 +6,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/omega/consensus"
-	"github.com/btcsuite/omega/viewpoint"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -157,28 +155,6 @@ func btcdMain(serverChan chan<- *server) error {
 		}
 
 		return nil
-	}
-	if cfg.DropMycoins || cfg.BuildMycoins {
-		db.Update(func(dbTx database.Tx) error {
-			cursor := dbTx.Metadata().Bucket(blockchain.MycoinsBucketName).Cursor()
-			for ok := cursor.First(); ok; ok = cursor.Next() {
-				cursor.Delete()
-			}
-			return nil
-		})
-	}
-	if cfg.BuildMycoins {
-		db.Update(func(dbTx database.Tx) error {
-			cursor := dbTx.Metadata().Bucket(blockchain.UtxoSetBucketName).Cursor()
-			mycoins := dbTx.Metadata().Bucket(blockchain.MycoinsBucketName)
-			for ok := cursor.First(); ok; ok = cursor.Next() {
-				entry, err := viewpoint.DeserializeUtxoEntry(cursor.Value())
-				if err == nil {
-					viewpoint.CheckMyCoin(mycoins, entry, cfg.signAddress.ScriptAddress(), cursor.Key())
-				}
-			}
-			return nil
-		})
 	}
 
 	// Create server and start it.

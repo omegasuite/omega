@@ -48,7 +48,7 @@ var (
 
 	// MycoinsBucketName is the name of the db bucket used to house the
 	// my (Miner) coins that may be used for collateral.
-	mycoinsBucketName = []byte("mycoins")
+//	mycoinsBucketName = []byte("mycoins")
 )
 
 type txoFlags uint8
@@ -63,10 +63,10 @@ type ViewPointSet struct {
 //	Miners * MinersViewpoint
 }
 
-func NewViewPointSet(db database.DB, miner []byte) * ViewPointSet {
+func NewViewPointSet(db database.DB) * ViewPointSet {
 	t := ViewPointSet {}
 	t.Db = db
-	t.Utxo = NewUtxoViewpoint(miner)
+	t.Utxo = NewUtxoViewpoint()
 	t.Vertex = NewVtxViewpoint()
 	t.Border = NewBorderViewpoint()
 	t.Polygon = NewPolygonViewpoint()

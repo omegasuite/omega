@@ -143,7 +143,7 @@ func NewOVM(ctx Context, chainConfig *chaincfg.Params, vmConfig Config, db datab
 		StateDB:     make(map[Address]*stateDB, 0),
 		vmConfig:    vmConfig,
 		chainConfig: chainConfig,
-		views: viewpoint.NewViewPointSet(db, nil),
+		views: viewpoint.NewViewPointSet(db),
 	}
 	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
 

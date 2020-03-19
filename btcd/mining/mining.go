@@ -7,7 +7,6 @@ package mining
 import (
 	"bytes"
 	"container/heap"
-	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/omega/ovm"
 	"time"
@@ -365,6 +364,9 @@ type BlkTmplGenerator struct {
 	txSource    TxSource
 	Chain       *blockchain.BlockChain
 	timeSource  chainutil.MedianTimeSource
+
+	// only used by minerchain
+	Collateral []wire.OutPoint
 //	sigCache    *txscript.SigCache
 //	hashCache   *txscript.HashCache
 }
@@ -387,6 +389,7 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 		txSource:    txSource,
 		Chain:       chain,
 		timeSource:  timeSource,
+		Collateral: make([]wire.OutPoint, 0),
 //		sigCache:    sigCache,
 //		hashCache:   hashCache,
 	}
@@ -934,11 +937,10 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 		return nil, nil
 	}
 
-	utxos := g.Chain.FetchMycoins(wire.Collateral(nextBlockHeight))
-
-	if utxos == nil {
-		return nil, fmt.Errorf("Insufficient collateral.")
-	}
+//	utxos := g.Chain.FetchMycoins(wire.Collateral(nextBlockHeight))
+//	if utxos == nil {
+//		return nil, fmt.Errorf("Insufficient collateral.")
+//	}
 
 	// Create a new block ready to be solved.
 	msgBlock := wire.MingingRightBlock{
@@ -947,7 +949,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 		Timestamp:     ts,
 		Bits:          reqDifficulty,
 		BestBlock:     cbest.Hash,
-		Utxos:		   utxos,
+		Utxos:		   g.Collateral,
 		BlackList:     make([]wire.BlackList, 0),
 	}
 	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())

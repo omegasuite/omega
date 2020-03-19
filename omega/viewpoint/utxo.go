@@ -189,7 +189,6 @@ type SpentTxOut struct {
 // The unspent outputs are needed by other transactions for things such as
 // script validation and double spend prevention.
 type UtxoViewpoint struct {
-	miner []byte
 	entries  map[wire.OutPoint]*UtxoEntry
 	bestHash chainhash.Hash
 }
@@ -903,9 +902,8 @@ func (view *ViewPointSet) FetchInputUtxos(db database.DB, block *btcutil.Block) 
 }
 
 // NewUtxoViewpoint returns a new empty unspent transaction output view.
-func NewUtxoViewpoint(m []byte) *UtxoViewpoint {
+func NewUtxoViewpoint() *UtxoViewpoint {
 	return &UtxoViewpoint{
-		miner: m,
 		entries: make(map[wire.OutPoint]*UtxoEntry),
 	}
 }
@@ -915,7 +913,6 @@ func NewUtxoViewpoint(m []byte) *UtxoViewpoint {
 // particular, only the entries that have been marked as modified are written
 // to the database.
 func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
-	mycoins := dbTx.Metadata().Bucket(mycoinsBucketName)
 	utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
 	for outpoint, entry := range view.entries {
 		// No need to update the database if the entry was not modified.
@@ -927,9 +924,6 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 		if entry.IsSpent() {
 			key := outpointKey(outpoint)
 			err := utxoBucket.Delete(*key)
-			if view.miner != nil && bytes.Compare(entry.pkScript[1:21], view.miner) == 0 {
-				mycoins.Delete(*key)
-			}
 			recycleOutpointKey(key)
 			if err != nil {
 				return err
@@ -950,8 +944,6 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 		key := outpointKey(outpoint)
 		err = utxoBucket.Put(*key, serialized)
 
-		CheckMyCoin(mycoins, entry, view.miner, *key)
-
 		// NOTE: The key is intentionally not recycled here since the
 		// database interface contract prohibits modifications.  It will
 		// be garbage collected normally when the database is done with
@@ -966,15 +958,6 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 	}
 
 	return nil
-}
-
-func CheckMyCoin(mycoins database.Bucket, entry * UtxoEntry, miner []byte, key []byte) {
-//	fmt.Printf("CheckMyCoin: %x vs. %x", entry.pkScript[1:21], miner)
-	if miner!=nil && bytes.Compare(entry.pkScript[1:21], miner) == 0 && entry.TokenType == 0 && entry.Amount.(*token.NumToken).Val > 0 {
-		var mc [8]byte
-		offset := bccompress.PutVLQ(mc[:], bccompress.CompressTxOutAmount(uint64(entry.Amount.(*token.NumToken).Val)))
-		mycoins.Put(key, mc[:offset])
-	}
 }
 
 // serializeUtxoEntry returns the entry serialized to a format that is suitable

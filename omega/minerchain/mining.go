@@ -516,9 +516,13 @@ out:
 // already been started will have no effect.
 //
 // This function is safe for concurrent access.
-func (m *CPUMiner) Start() {
+func (m *CPUMiner) Start(collateral []wire.OutPoint) {
 	m.Lock()
 	defer m.Unlock()
+
+	if collateral != nil {
+		m.g.Collateral = collateral
+	}
 
 	// Nothing to do if the miner is already running or if running in
 	// discrete mode (using GenerateNBlocks).

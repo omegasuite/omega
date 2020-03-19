@@ -3858,7 +3858,7 @@ func handleSetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 		s.cfg.CPUMiner.Start()
 
 		s.cfg.MinerMiner.SetNumWorkers(int32(genProcLimit))
-		s.cfg.MinerMiner.Start()
+		s.cfg.MinerMiner.Start(nil)
 	}
 	return nil, nil
 }
