@@ -259,7 +259,7 @@ func (b *BlockChain) IsCheckpointCandidate(block *btcutil.Block) (bool, error) {
 
 	// A checkpoint must have transactions that only contain standard
 	// scripts.
-	for _, tx := range block.Transactions(false) {
+	for _, tx := range block.Transactions() {
 		if isNonstandardTransaction(tx) {
 			return false, nil
 		}

@@ -587,7 +587,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	}
 
 	// The first transaction in a block must be a coinbase.
-	transactions := block.Transactions(false)
+	transactions := block.Transactions()
 	if !IsCoinBase(transactions[0]) {
 		return ruleError(ErrFirstTxNotCoinbase, "first transaction in "+
 			"block is not a coinbase")
@@ -617,7 +617,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	// checks.  Bitcoind builds the tree here and checks the merkle root
 	// after the following checks, but there is no reason not to check the
 	// merkle root matches here.
-	merkles := BuildMerkleTreeStore(block.Transactions(false), true)
+	merkles := BuildMerkleTreeStore(block.Transactions(), true)
 	calculatedMerkleRoot := merkles[len(merkles)-1]
 	if !header.MerkleRoot.IsEqual(calculatedMerkleRoot) {
 		str := fmt.Sprintf("block merkle root is invalid - block "+
@@ -750,7 +750,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 		blockHeight := prevNode.Height + 1
 
 		// Ensure all transactions in the block are finalized.
-		for _, tx := range block.Transactions(false) {
+		for _, tx := range block.Transactions() {
 			if !IsFinalizedTransaction(tx, blockHeight,
 				blockTime) {
 
@@ -1090,7 +1090,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// expands the count to include a precise count of pay-to-script-hash
 	// signature operations in each of the input transaction public key
 	// scripts.
-	transactions := block.Transactions(false)
+	transactions := block.Transactions()
 	totalSigOpCost := 0
 	for i, tx := range transactions {
 		// Since the first (and only the first) transaction has
@@ -1239,7 +1239,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		// then we also enforce the relative sequence number based
 		// lock-times within the inputs of all transactions in this
 		// candidate block.
-		for _, tx := range block.Transactions(false) {
+		for _, tx := range block.Transactions() {
 			// A transaction can only be included within a block
 			// once the sequence locks of *all* its inputs are
 			// active.
@@ -1269,7 +1269,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	}
 */
 	// blacklist check
-	for _, tx := range block.Transactions(false) {
+	for _, tx := range block.Transactions() {
 		for _, txo := range tx.MsgTx().TxOut {
 			var name [20]byte
 			copy(name[:], txo.PkScript[1:21])

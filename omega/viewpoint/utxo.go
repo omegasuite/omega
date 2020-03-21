@@ -377,7 +377,7 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 	// reverse order.  This is necessary since transactions later in a block
 	// can spend from previous ones.
 	stxoIdx := len(stxos) - 1
-	transactions := block.Transactions(false)
+	transactions := block.Transactions()
 	for txIdx := len(transactions) - 1; txIdx > -1; txIdx-- {
 		tx := transactions[txIdx]
 
@@ -856,7 +856,7 @@ func (view *ViewPointSet) FetchInputUtxos(db database.DB, block *btcutil.Block) 
 	// this block could be referencing other transactions earlier in this
 	// block which are not yet in the chain.
 	txInFlight := map[chainhash.Hash]int{}
-	transactions := block.Transactions(false)
+	transactions := block.Transactions()
 	for i, tx := range transactions {
 		txInFlight[*tx.Hash()] = i
 	}

@@ -538,7 +538,7 @@ out:
 				// Skip iterating through all txs if no
 				// tx notification requests exist.
 				if len(watchedOutPoints) != 0 || len(watchedAddrs) != 0 {
-					for _, tx := range block.Transactions(false) {
+					for _, tx := range block.Transactions() {
 						m.notifyForTx(watchedOutPoints,
 							watchedAddrs, tx, block)
 					}
@@ -836,7 +836,7 @@ func (m *wsNotificationManager) notifyFilteredBlockConnected(clients map[chan st
 	// Search for relevant transactions for each client and save them
 	// serialized in hex encoding for the notification.
 	subscribedTxs := make(map[chan struct{}][]string)
-	for _, tx := range block.Transactions(false) {
+	for _, tx := range block.Transactions() {
 		var txHex string
 		for quitChan := range m.subscribedClients(tx, clients) {
 			if txHex == "" {
@@ -2099,7 +2099,7 @@ var ErrRescanReorg = btcjson.RPCError{
 // rescanBlock rescans all transactions in a single block.  This is a helper
 // function for handleRescan.
 func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
-	for _, tx := range blk.Transactions(false) {
+	for _, tx := range blk.Transactions() {
 		// Hexadecimal representation of this tx.  Only created if
 		// needed, and reused for later notifications if already made.
 		var txHex string
@@ -2242,7 +2242,7 @@ func rescanBlockFilter(filter *wsClientFilter, block *btcutil.Block, params *cha
 	var transactions []string
 
 	filter.mu.Lock()
-	for _, tx := range block.Transactions(false) {
+	for _, tx := range block.Transactions() {
 		msgTx := tx.MsgTx()
 
 		// Keep track of whether the transaction has already been added

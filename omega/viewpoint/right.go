@@ -417,7 +417,7 @@ func (entry *RightEntry) RollBack() {
 // created by the passed block, removing all vertices defined in the transactions,
 // and setting the best hash for the view to the block before the passed block.
 func (view * RightViewpoint) disconnectTransactions(db database.DB, block *btcutil.Block) error {
-	for _,tx := range block.Transactions(false) {
+	for _,tx := range block.Transactions() {
 		for _, txDef := range tx.MsgTx().TxDef {
 			switch txDef.(type) {
 			case *token.RightDef:

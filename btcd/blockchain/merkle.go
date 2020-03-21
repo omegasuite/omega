@@ -144,13 +144,13 @@ func ValidateWitnessCommitment(blk *btcutil.Block) error {
 	// If the block doesn't have any transactions at all, then we won't be
 	// able to extract a commitment from the non-existent coinbase
 	// transaction. So we exit early here.
-	if len(blk.Transactions(false)) == 0 {
+	if len(blk.Transactions()) == 0 {
 		str := "cannot validate witness commitment of block without " +
 			"transactions"
 		return ruleError(ErrNoTransactions, str)
 	}
 
-	coinbaseTx := blk.Transactions(false)[0]
+	coinbaseTx := blk.Transactions()[0]
 	if len(coinbaseTx.MsgTx().TxIn) == 0 {
 		return ruleError(ErrNoTxInputs, "transaction has no inputs")
 	}
@@ -181,7 +181,7 @@ func ValidateWitnessCommitment(blk *btcutil.Block) error {
 	// the extracted witnessCommitment is equal to:
 	// SHA256(witnessMerkleRoot || witnessNonce). Where witnessNonce is the
 	// coinbase transaction's only witness item.
-	witnessMerkleTree := BuildMerkleTreeStore(blk.Transactions(false), true)
+	witnessMerkleTree := BuildMerkleTreeStore(blk.Transactions(), true)
 	witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
 
 //	var witnessPreimage [chainhash.HashSize * 2]byte

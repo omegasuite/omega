@@ -1284,7 +1284,7 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	}
 
 	if c.VerboseTx == nil || !*c.VerboseTx {
-		transactions := blk.Transactions(false)
+		transactions := blk.Transactions()
 		txNames := make([]string, len(transactions))
 		for i, tx := range transactions {
 			txNames[i] = tx.Hash().String()
@@ -1292,7 +1292,7 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 
 		blockReply.Tx = txNames
 	} else {
-		txns := blk.Transactions(false)
+		txns := blk.Transactions()
 		rawTxns := make([]btcjson.TxRawResult, len(txns))
 		for i, tx := range txns {
 			rawTxn, err := createTxRawResult(params, tx.MsgTx(),
@@ -1857,7 +1857,7 @@ func (state *gbtWorkState) updateBlockTemplate(s *rpcServer, useCoinbaseValue bo
 
 			// Update the merkle root.
 			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
-			merkles := blockchain.BuildMerkleTreeStore(block.Transactions(false), false)
+			merkles := blockchain.BuildMerkleTreeStore(block.Transactions(), false)
 
 			template.Block.(*wire.MsgBlock).Header.MerkleRoot = *merkles[len(merkles)-1]
 		}

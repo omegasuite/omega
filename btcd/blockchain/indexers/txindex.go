@@ -239,8 +239,8 @@ func dbAddTxIndexEntries(dbTx database.Tx, block *btcutil.Block, blockID uint32)
 	// subslice to the database to be written.  This approach significantly
 	// cuts down on the number of required allocations.
 	offset := 0
-	serializedValues := make([]byte, len(block.Transactions(false))*txEntrySize)
-	for i, tx := range block.Transactions(false) {
+	serializedValues := make([]byte, len(block.Transactions())*txEntrySize)
+	for i, tx := range block.Transactions() {
 		putTxIndexEntry(serializedValues[offset:], blockID, txLocs[i])
 		endOffset := offset + txEntrySize
 		err := dbPutTxIndexEntry(dbTx, tx.Hash(),
@@ -270,7 +270,7 @@ func dbRemoveTxIndexEntry(dbTx database.Tx, txHash *chainhash.Hash) error {
 // dbRemoveTxIndexEntries uses an existing database transaction to remove the
 // latest transaction entry for every transaction in the passed block.
 func dbRemoveTxIndexEntries(dbTx database.Tx, block *btcutil.Block) error {
-	for _, tx := range block.Transactions(false) {
+	for _, tx := range block.Transactions() {
 		err := dbRemoveTxIndexEntry(dbTx, tx.Hash())
 		if err != nil {
 			return err

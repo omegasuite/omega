@@ -860,7 +860,7 @@ func (b *BlockChain) createChainState() error {
 		}
 
 		// Store the initial Tx, bur not the coin base Tx.
-		txs := genesisBlock.Transactions(false)
+		txs := genesisBlock.Transactions()
 		views := b.NewViewPointSet()
 //		views.db = &b.db
 		views.SetBestHash(genesisBlock.Hash())
@@ -1407,7 +1407,7 @@ func (b *BlockChain) dbFetchVertex(blockHeight int32, tx int32, ind uint32) (*to
 		return nil, err
 	}
 
-	return blk.Transactions(false)[tx].MsgTx().TxDef[ind].(*token.VertexDef), nil
+	return blk.Transactions()[tx].MsgTx().TxDef[ind].(*token.VertexDef), nil
 }
 
 

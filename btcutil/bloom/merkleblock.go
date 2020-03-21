@@ -80,7 +80,7 @@ func (m *merkleBlock) traverseAndBuild(height, pos uint32) {
 // NewMerkleBlock returns a new *wire.MsgMerkleBlock and an array of the matched
 // transaction index numbers based on the passed block and filter.
 func NewMerkleBlock(block *btcutil.Block, filter *Filter) (*wire.MsgMerkleBlock, []uint32) {
-	numTx := uint32(len(block.Transactions(false)))
+	numTx := uint32(len(block.Transactions()))
 	mBlock := merkleBlock{
 		numTx:       numTx,
 		allHashes:   make([]*chainhash.Hash, 0, numTx),
@@ -89,7 +89,7 @@ func NewMerkleBlock(block *btcutil.Block, filter *Filter) (*wire.MsgMerkleBlock,
 
 	// Find and keep track of any transactions that match the filter.
 	var matchedIndices []uint32
-	for txIndex, tx := range block.Transactions(false) {
+	for txIndex, tx := range block.Transactions() {
 		if filter.MatchTxAndUpdate(tx) {
 			mBlock.matchedBits = append(mBlock.matchedBits, 0x01)
 			matchedIndices = append(matchedIndices, uint32(txIndex))

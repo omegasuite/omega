@@ -239,7 +239,7 @@ func (ef *FeeEstimator) RegisterBlock(block *btcutil.Block) error {
 
 	// Randomly order txs in block.
 	transactions := make(map[*btcutil.Tx]struct{})
-	for _, t := range block.Transactions(false) {
+	for _, t := range block.Transactions() {
 		transactions[t] = struct{}{}
 	}
 
