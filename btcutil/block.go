@@ -51,7 +51,7 @@ func (b *Block) MsgBlock() *wire.MsgBlock {
 func (block *Block)  CountSpentOutputs() int {
 	// Exclude the coinbase transaction since it can't spend anything.
 	var numSpent int
-	for _, tx := range block.Transactions()[1:] {
+	for _, tx := range block.Transactions(false)[1:] {
 		numSpent += len(tx.MsgTx().TxIn)
 	}
 	return numSpent
@@ -151,16 +151,16 @@ func (b *Block) Tx(txNum int) (*Tx, error) {
 // transactions in the Block.  This is nearly equivalent to accessing the raw
 // transactions (wire.MsgTx) in the underlying wire.MsgBlock, however it
 // instead provides easy access to wrapped versions (btcutil.Tx) of them.
-func (b *Block) Transactions() []*Tx {
+func (b *Block) Transactions(regen bool) []*Tx {
 	// Return transactions if they have ALL already been generated.  This
 	// flag is necessary because the wrapped transactions are lazily
 	// generated in a sparse fashion.
-	if b.txnsGenerated {
+	if b.txnsGenerated && !regen {
 		return b.transactions
 	}
 
 	// Generate slice to hold all of the wrapped transactions if needed.
-	if len(b.transactions) == 0 {
+	if len(b.transactions) == 0 || regen {
 		b.transactions = make([]*Tx, len(b.msgBlock.Transactions))
 	}
 

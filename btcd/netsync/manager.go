@@ -1862,7 +1862,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 		// no longer an orphan. Height which depend on a confirmed
 		// transaction are NOT removed recursively because they are still
 		// valid.
-		for _, tx := range block.Transactions()[1:] {
+		for _, tx := range block.Transactions(false)[1:] {
 			sm.txMemPool.RemoveTransaction(tx, false)
 			sm.txMemPool.RemoveDoubleSpends(tx)
 			sm.txMemPool.RemoveOrphan(tx)
@@ -1895,7 +1895,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 
 		// Reinsert all of the transactions (except the coinbase) into
 		// the transaction pool.
-		for _, tx := range block.Transactions()[1:] {
+		for _, tx := range block.Transactions(false)[1:] {
 			_, _, err := sm.txMemPool.MaybeAcceptTransaction(tx,
 				false, false)
 			if err != nil {

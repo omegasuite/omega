@@ -725,7 +725,7 @@ func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 	stxos []viewpoint.SpentTxOut) {
 
 	stxoIndex := 0
-	for txIdx, tx := range block.Transactions() {
+	for txIdx, tx := range block.Transactions(false) {
 		// Coinbases do not reference any inputs.  Since the block is
 		// required to have already gone through full validation, it has
 		// already been proven on the first transaction in the block is

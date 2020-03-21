@@ -103,7 +103,7 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 		return err
 	}
 
-	for _,tx := range block.Transactions()[1:] {
+	for _,tx := range block.Transactions(false)[1:] {
 		for _, in := range tx.MsgTx().TxIn {
 			entry := t.Utxo.LookupEntry(in.PreviousOutPoint)
 			if entry == nil {
@@ -199,7 +199,7 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 // of the transactions in the passed block, and setting the best hash for the view
 // to the passed block.
 func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut, minersonhold map[[20]byte]int32) error {
-	for _, tx := range block.Transactions() {
+	for _, tx := range block.Transactions(false) {
 		view.Vertex.AddVertices(tx)
 		if !view.AddBorder(tx) {
 			return fmt.Errorf("Attempt to add illegal border.")
