@@ -524,6 +524,11 @@ flushconnch:
 					block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
 				}
 			}
+
+			witnessMerkleTree := blockchain.BuildMerkleTreeStore(block.Transactions(),true)
+			witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
+			block.MsgBlock().Transactions[0].SignatureScripts[0] = (*witnessMerkleRoot)[:]
+
 			m.minedBlock = block
 
 			if !powMode {

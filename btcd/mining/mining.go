@@ -823,9 +823,9 @@ mempoolLoop:
 	if msg.SignatureScripts == nil || len(msg.SignatureScripts) == 0 {
 		msg.SignatureScripts = make([][]byte, 1)
 	}
-	if msg.SignatureScripts[0] == nil {
-		msg.SignatureScripts[0] = make([]byte, 0)
-	}
+//	if msg.SignatureScripts[0] == nil {
+//		msg.SignatureScripts[0] = make([]byte, 0)
+//	}
 	msg.SignatureScripts[0] = (*witnessMerkleRoot)[:]
 
 	// Calculate the required difficulty for the block.  The timestamp
