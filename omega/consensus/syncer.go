@@ -840,16 +840,25 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 
 		for j,i := range msg.(*wire.MsgKnowledge).K {
 			sig := msg.(*wire.MsgKnowledge).Signatures[j]
-			p,_ := btcutil.NewAddressPubKey(sig[:btcec.PubKeyBytesLenCompressed], miner.cfg)
+
+			k, err := btcec.ParsePubKey(sig[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+			if err != nil {
+				return false
+			}
+			pk, _ := btcutil.NewAddressPubKeyPubKey(*k, miner.cfg)
+			pkh := pk.AddressPubKeyHash().Hash160()
+
+//			p,_ := btcutil.NewAddressPubKey(sig[:btcec.PubKeyBytesLenCompressed], miner.cfg)
 			signature, err := btcec.ParseSignature(sig[btcec.PubKeyBytesLenCompressed:], btcec.S256())
-			if err != nil || !signature.Verify(tmsg.DoubleHashB(), p.PubKey()) {
+			if err != nil || !signature.Verify(tmsg.DoubleHashB(), pk.PubKey()) {
 				return false
 			}
 
 			tmsg.K = append(tmsg.K, i)
 			tmsg.Signatures = append(tmsg.Signatures, sig)
 			tmsg.From = self.Names[int32(i)]
-			if bytes.Compare(tmsg.From[:], p.AddressPubKeyHash().Hash160()[:]) != 0 {
+			if bytes.Compare(tmsg.From[:], pkh[:]) != 0 {
+//			if bytes.Compare(tmsg.From[:], p.AddressPubKeyHash().Hash160()[:]) != 0 {
 				return false
 			}
 		}
