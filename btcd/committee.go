@@ -12,16 +12,15 @@ import (
 	"encoding/json"
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/connmgr"
 	"github.com/btcsuite/omega/minerchain"
 	"github.com/davecgh/go-spew/spew"
 	"math/big"
-
 	"net"
 	"sync"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/connmgr"
 	"github.com/btcsuite/btcd/peer"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
@@ -179,6 +178,7 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	}
 
 	// have we already connected to it?
+/*
 	refused := false
 	sp.server.peerState.forAllPeers(func(ob * serverPeer) {
 		if sp != ob && bytes.Compare(ob.Peer.Miner[:], mb.MsgBlock().Miner[:]) == 0 {
@@ -190,6 +190,7 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 		consensusLog.Infof("refuses AckInv. disconnect from %s", sp.Addr())
 		return
 	}
+ */
 
 	sp.server.peerState.cmutex.Lock()
 	if sp.server.peerState.committee[mb.MsgBlock().Miner] == nil {
