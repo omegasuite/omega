@@ -520,9 +520,13 @@ flushconnch:
 						block.MsgBlock().Transactions[0].SignatureScripts = make([][]byte, 1)
 						block.MsgBlock().Transactions[0].SignatureScripts[0] = make([]byte, 0)
 					}
-					witnessMerkleTree := blockchain.BuildMerkleTreeStore(block.Transactions(),true)
-					witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
-					block.MsgBlock().Transactions[0].SignatureScripts[0] = (*witnessMerkleRoot)[:]
+					merkleTree := blockchain.BuildMerkleTreeStore(block.Transactions(),true)
+					merkleRoot := merkleTree[len(merkleTree)-1]
+					block.MsgBlock().Transactions[0].SignatureScripts[0] = (*merkleRoot)[:]
+
+					merkleTree = blockchain.BuildMerkleTreeStore(block.Transactions(),false)
+					merkleRoot = merkleTree[len(merkleTree)-1]
+					block.MsgBlock().Header.MerkleRoot = *merkleRoot
 
 					block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
 				}

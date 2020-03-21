@@ -5,6 +5,7 @@
 package blockchain
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
@@ -617,13 +618,24 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	// checks.  Bitcoind builds the tree here and checks the merkle root
 	// after the following checks, but there is no reason not to check the
 	// merkle root matches here.
-	merkles := BuildMerkleTreeStore(block.Transactions(), true)
+	merkles := BuildMerkleTreeStore(block.Transactions(), false)
 	calculatedMerkleRoot := merkles[len(merkles)-1]
 	if !header.MerkleRoot.IsEqual(calculatedMerkleRoot) {
 		str := fmt.Sprintf("block merkle root is invalid - block "+
 			"header indicates %v, but calculated value is %v",
 			header.MerkleRoot, calculatedMerkleRoot)
 		return ruleError(ErrBadMerkleRoot, str)
+	}
+
+	if len(block.MsgBlock().Transactions[0].SignatureScripts) > 0 {
+		merkles := BuildMerkleTreeStore(block.Transactions(), true)
+		calculatedMerkleRoot := merkles[len(merkles)-1]
+		if bytes.Compare(block.MsgBlock().Transactions[0].SignatureScripts[0], calculatedMerkleRoot[:]) != 0 {
+			str := fmt.Sprintf("block signature merkle root is invalid - block "+
+				"indicates %v, but calculated value is %v",
+				block.MsgBlock().Transactions[0].SignatureScripts[0], calculatedMerkleRoot)
+			return ruleError(ErrBadMerkleRoot, str)
+		}
 	}
 
 	// Check for duplicate transactions.  This check will be fairly quick
