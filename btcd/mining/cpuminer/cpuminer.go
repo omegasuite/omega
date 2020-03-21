@@ -503,8 +503,8 @@ flushconnch:
 
 			template.Block.(*wire.MsgBlock).Header.Nonce = nonce
 
-			wb := * template.Block.(*wire.MsgBlock)
-			block := btcutil.NewBlock(&wb)
+			wb := template.Block.(*wire.MsgBlock)
+			block := btcutil.NewBlock(wb)
 			block.SetHeight(template.Height)
 
 			if wire.CommitteeSize == 1 {
