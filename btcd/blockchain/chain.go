@@ -1236,6 +1236,10 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 // checkBlockSanity check whether the miner has provided sufficient collateral
 func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags) error {
+	req := wire.Collateral(block.Height())
+	if req == 0 {
+		return nil
+	}
 	utxos := viewpoint.NewUtxoViewpoint()
 	sum := int64(0)
 	for _,p := range block.MsgBlock().Utxos {
@@ -1252,7 +1256,7 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags
 		}
 		sum += e.Amount.(*token.NumToken).Val
 	}
-	if sum < wire.Collateral(block.Height()) {
+	if sum < req {
 		return fmt.Errorf("Insufficient Collateral.")
 	}
 	return nil
