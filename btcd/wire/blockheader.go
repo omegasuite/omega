@@ -21,6 +21,7 @@ const (
 	MinerGap					= 3			// a miner must wait between to candidacies
 	SCALEFACTORCAP				= 48
 	DifficultyRatio				= 4			// ratio of difficulty for tx chain and miner chain
+	collateralWaiver			= 5000
 )
 
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.
@@ -504,8 +505,8 @@ func (msg *MingingRightBlock) MaxPayloadLength(pver uint32) uint32 {
 }
 
 func Collateral(h int32) int64 {
-	if h < 2000 {
+	if h < collateralWaiver {
 		return 0
 	}
-	return int64(math.Log(float64(h) - 1999.0) * 500000000)
+	return int64(math.Log(float64(h) - collateralWaiver + 1) * 500000000)
 }

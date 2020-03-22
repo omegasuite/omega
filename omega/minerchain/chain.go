@@ -226,6 +226,10 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	for n := b.BestChain.Tip(); n != nil && n != forkNode; n = n.Parent {
 		detachNodes.PushBack(n)
 	}
+	
+	if detachNodes.Len() >= attachNodes.Len() {
+		return list.New(), list.New(), txdetachNodes, txattachNodes
+	}
 
 	txdetachNodes, txattachNodes = b.blockChain.GetReorganizeSideChain(NodetoHeader(newtip).BestBlock)
 
@@ -612,6 +616,10 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		b.index.SetStatusFlags(n, chainutil.StatusValid)
 
 		newBest = n
+	}
+
+	if detachNodes.Len() >= len(attachBlocks) {
+		return fmt.Errorf("Detach more than attach.")
 	}
 
 	// Disconnect blocks from the main chain.
@@ -1371,7 +1379,32 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	if !ok {
 		log.Warnf("miner chain is corrupted. roll back %d blocks", detachNodes.Len())
 		b.chainLock.Lock()
-		b.reorganizeChain(detachNodes, list.New())
+		// Disconnect blocks from the main chain.
+		for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
+			n := e.Value.(*chainutil.BlockNode)
+			if n.Parent == nil {
+				// never remove genesis block
+				continue
+			}
+
+			var block *wire.MinerBlock
+			err := b.db.View(func(dbTx database.Tx) error {
+				var err error
+				block, err = dbFetchBlockByNode(dbTx, n)
+				return err
+			})
+			if err != nil {
+				break
+			}
+
+			// Update the database and chain state.
+			err = b.disconnectBlock(n, block)
+			if err != nil {
+				break
+			}
+		}
+
+//		b.reorganizeChain(detachNodes, list.New())
 		b.chainLock.Unlock()
 
 		detachNodes := list.New()

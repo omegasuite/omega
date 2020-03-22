@@ -115,7 +115,7 @@ func (b *MinerChain) CheckSideChain(hash *chainhash.Hash) {
 
 	detachNodes, attachNodes, txdetachNodes, txattachNodes := b.getReorganizeNodes(node)
 
-	if detachNodes.Len() == 0 && attachNodes.Len() == 0 {
+	if attachNodes.Len() == 0 {
 		return
 	}
 

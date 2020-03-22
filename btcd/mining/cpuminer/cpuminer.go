@@ -575,7 +575,7 @@ flushconnch:
 
 		pows := 0
 		blk := m.g.Chain.BestChain.Tip()
-		for blk != nil && blk.Data.GetNonce() > 0 && pows < 5 {
+		for blk != nil && blk.Data.GetNonce() > 0 && pows < 7 {
 			pows++
 			blk = blk.Parent
 		}
