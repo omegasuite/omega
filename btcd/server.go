@@ -2529,6 +2529,9 @@ func (s *server) peerHandler() {
 		}
 	})
 
+	// initialize committee
+	newBlock <- int32(s.chain.BestSnapshot().LastRotation)
+
 out:
 	for {
 		select {

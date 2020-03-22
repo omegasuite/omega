@@ -72,9 +72,21 @@ func (msg * MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding)
 		return err
 	}
 
-	err = readElement(r, &msg.Signatures)
-	if err != nil {
+	var ns int32
+	if err = readElement(r, &ns); err != nil {
 		return err
+	}
+
+	msg.Signatures = make([][]byte, ns)
+	for i := int32(0); i < ns; i++ {
+		var sn int32
+		if err = readElement(r, &sn); err != nil {
+			return err
+		}
+		msg.Signatures[i] = make([]byte, sn)
+		if err = readElement(r, msg.Signatures[i]); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -98,24 +110,30 @@ func (msg * MsgKnowledge) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding)
 		}
 	}
 
-	err = writeElement(w, msg.M)
-	if err != nil {
+	if err = writeElement(w, msg.M); err != nil {
 		return err
 	}
 
-	err = writeElement(w, msg.Finder)
-	if err != nil {
+	if err = writeElement(w, msg.Finder); err != nil {
 		return err
 	}
 
-	err = writeElement(w, msg.From)
-	if err != nil {
+	if err = writeElement(w, msg.From); err != nil {
 		return err
 	}
 
-	err = writeElement(w, msg.Signatures)
-	if err != nil {
+	ns := int32(len(msg.Signatures))
+	if err = writeElement(w, ns); err != nil {
 		return err
+	}
+	for _, s := range msg.Signatures {
+		ns = int32(len(s))
+		if err = writeElement(w, ns); err != nil {
+			return err
+		}
+		if err = writeElement(w, s); err != nil {
+			return err
+		}
 	}
 
 	return nil

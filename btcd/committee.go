@@ -578,12 +578,14 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 
 		if !isin {
 			addr := tcp.String()
+/*
 			for _,adr := range cfg.ConnectPeers {
 				if adr == addr {
 					// leave it for connmgr
 					return
 				}
 			}
+ */
 
 			btcdLog.Infof("makeConnection: new %s", addr)
 

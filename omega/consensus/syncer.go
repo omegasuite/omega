@@ -119,7 +119,7 @@ func (self *Syncer) repeater() {
 		//					continue
 		//				}
 		// about my tree, if I know somthing someone does not know, send him info
-		k = k &^ allm
+		k = allm &^ k
 		if k == 0 {
 			continue
 		}
@@ -136,6 +136,9 @@ func (self *Syncer) repeater() {
 //				pp.K = append(pp.K, self.Myself)
 				pp.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
 				pp.From = self.Me
+
+				log.Infof("Repeater: knowledge to %x", self.Names[int32(i)])
+
 				if miner.server.CommitteeMsg(self.Names[int32(i)], &pp) {
 					self.knowledges.Knowledge[self.Myself][i] |= m
 					self.knowledges.Knowledge[self.Myself][self.Myself] |= m
@@ -837,6 +840,7 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 		tmsg := *msg.(*wire.MsgKnowledge)
 		tmsg.K = make([]int32, 0)
 		tmsg.Signatures = make([][]byte, 0)
+		tmsg.From = tmsg.Finder
 
 		for j,i := range msg.(*wire.MsgKnowledge).K {
 			sig := msg.(*wire.MsgKnowledge).Signatures[j]
@@ -850,7 +854,9 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 
 //			p,_ := btcutil.NewAddressPubKey(sig[:btcec.PubKeyBytesLenCompressed], miner.cfg)
 			signature, err := btcec.ParseSignature(sig[btcec.PubKeyBytesLenCompressed:], btcec.S256())
-			if err != nil || !signature.Verify(tmsg.DoubleHashB(), pk.PubKey()) {
+			h := tmsg.DoubleHashB()
+			if err != nil || !signature.Verify(h, pk.PubKey()) {
+				log.Infof("signature Verify failed for %x at %d, %d", pkh, j, i)
 				return false
 			}
 
