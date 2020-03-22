@@ -571,7 +571,7 @@ flushconnch:
 //			continue
 //		}
 //		time.Sleep(time.Second * 5)
-//continue		// debug: committee mining only
+// continue		// debug: committee mining only
 
 		pows := 0
 		blk := m.g.Chain.BestChain.Tip()
