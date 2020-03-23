@@ -455,6 +455,8 @@ func (self *Syncer) Consensus(msg * wire.MsgConsensus) {
 		if privKey := miner.server.GetPrivKey(self.Me); privKey != nil {
 			self.sigGiven = self.agreed
 			sig, _ := privKey.Sign(hash)
+			s := sig.Serialize()
+
 			sigmsg := wire.MsgSignature {
 				For:	   msg.From,
 			}
@@ -462,9 +464,9 @@ func (self *Syncer) Consensus(msg * wire.MsgConsensus) {
 				Height:    self.Height,
 				From:      self.Me,
 				M:		   msg.M,
+				Signature: make([]byte, btcec.PubKeyBytesLenCompressed + len(s)),
 			}
 
-			s := sig.Serialize()
 			copy(sigmsg.Signature[:], privKey.PubKey().SerializeCompressed())
 			copy(sigmsg.Signature[btcec.PubKeyBytesLenCompressed:], s)
 
@@ -521,14 +523,16 @@ func (self *Syncer) ckconsensus() {
 		self.sigGiven = self.Myself
 
 		sig, _ := privKey.Sign(hash)
+		ss := sig.Serialize()
 		msg := wire.MsgConsensus{
 			Height:    self.Height,
 			From:      self.Me,
 			M:		   self.forest[self.Me].hash,
+			Signature: make([]byte, btcec.PubKeyBytesLenCompressed + len(ss)),
 		}
 
 		copy(msg.Signature[:], privKey.PubKey().SerializeCompressed())
-		copy(msg.Signature[btcec.PubKeyBytesLenCompressed:], sig.Serialize())
+		copy(msg.Signature[btcec.PubKeyBytesLenCompressed:], ss)
 
 		self.forest[self.Me].block.MsgBlock().Transactions[0].SignatureScripts =
 			self.forest[self.Me].block.MsgBlock().Transactions[0].SignatureScripts[:1]
@@ -543,13 +547,15 @@ func (self *Syncer) ckconsensus() {
 }
 
 func (self *Syncer) makeRelease(better int32) *wire.MsgRelease {
-	return &wire.MsgRelease{
+	d := &wire.MsgRelease{
 		Better: better,
 //		K:      self.makeAbout(better).K,
 		M:      self.forest[self.Names[better]].hash,	//self.makeAbout(better).M,
 		Height: self.Height,
 		From:   self.Me,
 	}
+	d.Sign(miner.server.GetPrivKey(self.Me))
+	return d
 }
 
 func (self *Syncer) dupKnowledge(fmp int32) {
@@ -588,6 +594,7 @@ func (self *Syncer) yield(better int32) bool {
 		delete(self.asked, self.Myself)
 		rls := self.makeRelease(better)
 		for r, _ := range self.agrees {
+			rls.Sign(miner.server.GetPrivKey(self.Me))
 			miner.server.CommitteeMsgMG(self.Names[r], rls, self.Height)
 		}
 		self.agrees = make(map[int32]struct{})
@@ -599,6 +606,7 @@ func (self *Syncer) yield(better int32) bool {
 			d.Better = better
 			d.M = self.forest[self.Names[better]].hash
 			self.agreed = better
+			d.Sign(miner.server.GetPrivKey(self.Me))
 			miner.server.CommitteeMsgMG(self.Names[better], &d, self.Height)
 		}
 		return true
@@ -643,6 +651,7 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 				self.dupKnowledge(self.Members[msg.From])
 				if self.agreed == self.Myself {
 					msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
+					msg.Sign(miner.server.GetPrivKey(self.Me))
 					miner.server.CommitteeMsgMG(self.Me, msg, self.Height) // ask again
 				}
 			}
@@ -713,6 +722,8 @@ func (self *Syncer) candidacy() {
 
 	self.asked[self.Myself] = struct{}{}
 
+	msg.Sign(miner.server.GetPrivKey(self.Me))
+
 	miner.server.CommitteeCastMG(self.Me, msg, self.Height)
 }
 
@@ -727,6 +738,7 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 	if _,ok := self.Members[from]; !self.Runnable || !ok {
 		d.Reply = "rjct"
 		d.Better = -1
+		d.Sign(miner.server.GetPrivKey(self.Me))
 		miner.server.CommitteeMsgMG(self.Names[fmp], &d, self.Height)
 		return
 	}
@@ -745,6 +757,7 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 	if !self.knowledges.Qualified(fmp) {
 		d.Reply = "rjct"
 		d.Better = -2
+		d.Sign(miner.server.GetPrivKey(self.Me))
 		miner.server.CommitteeMsgMG(self.Names[fmp], &d, self.Height)
 		return
 	}
@@ -758,6 +771,7 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 		d.Reply = "cnst"
 		d.Better = fmp
 		self.agreed = fmp
+		d.Sign(miner.server.GetPrivKey(self.Me))
 		miner.server.CommitteeMsgMG(self.Names[fmp], &d, self.Height)
 		return
 	}
@@ -774,6 +788,7 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 	//		}
 	d.Better = self.agreed
 	d.M = self.forest[self.Names[self.agreed]].hash
+	d.Sign(miner.server.GetPrivKey(self.Me))
 	miner.server.CommitteeMsgMG(self.Names[fmp], &d, self.Height)
 }
 
@@ -845,39 +860,30 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 		for j,i := range msg.(*wire.MsgKnowledge).K {
 			sig := msg.(*wire.MsgKnowledge).Signatures[j]
 
-			k, err := btcec.ParsePubKey(sig[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+			signer, err := btcutil.VerifySigScript(sig, tmsg.DoubleHashB(), miner.cfg)
 			if err != nil {
 				return false
 			}
-			pk, _ := btcutil.NewAddressPubKeyPubKey(*k, miner.cfg)
-			pkh := pk.AddressPubKeyHash().Hash160()
 
-//			p,_ := btcutil.NewAddressPubKey(sig[:btcec.PubKeyBytesLenCompressed], miner.cfg)
-			signature, err := btcec.ParseSignature(sig[btcec.PubKeyBytesLenCompressed:], btcec.S256())
-			h := tmsg.DoubleHashB()
-			if err != nil || !signature.Verify(h, pk.PubKey()) {
-				log.Infof("signature Verify failed for %x at %d, %d", pkh, j, i)
-				return false
-			}
+			pkh := signer.Hash160()
 
 			tmsg.K = append(tmsg.K, i)
 			tmsg.Signatures = append(tmsg.Signatures, sig)
 			tmsg.From = self.Names[int32(i)]
 			if bytes.Compare(tmsg.From[:], pkh[:]) != 0 {
-//			if bytes.Compare(tmsg.From[:], p.AddressPubKeyHash().Hash160()[:]) != 0 {
 				return false
 			}
 		}
 
-	case *wire.MsgCandidate:
-
-	case *wire.MsgCandidateResp:
-
-	case *wire.MsgRelease:
-
-	case *wire.MsgConsensus:
-
-	case *wire.MsgSignature:
+	case *wire.MsgCandidate, *wire.MsgCandidateResp, *wire.MsgRelease:
+		signer, err := btcutil.VerifySigScript(msg.GetSignature(), msg.DoubleHashB(), miner.cfg)
+		if err != nil {
+			return false
+		}
+		pkh := signer.Hash160()
+		if bytes.Compare(msg.Sender(), pkh[:]) != 0 {
+			return false
+		}
 	}
 
 	if _, ok = self.forest[finder]; m != nil && !ok {

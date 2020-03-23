@@ -5,6 +5,8 @@
 package wire
 
 import (
+	"bytes"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire/common"
 	"io"
@@ -17,32 +19,47 @@ type MsgCandidate struct {
 	Signature      []byte
 }
 
+func (msg * MsgCandidate) Sign(key *btcec.PrivateKey) {
+	sig, _ := key.Sign(msg.DoubleHashB())
+
+	ss := sig.Serialize()
+	ssig := make([]byte, btcec.PubKeyBytesLenCompressed + len(ss))
+
+	copy(ssig, key.PubKey().SerializeCompressed())
+	copy(ssig[btcec.PubKeyBytesLenCompressed:], ss)
+
+	msg.Signature = ssig
+}
+
 func (msg * MsgCandidate) Block() int32 {
 	return msg.Height
 }
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidate) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
+func (msg * MsgCandidate) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	err := readElement(r, &msg.Height)
 	if err != nil {
 		return err
 	}
 
-	err = readElement(r, &msg.F)
-	if err != nil {
+	if err = readElement(r, &msg.F); err != nil {
 		return err
 	}
 
-	// Read stop hash
-	err = readElement(r, &msg.M)
-	if err != nil {
+	if err = readElement(r, &msg.M); err != nil {
 		return err
 	}
-	// Read stop hash
-	err = readElement(r, &msg.Signature)
-	if err != nil {
-		return err
+
+	if enc == SignatureEncoding {
+		var ln uint32
+		if err = readElement(r, &ln); err != nil {
+			return err
+		}
+		msg.Signature = make([]byte, ln)
+		if err = readElement(r, msg.Signature); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -50,28 +67,28 @@ func (msg * MsgCandidate) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding)
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidate) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
-	// Write filter type
+func (msg * MsgCandidate) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	err := writeElement(w, msg.Height)
 	if err != nil {
 		return err
 	}
 
-	err = writeElement(w, msg.F)
-	if err != nil {
+	if err = writeElement(w, msg.F); err != nil {
 		return err
 	}
 
-	// Write stop hash
-	err = writeElement(w, msg.M)
-	if err != nil {
+	if err = writeElement(w, msg.M); err != nil {
 		return err
 	}
 
-	// Write stop hash
-	err = writeElement(w, msg.Signature)
-	if err != nil {
-		return err
+	if enc == SignatureEncoding {
+		ln := uint32(len(msg.Signature))
+		if err = writeElement(w, ln); err != nil {
+			return err
+		}
+		if err = writeElement(w, msg.Signature); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -94,20 +111,17 @@ func (msg * MsgCandidate) MaxPayloadLength(pver uint32) uint32 {
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
 func (msg * MsgCandidate) DoubleHashB() []byte {
-	// Message size depends on the blockchain height, so return general limit
-	// for all messages.
-	h := make([]byte, 48)
-	for i := uint(0); i < 4; i++ {
-		h[i] = byte((msg.Height >> (i * 8) & 0xFF))
-	}
-
-	copy(h[8:], msg.F[:])
-	copy(h[28:], msg.M[:])
-	return chainhash.DoubleHashB(h)
+	var w bytes.Buffer
+	msg.BtcEncode(&w, 0, BaseEncoding)
+	return chainhash.DoubleHashB(w.Bytes())
 }
 
 func (msg * MsgCandidate) GetSignature() []byte {
 	return msg.Signature
+}
+
+func (msg * MsgCandidate) Sender() []byte {
+	return msg.F[:]
 }
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to
@@ -130,37 +144,45 @@ type MsgCandidateResp struct {
 	Signature []byte
 }
 
+func (msg * MsgCandidateResp) Sign(key *btcec.PrivateKey) {
+	sig, _ := key.Sign(msg.DoubleHashB())
+
+	ss := sig.Serialize()
+	ssig := make([]byte, btcec.PubKeyBytesLenCompressed + len(ss))
+
+	copy(ssig, key.PubKey().SerializeCompressed())
+	copy(ssig[btcec.PubKeyBytesLenCompressed:], ss)
+
+	msg.Signature = ssig
+}
+
 func (msg * MsgCandidateResp) Block() int32 {
 	return msg.Height
 }
 
 // BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
+func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	err := readElement(r, &msg.Height)
 	if err != nil {
 		return err
 	}
 
 	var rp [4]byte
-	err = readElement(r, &rp)
-	if err != nil {
+	if err = readElement(r, &rp); err != nil {
 		return err
 	}
 	msg.Reply = string(rp[:])
 
-	err = readElement(r, &msg.From)
-	if err != nil {
+	if err = readElement(r, &msg.From); err != nil {
 		return err
 	}
 
-	err = readElement(r, &msg.M)
-	if err != nil {
+	if err = readElement(r, &msg.M); err != nil {
 		return err
 	}
 
-	err = readElement(r, &msg.Better)
-	if err != nil {
+	if err = readElement(r, &msg.Better); err != nil {
 		return err
 	}
 
@@ -171,15 +193,21 @@ func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, _ MessageEncod
 	msg.K = make([]int64, l)
 	for i := 0; i < int(l); i++ {
 		n, err := common.ReadVarInt(r, 0)
-		msg.K[i] = int64(n)
 		if err != nil {
 			return err
 		}
+		msg.K[i] = int64(n)
 	}
 
-	err = readElement(r, &msg.Signature)
-	if err != nil {
-		return err
+	if enc == SignatureEncoding {
+		var ln uint32
+		if err = readElement(r, &ln); err != nil {
+			return err
+		}
+		msg.Signature = make([]byte, ln)
+		if err = readElement(r, msg.Signature); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -187,7 +215,7 @@ func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, _ MessageEncod
 
 // BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidateResp) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
+func (msg * MsgCandidateResp) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {
@@ -197,40 +225,39 @@ func (msg * MsgCandidateResp) BtcEncode(w io.Writer, pver uint32, _ MessageEncod
 	// Write stop hash
 	var r [4]byte
 	copy(r[:], []byte(msg.Reply))
-	err = writeElement(w, r)
-	if err != nil {
+	if err = writeElement(w, r); err != nil {
 		return err
 	}
 
-	err = writeElement(w, msg.From)
-	if err != nil {
+	if err = writeElement(w, msg.From);	err != nil {
 		return err
 	}
 
-	err = writeElement(w, msg.M)
-	if err != nil {
+	if err = writeElement(w, msg.M); err != nil {
 		return err
 	}
 
-	err = writeElement(w, msg.Better)
-	if err != nil {
+	if err = writeElement(w, msg.Better); err != nil {
 		return err
 	}
 
-	err = common.WriteVarInt(w, 0, uint64(len(msg.K)))
-	if err != nil {
+	if err = common.WriteVarInt(w, 0, uint64(len(msg.K))); err != nil {
 		return err
 	}
 	for i := 0; i < len(msg.K); i++ {
-		err = common.WriteVarInt(w, 0, uint64(msg.K[i]))
-		if err != nil {
+		if err = common.WriteVarInt(w, 0, uint64(msg.K[i])); err != nil {
 			return err
 		}
 	}
 
-	err = writeElement(w, msg.Signature)
-	if err != nil {
-		return err
+	if enc == SignatureEncoding {
+		ln := uint32(len(msg.Signature))
+		if err = writeElement(w, ln); err != nil {
+			return err
+		}
+		if err = writeElement(w, msg.Signature); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -253,19 +280,17 @@ func (msg * MsgCandidateResp) MaxPayloadLength(pver uint32) uint32 {
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
 func (msg * MsgCandidateResp) DoubleHashB() []byte {
-	// Message size depends on the blockchain height, so return general limit
-	// for all messages.
-	h := make([]byte, 12)
-	for i := uint(0); i < 4; i++ {
-		h[i] = byte((msg.Height >> (i * 8) & 0xFF))
-	}
-
-	copy(h[8:], msg.Reply[:])
-	return chainhash.DoubleHashB(h)
+	var w bytes.Buffer
+	msg.BtcEncode(&w, 0, BaseEncoding)
+	return chainhash.DoubleHashB(w.Bytes())
 }
 
 func (msg * MsgCandidateResp) GetSignature() []byte {
 	return msg.Signature
+}
+
+func (msg * MsgCandidateResp) Sender() []byte {
+	return msg.From[:]
 }
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to

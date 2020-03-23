@@ -21,6 +21,10 @@ type MsgKnowledge struct {
 	Signatures [][]byte
 }
 
+func (msg * MsgKnowledge) Sign(key *btcec.PrivateKey) {
+	// to make interface happy. never used.
+}
+
 func (msg * MsgKnowledge) AddK(k int32, key *btcec.PrivateKey) {
 	sig, _ := key.Sign(msg.DoubleHashB())
 
@@ -165,6 +169,10 @@ func (msg * MsgKnowledge) Block() int32 {
 
 func (msg *MsgKnowledge) GetSignature() []byte {
 	return msg.Signatures[msg.K[len(msg.K) - 1]]
+}
+
+func (msg * MsgKnowledge) Sender() []byte {
+	return msg.From[:]
 }
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to

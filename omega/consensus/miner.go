@@ -29,6 +29,10 @@ const (
 
 type Message interface {
 	Block() int32
+	Sign(key *btcec.PrivateKey)
+	DoubleHashB() []byte
+	GetSignature() []byte
+	Sender() []byte
 }
 
 var Debug        int // hash of last block

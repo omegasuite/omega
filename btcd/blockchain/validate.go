@@ -455,28 +455,14 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		usigns := make(map[[20]byte]struct{})
 
 		for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
-			if len(sign) < btcec.PubKeyBytesLenCompressed {
-				return fmt.Errorf("Incorrect signature"), false
-			}
-			k, err := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
-			//			k,err := btcutil.DecodeAddress(string(sign[:33]), b.chainParams)
+			signer, err := btcutil.VerifySigScript(sign, hash, b.chainParams)
 			if err != nil {
-				return fmt.Errorf("Incorrect Miner signature. pubkey error"), false
+				return err, false
 			}
 
-			pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
-			pkh := pk.AddressPubKeyHash().Hash160()
+			pkh := signer.Hash160()
 			if _, ok := usigns[*pkh]; ok {
 				return fmt.Errorf("Duplicated Miner signature"), false
-			}
-
-			s, err := btcec.ParseSignature(sign[btcec.PubKeyBytesLenCompressed:], btcec.S256())
-			if err != nil {
-				return fmt.Errorf("Incorrect Miner signature. Signature parse error"), false
-			}
-
-			if !s.Verify(hash, pk.PubKey()) {
-				return fmt.Errorf("Incorrect Miner signature. Verification doesn't match"), false
 			}
 
 			usigns[*pkh] = struct{}{}
