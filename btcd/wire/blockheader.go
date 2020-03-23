@@ -15,13 +15,14 @@ import (
 )
 
 const (
-	CommitteeSize				= 3			// 3
+	CommitteeSize				= 3		// 3
 	MINER_RORATE_FREQ			= 100		// rotate committee every MINER_RORATE_FREQ blocks
-	DESIRABLE_MINER_CANDIDATES	= 40		// the desirable number of miner candidate we want to have
-	MinerGap					= 3			// a miner must wait between to candidacies
+	DESIRABLE_MINER_CANDIDATES		= 40		// the desirable number of miner candidate we want to have
+	MinerGap				= 3		// a miner must wait between to candidacies
 	SCALEFACTORCAP				= 48
-	DifficultyRatio				= 4			// ratio of difficulty for tx chain and miner chain
+	DifficultyRatio				= 4		// ratio of difficulty for tx chain and miner chain
 	collateralWaiver			= 5000
+	collateralBase				= 1e8 * 5	// base is 5 BTC. By 15,000-th miner block, would be ~45 BTC
 )
 
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.
@@ -508,5 +509,5 @@ func Collateral(h int32) int64 {
 	if h < collateralWaiver {
 		return 0
 	}
-	return int64(math.Log(float64(h) - collateralWaiver + 1) * 500000000)
+	return int64(math.Log(float64(h) - collateralWaiver + 1) * collateralBase)
 }
