@@ -118,7 +118,8 @@ func (b *BlockChain) GetBlockLimit(h int32) uint32 {
 
 	p := b.BestChain.NodeByHeight(start)
 	for i := start; i >= stop; i-- {
-		if b.blockSizer.lastNode != nil && b.blockSizer.lastNode.Height == i + 1 {
+		if b.blockSizer.lastNode != nil && b.blockSizer.lastNode.Height == i + 1 &&
+			b.blockSizer.lastNode.Data.GetNonce() < 0 {
 			q,_ := b.BlockByHash(&b.blockSizer.lastNode.Hash)
 			s,_ := q.Bytes()
 			b.blockSizer.blockCount++
@@ -207,7 +208,8 @@ func (b *BlockChain) take(block *btcutil.Block) {
 	p := b.BestChain.NodeByHeight(start)
 
 	for i := start; i >= stop; i-- {
-		if b.blockSizer.lastNode != nil && b.blockSizer.lastNode.Height == i + 1 {
+		if b.blockSizer.lastNode != nil && b.blockSizer.lastNode.Height == i + 1 &&
+			b.blockSizer.lastNode.Data.GetNonce() < 0 {
 			b.blockSizer.blockCount++
 			q, _ := b.BlockByHash(&b.blockSizer.lastNode.Hash)
 			s, _ := q.Bytes()
