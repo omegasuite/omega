@@ -863,7 +863,7 @@ func createTxRawResult(chainParams *chaincfg.Params, mtx *wire.MsgTx,
 		Txid:     txHash,
 		Hash:     mtx.SignatureHash().String(),
 		Size:     int32(mtx.SerializeSize()),
-		Vsize:    int32(mempool.GetTxVirtualSize(btcutil.NewTx(mtx))),
+//		Vsize:    int32(blockchain.GetTransactionWeight(btcutil.NewTx(mtx))),
 		Vin:      createVinList(mtx),
 		Vout:     createVoutList(mtx, chainParams, nil),
 		Version:  mtx.Version,
@@ -1277,7 +1277,7 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		Height:        int64(blockHeight),
 		Size:          int32(len(blkBytes)),
 		StrippedSize:  int32(blk.MsgBlock().SerializeSizeStripped()),
-		Weight:        int32(blockchain.GetBlockWeight(blk)),
+//		Weight:        int32(blockchain.GetBlockWeight(blk)),
 //		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
 //		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 		NextHash:      nextHashString,
@@ -1968,7 +1968,7 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		CurTime:      header.Timestamp.Unix(),
 		Height:       int64(template.Height),
 		PreviousHash: header.PrevBlock.String(),
-		WeightLimit:  chaincfg.MaxBlockWeight,
+//		WeightLimit:  chaincfg.MaxBlockWeight,
 		SigOpLimit:   chaincfg.MaxBlockSigOpsCost,
 		SizeLimit:    wire.MaxBlockPayload,
 		Transactions: transactions,
@@ -2584,7 +2584,7 @@ func handleGetMiningInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 	result := btcjson.GetMiningInfoResult{
 		Blocks:             int64(best.Height),
 		CurrentBlockSize:   best.BlockSize,
-		CurrentBlockWeight: best.BlockWeight,
+//		CurrentBlockLimit:  best.BlockLimit,
 		CurrentBlockTx:     best.NumTxns,
 		Difficulty:         getDifficultyRatio(best.Bits, s.cfg.ChainParams),
 		Generate:           s.cfg.CPUMiner.IsMining(),
@@ -3956,6 +3956,11 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 				rpcsLog.Errorf("Verify is unable to validate "+
 					"block at hash %s height %d: %s",
 					block.Hash().String(), height, err.Error())
+				return err.Error(), err
+			}
+			if block.Size() > int(chain.GetBlockLimit(block.Height())) {
+				err = fmt.Errorf("serialized block is too big - got %d, "+
+					"max %d", block.Size(), chain.GetBlockLimit(block.Height()))
 				return err.Error(), err
 			}
 		}

@@ -540,7 +540,7 @@ func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.
 			Added:    time.Now(),
 			Height:   height,
 			Fee:      fee,
-			FeePerKB: fee * 1000 / GetTxVirtualSize(tx),
+			FeePerKB: fee * 1000 / blockchain.GetTransactionWeight(tx),
 		},
 		StartingPriority: mining.CalcPriority(tx.MsgTx(), utxoView, height),
 	}
@@ -885,7 +885,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	// which is more desirable.  Therefore, as long as the size of the
 	// transaction does not exceeed 1000 less than the reserved space for
 	// high-priority transactions, don't require a fee for it.
-	serializedSize := GetTxVirtualSize(tx)
+	serializedSize := blockchain.GetTransactionWeight(tx)
 	minFee := calcMinRequiredTxRelayFee(serializedSize,
 		mp.cfg.Policy.MinRelayTxFee)
 	if serializedSize >= (DefaultBlockPrioritySize-1000) && txFee < minFee {
@@ -1235,7 +1235,7 @@ func (mp *TxPool) RawMempoolVerbose() map[string]*btcjson.GetRawMempoolVerboseRe
 
 		mpd := &btcjson.GetRawMempoolVerboseResult{
 			Size:             int32(tx.MsgTx().SerializeSize()),
-			Vsize:            int32(GetTxVirtualSize(tx)),
+			Vsize:            int32(blockchain.GetTransactionWeight(tx)),
 			Fee:              btcutil.Amount(desc.Fee).ToBTC(),
 			Time:             desc.Added.Unix(),
 			Height:           int64(desc.Height),

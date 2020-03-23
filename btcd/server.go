@@ -3158,6 +3158,8 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		return nil, err
 	}
 
+	s.chain.Subscribe(s.chain.BlockSizerNotice)
+
 	// Search for a FeeEstimator state in the database. If none can be found
 	// or if it cannot be loaded, create a new one.
 
@@ -3263,10 +3265,10 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	// NOTE: The CPU miner relies on the mempool, so the mempool has to be
 	// created before calling the function to create the CPU miner.
 	policy := mining.Policy{
-		BlockMinWeight:    cfg.BlockMinWeight,
-		BlockMaxWeight:    cfg.BlockMaxWeight,
-		BlockMinSize:      cfg.BlockMinSize,
-		BlockMaxSize:      cfg.BlockMaxSize,
+//		BlockMinWeight:    cfg.BlockMinWeight,
+//		BlockMaxWeight:    cfg.BlockMaxWeight,
+//		BlockMinSize:      cfg.BlockMinSize,
+//		BlockMaxSize:      cfg.BlockMaxSize,
 		BlockPrioritySize: cfg.BlockPrioritySize,
 		TxMinFreeFee:      cfg.minRelayTxFee,
 	}

@@ -619,10 +619,13 @@ mempoolLoop:
 	// The starting block size is the size of the block header plus the max
 	// possible transaction count size, plus the size of the coinbase
 	// transaction.
-	blockWeight := uint32((blockHeaderOverhead * chaincfg.WitnessScaleFactor) +
-		blockchain.GetTransactionWeight(coinbaseTx))
+//	blockWeight := uint32((blockHeaderOverhead * chaincfg.WitnessScaleFactor) +
+//		blockchain.GetTransactionWeight(coinbaseTx))
+	blockWeight := uint32(blockchain.GetTransactionWeight(coinbaseTx))
 	blockSigOpCost := coinbaseSigOpCost
 	totalFees := int64(0)
+
+	blockMaxSize := g.Chain.GetBlockLimit(nextBlockHeight)
 
 	// Choose which transactions make it into the block.
 	for priorityQueue.Len() > 0 {
@@ -638,8 +641,7 @@ mempoolLoop:
 		txWeight := uint32(blockchain.GetTransactionWeight(tx))
 		blockPlusTxWeight := blockWeight + txWeight
 		if blockPlusTxWeight < blockWeight ||
-			blockPlusTxWeight >= g.policy.BlockMaxWeight {
-
+			blockPlusTxWeight >= blockMaxSize {
 			log.Tracef("Skipping tx %s because it would exceed "+
 				"the max block weight", tx.Hash())
 			logSkippedDeps(tx, deps)
@@ -668,13 +670,13 @@ mempoolLoop:
 		// minimum block size.
 		if sortedByFee &&
 			prioItem.feePerKB < int64(g.policy.TxMinFreeFee) &&
-			blockPlusTxWeight >= g.policy.BlockMinWeight {
+			blockPlusTxWeight >= blockMaxSize {
 
 			log.Tracef("Skipping tx %s with feePerKB %d "+
 				"< TxMinFreeFee %d and block weight %d >= "+
 				"minBlockWeight %d", tx.Hash(), prioItem.feePerKB,
 				g.policy.TxMinFreeFee, blockPlusTxWeight,
-				g.policy.BlockMinWeight)
+				blockMaxSize)
 			logSkippedDeps(tx, deps)
 			continue
 		}

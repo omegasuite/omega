@@ -7,6 +7,7 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"io"
 	"sync"
 	"time"
@@ -129,7 +130,7 @@ func (bi *blockImporter) processBlock(serializedBlock []byte) (bool, error) {
 
 	// Ensure the blocks follows all of the chain rules and match up to the
 	// known checkpoints.
-	isMainChain, isOrphan, err := bi.chain.ProcessBlock(block, blockchain.BFFastAdd)
+	isMainChain, isOrphan, err,_ := bi.chain.ProcessBlock(block, blockchain.BFFastAdd)
 	if err != nil {
 		return false, err
 	}
@@ -332,7 +333,7 @@ func newBlockImporter(db database.DB, r io.ReadSeeker) (*blockImporter, error) {
 	chain, err := blockchain.New(&blockchain.Config{
 		DB:           db,
 		ChainParams:  activeNetParams,
-		TimeSource:   blockchain.NewMedianTime(),
+		TimeSource:   chainutil.NewMedianTime(),
 		IndexManager: indexManager,
 	})
 	if err != nil {

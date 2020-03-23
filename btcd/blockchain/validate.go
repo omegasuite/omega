@@ -555,7 +555,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 		return ruleError(ErrNoTransactions, "block does not contain "+
 			"any transactions")
 	}
-
+/*
 	// A block must not have more transactions than the max block payload or
 	// else it is certainly over the weight limit.
 	if numTx > chaincfg.MaxBlockBaseSize {
@@ -572,6 +572,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 			"max %d", serializedSize, chaincfg.MaxBlockBaseSize)
 		return ruleError(ErrBlockTooBig, str)
 	}
+ */
 
 	// The first transaction in a block must be a coinbase.
 	transactions := block.Transactions()
@@ -644,7 +645,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 		// We could potentially overflow the accumulator so check for
 		// overflow.
 		lastSigOps := totalSigOps
-		totalSigOps += (CountSigOps(tx) * chaincfg.WitnessScaleFactor)
+		totalSigOps += CountSigOps(tx)	// * chaincfg.WitnessScaleFactor)
 		if totalSigOps < lastSigOps || totalSigOps > chaincfg.MaxBlockSigOpsCost {
 			str := fmt.Sprintf("block contains too many signature "+
 				"operations - got %v, max %v", totalSigOps,
@@ -758,17 +759,13 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 			}
 		}
 
-		// Ensure coinbase starts with serialized block heights for
-		// blocks whose version is the serializedHeightVersion or newer
-		// once a majority of the network has upgraded.  This is part of
-		// BIP0034.
-/*
-		coinbaseTx := block.Height()[0]
-		err = checkSerializedHeight(coinbaseTx, blockHeight)
-		if err != nil {
-			return err
+		coinbaseTx := block.Transactions()[0]
+		if len(coinbaseTx.MsgTx().TxIn) == 0 || blockHeight != int32(coinbaseTx.MsgTx().TxIn[0].PreviousOutPoint.Index) {
+			str := fmt.Sprintf("Bad blockHeight in coinbaseTx"+
+				"transaction %v", block.Hash())
+			return ruleError(ErrBadCoinbaseScriptLen, str)
 		}
-*/
+
 			// Validate the witness commitment (if any) within the
 			// block.  This involves asserting that if the coinbase
 			// contains the special commitment output, then this
@@ -785,10 +782,11 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 			// that the block's weight doesn't exceed the current
 			// consensus parameter.
 			blockWeight := GetBlockWeight(block)
-			if blockWeight > chaincfg.MaxBlockWeight {
+			blockLimit := int64(b.GetBlockLimit(block.Height()))
+			if blockWeight > blockLimit { // chaincfg.MaxBlockWeight {
 				str := fmt.Sprintf("block's weight metric is "+
 					"too high - got %v, max %v",
-					blockWeight, chaincfg.MaxBlockWeight)
+					blockWeight, blockLimit) //	chaincfg.MaxBlockWeight)
 				return ruleError(ErrBlockWeightTooHigh, str)
 			}
 		}
@@ -1329,6 +1327,12 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 	err := checkBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return err
+	}
+
+	if block.Size() > int(b.GetBlockLimit(block.Height())) {
+		str := fmt.Sprintf("serialized block is too big - got %d, "+
+			"max %d", block.Size(), b.GetBlockLimit(block.Height()))
+		return ruleError(ErrBlockTooBig, str)
 	}
 
 	err = b.checkBlockContext(block, tip, flags)

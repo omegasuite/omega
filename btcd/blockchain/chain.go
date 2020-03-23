@@ -54,28 +54,28 @@ type BestState struct {
 							   // for every POW block, it increase by CommitteeSize
 							   // to phase out the last committee EVEN it means to pass the
 							   // end of Miner chain (for consistency among nodes)
+//	BlockLimit uint64 			// The weight of the block.
 
 	// values below are not store in DB
 	BlockSize   uint64         // The size of the block.
-	BlockWeight uint64         // The weight of the block.
 	NumTxns     uint64         // The number of txns in the block.
 	Updated     time.Time      // local time the best state was updated.
 }
 
 // newBestState returns a new best stats instance for the given parameters.
-func newBestState(node *chainutil.BlockNode, blockSize, blockWeight, numTxns,
+func newBestState(node *chainutil.BlockNode, blockSize, numTxns,
 	totalTxns uint64, medianTime time.Time, bits uint32, rotation uint32) *BestState {
 
 	return &BestState{
-		Hash:        node.Hash,
-		Height:      node.Height,
-		Bits:        bits,
+		Hash:         node.Hash,
+		Height:       node.Height,
+		Bits:         bits,
 		LastRotation: rotation,
-		BlockSize:   blockSize,
-		BlockWeight: blockWeight,
-		NumTxns:     numTxns,
-		TotalTxns:   totalTxns,
-		MedianTime:  medianTime,
+		BlockSize:    blockSize,
+//		BlockLimit:   blockLimit,
+		NumTxns:      numTxns,
+		TotalTxns:    totalTxns,
+		MedianTime:   medianTime,
 	}
 }
 
@@ -100,6 +100,17 @@ type BlackList interface {
 	Rollback(uint32)
 	Add(uint32, [20]byte)
 	Remove(uint32)
+}
+
+type sizeCalculator struct {
+	knownLimits map[int32]uint32		// block size limits height to bytes
+
+	// accumulator
+	target int32
+	sizeSum int64
+	timeSum int64
+	blockCount int32
+	lastNode * chainutil.BlockNode
 }
 
 // BlockChain provides functions for working with the bitcoin block chain.
@@ -204,6 +215,9 @@ type BlockChain struct {
 	Blacklist BlackList
 
 	Miner btcutil.Address
+
+	// block size calculator
+	blockSizer sizeCalculator
 }
 
 func (b *BlockChain) Ovm() * ovm.OVM {
@@ -440,6 +454,13 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	// later.
 	forkNode := b.BestChain.FindFork(node)
 
+	// fork node can not be before the last block reference by tip of miner chain
+	bh := b.Miners.Tip().MsgBlock().BestBlock
+	ht,_ := b.BlockHeightByHash(&bh)
+	if forkNode.Height > ht {
+		return detachNodes, attachNodes
+	}
+
 	for p := node; p != nil && p != forkNode; p = p.Parent {
 		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			h := -p.Data.GetNonce() - wire.MINER_RORATE_FREQ
@@ -563,11 +584,11 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	b.StateLock.RUnlock()
 	numTxns := uint64(len(block.MsgBlock().Transactions))
 	blockSize := uint64(block.MsgBlock().SerializeSize())
-	blockWeight := uint64(GetBlockWeight(block))
+//	blockLimit := uint64(b.GetBlockLimit(block))
 
 	bst := b.BestSnapshot()
 
-	state := newBestState(node, blockSize, blockWeight, numTxns,
+	state := newBestState(node, blockSize, numTxns,
 		curTotalTxns+numTxns, node.CalcPastMedianTime(), bst.Bits,
 		bst.LastRotation)
 
@@ -695,7 +716,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 
 	numTxns := uint64(len(prevBlock.MsgBlock().Transactions))
 	blockSize := uint64(prevBlock.MsgBlock().SerializeSize())
-	blockWeight := uint64(GetBlockWeight(prevBlock))
+//	blockLimit := uint64(b.GetBlockLimit(prevBlock))
 	newTotalTxns := curTotalTxns - uint64(len(block.MsgBlock().Transactions))
 
 	if node.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
@@ -731,7 +752,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		rotation = 0
 	}
 
-	state := newBestState(prevNode, blockSize, blockWeight, numTxns,
+	state := newBestState(prevNode, blockSize, numTxns,
 		newTotalTxns, prevNode.CalcPastMedianTime(), bits, rotation)	// prevNode.bits, b.BestSnapshot().LastRotation)
 
 	err = b.db.Update(func(dbTx database.Tx) error {

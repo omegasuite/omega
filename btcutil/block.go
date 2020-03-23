@@ -79,6 +79,12 @@ func (b *Block) Bytes() ([]byte, error) {
 	return serializedBlock, nil
 }
 
+func (b *Block) Size() int {
+	// Return the cached serialized bytes if it has already been generated.
+	b.Bytes()
+	return len(b.serializedBlock)
+}
+
 // BytesNoWitness returns the serialized bytes for the block with transactions
 // encoded without any witness data.
 func (b *Block) BytesNoWitness() ([]byte, error) {

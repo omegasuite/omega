@@ -284,6 +284,12 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return false, false, err, -1
 	}
 
+	if block.Size() > int(b.GetBlockLimit(block.Height())) {
+		str := fmt.Sprintf("serialized block is too big - got %d, "+
+			"max %d", block.Size(), b.GetBlockLimit(block.Height()))
+		return false, false, ruleError(ErrBlockTooBig, str), -1
+	}
+
 	// Find the previous checkpoint and perform some additional checks based
 	// on the checkpoint.  This provides a few nice properties such as
 	// preventing old side chain blocks before the last checkpoint,

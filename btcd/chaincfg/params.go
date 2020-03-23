@@ -42,14 +42,26 @@ var (
 )
 
 const (
+	// the base size for block (excluding header). Allowed block size is
+	// set periodically based on actual block size utiliation and block
+	// rate. Specifically, Allowed block size is every 100,000 tx blocks
+	// based on space utilization of the most recent 100,000 weighing blocks.
+	// A weighing block is a signed block that is at least 10,000 blocks before
+	// the checking point.
+	BlockBaseSize = 4096	// 4KB, amount to increase or decrease.
+	TargetBlockRate = 3		// 3 seconds.
+	BlockSizeEvalPeriod = 100000	// re-evaluate block size every 100000 blocks
+	SkipBlocks = 10000
+	StartEvalBlocks = 2000
+
 	// MaxBlockWeight defines the maximum block weight, where "block
 	// weight" is interpreted as defined in BIP0141. A block's weight is
 	// calculated as the sum of the of bytes in the existing transactions
 	// and header, plus the weight of each byte within a transaction. The
 	// weight of a "base" byte is 4, while the weight of a witness byte is
-	// 1. As a result, for a block to be valid, the BlockWeight MUST be
+	// 1. As a result, for a block to be valid, the BlockLimit MUST be
 	// less than, or equal to MaxBlockWeight.
-	MaxBlockWeight = 4000000
+//	MaxBlockWeight = 4000000
 
 	// MaxBlockBaseSize is the maximum number of bytes within a block
 	// which can be allocated to non-witness data.
@@ -65,13 +77,9 @@ const (
 	// witness data is 1/4 as cheap as regular non-witness data.
 	WitnessScaleFactor = 4
 
-	// MinTxOutputWeight is the minimum possible weight for a transaction
-	// output.
-	MinTxOutputWeight = WitnessScaleFactor * common.MinTxOutPayload
-
 	// MaxOutputsPerBlock is the maximum number of transaction outputs there
 	// can be in a block of max weight size.
-	MaxOutputsPerBlock = MaxBlockWeight / MinTxOutputWeight
+	MaxOutputsPerTx = 1000
 )
 
 // Checkpoint identifies a known good point in the block chain.  Using

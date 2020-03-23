@@ -695,7 +695,7 @@ func DeserializeUtxoEntry(serialized []byte) (*UtxoEntry, error) {
 func (view *UtxoViewpoint) fetchEntryByHash(db database.DB, hash *chainhash.Hash) (*UtxoEntry, error) {
 	// First attempt to find a utxo with the provided hash in the view.
 	prevOut := wire.OutPoint{Hash: *hash}
-	for idx := uint32(0); idx < chaincfg.MaxOutputsPerBlock; idx++ {
+	for idx := uint32(0); idx < chaincfg.MaxOutputsPerTx; idx++ {
 		prevOut.Index = idx
 		entry := view.LookupEntry(prevOut)
 		if entry != nil {

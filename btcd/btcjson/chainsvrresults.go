@@ -35,7 +35,7 @@ type GetBlockVerboseResult struct {
 	Confirmations int64         `json:"confirmations"`
 	StrippedSize  int32         `json:"strippedsize"`
 	Size          int32         `json:"size"`
-	Weight        int32         `json:"weight"`
+//	Weight        int32         `json:"weight"`
 	Height        int64         `json:"height"`
 	Version       int32         `json:"version"`
 	VersionHex    string        `json:"versionHex"`
@@ -506,7 +506,7 @@ type Vout struct {
 type GetMiningInfoResult struct {
 	Blocks             int64   `json:"blocks"`
 	CurrentBlockSize   uint64  `json:"currentblocksize"`
-	CurrentBlockWeight uint64  `json:"currentblockweight"`
+//	CurrentBlockLimit uint64  `json:"currentblocklimit"`
 	CurrentBlockTx     uint64  `json:"currentblocktx"`
 	Difficulty         float64 `json:"difficulty"`
 	Errors             string  `json:"errors"`
@@ -546,7 +546,7 @@ type TxRawResult struct {
 	Txid          string `json:"txid"`
 	Hash          string `json:"hash,omitempty"`
 	Size          int32  `json:"size,omitempty"`
-	Vsize         int32  `json:"vsize,omitempty"`
+//	Vsize         int32  `json:"vsize,omitempty"`
 	Version       int32  `json:"version"`
 	LockTime      uint32 `json:"locktime"`
 	Vin           []Vin  `json:"vin"`

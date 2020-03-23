@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/btcsuite/btcd/blockchain"
 	"io"
 	"math"
 	"math/rand"
@@ -208,7 +209,7 @@ func (ef *FeeEstimator) ObserveTransaction(t *TxDesc) {
 
 	hash := *t.Tx.Hash()
 	if _, ok := ef.observed[hash]; !ok {
-		size := uint32(GetTxVirtualSize(t.Tx))
+		size := uint32(blockchain.GetTransactionWeight(t.Tx))
 
 		ef.observed[hash] = &observedTransaction{
 			hash:     hash,

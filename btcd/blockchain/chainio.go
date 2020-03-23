@@ -766,10 +766,9 @@ func (b *BlockChain) createChainState() error {
 	// genesis block, use its timestamp for the median time.
 	numTxns := uint64(len(genesisBlock.MsgBlock().Transactions))
 	blockSize := uint64(genesisBlock.MsgBlock().SerializeSize())
-	blockWeight := uint64(GetBlockWeight(genesisBlock))
 
 	// set rotation to 0 or committee size?
-	b.stateSnapshot = newBestState(node, blockSize, blockWeight, numTxns,
+	b.stateSnapshot = newBestState(node, blockSize, numTxns,
 		numTxns, time.Unix(node.Data.TimeStamp(), 0), b.chainParams.PowLimitBits, 0)
 
 	// Create the initial the database chain state including creating the
@@ -1029,11 +1028,10 @@ func (b *BlockChain) initChainState() error {
 
 		// Initialize the state related to the best block.
 		blockSize := uint64(len(blockBytes))
-		blockWeight := uint64(GetBlockWeight(btcutil.NewBlock(&block)))
 		numTxns := uint64(len(block.Transactions))
 
 		tip.Data.SetBits(state.bits)
-		b.stateSnapshot = newBestState(tip, blockSize, blockWeight,
+		b.stateSnapshot = newBestState(tip, blockSize,
 			numTxns, state.totalTxns, tip.CalcPastMedianTime(), state.bits, state.rotation)
 
 		return nil

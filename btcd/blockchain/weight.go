@@ -17,11 +17,14 @@ import (
 func GetBlockWeight(blk *btcutil.Block) int64 {
 	msgBlock := blk.MsgBlock()
 
-	baseSize := msgBlock.SerializeSizeStripped()
 	totalSize := msgBlock.SerializeSize()
+	return int64(totalSize)
+
+//	baseSize := msgBlock.SerializeSizeStripped()
+//	totalSize := msgBlock.SerializeSize()
 
 	// (baseSize * 3) + totalSize
-	return int64((baseSize * (chaincfg.WitnessScaleFactor - 1)) + totalSize)
+//	return int64((baseSize * (chaincfg.WitnessScaleFactor - 1)) + totalSize)
 }
 
 // GetTransactionWeight computes the value of the weight metric for a given
@@ -32,11 +35,12 @@ func GetBlockWeight(blk *btcutil.Block) int64 {
 func GetTransactionWeight(tx *btcutil.Tx) int64 {
 	msgTx := tx.MsgTx()
 
-	baseSize := msgTx.SerializeSizeStripped()
-	totalSize := msgTx.SerializeSize()
+	totalSize := int64(msgTx.SerializeSize())
+	return totalSize
+//	baseSize := msgTx.SerializeSizeStripped()
 
 	// (baseSize * 3) + totalSize
-	return int64((baseSize * (chaincfg.WitnessScaleFactor - 1)) + totalSize)
+//	return int64((baseSize * (chaincfg.WitnessScaleFactor - 1)) + totalSize)
 }
 
 // GetSigOpCost returns the unified sig op cost for the passed transaction
@@ -82,4 +86,169 @@ func GetSigOpCost(tx *btcutil.Tx, isCoinBaseTx bool, utxoView *viewpoint.UtxoVie
 
 	return numSigOps, nil
 */
+}
+
+func (b *BlockChain) GetBlockLimit(h int32) uint32 {
+	if h < 0 {
+		return 0
+	}
+	if h < chaincfg.BlockSizeEvalPeriod {
+		return chaincfg.BlockBaseSize
+	}
+
+	h = h + chaincfg.BlockSizeEvalPeriod - 1
+	h -= h % chaincfg.BlockSizeEvalPeriod
+
+	if z, ok := b.blockSizer.knownLimits[h]; ok {
+		return z
+	}
+
+	start := h - chaincfg.SkipBlocks
+	stop := int32(1)
+	if start > chaincfg.BlockSizeEvalPeriod {
+		stop = start - chaincfg.BlockSizeEvalPeriod
+	}
+
+	if b.blockSizer.target != h {
+		b.blockSizer.reset(h)
+	}
+	if b.blockSizer.lastNode != nil {
+		start = b.blockSizer.lastNode.Height - 1
+	}
+
+	p := b.BestChain.NodeByHeight(start)
+	for i := start; i >= stop; i-- {
+		if b.blockSizer.lastNode != nil && b.blockSizer.lastNode.Height == i + 1 {
+			q,_ := b.BlockByHash(&b.blockSizer.lastNode.Hash)
+			s,_ := q.Bytes()
+			b.blockSizer.blockCount++
+			b.blockSizer.sizeSum += int64(len(s))
+			b.blockSizer.timeSum += b.blockSizer.lastNode.Data.TimeStamp() - p.Data.TimeStamp()
+		}
+		b.blockSizer.lastNode = p
+		p = p.Parent
+	}
+
+	b.blockSizer.conclude()
+
+	return b.blockSizer.knownLimits[h]
+}
+
+func (b *sizeCalculator) reset(h int32) {
+	b.lastNode = nil
+	b.blockCount = 0
+	b.sizeSum = 0
+	b.timeSum = 0
+	b.target = h
+}
+
+func (b *sizeCalculator) conclude() {
+	if b.blockCount == 0 {
+		return
+	}
+
+	h := b.target
+	// conclude calculation for a batch
+	avgSize := b.sizeSum / int64(b.blockCount)
+	if avgSize <= chaincfg.BlockBaseSize {
+		b.knownLimits[h] = chaincfg.BlockBaseSize
+		b.reset(0)
+		return
+	}
+	avgTime := b.timeSum / int64(b.blockCount)
+	csz := avgSize + chaincfg.BlockBaseSize - 1
+	csz -= csz % chaincfg.BlockBaseSize
+
+	b.reset(0)
+
+	if avgTime < chaincfg.TargetBlockRate {
+		if avgSize * 10 > csz * 8 {		// 80% full. increase size
+			csz += chaincfg.BlockBaseSize
+		}
+		b.knownLimits[h] = uint32(csz)
+		return
+	}
+	csz -= chaincfg.BlockBaseSize
+	b.knownLimits[h] = uint32(csz)
+}
+
+func (b *BlockChain) take(block *btcutil.Block) {
+	h := block.Height()
+	if h % chaincfg.BlockSizeEvalPeriod < chaincfg.BlockSizeEvalPeriod - chaincfg.StartEvalBlocks {
+		return
+	}
+
+	h += chaincfg.BlockSizeEvalPeriod - 1
+	h -= h % chaincfg.BlockSizeEvalPeriod
+
+	// spread calculation over a period of time to smooth server
+	if b.blockSizer.target != h {
+		b.blockSizer.reset(h)
+	}
+
+	start := h - chaincfg.SkipBlocks
+	end := int32(1)
+	if start > chaincfg.BlockSizeEvalPeriod {
+		end = start - chaincfg.BlockSizeEvalPeriod
+	}
+
+	if b.blockSizer.lastNode != nil {
+		start = b.blockSizer.lastNode.Height - 1
+		if end >= start {
+			return
+		}
+	}
+
+	stop := start - 100
+	if stop < end {
+		stop = end
+	}
+
+	p := b.BestChain.NodeByHeight(start)
+
+	for i := start; i >= stop; i-- {
+		if b.blockSizer.lastNode != nil && b.blockSizer.lastNode.Height == i + 1 {
+			b.blockSizer.blockCount++
+			q, _ := b.BlockByHash(&b.blockSizer.lastNode.Hash)
+			s, _ := q.Bytes()
+			b.blockSizer.sizeSum += int64(len(s))
+			b.blockSizer.timeSum += b.blockSizer.lastNode.Data.TimeStamp() - p.Data.TimeStamp()
+		}
+		b.blockSizer.lastNode = p
+		p = p.Parent
+	}
+}
+
+func (b *BlockChain) untake(block *btcutil.Block) {
+	h := block.Height()
+	if h % chaincfg.BlockSizeEvalPeriod < chaincfg.BlockSizeEvalPeriod - chaincfg.StartEvalBlocks {
+		return
+	}
+
+	t := h + chaincfg.BlockSizeEvalPeriod - 1
+	t -= t % chaincfg.BlockSizeEvalPeriod
+
+	if _,ok := b.blockSizer.knownLimits[t]; !ok {
+		return
+	}
+
+	if h % chaincfg.BlockSizeEvalPeriod < chaincfg.SkipBlocks {
+		delete(b.blockSizer.knownLimits, t)
+		b.blockSizer.reset(0)
+	}
+}
+
+func (b *BlockChain) BlockSizerNotice(notification *Notification) {
+	switch notification.Data.(type) {
+	case *btcutil.Block:
+		block := notification.Data.(*btcutil.Block)
+
+		switch notification.Type {
+		case NTBlockConnected:
+			b.take(block)
+
+		case NTBlockDisconnected:
+			b.untake(block)
+		}
+	}
 }

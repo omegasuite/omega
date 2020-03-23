@@ -52,12 +52,12 @@ const (
 	defaultTrickleInterval       = peer.DefaultTrickleInterval
 	defaultBlockMinSize          = 0
 	defaultBlockMaxSize          = 750000
-	defaultBlockMinWeight        = 0
-	defaultBlockMaxWeight        = 3000000
-	blockMaxSizeMin              = 1000
-	blockMaxSizeMax              = chaincfg.MaxBlockBaseSize - 1000
-	blockMaxWeightMin            = 4000
-	blockMaxWeightMax            = chaincfg.MaxBlockWeight - 4000
+//	defaultBlockMinWeight        = 0
+//	defaultBlockMaxWeight        = 3000000
+//	blockMaxSizeMin              = 1000
+//	blockMaxSizeMax              = chaincfg.MaxBlockBaseSize - 1000
+//	blockMaxWeightMin            = 4000
+//	blockMaxWeightMax            = chaincfg.MaxBlockWeight - 4000
 	defaultGenerate              = false
 	defaultMaxOrphanTransactions = 100
 	defaultMaxOrphanTxSize       = 100000
@@ -150,10 +150,10 @@ type config struct {
 	MiningAddrs          []string      `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
 	PrivKeys  	         string        `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
 	RsaPrivateKey		 string		   `long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
-	BlockMinSize         uint32        `long:"blockminsize" description:"Mininum block size in bytes to be used when creating a block"`
-	BlockMaxSize         uint32        `long:"blockmaxsize" description:"Maximum block size in bytes to be used when creating a block"`
-	BlockMinWeight       uint32        `long:"blockminweight" description:"Mininum block weight to be used when creating a block"`
-	BlockMaxWeight       uint32        `long:"blockmaxweight" description:"Maximum block weight to be used when creating a block"`
+//	BlockMinSize         uint32        `long:"blockminsize" description:"Mininum block size in bytes to be used when creating a block"`
+//	BlockMaxSize         uint32        `long:"blockmaxsize" description:"Maximum block size in bytes to be used when creating a block"`
+//	BlockMinWeight       uint32        `long:"blockminweight" description:"Mininum block weight to be used when creating a block"`
+//	BlockMaxWeight       uint32        `long:"blockmaxweight" description:"Maximum block weight to be used when creating a block"`
 	BlockPrioritySize    uint32        `long:"blockprioritysize" description:"Size in bytes for high-priority/low-fee transactions when creating a block"`
 	UserAgentComments    []string      `long:"uacomment" description:"Comment to add to the user agent -- See BIP 14 for more information."`
 	NoPeerBloomFilters   bool          `long:"nopeerbloomfilters" description:"Disable bloom filtering support"`
@@ -430,10 +430,10 @@ func loadConfig() (*config, []string, error) {
 		MinRelayTxFee:        mempool.DefaultMinRelayTxFee.ToBTC(),
 		FreeTxRelayLimit:     defaultFreeTxRelayLimit,
 		TrickleInterval:      defaultTrickleInterval,
-		BlockMinSize:         defaultBlockMinSize,
-		BlockMaxSize:         defaultBlockMaxSize,
-		BlockMinWeight:       defaultBlockMinWeight,
-		BlockMaxWeight:       defaultBlockMaxWeight,
+//		BlockMinSize:         defaultBlockMinSize,
+//		BlockMaxSize:         defaultBlockMaxSize,
+//		BlockMinWeight:       defaultBlockMinWeight,
+//		BlockMaxWeight:       defaultBlockMaxWeight,
 		BlockPrioritySize:    mempool.DefaultBlockPrioritySize,
 		MaxOrphanTxs:         defaultMaxOrphanTransactions,
 		SigCacheMaxSize:      defaultSigCacheMaxSize,
@@ -777,32 +777,6 @@ func loadConfig() (*config, []string, error) {
 		return nil, nil, err
 	}
 
-	// Limit the max block size to a sane value.
-	if cfg.BlockMaxSize < blockMaxSizeMin || cfg.BlockMaxSize >
-		blockMaxSizeMax {
-
-		str := "%s: The blockmaxsize option must be in between %d " +
-			"and %d -- parsed [%d]"
-		err := fmt.Errorf(str, funcName, blockMaxSizeMin,
-			blockMaxSizeMax, cfg.BlockMaxSize)
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
-	}
-
-	// Limit the max block weight to a sane value.
-	if cfg.BlockMaxWeight < blockMaxWeightMin ||
-		cfg.BlockMaxWeight > blockMaxWeightMax {
-
-		str := "%s: The blockmaxweight option must be in between %d " +
-			"and %d -- parsed [%d]"
-		err := fmt.Errorf(str, funcName, blockMaxWeightMin,
-			blockMaxWeightMax, cfg.BlockMaxWeight)
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
-	}
-
 	// Limit the max orphan count to a sane vlue.
 	if cfg.MaxOrphanTxs < 0 {
 		str := "%s: The maxorphantx option may not be less than 0 " +
@@ -814,25 +788,24 @@ func loadConfig() (*config, []string, error) {
 	}
 
 	// Limit the block priority and minimum block sizes to max block size.
-	cfg.BlockPrioritySize = minUint32(cfg.BlockPrioritySize, cfg.BlockMaxSize)
-	cfg.BlockMinSize = minUint32(cfg.BlockMinSize, cfg.BlockMaxSize)
-	cfg.BlockMinWeight = minUint32(cfg.BlockMinWeight, cfg.BlockMaxWeight)
+//	cfg.BlockPrioritySize = minUint32(cfg.BlockPrioritySize, cfg.BlockMaxSize)
+//	cfg.BlockMinSize = minUint32(cfg.BlockMinSize, cfg.BlockMaxSize)
+//	cfg.BlockMinWeight = minUint32(cfg.BlockMinWeight, cfg.BlockMaxWeight)
 
 	switch {
 	// If the max block size isn't set, but the max weight is, then we'll
 	// set the limit for the max block size to a safe limit so weight takes
 	// precedence.
-	case cfg.BlockMaxSize == defaultBlockMaxSize &&
-		cfg.BlockMaxWeight != defaultBlockMaxWeight:
+//	case cfg.BlockMaxSize == defaultBlockMaxSize &&
+//		cfg.BlockMaxWeight != defaultBlockMaxWeight:
 
-		cfg.BlockMaxSize = chaincfg.MaxBlockBaseSize - 1000
+//		cfg.BlockMaxSize = chaincfg.MaxBlockBaseSize - 1000
 
 	// If the max block weight isn't set, but the block size is, then we'll
 	// scale the set weight accordingly based on the max block size value.
-	case cfg.BlockMaxSize != defaultBlockMaxSize &&
-		cfg.BlockMaxWeight == defaultBlockMaxWeight:
-
-		cfg.BlockMaxWeight = cfg.BlockMaxSize * chaincfg.WitnessScaleFactor
+//	case cfg.BlockMaxSize != defaultBlockMaxSize &&
+//		cfg.BlockMaxWeight == defaultBlockMaxWeight:
+//		cfg.BlockMaxWeight = cfg.BlockMaxSize * chaincfg.WitnessScaleFactor
 	}
 
 	// Look for illegal characters in the user agent comments.
