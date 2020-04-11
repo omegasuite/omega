@@ -174,6 +174,8 @@ func main() {
 	// the main network, regression test network, and test network (version 3).
 	// mainnet version = 0, testnet = 0x6F
 
+//	addr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), &chaincfg.TestNet3Params)
+
 	addr, err := btcutil.DecodeAddress(priv.PublicKey.ToAddress(0x6F), &chaincfg.TestNet3Params)
 	if err != nil {
 		fmt.Printf("Failed to generate pay-to-address script")

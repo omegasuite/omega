@@ -95,7 +95,7 @@ func init() {
 
 	mempool.UseLogger(btclog.Disabled)	// txmpLog)
 	ovm.UseLogger(btclog.Disabled)	// ovmLog)
-	consensus.UseLogger(btclog.Disabled)	// consensusLog)
+	consensus.UseLogger(consensusLog)
 	minerchain.UseLogger(minerLog)
 	token.UseLogger(btclog.Disabled)	// tokenLog)
 

@@ -72,9 +72,13 @@ func (entry * RightEntry) Sibling() chainhash.Hash {
 	if s.Attrib & (token.Monitor | token.Monitored) == 0 {
 		s.Attrib &^= token.NegativeRight
 	} else if s.Attrib & token.IsMonitorCall != 0 {
-		s.Attrib &^= token.Monitor | token.Monitored | token.NegativeRight
+		s.Attrib &^= token.Monitor | token.Monitored
 		if (s.Attrib & token.Monitor) != 0 {
 			s.Attrib |= token.Unsplittable
+			s.Attrib &^= token.NegativeRight | token.Monitored
+		} else {
+			s.Attrib |= token.NegativeRight | token.Monitored
+			s.Attrib &^= token.Monitor
 		}
 	} else {
 		s.Attrib &^= token.NegativeRight
@@ -88,8 +92,9 @@ func (entry * RightEntry) Monitoring() chainhash.Hash {
 	if s.Attrib & token.Monitored == 0 || s.Attrib & token.IsMonitorCall == 0 {
 		return chainhash.Hash{}
 	}
-
-	s.Attrib &^= token.Monitor | token.Monitored | token.NegativeRight
+	
+	s.Attrib |= token.Monitor | token.Unsplittable
+	s.Attrib &^= token.NegativeRight | token.Monitored
 
 	return s.Hash()
 }

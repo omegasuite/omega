@@ -862,6 +862,7 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 
 			signer, err := btcutil.VerifySigScript(sig, tmsg.DoubleHashB(), miner.cfg)
 			if err != nil {
+				log.Infof("MsgKnowledge VerifySigScript fail")
 				return false
 			}
 
@@ -871,6 +872,7 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 			tmsg.Signatures = append(tmsg.Signatures, sig)
 			tmsg.From = self.Names[int32(i)]
 			if bytes.Compare(tmsg.From[:], pkh[:]) != 0 {
+				log.Infof("MsgKnowledge Verify sender fail")
 				return false
 			}
 		}
@@ -878,10 +880,12 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 	case *wire.MsgCandidate, *wire.MsgCandidateResp, *wire.MsgRelease:
 		signer, err := btcutil.VerifySigScript(msg.GetSignature(), msg.DoubleHashB(), miner.cfg)
 		if err != nil {
+			log.Infof("%s VerifySigScript fail", msg.Command())
 			return false
 		}
 		pkh := signer.Hash160()
 		if bytes.Compare(msg.Sender(), pkh[:]) != 0 {
+			log.Infof("%s Verify sender fail", msg.Command())
 			return false
 		}
 	}

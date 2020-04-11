@@ -134,6 +134,16 @@ func (d * stateDB) GetCode() []byte {
 	return d.getMeta("code")
 }
 
+func (d * stateDB) SetInsts(insts []inst) {
+	code := make([]byte, 0, len(insts))
+	for _, d := range insts {
+		code = append(code, byte(d.op))
+		code = append(code, d.param...)
+		code = append(code, byte(10))
+	}
+	d.setMeta("code", code)
+}
+
 func (d * stateDB) SetCode(code []byte) {
 	d.setMeta("code", code)
 }
@@ -223,9 +233,10 @@ func (d * stateDB) SetAddres(code AccountRef) {
 }
 
 // GetBlockNumberFunc returns the block numer of the block of current execution environment
-func (d * stateDB)  GetCoins(tokentype uint64, required uint64, h chainhash.Hash, r chainhash.Hash) []byte {
-	cbuf := new(bytes.Buffer)
+func (d * stateDB)  GetCoins(tokentype uint64, required uint64, h chainhash.Hash, r chainhash.Hash) [][]byte {
+	res := make([][]byte, 0, 8)
 	for _, w := range d.wallet {
+		cbuf := new(bytes.Buffer)
 		if tokentype != w.Token.TokenType {
 			continue
 		}
@@ -236,8 +247,9 @@ func (d * stateDB)  GetCoins(tokentype uint64, required uint64, h chainhash.Hash
 			continue
 		}
 		w.Token.Write(cbuf, 0, 0)
+		res = append(res, cbuf.Bytes())
 	}
-	return cbuf.Bytes()
+	return res
 }
 
 func (d * stateDB) Copy() stateDB {

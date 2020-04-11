@@ -89,19 +89,18 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 }
 
 func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, error) {
-	sigScript := append(script, byte(STACKRETURN))
-
 	contract := Contract {
-		Code: sigScript,
+		Code: ByteCodeParser(script),
 		CodeHash: chainhash.Hash{},
 		self: nil,
-		jumpdests: make(destinations),
+//		jumpdests: make(destinations),
 		Args:make([]byte, 4),
 	}
 
 	binary.LittleEndian.PutUint32(contract.Args[:], uint32(txinidx))
 
 	ret, err := vm.Interpreter().Run(&contract, nil)
+
 	if err != nil {
 		return chainhash.Hash{}, err
 	}
@@ -112,9 +111,9 @@ func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, er
 }
 
 // there are 2 sig verify methods: one in interpreter, one is here. the differernce is that
-// the one in interpreter is intended for client side. here is for the miner. here, verfivstion
+// the one in interpreter is intended for client side. here is for the miner. here, verification
 // is deeper in that it checks monitering status, a tx will be rejected if monitore checing fails
-// while it may pass interpreter verification because only signature verification is done
+// while it may pass interpreter verification because only signature verification is done there
 func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 	if tx.IsCoinBase() {
 		return nil
@@ -123,7 +122,6 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 	ovm.GetTx = func () * wire.MsgTx {	return tx.MsgTx()	}
 	ovm.Spend = func(t token.Token) bool { return false }
 	ovm.AddTxOutput = func(t wire.TxOut) bool { return false	}
-//	ovm.GetHash = func(d uint64) *chainhash.Hash { return nil }
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ovm.AddRight = func(t *token.RightDef) bool { return false }
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}

@@ -457,7 +457,7 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	// fork node can not be before the last block reference by tip of miner chain
 	bh := b.Miners.Tip().MsgBlock().BestBlock
 	ht,_ := b.BlockHeightByHash(&bh)
-	if forkNode.Height > ht {
+	if forkNode.Height < ht {
 		return detachNodes, attachNodes
 	}
 
@@ -1436,6 +1436,10 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 	// the blocks that form the new chain to the main chain starting at the
 	// common ancenstor (the point where the chain forked).
 	detachNodes, attachNodes := b.getReorganizeNodes(node)
+
+	if attachNodes.Len() == 0 {
+		return false, nil
+	}
 
 	// Reorganize the chain.
 	err := b.ReorganizeChain(detachNodes, attachNodes)

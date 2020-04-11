@@ -1,83 +1,193 @@
-// Copyright 2014 The go-ethereum Authors
-// This file is part of the go-ethereum library.
+// Copyright 2014 The omega suite Authors
+// This file is part of the omega library.
 //
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 package ovm
 
 import (
 	"fmt"
-	"math/big"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
 )
 
-// stack is an object for basic stack operations. Items popped to the stack are
-// expected to be changed and modified. stack does not take care of adding newly
-// initialised objects.
+type frame struct {
+	space []byte
+	pc int
+	pure bool
+}
+
+func newFrame() * frame {
+	return &frame{
+		space: make([]byte, 0, 4096),
+	}
+}
+
+type pointer uint64
+
 type Stack struct {
-	data []*big.Int
+	data []*frame
+}
+
+var outofmemory = fmt.Errorf("Out of memory")
+
+func (s *Stack) malloc(n int) pointer {
+	p := pointer(uint64(len(s.data[0].space)))
+	m := (n + 63) &^ 63
+	s.data[0].space = append(s.data[0].space, make([]byte, m)...)
+	return p
+}
+
+func (s *Stack) alloc(n int) pointer {
+	top := len(s.data) - 1
+	p := pointer((uint64(top) << 32) | uint64(len(s.data[top].space)))
+	m := (n + 63) &^ 63
+	s.data[top].space = append(s.data[top].space, make([]byte, m)...)
+	return p
+}
+
+func (s *Stack) toPointer(p * pointer) (pointer, error) {
+	d,err := s.toInt64(p)
+	return pointer(d), err
+}
+
+func (s *Stack) toByte(p * pointer) (byte, error) {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset < len(s.data[area].space) {
+		return s.data[area].space[offset], nil
+	}
+	return 0, outofmemory
+}
+
+func (s *Stack) toBytes(p * pointer) ([]byte, error) {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset < len(s.data[area].space) {
+		return s.data[area].space[offset:], nil
+	}
+	return nil, outofmemory
+}
+
+func (s *Stack) toInt16(p * pointer) (int16, error) {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset + 1 < len(s.data[area].space) {
+		return (int16(s.data[area].space[offset])) | ((int16(s.data[area].space[offset + 1])) << 8), nil
+	}
+	return 0, outofmemory
+}
+
+func (s *Stack) toInt32(p * pointer) (int32, error) {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset + 3 < len(s.data[area].space) {
+		return (int32(s.data[area].space[offset])) |
+			((int32(s.data[area].space[offset + 1])) << 8) |
+			((int32(s.data[area].space[offset + 2])) << 16) |
+			((int32(s.data[area].space[offset] + 3)) << 24), nil
+	}
+	return 0, outofmemory
+}
+
+func (s *Stack) toInt64(p * pointer) (int64, error) {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset + 7 < len(s.data[area].space) {
+		return (int64(s.data[area].space[offset])) |
+			((int64(s.data[area].space[offset + 1])) << 8) |
+			((int64(s.data[area].space[offset + 2])) << 16) |
+			((int64(s.data[area].space[offset] + 3)) << 24) |
+			((int64(s.data[area].space[offset] + 4)) << 32) |
+			((int64(s.data[area].space[offset] + 5)) << 40) |
+			((int64(s.data[area].space[offset] + 6)) << 48) |
+			((int64(s.data[area].space[offset] + 7)) << 56), nil
+	}
+	return 0, outofmemory
+}
+
+func (s *Stack) toHash(p * pointer) (chainhash.Hash, error) {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset + 255 < len(s.data[area].space) {
+		h,_ := chainhash.NewHash(s.data[area].space[offset:])
+		return *h, nil
+	}
+	return chainhash.Hash{}, outofmemory
+}
+
+func (s *Stack) savePointer(p * pointer, d pointer) error {
+	return s.saveInt64(p, int64(d))
+}
+
+func (s *Stack) saveByte(p * pointer, b byte) error {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset < len(s.data[area].space) {
+		s.data[area].space[offset] = b
+		return nil
+	}
+	return outofmemory
+}
+
+func (s *Stack) saveBytes(p * pointer, b []byte) error {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset < len(s.data[area].space) {
+		copy(s.data[area].space[offset:], b)
+		return nil
+	}
+	return outofmemory
+}
+
+func (s *Stack) saveInt16(p * pointer, b int16) error {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset + 1 < len(s.data[area].space) {
+		s.data[area].space[offset] = byte(b)
+		s.data[area].space[offset + 1] = byte(b >> 8)
+		return nil
+	}
+	return outofmemory
+}
+
+func (s *Stack) saveInt32(p * pointer, b int32) error {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset + 3 < len(s.data[area].space) {
+		for i := 0; i < 4; i++ {
+			s.data[area].space[offset + i] = byte(b >> (8 * i))
+		}
+		return nil
+	}
+	return outofmemory
+}
+
+func (s *Stack) saveInt64(p * pointer, b int64) error {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset + 7 < len(s.data[area].space) {
+		for i := 0; i < 8; i++ {
+			s.data[area].space[offset + i] = byte(b >> (8 * i))
+		}
+		return nil
+	}
+	return outofmemory
+}
+
+func (s *Stack) saveHash(p * pointer, h chainhash.Hash) error {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset + 255 < len(s.data[area].space) {
+		copy(s.data[area].space[offset:], h[:])
+		return nil
+	}
+	return outofmemory
 }
 
 func newstack() *Stack {
-	return &Stack{data: make([]*big.Int, 0, 1024)}
-}
-
-func (st *Stack) Data() []*big.Int {
-	return st.data
-}
-
-func (st *Stack) push(d *big.Int) {
-	// NOTE push limit (1024) is checked in baseCheck
-	//stackItem := new(big.Int).Set(d)
-	//st.data = append(st.data, stackItem)
-	st.data = append(st.data, d)
-}
-func (st *Stack) pushN(ds ...*big.Int) {
-	st.data = append(st.data, ds...)
-}
-
-func (st *Stack) pop() (ret *big.Int) {
-	ret = st.data[len(st.data)-1]
-	st.data = st.data[:len(st.data)-1]
-	return
-}
-
-func (st *Stack) len() int {
-	return len(st.data)
-}
-
-func (st *Stack) swap(n int) {
-	st.data[st.len()-n], st.data[st.len()-1] = st.data[st.len()-1], st.data[st.len()-n]
-}
-
-func (st *Stack) dup(pool *intPool, n int) {
-	st.push(pool.get().Set(st.data[st.len()-n]))
-}
-
-func (st *Stack) peek() *big.Int {
-	return st.data[st.len()-1]
-}
-
-// Back returns the n'th item in stack
-func (st *Stack) Back(n int) *big.Int {
-	return st.data[st.len()-n-1]
-}
-
-func (st *Stack) require(n int) error {
-	if st.len() < n {
-		return fmt.Errorf("stack underflow (%d <=> %d)", len(st.data), n)
-	}
-	return nil
+	s := &Stack{data: make([]*frame, 1)}
+	s.data[0] = newFrame()
+	s.malloc(4)
+	return s
 }
 
 func (st *Stack) Print() {

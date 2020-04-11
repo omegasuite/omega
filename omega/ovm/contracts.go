@@ -18,15 +18,17 @@ package ovm
 
 import (
 	"crypto/sha256"
+	"fmt"
 	"math/big"
+	"sync/atomic"
 
-	"golang.org/x/crypto/ripemd160"
-	"github.com/btcsuite/omega/token"
-	"encoding/binary"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/btcec"
 	"bytes"
+	"encoding/binary"
+	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/database"
+	"github.com/btcsuite/omega/token"
+	"golang.org/x/crypto/ripemd160"
 )
 
 // PrecompiledContract is the basic interface for native Go contracts. The implementation
@@ -70,10 +72,6 @@ const (
 var PrecompiledContracts = map[[4]byte]PrecompiledContract{
 	([4]byte{OP_CREATE, 0, 0, 0}): &create{},			// create a contract
 	([4]byte{OP_MINT, 0, 0, 0}): &mint{},				// mint a coin
-
-	// miner selection contract
-//	([4]byte{OP_MINER_APPLY, 0, 0, 0}): &addminer{},
-//	([4]byte{OP_MINRE_QUIT, 0, 0, 0}): &quitminer{},
 
 	// pk script functions
 	([4]byte{OP_PAY2PKH, 0, 0, 0}): &pay2pkh{},			// pay to pubkey hash script
@@ -532,7 +530,61 @@ func (m * mint) Run(input []byte) ([]byte, error) {
 }
 
 // RunPrecompiledContract runs and evaluates the output of a precompiled contract.
-func RunPrecompiledContract(p PrecompiledContract, input []byte, contract *Contract) (ret []byte, err error) {
+func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byte, contract *Contract) (ret []byte, err error) {
+	var (
+		op    OpCode        // current opcode
+		stack = newstack()  // local stack
+		pc   = int(0) // program counter
+	)
+
+	if len(contract.Code) != 0 {
+		// Reset the previous call's return data. It's unimportant to preserve the old buffer
+		// as every returning call will return new data anyway.
+		var res []byte
+
+	ret:
+		for atomic.LoadInt32(&in.evm.abort) == 0 {
+			// Get the operation from the jump table and validate the stack to ensure there are
+			// enough stack items available to perform the operation.
+			op = contract.GetOp(pc)
+			operation := in.cfg.JumpTable[op]
+			if !operation.valid {
+				return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
+			}
+
+			if operation.writes {
+				return nil, fmt.Errorf("State modification is not allowed")
+			}
+			if operation.jumps {
+				return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
+			}
+
+			// execute the operation
+			err := operation.execute(&pc, in.evm, contract, stack)
+
+			ln := int32(0)
+			for i := 0; i < 4; i++ {
+				ln |= int32(stack.data[0].space[i]) << (i * 8)
+			}
+
+			if ln > 0 {
+				res = make([]byte, ln)
+				copy(res, stack.data[0].space[4:ln + 4])
+			}
+
+			switch {
+			case err != nil:
+				return nil, err
+			case operation.reverts:
+				return nil, err
+			case operation.halts:
+				break ret
+			default:
+				pc++
+			}
+		}
+		input = append(input, res...)
+	}
 	return p.Run(input)
 }
 

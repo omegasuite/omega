@@ -55,6 +55,7 @@ func NewScriptBuilder() *ScriptBuilder {
 	return &ScriptBuilder{ script: make([]byte, 0) }
 }
 
+/*
 func (s * ScriptBuilder) AddScript(t []byte) * ScriptBuilder {
 	s.script = append(s.script, t[:]...)
 	return s
@@ -90,7 +91,7 @@ func (s * ScriptBuilder) AddOp(t byte, data []byte) * ScriptBuilder {
 		return nil
 	}
 	switch t {
-	case 2, 3, 4: // specific matching outpoint // specific matching input // specific script
+	case 2, 3, 4: // matching outpoint // matching input // script
 		if len(data) >= 256 {
 			return nil
 		}
@@ -103,3 +104,4 @@ func (s * ScriptBuilder) AddOp(t byte, data []byte) * ScriptBuilder {
 func (s * ScriptBuilder) Script() []byte {
 	return s.script
 }
+*/

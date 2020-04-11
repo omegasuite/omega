@@ -2795,7 +2795,7 @@ func (w *Wallet) ImportPrivateKey(scope waddrmgr.KeyScope, wif *btcutil.WIF,
 		return w.Manager.SetBirthdayBlock(addrmgrNs, *bs, false)
 	})
 	if err != nil {
-		return "", err
+		return err.Error(), err
 	}
 
 	// Rescan blockchain for transactions with txout scripts paying to the

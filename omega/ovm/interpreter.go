@@ -1,25 +1,13 @@
-// Copyright 2014 The go-ethereum Authors
-// This file is part of the go-ethereum library.
+// Copyright 2014 The omega suite Authors
+// This file is part of the omega library.
 //
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 package ovm
 
 import (
 	"fmt"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire/common"
+//	"github.com/btcsuite/btcd/wire/common"
 	"sync/atomic"
 	"encoding/binary"
 )
@@ -35,6 +23,7 @@ type Config struct {
 	NoRecursion bool
 	// NoLoop forbids backward jump.
 	NoLoop bool
+
 	// Enable recording of SHA3/keccak preimages
 	EnablePreimageRecording bool
 	// JumpTable contains the EVM instruction table. This
@@ -50,7 +39,7 @@ type Config struct {
 type Interpreter struct {
 	evm      *OVM
 	cfg      Config
-	intPool  *intPool
+//	intPool  *intPool
 
 	readOnly   bool   // Whether to throw on stateful modifications
 	returnData []byte // Last CALL's return data for subsequent reuse
@@ -68,18 +57,15 @@ func NewInterpreter(evm *OVM, cfg Config) *Interpreter {
 	return &Interpreter{
 		evm:      evm,
 		cfg:      cfg,
-		intPool:  newIntPool(),
+//		intPool:  newIntPool(),
 	}
 }
 
 func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack *Stack) error {
 	if in.readOnly {
 		// If the interpreter is operating in readonly mode, make sure no
-		// state-modifying operation is performed. The 3rd stack item
-		// for a call operation is the value. Transferring value from one
-		// account to the others means the state is modified and should also
-		// return with an error.
-		if operation.writes || (op == CALL && stack.Back(2).BitLen() > 0) {
+		// state-modifying operation is performed.
+		if operation.writes {
 			return errWriteProtection
 		}
 	}
@@ -98,11 +84,7 @@ func DisasmString(code []byte) string {
 		op = OpCode(code[pc])
 		s += opCodeToString[op] + " "
 
-		if omegaInstructionSet[op].immData == nil {
-			pc++
-		} else {
-			pc = omegaInstructionSet[op].immData(code[pc+1:]) + 1
-		}
+		pc++
 	}
 	return s
 }
@@ -129,12 +111,11 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 
 	var (
 		op    OpCode        // current opcode
-		mem   = NewMemory() // bound memory
 		stack = newstack()  // local stack
 		// For optimisation reason we're using uint64 as the program counter.
 		// It's theoretically possible to go above 2^64. The YP defines the PC
 		// to be uint256. Practically much less so feasible.
-		pc   = uint64(0) // program counter
+		pc   = int(0) // program counter
 	)
 	contract.Input = input
 
@@ -155,40 +136,30 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		if !operation.valid {
 			return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
 		}
-		if err := operation.validateStack(stack); err != nil {
-			return nil, err
-		}
+
 		// If the operation is valid, enforce any write restrictions
 		if err := in.enforceRestrictions(op, operation, stack); err != nil {
 			return nil, err
 		}
 
-		var memorySize uint64
-		// calculate the new memory size and expand the memory to fit
-		// the operation
-		if operation.memorySize != nil {
-			memSize, overflow := bigUint64(operation.memorySize(stack))
-			if overflow {
-				return nil, memoryOverflow
-			}
-			// memory is expanded in words of 32 bytes. Gas
-			// is also calculated in words.
-			if memorySize, overflow = common.SafeMul(toWordSize(memSize), 32); overflow {
-				return nil, memoryOverflow
-			}
-		}
-
-		if memorySize > 0 {
-			mem.Resize(memorySize)
+		if contract.pure && operation.writes {
+			return nil, fmt.Errorf("State modification is not allowed")
 		}
 
 		// execute the operation
-		res, err := operation.execute(&pc, in.evm, contract, mem, stack)
-		// verifyPool is a build flag. Pool verification makes sure the integrity
-		// of the integer pool by comparing values to a default value.
-		if verifyPool {
-			verifyIntegerPool(in.intPool)
+		err := operation.execute(&pc, in.evm, contract, stack)
+
+		ln := int32(0)
+		for i := 0; i < 4; i++ {
+			ln |= int32(stack.data[0].space[i]) << (i * 8)
 		}
+		var res []byte
+
+		if ln > 0 {
+			res = make([]byte, ln)
+			copy(res, stack.data[0].space[4:ln + 4])
+		}
+
 		// if the operation clears the return data (e.g. it has returning data)
 		// set the last return to the result of the operation.
 		if operation.returns {
@@ -222,28 +193,26 @@ func (in *Interpreter) verifySig(txinidx int, pkScript, sigScript []byte) bool {
 		return false
 	}
 
-	xsig := append(sigScript, byte(STACKRETURN))
-
 	contract := Contract {
-		Code: xsig,
+		Code: ByteCodeParser(sigScript),
 		CodeHash: chainhash.Hash{},
 		self: nil,
-		jumpdests: make(destinations),
+//		jumpdests: make(destinations),
 		Args:make([]byte, 4),
 	}
 
 	binary.LittleEndian.PutUint32(contract.Args[:], uint32(txinidx))
 
-	ret, err := in.Run(&contract, nil)
-	if err != nil {
-		return false
-	}
+//	ret, err := in.Run(&contract, nil)
+//	if err != nil {
+//		return false
+//	}
 
-	ret = append(pkScript[4:], ret[:]...)
+//	ret = append(pkScript[4:], ret[:]...)
 	contract.CodeAddr = []byte{ pkScript[0], 0, 0, 0 }
-	contract.jumpdests = make(destinations)
+//	contract.jumpdests = make(destinations)
 
-	ret, err = run(in.evm, &contract, ret)
+	ret, err := run(in.evm, &contract, nil)	// ret)
 
 	if err != nil || len(ret) != 1 || ret[0] != 1{
 		return false

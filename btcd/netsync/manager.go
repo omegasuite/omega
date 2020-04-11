@@ -295,8 +295,9 @@ func (sm *SyncManager) updateSyncPeer() {
 	if sm.bshutdown {
 		return
 	}
-	if sm.syncPeer != nil {
-		state,ok := sm.peerStates[sm.syncPeer]
+	p := sm.syncPeer
+	if p != nil {
+		state,ok := sm.peerStates[p]
 		if ok && len(state.requestedBlocks) > 0 {
 			tm := int(time.Now().Unix())
 			for _, t := range state.requestedBlocks {
@@ -346,7 +347,6 @@ func (sm *SyncManager) updateSyncPeer() {
 		}
 	}
 
-	p := sm.syncPeer
 	sm.syncPeer = nil
 	sm.startSync(p)
 }
@@ -640,16 +640,17 @@ func (sm *SyncManager) current(t int) bool {
 
 	// if blockChain thinks we are current and we have no syncPeer it
 	// is probably right.
-	if sm.syncPeer == nil {
+	p := sm.syncPeer
+	if p == nil {
 		return true
 	}
 
 	// No matter what chain thinks, if we are below the block we are syncing
 	// to we are not current.
-	if t == 0 && sm.chain.BestSnapshot().Height < sm.syncPeer.LastBlock() {
+	if t == 0 && sm.chain.BestSnapshot().Height < p.LastBlock() {
 		return false
 	}
-	if t == 1 && sm.chain.Miners.BestSnapshot().Height < sm.syncPeer.LastMinerBlock() {
+	if t == 1 && sm.chain.Miners.BestSnapshot().Height < p.LastMinerBlock() {
 		return false
 	}
 	return true
@@ -1545,6 +1546,25 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		}
 	}
 
+	if ignorerun + ignoreMinerrun == len(invVects) {
+		// we got nothing new. retry a new sync job
+		mlocator := make([]*chainhash.Hash, 1)
+		tlocator := make([]*chainhash.Hash, 1)
+		if lastIgnored != nil {
+			tlocator[0] = &lastIgnored.Hash
+		} else {
+			tlocator = nil
+		}
+		if lastMinerIgnored != nil {
+			mlocator[0] = &lastMinerIgnored.Hash
+		} else {
+			mlocator = nil
+		}
+		if mlocator != nil || tlocator != nil {
+			sm.addSyncJob(peer, tlocator, mlocator, &zeroHash, &zeroHash)
+		}
+	}
+
 	if lastIgnored != nil && ignorerun > 1 {
 //		log.Infof("send back %s for %d run of ignores inv to %s", lastIgnored.Hash.String(), ignorerun, peer.Addr())
 		// send back this one so the peer knows where we are
@@ -1747,8 +1767,9 @@ out:
 
 			case getSyncPeerMsg:
 				var peerID int32
-				if sm.syncPeer != nil {
-					peerID = sm.syncPeer.ID()
+				p :=sm.syncPeer
+				if p != nil {
+					peerID = p.ID()
 				}
 				msg.reply <- peerID
 

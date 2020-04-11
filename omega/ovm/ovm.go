@@ -1,18 +1,6 @@
-// Copyright 2014 The go-ethereum Authors
-// This file is part of the go-ethereum library.
+// Copyright 2014 The omega suite Authors
+// This file is part of the omega library.
 //
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
 package ovm
 
@@ -33,10 +21,6 @@ import (
 var emptyCodeHash = chainhash.DoubleHashB(nil)
 
 type (
-	// GetHashFunc returns the hash of input parameter
-	// and is used by the BLOCKHASH EVM op code.
-	GetHashFunc func(uint64) *chainhash.Hash
-
 	// GetTxFunc returns the transaction for currect transaction
 	// and is used by the GETTX EVM op code.
 	GetTxFunc func() * wire.MsgTx
@@ -69,12 +53,10 @@ func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
 		precompiles := PrecompiledContracts
 		precompiles[[4]byte{0,0,0,0}] = &create{evm, contract }
 		precompiles[[4]byte{OP_MINT,0,0,0}] = &mint{evm, contract }
-//		precompiles[[4]byte{OP_MINER_APPLY,0,0,0}] = &addminer{evm, contract }
-//		precompiles[[4]byte{OP_MINRE_QUIT,0,0,0}] = &quitminer{evm, contract }
 		var abi [4]byte
 		copy(abi[:], contract.CodeAddr)
 		if p := precompiles[abi]; p != nil {
-			return RunPrecompiledContract(p, input, contract)
+			return evm.interpreter.RunPrecompiledContract(p, input, contract)
 		}
 	}
 	return evm.interpreter.Run(contract, input)
@@ -90,12 +72,14 @@ type Context struct {
 	GetUtxo GetUtxoFunc
 	GetCurrentOutput GetCurrentOutputFunc
 
-	// GetHash returns the hash corresponding to number n
-//	GetHash GetHashFunc
-
 	// Block information
-	GasLimit    uint64         // GASLIMIT policy
+	GasLimit    uint64 			      // GASLIMIT policy
 	BlockNumber GetBlockNumberFunc    // Provides information for NUMBER
+}
+
+type lib struct{
+	address int32
+	pure bool
 }
 
 // OVM is the Omega Virtual Machine base object and provides
@@ -117,7 +101,9 @@ type OVM struct {
 	// StateDB gives access to the underlying state
 	StateDB map[Address]*stateDB
 
-	// Depth is the current call stack
+	libs map[Address]lib
+
+	// Depth of the current call stack
 	depth int
 
 	// chainConfig contains information about the current chain
@@ -126,6 +112,7 @@ type OVM struct {
 	// virtual machine configuration options used to initialise the
 	// evm.
 	vmConfig Config
+
 	// global (to this context) ethereum virtual machine
 	// used throughout the execution of the tx.
 
@@ -140,7 +127,8 @@ type OVM struct {
 func NewOVM(ctx Context, chainConfig *chaincfg.Params, vmConfig Config, db database.DB) *OVM {
 	evm := &OVM{
 		Context:     ctx,
-		StateDB:     make(map[Address]*stateDB, 0),
+		StateDB:     make(map[Address]*stateDB),
+		libs:		 make(map[Address]lib),
 		vmConfig:    vmConfig,
 		chainConfig: chainConfig,
 		views: viewpoint.NewViewPointSet(db),
@@ -214,54 +202,17 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	}
 	return ret, err
 }
-/*
-func (evm *OVM) StaticCall(d Address, method []byte, sent * token.Token, params []byte) (ret []byte, err error) {
-	if evm.vmConfig.NoRecursion && evm.depth > 0 {
-		return nil, nil
-	}
-
-	if method[0] > 0 && bytes.Compare(method[1:], []byte{0, 0, 0}) == 0 {
-		return nil, omega.ScriptError(omega.ErrInternal, "May not call system method directly.")
-	}
-
-	// Initialise a new contract and set the code that is to be used by the EVM.
-	// The contract is a scoped environment for this execution context only.
-	contract := evm.NewContract(d, sent)
-	contract.owner = evm.StateDB[d].GetOwner()
-	contract.SetCallCode(method, evm.StateDB[d].GetCodeHash(), evm.StateDB[d].GetCode())
-
-	// Capture the tracer start/end events in debug mode
-	if evm.vmConfig.Debug && evm.depth == 0 {
-		//		evm.vmConfig.Tracer.CaptureStart(caller.Address(), addr, false, input, value)
-
-		//		defer func() { // Lazy evaluation of the parameters
-		//			evm.vmConfig.Tracer.CaptureEnd(ret, time.Since(start), err)
-		//		}()
-	}
-
-	readonly := evm.interpreter.readOnly
-	evm.interpreter.readOnly = true
-
-	ret, err = run(evm, contract, params)
-
-	evm.interpreter.readOnly = readonly
-
-	return ret, err
-}
-*/
 
 func (ovm *OVM) NewContract(d Address, value *token.Token) *Contract {
 	c := &Contract{
 		self: AccountRef(d),
 		Args: nil,
-		jumpdests: make(destinations),
+//		jumpdests: make(destinations),
 		value: value,
 	}
 
 	c.self = ovm.StateDB[d].GetAddres()
 	c.owner = ovm.StateDB[d].GetOwner()
-//	c.Code = ovm.StateDB[d].GetCode()
-//	c.CodeHash = ovm.StateDB[d].GetCodeHash()
 
 	return c
 }
@@ -283,14 +234,14 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 
 	contract.self = AccountRef(d)
 
-//	copy(contract.owner[:], data[:20])
-
-	contract.Code = data	// [20:]
+	contract.Code = ByteCodeParser(data)	// [20:]
+	if !ByteCodeValidator(contract.Code) {
+		return nil, omega.ScriptError(omega.ErrInternal, "Illegal instruction is contract code.")
+	}
 	copy(contract.CodeHash[:], chainhash.DoubleHashB(data))	// [20:]))
 
 	ovm.StateDB[d].SetAddres(contract.self.(AccountRef))
-	ovm.StateDB[d].SetCode(contract.Code)
-//	ovm.StateDB[d].SetOwner(contract.owner)
+	ovm.StateDB[d].SetInsts(contract.Code)
 	ovm.StateDB[d].SetCodeHash(contract.CodeHash)
 
 	contract.CodeAddr = nil
@@ -299,7 +250,7 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 		return nil, omega.ScriptError(omega.ErrInternal, "Fail to initialize contract.")
 	}
 
-	contract.Code = ret
+	contract.Code = ByteCodeParser(ret)
 	ovm.StateDB[d].SetCode(ret)
 	copy(contract.CodeHash[:], chainhash.DoubleHashB(ret))
 	ovm.StateDB[d].SetCodeHash(contract.CodeHash)

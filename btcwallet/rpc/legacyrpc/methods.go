@@ -1777,12 +1777,18 @@ func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.R
 				return nil, DeserializationError{errors.New(s)}
 			}
 
-			addr, err := btcutil.NewAddressPubKey(wif.SerializePubKey(),
-				w.ChainParams())
+			addr, err := btcutil.NewAddressPubKey(wif.SerializePubKey(), w.ChainParams())
+
+//			privKey := wif.PrivKey
+//			addr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), w.ChainParams())
+
 			if err != nil {
 				return nil, DeserializationError{err}
 			}
 			keys[addr.EncodeAddress()] = wif
+			pkh := addr.AddressPubKeyHash()
+			pks := pkh.EncodeAddress()
+			keys[pks] = wif
 		}
 	}
 

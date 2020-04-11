@@ -16,15 +16,10 @@
 
 package ovm
 
-import (
-	"math/big"
-
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-)
-
 // destinations stores one map per contract (keyed by hash of code).
 // The maps contain an entry for each location of a JUMPDEST
 // instruction.
+/*
 type destinations map[chainhash.Hash]bitvec
 
 // has checks whether code has a JUMPDEST at dest.
@@ -43,6 +38,7 @@ func (d destinations) has(codehash chainhash.Hash, code []byte, dest *big.Int) b
 	}
 	return OpCode(code[udest]) == JUMPDEST && m.codeSegment(udest)
 }
+ */
 
 // bitvec is a bit vector which maps bytes in a program.
 // An unset bit means the byte is an opcode, a set bit means
@@ -62,6 +58,7 @@ func (bits *bitvec) codeSegment(pos uint64) bool {
 	return ((*bits)[pos/8] & (0x80 >> (pos % 8))) == 0
 }
 
+/*
 // codeBitmap collects data locations in code.
 func codeBitmap(code []byte) bitvec {
 	// The bitmap is 4 bytes longer than necessary, in case the code
@@ -88,3 +85,4 @@ func codeBitmap(code []byte) bitvec {
 	}
 	return bits
 }
+ */

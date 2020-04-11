@@ -119,11 +119,10 @@ func (b *BlockChain) GetBlockLimit(h int32) uint32 {
 	p := b.BestChain.NodeByHeight(start)
 	for i := start; i >= stop; i-- {
 		if b.blockSizer.lastNode != nil && b.blockSizer.lastNode.Height == i + 1 &&
-			b.blockSizer.lastNode.Data.GetNonce() < 0 {
-			q,_ := b.BlockByHash(&b.blockSizer.lastNode.Hash)
-			s,_ := q.Bytes()
+			p.Data.GetNonce() < 0 {
+			q,_ := b.BlockByHash(&p.Hash)
 			b.blockSizer.blockCount++
-			b.blockSizer.sizeSum += int64(len(s))
+			b.blockSizer.sizeSum += int64(q.Size())
 			b.blockSizer.timeSum += b.blockSizer.lastNode.Data.TimeStamp() - p.Data.TimeStamp()
 		}
 		b.blockSizer.lastNode = p
@@ -131,6 +130,7 @@ func (b *BlockChain) GetBlockLimit(h int32) uint32 {
 	}
 
 	b.blockSizer.conclude()
+	b.blockSizer.reset(0)
 
 	return b.blockSizer.knownLimits[h]
 }
@@ -144,11 +144,13 @@ func (b *sizeCalculator) reset(h int32) {
 }
 
 func (b *sizeCalculator) conclude() {
+	h := b.target
+
 	if b.blockCount == 0 {
+		b.knownLimits[h] = chaincfg.BlockBaseSize
 		return
 	}
 
-	h := b.target
 	// conclude calculation for a batch
 	avgSize := b.sizeSum / int64(b.blockCount)
 	if avgSize <= chaincfg.BlockBaseSize {
@@ -182,6 +184,10 @@ func (b *BlockChain) take(block *btcutil.Block) {
 	h += chaincfg.BlockSizeEvalPeriod - 1
 	h -= h % chaincfg.BlockSizeEvalPeriod
 
+	if _,ok := b.blockSizer.knownLimits[h]; ok {
+		return
+	}
+
 	// spread calculation over a period of time to smooth server
 	if b.blockSizer.target != h {
 		b.blockSizer.reset(h)
@@ -209,15 +215,19 @@ func (b *BlockChain) take(block *btcutil.Block) {
 
 	for i := start; i >= stop; i-- {
 		if b.blockSizer.lastNode != nil && b.blockSizer.lastNode.Height == i + 1 &&
-			b.blockSizer.lastNode.Data.GetNonce() < 0 {
+			p.Data.GetNonce() < 0 {
 			b.blockSizer.blockCount++
-			q, _ := b.BlockByHash(&b.blockSizer.lastNode.Hash)
+			q, _ := b.BlockByHash(&p.Hash)
 			s, _ := q.Bytes()
 			b.blockSizer.sizeSum += int64(len(s))
 			b.blockSizer.timeSum += b.blockSizer.lastNode.Data.TimeStamp() - p.Data.TimeStamp()
 		}
 		b.blockSizer.lastNode = p
 		p = p.Parent
+	}
+	if stop == end {
+		b.blockSizer.conclude()
+		b.blockSizer.reset(0)
 	}
 }
 
@@ -234,7 +244,7 @@ func (b *BlockChain) untake(block *btcutil.Block) {
 		return
 	}
 
-	if h % chaincfg.BlockSizeEvalPeriod < chaincfg.SkipBlocks {
+	if h % chaincfg.BlockSizeEvalPeriod <= chaincfg.BlockSizeEvalPeriod - chaincfg.SkipBlocks {
 		delete(b.blockSizer.knownLimits, t)
 		b.blockSizer.reset(0)
 	}

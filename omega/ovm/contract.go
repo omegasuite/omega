@@ -47,6 +47,11 @@ type AccountRef Address
 // Address casts AccountRef to a Address
 func (ar AccountRef) Address() Address { return (Address)(ar) }
 
+type inst struct {
+	op OpCode
+	param []byte
+}
+
 // Contract represents an contract in the state database. It contains
 // the the contract code, calling arguments. Contract implements ContractRef
 type Contract struct {
@@ -56,12 +61,14 @@ type Contract struct {
 	owner Address				// address of owner. for system contract, owner = 0x000...000
 								// contracts with 0 zddress may execute privilege instructions
 
-	jumpdests destinations		// result of JUMPDEST analysis. privilege instructions are handled here
+//	jumpdests destinations		// result of JUMPDEST analysis. privilege instructions are handled here
 
-	Code     []byte
+	Code     []inst
 	CodeHash chainhash.Hash
 	CodeAddr []byte				// precompiled code. 4-byte ABI func code. code 0-255 reserved for sys call
 	Input    []byte
+
+	pure bool
 
 	value *token.Token
 	Args []byte
@@ -72,24 +79,32 @@ func NewContract(object Address, value *token.Token) *Contract {
 	c := &Contract{
 		self: AccountRef(object),
 		Args: nil,
-		jumpdests: make(destinations),
+//		jumpdests: make(destinations),
 		value: value,
 	}
 	return c
 }
 
 // GetOp returns the n'th element in the contract's byte array
-func (c *Contract) GetOp(n uint64) OpCode {
-	return OpCode(c.GetByte(n))
+func (c *Contract) GetOp(n int) OpCode {
+	return OpCode(c.GetInst(n).op)
 }
 
-// GetByte returns the n'th byte in the contract's byte array
-func (c *Contract) GetByte(n uint64) byte {
-	if n < uint64(len(c.Code)) {
+func (c *Contract) GetInst(n int) inst {
+	if n < len(c.Code) {
 		return c.Code[n]
 	}
 
-	return 0
+	return inst{0, nil }
+}
+
+// GetByte returns the n'th byte in the contract's byte array
+func (c *Contract) GetBytes(n int) []byte {
+	if n < len(c.Code) {
+		return c.Code[n].param
+	}
+
+	return nil
 }
 
 // Address returns the contracts address
@@ -102,18 +117,90 @@ func (c *Contract) Value() *token.Token {
 	return c.value
 }
 
-// SetCode sets the code to the contract
-/*
-func (self *Contract) SetCode(hash chainhash.Hash, code []byte) {
-	self.Code = code
-	self.CodeHash = hash
-}
-*/
-
 // SetCallCode sets the code of the contract and address of the backing data
 // object
 func (self *Contract) SetCallCode(addr []byte, hash chainhash.Hash, code []byte) {
-	self.Code = code
+	self.Code = ByteCodeParser(code)
 	self.CodeHash = hash
 	self.CodeAddr = addr
+}
+
+func ByteCodeParser(code []byte) []inst {
+	instructions := make([]inst, 0, len(code) / 32)
+	var tmp inst
+	empty := true
+	for i := 0; i < len(code); i++ {
+		switch {
+		case empty:
+			tmp.op = OpCode(code[i])
+			empty = false
+			tmp.param = make([]byte, 0, 32)
+
+		case code[i] != 0x3b && code[i] != 10:	// ";\n":
+			tmp.param = append(tmp.param, code[i])
+
+		case code[i] == 0x3b || code[i] == 10:	// ";\n":
+			instructions = append(instructions, tmp)
+			if code[i] == 0x3b {
+				for ; i < len(code) && code[i] != 10; i++ {}
+			}
+			empty = true
+		}
+	}
+	if !empty {
+		instructions = append(instructions, tmp)
+	}
+
+	return instructions
+}
+
+type codeValidator func ([]byte) int
+
+var validators = map[OpCode]codeValidator {
+	EVAL8:  opEval8Validator,
+	EVAL16:  opEval16Validator,
+	EVAL32:  opEval32Validator,
+	EVAL64:  opEval64Validator,
+	EVAL256:  opEval256Validator,
+	CONV:   opConvValidator,
+	HASH:   opHashValidator,
+	HASH160:  opHash160Validator,
+	SIGCHECK:   opSigCheckValidator,
+	SIGNTEXT:  opAddSignTextValidator,
+	IF:  opIfValidator,
+	CALL:  opCallValidator,
+	EXEC:  opExecValidator,
+	LOAD:  opLoadValidator,
+	STORE:   opStoreValidator,
+	LIBLOAD:   opLibLoadValidator,
+	MALLOC:  opMallocValidator,
+	ALLOC:  opAllocValidator,
+	COPY: opCopyValidator,
+	COPYIMM:  opCopyImmValidator,
+	CODECOPY: opCodeCopyValidator,
+	RECEIVED: opReceivedValidator,
+	TXIOCOUNT:  opTxIOCountValidator,
+	GETTXIN: opGetTxInValidator,
+	GETTXOUT: opGetTxOutValidator,
+	SPEND:  opSpendValidator,
+	ADDRIGHTDEF:  opAddRightValidator,
+	ADDTXOUT: opAddTxOutValidator,
+	GETDEFINITION: opGetDefinitionValidator,
+	GETCOIN:  opGetCoinValidator,
+	GETUTXO:  opGetUtxoValidator,
+	SELFDESTRUCT:  opSuicideValidator,
+	REVERT: opRevertValidator,
+	STOP: opStopValidator,
+	RETURN: opReturnValidator,
+}
+
+func ByteCodeValidator(code []inst) bool {
+	for i, c := range code {
+		offset := validators[c.op](c.param)
+		if i + offset < 0 || i + offset >= len(code) {
+			return false
+		}
+	}
+
+	return true
 }

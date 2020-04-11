@@ -20,6 +20,7 @@ func VerifySigScript(sign, hash []byte, chainParams *chaincfg.Params) (*AddressP
 	}
 
 	pk, _ := NewAddressPubKeyPubKey(*k, chainParams)
+	pk.pubKeyFormat = PKFCompressed
 	s, err := btcec.ParseSignature(sign[btcec.PubKeyBytesLenCompressed:], btcec.S256())
 	if err != nil {
 		return nil, fmt.Errorf("Incorrect Miner signature. Signature parse error")
@@ -30,4 +31,24 @@ func VerifySigScript(sign, hash []byte, chainParams *chaincfg.Params) (*AddressP
 	}
 
 	return pk.AddressPubKeyHash(), nil
+}
+
+func VerifySigScript2(sign, hash, kubkey []byte, chainParams *chaincfg.Params) error {
+	k, err := btcec.ParsePubKey(kubkey, btcec.S256())
+	if err != nil {
+		return fmt.Errorf("Incorrect Miner signature. pubkey error")
+	}
+
+	pk, _ := NewAddressPubKeyPubKey(*k, chainParams)
+	pk.pubKeyFormat = PKFCompressed
+	s, err := btcec.ParseSignature(sign, btcec.S256())
+	if err != nil {
+		return fmt.Errorf("Incorrect Miner signature. Signature parse error")
+	}
+
+	if !s.Verify(hash, pk.PubKey()) {
+		return fmt.Errorf("Incorrect Miner signature. Verification doesn't match")
+	}
+
+	return nil
 }

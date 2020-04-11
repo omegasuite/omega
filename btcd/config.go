@@ -877,7 +877,8 @@ func loadConfig() (*config, []string, error) {
 		dwif,err := btcutil.DecodeWIF(cfg.PrivKeys)
 		if err == nil {
 			privKey := dwif.PrivKey
-			pkaddr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
+//			pkaddr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
+			pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
 
 			if err != nil {
 				str := "%s: mining address '%s' failed to decode: %v"

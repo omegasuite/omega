@@ -915,6 +915,35 @@ func (to *TxOut) WriteTxOut(w io.Writer, pver uint32, version int32, enc Message
 	return common.WriteVarBytes(w, pver, to.PkScript)
 }
 
+func (to *TxOut) Write(w io.Writer, pver uint32, version int32, enc MessageEncoding) error {
+	err := to.Token.Write(w, pver, version)
+	if err != nil {
+		return err
+	}
+
+	common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(len(to.PkScript)))
+
+	_, err = w.Write(to.PkScript)
+	return err
+}
+
+func (to *TxOut) Read(r io.Reader, pver uint32, version int32, enc MessageEncoding) error {
+	err := to.Token.Read(r, pver, version)
+	if err != nil {
+		return err
+	}
+
+	ln,err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+	if err != nil {
+		return err
+	}
+
+	to.PkScript = make([]byte, ln)
+
+	_, err = r.Read(to.PkScript)
+	return err
+}
+
 // writeSignature encodes the bitcoin protocol encoding for a transaction
 // input's witness into to w.
 func (tx * MsgTx) WriteSignature(w io.Writer, pver uint32) error {

@@ -33,6 +33,7 @@ type Message interface {
 	DoubleHashB() []byte
 	GetSignature() []byte
 	Sender() []byte
+	Command() string
 }
 
 var Debug        int // hash of last block
