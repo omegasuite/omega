@@ -237,10 +237,7 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 						existence := true
 
 						if _, ok := ovm.StateDB[d]; !ok {
-							ovm.StateDB[d] = &stateDB{
-								DB:       ovm.views.Db,
-								contract: d,
-							}
+							ovm.StateDB[d] = NewStateDB(ovm.views.Db, d)
 
 							existence = ovm.StateDB[d].Exists()
 							if !existence {
@@ -397,16 +394,7 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainPa
 		creation := bytes.Compare(method, []byte{0,0,0,0}) == 0
 
 		if _,ok := ovm.StateDB[d]; !ok {
-			ovm.StateDB[d] = &stateDB{
-				DB:       ovm.views.Db,
-				contract: d,
-				data:     make(map[chainhash.Hash]entry),
-				wallet:	  make([]WalletItem, 0),
-				meta:make(map[string]struct{
-					data []byte
-					back []byte
-					flag status }),
-			}
+			ovm.StateDB[d] = NewStateDB(ovm.views.Db, d)
 
 			existence = ovm.StateDB[d].Exists()
 

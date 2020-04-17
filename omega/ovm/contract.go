@@ -17,9 +17,10 @@
 package ovm
 
 import (
-	"math/big"
+//	"fmt"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/omega/token"
+	"math/big"
 )
 
 type Address [20]byte
@@ -136,14 +137,14 @@ func ByteCodeParser(code []byte) []inst {
 			empty = false
 			tmp.param = make([]byte, 0, 32)
 
-		case code[i] != 0x3b && code[i] != 10:	// ";\n":
+		case code[i] == 0x20 || code[i] == 0x9:		// skip space or tab
+
+		case code[i] != 0x3b && code[i] != 10 && code[i] != 13:	// ";\n":
 			tmp.param = append(tmp.param, code[i])
 
-		case code[i] == 0x3b || code[i] == 10:	// ";\n":
+		default:	// ";\n":
 			instructions = append(instructions, tmp)
-			if code[i] == 0x3b {
-				for ; i < len(code) && code[i] != 10; i++ {}
-			}
+			for ; i < len(code) && code[i] != 10; i++ {}
 			empty = true
 		}
 	}
@@ -172,6 +173,7 @@ var validators = map[OpCode]codeValidator {
 	EXEC:  opExecValidator,
 	LOAD:  opLoadValidator,
 	STORE:   opStoreValidator,
+	DEL: opDelValidator,
 	LIBLOAD:   opLibLoadValidator,
 	MALLOC:  opMallocValidator,
 	ALLOC:  opAllocValidator,
@@ -196,8 +198,12 @@ var validators = map[OpCode]codeValidator {
 
 func ByteCodeValidator(code []inst) bool {
 	for i, c := range code {
-		offset := validators[c.op](c.param)
-		if i + offset < 0 || i + offset >= len(code) {
+		if v, ok := validators[c.op]; ok {
+			offset := v(c.param)
+			if i+offset < 0 || i+offset > len(code) {
+				return false
+			}
+		} else {
 			return false
 		}
 	}

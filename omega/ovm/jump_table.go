@@ -74,6 +74,7 @@ func NewOmegaInstructionSet() [256]operation {
 		},
 		CALL: {
 			execute:       opCall,
+			jumps:		   true,
 			valid:         true,
 		},
 		EXEC: {
@@ -86,6 +87,11 @@ func NewOmegaInstructionSet() [256]operation {
 		},
 		STORE: operation{
 			execute:       opStore,
+			valid:         true,
+			writes:		   true,
+		},
+		DEL: operation{
+			execute:       opDel,
 			valid:         true,
 			writes:		   true,
 		},

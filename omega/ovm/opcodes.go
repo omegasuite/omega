@@ -13,26 +13,27 @@ type OpCode byte
 
 const (
 	// 0x0 range - arithmetic ops
-	EVAL8	 OpCode = iota + 0x41 // byte data evaluation
-	EVAL16	// word data evaluation
+	EVAL8	 OpCode = 0x41 + iota  // byte data evaluation "A"
+	EVAL16	// word data evaluation "B"
 	EVAL32	// dword data evaluation
 	EVAL64  // 64-bit data evaluation
-	EVAL256 // 256-bit data evaluation (as big.Int)
+	EVAL256 // 256-bit data evaluation (as big.Int) "E"
 
-	CONV	// data conversion
+	CONV	// data conversion "F"
 	HASH	// Hash
 	HASH160	// Hash160
 	SIGCHECK	// verify sig
 	SIGNTEXT	// prepare tx text for signature
 
-	IF
+	IF		// "K"
 	CALL	// call function
 	EXEC	// execute other contract
 	LOAD	// load state data
 	STORE	// store state data
+	DEL		// delete state data
 	LIBLOAD	// load lib
 
-	MALLOC	// global mem alloc
+	MALLOC	// global mem alloc "R"
 	ALLOC	// mem alloc in func
 
 	COPY	// data copy
@@ -43,9 +44,11 @@ const (
 	REVERT
 	RETURN
 
-	STOP	 OpCode = iota + 0x5A	//  "Z"
+	STOP	 OpCode = 0x5A	//  "Z"
+)
 
-	RECEIVED OpCode = iota + 0x61	// "a"
+const (
+	RECEIVED OpCode = 0x61 + iota	// "a"
 	TXIOCOUNT
 	GETTXIN
 	GETTXOUT
@@ -76,6 +79,7 @@ var opCodeToString = map[OpCode]string{
 	EXEC:       "EXEC",
 	LOAD:         "LOAD",
 	STORE:         "STORE",
+	DEL:         "DEL",
 	LIBLOAD:       "LIBLOAD",
 	MALLOC:       "MALLOC",
 	ALLOC:       "ALLOC",
@@ -115,10 +119,21 @@ var stringToOp = map[string]OpCode{
 	"EVAL256":           EVAL256,
 	"CONV":            CONV,
 	"HASH":           HASH,
+	"HASH160":           HASH160,
+	"SIGCHECK":           SIGCHECK,
+	"SIGNTEXT":           SIGNTEXT,
 	"IF":            IF,
 	"CALL":           CALL,
 	"LOAD":           LOAD,
 	"STORE":           STORE,
+	"DEL":           DEL,
+	"LIBLOAD":           LIBLOAD,
+	"MALLOC":           MALLOC,
+	"ALLOC":           ALLOC,
+	"COPY":           COPY,
+	"COPYIMM":           COPYIMM,
+	"CODECOPY":           CODECOPY,
+	"RECEIVED": RECEIVED,
 	"TXIOCOUNT": TXIOCOUNT,
 	"GETTXIN": GETTXIN,
 	"GETTXOUT": GETTXOUT,

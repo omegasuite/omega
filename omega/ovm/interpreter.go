@@ -117,6 +117,9 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		// to be uint256. Practically much less so feasible.
 		pc   = int(0) // program counter
 	)
+	in.evm.libs[[20]byte{}] = lib {
+		end: int32(len(contract.Code)),
+	}
 	contract.Input = input
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
@@ -147,8 +150,9 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		}
 
 		// execute the operation
-		err := operation.execute(&pc, in.evm, contract, stack)
+		fmt.Printf("%s(%c) %s\n", op.String(), op, string(contract.GetBytes(pc)))
 
+		err = operation.execute(&pc, in.evm, contract, stack)
 		ln := int32(0)
 		for i := 0; i < 4; i++ {
 			ln |= int32(stack.data[0].space[i]) << (i * 8)
@@ -177,7 +181,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 			pc++
 		}
 	}
-	return nil, nil
+	return nil, err
 }
 
 func (in *Interpreter) SigVerify(code tbv, rep chan bool) {

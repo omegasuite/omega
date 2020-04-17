@@ -5,15 +5,16 @@
 package ovm
 
 import (
-	"sync/atomic"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
+	"bytes"
+	"fmt"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/database"
+	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/omega"
 	"github.com/btcsuite/omega/token"
 	"github.com/btcsuite/omega/viewpoint"
-	"github.com/btcsuite/omega"
-	"bytes"
+	"sync/atomic"
 )
 
 // emptyCodeHash is used by create to ensure deployment is disallowed to already
@@ -78,7 +79,9 @@ type Context struct {
 }
 
 type lib struct{
-	address int32
+	address int32		// code address
+	end int32			// code end
+	base int32			// lib global data
 	pure bool
 }
 
@@ -120,6 +123,8 @@ type OVM struct {
 	// abort is used to abort the EVM calling operations
 	// NOTE: must be set atomically
 	abort int32
+
+	DB database.DB
 }
 
 // NewOVM returns a new OVM. The returned OVM is not thread safe and should
@@ -132,6 +137,7 @@ func NewOVM(ctx Context, chainConfig *chaincfg.Params, vmConfig Config, db datab
 		vmConfig:    vmConfig,
 		chainConfig: chainConfig,
 		views: viewpoint.NewViewPointSet(db),
+		DB: db,
 	}
 	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
 
@@ -160,8 +166,12 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	}
 */
 	var (
-		snapshot = evm.StateDB[d].Copy()
+		snapshot * stateDB
 	)
+	if _,ok := evm.StateDB[d]; ok {
+		t := evm.StateDB[d].Copy()
+		snapshot = &t
+	}
 
 	if method[0] > 0 && bytes.Compare(method[1:], []byte{0, 0, 0}) == 0 {
 		return nil, omega.ScriptError(omega.ErrInternal, "May not call system method directly.")
@@ -180,6 +190,10 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	// Initialise a new contract and set the code that is to be used by the EVM.
 	// The contract is a scoped environment for this execution context only.
 	contract := evm.NewContract(d, sent)
+
+	if contract == nil {
+		return nil, fmt.Errorf("Contract does not exist")
+	}
 //	contract.owner = evm.StateDB[d].GetOwner()
 	contract.SetCallCode(method, evm.StateDB[d].GetCodeHash(), evm.StateDB[d].GetCode())
 
@@ -198,7 +212,7 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in homestead this also counts for code storage gas errors.
 	if err != nil {
-		* evm.StateDB[d] = snapshot
+		evm.StateDB[d] = snapshot
 	}
 	return ret, err
 }
@@ -207,11 +221,19 @@ func (ovm *OVM) NewContract(d Address, value *token.Token) *Contract {
 	c := &Contract{
 		self: AccountRef(d),
 		Args: nil,
-//		jumpdests: make(destinations),
 		value: value,
 	}
 
-	c.self = ovm.StateDB[d].GetAddres()
+	if _, ok := ovm.StateDB[d]; !ok {
+		t := NewStateDB(ovm.views.Db, d)
+
+		existence := t.Exists()
+		if !existence {
+			return nil
+		}
+		ovm.StateDB[d] = t
+	}
+
 	c.owner = ovm.StateDB[d].GetOwner()
 
 	return c
@@ -261,16 +283,7 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 func CreateSysWallet(chainConfig *chaincfg.Params, db database.DB) {
 	var addr [20]byte
 
-	sdb := stateDB{
-		DB:       db,
-		contract: addr,
-		data:     make(map[chainhash.Hash]entry),
-		wallet:	  make([]WalletItem, 0),
-		meta:make(map[string]struct{
-			data []byte
-			back []byte
-			flag status }),
-	}
+	sdb := * NewStateDB(db, addr)
 
 	sdb.SetAddres(addr)
 	sdb.Commit(0)

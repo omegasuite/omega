@@ -1,19 +1,81 @@
-// Copyright 2014 The omega suite Authors
+// Copyright 2020 The omega suite Authors. All rights reserved.
 // This file is part of the omega library.
 //
 
 package ovm
 
 import (
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"regexp"
 )
 
+var patOperand = regexp.MustCompile(`^n?(g?i+)?(([xa-f][0-9a-f]+)|([0-9]+))(\"[0-9]+)?(\'[0-9]+)?,`)
+var addrOperand = regexp.MustCompile(`^n?g?i+(([xa-f][0-9a-f]+)|([0-9]+))(\"[0-9]+)?(\'[0-9]+)?,`)
+var numOperand = regexp.MustCompile(`^n?(([xa-f][0-9a-f]+)|([0-9]+)),`)
+var patNum = regexp.MustCompile(`[0-9a-f]+`)
+var patHex = regexp.MustCompile(`[xa-f]`)
+var dataType = regexp.MustCompile(`^\x75|\x67|\x42|\x57|\x44|\x51|\x48|\x68`)
+
+func getNum(param []byte) (int64, int) {
+	s := patOperand.Find(param)
+	if s == nil || len(s) == 0 {
+		return 0, -1
+	}
+
+	isaddress, _ := regexp.Match(`i`, s)
+	offset, _ := regexp.Match(`['"]`, s)
+	if offset && !isaddress {
+		return 0, -0xfffffff
+	}
+
+	ns := patNum.Find(s)
+	ln := len(s)
+	hex := patHex.Match(s)
+	num := int64(0)
+
+	for _, c := range ns {
+		switch c {
+		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39: // 0 - 9
+			if hex {
+				num = num*16 + int64(c-0x30)
+			} else {
+				num = num*10 + int64(c-0x30)
+			}
+
+		case 0x61, 0x62, 0x63, 0x64, 0x65, 0x66: // 0 - 9
+			hex = true
+			num = num*16 + int64(c-0x61) + 10
+		}
+	}
+
+	if isaddress && num > 0xffffffff {
+		return 0, -1
+	}
+	return num, ln
+}
+
+func getBig(param []byte) int {
+	s := patOperand.Find(param)
+	if s == nil || len(s) == 0 {
+		return -1
+	}
+
+	isaddress, _ := regexp.Match(`i`, s)
+	offset, _ := regexp.Match(`['"]`, s)
+	if !offset && !isaddress {
+		return -0xfffffff
+	}
+
+	return len(param)
+}
+
 func opEval8Validator(param []byte) int {
+	if m,_ := regexp.Match(`^g?i`, param); !m {
+		return -0xfffffff
+	}
+
 	ln := len(param)
 
 	top := 0
-	indirect := 0
-	ispointer := true
 	num := int64(0)
 	var tl int
 
@@ -25,29 +87,19 @@ func opEval8Validator(param []byte) int {
 			top -= d
 		}
 		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			num, tl = getNum(param[j:])
+		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+			0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
+			0x78, 0x6e, 0x69, 0x67:	// 0 - 9, a-f, xngi
+			if num, tl = getNum(param[j:]); tl < 0 {
+				return -0xfffffff
+			}
 			if num > 0xffffffff {
 				return -0xfffffff
 			}
-			j += tl
-
-		case 0x2c:	// ,
-			if !ispointer && indirect == 0 && num > 0xff {
-				return -0xfffffff
-			}
-			if ispointer && indirect == 0 {
-				return -0xfffffff
-			}
+			j += tl - 1
 			top++
-			num = 0
-			ispointer = false
-			indirect = 0
 
-		case 0x69:	// i
-			indirect++
-
-		case 0x6e, 0x67, 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
+		case 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
 			0x25, 0x23, 0x5b, 0x5d, 0x7c, 0x26, 0x5e, 0x7e,
 			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
 
@@ -63,66 +115,21 @@ func opEval8Validator(param []byte) int {
 }
 
 func opEval16Validator(param []byte) int {
-	ln := len(param)
-
-	top := 0
-	indirect := 0
-	ispointer := true
-	num := int64(0)
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		if d, ok := checkTop[param[j]]; ok {
-			if top <= d + 1 {
-				return -0xfffffff
-			}
-			top -= d
-		}
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			num, tl = getNum(param[j:])
-			if num > 0xffffffff {
-				return -0xfffffff
-			}
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x2c:	// ,
-			if !ispointer && indirect == 0 && num > 0xffff {
-				return -0xfffffff
-			}
-			if ispointer && indirect == 0 {
-				return -0xfffffff
-			}
-			top++
-			num = 0
-			ispointer = false
-			indirect = 0
-
-		case 0x6e, 0x67, 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
-			0x25, 0x23, 0x5b, 0x5d, 0x7c, 0x26, 0x5e, 0x7e,
-			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
-
-		default:
-			return -0xfffffff
-		}
-	}
-	if top != 2 {
-		return -0xfffffff
-	}
-
-	return 1
+	return opEval8Validator(param)
 }
 
 func opEval32Validator(param []byte) int {
+	return opEval8Validator(param)
+}
+
+func opEval64Validator(param []byte) int {
+	if m,_ := regexp.Match(`^g?i`, param); !m {
+		return -0xfffffff
+	}
+
 	ln := len(param)
 
 	top := 0
-	indirect := 0
-	ispointer := true
-	num := int64(0)
 	var tl int
 
 	for j := 0; j < ln; j++ {
@@ -133,77 +140,16 @@ func opEval32Validator(param []byte) int {
 			top -= d
 		}
 		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			num, tl = getNum(param[j:])
-			if num > 0xffffffff {
+		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+			0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
+			0x78, 0x6e, 0x69, 0x67:	// 0 - 9, a-f, xngi
+			if _, tl = getNum(param[j:]); tl < 0 {
 				return -0xfffffff
 			}
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x2c:	// ,
-			if !ispointer && indirect == 0 && num > 0xffffffff {
-				return -0xfffffff
-			}
-			if ispointer && indirect == 0 {
-				return -0xfffffff
-			}
+			j += tl  - 1
 			top++
-			num = 0
-			ispointer = false
-			indirect = 0
 
-		case 0x6e, 0x67, 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
-			0x25, 0x23, 0x5b, 0x5d, 0x7c, 0x26, 0x5e, 0x7e,
-			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
-
-		default:
-			return -0xfffffff
-		}
-	}
-	if top != 2 {
-		return -0xfffffff
-	}
-
-	return 1
-}
-
-func opEval64Validator(param []byte) int {
-	ln := len(param)
-
-	top := 0
-	indirect := 0
-	ispointer := true
-
-	for j := 0; j < ln; j++ {
-		if d, ok := checkTop[param[j]]; ok {
-			if top <= d + 1 {
-				return -0xfffffff
-			}
-			top -= d
-		}
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			_, tl := getNum(param[j:])
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x40:	// @
-			ispointer = false
-
-		case 0x2c:	// ,
-			if ispointer && indirect == 0 {
-				return -0xfffffff
-			}
-			top++
-			ispointer = false
-			indirect = 0
-
-		case 0x6e, 0x67, 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
+		case 0x40, 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
 			0x25, 0x23, 0x5b, 0x5d, 0x7c, 0x26, 0x5e, 0x7e,
 			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
 
@@ -219,11 +165,14 @@ func opEval64Validator(param []byte) int {
 }
 
 func opEval256Validator(param []byte) int {
+	if m, _ := regexp.Match(`^g?i`, param); !m {
+		return -0xfffffff
+	}
+
 	ln := len(param)
 
 	top := 0
-	indirect := 0
-	ispointer := true
+	var tl int
 
 	for j := 0; j < ln; j++ {
 		if d, ok := checkTop[param[j]]; ok {
@@ -233,22 +182,16 @@ func opEval256Validator(param []byte) int {
 			top -= d
 		}
 		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			_, tl := getBig(param[j:])
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x2c:	// ,
-			if ispointer && indirect == 0 {
+		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+			0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
+			0x78, 0x6e, 0x69, 0x67:	// 0 - 9, a-f, xngi
+			if _, tl = getNum(param[j:]); tl < 0 {
 				return -0xfffffff
 			}
+			j += tl - 1
 			top++
-			ispointer = false
-			indirect = 0
 
-		case 0x6e, 0x67, 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
+		case 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
 			0x25, 0x23, 0x7c, 0x26, 0x5e, 0x7e,
 			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
 
@@ -264,891 +207,312 @@ func opEval256Validator(param []byte) int {
 	return 1
 }
 
-func opConvValidator(param []byte) int {
+type formatDesc struct {
+	desc *regexp.Regexp
+	limit int64
+}
+
+func formatParser(f []formatDesc, param []byte) int {
 	ln := len(param)
 
-	indirect := 0
-	top := 0
 	num := int64(0)
-	var tl int
+	var sl int
+	j := 0
 
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			num, tl = getNum(param[j:])
-			if num > 0xffffffff {
-				return -0xfffffff
-			}
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x75, 0x67, 0x42, 0x57, 0x44, 0x51, 0x48:	// b
-
-		case 0x2c:	// ,
-			if indirect == 0 {
-				return -0xfffffff
-			}
-
-			indirect = 0
-			num = 0
-			top++
-
-		default:
+	for _, fm := range f {
+		s := fm.desc.Find(param[j:])
+		if s == nil || len(s) == 0 {
 			return -0xfffffff
 		}
-	}
-
-	if top != 2 {
-		return -0xfffffff
-	}
-	return 1
-}
-
-func opHashValidator(param []byte) int {
-	ln := len(param)
-
-	top := 0
-	num := int64(0)
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			num, tl = getNum(param[j:])
-			if num > 0xffffffff {
-				return -0xfffffff
-			}
-			j += tl
-
-		case 0x69, 0x67:	// i
-
-		case 0x2c:	// ,
-			top++
-			num = 0
-
-		default:
-			return -0xfffffff
-		}
-	}
-
-	if top != 3 {
-		return -0xfffffff
-	}
-	return 1
-}
-
-func opHash160Validator(param []byte) int {
-	ln := len(param)
-
-	top := 0
-	num := int64(0)
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			num, tl = getNum(param[j:])
-			if num > 0xffffffff {
-				return -0xfffffff
-			}
-			j += tl
-
-		case 0x69, 0x67:	// i
-
-		case 0x2c:	// ,
-			top++
-			num = 0
-		}
-	}
-
-	if top != 3 {
-		return -0xfffffff
-	}
-	return 1
-}
-
-func opSigCheckValidator(param []byte) int {
-	var tl int
-
-	ln := len(param)
-
-	top := 0
-	num := int64(0)
-
-	paramTypes := []byte{0x51, 0x48, 0x51, 0x51, 0x44 }
-
-	for j := 0; j < ln; j++ {
-		dataType := paramTypes[top]
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			if dataType == 0x48 {
-				_, tl = getBig(param[j:])
-			} else {
-				num, tl = getNum(param[j:])
-				if num > 0xffffffff {
+		if fm.limit != 0 {
+			if ind,_ := regexp.Match(`i`, s); !ind {
+				if num, sl = getNum(s); sl < 0 {
+					return -0xfffffff
+				}
+				if num > fm.limit {
 					return -0xfffffff
 				}
 			}
-			j += tl
-
-		case 0x69, 0x67:	// i
-
-		case 0x2c:	// ,
-			top++
-			num = 0
-
-		default:
-			return -0xfffffff
 		}
+		j += len(s)
 	}
-	if top != 4 {
+	if ln != j {
 		return -0xfffffff
 	}
-
 	return 1
+}
+
+var formatConv = []formatDesc{
+	{dataType, 0}, {addrOperand, 0xFFFFFFFF},
+	{dataType, 0}, {addrOperand, 0xFFFFFFFF},
+}
+
+func opConvValidator(param []byte) int {
+	if param[len(param) - 1] == 0x75 {
+		return formatParser(formatConv, param[:len(param) - 1])
+	}
+	return formatParser(formatConv, param)
+}
+
+var formatHash = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
+}
+
+func opHashValidator(param []byte) int {
+	return formatParser(formatHash, param)
+}
+
+func opHash160Validator(param []byte) int {
+	return formatParser(formatHash, param)
+}
+
+var formatSigCheck = []formatDesc{
+	{addrOperand, 0xffffffff}, {patOperand, 0},
+	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
+	{patOperand, 0xFFFFFFFF},
+}
+
+func opSigCheckValidator(param []byte) int {
+	return formatParser(formatSigCheck, param)
+}
+
+var formatIf = []formatDesc{
+	{patOperand, 0xffffffff}, {patOperand, 0xffffffff},
 }
 
 func opIfValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatIf, param)
+}
 
-	top := 0
-	indirect := 0
-	num := int64(0)
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			num, tl = getNum(param[j:])
-			if num > 0xffffffff {
-				return -0xfffffff
-			}
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x2c:	// ,
-			top++
-			indirect = 0
-			num = 0
-
-		default:
-			return -0xfffffff
-		}
-	}
-	if top != 2 {
-		return -0xfffffff
-	}
-
-	return 1
+var formatCall = []formatDesc{
+	{patOperand, 0}, {patOperand, 0xffffffff},
 }
 
 func opCallValidator(param []byte) int {
-	ln := len(param)
-
-	top := 0
-	indirect := 0
-	var tl int
-
-	paramTypes := []byte{0x48, 0x44, 0x51, 0x44 }
-
-	for j := 0; j < ln; j++ {
-		dataType := paramTypes[top]
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			if dataType == 0x48 {
-				_, tl = getBig(param[j:])
-			} else {
-				_, tl = getNum(param[j:])
-			}
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x2c:	// ,
-
-		default:
-			return -0xfffffff
+	n := 0
+	for i := 0; i < len(param); i++ {
+		if param[i] == 0x2c {
+			n++
 		}
-		top++
 	}
+	if n > 2 {
+		fmt := make([]formatDesc, n)
+		copy(fmt, formatCall)
+		for i := 2; i < n; i++ {
+			fmt[i] = formatDesc{patOperand, 0}
+		}
+		return formatParser(fmt, param)
+	}
+	return formatParser(formatCall, param)
+}
 
-	if top >= 2 {
-		return 1
-	}
-	return -0xfffffff
+var formatLoad = []formatDesc{
+	{addrOperand, 0xffffffff}, {patOperand, 0}, {dataType, 0},
 }
 
 func opLoadValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatLoad, param)
+}
 
-	if ln < chainhash.HashSize {
-		return -0xfffffff
-	}
-
-	indirect := 0
-	var tl int
-
-	for j := chainhash.HashSize; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x42, 0x57, 0x44, 0x51, 0x48:	// b
-			// BWDQHA - byte, word, dword, qword, big int
-
-		case 0x2c:	// ,
-			if indirect == 0 {
-				return -0xfffffff
-			}
-			return 1
-
-		default:
-			return -0xfffffff
-		}
-	}
-	return -0xfffffff
+var formatStore = []formatDesc{
+	{patOperand, 0}, {patOperand, 0},
 }
 
 func opStoreValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatStore, param)
+}
 
-	if ln < chainhash.HashSize {
-		return -0xfffffff
-	}
+var formatDel = []formatDesc{
+	{patOperand, 0},
+}
 
-	indirect := 0
-	var tl int
+func opDelValidator(param []byte) int {
+	return formatParser(formatDel, param)
+}
 
-	for j := chainhash.HashSize; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x42, 0x57, 0x44, 0x51, 0x48:	// b
-			// BWDQHA - byte, word, dword, qword, big int
-
-		case 0x2c:	// ,
-			if indirect == 0 {
-				return -0xfffffff
-			}
-
-			return 1
-
-		default:
-			return -0xfffffff
-		}
-	}
-	return -0xfffffff
+var formatReceived = []formatDesc{
+	{addrOperand, 0xFFFFFFFF},
 }
 
 func opReceivedValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatReceived, param)
+}
 
-	indirect := 0
-	var tl int
-
-	for j := chainhash.HashSize; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x2c:	// ,
-			return 1
-		}
-	}
-	return -0xfffffff
+var formatExec = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, // return space (address:len)
+	{patOperand, 0},			  // contract address (20B)
+	{addrOperand, 0xFFFFFFFF}, // value passed to (token)
+	{addrOperand, 0xFFFFFFFF},	// data address
+	{patOperand, 0xFFFFFFFF},	// data len
 }
 
 func opExecValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatExec, param)
+}
 
-	indirect := 0
-	top := 0
-
-	var tl int
-
-	paramTypes := []byte{0x51, 0x44, 0x48, 0x51, 0x51, 0x44}
-
-	for j := chainhash.HashSize; j < ln; j++ {
-		dataType := paramTypes[top]
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			if dataType == 0x48 {
-				_, tl = getBig(param[j:])
-			} else {
-				_, tl = getNum(param[j:])
-			}
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x2c:	// ,
-			if indirect == 0 {
-				return -0xfffffff
-			}
-			top++
-
-		default:
-			return -0xfffffff
-		}
-	}
-	return -0xfffffff
+var formatLibload = []formatDesc{
+	{patOperand, 0}, {patOperand, 0},
 }
 
 func opLibLoadValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatLibload, param)
+}
 
-	indirect := 0
-	top := 0
-
-	var tl int
-
-	paramTypes := []byte{0x42, 0x48}
-
-	for j := chainhash.HashSize; j < ln; j++ {
-		dataType := paramTypes[top]
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			if dataType == 0x48 {
-				_, tl = getBig(param[j:])
-			} else {
-				_, tl = getNum(param[j:])
-			}
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x2c:	// ,
-			if indirect == 0 {
-				return -0xfffffff
-			}
-			top++
-			return 1
-
-		default:
-			return -0xfffffff
-		}
-	}
-	return -0xfffffff
+var formatMalloc = []formatDesc{
+	{patOperand, 0}, {patOperand, 0xFFFFFFFF},
 }
 
 func opMallocValidator(param []byte) int {
-	return opMAallocValidator(param)
-}
-
-func opMAallocValidator(param []byte) int {
-	ln := len(param)
-
-	indirect := 0
-	top := 0
-	var tl int
-
-	for j := chainhash.HashSize; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x2c:	// ,
-			if indirect == 0 {
-				return -0xfffffff
-			}
-			top++
-
-		default:
-			return -0xfffffff
-		}
-	}
-	if top != 2 {
-		return -0xfffffff
-	}
-	return 1
+	return formatParser(formatMalloc, param)
 }
 
 func opAllocValidator(param []byte) int {
-	return opMAallocValidator(param)
+	return formatParser(formatMalloc, param)
+}
+
+var formatCopy = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
 }
 
 func opCopyValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatCopy, param)
+}
 
-	indirect := 0
-	top := 0
-
-	var tl int
-
-	for j := chainhash.HashSize; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x2c:	// ,
-			top++
-
-		default:
-			return -0xfffffff
-		}
-	}
-	if top != 3 {
-		return -0xfffffff
-	}
-	return 1
+var formatImm = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0xFF},
 }
 
 func opCopyImmValidator(param []byte) int {
-	ln := len(param)
-
-	indirect := 0
-	top := 0
-
-	var tl int
-
-	for j := chainhash.HashSize; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x2c:	// ,
-			if indirect == 0 {
-				return -0xfffffff
-			}
-			top++
+	n := 0
+	for i := 0; i < len(param); i++ {
+		if param[i] == 0x2c {
+			n++
 		}
 	}
-	if top != 2 {
-		return -0xfffffff
+	if n > 2 {
+		fmt := make([]formatDesc, n)
+		copy(fmt, formatImm)
+		for i := 2; i < n; i++ {
+			fmt[i] = formatDesc{patOperand, 0xFF}
+		}
+		return formatParser(fmt, param)
 	}
-	return 1
+	return formatParser(formatImm, param)
+}
+
+var formatCopyCode = []formatDesc{
+	{patOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
+	{patOperand, 0xFFFFFFFF},
 }
 
 func opCodeCopyValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatCopyCode, param)
+}
 
-	indirect := 0
-	top := 0
-
-	var tl int
-
-	for j := chainhash.HashSize; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x2c:	// ,
-			if indirect == 0 {
-				return -0xfffffff
-			}
-			top++
-
-		default:
-			return -0xfffffff
-		}
-	}
-	if top != 3 {
-		return -0xfffffff
-	}
-	return 1
+var formatSuicide = []formatDesc{
+	{patOperand, 0},
 }
 
 func opSuicideValidator(param []byte) int {
-	ln := len(param)
-
-	indirect := 0
-	top := 0
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78:	// 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69:	// i
-			indirect++
-
-		case 0x67:	// g
-
-		case 0x2c:	// ,
-			top++
-
-		default:
-			return -0xfffffff
-		}
-	}
-
-	if top != 1 {
-		return -0xfffffff
+	if len(param) != 0 {
+		return formatParser(formatSuicide, param)
 	}
 	return 1
 }
 
 func opRevertValidator(param []byte) int {
+	if len(param) != 0 {
+		return -0xfffffff
+	}
 	return 1
 }
 
 func opStopValidator(param []byte) int {
+	if len(param) != 0 {
+		return -0xfffffff
+	}
 	return 1
 }
 
 func opReturnValidator(param []byte) int {
+	if len(param) != 0 {
+		return -0xfffffff
+	}
 	return 1
+}
+
+var formatTxIOCount = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
 }
 
 func opTxIOCountValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatTxIOCount, param)
+}
 
-	indirect := 0
-	top := 0
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78: // 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69: // i
-			indirect++
-
-		case 0x67: // g
-
-		case 0x2c: // ,
-			top++
-
-		default:
-			return -0xfffffff
-		}
-	}
-	if top != 3 {
-		return -0xfffffff
-	}
-	return 1
+var formatTxIO = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
 }
 
 func opGetTxInValidator(param []byte) int {
-	return opGetTxIOValidator(param)
-}
-
-func opGetTxIOValidator(param []byte) int {
-	ln := len(param)
-
-	indirect := 0
-	top := 0
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78: // 0 - 9
-			if top == 1 {
-				_,tl = getBig(param[j:])
-				j += tl
-			} else {
-				_, tl = getNum(param[j:])
-				j += tl
-			}
-
-		case 0x69: // i
-			indirect++
-
-		case 0x67: // g
-
-		case 0x2c: // ,
-			indirect = 0
-			top++
-
-		default:
-			return -0xfffffff
-		}
-	}
-	if top != 3 {
-		return -0xfffffff
-	}
-	return 1
+	return formatParser(formatTxIO, param)
 }
 
 func opGetTxOutValidator(param []byte) int {
-	return opGetTxIOValidator(param)
+	return formatParser(formatTxIO, param)
+}
+
+var formatSpend = []formatDesc{
+	{patOperand, 0xFFFFFFFF},
 }
 
 func opSpendValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatSpend, param)
+}
 
-	indirect := 0
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78: // 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69: // i
-			indirect++
-
-		case 0x67: // g
-
-		case 0x2c: // ,
-			return 1
-
-		default:
-			return -0xfffffff
-		}
-	}
-
-	return -0xfffffff
+var formatAddRight = []formatDesc{
+	{addrOperand, 0xFFFFFFFF},
 }
 
 func opAddRightValidator(param []byte) int {
-	ln := len(param)
-
-	indirect := 0
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78: // 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69: // i
-			indirect++
-
-		case 0x67: // g
-
-		case 0x2c: // ,
-			return 1
-
-		default:
-			return -0xfffffff
-		}
-	}
-	return -0xfffffff
+	return formatParser(formatAddRight, param)
 }
 
 func opAddTxOutValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatAddRight, param)
+}
 
-	indirect := 0
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78: // 0 - 9
-			_, tl = getNum(param[j:])
-			j += tl
-
-		case 0x69: // i
-			indirect++
-
-		case 0x67: // g
-
-		case 0x2c: // ,
-			return 1
-
-		default:
-			return -0xfffffff
-		}
-	}
-	return -0xfffffff
+var formatGetDef = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0}, {patOperand, 0},
 }
 
 func opGetDefinitionValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatGetDef, param)
+}
 
-	indirect := 0
-	top := 0
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78: // 0 - 9
-			_, tl = getBig(param[j:])
-			j += tl
-
-		case 0x69: // i
-			indirect++
-
-		case 0x67: // g
-
-		case 0x2c: // ,
-			indirect = 0
-			top++
-
-		default:
-			return -0xfffffff
-		}
-	}
-
-	if top != 1 {
-		return -0xfffffff
-	}
-
-	return 1
+var formatGetCoin = []formatDesc{
+	{addrOperand, 0xFFFFFFFF},
 }
 
 func opGetCoinValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatGetCoin, param)
+}
 
-	indirect := 0
-	top := 0
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78: // 0 - 9
-			if top < 2 {
-				_, tl = getNum(param[j:])
-				j += tl
-			} else {
-				_, tl = getBig(param[j:])
-				j += tl
-			}
-
-		case 0x69: // i
-			indirect++
-
-		case 0x67: // g
-
-		case 0x2c: // ,
-			indirect = 0
-			top++
-
-		default:
-			return -0xfffffff
-		}
-	}
-	if top != 3 {
-		return -0xfffffff
-	}
-	return 1
+var formatGetUTXO = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0}, {patOperand, 0xffffffff},
 }
 
 func opGetUtxoValidator(param []byte) int {
-	ln := len(param)
+	return formatParser(formatGetUTXO, param)
+}
 
-	indirect := 0
-	top := 0
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78: // 0 - 9
-			if top == 0 || top == 2 {
-				_, tl = getNum(param[j:])
-				j += tl
-			} else {
-				_, tl = getBig(param[j:])
-				j += tl
-			}
-
-		case 0x69: // i
-			indirect++
-
-		case 0x67: // g
-
-		case 0x2c: // ,
-			indirect = 0
-			top++
-
-		default:
-			return -0xfffffff
-		}
-	}
-	if top != 3 {
-		return -0xfffffff
-	}
-	return 1
+var formatAddSign = []formatDesc{
+	{patOperand, 4}, {patOperand, 0},
 }
 
 func opAddSignTextValidator(param []byte) int {
-	ln := len(param)
-
-	indirect := 0
-	top := 0
-	var tl int
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78: // 0 - 9
-			if top == 2 {
-				_, tl = getBig(param[j:])
-				j += tl
-			} else {
-				_, tl = getNum(param[j:])
-				j += tl
-			}
-
-		case 0x69: // i
-			indirect++
-
-		case 0x67: // g
-
-		case 0x2c: // ,
-			indirect = 0
-			top++
-
-		default:
-			return -0xfffffff
-		}
+	n :=  formatParser(formatAddSign[:1], param)
+	if n > 0 {
+		return n
 	}
-	if top != 3 {
-		return -0xfffffff
-	}
-	return 1
+	return formatParser(formatAddSign, param)
 }

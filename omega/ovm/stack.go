@@ -11,6 +11,8 @@ import (
 
 type frame struct {
 	space []byte
+	inlib [20]byte
+	gbase int32
 	pc int
 	pure bool
 }
@@ -95,11 +97,11 @@ func (s *Stack) toInt64(p * pointer) (int64, error) {
 		return (int64(s.data[area].space[offset])) |
 			((int64(s.data[area].space[offset + 1])) << 8) |
 			((int64(s.data[area].space[offset + 2])) << 16) |
-			((int64(s.data[area].space[offset] + 3)) << 24) |
-			((int64(s.data[area].space[offset] + 4)) << 32) |
-			((int64(s.data[area].space[offset] + 5)) << 40) |
-			((int64(s.data[area].space[offset] + 6)) << 48) |
-			((int64(s.data[area].space[offset] + 7)) << 56), nil
+			((int64(s.data[area].space[offset + 3])) << 24) |
+			((int64(s.data[area].space[offset + 4])) << 32) |
+			((int64(s.data[area].space[offset + 5])) << 40) |
+			((int64(s.data[area].space[offset + 6])) << 48) |
+			((int64(s.data[area].space[offset + 7])) << 56), nil
 	}
 	return 0, outofmemory
 }
@@ -108,7 +110,7 @@ func (s *Stack) toHash(p * pointer) (chainhash.Hash, error) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
 	if area < len(s.data) && offset + 255 < len(s.data[area].space) {
-		h,_ := chainhash.NewHash(s.data[area].space[offset:])
+		h,_ := chainhash.NewHash(s.data[area].space[offset:offset + 32])
 		return *h, nil
 	}
 	return chainhash.Hash{}, outofmemory
