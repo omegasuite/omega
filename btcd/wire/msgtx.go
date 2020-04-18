@@ -275,12 +275,14 @@ func NewTxOut(tokenType	uint64, value token.TokenValue, rights *chainhash.Hash, 
 	return &t
 }
 
-type StateChange struct {
-	// change of states
+type StateEntry struct{
 	act byte				// 0 - new value, 1 - update, 2 - delete
-	name chainhash.Hash		// name of value
 	oldVal *chainhash.Hash
 	newVal *chainhash.Hash
+}
+type StateChange struct {
+	// change of states
+	states map[chainhash.Hash]*StateEntry
 }
 
 // MsgTx implements the Message interface and represents a bitcoin tx message.
@@ -296,7 +298,7 @@ type MsgTx struct {
 	TxOut    []*TxOut
 	SignatureScripts [][]byte		// all signatures goes here intentionally. in a block, all signatures goes to the end
 	LockTime uint32
-	StateChgs map[[20]byte][]StateChange
+	StateChgs map[[20]byte]*StateChange
 }
 
 // AddTxIn adds a transaction input to the message.
@@ -459,6 +461,7 @@ func (msg *MsgTx) CleanCopy() *MsgTx {
 		TxOut:    make([]*TxOut, 0, len(msg.TxOut)),
 		SignatureScripts: make([][]byte, 0, len(msg.SignatureScripts)),
 		LockTime: msg.LockTime,
+		StateChgs: make(map[[20]byte]*StateChange),
 	}
 
 	// Deep copy the old TxIn data.
@@ -532,6 +535,11 @@ func (msg *MsgTx) CleanCopy() *MsgTx {
 	// copy SignatureScripts
 	for _,s := range msg.SignatureScripts {
 		newTx.AddSignature(s)
+	}
+	if msg.StateChgs != nil {
+		for c, s := range msg.StateChgs {
+			newTx.StateChgs[c] = s
+		}
 	}
 
 	return &newTx
@@ -844,7 +852,7 @@ func NewMsgTx(version int32) *MsgTx {
 		TxIn:    make([]*TxIn, 0, defaultTxInOutAlloc),
 		TxOut:   make([]*TxOut, 0, defaultTxInOutAlloc),
 		SignatureScripts:   make([][]byte, 0, defaultTxInOutAlloc),
-		StateChgs: make(map[[20]byte][]StateChange),
+		StateChgs: make(map[[20]byte]*StateChange),
 	}
 }
 

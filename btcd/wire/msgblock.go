@@ -139,6 +139,8 @@ func (msg *MsgBlock) Deserialize(r io.Reader) error {
 			continue
 		}
 
+		tx.StateChgs = make(map[[20]byte]*StateChange)
+
 		for i := uint64(0); i < count; i++ {
 			var contract [20]byte
 			if _, err = r.Read(contract[:]); err != nil {
@@ -148,10 +150,11 @@ func (msg *MsgBlock) Deserialize(r io.Reader) error {
 			if err != nil {
 				return err
 			}
-			sts := make([]StateChange, scount)
+			var sts StateChange
 			for j := uint64(0); j < scount; j++ {
-				var st StateChange
-				if _, err = r.Read(st.name[:]); err != nil {
+				var name chainhash.Hash
+				var st StateEntry
+				if _, err = r.Read(name[:]); err != nil {
 					return err
 				}
 				if err = common.ReadElement(r, &st.act); err != nil {
@@ -171,9 +174,9 @@ func (msg *MsgBlock) Deserialize(r io.Reader) error {
 					}
 					st.newVal = &h
 				}
-				sts[j] = st
+				sts.states[name] = &st
 			}
-			tx.StateChgs[contract] = sts
+			tx.StateChgs[contract] = &sts
 		}
 	}
 
@@ -301,11 +304,11 @@ func (msg *MsgBlock) Serialize(w io.Writer) error {
 			if _, err = w.Write(c[:]); err != nil {
 				return err
 			}
-			if err = common.WriteVarInt(w, 0, uint64(len(s))); err != nil {
+			if err = common.WriteVarInt(w, 0, uint64(len(s.states))); err != nil {
 				return err
 			}
-			for _, t := range s {
-				if _, err = w.Write(t.name[:]); err != nil {
+			for name, t := range s.states {
+				if _, err = w.Write(name[:]); err != nil {
 					return err
 				}
 				if err = common.WriteElement(w, t.act); err != nil {

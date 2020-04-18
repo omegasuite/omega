@@ -130,6 +130,7 @@ func shallowCopyTx(tx *wire.MsgTx) wire.MsgTx {
 		TxIn:     make([]*wire.TxIn, len(tx.TxIn)),
 		TxOut:    make([]*wire.TxOut, len(tx.TxOut)),
 		LockTime: tx.LockTime,
+		StateChgs: make(map[[20]byte][]wire.StateChange),
 	}
 	txIns := make([]wire.TxIn, len(tx.TxIn))
 	for i, oldTxIn := range tx.TxIn {
@@ -140,6 +141,11 @@ func shallowCopyTx(tx *wire.MsgTx) wire.MsgTx {
 	for i, oldTxOut := range tx.TxOut {
 		txOuts[i] = *oldTxOut
 		txCopy.TxOut[i] = &txOuts[i]
+	}
+	if tx.StateChgs != nil {
+		for c, s := range tx.StateChgs {
+			txCopy.StateChgs[c] = s
+		}
 	}
 	return txCopy
 }
