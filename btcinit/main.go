@@ -211,6 +211,7 @@ func main() {
 			},
 		},
 		LockTime: 0,
+		StateChgs: make(map[[20]byte][]StateChange),
 	}
 	genesisCoinbaseTx.TxOut[0].TokenType = 0
 	genesisCoinbaseTx.TxOut[0].Value = &token.NumToken{Val: 0x12a05f200}
@@ -226,6 +227,7 @@ func main() {
 			},
 		},
 		LockTime: 0,
+		StateChgs: make(map[[20]byte][]StateChange),
 	}
 
 	genesisInitPolygonTx.TxOut[0].TokenType = 3
@@ -290,7 +292,8 @@ func main() {
 		"\n\t\t}," +
 		"\n\t}," +
 		"\n\tLockTime: 0," +
-		"\n\t}")
+		"\n\tStateChgs: make(map[[20]byte][]StateChange)," +
+		"\n}")
 
 	fmt.Printf("\n\nvar GenesisMerkleRoot = ")
 	printhash(*genesisMerkleRoot)
@@ -611,7 +614,8 @@ func printCoinbase(name string, gotSigBytes []byte, full bool) {
  */
 	fmt.Printf("\n\t} }," +
 		"\n\tLockTime: 0," +
-		"\n\t}")
+		"\n\tStateChgs: make(map[[20]byte][]StateChange)," +
+		"\n}")
 }
 
 func printhash(h chainhash.Hash) {

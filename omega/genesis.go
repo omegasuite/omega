@@ -1131,7 +1131,8 @@ var genesisCoinbaseTx = wire.MsgTx{
 		0, 0, 0, 0, 0, 0, 0, 0, 
 	} },
 	LockTime: 0,
-	}
+	StateChgs: make(map[[20]byte][]wire.StateChange),
+}
 
 var polygonToken = token.Token{
 	TokenType: 3,
@@ -1163,14 +1164,15 @@ var genesisInitPolygonTx = wire.MsgTx{
 		},
 	},
 	LockTime: 0,
-	}
+	StateChgs: make(map[[20]byte][]wire.StateChange),
+}
 
 var GenesisMerkleRoot = chainhash.Hash{
 		0x11, 0x13, 0x65, 0x0f, 0x5d, 0x03, 0x6e, 0x26, 
 		0x33, 0x89, 0x83, 0xc1, 0x45, 0x73, 0x49, 0xe3, 
 		0x29, 0x3f, 0x4a, 0x41, 0x33, 0x9c, 0x6d, 0xa5, 
 		0x78, 0x38, 0x1a, 0x3f, 0x14, 0xdf, 0x60, 0x6e, 
-	}
+}
 
 var GenesisBlock = wire.MsgBlock{
 	Header: wire.BlockHeader{

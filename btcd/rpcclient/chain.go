@@ -105,7 +105,8 @@ func (r FutureGetBlockResult) Receive() (*wire.MsgBlock, error) {
 
 	// Deserialize the block and return it.
 	var msgBlock wire.MsgBlock
-	err = msgBlock.Deserialize(bytes.NewReader(serializedBlock))
+	err = msgBlock.BtcDecode(bytes.NewReader(serializedBlock), 0, wire.SignatureEncoding)
+//	err = msgBlock.Deserialize(bytes.NewReader(serializedBlock))
 	if err != nil {
 		return nil, err
 	}

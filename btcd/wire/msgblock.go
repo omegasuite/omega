@@ -81,17 +81,22 @@ func (msg *MsgBlock) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) er
 		return messageError("MsgBlock.BtcDecode", str)
 	}
 
+	tenc := enc
+	if enc == SignatureEncoding {
+		tenc = BaseEncoding
+	}
+
 	msg.Transactions = make([]*MsgTx, 0, txCount)
 	for i := uint64(0); i < txCount; i++ {
 		tx := MsgTx{}
-		err := tx.BtcDecode(r, pver, BaseEncoding)
+		err := tx.BtcDecode(r, pver, tenc)
 		if err != nil {
 			return err
 		}
 		msg.Transactions = append(msg.Transactions, &tx)
 	}
 
-	if enc == SignatureEncoding {
+	if enc == SignatureEncoding || enc == FullEncoding{
 		for _, tx := range msg.Transactions {
 			if err := tx.ReadSignature(r, pver); err != nil {
 				return err
@@ -120,7 +125,7 @@ func (msg *MsgBlock) Deserialize(r io.Reader) error {
 	// MessageEncoding parameter indicates that the transactions within the
 	// block are expected to be serialized according to the new
 	// serialization structure defined in BIP0141.
-	err := msg.BtcDecode(r, 0, SignatureEncoding)
+	err := msg.BtcDecode(r, 0, FullEncoding)
 	if err != nil {
 		return err
 	}
@@ -263,7 +268,7 @@ func (msg *MsgBlock) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) er
 		}
 	}
 
-	if enc == SignatureEncoding {
+	if enc == SignatureEncoding || enc == FullEncoding {
 		for _, tx := range msg.Transactions {
 			tx.WriteSignature(w, pver)
 		}
