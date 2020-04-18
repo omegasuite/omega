@@ -34,6 +34,8 @@ const (
 	DefTypeRight = 4
 	DefTypeRightSet = 5
 
+	DefTypeSeparator = 0xFF
+
 	CoordPrecision = 0x400000		// we use 32-bit fixed point (23 decimal points) number fir gei coords
 	MinDefinitionPayload = 68
 	MaxDefinitionPerMessage = (MaxMessagePayload / MinDefinitionPayload) + 1
@@ -57,6 +59,7 @@ type Definition interface {
 	Write(io.Writer, uint32) error
 	MemRead(io.Reader, uint32) error
 	MemWrite(io.Writer, uint32) error
+	IsSeparator() bool
 }
 
 type VertexDef struct {
@@ -68,6 +71,10 @@ type VertexDef struct {
 
 func (t * VertexDef) DefType() uint8 {
 	return DefTypeVertex
+}
+
+func (t * VertexDef) IsSeparator() bool {
+	return false
 }
 
 func (t * VertexDef) Hash() chainhash.Hash {
@@ -193,6 +200,10 @@ func (t * BorderDef) DefType() uint8 {
 	return DefTypeBorder
 }
 
+func (t * BorderDef) IsSeparator() bool {
+	return false
+}
+
 func (t * BorderDef) Hash() chainhash.Hash {
 	if t.hash == nil {
 		b := make([]byte, chainhash.HashSize * 3)
@@ -256,6 +267,10 @@ type PolygonDef struct {
 
 func (t * PolygonDef) DefType() uint8 {
 	return DefTypePolygon
+}
+
+func (t * PolygonDef) IsSeparator() bool {
+	return false
 }
 
 func (t * PolygonDef) Hash() chainhash.Hash {
@@ -419,6 +434,10 @@ func (t * RightDef) DefType() uint8 {
 	return DefTypeRight
 }
 
+func (t * RightDef) IsSeparator() bool {
+	return false
+}
+
 func (t * RightDef) Hash() chainhash.Hash {
 	if t.hash == nil {
 		b := make([]byte, 33 + len(t.Desc))
@@ -518,6 +537,10 @@ type RightSetDef struct {
 
 func (t * RightSetDef) DefType() uint8 {
 	return DefTypeRightSet
+}
+
+func (t * RightSetDef) IsSeparator() bool {
+	return false
 }
 
 func (t * RightSetDef) Hash() chainhash.Hash {
@@ -807,6 +830,10 @@ func CopyDefinitions(defs []Definition) []Definition {
 				}
 				txdef = append(txdef, &newDefinitions)
 				break;
+			case DefTypeSeparator:
+				newDefinitions := SeparatorDef{	}
+				txdef = append(txdef, &newDefinitions)
+				break;
 		}
 	}
 
@@ -849,6 +876,10 @@ func ReadDefinition(r io.Reader, pver uint32, version int32) (Definition, error)
 		err = c.Read(r, pver)
 		return &c, err
 		break;
+	case DefTypeSeparator:
+		c := SeparatorDef{}
+		return &c, nil
+		break;
 	}
 
 	str := fmt.Sprintf("Unrecognized definition type %d", t)
@@ -858,6 +889,9 @@ func ReadDefinition(r io.Reader, pver uint32, version int32) (Definition, error)
 // WriteDefinition encodes ti to the bitcoin protocol encoding for a definition (Definition) to w.
 func WriteDefinition(w io.Writer, pver uint32, version int32, ti Definition) error {
 	err := common.BinarySerializer.PutUint8(w, uint8(ti.DefType()))
+	if err != nil {
+		return err
+	}
 
 	switch ti.DefType() {
 	case DefTypeVertex:
@@ -880,6 +914,8 @@ func WriteDefinition(w io.Writer, pver uint32, version int32, ti Definition) err
 		c := ti.(*RightSetDef)
 		err = c.Write(w, pver)
 		break;
+	case DefTypeSeparator:
+		break;
 	}
 
 	return err
@@ -887,12 +923,6 @@ func WriteDefinition(w io.Writer, pver uint32, version int32, ti Definition) err
 
 func (to *Token) Type() string {
 	return fmt.Sprintf("%d", to.TokenType)
-/*
-	for _,r := range to.Rights {
-		s += ":" + r.String()
-	}
-	return s
-*/
 }
 
 func (to *Token) ReadTxOut(r io.Reader, pver uint32, version uint32) error {
@@ -1045,4 +1075,34 @@ func Bytetoint(h []byte) int {
 	var n int
 	fmt.Sscanf(string(h),"%d", &n)
 	return n
+}
+
+type SeparatorDef struct {}
+
+func (t * SeparatorDef) DefType () uint8 {
+	return DefTypeSeparator
+}
+func (t * SeparatorDef) IsSeparator() bool {
+	return true
+}
+func (t * SeparatorDef) Hash () chainhash.Hash {
+	return chainhash.Hash{}
+}
+func (t * SeparatorDef) SerializeSize() int {
+	return 1
+}
+func (t * SeparatorDef) Size() int {
+	return 1
+}
+func (t * SeparatorDef) Read(r io.Reader, v uint32) error {
+	return nil
+}
+func (t * SeparatorDef) Write(io.Writer, uint32) error {
+	return nil
+}
+func (t * SeparatorDef) MemRead(io.Reader, uint32) error {
+	return nil
+}
+func (t * SeparatorDef) MemWrite(io.Writer, uint32) error {
+	return nil
 }

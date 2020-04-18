@@ -1940,7 +1940,8 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 
 		// Serialize the transaction for later conversion to hex.
 		txBuf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
-		if err := tx.Serialize(txBuf); err != nil {
+		if err := tx.BtcEncode(txBuf, 0, wire.SignatureEncoding); err != nil {
+//		if err := tx.Serialize(txBuf); err != nil {
 			context := "Failed to serialize transaction"
 			return nil, internalRPCError(err.Error(), context)
 		}
@@ -2007,7 +2008,8 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		// Serialize the transaction for conversion to hex.
 		tx := msgBlock.Transactions[0]
 		txBuf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
-		if err := tx.Serialize(txBuf); err != nil {
+		if err := tx.BtcEncode(txBuf, 0, wire.SignatureEncoding); err != nil {
+//		if err := tx.Serialize(txBuf); err != nil {
 			context := "Failed to serialize transaction"
 			return nil, internalRPCError(err.Error(), context)
 		}
@@ -2339,7 +2341,8 @@ func handleGetBlockTemplateProposal(s *rpcServer, request *btcjson.TemplateReque
 		}
 	}
 	var msgBlock wire.MsgBlock
-	if err := msgBlock.Deserialize(bytes.NewReader(dataBytes)); err != nil {
+	if err := msgBlock.BtcDecode(bytes.NewReader(dataBytes), 0, wire.SignatureEncoding); err != nil {
+//	if err := msgBlock.Deserialize(bytes.NewReader(dataBytes)); err != nil {
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCDeserialization,
 			Message: "Block decode failed: " + err.Error(),

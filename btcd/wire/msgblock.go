@@ -120,7 +120,59 @@ func (msg *MsgBlock) Deserialize(r io.Reader) error {
 	// MessageEncoding parameter indicates that the transactions within the
 	// block are expected to be serialized according to the new
 	// serialization structure defined in BIP0141.
-	return msg.BtcDecode(r, 0, SignatureEncoding)
+	err := msg.BtcDecode(r, 0, SignatureEncoding)
+	if err != nil {
+		return err
+	}
+
+	for _, tx := range msg.Transactions {
+		count, err := common.ReadVarInt(r, 0)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			continue
+		}
+
+		for i := uint64(0); i < count; i++ {
+			var contract [20]byte
+			if _, err = r.Read(contract[:]); err != nil {
+				return err
+			}
+			scount, err := common.ReadVarInt(r, 0)
+			if err != nil {
+				return err
+			}
+			sts := make([]StateChange, scount)
+			for j := uint64(0); j < scount; j++ {
+				var st StateChange
+				if _, err = r.Read(st.name[:]); err != nil {
+					return err
+				}
+				if err = common.ReadElement(r, &st.act); err != nil {
+					return err
+				}
+				if st.act != 0 {
+					var h chainhash.Hash
+					if _, err = r.Read(h[:]); err != nil {
+						return err
+					}
+					st.oldVal = &h
+				}
+				if st.act != 2 {
+					var h chainhash.Hash
+					if _, err = r.Read(h[:]); err != nil {
+						return err
+					}
+					st.newVal = &h
+				}
+				sts[j] = st
+			}
+			tx.StateChgs[contract] = sts
+		}
+	}
+
+	return err
 }
 
 // DeserializeNoWitness decodes a block from r into the receiver similar to
@@ -199,8 +251,13 @@ func (msg *MsgBlock) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) er
 		return err
 	}
 
+	tenc := enc
+	if enc == SignatureEncoding {
+		tenc = BaseEncoding
+	}
+
 	for _, tx := range msg.Transactions {
-		err = tx.BtcEncode(w, pver, BaseEncoding)
+		err = tx.BtcEncode(w, pver, tenc)
 		if err != nil {
 			return err
 		}
@@ -220,19 +277,57 @@ func (msg *MsgBlock) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) er
 // This function differs from BtcEncode in that BtcEncode encodes the block to
 // the bitcoin wire protocol in order to be sent across the network.  The wire
 // encoding can technically differ depending on the protocol version and doesn't
-// even really need to match the format of a stored block at all.  As of the
-// time this comment was written, the encoded block is the same in both
-// instances, but there is a distinct difference and separating the two allows
-// the API to be flexible enough to deal with changes.
+// even really need to match the format of a stored block at all.
 func (msg *MsgBlock) Serialize(w io.Writer) error {
-	// At the current time, there is no difference between the wire encoding
-	// at protocol version 0 and the stable long-term storage format.  As
-	// a result, make use of BtcEncode.
-	//
 	// Passing WitnessEncoding as the encoding type here indicates that
 	// each of the transactions should be serialized using the witness
 	// serialization structure defined in BIP0141.
-	return msg.BtcEncode(w, 0, SignatureEncoding)
+	err := msg.BtcEncode(w, 0, FullEncoding)
+	if err != nil {
+		return err
+	}
+
+	for _,tx := range msg.Transactions {
+		n := int32(len(tx.StateChgs))
+		if err = common.WriteVarInt(w, 0, uint64(n)); err != nil {
+			return err
+		}
+		for c, s := range tx.StateChgs {
+			if _, err = w.Write(c[:]); err != nil {
+				return err
+			}
+			if err = common.WriteVarInt(w, 0, uint64(len(s))); err != nil {
+				return err
+			}
+			for _, t := range s {
+				if _, err = w.Write(t.name[:]); err != nil {
+					return err
+				}
+				if err = common.WriteElement(w, t.act); err != nil {
+					return err
+				}
+				switch t.act {
+				case 0:
+					t.oldVal = nil
+				case 2:
+					t.newVal = nil
+				}
+				if t.oldVal != nil {
+					if _, err = w.Write(t.oldVal[:]); err != nil {
+						return err
+					}
+				}
+				if t.newVal != nil {
+					if _, err = w.Write(t.newVal[:]); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	return err
+	//	return msg.BtcEncode(w, 0, SignatureEncoding)
 }
 
 // SerializeNoWitness encodes a block to w using an identical format to

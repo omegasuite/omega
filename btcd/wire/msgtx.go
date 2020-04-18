@@ -225,6 +225,12 @@ func (t *TxIn) SerializeSize() int {
 	return 44
 }
 
+func (t *TxIn) IsSeparator() bool {
+	z := chainhash.Hash{}
+	return t.PreviousOutPoint.Hash.IsEqual(&z) && t.PreviousOutPoint.Index == 0 &&
+		t.SignatureIndex == 0 && t.Sequence == 0
+}
+
 // NewTxIn returns a new bitcoin transaction input with the provided
 // previous outpoint point and signature script with a default sequence of
 // MaxTxInSequenceNum.
@@ -246,6 +252,10 @@ func (t *TxOut) IsNumeric () bool {
 	return t.Token.IsNumeric()
 }
 
+func (t *TxOut) IsSeparator() bool {
+	return t.TokenType == ^uint64(0)
+}
+
 func (t *TxOut) HasRight () bool {
 	return t.Token.HasRight()
 }
@@ -265,6 +275,14 @@ func NewTxOut(tokenType	uint64, value token.TokenValue, rights *chainhash.Hash, 
 	return &t
 }
 
+type StateChange struct {
+	// change of states
+	act byte				// 0 - new value, 1 - update, 2 - delete
+	name chainhash.Hash		// name of value
+	oldVal *chainhash.Hash
+	newVal *chainhash.Hash
+}
+
 // MsgTx implements the Message interface and represents a bitcoin tx message.
 // It is used to deliver transaction information in response to a getdata
 // message (MsgGetData) for a given transaction.
@@ -278,6 +296,7 @@ type MsgTx struct {
 	TxOut    []*TxOut
 	SignatureScripts [][]byte		// all signatures goes here intentionally. in a block, all signatures goes to the end
 	LockTime uint32
+	StateChgs map[[20]byte][]StateChange
 }
 
 // AddTxIn adds a transaction input to the message.
@@ -363,7 +382,7 @@ func (msg *MsgTx) TxHash() chainhash.Hash {
 // within a block
 func (msg *MsgTx) SignatureHash() chainhash.Hash {
 	buf := bytes.NewBuffer(make([]byte, 0, msg.SerializeSize()))
-	_ = msg.Serialize(buf)
+	_ = msg.BtcEncode(buf, 0, SignatureEncoding)
 	return chainhash.DoubleHashH(buf.Bytes())
 }
 
@@ -664,11 +683,21 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 	}
 
 	count := uint64(len(msg.TxDef))
+	if enc != FullEncoding {
+		for i := uint64(0); i < count; i++ {
+			if msg.TxDef[i].IsSeparator() {
+				count = i
+			}
+		}
+	}
 	if err = common.WriteVarInt(w, pver, count); err != nil {
 		return err
 	}
 
-	for _, ti := range msg.TxDef {
+	for i, ti := range msg.TxDef {
+		if i >= int(count) {
+			break
+		}
 		err = token.WriteDefinition(w, pver, msg.Version, ti)
 		if err != nil {
 			return err
@@ -676,11 +705,21 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 	}
 
 	count = uint64(len(msg.TxIn))
+	if enc != FullEncoding {
+		for i := uint64(0); i < count; i++ {
+			if msg.TxIn[i].IsSeparator() {
+				count = i
+			}
+		}
+	}
 	if err = common.WriteVarInt(w, pver, count); err != nil {
 		return err
 	}
 
-	for _, ti := range msg.TxIn {
+	for i, ti := range msg.TxIn {
+		if i >= int(count) {
+			break
+		}
 		err = ti.writeTxIn(w, pver, msg.Version, enc)
 		if err != nil {
 			return err
@@ -688,11 +727,21 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 	}
 
 	count = uint64(len(msg.TxOut))
+	if enc != FullEncoding {
+		for i := uint64(0); i < count; i++ {
+			if msg.TxOut[i].IsSeparator() {
+				count = i
+			}
+		}
+	}
 	if err = common.WriteVarInt(w, pver, count); err != nil {
 		return err
 	}
 
-	for _, to := range msg.TxOut {
+	for i, to := range msg.TxOut {
+		if i >= int(count) {
+			break
+		}
 		err = to.WriteTxOut(w, pver, msg.Version, enc)
 		if err != nil {
 			return err
@@ -716,17 +765,10 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 // encodes the transaction to the bitcoin wire protocol in order to be sent
 // across the network.  The wire encoding can technically differ depending on
 // the protocol version and doesn't even really need to match the format of a
-// stored transaction at all.  As of the time this comment was written, the
-// encoded transaction is the same in both instances, but there is a distinct
-// difference and separating the two allows the API to be flexible enough to
-// deal with changes.
+// stored transaction at all.
 func (msg *MsgTx) Serialize(w io.Writer) error {
-	// At the current time, there is no difference between the wire encoding
-	// at protocol version 0 and the stable long-term storage format.  As
-	// a result, make use of BtcEncode.
-	//
-
-	return msg.BtcEncode(w, 0, SignatureEncoding)	// SignatureEncoding
+	return msg.BtcEncode(w, 0, FullEncoding)	// SignatureEncoding
+//	return msg.BtcEncode(w, 0, SignatureEncoding)	// SignatureEncoding
 }
 
 // SerializeNoWitness encodes the transaction to w in an identical manner to
@@ -802,6 +844,7 @@ func NewMsgTx(version int32) *MsgTx {
 		TxIn:    make([]*TxIn, 0, defaultTxInOutAlloc),
 		TxOut:   make([]*TxOut, 0, defaultTxInOutAlloc),
 		SignatureScripts:   make([][]byte, 0, defaultTxInOutAlloc),
+		StateChgs: make(map[[20]byte][]StateChange),
 	}
 }
 

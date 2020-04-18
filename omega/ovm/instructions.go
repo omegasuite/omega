@@ -22,6 +22,9 @@ import (
 	"github.com/btcsuite/omega/token"
 )
 
+// TBD: big endian math
+// memoery range check in copies
+
 // operators: u+-*/><=?|*^~%[](>=)(<=)(!=)
 // u: unsigned
 // +-*/%#: +-*/%#(exp)
