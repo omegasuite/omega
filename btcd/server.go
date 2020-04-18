@@ -3230,7 +3230,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		},
 		ChainParams:    chainParams,
 		FetchUtxoView:  s.chain.FetchUtxoView,
-		Views: s.chain.NewViewPointSet(),
+//		Views: s.chain.NewViewPointSet(),
 		BestHeight:     func() int32 { return s.chain.BestSnapshot().Height },
 		MedianTimePast: func() time.Time { return s.chain.BestSnapshot().MedianTime },
 		CalcSequenceLock: func(tx *btcutil.Tx, view *viewpoint.UtxoViewpoint) (*blockchain.SequenceLock, error) {

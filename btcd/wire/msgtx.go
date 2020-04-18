@@ -280,11 +280,88 @@ type StateEntry struct{
 	oldVal *chainhash.Hash
 	newVal *chainhash.Hash
 }
+
+func (s *StateEntry) Dup() *StateEntry {
+	return &StateEntry {
+		act: s.act,
+		oldVal: s.oldVal,
+		newVal: s.newVal,
+	}
+}
+
+func (s *StateEntry) Reverse() {
+	s.act = 2 - s.act
+	s.newVal = s.oldVal
+	s.oldVal = nil
+}
+
+func (v *StateEntry) Merge(p *StateEntry) {
+	switch v.act {
+	case 0:
+		switch p.act {
+		case 0, 1:
+			v.newVal = p.newVal
+		}
+	case 1:
+		switch p.act {
+		case 0, 1:
+			v.newVal = p.newVal
+		case 2:
+			v.act = 2
+			v.newVal = nil
+		}
+	case 2:
+		switch p.act {
+		case 0, 1:
+			v.act = 1
+			v.newVal = p.newVal
+		}
+	}
+}
+
 type StateChange struct {
 	// change of states
 	states map[chainhash.Hash]*StateEntry
 }
 
+func (s *StateChange) Dup() *StateChange {
+	t := StateChange {
+		states: make(map[chainhash.Hash]*StateEntry),
+	}
+	for h, v := range s.states {
+		t.states[h] = v.Dup()
+	}
+	return &t
+}
+
+// example: in disconnectTransactions, from last Tx to the first, do
+// s.Reverse().Merge(t1.Reverse()).Merge(t2.Reverse()).Merge(t3.Reverse())...
+func (s *StateChange) Reverse() *StateChange {
+	for _,v := range s.states {
+		v.Reverse()
+	}
+	return s
+}
+
+// example: in connectTransactions, from first Tx to the last, do
+// s.Merge(t1).Merge(t2).Merge(t3)...
+func (s *StateChange) Merge(t * StateChange) *StateChange {
+	for n,v := range s.states {
+		if p,ok := t.states[n]; ok {
+			if v.act == 0 && p.act == 2 {
+				delete(s.states, n)
+			} else {
+				v.Merge(p)
+			}
+		}
+	}
+	for n,v := range t.states {
+		if _,ok := s.states[n]; !ok {
+			s.states[n] = v
+		}
+	}
+	return s
+}
 // MsgTx implements the Message interface and represents a bitcoin tx message.
 // It is used to deliver transaction information in response to a getdata
 // message (MsgGetData) for a given transaction.
@@ -299,6 +376,61 @@ type MsgTx struct {
 	SignatureScripts [][]byte		// all signatures goes here intentionally. in a block, all signatures goes to the end
 	LockTime uint32
 	StateChgs map[[20]byte]*StateChange
+}
+
+func (msg *MsgTx) DeleteState(contract [20]byte, name chainhash.Hash) error {
+	if s,ok := msg.StateChgs[contract]; ok {
+		if t, ok := s.states[name]; ok {
+			switch t.act {
+			case 0:
+				delete(s.states, name)
+			case 1:
+				t.newVal = nil
+				t.act = 2
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("Need to load state and then delete it")
+}
+func (msg *MsgTx) LoadState(contract [20]byte, name chainhash.Hash, value chainhash.Hash) {
+	var s * StateChange
+	var ok bool
+	if s,ok = msg.StateChgs[contract]; !ok {
+		s = &StateChange{
+			states:make(map[chainhash.Hash]*StateEntry),
+		}
+		msg.StateChgs[contract] = s
+	}
+	if _, ok := s.states[name]; ok {
+		return
+	} else {
+		s.states[name] = &StateEntry{act:1, oldVal: &value}
+	}
+}
+func (msg *MsgTx) SetState(contract [20]byte, name chainhash.Hash, value chainhash.Hash) {
+	var s * StateChange
+	var ok bool
+	if s,ok = msg.StateChgs[contract]; !ok {
+		s = &StateChange{
+			states:make(map[chainhash.Hash]*StateEntry),
+		}
+		msg.StateChgs[contract] = s
+	}
+	if t, ok := s.states[name]; ok {
+		switch t.act {
+		case 0, 1:
+			t.newVal = &value
+		case 2:
+			t.newVal = &value
+			t.act = 1
+		}
+	} else {
+		s.states[name] = &StateEntry{
+			act: 0,
+			newVal: &value,
+		}
+	}
 }
 
 // AddTxIn adds a transaction input to the message.

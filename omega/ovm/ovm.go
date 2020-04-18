@@ -78,13 +78,6 @@ type Context struct {
 	BlockNumber GetBlockNumberFunc    // Provides information for NUMBER
 }
 
-type lib struct{
-	address int32		// code address
-	end int32			// code end
-	base int32			// lib global data
-	pure bool
-}
-
 // OVM is the Omega Virtual Machine base object and provides
 // the necessary tools to run a contract on the given state with
 // the provided context. It should be noted that any error
@@ -103,8 +96,6 @@ type OVM struct {
 
 	// StateDB gives access to the underlying state
 	StateDB map[Address]*stateDB
-
-	libs map[Address]lib
 
 	// Depth of the current call stack
 	depth int
@@ -129,20 +120,22 @@ type OVM struct {
 
 // NewOVM returns a new OVM. The returned OVM is not thread safe and should
 // only ever be used *once*.for each block
-func NewOVM(ctx Context, chainConfig *chaincfg.Params, vmConfig Config, db database.DB) *OVM {
+func NewOVM(ctx Context, chainConfig *chaincfg.Params, vmConfig Config) *OVM {
 	evm := &OVM{
 		Context:     ctx,
 		StateDB:     make(map[Address]*stateDB),
-		libs:		 make(map[Address]lib),
 		vmConfig:    vmConfig,
 		chainConfig: chainConfig,
-		views: viewpoint.NewViewPointSet(db),
-		DB: db,
 	}
 	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
 
 	evm.interpreter = NewInterpreter(evm, vmConfig)
 	return evm
+}
+
+func (v * OVM) SetViewPoint(vp * viewpoint.ViewPointSet) {
+	v.views = vp
+	v.DB = vp.Db
 }
 
 // Cancel cancels any running EVM operation. This may be called concurrently and
@@ -159,12 +152,6 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 		return nil, nil
 	}
 
-	// Fail if we're trying to execute above the call depth limit
-/*
-	if evm.depth > int(params.CallCreateDepth) {
-		return nil, 0, ErrDepth
-	}
-*/
 	var (
 		snapshot * stateDB
 	)
@@ -177,16 +164,6 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 		return nil, omega.ScriptError(omega.ErrInternal, "May not call system method directly.")
 	}
 
-		/*
-			if !evm.StateDB[d].Exists() {
-				precompiles := PrecompiledContractsHomestead
-				if precompiles[addr] == nil && value.Sign() == 0 {
-					return nil, 0, nil
-				}
-				evm.StateDB.CreateAccount(addr)
-			}
-		*/
-
 	// Initialise a new contract and set the code that is to be used by the EVM.
 	// The contract is a scoped environment for this execution context only.
 	contract := evm.NewContract(d, sent)
@@ -194,17 +171,7 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	if contract == nil {
 		return nil, fmt.Errorf("Contract does not exist")
 	}
-//	contract.owner = evm.StateDB[d].GetOwner()
 	contract.SetCallCode(method, evm.StateDB[d].GetCodeHash(), evm.StateDB[d].GetCode())
-
-	// Capture the tracer start/end events in debug mode
-	if evm.vmConfig.Debug && evm.depth == 0 {
-//		evm.vmConfig.Tracer.CaptureStart(caller.Address(), addr, false, input, value)
-
-//		defer func() { // Lazy evaluation of the parameters
-//			evm.vmConfig.Tracer.CaptureEnd(ret, time.Since(start), err)
-//		}()
-	}
 
 	ret, err = run(evm, contract, params)
 

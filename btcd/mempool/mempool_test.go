@@ -319,7 +319,7 @@ func newPoolHarness(chainParams *chaincfg.Params) (*poolHarness, []spendableOutp
 			},
 			ChainParams:      chainParams,
 			FetchUtxoView:    chain.FetchUtxoView,
-			Views: 			  nil,
+//			Views: 			  nil,
 			BestHeight:       chain.BestHeight,
 			MedianTimePast:   chain.MedianTimePast,
 			CalcSequenceLock: chain.CalcSequenceLock,

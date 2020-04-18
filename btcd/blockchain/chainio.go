@@ -861,7 +861,7 @@ func (b *BlockChain) createChainState() error {
 		// Store the initial Tx, bur not the coin base Tx.
 		txs := genesisBlock.Transactions()
 		views := b.NewViewPointSet()
-//		views.db = &b.db
+
 		views.SetBestHash(genesisBlock.Hash())
 		if err = viewpoint.DbPutGensisTransaction(dbTx, txs[0], views); err != nil {
 			return err
@@ -1415,7 +1415,7 @@ func (b *BlockChain) dbFetchVertex(blockHeight int32, tx int32, ind uint32) (*to
 // so the returned view can be examined for duplicate transactions.
 //
 // This function is safe for concurrent access however the returned view is NOT.
-func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.UtxoViewpoint, error) {
+func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, error) {
 	// Create a set of needed outputs based on those referenced by the
 	// inputs of the passed transaction and the outputs of the transaction
 	// itself.
@@ -1436,9 +1436,9 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.UtxoViewpoint, er
 
 	// Request the utxos from the point of view of the end of the main
 	// chain.
-	view := viewpoint.NewUtxoViewpoint()
+	view := viewpoint.NewViewPointSet(b.db)
 	b.ChainLock.RLock()
-	err := view.FetchUtxosMain(b.db, neededSet)
+	err := view.Utxo.FetchUtxosMain(b.db, neededSet)
 	b.ChainLock.RUnlock()
 	return view, err
 }

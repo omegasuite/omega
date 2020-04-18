@@ -58,9 +58,9 @@ type Config struct {
 
 	// FetchUtxoView defines the function to use to fetch unspent
 	// transaction output information.
-	FetchUtxoView func(*btcutil.Tx) (*viewpoint.UtxoViewpoint, error)
+	FetchUtxoView func(*btcutil.Tx) (*viewpoint.ViewPointSet, error)
 
-	Views * viewpoint.ViewPointSet
+//	Views * viewpoint.ViewPointSet
 
 	// BestHeight defines the function to use to access the block height of
 	// the current best chain.
@@ -601,11 +601,12 @@ func (mp *TxPool) CheckSpend(op wire.OutPoint) *btcutil.Tx {
 // transaction pool.
 //
 // This function MUST be called with the mempool lock held (for reads).
-func (mp *TxPool) fetchInputUtxos(tx *btcutil.Tx) (*viewpoint.UtxoViewpoint, error) {
-	utxoView, err := mp.cfg.FetchUtxoView(tx)
+func (mp *TxPool) fetchInputUtxos(tx *btcutil.Tx) (*viewpoint.ViewPointSet, error) {
+	view, err := mp.cfg.FetchUtxoView(tx)
 	if err != nil {
 		return nil, err
 	}
+	utxoView := view.Utxo
 
 	// Attempt to populate any missing inputs from the transaction pool.
 	for _, txIn := range tx.MsgTx().TxIn {
@@ -618,12 +619,12 @@ func (mp *TxPool) fetchInputUtxos(tx *btcutil.Tx) (*viewpoint.UtxoViewpoint, err
 		if poolTxDesc, exists := mp.pool[prevOut.Hash]; exists {
 			// AddTxOut ignores out of range index values, so it is
 			// safe to call without bounds checking here.
-			mp.cfg.Views.AddTxOut(poolTxDesc.Tx, prevOut.Index,
+			view.AddTxOut(poolTxDesc.Tx, prevOut.Index,
 				mining.UnminedHeight)
 		}
 	}
 
-	return utxoView, nil
+	return view, nil
 }
 
 // FetchTransaction returns the requested transaction from the transaction pool.
@@ -727,9 +728,8 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	// transaction itself to be used for detecting a duplicate transaction
 	// without needing to do a separate lookup.
 
-	views := mp.cfg.Views
-	utxoView, err := mp.fetchInputUtxos(tx)
-	views.Utxo = utxoView
+	views, err := mp.fetchInputUtxos(tx)
+	utxoView := views.Utxo
 	if err != nil {
 		if cerr, ok := err.(blockchain.RuleError); ok {
 			return nil, nil, chainRuleError(cerr)
@@ -1229,7 +1229,7 @@ func (mp *TxPool) RawMempoolVerbose() map[string]*btcjson.GetRawMempoolVerboseRe
 		var currentPriority float64
 		utxos, err := mp.fetchInputUtxos(tx)
 		if err == nil {
-			currentPriority = mining.CalcPriority(tx.MsgTx(), utxos,
+			currentPriority = mining.CalcPriority(tx.MsgTx(), utxos.Utxo,
 				bestHeight+1)
 		}
 

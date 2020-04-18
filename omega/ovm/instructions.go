@@ -1603,7 +1603,7 @@ func opIf(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	} else {
 		inlib := stack.data[len(stack.data) - 1].inlib
 		target := int32(*pc + int(scratch[1]))
-		if target < evm.libs[inlib].address || target >= evm.libs[inlib].end {
+		if target < contract.libs[inlib].address || target >= contract.libs[inlib].end {
 			return fmt.Errorf("Out of range jump")
 		}
 		*pc = int(target)
@@ -1650,7 +1650,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			switch top {
 			case 0:
 				libAddr = BigToAddress(bnum)
-				if _, ok := evm.libs[libAddr]; !ok {
+				if _, ok := contract.libs[libAddr]; !ok {
 					return fmt.Errorf("Lib not loaded")
 				}
 				top++
@@ -1681,17 +1681,17 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		f.pc = *pc
 		f.pure = contract.pure
 		f.inlib = libAddr
-		f.gbase = evm.libs[libAddr].base
-		contract.pure = evm.libs[libAddr].pure
+		f.gbase = contract.libs[libAddr].base
+		contract.pure = contract.libs[libAddr].pure
 		if allZero(libAddr[:]) {
 			inlib := stack.data[len(stack.data) - 1].inlib
 			target := int32(*pc + offset)
-			if target < evm.libs[inlib].address || target >= evm.libs[inlib].end {
+			if target < contract.libs[inlib].address || target >= contract.libs[inlib].end {
 				return fmt.Errorf("Out of range func call")
 			}
 			*pc = int(target)
 		} else {
-			*pc = int(evm.libs[libAddr].address)
+			*pc = int(contract.libs[libAddr].address)
 		}
 		stack.data = append(stack.data, f)
 		return nil
@@ -1976,7 +1976,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			case 1:
 				var d [20]byte
 				copy(d[:], bnum[:20])
-				if _, ok := evm.libs[d]; ok {
+				if _, ok := contract.libs[d]; ok {
 					return nil
 				}
 
@@ -1987,7 +1987,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					return fmt.Errorf("The library does not exist")
 				}
 				ccode := ByteCodeParser(sd.GetCode())
-				evm.libs[d] = lib{
+				contract.libs[d] = lib{
 					address: int32(len(contract.Code)),
 					end: int32(len(contract.Code) + len(ccode)),
 					base: int32(len(stack.data[0].space)),

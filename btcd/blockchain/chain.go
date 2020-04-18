@@ -211,7 +211,7 @@ type BlockChain struct {
 	notifications     []NotificationCallback
 
 	// The virtual machine
-	ovm * ovm.OVM
+	Vm        * ovm.OVM
 	Blacklist BlackList
 
 	Miner btcutil.Address
@@ -221,7 +221,7 @@ type BlockChain struct {
 }
 
 func (b *BlockChain) Ovm() * ovm.OVM {
-	return b.ovm
+	return b.Vm
 }
 
 // HaveBlock returns whether or not the chain instance has the block represented
@@ -2082,20 +2082,7 @@ func New(config *Config) (*BlockChain, error) {
 		return nil, err
 	}
 
-	// initialize OVM
-	ctx := ovm.Context{}
-	vmcfg := ovm.Config {
-		// Debug enabled debugging Interpreter options
-		Debug: false,
-		// Tracer is the op code logger
-//		Tracer: nil,
-		// NoRecursion disabled Interpreter call, callcode,
-		// delegate call and create.
-		NoRecursion: false,
-		// Enable recording of SHA3/keccak preimages
-		EnablePreimageRecording: false,
-	}
-	b.ovm = ovm.NewOVM(ctx, params, vmcfg, config.DB)
+//	b.Vm = Vm.NewOVM(ctx, params, vmcfg, config.DB)
 
 	bestNode := b.BestChain.Tip()
 	log.Infof("Chain state (height %d, hash %v, totaltx %d)",

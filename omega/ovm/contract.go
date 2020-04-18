@@ -53,6 +53,13 @@ type inst struct {
 	param []byte
 }
 
+type lib struct{
+	address int32		// code address
+	end int32			// code end
+	base int32			// lib global data
+	pure bool
+}
+
 // Contract represents an contract in the state database. It contains
 // the the contract code, calling arguments. Contract implements ContractRef
 type Contract struct {
@@ -62,7 +69,7 @@ type Contract struct {
 	owner Address				// address of owner. for system contract, owner = 0x000...000
 								// contracts with 0 zddress may execute privilege instructions
 
-//	jumpdests destinations		// result of JUMPDEST analysis. privilege instructions are handled here
+	libs map[Address]lib
 
 	Code     []inst
 	CodeHash chainhash.Hash
@@ -80,6 +87,7 @@ func NewContract(object Address, value *token.Token) *Contract {
 	c := &Contract{
 		self: AccountRef(object),
 		Args: nil,
+		libs:	make(map[Address]lib),
 //		jumpdests: make(destinations),
 		value: value,
 	}

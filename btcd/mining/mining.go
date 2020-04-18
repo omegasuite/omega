@@ -503,6 +503,9 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress btcutil.Address) (*Bloc
 	blockTxns = append(blockTxns, coinbaseTx)
 
 	views := g.Chain.NewViewPointSet()
+	g.Chain.Vm.SetViewPoint(views)
+	defer func() { g.Chain.Vm = nil } ()
+
 	blockUtxos := views.Utxo	// blockchain.NewUtxoViewpoint()
 
 	// dependers is used to track transactions which depend on another
@@ -547,7 +550,8 @@ mempoolLoop:
 		// mempool since a transaction which depends on other
 		// transactions in the mempool must come after those
 		// dependencies in the final generated block.
-		utxos, err := g.Chain.FetchUtxoView(tx)
+		view, err := g.Chain.FetchUtxoView(tx)
+		utxos := view.Utxo
 		if err != nil {
 			log.Warnf("Unable to fetch utxo view for tx %s: %v",
 				tx.Hash(), err)

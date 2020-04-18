@@ -9,6 +9,7 @@ import (
 	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/omega/ovm"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -221,12 +222,17 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 //	log.Infof("ProcessBlock: ChainLock.RLock")
 	b.ChainLock.Lock()
 	defer b.ChainLock.Unlock()
-/*
-	func () {
-		b.ChainLock.Unlock()
-		log.Infof("ProcessBlock: ChainLock.Unlock")
-	} ()
-*/
+
+	// initialize OVM
+	ctx := ovm.Context{}
+	vmcfg := ovm.Config {
+		Debug: false,
+		NoRecursion: false,
+		EnablePreimageRecording: false,
+	}
+	b.Vm = ovm.NewOVM(ctx, b.chainParams, vmcfg)
+	defer func() { b.Vm = nil }()
+
 	blockHeader := &block.MsgBlock().Header
 	prevHash := &blockHeader.PrevBlock
 	prevHashExists, err := b.blockExists(prevHash)

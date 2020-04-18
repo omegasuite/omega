@@ -81,7 +81,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	cfg := Config{}
 	cfg.NoLoop = true
 
-	ovm := NewOVM(ctx, chainParams, cfg, nil)
+	ovm := NewOVM(ctx, chainParams, cfg)
 	ovm.interpreter = NewInterpreter(ovm, cfg)
 	ovm.interpreter.readOnly = true
 

@@ -117,7 +117,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		// to be uint256. Practically much less so feasible.
 		pc   = int(0) // program counter
 	)
-	in.evm.libs[[20]byte{}] = lib {
+	contract.libs[[20]byte{}] = lib {
 		end: int32(len(contract.Code)),
 	}
 	contract.Input = input

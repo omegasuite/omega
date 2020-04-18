@@ -1142,7 +1142,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 
 		if i != 0 {
 			if runScripts {
-				err = b.ovm.VerifySigs(tx, node.Height)
+				err = b.Vm.VerifySigs(tx, node.Height)
 				if err != nil {
 					return err
 				}
@@ -1152,7 +1152,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			// in transaction, a new copy of tx will be returned.
 			cleantx := tx.CleanCopy()
 
-			otx, err := b.ovm.ExecContract(cleantx, 0, node.Height, b.chainParams)
+			otx, err := b.Vm.ExecContract(cleantx, 0, node.Height, b.chainParams)
 			if err != nil {
 				return err
 			}
@@ -1252,7 +1252,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				return ruleError(ErrUnfinalizedTx, str)
 			}
 		}
-/* This has been done in b.ovm.VerifySigs(tx, node.height)
+/* This has been done in b.Vm.VerifySigs(tx, node.height)
 	// Now that the inexpensive checks are done and have passed, verify the
 	// transactions are actually allowed to spend the coins by running the
 	// expensive ECDSA signature check scripts.  Doing this last helps
