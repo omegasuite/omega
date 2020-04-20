@@ -90,7 +90,7 @@ func main() {
 			return true
 		},
 		GetCurrentOutput: func() *wire.TxOut {
-			return &txo
+			return wire.OutPoint{}, &txo
 		},
 		GetTx: func() *wire.MsgTx {
 			return &wire.MsgTx {

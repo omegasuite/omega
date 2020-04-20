@@ -908,10 +908,10 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 		}
 		inputs[i] = x.ToTxOut().Token
 	}
-	ntx := tx.Copy() // Deep copy
-	ntx.Spends = append(inputs, ntx.Spends...)
+//	ntx := tx.Copy() // Deep copy
+//	ntx.Spends = append(inputs, ntx.Spends...)
 
-	res, err := validate.QuickCheckRight(ntx, views)
+	res, err := validate.QuickCheckRight(tx, views)
 	if res {
 		return nil
 	}
@@ -920,7 +920,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 	}
 
 	// check geometry integrity
-	if !validate.CheckGeometryIntegrity(ntx, views) {
+	if !validate.CheckGeometryIntegrity(tx, views) {
 		str := fmt.Sprintf("The Tx is not geometrically integral")
 		return ruleError(ErrSpendTooHigh, str)
 	}
@@ -929,14 +929,18 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 
 func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, error) {
 	// Coinbase transactions have no inputs.
-
 	utxoView := views.Utxo
 
 	txHash := tx.Hash()
 	totalIns := make(map[uint64]int64)
+
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		// Ensure the referenced input transaction is available.
-		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
+		var utxo *wire.TxOut
+		utxo = utxoView.LookupEntry(txIn.PreviousOutPoint).ToTxOut()
 
 		// Ensure the transaction amounts are in range.  Each of the
 		// output values of the input transactions must not be negative
@@ -944,39 +948,11 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.View
 		// a transaction are in a unit value known as a satoshi.  One
 		// bitcoin is a quantity of satoshi as defined by the
 		// SatoshiPerBitcoin constant.
-		if utxo.TokenType & 3 != 0 {
+		if utxo.TokenType != 0 {
 			continue
 		}
 
-		originTxSatoshi := utxo.Amount.(*token.NumToken).Val
-
-		// The total of all outputs must not be more than the max
-		// allowed per transaction.  Also, we could potentially overflow
-		// the accumulator so check for overflow.
-		lastSatoshiIn := totalIns[utxo.TokenType]
-		totalIns[utxo.TokenType] += originTxSatoshi
-		if totalIns[utxo.TokenType] < lastSatoshiIn ||
-			totalIns[utxo.TokenType] > btcutil.MaxSatoshi {
-			str := fmt.Sprintf("total value of all transaction "+
-				"inputs is %v which is higher than max "+
-				"allowed value of %v", totalIns[utxo.TokenType],
-				btcutil.MaxSatoshi)
-			return 0, ruleError(ErrBadTxOutValue, str)
-		}
-	}
-
-	for _, utxo := range tx.Spends {
-		// Ensure the transaction amounts are in range.  Each of the
-		// output values of the input transactions must not be negative
-		// or more than the max allowed per transaction.  All amounts in
-		// a transaction are in a unit value known as a satoshi.  One
-		// bitcoin is a quantity of satoshi as defined by the
-		// SatoshiPerBitcoin constant.
-		if utxo.TokenType & 3 != 0 {
-			continue
-		}
-
-		originTxSatoshi := utxo.Value.(*token.NumToken).Val
+		originTxSatoshi := utxo.Token.Value.(*token.NumToken).Val
 
 		// The total of all outputs must not be more than the max
 		// allowed per transaction.  Also, we could potentially overflow
@@ -999,7 +975,7 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.View
 	totalSatoshiOut := make(map[uint64]int64)
 
 	for _, txOut := range tx.MsgTx().TxOut {
-		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if txOut.IsSeparator() {
 			continue
 		}
 		if txOut.TokenType & 3 == 0 {
@@ -1150,17 +1126,17 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 
 			// excute contracts if necessary. note, if the execution causes any change in
 			// in transaction, a new copy of tx will be returned.
-			cleantx := tx.CleanCopy()
+//			cleantx := tx.CleanCopy()
 
-			otx, err := b.Vm.ExecContract(cleantx, 0, node.Height, b.chainParams)
+			_, err := b.Vm.ExecContract(tx, 0, node.Height, b.chainParams)
 			if err != nil {
 				return err
 			}
 
 			// verify that tx and otx are the same
-			if !otx.VerifyContractOut(tx) {
-				return fmt.Errorf("Contract execution result is not the same as transaction in block.")
-			}
+//			if !otx.VerifyContractOut(tx) {
+//				return fmt.Errorf("Contract execution result is not the same as transaction in block.")
+//			}
 
 			err = CheckTransactionIntegrity(tx, views)
 			if err != nil {

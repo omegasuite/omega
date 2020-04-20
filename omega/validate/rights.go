@@ -117,7 +117,7 @@ func parseRights(tx *btcutil.Tx, views *viewpoint.ViewPointSet, checkPolygon boo
 			}
 		}
 	}
-
+/*
 	for _, x := range tx.Spends {
 		if x.TokenType & 1 == 0 {
 			continue
@@ -145,6 +145,7 @@ func parseRights(tx *btcutil.Tx, views *viewpoint.ViewPointSet, checkPolygon boo
 			}
 		}
 	}
+ */
 
 	return &rset
 }
@@ -235,7 +236,7 @@ func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 	res := make([][]tokennelement, 2)
 	res[0] = make([]tokennelement, 0, len(tx.MsgTx().TxIn))
 	res[1] = make([]tokennelement, 0, len(tx.MsgTx().TxOut))
-
+/*
 	for i, x := range tx.Spends {
 		res[0][i] = tokennelement{}
 		res[0][i].tokenType = x.TokenType
@@ -247,6 +248,7 @@ func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 		}
 		res[0][i].value = x.Value
 	}
+ */
 	for i, x := range tx.MsgTx().TxOut {
 		if x.TokenType == 0xFFFFFFFFFFFFFFFF {
 			continue

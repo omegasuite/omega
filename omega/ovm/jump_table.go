@@ -183,5 +183,13 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opReturn,
 			valid:         true,
 		},
+		MINT: {
+			execute:       opMint,
+			valid:         true,
+		},
+		META: {
+			execute:       opMeta,
+			valid:         true,
+		},
 	}
 }

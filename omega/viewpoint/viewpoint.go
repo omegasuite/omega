@@ -60,7 +60,6 @@ type ViewPointSet struct {
 	Border * BorderViewpoint
 	Polygon * PolygonViewpoint
 	Rights * RightViewpoint
-//	Miners * MinersViewpoint
 }
 
 func NewViewPointSet(db database.DB) * ViewPointSet {

@@ -58,6 +58,8 @@ const (
 	GETDEFINITION
 	GETCOIN
 	GETUTXO
+	MINT
+	META		// get contract meta data
 )
 
 // Since the opcodes aren't all in order we can't use a regular slice
@@ -99,6 +101,8 @@ var opCodeToString = map[OpCode]string{
 	SELFDESTRUCT:   "SELFDESTRUCT",
 	REVERT:    "REVERT",
 	RETURN:    "RETURN",
+	MINT:    "MINT",
+	META:    "META",
 }
 
 func (o OpCode) String() string {
@@ -146,6 +150,8 @@ var stringToOp = map[string]OpCode{
 	"SELFDESTRUCT":   SELFDESTRUCT,
 	"REVERT":         REVERT,
 	"RETURN":         RETURN,
+	"MINT": MINT,
+	"META": META,
 }
 
 func StringToOp(str string) OpCode {

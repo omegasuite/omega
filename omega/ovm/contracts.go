@@ -26,8 +26,8 @@ import (
 	"encoding/binary"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/omega/token"
+//	"github.com/btcsuite/btcd/database"
+//	"github.com/btcsuite/omega/token"
 	"golang.org/x/crypto/ripemd160"
 )
 
@@ -58,11 +58,6 @@ const (
 	OP_PAY2NONE				= 0x45
 	OP_PAY2ANY					= 0x46
 
-	// Miner selection
-	OP_MINER_APPLY			= 0x20		// pay & apply to become a miner
-	OP_MINRE_QUIT				= 0x21		// quit & withdraw
-
-	MINER_FEE_CAP				= 500		// miner fee cap. in omegas: 500 omegas
 	MINER_RORATE_FREQ			= 50		// const: rotate frequency. How many blocks between rotation
 	MAX_WITNESS				= 5			// max number of witnesses in a block
 	COMMITTEE_DEF_SIZE		= 5			// default committee size
@@ -71,7 +66,6 @@ const (
 // PrecompiledContracts contains the default set of pre-compiled contracts
 var PrecompiledContracts = map[[4]byte]PrecompiledContract{
 	([4]byte{OP_CREATE, 0, 0, 0}): &create{},			// create a contract
-	([4]byte{OP_MINT, 0, 0, 0}): &mint{},				// mint a coin
 
 	// pk script functions
 	([4]byte{OP_PAY2PKH, 0, 0, 0}): &pay2pkh{},			// pay to pubkey hash script
@@ -444,89 +438,6 @@ func (p *pay2pkh) Run(input []byte) ([]byte, error) {
 		return []byte{1}, nil
 	}
 	return []byte{0}, nil
-}
-
-type mint struct{
-	ovm * OVM
-	contract *Contract
-}
-
-func (m * mint) Run(input []byte) ([]byte, error) {
-	// mint coins. it must has been verified that the cal is authorized
-	// do contract deployment
-	contract := m.contract.self.Address()
-
-	tokentype := input[0]
-	var h chainhash.Hash
-	var r chainhash.Hash
-	var val uint64
-	var md uint64
-
-	p := 0
-	if tokentype&1 == 1 {
-		copy(h[:], input[1:33])
-		md = 1
-		p = 33
-	} else {
-		val = binary.LittleEndian.Uint64(input[1:])
-		md = val
-		p = 9
-	}
-	if tokentype&2 == 2 {
-		copy(r[:], input[p:])
-	}
-
-	mtype, issue := m.ovm.StateDB[contract].GetMint()
-
-	if mtype == 0 {
-		// mint for the first time, assign a new tokentype. This is instant, doesnot defer to commitmenyment even
-		// the call fails eventually. In that case, we waste a tokentype code.
-
-		err := m.ovm.StateDB[contract].DB.Update(func(dbTx database.Tx) error {
-			defaultVersion := uint64(0x100) | uint64(tokentype&3)
-			var key []byte
-
-			if tokentype&2 == 0 {
-				key = []byte("availNonRightTokenType")
-			} else {
-				key = []byte("availRightTokenType")
-			}
-
-			// the tokentype value for numtoken available
-			version := uint64(DbFetchVersion(dbTx, key))
-			if version == 0 {
-				version = defaultVersion
-			}
-
-			mtype, issue = version, 0
-
-			return DbPutVersion(dbTx, key, (version+4)&^3)
-		})
-
-		m.ovm.StateDB[contract].SetMint(mtype, md)
-
-		if err != nil {
-			return nil, err
-		}
-	} else {
-		m.ovm.StateDB[contract].SetMint(mtype, md)
-	}
-
-	issued := token.Token{
-		TokenType: mtype,
-	}
-	if mtype&1 == 0 {
-		issued.Value = &token.NumToken{int64(val) }
-	} else {
-		issued.Value = &token.HashToken{h }
-	}
-	if mtype&2 == 2 {
-		issued.Rights = &r
-	}
-
-	m.ovm.StateDB[contract].Credit(issued)
-
-	return nil, nil
 }
 
 // RunPrecompiledContract runs and evaluates the output of a precompiled contract.

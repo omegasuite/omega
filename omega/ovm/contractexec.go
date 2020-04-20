@@ -70,8 +70,10 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 
 	ctx := Context{}
 
-	ctx.GetTx = func () * wire.MsgTx {	return tx	}
-	ctx.Spend = func(t token.Token) bool { return false }
+	utx := btcutil.NewTx(tx)
+
+	ctx.GetTx = func () * btcutil.Tx {	return utx	}
+	ctx.Spend = func(t wire.OutPoint) bool { return false }
 	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
 //	ctx.GetHash = func(d uint64) *chainhash.Hash { return nil }
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
@@ -119,8 +121,8 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 		return nil
 	}
 
-	ovm.GetTx = func () * wire.MsgTx {	return tx.MsgTx()	}
-	ovm.Spend = func(t token.Token) bool { return false }
+	ovm.GetTx = func () * btcutil.Tx {	return tx }
+	ovm.Spend = func(t wire.OutPoint) bool { return false }
 	ovm.AddTxOutput = func(t wire.TxOut) bool { return false	}
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ovm.AddRight = func(t *token.RightDef) bool { return false }
@@ -186,7 +188,9 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 			return omega.ScriptError(omega.ErrInternal, "UTXO does not exist.")
 		}
 
-		ovm.GetCurrentOutput = func() *wire.TxOut { return utxo.ToTxOut() }
+		ovm.GetCurrentOutput = func() (wire.OutPoint, *wire.TxOut) {
+			return txin.PreviousOutPoint, utxo.ToTxOut()
+		}
 
 		version, addr, method, excode := parsePkScript(utxo.PkScript())
 
@@ -314,41 +318,36 @@ func GetHash(d uint64) *chainhash.Hash {
 }
 
 func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainParams *chaincfg.Params) (*btcutil.Tx, error) {
+	// no need to make a copy of tx, if exec fails, the tx (even a block) will be abandoned
 	if tx.IsCoinBase() {
 		return tx, nil
 	}
 
-	// Scan outputs.and execute them?
-	outtx := tx.Copy()
-
-	ovm.GetTx = func () * wire.MsgTx {
-		return tx.MsgTx()
-	}
+	ovm.GetTx = func () * btcutil.Tx { return tx }
 	ovm.AddTxOutput = func(t wire.TxOut) bool {
 		if isContract(t.PkScript[0]) {
 			// can't add a contract call txout within a contract execution
 			return false
 		}
-		tx := outtx.MsgTx()
-		if !outtx.HasOuts {
+		msg := tx.MsgTx()
+		if !tx.HasOuts {
 			// this servers as a separater. only TokenType is serialized
 			to := wire.TxOut{}
-			to.Token = token.Token{TokenType:0xFFFFFFFFFFFFFFFF}
-			tx.AddTxOut(&to)
-			outtx.HasOuts = true
+			to.Token = token.Token{TokenType:^uint64(0)}
+			msg.AddTxOut(&to)
+			tx.HasOuts = true
 		}
-		tx.AddTxOut(&t)
+		msg.AddTxOut(&t)
 		return true
 	}
 	ovm.AddRight = func(t *token.RightDef) bool {
-		tx := outtx.MsgTx()
-		if !outtx.HasOuts {
-			to := wire.TxOut{}
-			to.Token = token.Token{TokenType:0xFFFFFFFFFFFFFFFF}
-			tx.AddTxOut(&to)
-			outtx.HasOuts = true
+		msg := tx.MsgTx()
+		if !tx.HasDefs {
+			to := token.SeparatorDef{}
+			msg.AddDef(&to)
+			tx.HasDefs = true
 		}
-		tx.AddDef(t)
+		msg.AddDef(t)
 		return true
 	}
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
@@ -372,7 +371,9 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainPa
 		if i < start {
 			continue
 		}
-		ovm.GetCurrentOutput = func() *wire.TxOut { return txOut }
+		ovm.GetCurrentOutput = func() (wire.OutPoint, *wire.TxOut) {
+			return wire.OutPoint{*tx.Hash(), uint32(i) }, txOut
+		}
 
 		version, addr, method, param := parsePkScript(txOut.PkScript)
 
@@ -413,11 +414,9 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainPa
 			return nil, omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
 		}
 
-		ovm.Spend = func(t token.Token) bool {
-			if ovm.StateDB[d].Debt(t) != nil {
-				return false
-			}
-			outtx.AddTxIn(t)
+		ovm.Spend = func(t wire.OutPoint) bool {
+			ovm.StateDB[d].Debt(t)
+			tx.AddTxIn(t)
 			return true
 		}
 
@@ -428,15 +427,17 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainPa
 			return nil, err
 		}
 
+		outpoint := wire.OutPoint {*tx.Hash(), uint32(i) }
+
 		// take the coins sent to us
-		ovm.StateDB[d].Credit(txOut.Token)
+		ovm.StateDB[d].credit(outpoint, txOut.Token)
 	}
 
 //	if len(outtx.MsgTx().TxOut) > start {
 //		return ExecContract(outtx, len(tx.MsgTx().TxOut), txHeight, ovm, chainParams)
 //	}
 
-	return outtx, nil
+	return tx, nil
 }
 
 var byteOrder = binary.LittleEndian

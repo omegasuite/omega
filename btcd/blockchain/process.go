@@ -10,6 +10,7 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/omega/ovm"
+	"github.com/btcsuite/omega/token"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -232,6 +233,22 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 	b.Vm = ovm.NewOVM(ctx, b.chainParams, vmcfg)
 	defer func() { b.Vm = nil }()
+
+	b.Vm.SetCoinBaseOp(
+		func(txo wire.TxOut) wire.OutPoint {
+			tx,_ := block.Tx(0)
+			msg := tx.MsgTx()
+			if !tx.HasOuts {
+				// this servers as a separater. only TokenType is serialized
+				to := wire.TxOut{}
+				to.Token = token.Token{TokenType:^uint64(0)}
+				msg.AddTxOut(&to)
+				tx.HasOuts = true
+			}
+			msg.AddTxOut(&txo)
+			op := wire.OutPoint { *tx.Hash(), uint32(len(msg.TxOut) - 1)}
+			return op
+		})
 
 	blockHeader := &block.MsgBlock().Header
 	prevHash := &blockHeader.PrevBlock

@@ -17,7 +17,7 @@ import (
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/omega/ovm"
+//	"github.com/btcsuite/omega/ovm"
 	"github.com/btcsuite/omega/token"
 	"github.com/btcsuite/omega/viewpoint"
 )
@@ -876,7 +876,7 @@ func (b *BlockChain) createChainState() error {
 	})
 
 	// Create system wallet
-	ovm.CreateSysWallet(b.chainParams, b.db)
+//	ovm.CreateSysWallet(b.chainParams, b.db)
 
 	return err
 }

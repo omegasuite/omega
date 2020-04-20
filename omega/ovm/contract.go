@@ -202,6 +202,8 @@ var validators = map[OpCode]codeValidator {
 	REVERT: opRevertValidator,
 	STOP: opStopValidator,
 	RETURN: opReturnValidator,
+	MINT: opMintValidator,
+	META: opMetaValidator,
 }
 
 func ByteCodeValidator(code []inst) bool {

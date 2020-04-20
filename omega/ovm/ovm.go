@@ -11,6 +11,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega"
 	"github.com/btcsuite/omega/token"
 	"github.com/btcsuite/omega/viewpoint"
@@ -24,17 +25,17 @@ var emptyCodeHash = chainhash.DoubleHashB(nil)
 type (
 	// GetTxFunc returns the transaction for currect transaction
 	// and is used by the GETTX EVM op code.
-	GetTxFunc func() * wire.MsgTx
+	GetTxFunc func() * btcutil.Tx
 
 	// GetUtxoFunx returns the UTXO indicated by hash and seq #.
 	GetUtxoFunc func(chainhash.Hash, uint64) *wire.TxOut
 
 	// GetCurrentOutputFunx returns the output that triggers the current contract call.
-	GetCurrentOutputFunc func() *wire.TxOut
+	GetCurrentOutputFunc func() (wire.OutPoint, *wire.TxOut)
 
 	// SpendFunc adds an input to the transaction template for currect transaction
 	// and is used by the ADDTXIN EVM op code.
-	SpendFunc func(token.Token) bool
+	SpendFunc func(wire.OutPoint) bool
 
 	// AddRight adds an right definition to the transaction template for currect transaction
 	// and is used by the ADDTXIN EVM op code.
@@ -46,6 +47,8 @@ type (
 
 	// GetBlockNumberFunc returns the block numer of the block of current execution environment
 	GetBlockNumberFunc func() uint64
+
+	AddCoinBaseFunc func(wire.TxOut) wire.OutPoint
 )
 
 // run runs the given contract and takes care of running precompiles with a fallback to the byte code interpreter.
@@ -53,7 +56,6 @@ func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
 	if contract.CodeAddr != nil {
 		precompiles := PrecompiledContracts
 		precompiles[[4]byte{0,0,0,0}] = &create{evm, contract }
-		precompiles[[4]byte{OP_MINT,0,0,0}] = &mint{evm, contract }
 		var abi [4]byte
 		copy(abi[:], contract.CodeAddr)
 		if p := precompiles[abi]; p != nil {
@@ -72,6 +74,7 @@ type Context struct {
 	AddRight AddRightFunc
 	GetUtxo GetUtxoFunc
 	GetCurrentOutput GetCurrentOutputFunc
+	AddCoinBase AddCoinBaseFunc
 
 	// Block information
 	GasLimit    uint64 			      // GASLIMIT policy
@@ -133,6 +136,10 @@ func NewOVM(ctx Context, chainConfig *chaincfg.Params, vmConfig Config) *OVM {
 	return evm
 }
 
+func (v * OVM) SetCoinBaseOp(b AddCoinBaseFunc) {
+	v.AddCoinBase = b
+}
+
 func (v * OVM) SetViewPoint(vp * viewpoint.ViewPointSet) {
 	v.views = vp
 	v.DB = vp.Db
@@ -171,7 +178,7 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	if contract == nil {
 		return nil, fmt.Errorf("Contract does not exist")
 	}
-	contract.SetCallCode(method, evm.StateDB[d].GetCodeHash(), evm.StateDB[d].GetCode())
+	contract.SetCallCode(method, evm.StateDB[d].GetCodeHash(), evm.GetCode(d))
 
 	ret, err = run(evm, contract, params)
 
@@ -229,9 +236,9 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	}
 	copy(contract.CodeHash[:], chainhash.DoubleHashB(data))	// [20:]))
 
-	ovm.StateDB[d].SetAddres(contract.self.(AccountRef))
-	ovm.StateDB[d].SetInsts(contract.Code)
-	ovm.StateDB[d].SetCodeHash(contract.CodeHash)
+	ovm.SetAddres(d, contract.self.(AccountRef))
+	ovm.SetInsts(d, contract.Code)
+	ovm.SetCodeHash(d, contract.CodeHash)
 
 	contract.CodeAddr = nil
 	ret, err := run(ovm, contract, nil)	// contract constructor. ret is the real contract code, ex. constructor
@@ -240,13 +247,14 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	}
 
 	contract.Code = ByteCodeParser(ret)
-	ovm.StateDB[d].SetCode(ret)
+	ovm.SetCode(d, ret)
 	copy(contract.CodeHash[:], chainhash.DoubleHashB(ret))
-	ovm.StateDB[d].SetCodeHash(contract.CodeHash)
+	ovm.SetCodeHash(d, contract.CodeHash)
 
 	return nil, nil
 }
 
+/*
 func CreateSysWallet(chainConfig *chaincfg.Params, db database.DB) {
 	var addr [20]byte
 
@@ -255,6 +263,7 @@ func CreateSysWallet(chainConfig *chaincfg.Params, db database.DB) {
 	sdb.SetAddres(addr)
 	sdb.Commit(0)
 }
+*/
 
 // ChainConfig returns the environment's chain configuration
 func (evm *OVM) ChainConfig() *chaincfg.Params { return evm.chainConfig }

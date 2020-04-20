@@ -307,7 +307,8 @@ func opCallValidator(param []byte) int {
 }
 
 var formatLoad = []formatDesc{
-	{addrOperand, 0xffffffff}, {patOperand, 0}, {dataType, 0},
+	{addrOperand, 0xffffffff}, {patOperand, 0xff},
+	{dataType, 0},
 }
 
 func opLoadValidator(param []byte) int {
@@ -315,7 +316,7 @@ func opLoadValidator(param []byte) int {
 }
 
 var formatStore = []formatDesc{
-	{patOperand, 0}, {patOperand, 0},
+	{patOperand, 32}, {patOperand, 0}, {patOperand, 0xff}, {patOperand, 0},
 }
 
 func opStoreValidator(param []byte) int {
@@ -323,7 +324,7 @@ func opStoreValidator(param []byte) int {
 }
 
 var formatDel = []formatDesc{
-	{patOperand, 0},
+	{patOperand, 0}, {patOperand, 32},
 }
 
 func opDelValidator(param []byte) int {
@@ -515,4 +516,21 @@ func opAddSignTextValidator(param []byte) int {
 		return n
 	}
 	return formatParser(formatAddSign, param)
+}
+
+var formatMint = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0}, {patOperand, 0}, {patOperand, 0},
+}
+
+func opMintValidator(param []byte) int {
+	return formatParser(formatMint, param)
+}
+
+
+var formatMeta = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 32}, {patOperand, 0},
+}
+
+func opMetaValidator(param []byte) int {
+	return formatParser(formatMint, param)
 }

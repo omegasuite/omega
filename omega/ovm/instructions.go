@@ -10,7 +10,8 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/viewpoint"
-//	"io"
+	"github.com/btcsuite/btcd/database"
+	//	"io"
 	"math"
 	"math/big"
 
@@ -18,7 +19,7 @@ import (
 	"encoding/binary"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
-//	"github.com/btcsuite/btcd/wire/common"
+	//	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/omega/token"
 )
 
@@ -1705,7 +1706,8 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	ln := len(param)
 
 	num := int64(0)
-	dataType := []byte{0xFF, 0x68}
+	slen := int64(0)
+	dataType := []byte{0xFF, 0x42, 0x68}
 	var err error
 	var tl int
 	var h chainhash.Hash
@@ -1725,7 +1727,11 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				if num, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
 					return err
 				}
-				store = pointer(num)
+				if top == 0 {
+					store = pointer(num)
+				} else {
+					slen = num
+				}
 			}
 			top++
 			j += tl
@@ -1736,7 +1742,7 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	hash := evm.StateDB[contract.self.Address()].GetState(&h)
+	hash := evm.GetState(contract.self.Address(), string(h[:slen]))
 
 	n := sizeOfType[dt]
 	for i := uint32(0); i < n; i++ {
@@ -1758,21 +1764,37 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var err error
 	var scratch [2]chainhash.Hash
 	top := 0
+	slen := int64(0)
+	var dt byte
+
+	dataType := []byte{0x42, 0x68, 0x42, 0x68}
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
 		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
 			0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78, 0x69, 0x67:	// 0 - 9
-			if num, tl, err = stack.getHash(param[j:]); err != nil {
+			if dataType[top] == 0x68 {
+				if num, tl, err = stack.getHash(param[j:]); err != nil {
 					return err
 				}
-			scratch[top] = num
+				scratch[top] = num
+			} else {
+				num := int64(0)
+				if num, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
+					return err
+				}
+				if top == 0 {
+					slen = num
+				} else {
+					dt = byte(num)
+				}
+			}
 			top++
 			j += tl
 		}
 	}
 
-	evm.StateDB[contract.self.Address()].SetState(&scratch[0], scratch[1])
+	evm.SetState(contract.self.Address(), string(scratch[0][:slen]), scratch[1][:sizeOfType[dt]])
 
 	return nil
 }
@@ -1782,6 +1804,9 @@ func opDel(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	ln := len(param)
 
 	num := chainhash.Hash{}
+	top := 0
+	slen := int64(0)
+	var tl int
 
 	var err error
 
@@ -1789,21 +1814,26 @@ func opDel(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		switch param[j] {
 		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
 			0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78, 0x69, 0x67:	// 0 - 9
-			if num, _, err = stack.getHash(param[j:]); err != nil {
-				return err
+			if top == 0 {
+				if slen, tl, err = stack.getNum(param[j:], 0x42); err != nil {
+					return err
+				}
+			} else {
+				if num, tl, err = stack.getHash(param[j:]); err != nil {
+					return err
+				}
 			}
-
-			evm.StateDB[contract.self.Address()].DeleteState(&num)
-
-			return nil
+			j += tl
+			top++
 		}
 	}
+	evm.DeleteState(contract.self.Address(), string(num[:slen]))
 
 	return nil
 }
 
 func opReceived(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
-	txout := ovm.GetCurrentOutput()
+	_, txout := ovm.GetCurrentOutput()
 
 	param := contract.GetBytes(*pc)
 	ln := len(param)
@@ -1890,19 +1920,16 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				data = pointer(num)
 
 			case 4:
-				if value != nil {
-					if c,ok := evm.StateDB[contract.Address()]; ok {
-						if err := c.Debt(*value); err != nil {
-							return err
-						}
-					} else {
-						return fmt.Errorf("Contract does not exist")
-					}
-				}
-
 				datalen = int32(num)
 
 				args := stack.data[data >> 32].space[data & 0xFFFFFFFF:int32(int64(data) & 0xFFFFFFFF) + datalen]
+
+				pks := make([]byte, 25 + len(args))
+				pks[0] = 1
+				copy(pks[1:], toAddr[:])
+				copy(pks[21:], args)
+				evm.AddTxOutput(wire.TxOut{PkScript:pks, Token:*value})
+
 				ret, err := evm.Call(toAddr, args[:4], value, args)		// nil=>value
 
 				if err != nil {
@@ -1928,7 +1955,8 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 
 				if err == nil && value != nil {
-					evm.StateDB[toAddr].Credit(*value)
+					outp,_ := evm.GetCurrentOutput()
+					evm.StateDB[toAddr].credit(outp, *value)
 				}
 
 				return err
@@ -1986,7 +2014,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				if !existence {
 					return fmt.Errorf("The library does not exist")
 				}
-				ccode := ByteCodeParser(sd.GetCode())
+				ccode := ByteCodeParser(evm.GetCode(d))
 				contract.libs[d] = lib{
 					address: int32(len(contract.Code)),
 					end: int32(len(contract.Code) + len(ccode)),
@@ -2213,10 +2241,10 @@ func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	t := hash[:20]
 	copy(pkScript[1:], t[:])
 	copy(pkScript[21:], []byte{2, 0, 0, 0})	// pay2pkh: pay to public key hash
-	for _, w := range evm.StateDB[contract.Address()].wallet {
-		evm.Spend(w.Token)
+	for p, w := range evm.StateDB[contract.Address()].wallet.Tokens {
+		evm.Spend(p)
 		evm.AddTxOutput(wire.TxOut{
-			w.Token,
+			w,
 			pkScript,
 		})
 	}
@@ -2271,13 +2299,13 @@ func opTxIOCount(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	tx := evm.GetTx()
-	if err := stack.saveInt32(&scratch[0], int32(len(tx.TxIn))); err != nil {
+	if err := stack.saveInt32(&scratch[0], int32(len(tx.MsgTx().TxIn))); err != nil {
 		return err
 	}
-	if err := stack.saveInt32(&scratch[1], int32(len(tx.TxOut))); err != nil {
+	if err := stack.saveInt32(&scratch[1], int32(len(tx.MsgTx().TxOut))); err != nil {
 		return err
 	}
-	return stack.saveInt32(&scratch[2], int32(len(tx.TxDef)))
+	return stack.saveInt32(&scratch[2], int32(len(tx.MsgTx().TxDef)))
 }
 
 func opGetTxIn(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
@@ -2328,12 +2356,12 @@ func opGetTxIO(pc *int, evm *OVM, contract *Contract, stack *Stack, in bool) err
 	var tue * wire.TxOut
 
 	if in {
-		op = tx.TxIn[inid].PreviousOutPoint
+		op = tx.MsgTx().TxIn[inid].PreviousOutPoint
 		evm.views.Utxo.FetchUtxosMain(evm.views.Db, map[wire.OutPoint]struct{}{op: {}})
 		ue := evm.views.Utxo.LookupEntry(op)
 		tue = ue.ToTxOut()
 	} else {
-		tue = tx.TxOut[inid]
+		tue = tx.MsgTx().TxOut[inid]
 	}
 
 	var w bytes.Buffer
@@ -2363,12 +2391,15 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 			j += tl
 
-			if num < 0 || num >= int64(len(evm.StateDB[contract.Address()].wallet)) {
+			if num < 0 || num >= int64(len(evm.StateDB[contract.Address()].wallet.Tokens)) {
 				return fmt.Errorf("Spend failed")
 			}
 
-			c := evm.StateDB[contract.Address()].wallet[num]
-			if evm.Spend(c.Token) {
+			p := wire.OutPoint{Index: uint32(num) }
+			c := contract.Address()
+			copy(p.Hash[:], c[:])
+
+			if evm.Spend(p) {
 				return nil
 			}
 
@@ -2504,7 +2535,7 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error 
 
 	tx := evm.GetTx()
 
-	for _, def := range tx.TxDef {
+	for _, def := range tx.MsgTx().TxDef {
 		h := def.Hash()
 		if h.IsEqual(&hash) {
 			var w bytes.Buffer
@@ -2756,9 +2787,6 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 				hash = bnum.Bytes()
 			}
 			top++
-
-		default:
-			return fmt.Errorf("Malformed expression")
 		}
 	}
 
@@ -2778,31 +2806,31 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 
 	switch it {	// text encoding
 	case 0:		// current outpoint
-		wbuf.Write(t.TxIn[inidx].PreviousOutPoint.Hash[:])
-		binary.LittleEndian.PutUint32(buf[:], t.TxIn[inidx].PreviousOutPoint.Index)
+		wbuf.Write(t.MsgTx().TxIn[inidx].PreviousOutPoint.Hash[:])
+		binary.LittleEndian.PutUint32(buf[:], t.MsgTx().TxIn[inidx].PreviousOutPoint.Index)
 		wbuf.Write(buf[:4])
 
 	case 1:		// transaction (BaseEncoding)
-		err := t.BtcEncode(&wbuf, 0, wire.BaseEncoding)
+		err := t.MsgTx().BtcEncode(&wbuf, 0, wire.BaseEncoding)
 		if err != nil {
 			return err
 		}
 
 	case 2:		// all output
-		for _, txo := range t.TxOut {
+		for _, txo := range t.MsgTx().TxOut {
 			if txo.TokenType == 0xFFFFFFFFFFFFFFFF {
 				break
 			}
-			err := txo.WriteTxOut(&wbuf, 0, t.Version, wire.BaseEncoding)
+			err := txo.WriteTxOut(&wbuf, 0, t.MsgTx().Version, wire.BaseEncoding)
 			if err != nil {
 				return err
 			}
 		}
 
 	case 3:		// specific matching outputs
-		for i, txo := range t.TxOut {
+		for i, txo := range t.MsgTx().TxOut {
 			if i < 256 && hash[i >> 3] & (1 << (i & 7)) != 0 {
-				err := txo.WriteTxOut(&wbuf, 0, t.Version, wire.BaseEncoding)
+				err := txo.WriteTxOut(&wbuf, 0, t.MsgTx().Version, wire.BaseEncoding)
 				if err != nil {
 					return err
 				}
@@ -2826,4 +2854,181 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		return err
 	}
 	return stack.saveBytes(&p, f)
+}
+
+func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+	// mint coins.
+	param := contract.GetBytes(*pc)
+	address := contract.self.Address()
+
+	ln := len(param)
+
+	top := 0
+	num := int64(0)
+	var bnum *big.Int
+	var dest pointer
+	var tl int
+	var md uint64				// numeric value
+	var err error
+	var h chainhash.Hash		// hash token's hash
+	var r chainhash.Hash		// right hash
+	var tokentype uint64
+
+	dataType := []byte{0xFF, 0x42, 0x48, 0x68}
+
+	for j := 0; j < ln; j++ {
+		switch param[j] {
+		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
+			0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78, 0x69, 0x67: // 0 - 9
+			if dataType[top] == 0x48 {
+				bnum, tl, err = stack.getBig(param[j:])
+			} else if dataType[top] == 0x68 {
+				r, tl, err = stack.getHash(param[j:])
+			} else {
+				num, tl, err = stack.getNum(param[j:], dataType[top])
+			}
+			if err != nil { return err }
+			j += tl
+
+			switch top {
+			case 0:
+				dest = pointer(num)
+
+			case 1:
+				tokentype = uint64(num)
+
+			case 2:
+				if tokentype & 1 == 1 {
+					copy(h[:], bnum.Bytes())
+					md = 1
+				} else {
+					md = uint64(bnum.Int64())
+				}
+
+			case 3:
+			}
+			top++
+		}
+	}
+
+	mtype, issue := ovm.StateDB[address].GetMint()
+
+	if mtype == 0 {
+		// mint for the first time, assign a new tokentype. This is instant, does not defer to
+		// commitment even the call fails eventually. In that case, we waste a tokentype code.
+
+		err := ovm.StateDB[address].DB.Update(func(dbTx database.Tx) error {
+			defaultVersion := uint64(0x100) | uint64(tokentype&3)
+			var key []byte
+
+			if tokentype&2 == 0 {
+				key = []byte("availNonRightTokenType")
+			} else {
+				key = []byte("availRightTokenType")
+			}
+
+			// the tokentype value for numtoken available
+			version := uint64(DbFetchVersion(dbTx, key))
+			if version == 0 {
+				version = defaultVersion
+			}
+
+			mtype, issue = version, 0
+
+			return DbPutVersion(dbTx, key, (version+4)&^3)
+		})
+
+		ovm.SetMint(address, mtype, md)
+
+		if err != nil {
+			return err
+		}
+	} else {
+		ovm.SetMint(address, mtype, md)
+	}
+
+	issued := token.Token{
+		TokenType: mtype,
+	}
+	if mtype & 1 == 0 {
+		issued.Value = &token.NumToken{int64(md) }
+	} else {
+		issued.Value = &token.HashToken{h }
+	}
+	if mtype & 2 == 2 {
+		issued.Rights = &r
+	}
+
+	// add a tx out in coinbase
+	txo := wire.TxOut {}
+	txo.Token = issued
+	txo.PkScript = make([]byte, 21)
+	txo.PkScript[0] = 1
+	copy(txo.PkScript[1:], address[:])
+
+	outpoint := ovm.AddCoinBase(txo)
+	ovm.StateDB[address].credit(outpoint, issued)
+
+	if err = stack.saveInt64(&dest, int64(mtype)); err != nil {
+		return err
+	}
+	dest += 8
+	if err = stack.saveHash(&dest, outpoint.Hash); err != nil {
+		return err
+	}
+	dest += 32
+	return stack.saveInt32(&dest, int32(outpoint.Index))
+}
+
+func opMeta(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+	// mint coins.
+	param := contract.GetBytes(*pc)
+	address := contract.self.Address()
+
+	ln := len(param)
+
+	top := 0
+	num := int64(0)
+	slen := int64(0)
+	var dest pointer
+	var tl int
+	var err error
+	var key string
+	var r chainhash.Hash
+
+	dataType := []byte{0xFF, 0x42, 0x68}
+
+	for j := 0; j < ln; j++ {
+		switch param[j] {
+		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39,
+			0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x78, 0x69, 0x67: // 0 - 9
+			if dataType[top] == 0x68 {
+				r, tl, err = stack.getHash(param[j:])
+			} else {
+				num, tl, err = stack.getNum(param[j:], dataType[top])
+			}
+			if err != nil { return err }
+			j += tl
+
+			switch top {
+			case 0:
+				dest = pointer(num)
+
+			case 1:
+				slen = num
+
+			case 2:
+				key = string(r[:slen])
+			}
+			top++
+		}
+	}
+
+	m := ovm.getMeta(address, key)
+
+	if err = stack.saveInt32(&dest, int32(len(m))); err != nil {
+		return err
+	}
+	dest += 4
+	return stack.saveBytes(&dest, m)
 }

@@ -10,7 +10,7 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/omega/token"
+//	"github.com/btcsuite/omega/token"
 )
 
 // TxIndexUnknown is the value returned for a transaction index that is unknown.
@@ -27,8 +27,10 @@ type Tx struct {
 	txHash        *chainhash.Hash // Cached transaction hash
 	txHashSignature *chainhash.Hash // Cached transaction witness hash
 	txIndex       int             // Position within a block or TxIndexUnknown
-	Spends 		  []token.Token	  // spendings by contracts. temp data used for validation
+//	Spends 		  []token.Token	  // spendings by contracts. temp data used for validation
 	HasOuts		  bool			  // temp data indicating whether there is TxOuts added by contracts
+	HasIns		  bool			  // temp data indicating whether there is TxIns added by contracts
+	HasDefs		  bool			  // temp data indicating whether there is TxDefs added by contracts
 }
 
 // MsgTx returns the underlying wire.MsgTx for the transaction.
@@ -40,21 +42,23 @@ func (t *Tx) MsgTx() *wire.MsgTx {
 func (t *Tx) IsCoinBase() bool {
 	return t.MsgTx().IsCoinBase()
 }
-
+/*
 func (s *Tx) Copy() *Tx {
-	ds := make([]token.Token, len(s.Spends))
-	for i, t := range s.Spends {
-		t.Copy(&ds[i])
-	}
+//	ds := make([]token.Token, len(s.Spends))
+//	for i, t := range s.Spends {
+//		t.Copy(&ds[i])
+//	}
 	return &Tx{
 		msgTx: s.msgTx.Copy(),
 		txHash: s.Hash(),
 		txHashSignature: s.SignatureHash(),
 		txIndex: s.Index(),
-		Spends: ds,
+//		Spends: ds,
 		HasOuts: s.HasOuts,
 	}
 }
+
+ */
 
 func (s *Tx) CleanCopy() *Tx {
 	return &Tx{
@@ -62,20 +66,21 @@ func (s *Tx) CleanCopy() *Tx {
 		txHash: s.Hash(),
 		txHashSignature: s.SignatureHash(),
 		txIndex: s.Index(),
-		Spends: make([]token.Token, 0),
+//		Spends: make([]token.Token, 0),
 		HasOuts: false,
 	}
 }
 
 func (s *Tx) VerifyContractOut(t *Tx) bool {
-	if len(s.Spends) != len(t.Spends) || len(s.msgTx.TxOut) != len(t.msgTx.TxOut) {
+	if len(s.msgTx.TxOut) != len(t.msgTx.TxOut) {
+//	if len(s.Spends) != len(t.Spends) || len(s.msgTx.TxOut) != len(t.msgTx.TxOut) {
 		return false
 	}
-	for i, p := range s.Spends {
-		if p.Diff(&t.Spends[i]) {
-			return false
-		}
-	}
+//	for i, p := range s.Spends {
+//		if p.Diff(&t.Spends[i]) {
+//			return false
+//		}
+//	}
 	start := false
 	for i, p := range s.msgTx.TxOut {
 		if start {
@@ -92,8 +97,16 @@ func (s *Tx) VerifyContractOut(t *Tx) bool {
 	return true
 }
 
-func (s *Tx) AddTxIn(t  token.Token) {
-	s.Spends = append(s.Spends, t)
+func (s *Tx) AddTxIn(t wire.OutPoint) {
+	if !s.HasIns {
+		s.msgTx.TxIn = append(s.msgTx.TxIn, &wire.TxIn{})
+		s.HasIns = true
+	}
+	s.msgTx.TxIn = append(s.msgTx.TxIn, &wire.TxIn{
+		PreviousOutPoint: t,
+		Sequence: 0xFFFFFFFF,
+		SignatureIndex: 0xFFFFFFFF,
+	})
 }
 
 // Hash returns the hash of the transaction.  This is equivalent to
@@ -143,8 +156,8 @@ func NewTx(msgTx *wire.MsgTx) *Tx {
 	return &Tx{
 		msgTx:   msgTx,
 		txIndex: TxIndexUnknown,
-		Spends: make([]token.Token, 0),
-		HasOuts: false,
+//		Spends: make([]token.Token, 0),
+//		HasOuts: false,
 	}
 }
 

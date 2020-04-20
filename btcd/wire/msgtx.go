@@ -275,90 +275,111 @@ func NewTxOut(tokenType	uint64, value token.TokenValue, rights *chainhash.Hash, 
 	return &t
 }
 
-type StateEntry struct{
-	act byte				// 0 - new value, 1 - update, 2 - delete
-	oldVal *chainhash.Hash
-	newVal *chainhash.Hash
-}
+type StateMap  map[string][]byte
 
-func (s *StateEntry) Dup() *StateEntry {
-	return &StateEntry {
-		act: s.act,
-		oldVal: s.oldVal,
-		newVal: s.newVal,
+func (s *StateMap) Deserialize(r io.Reader) error {
+	count, err := common.ReadVarInt(r, 0)
+	if err != nil {
+		return err
 	}
-}
+	if count == 0 {
+		return nil
+	}
 
-func (s *StateEntry) Reverse() {
-	s.act = 2 - s.act
-	s.newVal = s.oldVal
-	s.oldVal = nil
-}
-
-func (v *StateEntry) Merge(p *StateEntry) {
-	switch v.act {
-	case 0:
-		switch p.act {
-		case 0, 1:
-			v.newVal = p.newVal
+	for j := uint64(0); j < count; j++ {
+		nlen, err := common.ReadVarInt(r, 0)
+		if err != nil {
+			return err
 		}
-	case 1:
-		switch p.act {
-		case 0, 1:
-			v.newVal = p.newVal
-		case 2:
-			v.act = 2
-			v.newVal = nil
+		name := make([]byte, nlen)
+		if _, err = r.Read(name); err != nil {
+			return err
 		}
-	case 2:
-		switch p.act {
-		case 0, 1:
-			v.act = 1
-			v.newVal = p.newVal
+		if nlen, err = common.ReadVarInt(r, 0); err != nil {
+			return err
+		}
+		if nlen == 0 {
+			(*s)[string(name)] = nil
+		} else {
+			val := make([]byte, nlen)
+			if _, err = r.Read(val); err != nil {
+				return err
+			}
+			(*s)[string(name)] = val
 		}
 	}
+	return nil
+}
+
+func (s *StateMap) Serialize(w io.Writer) error {
+	err := common.WriteVarInt(w, 0, uint64(len(*s)))
+	if err != nil {
+		return err
+	}
+
+	for name, value := range *s {
+		err := common.WriteVarInt(w, 0, uint64(len(name)))
+		if err != nil {
+			return err
+		}
+		if _, err = w.Write([]byte(name)); err != nil {
+			return err
+		}
+		err = common.WriteVarInt(w, 0, uint64(len(value)))
+		if err != nil {
+			return err
+		}
+		if len(value) == 0 {
+			continue
+		}
+		if _, err = w.Write(value); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type StateChange struct {
-	// change of states
-	states map[chainhash.Hash]*StateEntry
+	// for tracking state change, here we keep only the original states
+	// if []byte is nil, then it is a new value
+	oldmeta StateMap
+	states StateMap
 }
 
 func (s *StateChange) Dup() *StateChange {
 	t := StateChange {
-		states: make(map[chainhash.Hash]*StateEntry),
+		oldmeta: make(map[string][]byte),
+		states: make(map[string][]byte),
 	}
 	for h, v := range s.states {
-		t.states[h] = v.Dup()
+		if len(v) != 0 {
+			b := make([]byte, len(v))
+			copy(b, v)
+			t.states[h] = b
+		} else {
+			t.states[h] = nil
+		}
+	}
+	for h, v := range s.oldmeta {
+		if len(v) != 0 {
+			b := make([]byte, len(v))
+			copy(b, v)
+			t.oldmeta[h] = b
+		} else {
+			t.oldmeta[h] = nil
+		}
 	}
 	return &t
 }
 
 // example: in disconnectTransactions, from last Tx to the first, do
-// s.Reverse().Merge(t1.Reverse()).Merge(t2.Reverse()).Merge(t3.Reverse())...
-func (s *StateChange) Reverse() *StateChange {
-	for _,v := range s.states {
-		v.Reverse()
-	}
-	return s
-}
-
-// example: in connectTransactions, from first Tx to the last, do
-// s.Merge(t1).Merge(t2).Merge(t3)...
+// s.Reverse().Merge().Merge().Merge()...
 func (s *StateChange) Merge(t * StateChange) *StateChange {
-	for n,v := range s.states {
-		if p,ok := t.states[n]; ok {
-			if v.act == 0 && p.act == 2 {
-				delete(s.states, n)
-			} else {
-				v.Merge(p)
-			}
-		}
-	}
 	for n,v := range t.states {
-		if _,ok := s.states[n]; !ok {
-			s.states[n] = v
-		}
+		s.states[n] = v
+	}
+	for n,v := range t.oldmeta {
+		s.oldmeta[n] = v
 	}
 	return s
 }
@@ -378,59 +399,38 @@ type MsgTx struct {
 	StateChgs map[[20]byte]*StateChange
 }
 
-func (msg *MsgTx) DeleteState(contract [20]byte, name chainhash.Hash) error {
-	if s,ok := msg.StateChgs[contract]; ok {
-		if t, ok := s.states[name]; ok {
-			switch t.act {
-			case 0:
-				delete(s.states, name)
-			case 1:
-				t.newVal = nil
-				t.act = 2
-			}
-			return nil
+func (msg *MsgTx) MergeTxStates(t *MsgTx) {
+	for c, s := range t.StateChgs {
+		if p, ok := msg.StateChgs[c]; !ok {
+			msg.StateChgs[c] = s
+		} else {
+			p.Merge(s)
 		}
 	}
-	return fmt.Errorf("Need to load state and then delete it")
 }
-func (msg *MsgTx) LoadState(contract [20]byte, name chainhash.Hash, value chainhash.Hash) {
+func (msg *MsgTx) SetState(contract [20]byte, name string, value []byte) {
 	var s * StateChange
 	var ok bool
 	if s,ok = msg.StateChgs[contract]; !ok {
 		s = &StateChange{
-			states:make(map[chainhash.Hash]*StateEntry),
+			oldmeta: make(map[string][]byte),
+			states: make(map[string][]byte),
 		}
 		msg.StateChgs[contract] = s
 	}
-	if _, ok := s.states[name]; ok {
-		return
-	} else {
-		s.states[name] = &StateEntry{act:1, oldVal: &value}
-	}
+	s.states[name] = value
 }
-func (msg *MsgTx) SetState(contract [20]byte, name chainhash.Hash, value chainhash.Hash) {
+func (msg *MsgTx) SetMeta(contract [20]byte, name string, value []byte) {
 	var s * StateChange
 	var ok bool
 	if s,ok = msg.StateChgs[contract]; !ok {
 		s = &StateChange{
-			states:make(map[chainhash.Hash]*StateEntry),
+			oldmeta: make(map[string][]byte),
+			states: make(map[string][]byte),
 		}
 		msg.StateChgs[contract] = s
 	}
-	if t, ok := s.states[name]; ok {
-		switch t.act {
-		case 0, 1:
-			t.newVal = &value
-		case 2:
-			t.newVal = &value
-			t.act = 1
-		}
-	} else {
-		s.states[name] = &StateEntry{
-			act: 0,
-			newVal: &value,
-		}
-	}
+	s.oldmeta[name] = value
 }
 
 // AddTxIn adds a transaction input to the message.

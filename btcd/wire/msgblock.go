@@ -131,6 +131,8 @@ func (msg *MsgBlock) Deserialize(r io.Reader) error {
 	}
 
 	for _, tx := range msg.Transactions {
+		tx.StateChgs = make(map[[20]byte]*StateChange)
+
 		count, err := common.ReadVarInt(r, 0)
 		if err != nil {
 			return err
@@ -139,42 +141,17 @@ func (msg *MsgBlock) Deserialize(r io.Reader) error {
 			continue
 		}
 
-		tx.StateChgs = make(map[[20]byte]*StateChange)
-
 		for i := uint64(0); i < count; i++ {
 			var contract [20]byte
 			if _, err = r.Read(contract[:]); err != nil {
 				return err
 			}
-			scount, err := common.ReadVarInt(r, 0)
-			if err != nil {
+			var sts StateChange
+			if err = sts.oldmeta.Deserialize(r); err != nil {
 				return err
 			}
-			var sts StateChange
-			for j := uint64(0); j < scount; j++ {
-				var name chainhash.Hash
-				var st StateEntry
-				if _, err = r.Read(name[:]); err != nil {
-					return err
-				}
-				if err = common.ReadElement(r, &st.act); err != nil {
-					return err
-				}
-				if st.act != 0 {
-					var h chainhash.Hash
-					if _, err = r.Read(h[:]); err != nil {
-						return err
-					}
-					st.oldVal = &h
-				}
-				if st.act != 2 {
-					var h chainhash.Hash
-					if _, err = r.Read(h[:]); err != nil {
-						return err
-					}
-					st.newVal = &h
-				}
-				sts.states[name] = &st
+			if err = sts.states.Deserialize(r); err != nil {
+				return err
 			}
 			tx.StateChgs[contract] = &sts
 		}
@@ -300,42 +277,21 @@ func (msg *MsgBlock) Serialize(w io.Writer) error {
 		if err = common.WriteVarInt(w, 0, uint64(n)); err != nil {
 			return err
 		}
+
 		for c, s := range tx.StateChgs {
 			if _, err = w.Write(c[:]); err != nil {
 				return err
 			}
-			if err = common.WriteVarInt(w, 0, uint64(len(s.states))); err != nil {
-				return err
-			}
-			for name, t := range s.states {
-				if _, err = w.Write(name[:]); err != nil {
+			if err = s.oldmeta.Serialize(w); err != nil {
 					return err
 				}
-				if err = common.WriteElement(w, t.act); err != nil {
+			if err = s.states.Serialize(w); err != nil {
 					return err
 				}
-				switch t.act {
-				case 0:
-					t.oldVal = nil
-				case 2:
-					t.newVal = nil
-				}
-				if t.oldVal != nil {
-					if _, err = w.Write(t.oldVal[:]); err != nil {
-						return err
-					}
-				}
-				if t.newVal != nil {
-					if _, err = w.Write(t.newVal[:]); err != nil {
-						return err
-					}
-				}
-			}
 		}
 	}
 
-	return err
-	//	return msg.BtcEncode(w, 0, SignatureEncoding)
+	return nil
 }
 
 // SerializeNoWitness encodes a block to w using an identical format to

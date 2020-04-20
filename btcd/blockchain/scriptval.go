@@ -11,7 +11,7 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/viewpoint"
-	"github.com/btcsuite/omega/ovm"
+	"github.com/btcsuite/omega/Vm"
 )
 
 // txValidateItem holds a transaction along with which input to validate.
@@ -71,7 +71,7 @@ out:
 			sigScript := txVI.tx.MsgTx().SignatureScripts[txIn.SignatureIndex]
 //			witness := txIn.Witness
 			pkScript := utxo.PkScript()
-			vm := ovm.NewOVM(ovm.Context{}, Config{}, ovm.Config{}, v.view.Db)
+			vm := Vm.NewOVM(Vm.Context{}, Config{}, Vm.Config{}, v.view.Db)
 /*
 			inputAmount := utxo.Amount
 			vm, err := NewEngine(pkScript, txVI.tx.MsgTx(),
