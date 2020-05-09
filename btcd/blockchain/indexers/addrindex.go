@@ -7,7 +7,7 @@ package indexers
 import (
 	"errors"
 	"fmt"
-	"github.com/btcsuite/omega/token"
+//	"github.com/btcsuite/omega/token"
 	"sync"
 
 //	"github.com/btcsuite/btcd/blockchain"

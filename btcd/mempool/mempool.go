@@ -7,7 +7,7 @@ package mempool
 import (
 	"container/list"
 	"fmt"
-	"github.com/btcsuite/omega/token"
+	//	"github.com/btcsuite/omega/token"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -20,9 +20,9 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/mining"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/viewpoint"
-	"github.com/btcsuite/btcd/wire/common"
 )
 
 const (
