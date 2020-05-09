@@ -124,7 +124,7 @@ type BlockChain struct {
 	checkpoints         []chaincfg.Checkpoint
 	checkpointsByHeight map[int32]*chaincfg.Checkpoint
 	db                  database.DB
-	chainParams         *chaincfg.Params
+	ChainParams         *chaincfg.Params
 	timeSource          chainutil.MedianTimeSource
 	indexManager        IndexManager
 
@@ -211,17 +211,14 @@ type BlockChain struct {
 	notifications     []NotificationCallback
 
 	// The virtual machine
-	Vm        * ovm.OVM
+//	Vm        * ovm.OVM
+//	SigVm     * ovm.OVM
 	Blacklist BlackList
 
 	Miner btcutil.Address
 
 	// block size calculator
 	blockSizer sizeCalculator
-}
-
-func (b *BlockChain) Ovm() * ovm.OVM {
-	return b.Vm
 }
 
 // HaveBlock returns whether or not the chain instance has the block represented
@@ -300,6 +297,9 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 	nextHeight := node.Height + 1
 
 	for txInIndex, txIn := range mTx.TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
 		if utxo == nil {
 			str := fmt.Sprintf("output %v referenced from "+
@@ -533,7 +533,7 @@ func (s * BlockChain) GetRollbackList(h int32) * list.List {
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Block,
-	view *viewpoint.ViewPointSet, stxos []viewpoint.SpentTxOut) error {
+	view *viewpoint.ViewPointSet, stxos []viewpoint.SpentTxOut, vm * ovm.OVM) error {
 
 	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize/2 + 1 {
 		return fmt.Errorf("insifficient signatures")
@@ -651,6 +651,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	// Prune fully spent entries and mark all entries in the view unmodified
 	// now that the modifications have been committed to the database.
 	view.Commit()
+	vm.Commit()
 
 	// This node is now the end of the best chain.
 	b.BestChain.SetTip(node)
@@ -681,7 +682,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 // the main (best) chain.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.Block, view *viewpoint.ViewPointSet) error {
+func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.Block, view *viewpoint.ViewPointSet, vm * ovm.OVM) error {
 	// Make sure the node being disconnected is the end of the best chain.
 	if !node.Hash.IsEqual(&b.BestChain.Tip().Hash) {
 		return AssertError("disconnectBlock must be called with the " +
@@ -810,6 +811,8 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	// Prune fully spent entries and mark all entries in the view unmodified
 	// now that the modifications have been committed to the database.
 	view.Commit()
+	vm.Rollback()
+
 	if b.Blacklist != nil {
 		b.Blacklist.Rollback(uint32(node.Height))
 	}
@@ -874,7 +877,7 @@ func (b *BlockChain) SignedBy(x * list.Element, miners [][20]byte) bool {
 func (b *BlockChain) signedBy(block * btcutil.Block, miners [][20]byte) bool {
 	for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 		k, _ := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
-		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
+		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.ChainParams)
 		// is the signer in committee?
 		signer := *pk.AddressPubKeyHash().Hash160()
 		matched := false
@@ -959,9 +962,10 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// entails loading the blocks and their associated spent txos from the
 	// database and using that information to unspend all of the spent txos
 	// and remove the utxos created by the blocks.
-	views := b.NewViewPointSet()
+	views, Vm, SigVm := b.Canvas(nil)
 //	views.db = &b.db
 	views.SetBestHash(&oldBest.Hash)
+
 	for e := detachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 		if n.Parent == nil {
@@ -1113,7 +1117,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		// In the case the block is determined to be invalid due to a
 		// rule violation, mark it as invalid and mark all of its
 		// descendants as having an invalid ancestor.
-		err = b.checkConnectBlock(n, block, views, nil)
+		err = b.checkConnectBlock(n, block, views, nil, Vm, SigVm)
 		if err != nil {
 			if _, ok := err.(RuleError); ok {
 				b.index.SetStatusFlags(n, chainutil.StatusValidateFailed)
@@ -1138,7 +1142,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// view to be valid from the viewpoint of each block being connected or
 	// disconnected.
 //	views.Utxo = NewUtxoViewpoint()
-	views = b.NewViewPointSet()
+	views, Vm, SigVm = b.Canvas(nil)
 	views.SetBestHash(&b.BestChain.Tip().Hash)
 
 	// Disconnect blocks from the main chain.
@@ -1150,6 +1154,10 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 
 		block := detachBlocks[i]
+
+		Vm.BlockNumber = func() uint64 {
+			return uint64(block.Height())
+		}
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
@@ -1166,7 +1174,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 
 		// Update the database and chain state.
-		err = b.disconnectBlock(n, block, views)
+		err = b.disconnectBlock(n, block, views, Vm)
 		if err != nil {
 			return err
 		}
@@ -1178,7 +1186,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	}
 
 	// Connect the new best chain blocks.
-
 	e := attachNodes.Front()
 	// check if it is within holding period: a miner can not do any transaction
 	// within MinerHoldingPeriod blocks since he becomes a member
@@ -1200,11 +1207,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 		block := attachBlocks[i]
 
-//		err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, BFNone)
-//		if err != nil || mkorphan {
-//			return fmt.Errorf("attach block failed to pass POW check")
-//		}
-
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
 		err := views.FetchInputUtxos(b.db, block)
@@ -1222,8 +1224,27 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
+		Vm.SetCoinBaseOp(
+			func(txo wire.TxOut) wire.OutPoint {
+				tx, _ := block.Tx(0)
+				msg := tx.MsgTx()
+				if !tx.HasOuts {
+					// this servers as a separater. only TokenType is serialized
+					to := wire.TxOut{}
+					to.Token = token.Token{TokenType: ^uint64(0)}
+					msg.AddTxOut(&to)
+					tx.HasOuts = true
+				}
+				msg.AddTxOut(&txo)
+				op := wire.OutPoint{*tx.Hash(), uint32(len(msg.TxOut) - 1)}
+				return op
+			})
+		Vm.BlockNumber = func() uint64 {
+			return uint64(block.Height())
+		}
+
 		// Update the database and chain state.
-		err = b.connectBlock(n, block, views, stxos)
+		err = b.connectBlock(n, block, views, stxos, Vm)
 		if err != nil {
 			return err
 		}
@@ -1283,6 +1304,40 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags
 	return nil
 }
 
+func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm.OVM, *ovm.OVM) {
+	views := b.NewViewPointSet()
+
+	// initialize OVM
+	Vm := ovm.NewOVM(b.ChainParams)
+	SigVm := ovm.NewSigVM(b.ChainParams)
+	Vm.SetViewPoint(views)
+	SigVm.SetViewPoint(views)
+
+	if block != nil {
+		Vm.BlockNumber = func() uint64 {
+			return uint64(block.Height())
+		}
+		Vm.SetCoinBaseOp(
+			func(txo wire.TxOut) wire.OutPoint {
+				tx, _ := block.Tx(0)
+				msg := tx.MsgTx()
+				if !tx.HasOuts {
+					// this servers as a separater. only TokenType is serialized
+					to := wire.TxOut{}
+					to.Token = token.Token{TokenType: ^uint64(0)}
+					msg.AddTxOut(&to)
+					tx.HasOuts = true
+				}
+				msg.AddTxOut(&txo)
+				op := wire.OutPoint{*tx.Hash(), uint32(len(msg.TxOut) - 1)}
+				return op
+			})
+	}
+
+	return views, Vm, SigVm
+}
+
+
 // connectBestChain handles connecting the passed block to the chain while
 // respecting proper chain selection according to the chain with the most
 // proof of work.  In the typical case, the new block simply extends the main
@@ -1337,13 +1392,13 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		// Perform several checks to verify the block can be connected
 		// to the main chain without violating any rules and without
 		// actually connecting the block.
-		views := b.NewViewPointSet()
+		views, Vm, SigVm := b.Canvas(block)
 //		views.db = &b.db
 //		view := NewUtxoViewpoint()
 		views.Utxo.SetBestHash(parentHash)
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
 		if !fastAdd {
-			err := b.checkConnectBlock(node, block, views, &stxos)
+			err := b.checkConnectBlock(node, block, views, &stxos, Vm, SigVm)
 			if err == nil {
 				b.index.SetStatusFlags(node, chainutil.StatusValid)
 			} else if _, ok := err.(RuleError); ok {
@@ -1375,7 +1430,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		}
 
 		// Connect the block to the main chain.
-		err := b.connectBlock(node, block, views, stxos)
+		err := b.connectBlock(node, block, views, stxos, Vm)
 		if err != nil {
 			// If we got hit with a rule error, then we'll mark
 			// that status of the block as invalid and flush the
@@ -1471,7 +1526,7 @@ func (b *BlockChain) isCurrent() bool {
 		return false
 	}
 
-	if b.chainParams.Name == "mainnet" {
+	if b.ChainParams.Name == "mainnet" {
 		// Not current if the latest best block has a timestamp before 24 hours
 		// ago.
 		//
@@ -2042,7 +2097,7 @@ func New(config *Config) (*BlockChain, error) {
 		checkpoints:         config.Checkpoints,
 		checkpointsByHeight: checkpointsByHeight,
 		db:                  config.DB,
-		chainParams:         params,
+		ChainParams:         params,
 		timeSource:          config.TimeSource,
 		indexManager:        config.IndexManager,
 		minRetargetTimespan: targetTimespan / adjustmentFactor,

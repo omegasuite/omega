@@ -49,6 +49,16 @@ type BorderEntry struct {
 	PackedFlags txoFlags
 }
 
+func (b *BorderEntry) Enclose(d *BorderEntry) bool {
+	return b.Bound.west <= d.Bound.west && b.Bound.south <= d.Bound.south &&
+		b.Bound.east >= d.Bound.east && b.Bound.north >= d.Bound.north
+}
+
+func (b *BorderEntry) Joint(d *BorderEntry) bool {
+	return !(b.Bound.west >= d.Bound.east || b.Bound.south >= d.Bound.north ||
+		d.Bound.west >= b.Bound.east || d.Bound.south >= b.Bound.north)
+}
+
 func (b *BorderEntry) Lat(view * ViewPointSet, rev bool) int32 {
 	var p * VtxEntry
 	if rev {
@@ -259,7 +269,15 @@ func (fe * BorderEntry) mergeBound(view * ViewPointSet, b * BoundingBox) (* Boun
 	return box, c
 }
 
-// addBorder adds the specified vertex to the view.
+func (fe * BorderEntry) HasChild(h chainhash.Hash) bool {
+	for _, hs := range fe.Children {
+		if hs.IsEqual(&h) {
+			return true
+		}
+	}
+	return false
+}
+// addBorder adds the specified BorderDef to the view.
 func (view * ViewPointSet) addBorder(b *token.BorderDef) bool {
 	h := b.Hash()
 	entry := view.Border.LookupEntry(h)
@@ -288,6 +306,11 @@ func (view * ViewPointSet) addBorder(b *token.BorderDef) bool {
 			}
 			var c bool
 			box,c = fe.mergeBound(view, box)
+
+			if !fe.HasChild(h) {
+				fe.Children = append(fe.Children, h)
+				fe.PackedFlags = TfModified
+			}
 
 			if !c {
 				return true
@@ -481,7 +504,6 @@ func NewBorderViewpoint() * BorderViewpoint {
 		entries: make(map[chainhash.Hash]*BorderEntry),
 	}
 }
-
 
 // dbPutVtxView uses an existing database transaction to update the vertex set
 // in the database based on the provided utxo view contents and state. In

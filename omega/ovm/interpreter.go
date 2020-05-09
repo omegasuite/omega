@@ -12,52 +12,31 @@ import (
 	"encoding/binary"
 )
 
-// Config are the configuration options for the Interpreter
-type Config struct {
-	// Debug enabled debugging Interpreter options
-	Debug bool
-	// Tracer is the op code logger
-//	Tracer Tracer
-	// NoRecursion disabled Interpreter call, callcode,
-	// delegate call and create.
-	NoRecursion bool
-	// NoLoop forbids backward jump.
-	NoLoop bool
-
-	// Enable recording of SHA3/keccak preimages
-	EnablePreimageRecording bool
-	// JumpTable contains the EVM instruction table. This
-	// may be left uninitialised and will be set to the default
-	// table.
-	JumpTable [256]operation
-}
-
 // Interpreter is used to run Ethereum based contracts and will utilise the
 // passed evmironment to query external sources for state information.
 // The Interpreter will run the byte code VM based on the passed
 // configuration.
 type Interpreter struct {
 	evm      *OVM
-	cfg      Config
-//	intPool  *intPool
+
+	JumpTable [256]operation
 
 	readOnly   bool   // Whether to throw on stateful modifications
 	returnData []byte // Last CALL's return data for subsequent reuse
 }
 
 // NewInterpreter returns a new instance of the Interpreter.
-func NewInterpreter(evm *OVM, cfg Config) *Interpreter {
-	// We use the STOP instruction whether to see
-	// the jump table was initialised. If it was not
-	// we'll set the default jump table.
-	if !cfg.JumpTable[STOP].valid {
-		cfg.JumpTable = omegaInstructionSet
-	}
-
+func NewInterpreter(evm *OVM) *Interpreter {
 	return &Interpreter{
 		evm:      evm,
-		cfg:      cfg,
-//		intPool:  newIntPool(),
+		JumpTable: omegaInstructionSet,
+	}
+}
+
+func NewSigInterpreter(evm *OVM) *Interpreter {
+	return &Interpreter{
+		evm:      evm,
+		JumpTable: NewSignVMInstSet(),
 	}
 }
 
@@ -89,6 +68,31 @@ func DisasmString(code []byte) string {
 	return s
 }
 
+func (in *Interpreter) Step(code *inst) ([]byte, error) {
+	stack := Newstack()
+	pc   := int(0) // program counter
+
+	contract := & Contract{
+		Code: []inst{*code},
+	}
+
+	op := code.op
+	operation := in.JumpTable[op]
+	if !operation.valid {
+			return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
+		}
+	if err := in.enforceRestrictions(op, operation, stack); err != nil {
+			return nil, err
+		}
+	if operation.writes {
+			return nil, fmt.Errorf("State modification is not allowed")
+		}
+
+	err := operation.execute(&pc, nil, contract, stack)
+	
+	return stack.data[0].space, err
+}
+
 // Run loops and evaluates the contract's code with the given input data and returns
 // the return byte-slice and an error if one occurred.
 //
@@ -111,13 +115,13 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 
 	var (
 		op    OpCode        // current opcode
-		stack = newstack()  // local stack
+		stack = Newstack()  // local stack
 		// For optimisation reason we're using uint64 as the program counter.
 		// It's theoretically possible to go above 2^64. The YP defines the PC
 		// to be uint256. Practically much less so feasible.
 		pc   = int(0) // program counter
 	)
-	contract.libs[[20]byte{}] = lib {
+	contract.libs[Address([20]byte{})] = lib {
 		end: int32(len(contract.Code)),
 	}
 	contract.Input = input
@@ -135,7 +139,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
-		operation := in.cfg.JumpTable[op]
+		operation := in.JumpTable[op]
 		if !operation.valid {
 			return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
 		}
@@ -153,30 +157,21 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		fmt.Printf("%s(%c) %s\n", op.String(), op, string(contract.GetBytes(pc)))
 
 		err = operation.execute(&pc, in.evm, contract, stack)
-		ln := int32(0)
-		for i := 0; i < 4; i++ {
-			ln |= int32(stack.data[0].space[i]) << (i * 8)
-		}
-		var res []byte
-
-		if ln > 0 {
-			res = make([]byte, ln)
-			copy(res, stack.data[0].space[4:ln + 4])
-		}
+		ln := binary.LittleEndian.Uint32(stack.data[0].space)
 
 		// if the operation clears the return data (e.g. it has returning data)
 		// set the last return to the result of the operation.
 		if operation.returns {
-			in.returnData = res
+			in.returnData = stack.data[0].space[4:ln + 4]
 		}
 
 		switch {
 		case err != nil:
 			return nil, err
 		case operation.reverts:
-			return res, errExecutionReverted
+			return stack.data[0].space[4:ln + 4], errExecutionReverted
 		case operation.halts:
-			return res, nil
+			return stack.data[0].space[4:ln + 4], nil
 		case !operation.jumps:
 			pc++
 		}
@@ -184,39 +179,28 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 	return nil, err
 }
 
-func (in *Interpreter) SigVerify(code tbv, rep chan bool) {
-	rep <- in.verifySig(code.txinidx, code.pkScript, code.sigScript)
-}
-
 func (in *Interpreter) VerifySig(txinidx int, pkScript, sigScript []byte) bool {
 	return in.verifySig(txinidx, pkScript, sigScript)
 }
 
 func (in *Interpreter) verifySig(txinidx int, pkScript, sigScript []byte) bool {
-	if pkScript[0] < 0x41 || pkScript[0] > 0x44 {	// check validation function range
+	if pkScript[0] < PAYFUNC_MIN || pkScript[0] > PAYFUNC_MAX {	// check validation function range
 		return false
 	}
 
 	contract := Contract {
-		Code: ByteCodeParser(sigScript),
+		Code: []inst{inst{OpCode(sigScript[0]), sigScript[1:]}},
 		CodeHash: chainhash.Hash{},
 		self: nil,
-//		jumpdests: make(destinations),
 		Args:make([]byte, 4),
 	}
 
 	binary.LittleEndian.PutUint32(contract.Args[:], uint32(txinidx))
-
-//	ret, err := in.Run(&contract, nil)
-//	if err != nil {
-//		return false
-//	}
-
+	
 //	ret = append(pkScript[4:], ret[:]...)
 	contract.CodeAddr = []byte{ pkScript[0], 0, 0, 0 }
-//	contract.jumpdests = make(destinations)
 
-	ret, err := run(in.evm, &contract, nil)	// ret)
+	ret, err := run(in.evm, &contract, pkScript[4:])	// ret)
 
 	if err != nil || len(ret) != 1 || ret[0] != 1{
 		return false

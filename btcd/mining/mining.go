@@ -304,6 +304,9 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addr btcut
 // which are not provably unspendable as available unspent transaction outputs.
 func spendTransaction(utxoView *viewpoint.ViewPointSet, tx *btcutil.Tx, height int32) error {
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		entry := utxoView.Utxo.LookupEntry(txIn.PreviousOutPoint)
 		if entry != nil {
 			entry.Spend()
@@ -502,9 +505,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress btcutil.Address) (*Bloc
 	blockTxns := make([]*btcutil.Tx, 0, len(sourceTxns))
 	blockTxns = append(blockTxns, coinbaseTx)
 
-	views := g.Chain.NewViewPointSet()
-	g.Chain.Vm.SetViewPoint(views)
-	defer func() { g.Chain.Vm = nil } ()
+	views, Vm, SigVm := g.Chain.Canvas(nil)
 
 	blockUtxos := views.Utxo	// blockchain.NewUtxoViewpoint()
 
@@ -550,8 +551,8 @@ mempoolLoop:
 		// mempool since a transaction which depends on other
 		// transactions in the mempool must come after those
 		// dependencies in the final generated block.
-		view, err := g.Chain.FetchUtxoView(tx)
-		utxos := view.Utxo
+//		view, err := g.Chain.FetchUtxoView(tx)
+		utxos := views.Utxo
 		if err != nil {
 			log.Warnf("Unable to fetch utxo view for tx %s: %v",
 				tx.Hash(), err)
@@ -563,6 +564,10 @@ mempoolLoop:
 		// ordered below.
 		prioItem := &txPrioItem{tx: tx}
 		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.IsSeparator() {
+				// never here
+				continue
+			}
 			originHash := &txIn.PreviousOutPoint.Hash
 			entry := utxos.LookupEntry(txIn.PreviousOutPoint)
 			if entry == nil || entry.IsSpent() {
@@ -630,6 +635,24 @@ mempoolLoop:
 	totalFees := int64(0)
 
 	blockMaxSize := g.Chain.GetBlockLimit(nextBlockHeight)
+
+	Vm.SetCoinBaseOp(
+		func(txo wire.TxOut) wire.OutPoint {
+			msg := coinbaseTx.MsgTx()
+			if !coinbaseTx.HasOuts {
+				// this servers as a separater. only TokenType is serialized
+				to := wire.TxOut{}
+				to.Token = token.Token{TokenType:^uint64(0)}
+				msg.AddTxOut(&to)
+				coinbaseTx.HasOuts = true
+			}
+			msg.AddTxOut(&txo)
+			op := wire.OutPoint { *coinbaseTx.Hash(), uint32(len(msg.TxOut) - 1)}
+			return op
+		})
+	Vm.BlockNumber = func() uint64 {
+		return uint64(nextBlockHeight)
+	}
 
 	// Choose which transactions make it into the block.
 	for priorityQueue.Len() > 0 {
@@ -726,7 +749,7 @@ mempoolLoop:
 			continue
 		}
 
-		err = g.Chain.Ovm().VerifySigs(tx, nextBlockHeight)
+		err = SigVm.VerifySigs(tx, nextBlockHeight)
 		if err != nil {
 			// we should roll back result of last contract execution here
 			log.Tracef("Skipping tx %s due to error in "+
@@ -737,16 +760,16 @@ mempoolLoop:
 
 		// excute contracts if necessary. note, if the execution causes any change in
 		// in transaction, a new copy of tx will be returned.
-		otx, err := g.Chain.Ovm().ExecContract(tx, 0, nextBlockHeight, g.chainParams)
+		savedCoinBase := *coinbaseTx.MsgTx().Copy()
+		newcoins := coinbaseTx.HasOuts
+		err = Vm.ExecContract(tx, nextBlockHeight, g.chainParams)
 		if err != nil {
+			coinbaseTx.HasOuts = newcoins
+			*coinbaseTx.MsgTx() = savedCoinBase
 			log.Tracef("Skipping tx %s due to error in "+
 				"checkContract: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
-		}
-
-		if otx != nil {
-			tx = otx
 		}
 
 		err = blockchain.CheckTransactionIntegrity(tx, views)
@@ -768,15 +791,6 @@ mempoolLoop:
 		}
 
 		prioItem.fee = fees
-
-//		err = blockchain.ValidateTransactionScripts(tx, blockUtxos)
-//			0, g.sigCache,			g.hashCache)
-//		if err != nil {
-//			log.Tracef("Skipping tx %s due to error in "+
-//				"ValidateTransactionScripts: %v", tx.Hash(), err)
-//			logSkippedDeps(tx, deps)
-//			continue
-//		}
 
 		// Spend the transaction inputs in the block utxo view and add
 		// an entry for it to ensure any transactions which reference
@@ -810,6 +824,8 @@ mempoolLoop:
 		}
 	}
 
+	contractExec := uint64(g.Chain.ChainParams.ContractExecLimit) - Vm.GasLimit
+
 	// Now that the actual transactions have been selected, update the
 	// block weight for the real transaction count and coinbase value with
 	// the total fees accordingly.
@@ -829,9 +845,7 @@ mempoolLoop:
 	if msg.SignatureScripts == nil || len(msg.SignatureScripts) == 0 {
 		msg.SignatureScripts = make([][]byte, 1)
 	}
-//	if msg.SignatureScripts[0] == nil {
-//		msg.SignatureScripts[0] = make([]byte, 0)
-//	}
+
 	msg.SignatureScripts[0] = (*witnessMerkleRoot)[:]
 
 	// Calculate the required difficulty for the block.  The timestamp
@@ -840,29 +854,6 @@ mempoolLoop:
 	ts := medianAdjustedTime(best, g.timeSource)
 
 	reqDifficulty := g.Chain.BestSnapshot().Bits
-/*
-	tip := g.Chain.BestChain.Tip()
-	nonce := tip.Header().Nonce
-	if nonce == -wire.MINER_RORATE_FREQ + 1 {
-		// this is the rotation block, difficulty is the rotate-in miner block's difficulty
-		p, _ := g.Chain.BlockByHeight(g.BestSnapshot().Height + nonce)
-		h := - p.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ
-		m,_ := g.Chain.Miners.BlockByHeight(h + 1)
-		reqDifficulty = m.MsgBlock().Bits
-	}
-
-- difficulty target will be set differently for each case. for POW mining, it is simply current
-best state Bits
-- for committee mining, it does not use difficulty target. however, best state Bits changes with each
-rotation
-- for miner mining, it is calculated for each block the traditional way
-*/
-
-/*	reqDifficulty, err := g.Chain.CalcNextRequiredDifficulty(ts)
-	if err != nil {
-		return nil, err
-	}
-*/
 
 	// Calculate the next expected block version based on the state of the
 	// rule change deployments.
@@ -879,7 +870,9 @@ rotation
 		PrevBlock:  best.Hash,
 		MerkleRoot: *merkles[len(merkles)-1],
 		Timestamp:  ts,
+		ContractExec: contractExec,
 	}
+
 	for _, tx := range blockTxns {
 		if err := msgBlock.AddTransaction(tx.MsgTx()); err != nil {
 			return nil, err

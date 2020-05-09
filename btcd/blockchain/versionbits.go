@@ -83,7 +83,7 @@ func (c bitConditionChecker) EndTime() uint64 {
 //
 // This is part of the thresholdConditionChecker interface implementation.
 func (c bitConditionChecker) RuleChangeActivationThreshold() uint32 {
-	return c.chain.chainParams.RuleChangeActivationThreshold
+	return c.chain.ChainParams.RuleChangeActivationThreshold
 }
 
 // MinerConfirmationWindow is the number of blocks in each threshold state
@@ -94,7 +94,7 @@ func (c bitConditionChecker) RuleChangeActivationThreshold() uint32 {
 //
 // This is part of the thresholdConditionChecker interface implementation.
 func (c bitConditionChecker) MinerConfirmationWindow() uint32 {
-	return c.chain.chainParams.MinerConfirmationWindow
+	return c.chain.ChainParams.MinerConfirmationWindow
 }
 
 // Condition returns true when the specific bit associated with the checker is
@@ -164,7 +164,7 @@ func (c deploymentChecker) EndTime() uint64 {
 //
 // This is part of the thresholdConditionChecker interface implementation.
 func (c deploymentChecker) RuleChangeActivationThreshold() uint32 {
-	return c.chain.chainParams.RuleChangeActivationThreshold
+	return c.chain.ChainParams.RuleChangeActivationThreshold
 }
 
 // MinerConfirmationWindow is the number of blocks in each threshold state
@@ -175,7 +175,7 @@ func (c deploymentChecker) RuleChangeActivationThreshold() uint32 {
 //
 // This is part of the thresholdConditionChecker interface implementation.
 func (c deploymentChecker) MinerConfirmationWindow() uint32 {
-	return c.chain.chainParams.MinerConfirmationWindow
+	return c.chain.ChainParams.MinerConfirmationWindow
 }
 
 // Condition returns true when the specific bit defined by the deployment
@@ -203,8 +203,8 @@ func (b *BlockChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (int32,
 	// that is either in the process of being voted on, or locked in for the
 	// activation at the next threshold window change.
 	expectedVersion := uint32(vbTopBits)
-	for id := 0; id < len(b.chainParams.Deployments); id++ {
-		deployment := &b.chainParams.Deployments[id]
+	for id := 0; id < len(b.ChainParams.Deployments); id++ {
+		deployment := &b.ChainParams.Deployments[id]
 		cache := &b.deploymentCaches[id]
 		checker := deploymentChecker{deployment: deployment, chain: b}
 		state, err := b.thresholdState(prevNode, checker, cache)

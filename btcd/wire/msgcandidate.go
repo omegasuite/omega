@@ -6,6 +6,7 @@ package wire
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire/common"
@@ -127,6 +128,9 @@ func (msg * MsgCandidate) Sender() []byte {
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to
 // the Message interface. See MsgCFCheckpt for details.
 func NewMsgCandidate(blk int32, f [20]byte, m chainhash.Hash) *MsgCandidate {
+
+	fmt.Printf("Make MsgCandidate ar %d for %x = %x", blk, f, m)
+
 	return &MsgCandidate{
 		Height: blk,
 		F:      f,

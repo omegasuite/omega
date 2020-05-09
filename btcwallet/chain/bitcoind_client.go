@@ -1265,6 +1265,9 @@ func (c *BitcoindClient) filterTx(tx *wire.MsgTx,
 	// an existing outpoint or a pkScript encoded as an address in our watch
 	// list.
 	for _, txIn := range tx.TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		// If it matches an outpoint in our watch list, we can exit our
 		// loop early.
 		if _, ok := c.watchedOutPoints[txIn.PreviousOutPoint]; ok {

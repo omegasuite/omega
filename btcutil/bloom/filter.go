@@ -9,12 +9,13 @@ import (
 	"math"
 	"sync"
 
+	"github.com/btcsuite/btcd/blockchain/indexers"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/blockchain/indexers"
-	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcd/wire/common"
+	"github.com/btcsuite/btcutil"
+	"github.com/btcsuite/omega/ovm"
 )
 
 // ln2Squared is simply the square of the natural log of 2.
@@ -306,6 +307,9 @@ func (bf *Filter) matchTxAndUpdate(tx *btcutil.Tx) bool {
 	// from the client and avoids some potential races that could otherwise
 	// occur.
 	for i, txOut := range tx.MsgTx().TxOut {
+		if txOut.IsSeparator() {
+			continue
+		}
 		pushedData := pushedAddreses(txOut.PkScript)
 
 		for _, data := range pushedData {
@@ -330,20 +334,23 @@ func (bf *Filter) matchTxAndUpdate(tx *btcutil.Tx) bool {
 	// Check if the filter matches any outpoints this transaction spends or
 	// any any data elements in the signature scripts of any of the inputs.
 	for _, txin := range tx.MsgTx().TxIn {
+		if txin.IsSeparator() {
+			continue
+		}
 		if bf.matchesOutPoint(&txin.PreviousOutPoint) {
 			return true
 		}
-/*
-		pushedData, err := txsparser.PushedData(txin.SignatureScript)
-		if err != nil {
-			continue
-		}
-		for _, data := range pushedData {
-			if bf.matches(data) {
-				return true
+	}
+
+	if !tx.IsCoinBase() {
+		for _, s := range tx.MsgTx().SignatureScripts {
+			pushedData := ovm.PushedData(s)
+			for _, data := range pushedData {
+				if bf.matches(data) {
+					return true
+				}
 			}
 		}
-*/
 	}
 
 	return false

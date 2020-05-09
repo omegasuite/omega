@@ -96,7 +96,7 @@ func NewMerkleBlock(block *btcutil.Block, filter *Filter) (*wire.MsgMerkleBlock,
 		} else {
 			mBlock.matchedBits = append(mBlock.matchedBits, 0x00)
 		}
-		mBlock.allHashes = append(mBlock.allHashes, tx.Hash())
+		mBlock.allHashes = append(mBlock.allHashes, tx.FullHash())
 	}
 
 	// Calculate the number of merkle branches (height) in the tree.

@@ -211,6 +211,9 @@ func AddAllInputScripts(tx *wire.MsgTx, prevPkScripts [][]byte, inputValues []bt
 	}
 
 	for i := range inputs {
+		if inputs[i].IsSeparator() {
+			continue
+		}
 		pkScript := prevPkScripts[i]
 
 		switch {

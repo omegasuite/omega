@@ -122,7 +122,7 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 			refd := false
 			h := v.Hash()
 			for _,to := range msgTx.TxOut {
-				if to.TokenType == 0xFFFFFFFFFFFFFFFF || !to.HasRight() {
+				if to.IsSeparator() || !to.HasRight() {
 					continue
 				}
 				if to.Rights.IsEqual(&h) {
@@ -290,96 +290,42 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 			}
 
 			for _, txIn := range tx.MsgTx().TxIn {
+				if txIn.IsSeparator() {
+					continue
+				}
 				utxo := views.Utxo.LookupEntry(txIn.PreviousOutPoint)
 				if utxo.TokenType != 3 {
 					continue
 				}
 				h := &utxo.Amount.(*token.HashToken).Hash
-				sum += int32(appeared(h, as, views))
-/*
-				p,_ := views.Polygon.FetchEntry(views.Db, h)
-				for _, loop := range p.Loops {
-					for _, bd := range loop {
-						nbd := chainhash.Hash{}
-						copy(nbd[:], bd[:])
-						nbd[0] &= 0xFE
-						if _, ok := as[nbd]; ok {
-							sum--
-						}
-					}
-				}
-*/
+				sum -= appeared(h, as, views)
+
 				if sum != 0 {
 					return ruleError(1, "Illegal border definition.")
 				}
 				// everyone affected by modification of this border has approved by appearing in input
 			}
-
-/*
-		// or union of the right sets of the polygons on both sides have the right set as the root polygon (wrong)
-		//
-			for _,r := range pend {
-				rights := make([]map[chainhash.Hash]struct{}, 2)
-				for _, txIn := range tx.MsgTx().TxIn {
-					utxo := views.Utxo.LookupEntry(txIn.PreviousOutPoint)
-					if utxo.TokenType != 3 {
-						continue
-					}
-					h := &utxo.Amount.(*token.HashToken).Hash
-					p,_ := views.Polygon.FetchEntry(views.Db, h)
-					if dir := containEdge(p, views, r); dir != 2 {
-						for _, rt := range viewpoint.SetOfRights(views, utxo.Rights) {
-							rights[dir][rt.ToToken().Hash()] = struct{}{}
-						}
-					}
-				}
-				mg := true
-				for mg {
-					mg = false
-					for d := 0; d < 2; d++ {
-						for rt, _ := range rights[d] {
-							rv := views.Rights.LookupEntry(rt)
-							s := rv.(*viewpoint.RightEntry).Sibling()
-							if _, ok := rights[d][s]; ok {
-								delete(rights[d], s)
-								delete(rights[d], rt)
-								rights[d][rv.(*viewpoint.RightEntry).Father] = struct{}{}
-								mg = true
-							}
-						}
-					}
-				}
-				if len(rights[0]) != 1 || len(rights[1]) != 1  {
-					return ruleError(1, "Illegal border definition.")
-				}
-				for d := 0; d < 2; d++ {
-					for rt, _ := range rights[d] {
-						if !viewpoint.InSet(views, rt, chainParams.GenesisBlock.Height[1].TxOut[0].Rights) {
-							return ruleError(1, "Illegal border definition.")
-						}
-					}
-				}
-			}
-*/
 		}
 	}
 
 	return nil
 }
 
-func appeared(p * chainhash.Hash, as map[chainhash.Hash]struct{}, views * viewpoint.ViewPointSet) int {
-	sum := 0
+func appeared(p * chainhash.Hash, as map[chainhash.Hash]struct{}, views * viewpoint.ViewPointSet) int32 {
+	sum := int32(0)
 	plg,_ := views.Polygon.FetchEntry(views.Db, p)
 	for _, loop := range plg.Loops {
 		if len(loop) == 1 {
+			// it is a polygon
 			sum += appeared(&loop[0], as, views)
+			continue
 		}
 		for _, bd := range loop {
 			nbd := chainhash.Hash{}
 			copy(nbd[:], bd[:])
 			nbd[0] &= 0xFE
 			if _, ok := as[nbd]; ok {
-				sum--
+				sum++
 			}
 		}
 	}

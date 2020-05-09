@@ -31,19 +31,32 @@ type Stack struct {
 
 var outofmemory = fmt.Errorf("Out of memory")
 
-func (s *Stack) malloc(n int) pointer {
+func (s *Stack) malloc(n int) (pointer, int) {
 	p := pointer(uint64(len(s.data[0].space)))
+	if n == 0 {
+		return p, 0
+	}
 	m := (n + 63) &^ 63
 	s.data[0].space = append(s.data[0].space, make([]byte, m)...)
-	return p
+	return p, m
 }
 
-func (s *Stack) alloc(n int) pointer {
+func (s *Stack) alloc(n int) (pointer, int) {
 	top := len(s.data) - 1
 	p := pointer((uint64(top) << 32) | uint64(len(s.data[top].space)))
+	if n == 0 {
+		return p, 0
+	}
 	m := (n + 63) &^ 63
 	s.data[top].space = append(s.data[top].space, make([]byte, m)...)
-	return p
+	return p, m
+}
+
+func (s *Stack) shrink(n int) {
+	if n == 0 {
+		return
+	}
+	s.data[0].space = s.data[0].space[:len(s.data[0].space) - n]
 }
 
 func (s *Stack) toPointer(p * pointer) (pointer, error) {
@@ -185,10 +198,10 @@ func (s *Stack) saveHash(p * pointer, h chainhash.Hash) error {
 	return outofmemory
 }
 
-func newstack() *Stack {
+func Newstack() *Stack {
 	s := &Stack{data: make([]*frame, 1)}
 	s.data[0] = newFrame()
-	s.malloc(4)
+	s.data[0].space = make([]byte, 4, 1024)
 	return s
 }
 

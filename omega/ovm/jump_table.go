@@ -22,8 +22,7 @@ var (
 	omegaInstructionSet = NewOmegaInstructionSet()
 )
 
-// NewOmegaInstructionSet returns the frontier, homestead
-// byzantium, contantinople and Omega instructions.
+// NewOmegaInstructionSet returns the Omega instructions.
 func NewOmegaInstructionSet() [256]operation {
 	// instructions that can be executed during the byzantium phase.
 	return [256]operation{
@@ -61,10 +60,6 @@ func NewOmegaInstructionSet() [256]operation {
 		},
 		SIGCHECK: operation{
 			execute:       opSigCheck,
-			valid:         true,
-		},
-		SIGNTEXT: operation{
-			execute:       opAddSignText,
 			valid:         true,
 		},
 		IF: operation{
@@ -152,10 +147,12 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opGetDefinition,
 			valid:         true,
 		},
+/*
 		GETCOIN: operation{
 			execute:       opGetCoin,
 			valid:         true,
 		},
+ */
 		GETUTXO: operation{
 			execute:       opGetUtxo,
 			valid:         true,
@@ -189,6 +186,27 @@ func NewOmegaInstructionSet() [256]operation {
 		},
 		META: {
 			execute:       opMeta,
+			valid:         true,
+		},
+	}
+}
+
+// NewSignVMInstSet returns the signature VM instructions.
+func NewSignVMInstSet() [256]operation {
+	// instructions that can be executed during the byzantium phase.
+	return [256]operation{
+		SIGNTEXT: operation{
+			execute:       opAddSignText,
+			valid:         true,
+		},
+		PUSH: operation{
+			execute:       opPush,
+			valid:         true,
+		},
+		STOP: {
+			execute:       opStop,
+			halts:         true,
+			returns:	   true,
 			valid:         true,
 		},
 	}

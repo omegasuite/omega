@@ -7,6 +7,7 @@ package mempool
 import (
 	"container/list"
 	"fmt"
+	"github.com/btcsuite/omega/token"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -200,6 +201,9 @@ func (mp *TxPool) removeOrphan(tx *btcutil.Tx, removeRedeemers bool) {
 
 	// Remove the reference from the previous orphan index.
 	for _, txIn := range otx.tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		orphans, exists := mp.orphansByPrev[txIn.PreviousOutPoint]
 		if exists {
 			delete(orphans, *txHash)
@@ -216,7 +220,7 @@ func (mp *TxPool) removeOrphan(tx *btcutil.Tx, removeRedeemers bool) {
 	if removeRedeemers {
 		prevOut := wire.OutPoint{Hash: *txHash}
 		for txOutIdx, txOut := range tx.MsgTx().TxOut {
-			if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			if txOut.IsSeparator() {
 				continue
 			}
 			prevOut.Index = uint32(txOutIdx)
@@ -330,6 +334,9 @@ func (mp *TxPool) addOrphan(tx *btcutil.Tx, tag Tag) {
 		expiration: time.Now().Add(orphanTTL),
 	}
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		if _, exists := mp.orphansByPrev[txIn.PreviousOutPoint]; !exists {
 			mp.orphansByPrev[txIn.PreviousOutPoint] =
 				make(map[chainhash.Hash]*btcutil.Tx)
@@ -379,6 +386,9 @@ func (mp *TxPool) maybeAddOrphan(tx *btcutil.Tx, tag Tag) error {
 func (mp *TxPool) removeOrphanDoubleSpends(tx *btcutil.Tx) {
 	msgTx := tx.MsgTx()
 	for _, txIn := range msgTx.TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		for _, orphan := range mp.orphansByPrev[txIn.PreviousOutPoint] {
 			mp.removeOrphan(orphan, true)
 		}
@@ -466,7 +476,7 @@ func (mp *TxPool) removeTransaction(tx *btcutil.Tx, removeRedeemers bool) {
 	if removeRedeemers {
 		// Remove any transactions which rely on this one.
 		for i := uint32(0); i < uint32(len(tx.MsgTx().TxOut)); i++ {
-			if tx.MsgTx().TxOut[i].TokenType == 0xFFFFFFFFFFFFFFFF {
+			if tx.MsgTx().TxOut[i].IsSeparator() {
 				continue
 			}
 			prevOut := wire.OutPoint{Hash: *txHash, Index: i}
@@ -486,6 +496,9 @@ func (mp *TxPool) removeTransaction(tx *btcutil.Tx, removeRedeemers bool) {
 
 		// Mark the referenced outpoints as unspent by the pool.
 		for _, txIn := range txDesc.Tx.MsgTx().TxIn {
+			if txIn.IsSeparator() {
+				continue
+			}
 			delete(mp.outpoints, txIn.PreviousOutPoint)
 		}
 		delete(mp.pool, *txHash)
@@ -517,6 +530,9 @@ func (mp *TxPool) RemoveDoubleSpends(tx *btcutil.Tx) {
 	// Protect concurrent access.
 	mp.mtx.Lock()
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		if txRedeemer, ok := mp.outpoints[txIn.PreviousOutPoint]; ok {
 			if !txRedeemer.Hash().IsEqual(tx.Hash()) {
 				mp.removeTransaction(txRedeemer, true)
@@ -547,6 +563,9 @@ func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.
 
 	mp.pool[*tx.Hash()] = txD
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		mp.outpoints[txIn.PreviousOutPoint] = tx
 	}
 	atomic.StoreInt64(&mp.lastUpdated, time.Now().Unix())
@@ -573,6 +592,9 @@ func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.
 // This function MUST be called with the mempool lock held (for reads).
 func (mp *TxPool) checkPoolDoubleSpend(tx *btcutil.Tx) error {
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		if txR, exists := mp.outpoints[txIn.PreviousOutPoint]; exists {
 			str := fmt.Sprintf("output %v already spent by "+
 				"transaction %v in the memory pool",
@@ -610,6 +632,9 @@ func (mp *TxPool) fetchInputUtxos(tx *btcutil.Tx) (*viewpoint.ViewPointSet, erro
 
 	// Attempt to populate any missing inputs from the transaction pool.
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		prevOut := &txIn.PreviousOutPoint
 		entry := utxoView.LookupEntry(*prevOut)
 		if entry != nil && !entry.IsSpent() {
@@ -741,7 +766,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	// not already fully spent.
 	prevOut := wire.OutPoint{Hash: *txHash}
 	for txOutIdx, txOut := range tx.MsgTx().TxOut {
-		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if txOut.IsSeparator() {
 			continue
 		}
 
@@ -762,6 +787,9 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	}
 
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		// Ensure the referenced input transaction is available.
 		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
 		if utxo == nil || utxo.IsSpent() {
@@ -993,7 +1021,7 @@ func (mp *TxPool) processOrphans(acceptedTx *btcutil.Tx) []*TxDesc {
 
 		prevOut := wire.OutPoint{Hash: *processItem.Hash()}
 		for txOutIdx, txOut := range processItem.MsgTx().TxOut {
-			if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			if txOut.IsSeparator() {
 				continue
 			}
 			// Look up all orphans that redeem the output that is
@@ -1244,6 +1272,9 @@ func (mp *TxPool) RawMempoolVerbose() map[string]*btcjson.GetRawMempoolVerboseRe
 			Depends:          make([]string, 0),
 		}
 		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.IsSeparator() {
+				continue
+			}
 			hash := &txIn.PreviousOutPoint.Hash
 			if mp.haveTransaction(hash) {
 				mpd.Depends = append(mpd.Depends,

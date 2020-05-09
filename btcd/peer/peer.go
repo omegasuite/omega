@@ -1652,13 +1652,13 @@ out:
 			if p.cfg.Listeners.OnFilterLoad != nil {
 				p.cfg.Listeners.OnFilterLoad(p, msg)
 			}
-/*
+
 		case *wire.MsgMerkleBlock:
 //			log.Infof("inHandler MsgMerkleBlock")
 			if p.cfg.Listeners.OnMerkleBlock != nil {
 				p.cfg.Listeners.OnMerkleBlock(p, msg)
 			}
-*/
+
 		case *wire.MsgReject:
 //			log.Infof("inHandler MsgReject")
 			if p.cfg.Listeners.OnReject != nil {

@@ -453,6 +453,9 @@ func main() {
 					log.Printf("LockTime: %d\n", t.LockTime)
 					log.Printf("TxIn: \n")
 					for _, in := range t.TxIn {
+						if in.IsSeparator() {
+							continue
+						}
 						log.Printf("PreviousOutPoint: %s : %d\n", in.PreviousOutPoint.Hash.String(), in.PreviousOutPoint.Index)
 						log.Printf("Sequence: %d\n", in.Sequence)
 					}
@@ -588,6 +591,9 @@ func main() {
 							log.Printf("LockTime: %d\n", t.LockTime)
 							log.Printf("TxIn: \n")
 							for _, in := range t.TxIn {
+								if in.IsSeparator() {
+									continue
+								}
 								log.Printf("PreviousOutPoint: %s : %d\n", in.PreviousOutPoint.Hash.String(), in.PreviousOutPoint.Index)
 								log.Printf("Sequence: %d\n", in.Sequence)
 							}

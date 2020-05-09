@@ -31,6 +31,9 @@ func makeGraph(set map[chainhash.Hash]*wire.MsgTx) hashGraph {
 
 	inputLoop:
 		for _, input := range tx.TxIn {
+			if input.IsSeparator() {
+				continue
+			}
 			// Transaction inputs that reference transactions not
 			// included in the set do not create any (local) graph
 			// edges.

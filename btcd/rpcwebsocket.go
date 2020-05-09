@@ -684,6 +684,9 @@ func (m *wsNotificationManager) subscribedClients(tx *btcutil.Tx,
 
 	msgTx := tx.MsgTx()
 	for _, input := range msgTx.TxIn {
+		if input.IsSeparator() {
+			continue
+		}
 		for quitChan, wsc := range clients {
 			wsc.Lock()
 			filter := wsc.filterData
@@ -700,7 +703,7 @@ func (m *wsNotificationManager) subscribedClients(tx *btcutil.Tx,
 	}
 
 	for i, output := range msgTx.TxOut {
-		if output.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if output.IsSeparator() {
 			continue
 		}
 		addrs, _, err := indexers.ExtractPkScriptAddrs(
@@ -913,7 +916,7 @@ func (m *wsNotificationManager) notifyForNewTx(clients map[chan struct{}]*wsClie
 
 	var amount int64
 	for _, txOut := range mtx.TxOut {
-		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if txOut.IsSeparator() {
 			continue
 		}
 		amount += txOut.Value.(*token.NumToken).Val
@@ -1088,7 +1091,7 @@ func (m *wsNotificationManager) notifyForTxOuts(ops map[wire.OutPoint]map[chan s
 	txHex := ""
 	wscNotified := make(map[chan struct{}]struct{})
 	for i, txOut := range tx.MsgTx().TxOut {
-		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if txOut.IsSeparator() {
 			continue
 		}
 		txAddrs, _, err := indexers.ExtractPkScriptAddrs(
@@ -1180,6 +1183,9 @@ func (m *wsNotificationManager) notifyForTxIns(ops map[wire.OutPoint]map[chan st
 	txHex := ""
 	wscNotified := make(map[chan struct{}]struct{})
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		prevOut := &txIn.PreviousOutPoint
 		if cmap, ok := ops[*prevOut]; ok {
 			if txHex == "" {
@@ -2113,6 +2119,9 @@ func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
 		recvNotified := false
 
 		for _, txin := range tx.MsgTx().TxIn {
+			if txin.IsSeparator() {
+				continue
+			}
 			if _, ok := lookups.unspent[txin.PreviousOutPoint]; ok {
 				delete(lookups.unspent, txin.PreviousOutPoint)
 
@@ -2140,7 +2149,7 @@ func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
 		}
 
 		for txOutIdx, txout := range tx.MsgTx().TxOut {
-			if txout.TokenType == 0xFFFFFFFFFFFFFFFF {
+			if txout.IsSeparator() {
 				continue
 			}
 			addrs, _, _ := indexers.ExtractPkScriptAddrs(
@@ -2253,7 +2262,7 @@ func rescanBlockFilter(filter *wsClientFilter, block *btcutil.Block, params *cha
 		// Scan inputs if not a coinbase transaction.
 		if !blockchain.IsCoinBaseTx(msgTx) {
 			for _, input := range msgTx.TxIn {
-				if !filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
+				if input.IsSeparator() || !filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
 					continue
 				}
 				if !added {
@@ -2267,7 +2276,7 @@ func rescanBlockFilter(filter *wsClientFilter, block *btcutil.Block, params *cha
 
 		// Scan outputs.
 		for i, output := range msgTx.TxOut {
-			if output.TokenType == 0xFFFFFFFFFFFFFFFF {
+			if output.IsSeparator() {
 				continue
 			}
 			addrs, _, err := indexers.ExtractPkScriptAddrs(

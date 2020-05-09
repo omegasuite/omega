@@ -294,6 +294,10 @@ type GetBlockCmd struct {
 	VerboseTx *bool `jsonrpcdefault:"false"`
 }
 
+type GetBlockTxHashesCmd struct {
+	Hash      string
+}
+
 type GetMinerBlockCmd struct {
 	Hash      string
 	Verbose   *bool `jsonrpcdefault:"true"`
@@ -309,6 +313,12 @@ func NewGetBlockCmd(hash string, verbose, verboseTx *bool) *GetBlockCmd {
 		Hash:      hash,
 		Verbose:   verbose,
 		VerboseTx: verboseTx,
+	}
+}
+
+func NewGetBlockTxHasesCmd(hash string) *GetBlockTxHashesCmd {
+	return &GetBlockTxHashesCmd{
+		Hash:      hash,
 	}
 }
 
@@ -992,6 +1002,7 @@ func init() {
 	MustRegisterCmd("getbestblockhash", (*GetBestBlockHashCmd)(nil), flags)
 	MustRegisterCmd("getbestminerblockhash", (*GetBestMinerBlockHashCmd)(nil), flags)
 	MustRegisterCmd("getblock", (*GetBlockCmd)(nil), flags)
+	MustRegisterCmd("getblocktxhashes", (*GetBlockTxHashesCmd)(nil), flags)
 	MustRegisterCmd("getminerblock", (*GetMinerBlockCmd)(nil), flags)
 	MustRegisterCmd("getblockchaininfo", (*GetBlockChainInfoCmd)(nil), flags)
 	MustRegisterCmd("getblockcount", (*GetBlockCountCmd)(nil), flags)

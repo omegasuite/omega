@@ -5,16 +5,15 @@
 package txscript
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
-	"bytes"
-
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/txscript/txsparser"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/ovm"
-	"github.com/btcsuite/btcd/txscript/txsparser"
 )
 
 // RawTxInWitnessSignature returns the serialized ECDA signature for the input
@@ -47,11 +46,13 @@ func RawTxInSignature(tx *wire.MsgTx, idx int, subScript []byte,
 // used to generate the payment address, or the script validation will fail.
 func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.PrivateKey,
 	compress bool, chainParams *chaincfg.Params) ([]byte, error) {
+	script := ovm.NewScriptBuilder()
+
 	// generate header data for preparing signature hash
 	var payscript []byte
 	switch subscript[21] {
 	case ovm.OP_PAY2PKH, ovm.OP_PAY2MULTIPKH:
-		payscript = []byte{ byte(ovm.PUSH1), 0, byte(ovm.ADDSIGNTEXT), 1}
+		payscript = []byte{ byte(ovm.SIGNTEXT), 1 }
 	default:
 		return []byte{}, fmt.Errorf("Internal error: call SignatureScript while pkScript does not require signature")
 	}
@@ -69,8 +70,11 @@ func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.P
 		pkData = pk.SerializeUncompressed()
 	}
 
-	return NewScriptBuilder().AddScript(payscript).AddData(sig).AddInt(len(sig)).AddData(pkData).AddInt(len(pkData)).
-		Script(), nil
+	script.AddOp(ovm.PUSH, []byte{0}).AddByte(byte(len(pkData))).AddBytes(pkData)
+	script.AddOp(ovm.PUSH, []byte{0}).AddByte(byte(len(sig))).AddBytes(sig)
+	script.AddOp(ovm.SIGNTEXT, []byte{1, 0})
+
+	return script.Script(), nil
 }
 
 // signMultiSig signs as many of the outputs in the provided multisig script as
@@ -83,7 +87,7 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 	// We start with a single OP_FALSE to work around the (now standard)
 	// but in the reference implementation that causes a spurious pop at
 	// the end of OP_CHECKMULTISIG.
-	builder := NewScriptBuilder()
+	builder := ovm.NewScriptBuilder()
 	signed := 0
 	for _, addr := range addresses {
 		key, _, err := kdb.GetKey(addr)
@@ -96,11 +100,11 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 			continue
 		}
 
-		builder.AddData(sig)
-
 		pk := (*btcec.PublicKey)(&key.PublicKey)
 		pkData := pk.SerializeUncompressed()
-		builder.AddData(pkData)
+
+		builder.AddOp(ovm.PUSH, []byte{0}).AddBytes(pkData)
+		builder.AddOp(ovm.PUSH, []byte{0}).AddBytes(sig)
 
 		signed++
 		if signed == nRequired {
@@ -213,19 +217,7 @@ func SignTxOutput(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 		}
 
 		// Append the p2sh script as the last push in the script.
-		builder := NewScriptBuilder()
-		for p := 0; p < len(realSigScript); p += 32 {
-			push := byte(ovm.PUSH1)
-			l := 32
-			if len(realSigScript) - p >= 32 {
-				push += 31
-			} else {
-				l = len(realSigScript) - p
-				push += byte(l - 1)
-			}
-			builder.AddScript([]byte{push})
-			builder.AddScript(realSigScript[p:p+l])
-		}
+		builder := ovm.NewScriptBuilder().AddOp(ovm.PUSH, []byte{0}).AddBytes(realSigScript)
 
 		sigScript = builder.Script()
 		// TODO keep a copy of the script for merging.
@@ -236,7 +228,6 @@ func SignTxOutput(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 	mergedScript := mergeScripts(class, sigScript, previousScript)
 	return mergedScript, nil
 }
-
 
 // mergeScripts merges sigScript and prevScript assuming they are both
 // partial solutions for pkScript spending output idx of tx. class, addresses
@@ -255,10 +246,8 @@ func mergeScripts(class txsparser.ScriptClass, sigScript, prevScript []byte) []b
 	switch class {
 	case txsparser.MultiScriptTy:
 		// Reappend the script and return the result.
-		builder := NewScriptBuilder()
-		builder.AddScript(prevScript)
-		builder.AddScript(sigScript)
-		return builder.Script()
+		builder := ovm.NewScriptBuilder().AddOp(ovm.PUSH, []byte{0}).AddBytes(sigScript).Script()
+		return append(prevScript, builder...)
 
 	case txsparser.MultiSigTy:
 		p, h, err := ExtractSigHead(prevScript)
@@ -273,11 +262,7 @@ func mergeScripts(class txsparser.ScriptClass, sigScript, prevScript []byte) []b
 			return prevScript
 		}
 
-		builder := NewScriptBuilder()
-		builder.AddScript(h)
-		builder.AddScript(prevScript[p:])
-		builder.AddScript(sigScript[p2:])
-		return builder.Script()
+		return append(append(h, prevScript[p:]...), sigScript[p2:]...)
 
 	default:
 		if len(sigScript) > len(prevScript) {

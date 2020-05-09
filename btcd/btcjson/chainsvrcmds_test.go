@@ -155,6 +155,19 @@ func TestChainSvrCmds(t *testing.T) {
 			},
 		},
 		{
+			name: "getblocktxhashes",
+			newCmd: func() (interface{}, error) {
+				return btcjson.NewCmd("getblocktxhashes", "123")
+			},
+			staticCmd: func() interface{} {
+				return btcjson.NewGetBlockTxHasesCmd("123")
+			},
+			marshalled: `{"jsonrpc":"1.0","method":"getblocktxhashes","params":["123"],"id":1}`,
+			unmarshalled: &btcjson.*GetBlockTxHashesCmd{
+				Hash:      "123",
+			},
+		},
+		{
 			name: "getblock required optional1",
 			newCmd: func() (interface{}, error) {
 				// Intentionally use a source param that is

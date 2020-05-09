@@ -39,12 +39,11 @@ const (
 	COPY	// data copy
 	COPYIMM	// immediate data copy
 	CODECOPY	// copy code
+	PUSH	// 
 
 	SELFDESTRUCT
 	REVERT
 	RETURN
-
-	STOP	 OpCode = 0x5A	//  "Z"
 )
 
 const (
@@ -56,10 +55,11 @@ const (
 	ADDRIGHTDEF
 	ADDTXOUT
 	GETDEFINITION
-	GETCOIN
 	GETUTXO
 	MINT
 	META		// get contract meta data
+	
+	STOP	 OpCode = 0x7A	//  "z"
 )
 
 // Since the opcodes aren't all in order we can't use a regular slice
@@ -87,6 +87,7 @@ var opCodeToString = map[OpCode]string{
 	ALLOC:       "ALLOC",
 	COPY:       "COPY",
 	COPYIMM:       "COPYIMM",
+	PUSH:       "PUSH",
 	CODECOPY:       "CODECOPY",
 	RECEIVED:        "RECEIVED",
 	TXIOCOUNT:        "TXIOCOUNT",
@@ -96,7 +97,7 @@ var opCodeToString = map[OpCode]string{
 	ADDRIGHTDEF:     "ADDRIGHTDEF",
 	ADDTXOUT: "ADDTXOUT",
 	GETDEFINITION:    "GETDEFINITION",
-	GETCOIN:     "GETCOIN",
+//	GETCOIN:     "GETCOIN",
 	GETUTXO:    "GETUTXO",
 	SELFDESTRUCT:   "SELFDESTRUCT",
 	REVERT:    "REVERT",
@@ -136,6 +137,7 @@ var stringToOp = map[string]OpCode{
 	"ALLOC":           ALLOC,
 	"COPY":           COPY,
 	"COPYIMM":           COPYIMM,
+	"PUSH":           PUSH,
 	"CODECOPY":           CODECOPY,
 	"RECEIVED": RECEIVED,
 	"TXIOCOUNT": TXIOCOUNT,
@@ -145,7 +147,7 @@ var stringToOp = map[string]OpCode{
 	"ADDRIGHTDEF": ADDRIGHTDEF,
 	"ADDTXOUT": ADDTXOUT,
 	"GETDEFINITION": GETDEFINITION,
-	"GETCOIN": GETCOIN,
+//	"GETCOIN": GETCOIN,
 	"GETUTXO": GETUTXO,
 	"SELFDESTRUCT":   SELFDESTRUCT,
 	"REVERT":         REVERT,

@@ -218,6 +218,13 @@ type TxIn struct {
 								// would be identical for those utxos
 }
 
+func (s *TxIn) Match(t *TxIn) bool {
+	if s.PreviousOutPoint.Index != t.PreviousOutPoint.Index || s.Sequence != t.Sequence || s.SignatureIndex != t.SignatureIndex {
+		return false
+	}
+	return s.PreviousOutPoint.Hash.IsEqual(&t.PreviousOutPoint.Hash)
+}
+
 // SerializeSize returns the number of bytes it would take to serialize the
 // the transaction input.
 func (t *TxIn) SerializeSize() int {
@@ -248,12 +255,32 @@ type TxOut struct {
 	PkScript []byte
 }
 
+func (s *TxOut) Match(t *TxOut) bool {
+	if s.TokenType != t.TokenType {
+		return false
+	}
+	if bytes.Compare(s.PkScript, t.PkScript) != 0 {
+		return false
+	}
+	if s.Rights != nil {
+		if !s.Rights.IsEqual(t.Rights) {
+			return false
+		}
+	} else if t.Rights != nil {
+		return false
+	}
+	if s.TokenType & 1 == 0 {
+		return s.Value.(*token.NumToken).Val == t.Value.(*token.NumToken).Val
+	}
+	return s.Value.(*token.HashToken).Hash.IsEqual(&t.Value.(*token.HashToken).Hash)
+}
+
 func (t *TxOut) IsNumeric () bool {
 	return t.Token.IsNumeric()
 }
 
 func (t *TxOut) IsSeparator() bool {
-	return t.TokenType == ^uint64(0)
+	return t.TokenType == token.DefTypeSeparator
 }
 
 func (t *TxOut) HasRight () bool {
@@ -275,114 +302,6 @@ func NewTxOut(tokenType	uint64, value token.TokenValue, rights *chainhash.Hash, 
 	return &t
 }
 
-type StateMap  map[string][]byte
-
-func (s *StateMap) Deserialize(r io.Reader) error {
-	count, err := common.ReadVarInt(r, 0)
-	if err != nil {
-		return err
-	}
-	if count == 0 {
-		return nil
-	}
-
-	for j := uint64(0); j < count; j++ {
-		nlen, err := common.ReadVarInt(r, 0)
-		if err != nil {
-			return err
-		}
-		name := make([]byte, nlen)
-		if _, err = r.Read(name); err != nil {
-			return err
-		}
-		if nlen, err = common.ReadVarInt(r, 0); err != nil {
-			return err
-		}
-		if nlen == 0 {
-			(*s)[string(name)] = nil
-		} else {
-			val := make([]byte, nlen)
-			if _, err = r.Read(val); err != nil {
-				return err
-			}
-			(*s)[string(name)] = val
-		}
-	}
-	return nil
-}
-
-func (s *StateMap) Serialize(w io.Writer) error {
-	err := common.WriteVarInt(w, 0, uint64(len(*s)))
-	if err != nil {
-		return err
-	}
-
-	for name, value := range *s {
-		err := common.WriteVarInt(w, 0, uint64(len(name)))
-		if err != nil {
-			return err
-		}
-		if _, err = w.Write([]byte(name)); err != nil {
-			return err
-		}
-		err = common.WriteVarInt(w, 0, uint64(len(value)))
-		if err != nil {
-			return err
-		}
-		if len(value) == 0 {
-			continue
-		}
-		if _, err = w.Write(value); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-type StateChange struct {
-	// for tracking state change, here we keep only the original states
-	// if []byte is nil, then it is a new value
-	oldmeta StateMap
-	states StateMap
-}
-
-func (s *StateChange) Dup() *StateChange {
-	t := StateChange {
-		oldmeta: make(map[string][]byte),
-		states: make(map[string][]byte),
-	}
-	for h, v := range s.states {
-		if len(v) != 0 {
-			b := make([]byte, len(v))
-			copy(b, v)
-			t.states[h] = b
-		} else {
-			t.states[h] = nil
-		}
-	}
-	for h, v := range s.oldmeta {
-		if len(v) != 0 {
-			b := make([]byte, len(v))
-			copy(b, v)
-			t.oldmeta[h] = b
-		} else {
-			t.oldmeta[h] = nil
-		}
-	}
-	return &t
-}
-
-// example: in disconnectTransactions, from last Tx to the first, do
-// s.Reverse().Merge().Merge().Merge()...
-func (s *StateChange) Merge(t * StateChange) *StateChange {
-	for n,v := range t.states {
-		s.states[n] = v
-	}
-	for n,v := range t.oldmeta {
-		s.oldmeta[n] = v
-	}
-	return s
-}
 // MsgTx implements the Message interface and represents a bitcoin tx message.
 // It is used to deliver transaction information in response to a getdata
 // message (MsgGetData) for a given transaction.
@@ -394,43 +313,30 @@ type MsgTx struct {
 	TxDef    []token.Definition
 	TxIn     []*TxIn
 	TxOut    []*TxOut
-	SignatureScripts [][]byte		// all signatures goes here intentionally. in a block, all signatures goes to the end
 	LockTime uint32
-	StateChgs map[[20]byte]*StateChange
+	SignatureScripts [][]byte		// all signatures goes here intentionally. in a block, all signatures goes to the end
 }
 
-func (msg *MsgTx) MergeTxStates(t *MsgTx) {
-	for c, s := range t.StateChgs {
-		if p, ok := msg.StateChgs[c]; !ok {
-			msg.StateChgs[c] = s
-		} else {
-			p.Merge(s)
+func (s *MsgTx) Match(t *MsgTx) bool {
+	if len(s.TxIn) != len(t.TxIn) || len(s.TxDef) != len(t.TxDef) || len(s.TxOut) != len(t.TxOut) {
+		return false
+	}
+	for i,d := range s.TxDef {
+		if !d.Match(t.TxDef[i]) {
+			return false
 		}
 	}
-}
-func (msg *MsgTx) SetState(contract [20]byte, name string, value []byte) {
-	var s * StateChange
-	var ok bool
-	if s,ok = msg.StateChgs[contract]; !ok {
-		s = &StateChange{
-			oldmeta: make(map[string][]byte),
-			states: make(map[string][]byte),
+	for i,d := range s.TxIn {
+		if !d.Match(t.TxIn[i]) {
+			return false
 		}
-		msg.StateChgs[contract] = s
 	}
-	s.states[name] = value
-}
-func (msg *MsgTx) SetMeta(contract [20]byte, name string, value []byte) {
-	var s * StateChange
-	var ok bool
-	if s,ok = msg.StateChgs[contract]; !ok {
-		s = &StateChange{
-			oldmeta: make(map[string][]byte),
-			states: make(map[string][]byte),
+	for i,d := range s.TxOut {
+		if !d.Match(t.TxOut[i]) {
+			return false
 		}
-		msg.StateChgs[contract] = s
 	}
-	s.oldmeta[name] = value
+	return true
 }
 
 // AddTxIn adds a transaction input to the message.
@@ -500,6 +406,8 @@ func (msg *MsgTx) RemapTxout(to * TxOut) * TxOut {
 }
 
 // TxHash generates the Hash for the transaction.
+// This hash is used in outpoint to reference a TX. This has does not include
+// signature and contract executions data.
 func (msg *MsgTx) TxHash() chainhash.Hash {
 	// Encode the transaction and calculate double sha256 on the result.
 	// Ignore the error returns since the only way the encode could fail
@@ -511,40 +419,48 @@ func (msg *MsgTx) TxHash() chainhash.Hash {
 	return chainhash.DoubleHashH(buf.Bytes())
 }
 
+// TxFullHash generates the Hash for the transaction.
+// This hash is used in Merkle tree. This has does not include signature
+// but does include contract executions data.
+func (msg *MsgTx) TxFullHash() chainhash.Hash {
+	// Encode the transaction and calculate double sha256 on the result.
+	// Ignore the error returns since the only way the encode could fail
+	// is being out of memory or due to nil pointers, both of which would
+	// cause a run-time panic.
+
+	buf := bytes.NewBuffer(make([]byte, 0, msg.SerializeSizeFull()))
+	_ = msg.SerializeFull(buf)
+	return chainhash.DoubleHashH(buf.Bytes())
+}
+
 // SignatureHash generates the hash of the transaction serialized including Tx data and signatures.
 // The final output is used within the Segregated Witness commitment of all the witnesses
 // within a block
 func (msg *MsgTx) SignatureHash() chainhash.Hash {
 	buf := bytes.NewBuffer(make([]byte, 0, msg.SerializeSize()))
-	_ = msg.BtcEncode(buf, 0, SignatureEncoding)
+	_ = msg.BtcEncode(buf, 0, SignatureEncoding | FullEncoding)
 	return chainhash.DoubleHashH(buf.Bytes())
 }
 
 // Copy creates a deep copy of a transaction so that the original does not get
 // modified when the copy is manipulated.
 func (msg *MsgTx) Copy() *MsgTx {
-	newTx := msg.CleanCopy()
+	newTx := MsgTx{
+		Version:  msg.Version,
+		TxIn:     make([]*TxIn, 0, len(msg.TxIn)),
+		TxDef:    make([]token.Definition, 0, len(msg.TxDef)),
+		TxOut:    make([]*TxOut, 0, len(msg.TxOut)),
+		SignatureScripts: make([][]byte, 0, len(msg.SignatureScripts)),
+		LockTime: msg.LockTime,
+	}
 
 	// Deep copy the old TxOut data.
-	start := false
 	for _, oldTxOut := range msg.TxOut {
-		if oldTxOut.TokenType == 0xFFFFFFFFFFFFFFFF {
-			start = true
-			newTxOut := TxOut{}
-			newTxOut.TokenType = oldTxOut.TokenType
-			newTx.TxOut = append(newTx.TxOut, &newTxOut)
-			continue
-		} else if !start {
-			continue
-		}
-
-		// Deep copy the old PkScript
 		var newScript []byte
-		oldScript := oldTxOut.PkScript
-		oldScriptLen := len(oldScript)
+		oldScriptLen := len(oldTxOut.PkScript)
 		if oldScriptLen > 0 {
 			newScript = make([]byte, oldScriptLen)
-			copy(newScript, oldScript[:oldScriptLen])
+			copy(newScript, oldTxOut.PkScript[:oldScriptLen])
 		}
 
 		oldRights := oldTxOut.Rights
@@ -576,24 +492,6 @@ func (msg *MsgTx) Copy() *MsgTx {
 		newTxOut.PkScript = newScript
 
 		newTx.TxOut = append(newTx.TxOut, &newTxOut)
-	}
-
-	return newTx
-}
-
-// Copy creates a deep copy of a transaction so that the original does not get
-// modified when the copy is manipulated.
-func (msg *MsgTx) CleanCopy() *MsgTx {
-	// Create new tx and start by copying primitive values and making space
-	// for the transaction inputs and outputs.
-	newTx := MsgTx{
-		Version:  msg.Version,
-		TxIn:     make([]*TxIn, 0, len(msg.TxIn)),
-		TxDef:    make([]token.Definition, 0, len(msg.TxDef)),
-		TxOut:    make([]*TxOut, 0, len(msg.TxOut)),
-		SignatureScripts: make([][]byte, 0, len(msg.SignatureScripts)),
-		LockTime: msg.LockTime,
-		StateChgs: make(map[[20]byte]*StateChange),
 	}
 
 	// Deep copy the old TxIn data.
@@ -615,19 +513,40 @@ func (msg *MsgTx) CleanCopy() *MsgTx {
 		newTx.TxIn = append(newTx.TxIn, &newTxIn)
 	}
 
-	// Deep copy the old TxOut data.
+	newTx.TxDef = make([]token.Definition, 0, len(msg.TxDef))
+	// Deep copy the old Defnition data.
+	for _, oldDefinitions := range msg.TxDef {
+		newTx.TxDef = append(newTx.TxDef, oldDefinitions.Dup())
+	}
+
+	// copy SignatureScripts
+	for _,s := range msg.SignatureScripts {
+		newTx.AddSignature(s)
+	}
+
+	return &newTx
+}
+
+// Stripped creates a copy of a transaction without addition of contract executions.
+func (msg *MsgTx) Stripped() *MsgTx {
+	newTx := MsgTx{
+		Version:  msg.Version,
+		TxIn:     make([]*TxIn, 0, len(msg.TxIn)),
+		TxDef:    make([]token.Definition, 0, len(msg.TxDef)),
+		TxOut:    make([]*TxOut, 0, len(msg.TxOut)),
+		SignatureScripts: make([][]byte, 0, len(msg.SignatureScripts)),
+		LockTime: msg.LockTime,
+	}
+
 	for _, oldTxOut := range msg.TxOut {
-		if oldTxOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if oldTxOut.IsSeparator() {
 			break
 		}
-
-		// Deep copy the old PkScript
 		var newScript []byte
-		oldScript := oldTxOut.PkScript
-		oldScriptLen := len(oldScript)
+		oldScriptLen := len(oldTxOut.PkScript)
 		if oldScriptLen > 0 {
 			newScript = make([]byte, oldScriptLen)
-			copy(newScript, oldScript[:oldScriptLen])
+			copy(newScript, oldTxOut.PkScript[:oldScriptLen])
 		}
 
 		oldRights := oldTxOut.Rights
@@ -661,17 +580,37 @@ func (msg *MsgTx) CleanCopy() *MsgTx {
 		newTx.TxOut = append(newTx.TxOut, &newTxOut)
 	}
 
-	// Deep copy the old Defnition data.
-	newTx.TxDef = token.CopyDefinitions(msg.TxDef)
+	for _, oldTxIn := range msg.TxIn {
+		if oldTxIn.IsSeparator() {
+			break
+		}
+		// Deep copy the old previous outpoint.
+		oldOutPoint := oldTxIn.PreviousOutPoint
+		newOutPoint := OutPoint{}
+		newOutPoint.Hash.SetBytes(oldOutPoint.Hash[:])
+		newOutPoint.Index = oldOutPoint.Index
+
+		// Create new txIn with the deep copied data.
+		newTxIn := TxIn{
+			PreviousOutPoint: newOutPoint,
+			SignatureIndex:   oldTxIn.SignatureIndex,
+			Sequence:         oldTxIn.Sequence,
+		}
+
+		// Finally, append this fully copied txin.
+		newTx.TxIn = append(newTx.TxIn, &newTxIn)
+	}
+
+	for _, oldDef := range msg.TxDef {
+		if oldDef.IsSeparator() {
+			break
+		}
+		newTx.TxDef = append(newTx.TxDef, oldDef.Dup())
+	}
 
 	// copy SignatureScripts
 	for _,s := range msg.SignatureScripts {
 		newTx.AddSignature(s)
-	}
-	if msg.StateChgs != nil {
-		for c, s := range msg.StateChgs {
-			newTx.StateChgs[c] = s
-		}
 	}
 
 	return &newTx
@@ -817,19 +756,27 @@ func (msg *MsgTx) DeserializeNoWitness(r io.Reader) error {
 // See Serialize for encoding transactions to be stored to disk, such as in a
 // database, as opposed to encoding transactions for the wire.
 func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+	full := false
+	if enc & FullEncoding != 0 {
+		full = true
+		enc &^= FullEncoding
+	}
 	err := common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Version))
 	if err != nil {
 		return err
 	}
 
 	count := uint64(len(msg.TxDef))
-	if enc != FullEncoding {
+
+	if !full {
 		for i := uint64(0); i < count; i++ {
 			if msg.TxDef[i].IsSeparator() {
 				count = i
+				break
 			}
 		}
 	}
+
 	if err = common.WriteVarInt(w, pver, count); err != nil {
 		return err
 	}
@@ -845,13 +792,16 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 	}
 
 	count = uint64(len(msg.TxIn))
-	if enc != FullEncoding {
+
+	if !full {
 		for i := uint64(0); i < count; i++ {
 			if msg.TxIn[i].IsSeparator() {
 				count = i
+				break
 			}
 		}
 	}
+
 	if err = common.WriteVarInt(w, pver, count); err != nil {
 		return err
 	}
@@ -867,13 +817,16 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 	}
 
 	count = uint64(len(msg.TxOut))
-	if enc != FullEncoding {
+
+	if !full {
 		for i := uint64(0); i < count; i++ {
 			if msg.TxOut[i].IsSeparator() {
 				count = i
+				break
 			}
 		}
 	}
+
 	if err = common.WriteVarInt(w, pver, count); err != nil {
 		return err
 	}
@@ -907,8 +860,7 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 // the protocol version and doesn't even really need to match the format of a
 // stored transaction at all.
 func (msg *MsgTx) Serialize(w io.Writer) error {
-	return msg.BtcEncode(w, 0, FullEncoding)	// SignatureEncoding
-//	return msg.BtcEncode(w, 0, SignatureEncoding)	// SignatureEncoding
+	return msg.BtcEncode(w, 0, SignatureEncoding | FullEncoding)	// SignatureEncoding
 }
 
 // SerializeNoWitness encodes the transaction to w in an identical manner to
@@ -918,25 +870,46 @@ func (msg *MsgTx) SerializeNoSignature(w io.Writer) error {
 	return msg.BtcEncode(w, 0, BaseEncoding)
 }
 
+func (msg *MsgTx) SerializeFull(w io.Writer) error {
+	return msg.BtcEncode(w, 0, BaseEncoding | FullEncoding)
+}
+
 // baseSize returns the serialized size of the transaction without accounting
 // for any witness data.
-func (msg *MsgTx) baseSize() int {
+func (msg *MsgTx) baseSize(full bool) int {
 	// Version 4 bytes + LockTime 4 bytes + Serialized varint size for the
 	// number of transaction inputs and outputs.
-	n := 8 + common.VarIntSerializeSize(uint64(len(msg.TxDef))) + common.VarIntSerializeSize(uint64(len(msg.TxIn))) +
-		common.VarIntSerializeSize(uint64(len(msg.TxOut)))
+	n := 8
 
+	m := 0
 	for _, txDef := range msg.TxDef {
+		if txDef.IsSeparator() && !full {
+			break
+		}
+		m++
 		n += txDef.SerializeSize()
 	}
+	n += common.VarIntSerializeSize(uint64(m))
 
+	m = 0
 	for _, txIn := range msg.TxIn {
+		if txIn.IsSeparator() && !full {
+			break
+		}
+		m++
 		n += txIn.SerializeSize()
 	}
+	n += common.VarIntSerializeSize(uint64(m))
 
+	m = 0
 	for _, txOut := range msg.TxOut {
+		if txOut.IsSeparator() && !full {
+			break
+		}
+		m++
 		n += txOut.SerializeSize()
 	}
+	n += common.VarIntSerializeSize(uint64(m))
 
 	return n
 }
@@ -944,7 +917,7 @@ func (msg *MsgTx) baseSize() int {
 // SerializeSize returns the number of bytes it would take to serialize the
 // the transaction.
 func (msg *MsgTx) SerializeSize() int {
-	n := msg.baseSize()
+	n := msg.baseSize(true)
 
 	n += common.VarIntSerializeSize(uint64(len(msg.SignatureScripts)))
 	for _, s := range msg.SignatureScripts {
@@ -957,7 +930,13 @@ func (msg *MsgTx) SerializeSize() int {
 // SerializeSizeStripped returns the number of bytes it would take to serialize
 // the transaction, excluding any included witness data.
 func (msg *MsgTx) SerializeSizeStripped() int {
-	return msg.baseSize()
+	return msg.baseSize(false)
+}
+
+// SerializeSizeStripped returns the number of bytes it would take to serialize
+// the transaction, excluding any included witness data.
+func (msg *MsgTx) SerializeSizeFull() int {
+	return msg.baseSize(true)
 }
 
 // Command returns the protocol command string for the message.  This is part
@@ -984,7 +963,7 @@ func NewMsgTx(version int32) *MsgTx {
 		TxIn:    make([]*TxIn, 0, defaultTxInOutAlloc),
 		TxOut:   make([]*TxOut, 0, defaultTxInOutAlloc),
 		SignatureScripts:   make([][]byte, 0, defaultTxInOutAlloc),
-		StateChgs: make(map[[20]byte]*StateChange),
+//		StateChgs: make(map[[20]byte]*StateChange),
 	}
 }
 

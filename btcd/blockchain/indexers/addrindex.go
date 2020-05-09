@@ -7,6 +7,7 @@ package indexers
 import (
 	"errors"
 	"fmt"
+	"github.com/btcsuite/omega/token"
 	"sync"
 
 //	"github.com/btcsuite/btcd/blockchain"
@@ -731,7 +732,10 @@ func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 		// already been proven on the first transaction in the block is
 		// a coinbase.
 		if txIdx != 0 {
-			for range tx.MsgTx().TxIn {
+			for _,txIn := range tx.MsgTx().TxIn {
+				if txIn.IsSeparator() {
+					continue
+				}
 				// We'll access the slice of all the
 				// transactions spent in this block properly
 				// ordered to fetch the previous input script.
@@ -745,7 +749,7 @@ func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 		}
 
 		for _, txOut := range tx.MsgTx().TxOut {
-			if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			if txOut.IsSeparator() {
 				continue
 			}
 			idx.indexPkScript(data, txOut.PkScript, txIdx)
@@ -908,6 +912,9 @@ func (idx *AddrIndex) AddUnconfirmedTx(tx *btcutil.Tx, utxoView *viewpoint.UtxoV
 	// transaction has already been validated and thus all inputs are
 	// already known to exist.
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		entry := utxoView.LookupEntry(txIn.PreviousOutPoint)
 		if entry == nil {
 			// Ignore missing entries.  This should never happen
@@ -920,7 +927,7 @@ func (idx *AddrIndex) AddUnconfirmedTx(tx *btcutil.Tx, utxoView *viewpoint.UtxoV
 
 	// Index addresses of all created outputs.
 	for _, txOut := range tx.MsgTx().TxOut {
-		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if txOut.IsSeparator() {
 			continue
 		}
 		idx.indexUnconfirmedAddresses(txOut.PkScript, tx)

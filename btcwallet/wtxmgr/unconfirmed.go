@@ -47,6 +47,9 @@ func (s *Store) insertMemPoolTx(ns walletdb.ReadWriteBucket, rec *TxRecord) erro
 	}
 
 	for _, input := range rec.MsgTx.TxIn {
+		if input.IsSeparator() {
+			continue
+		}
 		prevOut := &input.PreviousOutPoint
 		k := canonicalOutPoint(&prevOut.Hash, prevOut.Index)
 		err = putRawUnminedInput(ns, k, rec.Hash[:])
@@ -67,6 +70,9 @@ func (s *Store) insertMemPoolTx(ns walletdb.ReadWriteBucket, rec *TxRecord) erro
 // it are recursively removed.
 func (s *Store) removeDoubleSpends(ns walletdb.ReadWriteBucket, rec *TxRecord) error {
 	for _, input := range rec.MsgTx.TxIn {
+		if input.IsSeparator() {
+			continue
+		}
 		prevOut := &input.PreviousOutPoint
 		prevOutKey := canonicalOutPoint(&prevOut.Hash, prevOut.Index)
 
@@ -154,6 +160,9 @@ func (s *Store) removeConflict(ns walletdb.ReadWriteBucket, rec *TxRecord) error
 	// each unspent.  Mined transactions are only marked spent by having the
 	// output in the unmined inputs bucket.
 	for _, input := range rec.MsgTx.TxIn {
+		if input.IsSeparator() {
+			continue
+		}
 		prevOut := &input.PreviousOutPoint
 		k := canonicalOutPoint(&prevOut.Hash, prevOut.Index)
 		err := deleteRawUnminedInput(ns, k, rec.Hash)

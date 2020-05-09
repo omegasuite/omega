@@ -104,6 +104,9 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 
 	for _,tx := range block.Transactions()[1:] {
 		for _, in := range tx.MsgTx().TxIn {
+			if in.IsSeparator() {
+				continue
+			}
 			entry := t.Utxo.LookupEntry(in.PreviousOutPoint)
 			if entry == nil {
 				return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))
@@ -150,7 +153,7 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 	rtview := view.Rights
 
 	// put out definitions
-	children := make(map[chainhash.Hash][]chainhash.Hash)
+//	children := make(map[chainhash.Hash][]chainhash.Hash)
 	for _,d := range tx.MsgTx().TxDef {
 		switch d.(type) {
 		case *token.VertexDef:
@@ -161,12 +164,14 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 			view.addBorder(b)
 
 			if !b.Father.IsEqual(&chainhash.Hash{}) {
+/*
 				if children[b.Father] != nil {
 					children[b.Father] = append(children[b.Father], b.Hash())
 				} else {
 					children[b.Father] = make([]chainhash.Hash, 1)
 					children[b.Father][0] = b.Hash()
 				}
+ */
 				view.Border.LookupEntry(b.Father).RefCnt++
 			}
 			break;
@@ -212,6 +217,9 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 
 		if !tx.IsCoinBase() {
 			for _, in := range tx.MsgTx().TxIn {
+				if in.IsSeparator() {
+					continue
+				}
 				entry := view.Utxo.LookupEntry(in.PreviousOutPoint)
 				if entry == nil {
 					return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))

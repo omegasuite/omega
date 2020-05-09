@@ -148,6 +148,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getminerblock":         handleGetMinerBlock,	// New
 	"getminerblockcount":    handleGetMinerBlockCount,	// New
 	"getminerblockhash":     handleGetMinerBlockHash,	// New
+	"getblocktxhashes":      handleGetBlockTxHases,	// New
 
 	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
@@ -271,6 +272,7 @@ var rpcLimited = map[string]struct{}{
 	"getminerblock":         {},
 	"getblockcount":         {},
 	"getblockhash":          {},
+	"getblocktxhashes":      {},
 	"getblockheader":        {},
 	"getminerblockcount":    {},
 	"getminerblockhash":     {},
@@ -732,7 +734,7 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		// if the script doesn't fully parse, so ignore the
 		// error here.
 //		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
-		if txIn.SignatureIndex == 0xFFFFFFFF {
+		if txIn.SignatureIndex == 0xFFFFFFFF || txIn.IsSeparator() {
 			continue
 		}
 		disbuf := hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
@@ -782,7 +784,7 @@ func pubKeyTypes(script []byte) string {
 func createVoutList(mtx *wire.MsgTx, chainParams *chaincfg.Params, filterAddrMap map[string]struct{}) []btcjson.Vout {
 	voutList := make([]btcjson.Vout, 0, len(mtx.TxOut))
 	for i, v := range mtx.TxOut {
-		if v.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if v.IsSeparator() {
 			continue
 		}
 		// The disassembled string will contain [error] inline if the
@@ -1204,6 +1206,41 @@ func getDifficultyRatio(bits uint32, params *chaincfg.Params) float64 {
 		return 0
 	}
 	return diff
+}
+
+// handleGetBlock implements the getblock command.
+func handleGetBlockTxHases(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetBlockTxHashesCmd)
+
+	// Load the raw block bytes from the database.
+	hash, err := chainhash.NewHashFromStr(c.Hash)
+	if err != nil {
+		return nil, rpcDecodeHexError(c.Hash)
+	}
+	var blkBytes []byte
+	err = s.cfg.DB.View(func(dbTx database.Tx) error {
+		var err error
+		blkBytes, err = dbTx.FetchBlock(hash)
+		return err
+	})
+	if err != nil {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCBlockNotFound,
+			Message: "Block not found",
+		}
+	}
+
+	block, err := btcutil.NewBlockFromBytes(blkBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	hashes := make([]string, len(block.Transactions()))
+	for i, tx := range block.Transactions() {
+		hashes[i] = tx.Hash().String()
+	}
+
+	return hashes, nil
 }
 
 // handleGetBlock implements the getblock command.
@@ -1929,8 +1966,10 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		// when multiple inputs reference the same transaction.
 		dependsMap := make(map[int64]struct{})
 		for _, txIn := range tx.TxIn {
-			if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
-				dependsMap[idx] = struct{}{}
+			if !txIn.IsSeparator() {
+				if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
+					dependsMap[idx] = struct{}{}
+				}
 			}
 		}
 		depends := make([]int64, 0, len(dependsMap))
@@ -2925,7 +2964,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		}
 
 		txOut := mtx.TxOut[c.Vout]
-		if txOut == nil || txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if txOut == nil || txOut.IsSeparator() {
 			errStr := fmt.Sprintf("Output index: %d for txid: %s "+
 				"does not exist", c.Vout, txHash)
 			return nil, internalRPCError(errStr, "")
@@ -3024,12 +3063,7 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			return nil, rpcDefinitionError(hash.String())
 		}
 		result := make(map[string]interface{}, 0)
-		v := &token.VertexDef{
-			Lng:  entry.Lng,
-			Lat:  entry.Lat,
-			Alt:  entry.Alt,
-		}
-		result[v.Hash().String()] = &btcjson.VertexDefinition{
+		result[hash.String()] = &btcjson.VertexDefinition{
 			Kind: 0,
 			Lng:  entry.Lng,
 			Lat:  entry.Lat,
@@ -3041,7 +3075,7 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		reply := &btcjson.GetDefineResult {
 			Definition: result,
 		}
-		(*dup)[v.Hash().String()] = struct{}{}
+		(*dup)[hash.String()] = struct{}{}
 		return reply, nil
 		break
 	case token.DefTypeBorder:
@@ -3287,6 +3321,9 @@ func fetchInputTxos(s *rpcServer, tx *wire.MsgTx) (map[wire.OutPoint]wire.TxOut,
 	mp := s.cfg.TxMemPool
 	originOutputs := make(map[wire.OutPoint]wire.TxOut)
 	for txInIndex, txIn := range tx.TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		// Attempt to fetch and use the referenced transaction from the
 		// memory pool.
 		origin := &txIn.PreviousOutPoint
@@ -3380,6 +3417,9 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 	}
 
 	for _, txIn := range mtx.TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		// The disassembled string will contain [error] inline
 		// if the script doesn't fully parse, so ignore the
 		// error here.

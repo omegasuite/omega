@@ -211,7 +211,6 @@ func main() {
 			},
 		},
 		LockTime: 0,
-		StateChgs: make(map[[20]byte][]StateChange),
 	}
 	genesisCoinbaseTx.TxOut[0].TokenType = 0
 	genesisCoinbaseTx.TxOut[0].Value = &token.NumToken{Val: 0x12a05f200}
@@ -227,7 +226,6 @@ func main() {
 			},
 		},
 		LockTime: 0,
-		StateChgs: make(map[[20]byte][]StateChange),
 	}
 
 	genesisInitPolygonTx.TxOut[0].TokenType = 3
@@ -292,7 +290,6 @@ func main() {
 		"\n\t\t}," +
 		"\n\t}," +
 		"\n\tLockTime: 0," +
-		"\n\tStateChgs: make(map[[20]byte][]StateChange)," +
 		"\n}")
 
 	fmt.Printf("\n\nvar GenesisMerkleRoot = ")
@@ -614,7 +611,6 @@ func printCoinbase(name string, gotSigBytes []byte, full bool) {
  */
 	fmt.Printf("\n\t} }," +
 		"\n\tLockTime: 0," +
-		"\n\tStateChgs: make(map[[20]byte][]StateChange)," +
 		"\n}")
 }
 
@@ -676,7 +672,7 @@ func printdef(def []token.Definition) {
 		switch f.(type) {
 		case *token.VertexDef:
 			v := f.(*token.VertexDef)
-			fmt.Printf("\n\t&token.VertexDef {\n\t\tLat: %d,\n\t\tLng: %d,\n\t},", v.Lat, v.Lng)
+			fmt.Printf("\n\t&token.VertexDef {\n\t\tLat: %d,\n\t\tLng: %d,\n\t\tAlt:0,\n\t},", v.Lat, v.Lng)
 			break
 		case *token.BorderDef:
 			v := f.(*token.BorderDef)

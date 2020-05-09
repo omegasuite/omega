@@ -53,6 +53,9 @@ type inst struct {
 	param []byte
 }
 
+func (s * inst) Op() OpCode { return s.op }
+func (s * inst) Param() []byte { return s.param }
+
 type lib struct{
 	address int32		// code address
 	end int32			// code end
@@ -175,7 +178,6 @@ var validators = map[OpCode]codeValidator {
 	HASH:   opHashValidator,
 	HASH160:  opHash160Validator,
 	SIGCHECK:   opSigCheckValidator,
-	SIGNTEXT:  opAddSignTextValidator,
 	IF:  opIfValidator,
 	CALL:  opCallValidator,
 	EXEC:  opExecValidator,
@@ -196,7 +198,7 @@ var validators = map[OpCode]codeValidator {
 	ADDRIGHTDEF:  opAddRightValidator,
 	ADDTXOUT: opAddTxOutValidator,
 	GETDEFINITION: opGetDefinitionValidator,
-	GETCOIN:  opGetCoinValidator,
+//	GETCOIN:  opGetCoinValidator,
 	GETUTXO:  opGetUtxoValidator,
 	SELFDESTRUCT:  opSuicideValidator,
 	REVERT: opRevertValidator,

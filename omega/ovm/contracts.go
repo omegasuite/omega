@@ -1,19 +1,3 @@
-// Copyright 2014 The go-ethereum Authors
-// This file is part of the go-ethereum library.
-//
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
-
 package ovm
 
 import (
@@ -31,9 +15,7 @@ import (
 	"golang.org/x/crypto/ripemd160"
 )
 
-// PrecompiledContract is the basic interface for native Go contracts. The implementation
-// requires a deterministic gas count based on the input size of the Run method of the
-// contract.
+// PrecompiledContract is the basic interface for native Go contracts.
 type PrecompiledContract interface {
 	Run(input []byte) ([]byte, error) // Run runs the precompiled contract
 }
@@ -45,20 +27,20 @@ type create struct {
 }
 
 const (
-	OP_CREATE					= 0
+	OP_CREATE				= 0
 	OP_MINT					= 0x40
 
 	PAYFUNC_MIN				= 0x41
 	PAYFUNC_MAX				= 0x46
 
-	OP_PAY2PKH					= 0x41
+	OP_PAY2PKH				= 0x41
 	OP_PAY2SCRIPTH			= 0x42
 	OP_PAY2MULTIPKH			= 0x43
 	OP_PAY2MULTISCRIPTH		= 0x44
 	OP_PAY2NONE				= 0x45
-	OP_PAY2ANY					= 0x46
+	OP_PAY2ANY				= 0x46
 
-	MINER_RORATE_FREQ			= 50		// const: rotate frequency. How many blocks between rotation
+	MINER_RORATE_FREQ		= 50		// const: rotate frequency. How many blocks between rotation
 	MAX_WITNESS				= 5			// max number of witnesses in a block
 	COMMITTEE_DEF_SIZE		= 5			// default committee size
 )
@@ -96,8 +78,8 @@ type quitminer struct {
 
 func (p *addminer) Run(input []byte) ([]byte, error) {
 	var d Address
-	if _,ok := p.ovm.StateDB[d]; !ok {
-		p.ovm.StateDB[d] = &stateDB{
+	if _,ok := p.ovm.stateDB[d]; !ok {
+		p.ovm.stateDB[d] = &stateDB{
 			DB:       p.ovm.views.Db,
 			contract: d,
 			data:     make(map[chainhash.Hash]entry),
@@ -108,7 +90,7 @@ func (p *addminer) Run(input []byte) ([]byte, error) {
 				flag status }),
 		}
 
-		p.ovm.StateDB[d].LoadWallet()
+		p.ovm.stateDB[d].LoadWallet()
 	}
 
 	if p.contract.value.TokenType != 0 {
@@ -123,15 +105,15 @@ func (p *addminer) Run(input []byte) ([]byte, error) {
 //		return nil, fmt.Errorf("Miner already exists.")
 //	}
 
-	p.ovm.StateDB[d].Credit(*p.contract.value)
+	p.ovm.stateDB[d].Credit(*p.contract.value)
 
 	return nil, nil
 }
 
 func (p *quitminer) Run(input []byte) ([]byte, error) {
 	var d Address
-	if _,ok := p.ovm.StateDB[d]; !ok {
-		p.ovm.StateDB[d] = &stateDB{
+	if _,ok := p.ovm.stateDB[d]; !ok {
+		p.ovm.stateDB[d] = &stateDB{
 			DB:       p.ovm.views.Db,
 			contract: d,
 			data:     make(map[chainhash.Hash]entry),
@@ -142,7 +124,7 @@ func (p *quitminer) Run(input []byte) ([]byte, error) {
 				flag status }),
 		}
 
-		p.ovm.StateDB[d].LoadWallet()
+		p.ovm.stateDB[d].LoadWallet()
 	}
 
 //	f := p.ovm.views.Miners.Remove(input)
@@ -396,8 +378,9 @@ func (p *pay2pkh) Run(input []byte) ([]byte, error) {
 
 	pkh := input[:20]
 
-	pkBytes, pos := reformatData(input[20:])
-	pos += 20
+	pkBytes := input[21:21 + input[20]]
+	pos := 21 + input[20]
+	
 	pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
 	if err != nil {
 		return []byte{0}, nil
@@ -409,17 +392,19 @@ func (p *pay2pkh) Run(input []byte) ([]byte, error) {
 		return []byte{0}, nil
 	}
 
-	sigBytes, siglen := reformatData(input[pos:])
+	siglen := input[pos]
+
+	sigBytes := input[pos + 1:pos + siglen + 1]
 
 //	binary.LittleEndian.Uint32(input[pos:])
 //	sigBytes := input[pos : pos + siglen]
 
-	pos += siglen
+	pos += siglen + 1
 
 	// Generate the signature hash based on the signature hash type.
 	var hash []byte
 
-	text, _ := reformatData(input[pos:])
+	text := input[pos:]
 
 //	textlen := binary.LittleEndian.Uint32(input[pos:])
 	hash = chainhash.DoubleHashB(text)
@@ -444,7 +429,7 @@ func (p *pay2pkh) Run(input []byte) ([]byte, error) {
 func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byte, contract *Contract) (ret []byte, err error) {
 	var (
 		op    OpCode        // current opcode
-		stack = newstack()  // local stack
+		stack = Newstack()  // local stack
 		pc   = int(0) // program counter
 	)
 
@@ -458,7 +443,7 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 			// Get the operation from the jump table and validate the stack to ensure there are
 			// enough stack items available to perform the operation.
 			op = contract.GetOp(pc)
-			operation := in.cfg.JumpTable[op]
+			operation := in.JumpTable[op]
 			if !operation.valid {
 				return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
 			}
@@ -473,20 +458,8 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 			// execute the operation
 			err := operation.execute(&pc, in.evm, contract, stack)
 
-			ln := int32(0)
-			for i := 0; i < 4; i++ {
-				ln |= int32(stack.data[0].space[i]) << (i * 8)
-			}
-
-			if ln > 0 {
-				res = make([]byte, ln)
-				copy(res, stack.data[0].space[4:ln + 4])
-			}
-
 			switch {
 			case err != nil:
-				return nil, err
-			case operation.reverts:
 				return nil, err
 			case operation.halts:
 				break ret
@@ -494,6 +467,15 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 				pc++
 			}
 		}
+		
+		ln := binary.LittleEndian.Uint32(stack.data[0].space)
+
+		if ln > 0 {
+			res = stack.data[0].space[4:ln + 4]
+		} else {
+			res = stack.data[0].space[4:]
+		}
+
 		input = append(input, res...)
 	}
 	return p.Run(input)

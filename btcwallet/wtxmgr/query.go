@@ -128,6 +128,9 @@ func (s *Store) unminedTxDetails(ns walletdb.ReadBucket, txHash *chainhash.Hash,
 	// when spent by an unmined transaction), and credits from other unmined
 	// transactions.  Both situations must be considered.
 	for i, output := range details.MsgTx.TxIn {
+		if output.IsSeparator() {
+			continue
+		}
 		opKey := canonicalOutPoint(&output.PreviousOutPoint.Hash,
 			output.PreviousOutPoint.Index)
 		credKey := existsRawUnspent(ns, opKey)
@@ -395,6 +398,9 @@ func (s *Store) PreviousPkScripts(ns walletdb.ReadBucket, rec *TxRecord, block *
 
 	if block == nil {
 		for _, input := range rec.MsgTx.TxIn {
+			if input.IsSeparator() {
+				continue
+			}
 			prevOut := &input.PreviousOutPoint
 
 			// Input may spend a previous unmined output, a

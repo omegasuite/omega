@@ -91,84 +91,64 @@ func CalcScriptInfo(sigScript, pkScript []byte) (*ScriptInfo, error) {
 	}
 
 	si.SigOps = 0
-	if p >= len(sigScript) {
+	if p >= len(sigScript) || !pks {
 		return si, nil
 	}
 
-	for p < len(sigScript) {
-		if sigScript[p] >= byte(ovm.PUSH1) && sigScript[p] <= byte(ovm.PUSH32) {
-			p++
-			format := int(sigScript[p])
-			if pks {
-				if format == 0x2 {	// btcec.pubkeyCompressed
-					p += 35
-				} else if format == 0x4 {	// btcec.pubkeyUncompressed
-					p += 68
-				} else if format == 0x6 {	// btcec.pubkeyHybrid
-					p += 68
-				} else {
-					return nil, txsparser.ScriptError(txsparser.ErrNotPushOnly,
-						"sigscript is not valid")
-				}
-				format := int(sigScript[p])
-				p += format + ((format + 31) >> 5)
-			} else {
-				p += format + 1
-			}
+	code := ovm.ByteCodeParser(sigScript)
+
+	for _,c := range code {
+		switch c.Op() {
+		case ovm.PUSH:
 			si.SigOps++
-		} else {
+		case ovm.SIGNTEXT:
+		default:
 			return nil, txsparser.ScriptError(txsparser.ErrNotPushOnly,
 				"sigscript is not valid")
 		}
 	}
 
+	si.SigOps /= 2
+
 	return si, nil
 }
 
 func ExtractSigHead(sigScript []byte) (int, []byte, error) {
-	p, sigstart, textadded := 0, false, false
-	for p < len(sigScript) && !sigstart {
-		if sigScript[p] >= byte(ovm.PUSH1) && sigScript[p] <= byte(ovm.PUSH32) {
+	textadded := false
+
+	code := ovm.ByteCodeParser(sigScript)
+	head := make([]byte, 0, 256)
+	for _,c := range code {
+		switch c.Op() {
+		case ovm.PUSH:
 			if textadded {
-				sigstart = true
-			} else {
-				p += 1 + int(sigScript[p])
+				return len(head), head, nil
 			}
-		} else {
-			switch sigScript[p] {
-			case byte(ovm.ADDSIGNTEXT):
-				p++
-				textadded = true
-				switch sigScript[p] {
-				case 0, 1: // specific matching outpoint // specific matching input // specific script
-					p++
-				case 2, 3, 4: // specific matching outpoint // specific matching input // specific script
-					p += 2 + int(sigScript[p + 1])
-				default:
-					return p, nil, txsparser.ScriptError(txsparser.ErrNotPushOnly,
-						"sigscript is not valid")
-				}
-			}
+
+		case ovm.SIGNTEXT:
+			textadded = true
+
+		default:
+			return len(head), nil, txsparser.ScriptError(txsparser.ErrNotPushOnly,
+				"sigscript is not valid")
 		}
+		head = append(append(append(head, byte(c.Op())), c.Param()...), []byte("\n")...)
 	}
-	if !sigstart {
-		return p, nil, nil
-	}
-	return p, sigScript[:p], nil
+
+	return len(sigScript), nil, nil
 }
+
 // payToPubKeyHashScript creates a new script to pay a transaction
 // output to a 20-byte pubkey hash. It is expected that the input is a valid
 // hash.
 func payToPubKeyHashScript(pubKeyHash []byte) ([]byte, error) {
-	return NewScriptBuilder().AddScript(pubKeyHash).AddScript([]byte{ovm.OP_PAY2PKH, 0, 0, 0}).
-		Script(), nil
+	return append(pubKeyHash, []byte{ovm.OP_PAY2PKH, 0, 0, 0}...), nil
 }
 
 // payToScriptHashScript creates a new script to pay a transaction output to a
 // script hash. It is expected that the input is a valid hash.
 func payToScriptHashScript(scriptHash []byte) ([]byte, error) {
-	return NewScriptBuilder().AddScript(scriptHash).AddScript([]byte{ovm.OP_PAY2SCRIPTH, 0, 0, 0}).
-		Script(), nil
+	return append(scriptHash, []byte{ovm.OP_PAY2SCRIPTH, 0, 0, 0}...), nil
 }
 
 // PayToAddrScript creates a new script to pay a transaction output to a the
@@ -209,7 +189,7 @@ func NullDataScript(data []byte) ([]byte, error) {
 
 	v := [21]byte{0x2}
 
-	return NewScriptBuilder().AddScript(v[:]).AddScript([]byte{byte(ovm.RETURN), 0, 0, 0}).AddData(data).Script(), nil
+	return append(append(v[:], []byte{byte(ovm.RETURN), 0, 0, 0}...), data...), nil
 }
 
 // MultiSigScript returns a valid script for a multisignature redemption where
@@ -224,17 +204,21 @@ func MultiSigScript(pubkeys []*btcutil.AddressPubKeyHash, nrequired int) ([]byte
 		return nil, txsparser.ScriptError(txsparser.ErrTooManyRequiredSigs, str)
 	}
 
-	builder := NewScriptBuilder()
-	builder.AddScript(pubkeys[0].ScriptNetAddress()).AddScript([]byte{byte(ovm.OP_PAY2PKH), 0, 0, 0}).
-		AddInt(len(pubkeys)).AddInt(nrequired)
+	builder := make([]byte, 21 * len(pubkeys) + 8 + 4)
+	copy(builder, pubkeys[0].ScriptNetAddress())
+	copy(builder[21:], []byte{byte(ovm.OP_PAY2PKH), 0, 0, 0})
+	binary.LittleEndian.PutUint32(builder[25:], uint32(len(pubkeys)))
+	binary.LittleEndian.PutUint32(builder[29:], uint32(nrequired))
+	p := 33
 
 	for i, key := range pubkeys {
 		if i != 0 {
-			builder.AddData(key.ScriptAddress())
+			copy(builder[p:], key.ScriptAddress())
+			p += 21
 		}
 	}
 
-	return builder.Script(), nil
+	return builder, nil
 }
 
 // ExtractPkScriptAddrs returns the type of script, addresses and required

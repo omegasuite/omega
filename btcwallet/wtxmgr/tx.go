@@ -200,6 +200,9 @@ func (s *Store) updateMinedBalance(ns walletdb.ReadWriteBucket, rec *TxRecord,
 
 	newMinedBalance := minedBalance
 	for i, input := range rec.MsgTx.TxIn {
+		if input.IsSeparator() {
+			continue
+		}
 		unspentKey, credKey := existsUnspent(ns, &input.PreviousOutPoint)
 		if credKey == nil {
 			// Debits for unmined transactions are not explicitly
@@ -581,6 +584,9 @@ func (s *Store) rollback(ns walletdb.ReadWriteBucket, height int32) error {
 			// recorded in the unconfirmed store for every previous
 			// output, not just debits.
 			for i, input := range rec.MsgTx.TxIn {
+				if input.IsSeparator() {
+					continue
+				}
 				prevOut := &input.PreviousOutPoint
 				prevOutKey := canonicalOutPoint(&prevOut.Hash,
 					prevOut.Index)

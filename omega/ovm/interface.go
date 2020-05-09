@@ -10,7 +10,7 @@ import (
 	"math/big"
 )
 
-// StateDB is an EVM database for full state querying.
+// stateDB is an EVM database for full state querying.
 type StateDB interface {
 	CreateAccount(Address)
 

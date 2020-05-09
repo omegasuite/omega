@@ -153,10 +153,12 @@ func DecodeAddress(addr string, defaultNet *chaincfg.Params) (Address, error) {
 	// Switch on decoded length to determine the type.
 	decoded, netID, err := base58.CheckDecode(addr)
 	if err != nil {
-		if err == base58.ErrChecksum {
-			return nil, ErrChecksumMismatch
+		serialized, err := hex.DecodeString(addr)
+		if err != nil {
+			return nil, errors.New("decoded address is of unknown format")
 		}
-		return nil, errors.New("decoded address is of unknown format")
+		netID = serialized[0]
+		decoded = serialized[1:]
 	}
 	switch len(decoded) {
 	case ripemd160.Size: // P2PKH or P2SH or P2C

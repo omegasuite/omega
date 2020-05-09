@@ -5,20 +5,21 @@
 package ovm
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/binary"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/omega/token"
-	"github.com/btcsuite/omega/viewpoint"
-	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/btcd/database"
-	"bytes"
-	"encoding/binary"
-	"crypto/sha256"
-	"golang.org/x/crypto/ripemd160"
+	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/wire/common"
+	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega"
+	"github.com/btcsuite/omega/token"
 	"github.com/btcsuite/omega/validate"
+	"github.com/btcsuite/omega/viewpoint"
+	"golang.org/x/crypto/ripemd160"
+	"sync/atomic"
 )
 
 // hash160 returns the RIPEMD160 hash of the SHA-256 HASH of the given data.
@@ -75,28 +76,27 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	ctx.GetTx = func () * btcutil.Tx {	return utx	}
 	ctx.Spend = func(t wire.OutPoint) bool { return false }
 	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
-//	ctx.GetHash = func(d uint64) *chainhash.Hash { return nil }
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ctx.AddRight = func(t *token.RightDef) bool { return false }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
 
-	cfg := Config{}
-	cfg.NoLoop = true
+	ovm := NewSigVM(chainParams)
+	ovm.SetContext(ctx)
 
-	ovm := NewOVM(ctx, chainParams, cfg)
-	ovm.interpreter = NewInterpreter(ovm, cfg)
+//	ovm.interpreter = NewSigInterpreter(ovm, cfg)
 	ovm.interpreter.readOnly = true
+	ovm.NoLoop = true
 
 	return calcSignatureHash(txinidx, script, ovm)
 }
 
 func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, error) {
 	contract := Contract {
-		Code: ByteCodeParser(script),
+		Code: []inst{inst {OpCode(script[0]), script[1:]}},
 		CodeHash: chainhash.Hash{},
 		self: nil,
-//		jumpdests: make(destinations),
 		Args:make([]byte, 4),
+		libs: make(map[Address]lib),
 	}
 
 	binary.LittleEndian.PutUint32(contract.Args[:], uint32(txinidx))
@@ -107,7 +107,7 @@ func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, er
 		return chainhash.Hash{}, err
 	}
 
-	ret,_ = reformatData(ret)
+//	ret,_ = reformatData(ret)
 
 	return chainhash.DoubleHashH(ret), nil
 }
@@ -128,23 +128,19 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 	ovm.AddRight = func(t *token.RightDef) bool { return false }
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
 
-	ovm.vmConfig.NoLoop = true
+	ovm.NoLoop = true
 
 	ovm.interpreter.readOnly = true
 
 	// set up for concurrent execution
 	verifiers := make(chan bool, ovm.chainConfig.SigVeriConcurrency)
 	queue := make(chan tbv, ovm.chainConfig.SigVeriConcurrency)
-	result := make(chan bool)
-	final := make(chan bool)
+	final := make(chan bool, 1)
 
 	views := ovm.views
 
 	defer func () {
-		close(queue)
 		close(verifiers)
-		close(result)
-		close(final)
 	} ()
 
 	allrun := false
@@ -153,30 +149,38 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 		verifiers <- true
 	}
 
+	var toverify int32
+
 	go func() {
 		for {
 			select {
-			case code := <-queue:
+			case code, more := <-queue:
+				if !more {
+					return
+				}
 				<-verifiers
-				go ovm.Interpreter().SigVerify(code, result)
-			case res, ok := <- result:
-				if !ok {
-					return
-				}
-				verifiers <- true
-				if !res {
-					final <- false
-					return
-				} else if len(verifiers) == ovm.chainConfig.SigVeriConcurrency && len(queue) == 0 && allrun {
-					final <- true
-					return
-				}
+				go func() {
+					res := ovm.Interpreter().verifySig(code.txinidx, code.pkScript, code.sigScript)
+					if res {
+						verifiers <- true
+						if allrun && atomic.LoadInt32(&toverify) == 1 {
+							final <- true
+						}
+						atomic.AddInt32(&toverify, -1)
+					} else {
+						final <- false
+					}
+					log.Infof("verifySig result = %v", res)
+				}()
 			}
 		}
 	} ()
 
 	// prepare and shoot the real work
 	for txinidx, txin := range tx.MsgTx().TxIn {
+		if txin.IsSeparator() {
+			continue
+		}
 		if tx.MsgTx().SignatureScripts[txin.SignatureIndex] == nil {		// no signature
 			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
 		}
@@ -241,13 +245,13 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 						existence := true
 
 						if _, ok := ovm.StateDB[d]; !ok {
-							ovm.StateDB[d] = NewStateDB(ovm.views.Db, d)
+							t := NewStateDB(ovm.views.Db, d)
 
-							existence = ovm.StateDB[d].Exists()
+							existence = t.Exists(true)
 							if !existence {
-								delete(ovm.StateDB, d)
 								continue
 							}
+							ovm.StateDB[d] = t
 						}
 						if existence {
 							owner := ovm.StateDB[d].GetOwner()
@@ -291,10 +295,17 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 		copy(code[4:], addr)
 		copy(code[4 + len(addr):], excode)
 
+		atomic.AddInt32(&toverify, 1)
+
+		if txinidx == len(tx.MsgTx().TxIn) - 1 {
+			allrun = true
+		}
+
 		queue <- tbv { txinidx, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
 	}
 
-	allrun = true
+	close(queue)
+
 	res := <- final
 	if !res {
 		return omega.ScriptError(omega.ErrInternal, "Signature incorrect.")
@@ -317,37 +328,28 @@ func GetHash(d uint64) *chainhash.Hash {
 	return h
 }
 
-func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainParams *chaincfg.Params) (*btcutil.Tx, error) {
+func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32, chainParams *chaincfg.Params) error {
 	// no need to make a copy of tx, if exec fails, the tx (even a block) will be abandoned
 	if tx.IsCoinBase() {
-		return tx, nil
+		return nil
 	}
 
 	ovm.GetTx = func () * btcutil.Tx { return tx }
 	ovm.AddTxOutput = func(t wire.TxOut) bool {
 		if isContract(t.PkScript[0]) {
 			// can't add a contract call txout within a contract execution
+			// it must be done by Exec instruction
 			return false
 		}
-		msg := tx.MsgTx()
-		if !tx.HasOuts {
-			// this servers as a separater. only TokenType is serialized
-			to := wire.TxOut{}
-			to.Token = token.Token{TokenType:^uint64(0)}
-			msg.AddTxOut(&to)
-			tx.HasOuts = true
-		}
-		msg.AddTxOut(&t)
+		tx.AddTxOut(t)
+		return true
+	}
+	ovm.Spend = func(t wire.OutPoint) bool {
+		tx.AddTxIn(t)
 		return true
 	}
 	ovm.AddRight = func(t *token.RightDef) bool {
-		msg := tx.MsgTx()
-		if !tx.HasDefs {
-			to := token.SeparatorDef{}
-			msg.AddDef(&to)
-			tx.HasDefs = true
-		}
-		msg.AddDef(t)
+		tx.AddDef(t)
 		return true
 	}
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
@@ -360,87 +362,112 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, start int, txHeight int32, chainPa
 		e := ovm.views.Utxo.LookupEntry(p)
 		return e.ToTxOut()
 	}
-
-//	ovm.GetHash = GetHash
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 
-	ovm.vmConfig.NoLoop = false
+	ovm.NoLoop = false
 	ovm.interpreter.readOnly = false
 
-	for i, txOut := range tx.MsgTx().TxOut {
-		if i < start {
-			continue
-		}
-		ovm.GetCurrentOutput = func() (wire.OutPoint, *wire.TxOut) {
-			return wire.OutPoint{*tx.Hash(), uint32(i) }, txOut
-		}
-
-		version, addr, method, param := parsePkScript(txOut.PkScript)
+	// do some validation w/o execution
+	for _, txOut := range tx.MsgTx().TxOut {
+		version, addr, method, _ := parsePkScript(txOut.PkScript)
 
 		if addr == nil {
-			return nil, omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
-		}
-
-		if !isContract(version) {
-			continue
+			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 		if zeroaddr(addr) {
-			return nil, omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+		}
+		if !isContract(version) {
+			continue
 		}
 
 		var d Address
 		copy(d[:], addr)
 
-		existence := true
 		creation := bytes.Compare(method, []byte{0,0,0,0}) == 0
 
 		if _,ok := ovm.StateDB[d]; !ok {
-			ovm.StateDB[d] = NewStateDB(ovm.views.Db, d)
+			t := NewStateDB(ovm.views.Db, d)
 
-			existence = ovm.StateDB[d].Exists()
-
-			if !existence && !creation {
-				delete(ovm.StateDB, d)
-				return nil, omega.ScriptError(omega.ErrInternal, "Contract does not exist.")
+			if !t.Exists(true) && !creation {
+				return omega.ScriptError(omega.ErrInternal, "Contract does not exist.")
 			}
-			if existence && creation {
-				return nil, omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
+			if t.Exists(false) && creation {
+				return omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
 			}
 
-			if existence {
-				ovm.StateDB[d].LoadWallet()
-			}
+			ovm.StateDB[d] = t
 		} else if creation {
-			return nil, omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
+			return omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
 		}
-
-		ovm.Spend = func(t wire.OutPoint) bool {
-			ovm.StateDB[d].Debt(t)
-			tx.AddTxIn(t)
-			return true
-		}
-
-		_, err := ovm.Call(d, method, &txOut.Token, param)
-		// if fail, ovm.Call should have restored ovm.StateDB[d]
-
-		if err != nil {
-			return nil, err
-		}
-
-		outpoint := wire.OutPoint {*tx.Hash(), uint32(i) }
-
-		// take the coins sent to us
-		ovm.StateDB[d].credit(outpoint, txOut.Token)
 	}
 
-//	if len(outtx.MsgTx().TxOut) > start {
-//		return ExecContract(outtx, len(tx.MsgTx().TxOut), txHeight, ovm, chainParams)
-//	}
+	savedTx := *tx.MsgTx().Copy()
+	haves := []bool {tx.HasDefs, tx.HasIns, tx.HasOuts}
+	end := len(tx.MsgTx().TxOut)
+	hash := *tx.Hash()
 
-	return tx, nil
+	for i, txOut := range tx.MsgTx().TxOut {
+		if i >= end {
+			continue
+		}
+		ovm.GetCurrentOutput = func() (wire.OutPoint, *wire.TxOut) {
+			return wire.OutPoint{hash, uint32(i) }, txOut
+		}
+
+		version, addr, method, param := parsePkScript(txOut.PkScript)
+
+		if !isContract(version) {
+			continue
+		}
+
+		var d Address
+		copy(d[:], addr)
+
+		_, err := ovm.Call(d, method, &txOut.Token, param)
+
+		if err != nil {
+			// if fail, ovm.Call should have restored ovm.stateDB[d]
+			// we need to restore Tx
+			tx.HasDefs = haves[0]
+			tx.HasIns = haves[1]
+			tx.HasOuts = haves[2]
+			*tx.MsgTx() = savedTx
+			return err
+		}
+	}
+
+	return nil
 }
 
 var byteOrder = binary.LittleEndian
+
+func DbPutNextTokenType(dbTx database.Tx, v uint64) error {
+	r := DbFetchNextTokenType(dbTx)
+
+	r[v & 0x3] = v
+
+	var serialized [32]byte
+	for i := 0; i < 4; i++ {
+		byteOrder.PutUint64(serialized[8 * i:], r[i])
+	}
+	return dbTx.Metadata().Put(IssuableTokenType, serialized[:])
+}
+
+func DbFetchNextTokenType(dbTx database.Tx) [4]uint64 {
+	var r [4]uint64
+	serialized := dbTx.Metadata().Get(IssuableTokenType)
+	if serialized == nil {
+		return r
+	}
+
+	r[0] = byteOrder.Uint64(serialized[:])
+	r[1] = byteOrder.Uint64(serialized[8:])
+	r[2] = byteOrder.Uint64(serialized[16:])
+	r[3] = byteOrder.Uint64(serialized[24:])
+
+	return r
+}
 
 func DbFetchVersion(dbTx database.Tx, key []byte) uint64 {
 	serialized := dbTx.Metadata().Get(key)

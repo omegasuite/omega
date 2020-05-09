@@ -1300,8 +1300,7 @@ func (sp *serverPeer) enforceNodeBloomFlag(cmd string) bool {
 		// whether or not banning is enabled, it is checked here as well
 		// to ensure the violation is logged and the peer is
 		// disconnected regardless.
-		if sp.ProtocolVersion() >= wire.BIP0111Version &&
-			!cfg.DisableBanning {
+		if !cfg.DisableBanning {
 
 			// Disconnect the peer regardless of whether it was
 			// banned.
@@ -1605,11 +1604,6 @@ func (s *server) pushTxMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<-
 func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- bool,
 	waitChan <-chan bool, encoding wire.MessageEncoding) error {
 
-//	btcdLog.Infof("pushBlockMsg: %s", hash.String())
-//	if sp.continueHash != nil {
-//		btcdLog.Infof("sp.continueHash = %s", sp.continueHash.String())
-//	}
-
 	// Fetch the raw block bytes from the database.
 	var blockBytes []byte
 	err := sp.server.db.View(func(dbTx database.Tx) error {
@@ -1648,7 +1642,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 					inv.AddInvVect(&wire.InvVect{common.InvTypeWitnessBlock, *h})
 				}
 				done := make(chan bool)
-				sp.Peer.QueueMessageWithEncoding(inv, done, wire.SignatureEncoding)
+				sp.Peer.QueueMessageWithEncoding(inv, done, wire.SignatureEncoding | wire.FullEncoding)
 				<-done
 			}
 
@@ -1685,7 +1679,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 	} else {
 		// Deserialize the block.
 		err = msgBlock.BtcDecode(bytes.NewReader(blockBytes), 0, wire.SignatureEncoding)
-//		err = msgBlock.Deserialize(bytes.NewReader(blockBytes))
+
 		if err != nil {
 			peerLog.Tracef("Unable to deserialize requested block hash "+
 				"%v: %v", hash, err)
@@ -1711,11 +1705,6 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 //	var dc chan<- bool
 	continueHash := sp.continueHash
 	sendInv := continueHash != nil && continueHash.IsEqual(hash)
-//	if !sendInv {
-//		dc = doneChan
-//	}
-//	sp.heightSent[0] = heightSent
-//	sp.heightSent[1] = minerHeightSent
 
 	// When the peer requests the final block that was advertised in
 	// response to a getblocks message which requested more blocks than
@@ -1723,13 +1712,6 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 	// to trigger it to issue another getblocks message for the next
 	// batch of inventory.
 	if sendInv {
-/*
-		gmsg := wire.NewMsgGetBlocks(&sp.hashStop, &sp.minerHashStop)
-		gmsg.TxBlockLocatorHashes = []*chainhash.Hash{sp.continueHash}
-		gmsg.MinerBlockLocatorHashes = []*chainhash.Hash{sp.continueMinerHash}
-		sp.OnGetBlocks(sp.Peer, gmsg)
- */
-
 		best := sp.server.chain.BestSnapshot()
 		invMsg := wire.NewMsgInvSizeHint(1)
 		t := common.InvTypeWitnessBlock
@@ -1742,7 +1724,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		sp.continueHash = nil
 	}
 
-	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)
+	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding | wire.FullEncoding)
 
 	return nil
 }
@@ -1794,23 +1776,12 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 //	var dc chan<- bool
 	continueHash := sp.continueMinerHash
 	sendInv := continueHash != nil && continueHash.IsEqual(hash)
-//	if !sendInv {
-//		dc = doneChan
-//	}
-
 	// When the peer requests the final block that was advertised in
 	// response to a getblocks message which requested more blocks than
 	// would fit into a single message, send it a new inventory message
 	// to trigger it to issue another getblocks message for the next
 	// batch of inventory.
 	if sendInv {
-/*
-		gmsg := wire.NewMsgGetBlocks(&sp.hashStop, &sp.minerHashStop)
-		gmsg.TxBlockLocatorHashes = []*chainhash.Hash{sp.continueHash}
-		gmsg.MinerBlockLocatorHashes = []*chainhash.Hash{sp.continueMinerHash}
-		sp.OnGetBlocks(sp.Peer, gmsg)
- */
-
 		best := sp.server.chain.Miners.BestSnapshot()
 		invMsg := wire.NewMsgInvSizeHint(1)
 		iv := wire.NewInvVect(common.InvTypeMinerBlock, &best.Hash)

@@ -6,7 +6,7 @@
 *
 * You should have received a copy of the license with this file.
 * If not, please visit: <https://omega-chain.com/license.html>
- */
+*/
 
 package validate
 
@@ -29,7 +29,7 @@ func saneVertex(v * token.VertexDef) bool {
 	if y < -90 || y > 90 {
 		return false
 	}
-  
+
 	var vertices = omega.IntlDateLine
 
 	k := 0
@@ -544,6 +544,7 @@ func intersect(v *edge, dir float64, vp *edge, l *edge) bool {
 func CheckGeometryIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet) bool {
 	rset := parseRights(tx, views, false, 0)	// monitored
 
+	// basic right set
 	basicRS := getBasicRightSet(*rset, views)
 
 	// Group geometries by their rights. map[right][in/out]polygon
@@ -618,19 +619,53 @@ decendent:
 			return false
 		}
 
-		// now we have merge and compare
-		wpolygon := make(map[chainhash.Hash][][]*edge, 0)
+		ingeo := Borders(g[0], views)
+		outgeo := Borders(g[1], views)
 
-		// merge geometries
-		ingeo := GeoMerge(g[0], views, &wpolygon)
-		outgeo := GeoMerge(g[1], views, &wpolygon)
+		bentry := make(map[chainhash.Hash]*viewpoint.BorderEntry)
+		for check := true; check; {
+			for b, _ := range ingeo {
+				if _, ok := outgeo[b]; ok {
+					delete(outgeo, b)
+					delete(ingeo, b)
+				}
+			}
+			if len(ingeo) == 0 && len(outgeo) == 0 {
+				return true
+			}
 
-		// check if they are the same
-		for in,s := range ingeo {
-			for out,t := range outgeo {
-				if geoSame(&s, &t, views) {
-					ingeo = append(ingeo[:in], ingeo[in+1:]...)
-					outgeo = append(outgeo[:out], outgeo[out+1:]...)
+			check = false
+
+			for b, _ := range ingeo {
+				s := b
+				s[0] &^= 1
+				if _,ok := bentry[b]; !ok {
+					e,_ := views.Border.FetchEntry(views.Db, &s)
+					bentry[s] = e
+				}
+				for d, _ := range outgeo {
+					t := d
+					t[0] &^= 1
+					if _,ok := bentry[d]; !ok {
+						e,_ := views.Border.FetchEntry(views.Db, &t)
+						bentry[t] = e
+					}
+					if bentry[s].Enclose(bentry[t]) && len(bentry[s].Children) > 0 {
+						check = true
+						BorderDeeper(&ingeo, b, &bentry, views)
+					} else if bentry[t].Enclose(bentry[s]) && len(bentry[t].Children) > 0 {
+						check = true
+						BorderDeeper(&outgeo, d, &bentry, views)
+					} else if bentry[s].Joint(bentry[t]) {
+						if len(bentry[s].Children) > 0 {
+							check = true
+							BorderDeeper(&ingeo, b, &bentry, views)
+						}
+						if len(bentry[t].Children) > 0 {
+							check = true
+							BorderDeeper(&outgeo, d, &bentry, views)
+						}
+					}
 				}
 			}
 		}
@@ -638,11 +673,75 @@ decendent:
 		if len(ingeo) != 0 || len(outgeo) != 0 {
 			return false
 		}
+
+		/*
+				// now we have merge and compare
+				wpolygon := make(map[chainhash.Hash][][]*edge, 0)
+				// merge geometries
+				ingeo := GeoMerge(g[0], views, &wpolygon)
+				outgeo := GeoMerge(g[1], views, &wpolygon)
+
+				// check if they are the same
+				for in,s := range ingeo {
+					for out,t := range outgeo {
+						if geoSame(&s, &t, views) {
+							ingeo = append(ingeo[:in], ingeo[in+1:]...)
+							outgeo = append(outgeo[:out], outgeo[out+1:]...)
+						}
+					}
+				}
+
+				if len(ingeo) != 0 || len(outgeo) != 0 {
+					return false
+				}
+		 */
 	}
 
 	return true
 }
 
+func BorderDeeper(geo *map[chainhash.Hash]struct{}, b chainhash.Hash, bentry * map[chainhash.Hash]*viewpoint.BorderEntry, views *viewpoint.ViewPointSet) {
+	s := b
+	s[0] &^= 1
+	delete(*bentry, s)
+	delete(*geo, b)
+	for _,h := range (*bentry)[s].Children {
+		if !s.IsEqual(&b) {
+			h[0] |= 1
+		}
+		r := h
+		r[0] &^= 1
+		if _,ok := (*geo)[r]; ok {
+			delete(*geo, r)
+			continue
+		}
+		(*geo)[h] = struct{}{}
+	}
+}
+
+func Borders(old map[chainhash.Hash]struct{}, views *viewpoint.ViewPointSet) map[chainhash.Hash]struct{} {
+	borders := make(map[chainhash.Hash]struct{})
+	for p,_ := range old {
+		q, _ := views.Polygon.FetchEntry(views.Db, &p)
+		for len(q.Loops[0]) == 1 {
+			q, _ = views.Polygon.FetchEntry(views.Db, &q.Loops[0][0])
+		}
+
+		for _, l := range q.Loops {
+			for _, r := range l {
+				t := r
+				t[0] ^= 1
+				if _, ok := borders[t]; ok {
+					delete(borders, t)
+				} else {
+					borders[r] = struct{}{}
+				}
+			}
+		}
+	}
+	return borders
+}
+/*
 func GeoMerge(old map[chainhash.Hash]struct{}, views *viewpoint.ViewPointSet, realgeo * map[chainhash.Hash][][]*edge) [][][]*edge {
 	polygons := make([][][]*edge, 0, len(old))
 
@@ -821,3 +920,4 @@ func geoSame(in * [][]*edge, out * [][]*edge, views *viewpoint.ViewPointSet) boo
 
 	return qd.empty()
 }
+ */

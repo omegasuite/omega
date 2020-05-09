@@ -7,6 +7,7 @@ package txscript
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/btcsuite/omega/token"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -67,6 +68,9 @@ func DisasmString(buf []byte) (string, error) {
 func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
 	for _, in := range tx.TxIn {
+		if in.IsSeparator() {
+			continue
+		}
 		// First write out the 32-byte transaction ID one of whose
 		// outputs are being referenced by this input.
 		b.Write(in.PreviousOutPoint.Hash[:])
@@ -90,6 +94,9 @@ func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 func calcHashSequence(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
 	for _, in := range tx.TxIn {
+		if in.IsSeparator() {
+			continue
+		}
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], in.Sequence)
 		b.Write(buf[:])
@@ -106,7 +113,7 @@ func calcHashSequence(tx *wire.MsgTx) chainhash.Hash {
 func calcHashOutputs(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
 	for _, out := range tx.TxOut {
-		if out.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if out.IsSeparator() {
 			// the rest txouts are added by contract, will not be included in tx hash
 			return chainhash.DoubleHashH(b.Bytes())
 		}
@@ -130,7 +137,7 @@ func shallowCopyTx(tx *wire.MsgTx) wire.MsgTx {
 		TxIn:     make([]*wire.TxIn, len(tx.TxIn)),
 		TxOut:    make([]*wire.TxOut, len(tx.TxOut)),
 		LockTime: tx.LockTime,
-		StateChgs: make(map[[20]byte][]wire.StateChange),
+		StateChgs: make(map[[20]byte]*wire.StateChange),
 	}
 	txIns := make([]wire.TxIn, len(tx.TxIn))
 	for i, oldTxIn := range tx.TxIn {

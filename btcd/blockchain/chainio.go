@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
+	"github.com/btcsuite/omega/ovm"
 	"math/big"
 	"time"
 
@@ -455,6 +456,9 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 		// the associated stxo.
 		for txInIdx := len(tx.TxIn) - 1; txInIdx > -1; txInIdx-- {
 			txIn := tx.TxIn[txInIdx]
+			if txIn.IsSeparator() {
+				continue
+			}
 			stxo := &stxos[stxoIdx]
 			stxoIdx--
 
@@ -751,11 +755,11 @@ func dbPutBestState(dbTx database.Tx, snapshot *BestState) error {
 // the genesis block, so it must only be called on an uninitialized database.
 func (b *BlockChain) createChainState() error {
 	// Create a new node from the genesis block and set it as the best node.
-	genesisBlock := btcutil.NewBlock(b.chainParams.GenesisBlock)
+	genesisBlock := btcutil.NewBlock(b.ChainParams.GenesisBlock)
 	genesisBlock.SetHeight(0)
 	header := &genesisBlock.MsgBlock().Header
 	node := NewBlockNode(header, nil)
-	node.Data.SetBits(b.chainParams.PowLimitBits)
+	node.Data.SetBits(b.ChainParams.PowLimitBits)
 	node.Status = chainutil.StatusDataStored | chainutil.StatusValid
 	b.BestChain.SetTip(node)
 
@@ -769,7 +773,7 @@ func (b *BlockChain) createChainState() error {
 
 	// set rotation to 0 or committee size?
 	b.stateSnapshot = newBestState(node, blockSize, numTxns,
-		numTxns, time.Unix(node.Data.TimeStamp(), 0), b.chainParams.PowLimitBits, 0)
+		numTxns, time.Unix(node.Data.TimeStamp(), 0), b.ChainParams.PowLimitBits, 0)
 
 	// Create the initial the database chain state including creating the
 	// necessary index buckets and inserting the genesis block.
@@ -777,6 +781,11 @@ func (b *BlockChain) createChainState() error {
 		meta := dbTx.Metadata()
 
 		var err error
+
+		ovm.DbPutNextTokenType(dbTx, uint64(0x100))
+		ovm.DbPutNextTokenType(dbTx, uint64(0x101))
+		ovm.DbPutNextTokenType(dbTx, uint64(0x102))
+		ovm.DbPutNextTokenType(dbTx, uint64(0x103))
 
 		// Create the bucket that houses the block index data.
 		if _, err = meta.CreateBucket(blockIndexBucketName); err != nil {
@@ -876,7 +885,7 @@ func (b *BlockChain) createChainState() error {
 	})
 
 	// Create system wallet
-//	ovm.CreateSysWallet(b.chainParams, b.db)
+//	ovm.CreateSysWallet(b.ChainParams, b.db)
 
 	return err
 }
@@ -953,7 +962,7 @@ func (b *BlockChain) initChainState() error {
 			var parent *chainutil.BlockNode
 			if lastNode == nil {
 				blockHash := header.BlockHash()
-				if !blockHash.IsEqual(b.chainParams.GenesisHash) {
+				if !blockHash.IsEqual(b.ChainParams.GenesisHash) {
 					return AssertError(fmt.Sprintf("initChainState: Expected "+
 						"first entry in block index to be genesis block, "+
 						"found %s", blockHash))
@@ -990,7 +999,7 @@ func (b *BlockChain) initChainState() error {
 		}
 
 		if tip.Parent == nil {
-			tip.Data.SetBits(b.chainParams.PowLimitBits)
+			tip.Data.SetBits(b.ChainParams.PowLimitBits)
 			state.bits = tip.Data.GetBits()
 		}
 
@@ -1354,7 +1363,6 @@ func (b *BlockChain) FetchPolygonEntry(hash chainhash.Hash) (*viewpoint.PolygonE
 		}
 		entry = &viewpoint.PolygonEntry{
 			Loops: e.Loops,
-//			RefCnt: e.RefCnt,
 			PackedFlags: 0,
 		}
 		return err
@@ -1384,6 +1392,9 @@ func (b *BlockChain) FetchRightEntry(hash chainhash.Hash) (*viewpoint.RightEntry
 	err := b.db.View(func(dbTx database.Tx) error {
 		var err error
 		e, err := viewpoint.DbFetchRight(dbTx, &hash)
+		if err != nil {
+			return err
+		}
 		entry = &viewpoint.RightEntry{
 			Father: e.(*viewpoint.RightEntry).Father,
 			Desc:e.(*viewpoint.RightEntry).Desc,
@@ -1422,7 +1433,7 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 	neededSet := make(map[wire.OutPoint]struct{})
 	prevOut := wire.OutPoint{Hash: *tx.Hash()}
 	for txOutIdx, txOut := range tx.MsgTx().TxOut {
-		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if txOut.IsSeparator() {
 			continue
 		}
 		prevOut.Index = uint32(txOutIdx)
@@ -1430,6 +1441,9 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 	}
 	if !IsCoinBase(tx) {
 		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.IsSeparator() {
+				continue
+			}
 			neededSet[txIn.PreviousOutPoint] = struct{}{}
 		}
 	}
@@ -1472,31 +1486,3 @@ func (b *BlockChain) FetchVtxEntry(hash chainhash.Hash) (*viewpoint.VtxEntry, er
 
 	return entry, nil
 }
-
-/*
-func (b *BlockChain) FetchMycoins(sum int64) []wire.OutPoint {
-	utxos := make([]wire.OutPoint, 0)
-	b.db.View(func(dbTx database.Tx) error {
-		cursor := dbTx.Metadata().Bucket(MycoinsBucketName).Cursor()
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			// An entry was found, but it could just be an entry with the next
-			// highest hash after the requested one, so make sure the hashes
-			// actually match.
-			cs := cursor.Value()
-			p := viewpoint.Key2Outpoint(cursor.Key())
-			compressedAmount, _ := bccompress.DeserializeVLQ(cs)
-			amount := bccompress.DecompressTxOutAmount(compressedAmount)
-			utxos = append(utxos, p)
-			sum -= int64(amount)
-			if sum <= 0 {
-				return nil
-			}
-		}
-		return nil
-	})
-	if sum <= 0 {
-		return utxos
-	}
-	return nil
-}
-*/

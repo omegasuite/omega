@@ -4,11 +4,6 @@
 
 package txscript
 
-import (
-	"github.com/btcsuite/omega/ovm"
-	"encoding/binary"
-)
-
 const (
 	// defaultScriptAlloc is the default size used for the backing array
 	// for a script being built by the ScriptBuilder.  The array will

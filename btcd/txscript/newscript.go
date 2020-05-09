@@ -124,61 +124,32 @@ func (s PkScript) String() string {
 func ComputePkScript(sigScript []byte, chainParams *chaincfg.Params) (PkScript, error) {
 	pkScript := PkScript{}
 
-	p, sigstart, textadded := 0, false, false
-	for p < len(sigScript) && !sigstart {
-		if sigScript[p] >= byte(ovm.PUSH1) && sigScript[p] <= byte(ovm.PUSH32) {
-			if textadded {
-				sigstart = true
-			} else {
-				p += 1 + int(sigScript[p])
-			}
-		} else {
-			switch sigScript[p] {
-			case byte(ovm.ADDSIGNTEXT):
-				p++
-				textadded = true
-				switch sigScript[p] {
-				case 0, 1: // specific matching outpoint // specific matching input // specific script
-					p++
-				case 2, 3, 4: // specific matching outpoint // specific matching input // specific script
-					p += 2 + int(sigScript[p + 1])
-				default:
-					return pkScript, txsparser.ScriptError(txsparser.ErrNotPushOnly,
-						"sigscript is not valid")
-				}
-			}
+	code := ovm.ByteCodeParser(sigScript)
+
+	for _, c:= range code {
+		// the first COPYIMM copys either pubkey or script to address 4
+		if c.Op() != ovm.PUSH {
+			continue
 		}
-	}
 
-	if !sigstart {
-		return pkScript, txsparser.ScriptError(txsparser.ErrNotPushOnly,
-			"sigscript is not valid")
-	}
+		// execute this instruction only
+		scp, err := ovm.NewInterpreter(nil, ovm.Config{}).Step(&c)
+		if err != nil {
+			return pkScript, txsparser.ScriptError(txsparser.ErrNotPushOnly,
+				"sigscript is not valid")
+		}
 
-	if sigScript[p] >= byte(ovm.PUSH1) && sigScript[p] <= byte(ovm.PUSH32) {
-		p++
-		format := int(sigScript[p])
+		format := int(scp[4])
+		p := 4
 		var s []byte
 		if format == 0x2 {	// btcec.pubkeyCompressed
-			s = append(sigScript[p + 1 : p + 33], sigScript[p + 34])
-			p += 35
+			s = scp[p + 1 : p + 34]
 		} else if format == 0x4 {	// btcec.pubkeyUncompressed
-			s = append(append(sigScript[p + 1 : p + 33], sigScript[p + 34 : p + 66]...), sigScript[p+67])
-			p += 68
-		} else if format == 0x6 {	// btcec.pubkeyHybappend(rid
-			s = append(append(sigScript[p + 1 : p + 33], sigScript[p + 34 : p + 66]...), sigScript[p+67])
-			p += 68
+			s = scp[p + 1 : p + 67]
+		} else if format == 0x6 {	// btcec.pubkeyHybrid
+			s = scp[p + 1 : p + 67]
 		} else {
-			// assume it is a script
-			s := make([]byte, 0)
-			for format >= 32 {
-				s = append(s, sigScript[p + 1 : p + 33]...)
-				format -= 32
-				p += 33
-			}
-			if format > 0 {
-				s = append(s, sigScript[p + 1 : p + format + 1]...)
-			}
+			s = scp[p + 1 :]
 			addr, _ := btcutil.NewAddressScriptHash(s, chainParams)
 			copy(pkScript.script[:], addr.ScriptNetAddress())
 			pkScript.class = txsparser.ScriptHashTy

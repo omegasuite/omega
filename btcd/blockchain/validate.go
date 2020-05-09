@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/omega/ovm"
 	"math"
 	"math/big"
 	"time"
@@ -171,6 +172,9 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 	// the transaction might still be finalized if the sequence number
 	// for all transaction inputs is maxed out.
 	for _, txIn := range msgTx.TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		if txIn.Sequence != math.MaxUint32 {
 			return false
 		}
@@ -277,6 +281,9 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 	// Check for duplicate transaction inputs.
 	existingTxOut := make(map[wire.OutPoint]struct{})
 	for _, txIn := range msgTx.TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		if _, exists := existingTxOut[txIn.PreviousOutPoint]; exists {
 			return ruleError(ErrDuplicateTxInputs, "transaction "+
 				"contains duplicate inputs")
@@ -289,6 +296,9 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		// Previous transaction outputs referenced by the inputs to this
 		// transaction must not be null.
 		for _, txIn := range msgTx.TxIn {
+			if txIn.IsSeparator() {
+				continue
+			}
 			if isNullOutpoint(&txIn.PreviousOutPoint) {
 				return ruleError(ErrBadTxInput, "transaction "+
 					"input refers to previous output that "+
@@ -455,7 +465,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		usigns := make(map[[20]byte]struct{})
 
 		for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
-			signer, err := btcutil.VerifySigScript(sign, hash, b.chainParams)
+			signer, err := btcutil.VerifySigScript(sign, hash, b.ChainParams)
 			if err != nil {
 				return err, false
 			}
@@ -820,6 +830,9 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 
 	totalIns := make(map[uint64]int64)
 	for txInIndex, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		// Ensure the referenced input transaction is available.
 		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
 		if utxo == nil || utxo.IsSpent() {
@@ -899,6 +912,9 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 
 	inputs := make([]token.Token, len(tx.MsgTx().TxIn))
 	for i, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		out := txIn.PreviousOutPoint
 		x := views.Utxo.LookupEntry(out)
 		if x == nil {
@@ -994,6 +1010,11 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.View
 				"transaction %v is %v which is less than the amount "+
 				"spent of %v", txHash, v, out)
 			return 0, ruleError(ErrSpendTooHigh, str)
+		} else if in != 0 && v != out {
+			str := fmt.Sprintf("total %d type token value of all transaction inputs for "+
+				"transaction %v is %v which is not equal to the amount "+
+				"spent of %v", in, txHash, v, out)
+			return 0, ruleError(ErrSpendTooHigh, str)
 		}
 	}
 
@@ -1026,17 +1047,12 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.View
 // with that node.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut) error {
+func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut, Vm * ovm.OVM, SigVm * ovm.OVM) error {
 	// If the side chain blocks end up in the database, a call to
 	// CheckBlockSanity should be done here in case a previous version
 	// allowed a block that is no longer valid.  However, since the
 	// implementation only currently uses memory for the side chain blocks,
 	// it isn't currently necessary.
-
-//	if node.Hash.IsEqual(b.chainParams.GenesisHash) {
-//		str := "the coinbase for the genesis block is not spendable"
-//		return ruleError(ErrMissingTxOut, str)
-//	}
 
 	// Ensure the view is for the node being checked.
 	parentHash := &block.MsgBlock().Header.PrevBlock
@@ -1107,9 +1123,29 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// still relatively cheap as compared to running the scripts) checks
 	// against all the inputs when the signature operations are out of
 	// bounds.
+
+	coinBase := btcutil.NewTx(transactions[0].MsgTx().Stripped())
+	coinBase.SetIndex(transactions[0].Index())
+	coinBaseHash := *transactions[0].Hash()
+	Vm.SetCoinBaseOp(
+		func(txo wire.TxOut) wire.OutPoint {
+			if !coinBase.HasOuts {
+				// this servers as a separater. only TokenType is serialized
+				to := wire.TxOut{}
+				to.Token = token.Token{TokenType:^uint64(0)}
+				coinBase.MsgTx().AddTxOut(&to)
+				coinBase.HasOuts = true
+			}
+			coinBase.MsgTx().AddTxOut(&txo)
+			op := wire.OutPoint { coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
+			return op
+		})
+
+	Vm.GasLimit = block.MsgBlock().Header.ContractExec
+
 	var totalFees int64
 	for i, tx := range transactions {
-		err := CheckTransactionInputs(tx, node.Height, views, b.chainParams)
+		err := CheckTransactionInputs(tx, node.Height, views, b.ChainParams)
 		if err != nil {
 			return err
 		}
@@ -1118,32 +1154,30 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 
 		if i != 0 {
 			if runScripts {
-				err = b.Vm.VerifySigs(tx, node.Height)
+				err = SigVm.VerifySigs(tx, node.Height)
 				if err != nil {
 					return err
 				}
 			}
 
-			// excute contracts if necessary. note, if the execution causes any change in
-			// in transaction, a new copy of tx will be returned.
-//			cleantx := tx.CleanCopy()
-
-			_, err := b.Vm.ExecContract(tx, 0, node.Height, b.chainParams)
+			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
+			newtx.SetIndex(tx.Index())
+			err := Vm.ExecContract(newtx, node.Height, b.ChainParams)
 			if err != nil {
 				return err
 			}
 
-			// verify that tx and otx are the same
-//			if !otx.VerifyContractOut(tx) {
-//				return fmt.Errorf("Contract execution result is not the same as transaction in block.")
-//			}
+			// compare tx & newtx
+			if !tx.Match(newtx) {
+				return fmt.Errorf("Mismatch contract execution result")
+			}
 
 			err = CheckTransactionIntegrity(tx, views)
 			if err != nil {
 				return err
 			}
 
-			txFee, err = CheckTransactionFees(tx, node.Height, views, b.chainParams)
+			txFee, err = CheckTransactionFees(tx, node.Height, views, b.ChainParams)
 			if err != nil {
 			return err
 		}
@@ -1168,6 +1202,15 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 
+	if Vm.GasLimit != 0 {
+		return fmt.Errorf("Incorrect contract execution cost.")
+	}
+
+	// compare coinBase and transactions[0]
+	if !transactions[0].Match(coinBase) {
+		return fmt.Errorf("Mismatch contract execution result")
+	}
+
 	// The total output values of the coinbase transaction must not exceed
 	// the expected subsidy value plus total transaction fees gained from
 	// mining the block.  It is safe to ignore overflow and out of range
@@ -1176,7 +1219,9 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	var totalSatoshiOut int64
 
 	for _, txOut := range transactions[0].MsgTx().TxOut {
-		totalSatoshiOut += txOut.Value.(*token.NumToken).Val
+		if txOut.TokenType == 0 {
+			totalSatoshiOut += txOut.Value.(*token.NumToken).Val
+		}
 	}
 
 	prevPows := uint(0)
@@ -1186,7 +1231,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 
-	expectedSatoshiOut := CalcBlockSubsidy(node.Height, b.chainParams, prevPows) + totalFees
+	expectedSatoshiOut := CalcBlockSubsidy(node.Height, b.ChainParams, prevPows) + totalFees
 	if totalSatoshiOut > expectedSatoshiOut {
 		str := fmt.Sprintf("coinbase transaction for block pays %v "+
 			"which is more than expected value of %v",
@@ -1194,52 +1239,31 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		return ruleError(ErrBadCoinbaseValue, str)
 	}
 
-	// Blocks created after the BIP0016 activation time need to have the
-	// pay-to-script-hash checks enabled.
-//	var scriptFlags ScriptFlags
+	// We obtain the MTP of the *previous* block in order to
+	// determine if transactions in the current block are final.
+	medianTime := node.Parent.CalcPastMedianTime()
 
-		// If the CSV soft-fork is now active, then modify the
-		// scriptFlags to ensure that the CSV op code is properly
-		// validated during the script checks bleow.
-//		scriptFlags |= ScriptVerifyCheckSequenceVerify
-
-		// We obtain the MTP of the *previous* block in order to
-		// determine if transactions in the current block are final.
-		medianTime := node.Parent.CalcPastMedianTime()
-
-		// Additionally, if the CSV soft-fork package is now active,
-		// then we also enforce the relative sequence number based
-		// lock-times within the inputs of all transactions in this
-		// candidate block.
-		for _, tx := range block.Transactions() {
-			// A transaction can only be included within a block
-			// once the sequence locks of *all* its inputs are
-			// active.
-			sequenceLock, err := b.calcSequenceLock(node, tx, views.Utxo,
-				false)
-			if err != nil {
+	// we also enforce the relative sequence number based
+	// lock-times within the inputs of all transactions in this
+	// candidate block.
+	for _, tx := range block.Transactions() {
+		// A transaction can only be included within a block
+		// once the sequence locks of *all* its inputs are
+		// active.
+		sequenceLock, err := b.calcSequenceLock(node, tx, views.Utxo,
+			false)
+		if err != nil {
 				return err
 			}
-			if !SequenceLockActive(sequenceLock, node.Height,
-				medianTime) {
-				str := fmt.Sprintf("block contains " +
-					"transaction whose input sequence " +
-					"locks are not met")
-				return ruleError(ErrUnfinalizedTx, str)
-			}
-		}
-/* This has been done in b.Vm.VerifySigs(tx, node.height)
-	// Now that the inexpensive checks are done and have passed, verify the
-	// transactions are actually allowed to spend the coins by running the
-	// expensive ECDSA signature check scripts.  Doing this last helps
-	// prevent CPU exhaustion attacks.
-	if runScripts {
-		err := checkBlockScripts(block, views.Utxo)	// , scriptFlags, b.sigCache,b.hashCache)
-		if err != nil {
-			return err
+		if !SequenceLockActive(sequenceLock, node.Height,
+			medianTime) {
+			str := fmt.Sprintf("block contains " +
+				"transaction whose input sequence " +
+				"locks are not met")
+			return ruleError(ErrUnfinalizedTx, str)
 		}
 	}
-*/
+
 	// blacklist check
 	for _, tx := range block.Transactions() {
 		for _, txo := range tx.MsgTx().TxOut {
@@ -1250,6 +1274,9 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			}
 		}
 		for _, txi := range tx.MsgTx().TxIn {
+			if txi.IsSeparator() {
+				continue
+			}
 			utxo := views.Utxo.LookupEntry(txi.PreviousOutPoint)
 			if utxo == nil || utxo.IsSpent() {
 				continue
@@ -1300,7 +1327,7 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 		return ruleError(ErrPrevBlockNotBest, str)
 	}
 
-	err := checkBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
+	err := checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return err
 	}
@@ -1318,9 +1345,11 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 
 	// Leave the spent txouts entry nil in the state since the information
 	// is not needed and thus extra work can be avoided.
-	views := b.NewViewPointSet()
+	views, Vm, SigVm := b.Canvas(block)
 //	views.db = &b.db
-	views.Utxo.SetBestHash(&tip.Hash)
+	views.SetBestHash(&tip.Hash)
+
 	newNode := NewBlockNode(&header, tip)
-	return b.checkConnectBlock(newNode, block, views, nil)
+
+	return b.checkConnectBlock(newNode, block, views, nil, Vm, SigVm)
 }

@@ -80,6 +80,7 @@ func (c *Client) GetBestMinerBlockHash() (*chainhash.Hash, error) {
 // FutureGetBlockResult is a future promise to deliver the result of a
 // GetBlockAsync RPC invocation (or an applicable error).
 type FutureGetBlockResult chan *response
+type FutureGetBlockTxHasesResult chan *response
 type FutureGetMinerBlockResult chan *response
 
 // Receive waits for the response promised by the future and returns the raw
@@ -111,6 +112,33 @@ func (r FutureGetBlockResult) Receive() (*wire.MsgBlock, error) {
 		return nil, err
 	}
 	return &msgBlock, nil
+}
+
+func (r FutureGetBlockTxHasesResult) Receive() ([]chainhash.Hash, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal result as a string.
+	var blockHex string
+	err = json.Unmarshal(res, &blockHex)
+	if err != nil {
+		return nil, err
+	}
+
+	// Decode the serialized block hex to raw bytes.
+	serializedBlock, err := hex.DecodeString(blockHex)
+	if err != nil {
+		return nil, err
+	}
+
+	// Deserialize the block and return it.
+	h := make([]chainhash.Hash, len(serializedBlock) / chainhash.HashSize)
+	for i := 0; i < len(serializedBlock); i += chainhash.HashSize {
+		copy(h[i / chainhash.HashSize][:], serializedBlock[i:])
+	}
+	return h, nil
 }
 
 func (r FutureGetMinerBlockResult) Receive() (*wire.MingingRightBlock, error) {
@@ -156,6 +184,16 @@ func (c *Client) GetBlockAsync(blockHash *chainhash.Hash) FutureGetBlockResult {
 	return c.sendCmd(cmd)
 }
 
+func (c *Client) GetBlockTxHashesAsync(blockHash *chainhash.Hash) FutureGetBlockTxHasesResult {
+	hash := ""
+	if blockHash != nil {
+		hash = blockHash.String()
+	}
+
+	cmd := btcjson.NewGetBlockTxHasesCmd(hash)
+	return c.sendCmd(cmd)
+}
+
 func (c *Client) GetMinerBlockAsync(blockHash *chainhash.Hash, verbose bool) FutureGetMinerBlockResult {
 	hash := ""
 	if blockHash != nil {
@@ -172,6 +210,10 @@ func (c *Client) GetMinerBlockAsync(blockHash *chainhash.Hash, verbose bool) Fut
 // block instead.
 func (c *Client) GetBlock(blockHash *chainhash.Hash) (*wire.MsgBlock, error) {
 	return c.GetBlockAsync(blockHash).Receive()
+}
+
+func (c *Client) GetBlockTxHashes(blockHash *chainhash.Hash) ([]chainhash.Hash, error) {
+	return c.GetBlockTxHashesAsync(blockHash).Receive()
 }
 
 func (c *Client) GetMinerBlockVerbose(blockHash *chainhash.Hash) ([]byte, error) {

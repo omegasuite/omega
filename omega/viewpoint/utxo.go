@@ -258,7 +258,7 @@ func (view *ViewPointSet) AddTxOut(tx *btcutil.Tx, txOutIdx uint32, blockHeight 
 	prevOut := wire.OutPoint{Hash: *tx.Hash(), Index: txOutIdx}
 	txOut := tx.MsgTx().TxOut[txOutIdx]
 
-	if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+	if txOut.IsSeparator() {
 		return
 	}
 
@@ -287,7 +287,7 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 	isCoinBase := tx.IsCoinBase()
 	prevOut := wire.OutPoint{Hash: *tx.Hash()}
 	for txOutIdx, txOut := range tx.MsgTx().TxOut {
-		if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+		if txOut.IsSeparator() {
 			continue
 		}
 		// Update existing entries.  All fields are updated because it's
@@ -329,6 +329,9 @@ func (view *ViewPointSet) ConnectTransaction(tx *btcutil.Tx, blockHeight int32, 
 	// if a slice was provided for the spent txout details, append an entry
 	// to it.
 	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		// Ensure the referenced utxo exists in the view.  This should
 		// never happen unless there is a bug is introduced in the code.
 		entry := view.Utxo.entries[txIn.PreviousOutPoint]
@@ -402,7 +405,7 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 		txHash := tx.Hash()
 		prevOut := wire.OutPoint{Hash: *txHash}
 		for txOutIdx, txOut := range tx.MsgTx().TxOut {
-			if txOut.TokenType == 0xFFFFFFFFFFFFFFFF {
+			if txOut.IsSeparator() {
 				continue
 			}
 			prevOut.Index = uint32(txOutIdx)
@@ -441,6 +444,9 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 			continue
 		}
 		for txInIdx := len(tx.MsgTx().TxIn) - 1; txInIdx > -1; txInIdx-- {
+			if tx.MsgTx().TxIn[txInIdx].IsSeparator() {
+				continue
+			}
 			// Ensure the spent txout index is decremented to stay
 			// in sync with the transaction input.
 			stxo := &stxos[stxoIdx]
@@ -867,6 +873,9 @@ func (view *ViewPointSet) FetchInputUtxos(db database.DB, block *btcutil.Block) 
 	neededSet := make(map[wire.OutPoint]struct{})
 	for i, tx := range transactions[1:] {
 		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.IsSeparator() {
+				continue
+			}
 			// It is acceptable for a transaction input to reference
 			// the output of another transaction in this block only
 			// if the referenced transaction comes before the

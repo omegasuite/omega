@@ -11,7 +11,7 @@
 package viewpoint
 
 import (
-//	"fmt"
+	"fmt"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
@@ -642,6 +642,10 @@ func DbFetchRight(dbTx database.Tx, hash *chainhash.Hash) (interface{}, error) {
 	meta := dbTx.Metadata()
 	hashIndex := meta.Bucket(rightSetBucketName)
 	serialized := hashIndex.Get((*hash)[:])
+
+	if serialized == nil {
+		return nil, fmt.Errorf("Right entry does not exists in DB.")
+	}
 
 	switch serialized[0] {
 	case 0:

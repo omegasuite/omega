@@ -9,8 +9,6 @@ import (
 	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/omega/ovm"
-	"github.com/btcsuite/omega/token"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -118,7 +116,7 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 		if prevNode := b.index.LookupNode(&block.MsgBlock().Header.PrevBlock); prevNode != nil {
 			block.SetHeight(prevNode.Height + 1)
 			// Potentially accept the block into the block chain.
-			err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
+			err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
 			if err != nil || mkorphan {
 				return true
 			}
@@ -224,32 +222,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	b.ChainLock.Lock()
 	defer b.ChainLock.Unlock()
 
-	// initialize OVM
-	ctx := ovm.Context{}
-	vmcfg := ovm.Config {
-		Debug: false,
-		NoRecursion: false,
-		EnablePreimageRecording: false,
-	}
-	b.Vm = ovm.NewOVM(ctx, b.chainParams, vmcfg)
-	defer func() { b.Vm = nil }()
-
-	b.Vm.SetCoinBaseOp(
-		func(txo wire.TxOut) wire.OutPoint {
-			tx,_ := block.Tx(0)
-			msg := tx.MsgTx()
-			if !tx.HasOuts {
-				// this servers as a separater. only TokenType is serialized
-				to := wire.TxOut{}
-				to.Token = token.Token{TokenType:^uint64(0)}
-				msg.AddTxOut(&to)
-				tx.HasOuts = true
-			}
-			msg.AddTxOut(&txo)
-			op := wire.OutPoint { *tx.Hash(), uint32(len(msg.TxOut) - 1)}
-			return op
-		})
-
 	blockHeader := &block.MsgBlock().Header
 	prevHash := &blockHeader.PrevBlock
 	prevHashExists, err := b.blockExists(prevHash)
@@ -302,7 +274,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
-	err = checkBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
+	err = checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return false, false, err, -1
 	}
@@ -344,7 +316,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return isMainChain, false, nil, -1
 	}
 
-	err, mkorphan := b.checkProofOfWork(block, prevNode, b.chainParams.PowLimit, flags)
+	err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
 	if err != nil {
 		return isMainChain, true, err, -1
 	}
@@ -448,7 +420,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 
 	for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 		k, _ := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
-		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.chainParams)
+		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.ChainParams)
 		// is the signer in committee?
 		if _,ok := miners[*(pk.AddressPubKeyHash().Hash160())]; !ok {
 //			b.index.RemoveNode(b.index.LookupNode(block.Hash()))

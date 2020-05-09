@@ -11,7 +11,7 @@
 package token
 
 import (
-//	"bytes"
+	"bytes"
 	"fmt"
 	"io"
 //	"strconv"
@@ -60,6 +60,8 @@ type Definition interface {
 	MemRead(io.Reader, uint32) error
 	MemWrite(io.Writer, uint32) error
 	IsSeparator() bool
+	Match(Definition) bool
+	Dup() Definition
 }
 
 type VertexDef struct {
@@ -67,6 +69,16 @@ type VertexDef struct {
 	Lat int32
 	Lng int32
 	Alt int32
+}
+
+func (s * VertexDef) Match(p Definition) bool {
+	switch p.(type) {
+	case * VertexDef:
+		t := p.(* VertexDef)
+		return s.Lng == t.Lng && s.Alt == t.Alt && s.Lat == t.Lat
+	default:
+		return false
+	}
 }
 
 func (t * VertexDef) DefType() uint8 {
@@ -79,10 +91,9 @@ func (t * VertexDef) IsSeparator() bool {
 
 func (t * VertexDef) Hash() chainhash.Hash {
 	if t.hash == nil {
-		b := make([]byte, 12)	// + len(t.Desc))
+		b := make([]byte, 8)	// + len(t.Desc))
 		binary.LittleEndian.PutUint32(b[0:], uint32(t.Lat))
 		binary.LittleEndian.PutUint32(b[4:], uint32(t.Lng))
-		binary.LittleEndian.PutUint32(b[8:], uint32(t.Alt))
 
 		hash := chainhash.HashH(b)
 
@@ -110,25 +121,7 @@ func NewVertexDef(lat, lng, alt int32) (* VertexDef) {
 }
 
 func (msg * VertexDef) MemRead(r io.Reader, pver uint32) error {
-	lat, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
-	if err != nil {
-		return err
-	}
-	msg.Lat = int32(lat)
-
-	lng, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
-	if err != nil {
-		return err
-	}
-	msg.Lng = int32(lng)
-
-	alt, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
-	if err != nil {
-		return err
-	}
-	msg.Alt = int32(alt)
-
-	return nil
+	return msg.Read(r, pver)
 }
 
 func (msg * VertexDef) Read(r io.Reader, pver uint32) error {
@@ -172,21 +165,7 @@ func (msg * VertexDef) Write(w io.Writer, pver uint32) error {
 }
 
 func (msg * VertexDef) MemWrite(w io.Writer, pver uint32) error {
-	err := common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Lat))
-	if err != nil {
-		return err
-	}
-	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Lng))
-	if err != nil {
-		return err
-	}
-
-	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Alt))
-	if err != nil {
-		return err
-	}
-
-	return err
+	return msg.Write(w, pver)
 }
 
 type BorderDef struct {
@@ -194,6 +173,16 @@ type BorderDef struct {
 	Father chainhash.Hash
 	Begin chainhash.Hash
 	End chainhash.Hash
+}
+
+func (s * BorderDef) Match(p Definition) bool {
+	switch p.(type) {
+	case * BorderDef:
+		t := p.(* BorderDef)
+		return s.Father.IsEqual(&t.Father) && s.Begin.IsEqual(&t.Begin) && s.End.IsEqual(&t.End)
+	default:
+		return false
+	}
 }
 
 func (t * BorderDef) DefType() uint8 {
@@ -263,6 +252,26 @@ type LoopDef []chainhash.Hash		// if the loops has only one item, it is not a bo
 type PolygonDef struct {
 	hash * chainhash.Hash
 	Loops []LoopDef
+}
+
+func (s * PolygonDef) Match(p Definition) bool {
+	switch p.(type) {
+	case * PolygonDef:
+		t := p.(* PolygonDef)
+		if len(s.Loops) != len(t.Loops) {
+			return false
+		}
+		for i,l := range s.Loops {
+			for j,b := range l {
+				if !b.IsEqual(&t.Loops[i][j]) {
+					return false
+				}
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 func (t * PolygonDef) DefType() uint8 {
@@ -430,6 +439,19 @@ type RightDef struct {
 						// bit 4: whether Desc is a contract call func.
 }
 
+func (s * RightDef) Match(p Definition) bool {
+	switch p.(type) {
+	case * RightDef:
+		t := p.(* RightDef)
+		if s.Attrib != t.Attrib || !s.Father.IsEqual(&t.Father) {
+			return false
+		}
+		return bytes.Compare(s.Desc, t.Desc) == 0
+	default:
+		return false
+	}
+}
+
 func (t * RightDef) DefType() uint8 {
 	return DefTypeRight
 }
@@ -533,6 +555,24 @@ func (t * RightDef) MemWrite(w io.Writer, pver uint32) error {
 type RightSetDef struct {
 	hash * chainhash.Hash
 	Rights []chainhash.Hash
+}
+
+func (s * RightSetDef) Match(p Definition) bool {
+	switch p.(type) {
+	case * RightSetDef:
+		t := p.(* RightSetDef)
+		if len(s.Rights) != len(t.Rights) {
+			return false
+		}
+		for i,d := range s.Rights {
+			if !d.IsEqual(&t.Rights[i]) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 func (t * RightSetDef) DefType() uint8 {
@@ -770,71 +810,67 @@ func RemapDef(txDef []Definition, to Definition) Definition {
 	return to
 }
 
+func (d *VertexDef) Dup() Definition {
+	return &VertexDef{
+		Lat: d.Lat,
+		Lng: d.Lng,
+	}
+}
+
+func (c *BorderDef) Dup() Definition {
+	newDefinitions := BorderDef{}
+	newDefinitions.Father.SetBytes(c.Father[:])
+	newDefinitions.Begin.SetBytes(c.Begin[:])
+	newDefinitions.End.SetBytes(c.End[:])
+	return &newDefinitions
+}
+
+func (c *PolygonDef) Dup() Definition {
+	newDefinitions := PolygonDef{}
+	newDefinitions.Loops = make([]LoopDef, 0, len(c.Loops))
+	for _, loop := range c.Loops {
+		nl := make([]chainhash.Hash, 0, len(loop))
+		for _, l := range loop {
+			nh := chainhash.Hash{}
+			nh.SetBytes(l[:])
+			nl = append(nl, nh)
+		}
+		newDefinitions.Loops = append(newDefinitions.Loops, nl)
+	}
+	return &newDefinitions
+}
+
+func (c *RightDef) Dup() Definition {
+	newDefinitions := RightDef{
+		Attrib: c.Attrib,
+	}
+	newDefinitions.Father.SetBytes(c.Father[:])
+	newDefinitions.Desc = make([]byte, len(c.Desc))
+	copy(newDefinitions.Desc, c.Desc)
+	return &newDefinitions
+}
+
+func (c *RightSetDef) Dup() Definition {
+	newDefinitions := RightSetDef{
+		Rights: make([]chainhash.Hash, len(c.Rights)),
+	}
+	for i, r := range c.Rights {
+		copy(newDefinitions.Rights[i][:], r[:])
+	}
+	return &newDefinitions
+}
+
+func (c *SeparatorDef) Dup() Definition {
+	return &SeparatorDef{ }
+}
+
 // Copy creates a deep copy of a transaction so that the original does not get
 // modified when the copy is manipulated.
 func CopyDefinitions(defs []Definition) []Definition {
 	txdef := make([]Definition, 0, len(defs))
 	// Deep copy the old Defnition data.
 	for _, oldDefinitions := range defs {
-		switch oldDefinitions.DefType() {
-			case DefTypeVertex:
-				c := oldDefinitions.(*VertexDef)
-				newDefinitions := VertexDef{
-					Lat: c.Lat,
-					Lng: c.Lng,
-					}
-//				newDefinitions.Desc = make([]byte, len(c.Desc))
-//				copy(newDefinitions.Desc, c.Desc)
-				txdef = append(txdef, &newDefinitions)
-				break;
-			case DefTypeBorder:
-				c := oldDefinitions.(*BorderDef)
-				newDefinitions := BorderDef{}
-				newDefinitions.Father.SetBytes(c.Father[:])
-				newDefinitions.Begin.SetBytes(c.Begin[:])
-				newDefinitions.End.SetBytes(c.End[:])
-				txdef = append(txdef, &newDefinitions)
-				break;
-			case DefTypePolygon:
-				c := oldDefinitions.(*PolygonDef)
-				newDefinitions := PolygonDef{}
-				newDefinitions.Loops = make([]LoopDef, 0, len(c.Loops))
-				for _,loop := range c.Loops {
-					nl := make([]chainhash.Hash, 0, len(loop))
-					for _,l := range loop {
-						nh := chainhash.Hash{}
-						nh.SetBytes(l[:])
-						nl = append(nl, nh)
-					}
-					newDefinitions.Loops = append(newDefinitions.Loops, nl)
-				}
-				txdef = append(txdef, &newDefinitions)
-				break;
-			case DefTypeRight:
-				c := oldDefinitions.(*RightDef)
-				newDefinitions := RightDef{
-					Attrib: c.Attrib,
-				}
-				newDefinitions.Father.SetBytes(c.Father[:])
-				newDefinitions.Desc = make([]byte, len(c.Desc))
-				copy(newDefinitions.Desc, c.Desc)
-				txdef = append(txdef, &newDefinitions)
-				break;
-			case DefTypeRightSet:
-				c := oldDefinitions.(*RightSetDef)
-				newDefinitions := RightSetDef{
-					Rights: make([]chainhash.Hash, len(c.Rights)),
-				}
-				for i,r := range c.Rights {
-					copy(newDefinitions.Rights[i][:], r[:])
-				}
-				txdef = append(txdef, &newDefinitions)
-				break;
-			case DefTypeSeparator:
-				newDefinitions := SeparatorDef{	}
-				txdef = append(txdef, &newDefinitions)
-				break;
-		}
+		txdef = append(txdef, oldDefinitions.Dup())
 	}
 
 	return txdef
@@ -932,7 +968,7 @@ func (to *Token) ReadTxOut(r io.Reader, pver uint32, version uint32) error {
 	}
 	to.TokenType = t
 
-	if t == 0xFFFFFFFFFFFFFFFF {
+	if t == DefTypeSeparator {
 		// this is a separator
 		return nil
 	}
@@ -968,7 +1004,7 @@ func (to * Token) WriteTxOut(w io.Writer, pver uint32, version int32) error {
 		return err
 	}
 
-	if to.TokenType == 0xFFFFFFFFFFFFFFFF {
+	if to.TokenType == DefTypeSeparator {
 		// this is a separator
 		return nil
 	}
@@ -1105,4 +1141,13 @@ func (t * SeparatorDef) MemRead(io.Reader, uint32) error {
 }
 func (t * SeparatorDef) MemWrite(io.Writer, uint32) error {
 	return nil
+}
+
+func (s * SeparatorDef) Match(p Definition) bool {
+	switch p.(type) {
+	case * SeparatorDef:
+		return true
+	default:
+		return false
+	}
 }

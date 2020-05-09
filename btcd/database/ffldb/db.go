@@ -1177,6 +1177,7 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 
 	blockBytes := w.Bytes()
 
+	// we really shout not be doing it here
 	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize/2 + 1 {
 		panic(fmt.Sprintf("insifficient signatures for block %s", block.Hash().String()))
 		os.Exit(-8)

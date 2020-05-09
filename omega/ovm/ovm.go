@@ -6,6 +6,8 @@ package ovm
 
 import (
 	"bytes"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
@@ -97,7 +99,7 @@ type OVM struct {
 	// views provide viewpoint of chain
 	views * viewpoint.ViewPointSet
 
-	// StateDB gives access to the underlying state
+	// stateDB gives access to the underlying state
 	StateDB map[Address]*stateDB
 
 	// Depth of the current call stack
@@ -106,9 +108,8 @@ type OVM struct {
 	// chainConfig contains information about the current chain
 	chainConfig *chaincfg.Params
 
-	// virtual machine configuration options used to initialise the
-	// evm.
-	vmConfig Config
+	NoLoop bool
+	NoRecursion bool
 
 	// global (to this context) ethereum virtual machine
 	// used throughout the execution of the tx.
@@ -123,17 +124,129 @@ type OVM struct {
 
 // NewOVM returns a new OVM. The returned OVM is not thread safe and should
 // only ever be used *once*.for each block
-func NewOVM(ctx Context, chainConfig *chaincfg.Params, vmConfig Config) *OVM {
+func NewOVM(chainConfig *chaincfg.Params) *OVM {
 	evm := &OVM{
-		Context:     ctx,
 		StateDB:     make(map[Address]*stateDB),
-		vmConfig:    vmConfig,
 		chainConfig: chainConfig,
 	}
 	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
 
-	evm.interpreter = NewInterpreter(evm, vmConfig)
+	evm.interpreter = NewInterpreter(evm)
 	return evm
+}
+
+func NewSigVM(chainConfig *chaincfg.Params) *OVM {
+	evm := &OVM{
+		StateDB:     make(map[Address]*stateDB),
+		chainConfig: chainConfig,
+	}
+	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
+
+	evm.interpreter = NewSigInterpreter(evm)
+	return evm
+}
+
+func (v * OVM) SetContext(ctx Context) {
+	v.Context = ctx
+}
+
+type blockRollBack struct {
+	prevBlock uint64
+	rollBacks map[Address][2]rollback
+}
+
+func (v * OVM) Commit() {
+	var lastBlock uint64
+
+	v.DB.View(func (dbTx  database.Tx) error {
+		lastBlock = DbFetchVersion(dbTx, []byte("lastCommitBlock"))
+		return nil
+	})
+
+	if v.BlockNumber() <= lastBlock {
+		return
+	}
+
+	rollBacks := blockRollBack{ lastBlock, make(map[Address][2]rollback)}
+
+	for k,d := range v.StateDB {
+		t := d.commit(v.BlockNumber())
+		if len(t[0]) != 0 || len(t[1]) != 0 {
+			rollBacks.rollBacks[k] = t
+		}
+	}
+
+	s,err := json.Marshal(rollBacks)
+	if err != nil {
+		return
+	}
+
+	var rbkey [16]byte
+	copy(rbkey[:], []byte("rollback"))
+	binary.LittleEndian.PutUint64(rbkey[8:], v.BlockNumber())
+
+	v.DB.Update(func (dbTx  database.Tx) error {
+		DbPutVersion(dbTx, []byte("lastCommitBlock"), v.BlockNumber())
+		return dbTx.Metadata().Put(rbkey[:], s)
+	})
+}
+
+func (d *OVM) Rollback() {
+	var lastBlock uint64
+
+	d.DB.View(func (dbTx  database.Tx) error {
+		lastBlock = DbFetchVersion(dbTx, []byte("lastCommitBlock"))
+		return nil
+	})
+
+	if d.BlockNumber() != lastBlock {
+		return
+	}
+
+	var rbkey [16]byte
+	copy(rbkey[:], []byte("rollback"))
+
+	binary.LittleEndian.PutUint64(rbkey[8:], lastBlock)
+
+	var data []byte
+	d.DB.View(func (dbTx  database.Tx) error {
+		data = dbTx.Metadata().Get(rbkey[:])
+		return nil
+	})
+
+	rollBacks := blockRollBack{ }
+	err := json.Unmarshal(data, &rollBacks)
+	if err != nil {
+		return
+	}
+
+	d.DB.Update(func (dbTx  database.Tx) error {
+		DbPutVersion(dbTx, []byte("lastCommitBlock"), rollBacks.prevBlock)
+		dbTx.Metadata().Delete(rbkey[:])
+
+		for contract,d := range rollBacks.rollBacks {
+			bucket := dbTx.Metadata().Bucket([]byte("storage" + string(contract[:])))
+
+			for k,v := range d[0] {
+				if len(v) == 0 {
+					bucket.Delete([]byte(k))
+				} else if err := bucket.Put([]byte(k), v); err != nil {
+					return err
+				}
+			}
+
+			bucket = dbTx.Metadata().Bucket([]byte("contract" + string(contract[:])))
+
+			for k,v := range d[1] {
+				if len(v) == 0 {
+					bucket.Delete([]byte(k))
+				} else if err := bucket.Put([]byte(k), v); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 }
 
 func (v * OVM) SetCoinBaseOp(b AddCoinBaseFunc) {
@@ -155,12 +268,12 @@ func (evm *OVM) Cancel() {
 // parameters. It also takes the necessary steps to reverse the state in case of an
 // execution error.
 func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte) (ret []byte, err error) {
-	if evm.vmConfig.NoRecursion && evm.depth > 0 {
+	if evm.NoRecursion && evm.depth > 0 {
 		return nil, nil
 	}
 
 	var (
-		snapshot * stateDB
+		snapshot *stateDB
 	)
 	if _,ok := evm.StateDB[d]; ok {
 		t := evm.StateDB[d].Copy()
@@ -201,7 +314,7 @@ func (ovm *OVM) NewContract(d Address, value *token.Token) *Contract {
 	if _, ok := ovm.StateDB[d]; !ok {
 		t := NewStateDB(ovm.views.Db, d)
 
-		existence := t.Exists()
+		existence := t.Exists(false)
 		if !existence {
 			return nil
 		}
@@ -224,7 +337,7 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	if _,ok := ovm.StateDB[d]; !ok {
 		return nil, omega.ScriptError(omega.ErrInternal, "Contract address incorrect.")
 	}
-	if ovm.StateDB[d].Exists() {
+	if ovm.StateDB[d].Exists(false) {
 		return nil, omega.ScriptError(omega.ErrInternal, "Contract already exists.")
 	}
 

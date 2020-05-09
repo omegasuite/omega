@@ -327,7 +327,7 @@ func serializeVtxEntry(entry *VtxEntry) ([]byte, error) {
 
 	byteOrder.PutUint32(serialized[:], uint32(entry.Lat))
 	byteOrder.PutUint32(serialized[4:], uint32(entry.Lng))
-	byteOrder.PutUint32(serialized[8:], uint32(entry.Lng))
+	byteOrder.PutUint32(serialized[8:], uint32(entry.Alt))
 //	copy(serialized[8:], entry.desc[:])
 
 	return serialized, nil

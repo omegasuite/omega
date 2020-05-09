@@ -339,7 +339,7 @@ func convertUtxoStore(r io.Reader, w io.Writer) error {
 // TstSetCoinbaseMaturity makes the ability to set the coinbase maturity
 // available when running tests.
 func (b *BlockChain) TstSetCoinbaseMaturity(maturity uint16) {
-	b.chainParams.CoinbaseMaturity = maturity
+	b.ChainParams.CoinbaseMaturity = maturity
 }
 
 // newFakeChain returns a chain that is usable for syntetic tests.  It is
@@ -357,7 +357,7 @@ func newFakeChain(params *chaincfg.Params) *BlockChain {
 	targetTimePerBlock := int64(params.TargetTimePerBlock / time.Second)
 	adjustmentFactor := params.RetargetAdjustmentFactor
 	return &BlockChain{
-		chainParams:         params,
+		ChainParams:         params,
 		timeSource:          NewMedianTime(),
 		minRetargetTimespan: targetTimespan / adjustmentFactor,
 		maxRetargetTimespan: targetTimespan * adjustmentFactor,

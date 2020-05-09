@@ -1748,6 +1748,9 @@ func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.R
 	// the arguments.
 	requested := make(map[wire.OutPoint]rpcclient.FutureGetTxOutResult)
 	for _, txIn := range tx.TxIn {
+		if txIn.IsSeparator() {
+			continue
+		}
 		// Did we get this outpoint from the arguments?
 		if _, ok := inputs[txIn.PreviousOutPoint]; ok {
 			continue

@@ -134,6 +134,9 @@ func (bf *BlockFilterer) FilterTx(tx *wire.MsgTx) bool {
 	// WatchedOutPoints, we also check FoundOutPoints, in case a txn spends
 	// from an outpoint created in the same block.
 	for _, in := range tx.TxIn {
+		if in.IsSeparator() {
+			continue
+		}
 		if _, ok := bf.WatchedOutPoints[in.PreviousOutPoint]; ok {
 			isRelevant = true
 		}

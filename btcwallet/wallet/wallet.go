@@ -3241,15 +3241,15 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 	p2shRedeemScriptsByAddress map[string][]byte) ([]SignatureError, error) {
 
 	ctx := ovm.Context{}
-	ctx.GetTx = func() *wire.MsgTx {return tx}
+	ctx.GetTx = func() *btcutil.Tx { return btcutil.NewTx(tx) }
 	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
 	ctx.AddRight = func(t *token.RightDef) bool { return false }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
 //	ctx.GetHash = ovm.GetHash
 	ctx.BlockNumber = func() uint64 { return 0 }
 
-	intp := ovm.NewInterpreter(ovm.NewOVM(ctx, w.chainParams, ovm.Config{}, nil),
-		ovm.Config{})
+	svm := ovm.NewSigVM(ctx, w.chainParams, ovm.Config{})
+	intp := svm.Interpreter()
 
 	var signErrors []SignatureError
 	err := walletdb.View(w.db, func(dbtx walletdb.ReadTx) error {

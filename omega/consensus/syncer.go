@@ -304,6 +304,8 @@ func (self *Syncer) run() {
 				if !self.validateMsg(k.From, nil, m) {
 					continue
 				}
+				log.Infof("candidateResp: From = %x\nHeight = %d\nM = %s",
+					k.From, k.Height, k.M.String())
 				self.candidateResp(k)
 
 			case *wire.MsgRelease:			// grant a release from duty
@@ -314,6 +316,8 @@ func (self *Syncer) run() {
 				if !self.validateMsg(k.From, nil, m) {
 					continue
 				}
+				log.Infof("MsgRelease: From = %x\nHeight = %d\nM = %s",
+					k.From, k.Height, k.M.String())
 				self.Release(k)
 
 			case *wire.MsgConsensus:			// announce consensus reached
@@ -326,10 +330,15 @@ func (self *Syncer) run() {
 				if !self.validateMsg(k.From, nil, m) {
 					continue
 				}
+				log.Infof("MsgConsensus: From = %x\nHeight = %d\nM = %s",
+					k.From, k.Height, k.M.String())
 				self.Consensus(k)
 
 			case *wire.MsgSignature:		// received signature
-				if self.Signature(m.(*wire.MsgSignature)) {
+				k := m.(*wire.MsgSignature)
+				log.Infof("MsgSignature: From = %x\nHeight = %d\nM = %s",
+					k.From, k.Height, k.M.String())
+				if self.Signature(k) {
 					going = false
 				}
 			}
