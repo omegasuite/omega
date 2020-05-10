@@ -141,21 +141,21 @@ func main() {
 		defs = append(defs, v)
 	}
 
-	b0 := token.NewBorderDef(defs[0].Hash(), defs[m-1].Hash(), chainhash.Hash{})
+	b0 := token.NewBorderDef(*defs[0].(*token.VertexDef), *defs[m-1].(*token.VertexDef), chainhash.Hash{})
 	defs = append(defs, b0)
-	b1 := token.NewBorderDef(defs[m-1].Hash(), defs[m].Hash(), chainhash.Hash{})
+	b1 := token.NewBorderDef(*defs[m-1].(*token.VertexDef), *defs[m].(*token.VertexDef), chainhash.Hash{})
 	defs = append(defs, b1)
-	b2 := token.NewBorderDef(defs[m].Hash(), defs[2 * m - 1].Hash(), chainhash.Hash{})
+	b2 := token.NewBorderDef(*defs[m].(*token.VertexDef), *defs[2 * m - 1].(*token.VertexDef), chainhash.Hash{})
 	defs = append(defs, b2)
-	b3 := token.NewBorderDef(defs[2 * m - 1].Hash(), defs[0].Hash(), chainhash.Hash{})
+	b3 := token.NewBorderDef(*defs[2 * m - 1].(*token.VertexDef), *defs[0].(*token.VertexDef), chainhash.Hash{})
 	defs = append(defs, b3)
 
 	for i := 0; i < m - 1; i++ {
 		j := i + 1
-		b := token.NewBorderDef(defs[i].Hash(), defs[j].Hash(), b0.Hash())
+		b := token.NewBorderDef(*defs[i].(*token.VertexDef), *defs[j].(*token.VertexDef), b0.Hash())
 		defs = append(defs, b)
 
-		b = token.NewBorderDef(defs[i + m].Hash(), defs[j + m].Hash(), b2.Hash())
+		b = token.NewBorderDef(*defs[i + m].(*token.VertexDef), *defs[j + m].(*token.VertexDef), b2.Hash())
 		defs = append(defs, b)
 	}
 	polygon := token.NewPolygonDef([]token.LoopDef{{b0.Hash(), b1.Hash(), b2.Hash(), b3.Hash()}})
@@ -637,42 +637,18 @@ func printminerblock(blk wire.MingingRightBlock) {
 	fmt.Printf("]\n\tBlackList: %s\n", blk.BlackList)
 }
 
-func printblock(blk wire.MsgBlock) {
-	fmt.Printf("Header {\n\tVersion:%d,\n\tPrevBlock: %s\n\tMerkleRoot: %s\n\tTimestamp: 0x%x\n\tNonce: %d\n\tTransactions:\n",
-		blk.Header.Version, blk.Header.PrevBlock.String(), blk.Header.MerkleRoot.String(), blk.Header.Timestamp.Unix(),
-		blk.Header.Nonce)
-	for _, t := range blk.Transactions {
-		fmt.Printf("\tMsgTx {\n\t\tVersion: 1,\n\t\tTxDef: [...]\n\t\tTxIn: {}\n\t\tTxOut: {")
-		for _, to := range t.TxOut {
-			fmt.Printf("\n\t\t\tTokenType: %d\n\t\t\tValue: \n\t\t\t", to.TokenType)
-			h,v := to.Value.Value()
-			if to.Value.IsNumeric() {
-				fmt.Printf("Val: %d", v)
-			} else {
-				fmt.Printf("Hash: ")
-				printhash(*h)
-			}
-			fmt.Printf(",\n\t\t\tRights: ")
-
-			printhash(*to.Rights)
-
-			fmt.Printf(",\n\t\t\tPkScript: [")
-			for _,r := range to.PkScript {
-				fmt.Printf("0x%02x, ", r)
-			}
-			fmt.Printf("]\n\t\t}\n")
-		}
-		fmt.Printf("\n\t\tLockTime: %d\n\t}\n", t.LockTime)
+func printbytes(p []byte) {
+	fmt.Printf("[12]byte{")
+	for _,r := range p {
+		fmt.Printf("0x%02x, ", r)
 	}
+	fmt.Printf("}")
 }
-
 
 func printdef(def []token.Definition) {
 	for _,f := range def {
 		switch f.(type) {
 		case *token.VertexDef:
-			v := f.(*token.VertexDef)
-			fmt.Printf("\n\t&token.VertexDef {\n\t\tLat: %d,\n\t\tLng: %d,\n\t\tAlt:0,\n\t},", v.Lat, v.Lng)
 			break
 		case *token.BorderDef:
 			v := f.(*token.BorderDef)
@@ -683,9 +659,9 @@ func printdef(def []token.Definition) {
 				printhash(v.Father)
 			}
 			fmt.Printf(",\n\t\tBegin: ")
-			printhash(v.Begin)
+			printbytes(v.Begin[:])
 			fmt.Printf(",\n\t\tEnd: ")
-			printhash(v.End)
+			printbytes(v.End[:])
 			fmt.Printf(",\n\t},")
 			break
 		case *token.PolygonDef:

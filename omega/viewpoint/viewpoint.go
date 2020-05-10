@@ -28,7 +28,7 @@ var (
 
 	// vertexSetBucketName is the name of the db bucket used to house the
 	// vertex definition set.
-	vertexSetBucketName = []byte("vertices")
+//	vertexSetBucketName = []byte("vertices")
 
 	// borderSetBucketName is the name of the db bucket used to house the
 	// border definition set.
@@ -56,7 +56,7 @@ type txoFlags uint8
 type ViewPointSet struct {
 	Db database.DB
 	Utxo * UtxoViewpoint
-	Vertex * VtxViewpoint
+//	Vertex * VtxViewpoint
 	Border * BorderViewpoint
 	Polygon * PolygonViewpoint
 	Rights * RightViewpoint
@@ -66,7 +66,7 @@ func NewViewPointSet(db database.DB) * ViewPointSet {
 	t := ViewPointSet {}
 	t.Db = db
 	t.Utxo = NewUtxoViewpoint()
-	t.Vertex = NewVtxViewpoint()
+//	t.Vertex = NewVtxViewpoint()
 	t.Border = NewBorderViewpoint()
 	t.Polygon = NewPolygonViewpoint()
 	t.Rights = NewRightViewpoint()
@@ -75,7 +75,7 @@ func NewViewPointSet(db database.DB) * ViewPointSet {
 }
 
 func (t * ViewPointSet) SetBestHash(hash * chainhash.Hash) {
-	t.Vertex.bestHash = *hash
+//	t.Vertex.bestHash = *hash
 	t.Rights.bestHash = *hash
 	t.Polygon.bestHash = *hash
 	t.Border.bestHash = *hash
@@ -85,11 +85,11 @@ func (t * ViewPointSet) SetBestHash(hash * chainhash.Hash) {
 
 func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Block, stxos []SpentTxOut) error {
 //	t.Miners.disconnectTransactions(block)
-	err := t.Vertex.disconnectTransactions(db, block)
-	if err != nil {
-		return err
-	}
-	err = t.Rights.disconnectTransactions(db, block)
+//	err := t.Vertex.disconnectTransactions(db, block)
+//	if err != nil {
+//		return err
+//	}
+	err := t.Rights.disconnectTransactions(db, block)
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 }
 
 func (t * ViewPointSet) Commit() {
-	t.Vertex.commit()
+//	t.Vertex.commit()
 	t.Rights.commit()
 	t.Polygon.commit()
 	t.Border.commit()
@@ -141,13 +141,13 @@ func DbPutViews(dbTx database.Tx,  view * ViewPointSet) error {
 	DbPutUtxoView(dbTx, view.Utxo)
 	DbPutPolygonView(dbTx, view.Polygon)
 	DbPutBorderView(dbTx, view.Border)
-	DbPutVtxView(dbTx, view.Vertex)
+//	DbPutVtxView(dbTx, view.Vertex)
 
 	return DbPutRightView(dbTx, view.Rights)
 }
 
 func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSet) error {
-	vtxview := view.Vertex
+//	vtxview := view.Vertex
 	bdrview := view.Border
 	plgview := view.Polygon
 	rtview := view.Rights
@@ -156,9 +156,9 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 //	children := make(map[chainhash.Hash][]chainhash.Hash)
 	for _,d := range tx.MsgTx().TxDef {
 		switch d.(type) {
-		case *token.VertexDef:
-			vtxview.addVertex(d.(*token.VertexDef))
-			break;
+//		case *token.VertexDef:
+//			vtxview.addVertex(d.(*token.VertexDef))
+//			break;
 		case *token.BorderDef:
 			b := d.(*token.BorderDef)
 			view.addBorder(b)
@@ -189,7 +189,7 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 		}
 	}
 
-	DbPutVtxView(dbTx, vtxview)
+//	DbPutVtxView(dbTx, vtxview)
 	DbPutBorderView(dbTx, bdrview)
 	DbPutRightView(dbTx, rtview)
 	DbPutPolygonView(dbTx, plgview)
@@ -204,7 +204,7 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 // to the passed block.
 func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut, minersonhold map[[20]byte]int32) error {
 	for _, tx := range block.Transactions() {
-		view.Vertex.AddVertices(tx)
+//		view.Vertex.AddVertices(tx)
 		if !view.AddBorder(tx) {
 			return fmt.Errorf("Attempt to add illegal border.")
 		}

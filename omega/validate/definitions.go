@@ -29,26 +29,25 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 		switch def.(type) {
 		case *token.VertexDef:
 			v := def.(*token.VertexDef)
-			h := v.Hash()
 			refd := false
 			for _, b := range msgTx.TxDef {
 				switch b.(type) {
 				case *token.BorderDef:
 					bd := b.(*token.BorderDef)
-					if bd.Begin.IsEqual(&h) || bd.End.IsEqual(&h) {
+					if bd.Begin.IsEqual(v) || bd.End.IsEqual(v) {
 						refd = true
 					}
 					break
 				}
 			}
 			if !refd {
-				str := fmt.Sprintf("Vertex %s is defined but not referenced.", h.String())
+				str := fmt.Sprintf("Vertex %s is defined but not referenced.", v.Hash().String())
 				return ruleError(1, str)
 			}
 			if !saneVertex(v) {	// check coords is in valid range
 				str := fmt.Sprintf("Insane vertex %v (%f， %f, %f) => (%d， %d, %d)", v.Hash(),
-					float64(int32(v.Lat)) / token.CoordPrecision, float64(int32(v.Lng)) / token.CoordPrecision,
-					float64(int32(v.Alt)) / token.CoordPrecision, v.Lat, v.Lng, v.Alt)
+					float64(int32(v.Lat())) / token.CoordPrecision, float64(int32(v.Lng())) / token.CoordPrecision,
+					float64(int32(v.Alt())) / token.CoordPrecision, v.Lat(), v.Lng(), v.Alt())
 				return ruleError(1, str)
 			}
 			break
@@ -170,16 +169,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 				return err
 			}
 			views.AddOnePolygon(p)
-			break
-		case *token.VertexDef:
-			ft,_ := views.Vertex.FetchEntry(views.Db, &h)
-			if ft != nil {		// father does not exist
-				return ruleError(1, "Illegal Vertex definition.")
-			}
 
-			v := d.(*token.VertexDef)
-			views.Vertex.AddOneVertex(v)
-			break
 		case *token.BorderDef:
 			ft,_ := views.Border.FetchEntry(views.Db, &h)
 			if ft != nil {		// no repeat definition
@@ -208,7 +198,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 			if !views.AddOneBorder(b) {
 				return ruleError(1, "Illegal Border definition.")
 			}
-			break
+
 		case *token.RightDef, *token.RightSetDef:
 			ft,_ := views.Rights.FetchEntry(views.Db, &h)
 			if ft != nil {		// father does not exist
@@ -224,7 +214,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 						return ruleError(1, "Illegal Right definition.")
 					}
 				}
-				break
+
 			case *token.RightSetDef:
 				for _, r := range d.(*token.RightSetDef).Rights {
 					ft,_ := views.Rights.FetchEntry(views.Db, &r)
@@ -232,7 +222,6 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 						return ruleError(1, "Illegal Right definition.")
 					}
 				}
-				break
 			}
 		}
 	}
@@ -267,11 +256,11 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 		// or total reference count of this border and its anciesters in the inputs is the same as in all the UTXOs
 
 		isonline := true
-		delim := (*viewpoint.VtxEntry)(nil)
-		fbv,_ := views.Vertex.FetchEntry(views.Db, &fb.Begin)
-		fev,_ := views.Vertex.FetchEntry(views.Db, &fb.End)
+		delim := (*token.VertexDef)(nil)
+		fbv := &fb.Begin
+		fev := &fb.End
 		for i := 1; i < len(pend); i ++ {
-			r,_ := views.Vertex.FetchEntry(views.Db, &pend[i].Begin)
+			r := &pend[i].Begin
 			if isonline && (r == nil || !online(r, fbv, fev, delim)) {
 				isonline = false
 			}

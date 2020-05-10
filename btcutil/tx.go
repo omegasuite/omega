@@ -27,7 +27,6 @@ type Tx struct {
 	txHash        *chainhash.Hash // Cached transaction hash
 	txHashSignature *chainhash.Hash // Cached transaction witness hash
 	txIndex       int             // Position within a block or TxIndexUnknown
-//	Spends 		  []token.Token	  // spendings by contracts. temp data used for validation
 	HasOuts		  bool			  // temp data indicating whether there is TxOuts added by contracts
 	HasIns		  bool			  // temp data indicating whether there is TxIns added by contracts
 	HasDefs		  bool			  // temp data indicating whether there is TxDefs added by contracts
@@ -42,23 +41,6 @@ func (t *Tx) MsgTx() *wire.MsgTx {
 func (t *Tx) IsCoinBase() bool {
 	return t.MsgTx().IsCoinBase()
 }
-/*
-func (s *Tx) Copy() *Tx {
-//	ds := make([]token.Token, len(s.Spends))
-//	for i, t := range s.Spends {
-//		t.Copy(&ds[i])
-//	}
-	return &Tx{
-		msgTx: s.msgTx.Copy(),
-		txHash: s.Hash(),
-		txHashSignature: s.SignatureHash(),
-		txIndex: s.Index(),
-//		Spends: ds,
-		HasOuts: s.HasOuts,
-	}
-}
-
-*/
 
 func (s *Tx) VerifyContractOut(t *Tx) bool {
 	if len(s.msgTx.TxOut) != len(t.msgTx.TxOut) {

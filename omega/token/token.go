@@ -64,18 +64,37 @@ type Definition interface {
 	Dup() Definition
 }
 
-type VertexDef struct {
-	hash *chainhash.Hash
-	Lat int32
-	Lng int32
-	Alt int32
+type VertexDef [12]byte
+
+func (s VertexDef) Lat() int32 {
+	return int32(binary.LittleEndian.Uint32(s[:]))
+}
+func (s VertexDef) Lng() int32 {
+	return int32(binary.LittleEndian.Uint32(s[4:]))
+}
+func (s VertexDef) Alt() int32 {
+	return int32(binary.LittleEndian.Uint32(s[8:]))
+}
+
+func (s * VertexDef) SetLat(x int32) {
+	binary.LittleEndian.PutUint32(s[:], uint32(x))
+}
+func (s * VertexDef) SetLng(x int32) {
+	binary.LittleEndian.PutUint32(s[4:], uint32(x))
+}
+func (s * VertexDef) SetAlt(x int32) {
+	binary.LittleEndian.PutUint32(s[8:], uint32(x))
+}
+
+func (s * VertexDef) IsEqual(t * VertexDef) bool {
+	return s.Lng() == t.Lng() && s.Lat() == t.Lat()
 }
 
 func (s * VertexDef) Match(p Definition) bool {
 	switch p.(type) {
 	case * VertexDef:
 		t := p.(* VertexDef)
-		return s.Lng == t.Lng && s.Alt == t.Alt && s.Lat == t.Lat
+		return s.Lng() == t.Lng() && s.Alt() == t.Alt() && s.Lat() == t.Lat()
 	default:
 		return false
 	}
@@ -90,16 +109,9 @@ func (t * VertexDef) IsSeparator() bool {
 }
 
 func (t * VertexDef) Hash() chainhash.Hash {
-	if t.hash == nil {
-		b := make([]byte, 8)	// + len(t.Desc))
-		binary.LittleEndian.PutUint32(b[0:], uint32(t.Lat))
-		binary.LittleEndian.PutUint32(b[4:], uint32(t.Lng))
-
-		hash := chainhash.HashH(b)
-
-		t.hash = &hash
-	}
-	return * t.hash
+	h := chainhash.Hash{}
+	copy(h[:], t[:8])
+	return h
 }
 
 func (t * VertexDef) SerializeSize() int {
@@ -113,9 +125,9 @@ func (t * VertexDef) Size() int {
 func NewVertexDef(lat, lng, alt int32) (* VertexDef) {
 	t := VertexDef{}
 
-	t.Lat = lat
-	t.Lng = lng
-	t.Alt = alt
+	t.SetLat(lat)
+	t.SetLng(lng)
+	t.SetAlt(alt)
 
 	return &t
 }
@@ -125,42 +137,13 @@ func (msg * VertexDef) MemRead(r io.Reader, pver uint32) error {
 }
 
 func (msg * VertexDef) Read(r io.Reader, pver uint32) error {
-	lat, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
-	if err != nil {
-		return err
-	}
-	msg.Lat = int32(lat)
+	_, err := r.Read(msg[:])
 
-	lng, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
-	if err != nil {
-		return err
-	}
-	msg.Lng = int32(lng)
-
-	alt, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
-	if err != nil {
-		return err
-	}
-	msg.Alt = int32(alt)
-
-	return nil
+	return err
 }
 
 func (msg * VertexDef) Write(w io.Writer, pver uint32) error {
-	err := common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Lat))
-	if err != nil {
-		return err
-	}
-	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Lng))
-	if err != nil {
-		return err
-	}
-
-	err = common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Alt))
-	if err != nil {
-		return err
-	}
-
+	_, err := w.Write(msg[:])
 	return err
 }
 
@@ -171,8 +154,8 @@ func (msg * VertexDef) MemWrite(w io.Writer, pver uint32) error {
 type BorderDef struct {
 	hash * chainhash.Hash
 	Father chainhash.Hash
-	Begin chainhash.Hash
-	End chainhash.Hash
+	Begin VertexDef
+	End VertexDef
 }
 
 func (s * BorderDef) Match(p Definition) bool {
@@ -215,7 +198,7 @@ func (t * BorderDef) Size() int {
 	return chainhash.HashSize * 3
 }
 
-func NewBorderDef(begin chainhash.Hash, end chainhash.Hash, father chainhash.Hash) (* BorderDef) {
+func NewBorderDef(begin, end VertexDef, father chainhash.Hash) (* BorderDef) {
 	t := BorderDef{}
 	t.Begin = begin
 	t.Father = father
@@ -767,14 +750,8 @@ func RemapDef(txDef []Definition, to Definition) Definition {
 		if r := NeedRemap(b.Father[:]); len(r) > 0 {
 			b.Father = txDef[Bytetoint(r[1])].Hash()
 		}
-		if r := NeedRemap(b.Begin[:]); len(r) > 0 {
-			b.Begin = txDef[Bytetoint(r[1])].Hash()
-		}
-		if r := NeedRemap(b.End[:]); len(r) > 0 {
-			b.End = txDef[Bytetoint(r[1])].Hash()
-		}
 		return b
-		break
+
 	case DefTypePolygon:
 		p := to.(*PolygonDef)
 		for i,loop := range p.Loops {
@@ -789,14 +766,14 @@ func RemapDef(txDef []Definition, to Definition) Definition {
 			}
 		}
 		return p
-		break
+
 	case DefTypeRight:
 		r := to.(*RightDef)
 		if t := NeedRemap(r.Father[:]); len(t) > 0 {
 			r.Father = txDef[Bytetoint(t[1])].Hash()
 		}
 		return r
-		break
+
 	case DefTypeRightSet:
 		r := to.(*RightSetDef)
 		for i,s := range r.Rights {
@@ -805,23 +782,21 @@ func RemapDef(txDef []Definition, to Definition) Definition {
 			}
 		}
 		return r
-		break
 	}
 	return to
 }
 
 func (d *VertexDef) Dup() Definition {
-	return &VertexDef{
-		Lat: d.Lat,
-		Lng: d.Lng,
-	}
+	t := VertexDef{ }
+	copy(t[:], d[:])
+	return &t
 }
 
 func (c *BorderDef) Dup() Definition {
 	newDefinitions := BorderDef{}
 	newDefinitions.Father.SetBytes(c.Father[:])
-	newDefinitions.Begin.SetBytes(c.Begin[:])
-	newDefinitions.End.SetBytes(c.End[:])
+	copy(newDefinitions.Begin[:], c.Begin[:])
+	copy(newDefinitions.End[:], c.End[:])
 	return &newDefinitions
 }
 

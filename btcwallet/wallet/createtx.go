@@ -293,8 +293,10 @@ func validateMsgTx(tx *wire.MsgTx, prevScripts [][]byte, inputValues []btcutil.A
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
 //	ctx.GetHash = ovm.GetHash
 	ctx.BlockNumber = func() uint64 { return 0 }
-	intp := ovm.NewInterpreter(ovm.NewOVM(ctx, nil, ovm.Config{}),
-		ovm.Config{})
+
+	vm := ovm.NewOVM(nil)
+	vm.SetContext(ctx)
+	intp := ovm.NewInterpreter(vm)
 
 	for i, prevScript := range prevScripts {
 		if !intp.VerifySig(i, prevScript, tx.SignatureScripts[i]) {

@@ -989,7 +989,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err = views.FetchInputUtxos(b.db, block)
+		err = views.FetchInputUtxos(block)
 		if err != nil {
 			return err
 		}
@@ -1161,7 +1161,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err := views.FetchInputUtxos(b.db, block)
+		err := views.FetchInputUtxos(block)
 		if err != nil {
 			return err
 		}
@@ -1209,7 +1209,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err := views.FetchInputUtxos(b.db, block)
+		err := views.FetchInputUtxos(block)
 		if err != nil {
 			return err
 		}
@@ -1419,7 +1419,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		// utxos, spend them, and add the new utxos being created by
 		// this block.
 		if fastAdd {
-			err := views.FetchInputUtxos(b.db, block)
+			err := views.FetchInputUtxos(block)
 			if err != nil {
 				return false, err
 			}

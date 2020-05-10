@@ -529,6 +529,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress btcutil.Address) (*Bloc
 
 	log.Debugf("Considering %d transactions for inclusion to new block",
 		len(sourceTxns))
+	utxos := views.Utxo
 
 mempoolLoop:
 	for _, txDesc := range sourceTxns {
@@ -552,7 +553,6 @@ mempoolLoop:
 		// transactions in the mempool must come after those
 		// dependencies in the final generated block.
 //		view, err := g.Chain.FetchUtxoView(tx)
-		utxos := views.Utxo
 		if err != nil {
 			log.Warnf("Unable to fetch utxo view for tx %s: %v",
 				tx.Hash(), err)
@@ -569,7 +569,7 @@ mempoolLoop:
 				continue
 			}
 			originHash := &txIn.PreviousOutPoint.Hash
-			entry := utxos.LookupEntry(txIn.PreviousOutPoint)
+			entry := views.GetUtxo(txIn.PreviousOutPoint)
 			if entry == nil || entry.IsSpent() {
 				if !g.txSource.HaveTransaction(originHash) {
 					log.Tracef("Skipping tx %s because it "+

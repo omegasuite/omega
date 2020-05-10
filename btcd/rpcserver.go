@@ -149,6 +149,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getminerblockcount":    handleGetMinerBlockCount,	// New
 	"getminerblockhash":     handleGetMinerBlockHash,	// New
 	"getblocktxhashes":      handleGetBlockTxHases,	// New
+	"findtx":       handleFindTx,	// New
 
 	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
@@ -615,40 +616,7 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 			pkScript[0] = addr.Version()
 			copy(pkScript[1:], addr.ScriptAddress())
 			copy(pkScript[21:], pkFunc)
-/*
-			pkScript, err := txscript.PayToAddrScript(addr)
-			if err != nil {
-				context := "Failed to generate pay-to-address script"
-				return nil, internalRPCError(err.Error(), context)
-			}
-			var txOut * wire.TxOut
 
-			// Ensure amount is in the valid range for monetary amounts.
-			if amount.TokenType & 1 == 0 {
-				m := *(amount.Value["value"].(*float64))
-				if m <= 0.0 || m > btcutil.MaxSatoshi {
-					return nil, &btcjson.RPCError{
-						Code:    btcjson.ErrRPCType,
-						Message: "Invalid amount",
-					}
-				}
-
-				// Convert the amount to satoshi.
-				satoshi, err := btcutil.NewAmount(*(amount.Value["value"].(*float64)))
-				if err != nil {
-					context := "Failed to convert amount"
-					return nil, internalRPCError(err.Error(), context)
-
-				}
-
-				txOut = wire.NewTxOut(amount.TokenType, &wire.NumToken{Val: int64(satoshi)}, amount.Rights, pkScript)
-			} else {
-				m,_ := chainhash.NewHashFromStr(amount.Value["hash"])
-
-				wh := wire.HashToken{Hash: h}
-				txOut = wire.NewTxOut(amount.TokenType, &wh, amount.Rights, pkScript)
-			}
-*/
 			txOut := amount.ConvertTo(mtx)
 			if txOut == nil {
 				return nil, fmt.Errorf("Unable to convert txout")
@@ -3057,27 +3025,6 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 	}
 
 	switch kind {
-	case token.DefTypeVertex:
-		entry, err := s.cfg.Chain.FetchVtxEntry(*hash)
-		if err != nil {
-			return nil, rpcDefinitionError(hash.String())
-		}
-		result := make(map[string]interface{}, 0)
-		result[hash.String()] = &btcjson.VertexDefinition{
-			Kind: 0,
-			Lng:  entry.Lng,
-			Lat:  entry.Lat,
-			Alt:  entry.Alt,
-			X: float64(int32(entry.Lng)) / token.CoordPrecision,
-			Y: float64(int32(entry.Lat)) / token.CoordPrecision,
-			H: float64(int32(entry.Alt)) / token.CoordPrecision,
-		}
-		reply := &btcjson.GetDefineResult {
-			Definition: result,
-		}
-		(*dup)[hash.String()] = struct{}{}
-		return reply, nil
-		break
 	case token.DefTypeBorder:
 		entry, err := s.cfg.Chain.FetchBorderEntry(*hash)
 		if err != nil {
@@ -3094,8 +3041,8 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		result[v.Hash().String()] = &btcjson.BorderDefinition{
 			Kind: 1,
 			Father:  entry.Father.String(),
-			Begin:  entry.Begin.String(),
-			End: entry.End.String(),
+			Begin:  entry.Begin.Hash().String(),
+			End: entry.End.Hash().String(),
 		}
 
 		if !rec {
@@ -3105,24 +3052,6 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			return reply, nil
 		}
 
-		if _,ok := (*dup)[v.Begin.String()]; !ok {
-			t, err := handleRecursiveGetDefine(s, token.DefTypeVertex, &v.Begin, rec, dup)
-			if err != nil {
-				return nil, err
-			}
-			for h,u := range t.(*btcjson.GetDefineResult).Definition {
-				result[h] = u
-			}
-		}
-		if _,ok := (*dup)[v.End.String()]; !ok {
-			t, err := handleRecursiveGetDefine(s, token.DefTypeVertex, &v.End, rec, dup)
-			if err != nil {
-				return nil, err
-			}
-			for h,u := range t.(*btcjson.GetDefineResult).Definition {
-				result[h] = u
-			}
-		}
 		for _,ch := range entry.Children {
 			if _,ok := (*dup)[ch.String()]; !ok {
 				t, err := handleRecursiveGetDefine(s, token.DefTypeBorder, &ch, rec, dup)

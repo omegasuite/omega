@@ -133,7 +133,7 @@ func ComputePkScript(sigScript []byte, chainParams *chaincfg.Params) (PkScript, 
 		}
 
 		// execute this instruction only
-		scp, err := ovm.NewInterpreter(nil, ovm.Config{}).Step(&c)
+		scp, err := ovm.NewInterpreter(nil).Step(&c)
 		if err != nil {
 			return pkScript, txsparser.ScriptError(txsparser.ErrNotPushOnly,
 				"sigscript is not valid")

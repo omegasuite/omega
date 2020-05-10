@@ -934,10 +934,9 @@ func getTransaction(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	if len(details.Debits) == len(details.MsgTx.TxIn) {
 		var outputTotal btcutil.Amount
 		for _, output := range details.MsgTx.TxOut {
-			if ! output.Value.IsNumeric() {
-				panic("Not a numeric token.")
+			if output.TokenType == 0 {
+				outputTotal += btcutil.Amount(output.Value.(*token.NumToken).Val)
 			}
-			outputTotal += btcutil.Amount(output.Value.(*token.NumToken).Val)
 		}
 		fee = debitTotal - outputTotal
 		feeF64 = fee.ToBTC()
@@ -992,16 +991,23 @@ func getTransaction(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 			}
 		}
 
-		ret.Details = append(ret.Details, btcjson.GetTransactionDetailsResult{
-			// Fields left zeroed:
-			//   InvolvesWatchOnly
-			//   Fee
-			Account:  accountName,
-			Address:  address,
-			Category: credCat,
-			Amount:   btcutil.Amount(cred.Amount.Value.(*token.NumToken).Val).ToBTC(),
-			Vout:     cred.Index,
-		})
+		if cred.Amount.TokenType == 0 {
+			ret.Details = append(ret.Details, btcjson.GetTransactionDetailsResult{
+				Account:  accountName,
+				Address:  address,
+				Category: credCat,
+				Amount:   btcutil.Amount(cred.Amount.Value.(*token.NumToken).Val).ToBTC(),
+				Vout:     cred.Index,
+			})
+		} else {
+			ret.Details = append(ret.Details, btcjson.GetTransactionDetailsResult{
+				Account:  accountName,
+				Address:  address,
+				Category: credCat,
+				Amount:   0, //btcutil.Amount(cred.Amount.Value.(*token.NumToken).Val).ToBTC(),
+				Vout:     cred.Index,
+			})
+		}
 	}
 
 	ret.Amount = creditTotal.ToBTC()

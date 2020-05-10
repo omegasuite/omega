@@ -1456,33 +1456,3 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 	b.ChainLock.RUnlock()
 	return view, err
 }
-
-// FetchVtxEntry loads and returns the requested vertex definition
-// from the point of view of the end of the main chain.
-//
-// NOTE: Requesting an definition for which there is no data will NOT return an
-// error.  Instead both the entry and the error will be nil. In practice this means the
-// caller must check if the returned entry is nil before invoking methods on it.
-//
-// This function is safe for concurrent access however the returned entry (if
-// any) is NOT.
-func (b *BlockChain) FetchVtxEntry(hash chainhash.Hash) (*viewpoint.VtxEntry, error) {
-	b.ChainLock.RLock()
-	defer b.ChainLock.RUnlock()
-
-	var entry *viewpoint.VtxEntry
-	err := b.db.View(func(dbTx database.Tx) error {
-		var err error
-		e, err := viewpoint.DbFetchVertexEntry(dbTx, &hash)
-		if err != nil {
-			return err
-		}
-		entry = e
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return entry, nil
-}

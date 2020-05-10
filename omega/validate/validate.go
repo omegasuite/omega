@@ -24,8 +24,8 @@ import (
 
 func saneVertex(v * token.VertexDef) bool {
 	// it is a valid earth geo coord?
-	x := float64(int32(v.Lng)) / token.CoordPrecision
-	y := float64(int32(v.Lat)) / token.CoordPrecision
+	x := float64(int32(v.Lng())) / token.CoordPrecision
+	y := float64(int32(v.Lat())) / token.CoordPrecision
 	if y < -90 || y > 90 {
 		return false
 	}
@@ -94,11 +94,11 @@ func containEdge(p * viewpoint.PolygonEntry, views * viewpoint.ViewPointSet, r *
 
 const GeoError = float64(0.0001)	// allowed error relative to length of edge
 
-func online(r * viewpoint.VtxEntry, begin * viewpoint.VtxEntry, end * viewpoint.VtxEntry, delim * viewpoint.VtxEntry) bool {
+func online(r * token.VertexDef, begin * token.VertexDef, end * token.VertexDef, delim * token.VertexDef) bool {
 	// determine whether point r is on the line segment of (begin, end) relatively within GeoError
-	rf := [2]float64{float64(int64(r.Lng)), float64(int64(r.Lat))}
-	bf := [2]float64{float64(int64(begin.Lng)), float64(int64(begin.Lat))}
-	ef := [2]float64{float64(int64(end.Lng)), float64(int64(end.Lat))}
+	rf := [2]float64{float64(int64(r.Lng())), float64(int64(r.Lat()))}
+	bf := [2]float64{float64(int64(begin.Lng())), float64(int64(begin.Lat()))}
+	ef := [2]float64{float64(int64(end.Lng())), float64(int64(end.Lat()))}
 
 	len := (ef[0] - bf[0]) * (ef[0] - bf[0]) + (ef[1] - bf[1]) * (ef[1] - bf[1])
 
@@ -113,7 +113,7 @@ func online(r * viewpoint.VtxEntry, begin * viewpoint.VtxEntry, end * viewpoint.
 
 	if delim != nil {
 		// further restrict it to not beyond the range defined by delim
-		df := [2]float64{float64(int64(delim.Lng)), float64(int64(delim.Lat))}
+		df := [2]float64{float64(int64(delim.Lng())), float64(int64(delim.Lat()))}
 		if (df[0] - bf[0]) * (ef[0] - bf[0]) + (df[1] - bf[1]) * (ef[1] - bf[1]) >= t {
 			return false
 		}
@@ -122,8 +122,8 @@ func online(r * viewpoint.VtxEntry, begin * viewpoint.VtxEntry, end * viewpoint.
 }
 
 type edge struct {
-	begin chainhash.Hash
-	end chainhash.Hash
+	begin token.VertexDef
+	end token.VertexDef
 	hash chainhash.Hash
 	children []chainhash.Hash
 	rev byte
@@ -292,18 +292,13 @@ func fetchPolygon(p *token.PolygonDef, views *viewpoint.ViewPointSet) (*polygon,
 		vp := &t[len(t) - 1].end
 		for i,l := range t {
 			q := &l.begin
-			b,_ := views.Vertex.FetchEntry(views.Db, q)
-			if b == nil {
-				str := fmt.Sprintf("Undefined vertex %s in polygon ", q.String(), p.Hash().String())
-				return nil, ruleError(1, str)
-			}
 
 			fmt.Printf("Vertex: %f, %f\n", l.x, l.y)
 
 			if q.IsEqual(vp) {
 				vp = &l.end
 			} else {
-				str := fmt.Sprintf("Unconnected %d-th borders %s,%s,%s in polygon %s", i, t[i-1].begin.String(), t[i-1].end.String(), t[i].begin.String(), p.Hash().String())
+				str := fmt.Sprintf("Unconnected %d-th borders %s,%s,%s in polygon %s", i, t[i-1].begin.Hash().String(), t[i-1].end.Hash().String(), t[i].begin.Hash().String(), p.Hash().String())
 				return nil, ruleError(1, str)
 			}
 		}

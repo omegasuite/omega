@@ -64,16 +64,16 @@ type Definition struct {
 	DefData map[string]interface{} `json:"data"`
 }
 
-type Vertex struct {
-	Lat	int32  `json:"lat"`
-	Lng	int32  `json:"lng"`
-	Alt	int32  `json:"alt"`
+type Vertex struct{
+	Lat int32  `json:"lat"`
+	Lng int32  `json:"lng"`
+	Alt int32  `json:"alt"`
 }
 
 type Border struct {
 	Father	string  `json:"father"`
-	Begin	string  `json:"begin"`
-	End	string  `json:"end"`
+	Begin	Vertex  `json:"begin"`
+	End		Vertex  `json:"end"`
 }
 
 type Polygon struct {
@@ -88,18 +88,6 @@ type Right struct {
 
 func (t * Definition) ConvertTo() token.Definition {
 	switch t.DefType {
-	case token.DefTypeVertex:
-		v := Vertex{}
-		if err := mapstructure.Decode(t.DefData, &v); err != nil {
-			return nil
-		}
-		t := token.VertexDef{
-			Lat: v.Lat,
-			Lng: v.Lng,
-			Alt: v.Alt,
-		}
-		return &t
-		break
 	case token.DefTypeBorder:
 		b := Border{}
 		if err := mapstructure.Decode(t.DefData, &b); err != nil {
@@ -110,22 +98,17 @@ func (t * Definition) ConvertTo() token.Definition {
 			f = &chainhash.Hash{}
 			copy(f[:], b.Father[:])
 		}
-		g,err := chainhash.NewHashFromStr(b.Begin)
-		if err != nil {
-			g = &chainhash.Hash{}
-			copy(g[:], b.Begin[:])
-		}
-		e,err := chainhash.NewHashFromStr(b.End)
-		if err != nil {
-			e = &chainhash.Hash{}
-			copy(e[:], b.End[:])
-		}
-		return &token.BorderDef {
+		bd := &token.BorderDef {
 			Father: *f,
-			Begin: *g,
-			End: *e,
 		}
-		break
+		bd.Begin.SetLat(b.Begin.Lat)
+		bd.Begin.SetLng(b.Begin.Lng)
+		bd.Begin.SetAlt(b.Begin.Alt)
+		bd.End.SetLat(b.End.Lat)
+		bd.End.SetLng(b.End.Lng)
+		bd.End.SetAlt(b.End.Alt)
+		return bd
+
 	case token.DefTypePolygon:
 		p := Polygon{}
 		if err := mapstructure.Decode(t.DefData, &p); err != nil {
@@ -147,7 +130,7 @@ func (t * Definition) ConvertTo() token.Definition {
 			t.Loops = append(t.Loops, l)
 		}
 		return &t
-		break
+
 	case token.DefTypeRight:
 		r := Right{}
 		if err := mapstructure.Decode(t.DefData, &r); err != nil {
@@ -165,7 +148,6 @@ func (t * Definition) ConvertTo() token.Definition {
 		}
 		copy(t.Desc[:], r.Desc[:])
 		return &t
-		break
 	}
 	return nil
 }

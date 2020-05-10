@@ -2638,13 +2638,14 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error 
 			return err
 		}
 		t = token.Definition(b.(*viewpoint.RightSetEntry).ToToken())
-
+/*
 	case token.DefTypeVertex:
 		v, err := evm.views.Vertex.FetchEntry(evm.views.Db, &hash)
 		if err != nil {
 			return err
 		}
 		t = token.Definition(v.ToToken())
+ */
 
 	default:
 		return fmt.Errorf("Unknown definition type")

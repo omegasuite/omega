@@ -38,8 +38,8 @@ type BorderEntry struct {
 	// lot of these in memory, so a few extra bytes of padding adds up.
 
 	Father chainhash.Hash
-	Begin chainhash.Hash
-	End chainhash.Hash
+	Begin token.VertexDef
+	End token.VertexDef
 	Children []chainhash.Hash
 	Bound * BoundingBox
 	RefCnt int32		// reference count. record may be deleted when dropped to 0
@@ -60,47 +60,47 @@ func (b *BorderEntry) Joint(d *BorderEntry) bool {
 }
 
 func (b *BorderEntry) Lat(view * ViewPointSet, rev bool) int32 {
-	var p * VtxEntry
+	var p * token.VertexDef
 	if rev {
-		p,_ = view.Vertex.FetchEntry(view.Db, &b.End)
+		p = &b.End
 	} else {
-		p,_ = view.Vertex.FetchEntry(view.Db, &b.Begin)
+		p = &b.Begin
 	}
-	return int32(p.Lat)
+	return int32(p.Lat())
 }
 
 func (b *BorderEntry) Lng(view * ViewPointSet, rev bool) int32 {
-	var p * VtxEntry
+	var p * token.VertexDef
 	if rev {
-		p,_ = view.Vertex.FetchEntry(view.Db, &b.End)
+		p = &b.End
 	} else {
-		p,_ = view.Vertex.FetchEntry(view.Db, &b.Begin)
+		p = &b.Begin
 	}
-	return int32(p.Lng)
+	return int32(p.Lng())
 }
 
 func (b *BorderEntry) East(view * ViewPointSet) int32 {
 	if b.Bound != nil {
 		return b.Bound.east
 	}
-	bg,_ := view.Vertex.FetchEntry(view.Db, &b.Begin)
-	ed,_ := view.Vertex.FetchEntry(view.Db, &b.End)
-	if int32(bg.Lng) > int32(ed.Lng) {
-		return int32(bg.Lng)
+	bg := &b.Begin
+	ed := &b.End
+	if int32(bg.Lng()) > int32(ed.Lng()) {
+		return int32(bg.Lng())
 	}
-	return int32(ed.Lng)
+	return int32(ed.Lng())
 }
 
 func (b *BorderEntry) West(view * ViewPointSet) int32 {
 	if b.Bound != nil {
 		return b.Bound.west
 	}
-	bg,_ := view.Vertex.FetchEntry(view.Db, &b.Begin)
-	ed,_ := view.Vertex.FetchEntry(view.Db, &b.End)
-	if int32(bg.Lng) < int32(ed.Lng) {
-		return int32(bg.Lng)
+	bg := &b.Begin
+	ed := &b.End
+	if int32(bg.Lng()) < int32(ed.Lng()) {
+		return int32(bg.Lng())
 	}
-	return int32(ed.Lng)
+	return int32(ed.Lng())
 }
 
 
@@ -108,24 +108,24 @@ func (b *BorderEntry) South(view * ViewPointSet) int32 {
 	if b.Bound != nil {
 		return b.Bound.south
 	}
-	bg,_ := view.Vertex.FetchEntry(view.Db, &b.Begin)
-	ed,_ := view.Vertex.FetchEntry(view.Db, &b.End)
-	if int32(bg.Lat) > int32(ed.Lat) {
-		return int32(bg.Lat)
+	bg := &b.Begin
+	ed := &b.End
+	if int32(bg.Lat()) > int32(ed.Lat()) {
+		return int32(bg.Lat())
 	}
-	return int32(ed.Lat)
+	return int32(ed.Lat())
 }
 
 func (b *BorderEntry) North(view * ViewPointSet) int32 {
 	if b.Bound != nil {
 		return b.Bound.north
 	}
-	bg,_ := view.Vertex.FetchEntry(view.Db, &b.Begin)
-	ed,_ := view.Vertex.FetchEntry(view.Db, &b.End)
-	if int32(bg.Lat) < int32(ed.Lat) {
-		return int32(bg.Lat)
+	bg := &b.Begin
+	ed := &b.End
+	if int32(bg.Lat()) < int32(ed.Lat()) {
+		return int32(bg.Lat())
 	}
-	return int32(ed.Lat)
+	return int32(ed.Lat())
 }
 
 // isModified returns whether or not the output has been modified since it was
@@ -292,10 +292,10 @@ func (view * ViewPointSet) addBorder(b *token.BorderDef) bool {
 		entry.Children = make([]chainhash.Hash, 0)
 		view.Border.entries[h] = entry
 
-		bg,_ := view.Vertex.FetchEntry(view.Db, &b.Begin)
-		ed,_ := view.Vertex.FetchEntry(view.Db, &b.End)
+		bg := &b.Begin
+		ed := &b.End
 
-		box := NewBound(int32(bg.Lng), int32(ed.Lng), int32(bg.Lat), int32(ed.Lat))
+		box := NewBound(int32(bg.Lng()), int32(ed.Lng()), int32(bg.Lat()), int32(ed.Lat()))
 
 		for !f.IsEqual(&chainhash.Hash{}) {
 			view.Border.FetchEntry(view.Db, &f)

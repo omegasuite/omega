@@ -3248,7 +3248,9 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 //	ctx.GetHash = ovm.GetHash
 	ctx.BlockNumber = func() uint64 { return 0 }
 
-	svm := ovm.NewSigVM(ctx, w.chainParams, ovm.Config{})
+
+	svm := ovm.NewSigVM(w.chainParams)
+	svm.SetContext(ctx)
 	intp := svm.Interpreter()
 
 	var signErrors []SignatureError

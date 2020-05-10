@@ -7,13 +7,13 @@ package txscript
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/btcsuite/omega/token"
+	//	"github.com/btcsuite/omega/token"
 	"time"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/txscript/txsparser"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/omega/ovm"
-	"github.com/btcsuite/btcd/txscript/txsparser"
 )
 
 // Bip16Activation is the timestamp where BIP0016 is valid to use in the
@@ -137,7 +137,6 @@ func shallowCopyTx(tx *wire.MsgTx) wire.MsgTx {
 		TxIn:     make([]*wire.TxIn, len(tx.TxIn)),
 		TxOut:    make([]*wire.TxOut, len(tx.TxOut)),
 		LockTime: tx.LockTime,
-		StateChgs: make(map[[20]byte]*wire.StateChange),
 	}
 	txIns := make([]wire.TxIn, len(tx.TxIn))
 	for i, oldTxIn := range tx.TxIn {
@@ -149,11 +148,7 @@ func shallowCopyTx(tx *wire.MsgTx) wire.MsgTx {
 		txOuts[i] = *oldTxOut
 		txCopy.TxOut[i] = &txOuts[i]
 	}
-	if tx.StateChgs != nil {
-		for c, s := range tx.StateChgs {
-			txCopy.StateChgs[c] = s
-		}
-	}
+
 	return txCopy
 }
 

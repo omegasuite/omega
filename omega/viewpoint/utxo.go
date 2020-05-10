@@ -831,25 +831,21 @@ func (view *UtxoViewpoint) FetchUtxosMain(db database.DB, outpoints map[wire.Out
 // fetchUtxos loads the unspent transaction outputs for the provided set of
 // outputs into the view from the database as needed unless they already exist
 // in the view in which case they are ignored.
-func (view *UtxoViewpoint) fetchUtxos(db database.DB, outpoints map[wire.OutPoint]struct{}) error {
-	// Nothing to do if there are no requested outputs.
-	if len(outpoints) == 0 {
-		return nil
+func (view *ViewPointSet) GetUtxo(outpoint wire.OutPoint) *UtxoEntry {
+	// Already loaded into the current view.
+	if _, ok := view.Utxo.entries[outpoint]; ok {
+		return view.Utxo.entries[outpoint]
 	}
-
 	// Filter entries that are already in the view.
 	neededSet := make(map[wire.OutPoint]struct{})
-	for outpoint := range outpoints {
-		// Already loaded into the current view.
-		if _, ok := view.entries[outpoint]; ok {
-			continue
-		}
-
-		neededSet[outpoint] = struct{}{}
-	}
+	neededSet[outpoint] = struct{}{}
 
 	// Request the input utxos from the database.
-	return view.FetchUtxosMain(db, neededSet)
+	if view.Utxo.FetchUtxosMain(view.Db, neededSet) != nil {
+		return nil
+	}
+	
+	return view.Utxo.entries[outpoint]
 }
 
 // fetchInputUtxos loads the unspent transaction outputs for the inputs
@@ -857,7 +853,7 @@ func (view *UtxoViewpoint) fetchUtxos(db database.DB, outpoints map[wire.OutPoin
 // database as needed.  In particular, referenced entries that are earlier in
 // the block are added to the view and entries that are already in the view are
 // not modified.
-func (view *ViewPointSet) FetchInputUtxos(db database.DB, block *btcutil.Block) error {
+func (view *ViewPointSet) FetchInputUtxos(block *btcutil.Block) error {
 	// Build a map of in-flight transactions because some of the inputs in
 	// this block could be referencing other transactions earlier in this
 	// block which are not yet in the chain.
@@ -907,7 +903,7 @@ func (view *ViewPointSet) FetchInputUtxos(db database.DB, block *btcutil.Block) 
 	}
 
 	// Request the input utxos from the database.
-	return view.Utxo.FetchUtxosMain(db, neededSet)
+	return view.Utxo.FetchUtxosMain(view.Db, neededSet)
 }
 
 // NewUtxoViewpoint returns a new empty unspent transaction output view.

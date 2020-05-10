@@ -1067,7 +1067,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	//
 	// These utxo entries are needed for verification of things such as
 	// transaction inputs, counting pay-to-script-hashes, and scripts.
-	err := views.FetchInputUtxos(b.db, block)
+	err := views.FetchInputUtxos(block)
 	if err != nil {
 		return err
 	}
