@@ -149,7 +149,6 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getminerblockcount":    handleGetMinerBlockCount,	// New
 	"getminerblockhash":     handleGetMinerBlockHash,	// New
 	"getblocktxhashes":      handleGetBlockTxHases,	// New
-	"findtx":       handleFindTx,	// New
 
 	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
