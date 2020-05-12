@@ -230,7 +230,14 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 				}
 
 				if entry.TokenType&3 == 3 {
-					view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).deReference(view)
+					p := view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
+					if p == nil {
+						view.Polygon.FetchEntry(view.Db, &entry.Amount.(*token.HashToken).Hash)
+						p = view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
+					}
+					if p != nil {
+						p.deReference(view)
+					}
 				} else if entry.TokenType == 0 {
 					var ou [20]byte
 					copy(ou[:], entry.pkScript[1:21])
