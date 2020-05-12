@@ -147,6 +147,7 @@ type config struct {
 	MaxOrphanTxs         int           `long:"maxorphantx" description:"Max number of orphan transactions to keep in memory"`
 	Generate             bool          `long:"generate" description:"Generate (mine) bitcoins using the CPU"`
 	GenerateMiner        bool          `long:"generateminer" description:"Generate (mine) miner blocks using the CPU"`
+	EnablePOWMining		 bool          `long:"enablepowmining" description:"Enable generation of POW blocks"`
 	MiningAddrs          []string      `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
 	PrivKeys  	         string        `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
 	RsaPrivateKey		 string		   `long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
@@ -439,6 +440,7 @@ func loadConfig() (*config, []string, error) {
 		SigCacheMaxSize:      defaultSigCacheMaxSize,
 		Generate:             defaultGenerate,
 		GenerateMiner:        defaultGenerate,
+		EnablePOWMining:	  true,
 		TxIndex:              defaultTxIndex,
 		AddrIndex:            defaultAddrIndex,
 	}

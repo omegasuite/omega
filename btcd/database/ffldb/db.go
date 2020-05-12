@@ -1166,7 +1166,7 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 		return makeDbErr(database.ErrBlockExists, str, nil)
 	}
 	w := bytes.NewBuffer(make([]byte, 0, block.MsgBlock().SerializeSize()))
-	err := block.MsgBlock().Serialize(w)
+	err := block.MsgBlock().SerializeFull(w)
 
 //	blockBytes, err := block.Bytes()
 	if err != nil {

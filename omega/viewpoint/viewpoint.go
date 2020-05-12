@@ -15,7 +15,7 @@ import (
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
-	//	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/token"
 	"fmt"
@@ -109,7 +109,11 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 			}
 			entry := t.Utxo.LookupEntry(in.PreviousOutPoint)
 			if entry == nil {
-				return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))
+				t.Utxo.FetchUtxosMain(db, map[wire.OutPoint]struct{}{in.PreviousOutPoint: {}})
+				entry = t.Utxo.LookupEntry(in.PreviousOutPoint)
+				if entry == nil {
+					return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))
+				}
 			}
 
 			if entry.TokenType&3 == 3 {

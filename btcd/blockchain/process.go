@@ -264,6 +264,19 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	if exists {
+		if block.Height() > b.BestChain.Height() {
+			// do we need to reorg?
+			node := b.NodeByHash(blockHash)
+			detachNodes, attachNodes := b.getReorganizeNodes(node)
+
+			if attachNodes.Len() != 0 {
+				// Reorganize the chain.
+				err = b.ReorganizeChain(detachNodes, attachNodes)
+				if writeErr := b.index.FlushToDB(dbStoreBlockNode); writeErr != nil {
+					log.Warnf("Error flushing block index changes to disk: %v", writeErr)
+				}
+			}
+		}
 		return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1
 	}
 
@@ -329,7 +342,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	isMainChain, err, missing := b.maybeAcceptBlock(block, flags)
 	if missing > 0 {
 			return false, false, err, missing
-		}
+	}
 	if err != nil {
 			return false, false, err, -1
 		}

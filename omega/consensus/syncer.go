@@ -213,21 +213,17 @@ func (self *Syncer) run() {
 				log.Infof("tree creator %x is not a member of committee", tree.creator)
 				continue
 			}
+			
+			if tree.block != nil && 
+				len(tree.block.MsgBlock().Transactions) > 1 &&
+				len(tree.block.MsgBlock().Transactions[1].TxIn) > 1 &&
+				tree.block.MsgBlock().Transactions[1].TxIn[0].SignatureIndex == 0xFFFFFFFF {
+				log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
+			}
 
 			if _, ok := self.forest[tree.creator]; !ok || self.forest[tree.creator].block == nil {
 				// each creator may submit only one tree
 				self.forest[tree.creator] = &tree
-//				c := self.Members[tree.creator]
-//				self.knowledges.ProcessTree(c)
-/*
-				if pend, ok := self.pending[wire.CmdBlock]; ok {	// is that ok?
-					delete(self.pending, wire.CmdBlock)
-					for _,m := range pend {
-						log.Infof("processing pending message %s", m.(wire.Message).Command())
-						self.messages <- m
-					}
-				}
- */
 			} else if (self.forest[tree.creator].hash != chainhash.Hash{}) && tree.hash != self.forest[tree.creator].hash {
 				if self.Me == tree.creator {
 					log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)

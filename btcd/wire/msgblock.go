@@ -81,27 +81,14 @@ func (msg *MsgBlock) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) er
 		return messageError("MsgBlock.BtcDecode", str)
 	}
 
-	tenc := enc
-	if enc == SignatureEncoding {
-		tenc = BaseEncoding
-	}
-
 	msg.Transactions = make([]*MsgTx, 0, txCount)
 	for i := uint64(0); i < txCount; i++ {
 		tx := MsgTx{}
-		err := tx.BtcDecode(r, pver, tenc)
+		err := tx.BtcDecode(r, pver, enc)
 		if err != nil {
 			return err
 		}
 		msg.Transactions = append(msg.Transactions, &tx)
-	}
-
-	if enc == SignatureEncoding {
-		for _, tx := range msg.Transactions {
-			if err := tx.ReadSignature(r, pver); err != nil {
-				return err
-			}
-		}
 	}
 
 	return nil
@@ -176,20 +163,21 @@ func (msg *MsgBlock) DeserializeTxLoc(r *bytes.Buffer) ([]TxLoc, error) {
 	for i := uint64(0); i < txCount; i++ {
 		txLocs[i].TxStart = fullLen - r.Len()
 		tx := MsgTx{}
-		err := tx.DeserializeNoWitness(r)
+		err := tx.Deserialize(r)	// DeserializeNoWitness(r)
 		if err != nil {
 			return nil, err
 		}
 		msg.Transactions = append(msg.Transactions, &tx)
 		txLocs[i].TxLen = (fullLen - r.Len()) - txLocs[i].TxStart
 	}
-
+/*
 	for _, tx := range msg.Transactions {
 		err := tx.ReadSignature(r, 0)
 		if err != nil {
 			return nil, err
 		}
 	}
+ */
 
 	return txLocs, nil
 }
@@ -199,10 +187,6 @@ func (msg *MsgBlock) DeserializeTxLoc(r *bytes.Buffer) ([]TxLoc, error) {
 // See Serialize for encoding blocks to be stored to disk, such as in a
 // database, as opposed to encoding blocks for the wire.
 func (msg *MsgBlock) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
-	full := enc & FullEncoding
-	if enc & FullEncoding != 0 {
-		enc &^= FullEncoding
-	}
 	err := writeBlockHeader(w, pver, &msg.Header)
 	if err != nil {
 		return err
@@ -213,21 +197,10 @@ func (msg *MsgBlock) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) er
 		return err
 	}
 
-	tenc := enc
-	if enc == SignatureEncoding {
-		tenc = BaseEncoding
-	}
-
 	for _, tx := range msg.Transactions {
-		err = tx.BtcEncode(w, pver, tenc | full)
+		err = tx.BtcEncode(w, pver, enc)
 		if err != nil {
 			return err
-		}
-	}
-
-	if enc == SignatureEncoding {
-		for _, tx := range msg.Transactions {
-			tx.WriteSignature(w, pver)
 		}
 	}
 
@@ -244,7 +217,7 @@ func (msg *MsgBlock) Serialize(w io.Writer) error {
 	// Passing WitnessEncoding as the encoding type here indicates that
 	// each of the transactions should be serialized using the witness
 	// serialization structure defined in BIP0141.
-	err := msg.BtcEncode(w, 0, SignatureEncoding)
+	err := msg.BtcEncode(w, 0, SignatureEncoding | FullEncoding)
 
 	return err
 }

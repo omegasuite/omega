@@ -3254,6 +3254,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		MiningAddrs:            cfg.miningAddrs,
 		SignAddress:			cfg.signAddress,
 		PrivKeys:				cfg.privateKeys,
+		EnablePOWMining:		cfg.EnablePOWMining,
 		ProcessBlock:           s.syncManager.ProcessBlock,
 		ConnectedCount:         s.ConnectedCount,
 		IsCurrent:              s.syncManager.IsCurrent,

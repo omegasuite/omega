@@ -716,14 +716,7 @@ func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 		return err
 	}
 
-	if enc == SignatureEncoding {
-		err := msg.ReadSignature(r, pver)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return msg.ReadSignature(r, pver)
 }
 
 // Deserialize decodes a transaction from r into the receiver using a format
@@ -761,6 +754,7 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 		full = true
 		enc &^= FullEncoding
 	}
+
 	err := common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(msg.Version))
 	if err != nil {
 		return err
@@ -810,7 +804,7 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 		if i >= int(count) {
 			break
 		}
-		err = ti.writeTxIn(w, pver, msg.Version, enc)
+		err = ti.writeTxIn(w, pver, msg.Version)
 		if err != nil {
 			return err
 		}
@@ -847,6 +841,8 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 
 	if enc == SignatureEncoding {
 		msg.WriteSignature(w, pver)
+	} else {
+		common.WriteVarInt(w, pver, 0)
 	}
 
 	return nil
@@ -1036,17 +1032,13 @@ func (ti *TxIn) readTxIn(r io.Reader, pver uint32, version int32) error {
 
 // writeTxIn encodes ti to the bitcoin protocol encoding for a transaction
 // input (TxIn) to w.
-func (ti *TxIn) writeTxIn(w io.Writer, pver uint32, version int32, enc MessageEncoding) error {
+func (ti *TxIn) writeTxIn(w io.Writer, pver uint32, version int32) error {
 	err := writeOutPoint(w, pver, version, &ti.PreviousOutPoint)
 	if err != nil {
 		return err
 	}
 
-	if enc == SignatureEncoding {
-		if err = common.BinarySerializer.PutUint32(w, common.LittleEndian, ti.SignatureIndex); err != nil {
-			return err
-		}
-	} else if err = common.BinarySerializer.PutUint32(w, common.LittleEndian, 0xFFFFFFFF); err != nil {
+	if err = common.BinarySerializer.PutUint32(w, common.LittleEndian, ti.SignatureIndex); err != nil {
 		return err
 	}
 

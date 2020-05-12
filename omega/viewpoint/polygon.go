@@ -202,8 +202,14 @@ func (view * PolygonViewpoint) disconnectTransactions(db database.DB, block *btc
 		for _, txDef := range tx.MsgTx().TxDef {
 			switch txDef.(type) {
 			case *token.PolygonDef:
-				view.LookupEntry(txDef.Hash()).RollBack()
-				break
+				h := txDef.Hash()
+				p := view.LookupEntry(h)
+				if p == nil {
+					p,_ = view.FetchEntry(db, &h)
+				}
+				if p != nil {
+					p.RollBack()
+				}
 			}
 		}
 	}

@@ -405,7 +405,14 @@ func (view * BorderViewpoint) disconnectTransactions(db database.DB, block *btcu
 		for _, txDef := range tx.MsgTx().TxDef {
 			switch txDef.(type) {
 			case *token.BorderDef:
-				view.LookupEntry(txDef.Hash()).RollBack()
+				h := txDef.Hash()
+				p := view.LookupEntry(h)
+				if p == nil {
+					p,_ = view.FetchEntry(db, &h)
+				}
+				if p != nil {
+					p.RollBack()
+				}
 				break
 			}
 		}

@@ -103,6 +103,7 @@ type getSyncPeerMsg struct {
 // processBlockResponse is a response sent to the reply channel of a
 // processBlockMsg.
 type processBlockResponse struct {
+	isMain   bool
 	isOrphan bool
 	err      error
 }
@@ -1774,17 +1775,19 @@ out:
 				msg.reply <- peerID
 
 			case processBlockMsg:
-				_, isOrphan, err,_ := sm.chain.ProcessBlock(
+				main, isOrphan, err,_ := sm.chain.ProcessBlock(
 					msg.block, msg.flags)
 				if msg.reply != nil {
 					sm.lastBlockOp += " ... waiting reply from sm.chain.ProcessBlock "
 					if err != nil {
 						msg.reply <- processBlockResponse{
+							isMain: main,
 							isOrphan: false,
 							err:      err,
 						}
 					} else {
 						msg.reply <- processBlockResponse{
+							isMain: main,
 							isOrphan: isOrphan,
 							err:      nil,
 						}
@@ -1795,17 +1798,19 @@ out:
 				consensus.ProcessBlock(msg.block, msg.flags)
 
 			case processMinerBlockMsg:
-				_, isOrphan, err, _ := sm.chain.Miners.ProcessBlock(
+				main, isOrphan, err, _ := sm.chain.Miners.ProcessBlock(
 					msg.block, msg.flags)
 				if msg.reply != nil {
 					sm.lastBlockOp += " ... waiting reply from sm.chain.Miners.ProcessBlock "
 					if err != nil {
 						msg.reply <- processBlockResponse{
+							isMain: main,
 							isOrphan: false,
 							err:      err,
 						}
 					} else {
 						msg.reply <- processBlockResponse{
+							isMain: main,
 							isOrphan: isOrphan,
 							err:      nil,
 						}
@@ -2084,7 +2089,7 @@ func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.Behav
 	} else {
 		sm.msgChan <- processBlockMsg{block: block, flags: flags, reply: reply}
 		response := <-reply
-		return response.isOrphan, response.err
+		return response.isOrphan || !response.isMain, response.err
 	}
 }
 
@@ -2094,7 +2099,7 @@ func (sm *SyncManager) ProcessMinerBlock(block *wire.MinerBlock, flags blockchai
 	reply := make(chan processBlockResponse, 1)
 	sm.msgChan <- processMinerBlockMsg{block: block, flags: flags, reply: reply}
 	response := <-reply
-	return response.isOrphan, response.err
+	return !response.isMain || response.isOrphan, response.err
 }
 
 // IsCurrent returns whether or not the sync manager believes it is synced with

@@ -2820,9 +2820,16 @@ func handleGetRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan str
 			txBytes, err = dbTx.FetchBlockRegion(blockRegion)
 			return err
 		})
+
 		if err != nil {
 			return nil, rpcNoTxInfoError(txHash)
 		}
+
+		blkHash = blockRegion.Hash
+		blkHeight, err = s.cfg.Chain.BlockHeightByHash(blkHash)
+		// Deserialize the transaction
+		var msgTx wire.MsgTx
+		err = msgTx.Deserialize(bytes.NewReader(txBytes))
 
 		// When the verbose flag isn't set, simply return the serialized
 		// transaction as a hex-encoded string.  This is done here to
@@ -2832,16 +2839,11 @@ func handleGetRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan str
 		}
 
 		// Grab the block height.
-		blkHash = blockRegion.Hash
-		blkHeight, err = s.cfg.Chain.BlockHeightByHash(blkHash)
 		if err != nil {
 			context := "Failed to retrieve block height"
 			return nil, internalRPCError(err.Error(), context)
 		}
 
-		// Deserialize the transaction
-		var msgTx wire.MsgTx
-		err = msgTx.Deserialize(bytes.NewReader(txBytes))
 		if err != nil {
 			context := "Failed to deserialize transaction"
 			return nil, internalRPCError(err.Error(), context)

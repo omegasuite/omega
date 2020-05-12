@@ -68,6 +68,7 @@ type Config struct {
 	MiningAddrs []btcutil.Address
 	SignAddress btcutil.Address
 	PrivKeys    *btcec.PrivateKey
+	EnablePOWMining bool
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -186,7 +187,7 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 	// nodes.  This will in turn relay it to the network like normal.
 	flag := blockchain.BFNone
 
-	if block.MsgBlock().Header.Nonce < 0 {
+	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 {
 		flag = blockchain.BFSubmission | blockchain.BFNoConnect
 	}
 	coinbaseTx := block.MsgBlock().Transactions[0].TxOut[0]
@@ -354,6 +355,8 @@ func (m *CPUMiner) generateBlocks() {
 	ticker := time.NewTicker(time.Second * hashUpdateSecs)
 	defer ticker.Stop()
 
+	timegap := time.Now().UnixNano() / 1000
+
 out:
 	for {
 		// Quit when the miner is stopped.
@@ -473,13 +476,25 @@ flushconnch:
 		// Create a new block template using the available transactions
 		// in the memory pool as a source of transactions to potentially
 		// include in the block.
-		template, err := m.g.NewBlockTemplate(*payToAddr)
 
-		if err != nil {
-			errStr := fmt.Sprintf("Failed to create new block "+
-				"template: %v", err)
-			log.Errorf(errStr)
-			continue
+		bt := true
+		var template *mining.BlockTemplate
+		var err error
+
+		for bt {
+			template, err = m.g.NewBlockTemplate(*payToAddr)
+			if err != nil {
+				errStr := fmt.Sprintf("Failed to create new block "+
+					"template: %v", err)
+				log.Errorf(errStr)
+				continue
+			}
+			if time.Now().UnixNano() / 1000 - timegap < wire.TimeGap {
+				time.Sleep(time.Millisecond * time.Duration(time.Now().UnixNano() / 1000 - int64(timegap)))
+			} else {
+				timegap = time.Now().UnixNano() / 1000
+				bt = false
+			}
 		}
 
 		if !powMode {
@@ -566,6 +581,10 @@ flushconnch:
 
 		m.minedBlock = nil
 
+		if !m.cfg.EnablePOWMining {
+			time.Sleep(time.Millisecond * wire.TimeGap)
+			continue
+		}
 
 // ???		if m.g.Chain.Miners.(*minerchain.MinerChain).QualifiedMier(m.cfg.PrivKeys) != nil {
 //			continue

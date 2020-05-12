@@ -157,6 +157,16 @@ func (entry * RightSetEntry) Clone() *RightSetEntry {
 	}
 }
 
+func (entry *RightSetEntry) RollBack() {
+	// Nothing to do if the output is already spent.
+	if entry.toDelete() {
+		return
+	}
+
+	// Mark the output as spent and modified.
+	entry.PackedFlags |= TfSpent | TfModified
+}
+
 func SetOfRights(view * ViewPointSet, r interface{}) []*RightEntry {
 	if r == nil {
 		return nil
@@ -426,8 +436,24 @@ func (view * RightViewpoint) disconnectTransactions(db database.DB, block *btcut
 		for _, txDef := range tx.MsgTx().TxDef {
 			switch txDef.(type) {
 			case *token.RightDef:
-				view.LookupEntry(txDef.Hash()).(*RightEntry).RollBack()
-				break
+				h := txDef.Hash()
+				p := view.LookupEntry(h)
+				if p == nil {
+					p,_ = view.FetchEntry(db, &h)
+				}
+				if p != nil {
+					p.(*RightEntry).RollBack()
+				}
+
+			case *token.RightSetDef:
+				h := txDef.Hash()
+				p := view.LookupEntry(h)
+				if p == nil {
+					p,_ = view.FetchEntry(db, &h)
+				}
+				if p != nil {
+					p.(*RightSetEntry).RollBack()
+				}
 			}
 		}
 	}
