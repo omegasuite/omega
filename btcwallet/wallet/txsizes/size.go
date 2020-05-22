@@ -8,7 +8,7 @@ import (
 //	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcd/wire/common"
-	"github.com/btcsuite/btcd/chaincfg"
+//	"github.com/btcsuite/btcd/chaincfg"
 )
 
 // Worst case script and input/output size estimates.
@@ -151,6 +151,7 @@ func EstimateSerializeSize(inputCount int, txOuts []*wire.TxOut, addChangeOutput
 // (nested) P2SH-P2WPKH outputs, and contains each transaction output
 // from txOuts. The estimate is incremented for an additional P2PKH
 // change output if addChangeOutput is true.
+/*
 func EstimateVirtualSize(numP2PKHIns, numP2WPKHIns, numNestedP2WPKHIns int,
 	txOuts []*wire.TxOut, addChangeOutput bool) int {
 	changeSize := 0
@@ -190,3 +191,4 @@ func EstimateVirtualSize(numP2PKHIns, numP2WPKHIns, numNestedP2WPKHIns int,
 	// always rounded up.
 	return baseSize + (witnessWeight+3)/chaincfg.WitnessScaleFactor
 }
+ */

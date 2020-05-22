@@ -307,6 +307,7 @@ type ScriptPubKeyResult struct {
 type GetTxOutResult struct {
 	BestBlock     string             `json:"bestblock"`
 	Confirmations int64              `json:"confirmations"`
+	TokenType     uint64      `json:"tokentype"`		// a wire.TokenType
 	Value         interface{}      `json:"value"`		// a wire.TokenValue
 	Rights        string      `json:"rights"`
 	ScriptPubKey  ScriptPubKeyResult `json:"scriptPubKey"`

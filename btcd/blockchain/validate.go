@@ -1023,6 +1023,16 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.View
 	// the inputs are >= the outputs.
 	txFeeInSatoshi := totalIns[0] - totalSatoshiOut[0]
 
+	n := 0
+	for _,d := range tx.MsgTx().TxDef {
+		if d.DefType() == token.DefTypeBorder && d.(*token.BorderDef).Father.IsEqual(&zeroHash) {
+			n++
+		}
+	}
+	if txFeeInSatoshi < int64(n * chainParams.MinBorderFee) {
+		return 0, fmt.Errorf("Transaction fee is less than the mandatory storage fee.")
+	}
+
 	return txFeeInSatoshi, nil
 }
 
@@ -1179,8 +1189,8 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 
 			txFee, err = CheckTransactionFees(tx, node.Height, views, b.ChainParams)
 			if err != nil {
-			return err
-		}
+				return err
+			}
 		}
 
 		// Sum the total fees and ensure we don't overflow the

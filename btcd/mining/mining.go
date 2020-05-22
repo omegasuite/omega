@@ -829,9 +829,9 @@ mempoolLoop:
 	// Now that the actual transactions have been selected, update the
 	// block weight for the real transaction count and coinbase value with
 	// the total fees accordingly.
-	blockWeight -= common.MaxVarIntPayload -
-		(uint32(common.VarIntSerializeSize(uint64(len(blockTxns)))) *
-			chaincfg.WitnessScaleFactor)
+	blockWeight -= common.MaxVarIntPayload // -
+//		(uint32(common.VarIntSerializeSize(uint64(len(blockTxns)))) *
+//			chaincfg.WitnessScaleFactor)
 	coinbaseTx.MsgTx().TxOut[0].Value.(*token.NumToken).Val += totalFees
 	txFees[0] = -totalFees
 

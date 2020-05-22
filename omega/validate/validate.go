@@ -82,11 +82,7 @@ func containEdge(p * viewpoint.PolygonEntry, views * viewpoint.ViewPointSet, r *
 		if f == nil {
 			return 2
 		}
-		r = &token.BorderDef {
-			Father:f.Father,
-			Begin:f.Begin,
-			End:f.End,
-		}
+		r = token.NewBorderDef(f.Begin, f.End, f.Father)
 	}
 
 	return 2

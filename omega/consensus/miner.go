@@ -189,13 +189,11 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 		select {
 		case <-ticker.C:
 			best := miner.server.BestSnapshot()
-			log.Infof("\nBest tx chain height: %d", best.Height)
-			log.Infof("\nLast rotation: %d", best.LastRotation)
+			log.Infof("Best tx chain height: %d Last rotation: %d", best.Height, best.LastRotation)
 
 			top := int32(-1)
 			var tr *Syncer
 
-			log.Infof("Poll Entering syncMutex.Lock")
 			miner.syncMutex.Lock()
 			for h, s := range miner.Sync {
 				if h > top {
@@ -208,9 +206,6 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 				}
 			}
 			miner.syncMutex.Unlock()
-			log.Infof("\nTop Syncer: %d", top)
-
-//			miner.server.CommitteePolling()
 
 		case height := <- miner.updateheight:
 			log.Infof("updateheight %d", height)

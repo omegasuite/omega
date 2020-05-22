@@ -160,7 +160,7 @@ func main() {
 	}
 	polygon := token.NewPolygonDef([]token.LoopDef{{b0.Hash(), b1.Hash(), b2.Hash(), b3.Hash()}})
 	defs = append(defs, polygon)
-	uright := token.NewRightDef(chainhash.Hash{}, []byte("All Rights"), 3)
+	uright := token.NewRightDef(chainhash.Hash{}, []byte("All Rights"), 0x80)
 	defs = append(defs, uright)
 
 	printdef(defs)

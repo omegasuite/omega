@@ -75,7 +75,7 @@ const (
 	// WitnessScaleFactor determines the level of "discount" witness data
 	// receives compared to "base" data. A scale factor of 4, denotes that
 	// witness data is 1/4 as cheap as regular non-witness data.
-	WitnessScaleFactor = 4
+//	WitnessScaleFactor = 4
 
 	// MaxOutputsPerBlock is the maximum number of transaction outputs there
 	// can be in a block of max weight size.
@@ -262,6 +262,8 @@ type Params struct {
 
 	// SigVeriConcurrency is the number of concurrent verifiers for signature veridfication
 	SigVeriConcurrency int
+
+	MinBorderFee int
 }
 
 // MainNetParams defines the network parameters for the main Bitcoin network.
@@ -290,6 +292,7 @@ var MainNetParams = Params{
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
+	MinBorderFee:			  100000,
 	ReduceMinDifficulty:      false,
 	MinDiffReductionTime:     0,
 	GenerateSupported:        false,
@@ -358,6 +361,7 @@ var RegressionNetParams = Params{
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
+	MinBorderFee:			  100000,
 	ReduceMinDifficulty:      true,
 	MinDiffReductionTime:     time.Minute * 20, // TargetTimePerBlock * 2
 	GenerateSupported:        true,
@@ -429,6 +433,7 @@ var TestNet3Params = Params{
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 4,    // 10 minutes
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
+	MinBorderFee:			  100000,
 	ReduceMinDifficulty:      true,
 	MinDiffReductionTime:     time.Minute * 3, // TargetTimePerBlock * 2
 	GenerateSupported:        true,
@@ -502,6 +507,7 @@ var SimNetParams = Params{
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
+	MinBorderFee:			  100000,
 	ReduceMinDifficulty:      true,
 	MinDiffReductionTime:     time.Minute * 20, // TargetTimePerBlock * 2
 	GenerateSupported:        true,

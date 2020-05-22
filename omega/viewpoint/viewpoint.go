@@ -206,7 +206,7 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 // ConnectTransactions updates the view by adding all new vertices created by all
 // of the transactions in the passed block, and setting the best hash for the view
 // to the passed block.
-func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut, minersonhold map[[20]byte]int32) error {
+func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut, minersonhold map[wire.OutPoint]int32) error {
 	for _, tx := range block.Transactions() {
 //		view.Vertex.AddVertices(tx)
 		if !view.AddBorder(tx) {
@@ -239,9 +239,7 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 						p.deReference(view)
 					}
 				} else if entry.TokenType == 0 {
-					var ou [20]byte
-					copy(ou[:], entry.pkScript[1:21])
-					if _,ok := minersonhold[ou]; ok {
+					if _,ok := minersonhold[in.PreviousOutPoint]; ok {
 						return fmt.Errorf("Miner attempts to spend in holding period.")
 					}
 				}

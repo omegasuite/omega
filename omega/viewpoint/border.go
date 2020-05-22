@@ -21,6 +21,8 @@ import (
 	"encoding/binary"
 )
 
+var borderBoxSetBucketName = []byte("borderboxes")
+
 type BoundingBox struct {
 	east int32
 	west int32
@@ -42,6 +44,7 @@ type BorderEntry struct {
 	End token.VertexDef
 	Children []chainhash.Hash
 	Bound * BoundingBox
+	newchildren bool
 	RefCnt int32		// reference count. record may be deleted when dropped to 0
 	refChg int32		// change in reference count. not stored.
 
@@ -103,7 +106,6 @@ func (b *BorderEntry) West(view * ViewPointSet) int32 {
 	return int32(ed.Lng())
 }
 
-
 func (b *BorderEntry) South(view * ViewPointSet) int32 {
 	if b.Bound != nil {
 		return b.Bound.south
@@ -150,6 +152,7 @@ func (entry * BorderEntry) Clone() *BorderEntry {
 		End:	  entry.End,
 		Children: entry.Children,
 		Bound: entry.Bound,
+		newchildren: entry.newchildren,
 		PackedFlags: entry.PackedFlags,
 	}
 }
@@ -173,11 +176,7 @@ func (entry * BorderEntry) Anciesters(view * ViewPointSet) map[chainhash.Hash]st
 }
 
 func (entry * BorderEntry) ToToken() * token.BorderDef {
-	return &token.BorderDef {
-		Father: entry.Father,
-		Begin: entry.Begin,
-		End: entry.End,
-	}
+	return token.NewBorderDef(entry.Begin, entry.End, entry.Father)
 }
 
 // VtxViewpoint represents a view into the set of vertex definition
@@ -310,6 +309,7 @@ func (view * ViewPointSet) addBorder(b *token.BorderDef) bool {
 			if !fe.HasChild(h) {
 				fe.Children = append(fe.Children, h)
 				fe.PackedFlags = TfModified
+				fe.newchildren = true
 			}
 
 			if !c {
@@ -512,12 +512,263 @@ func NewBorderViewpoint() * BorderViewpoint {
 	}
 }
 
+func (entry *BorderEntry) boxindex() uint64 {
+	xb := uint32(entry.Begin.Lat()) + 0x80000000
+	xe := uint32(entry.End.Lat()) + 0x80000000
+	yb := uint32(entry.Begin.Lng()) + 0x80000000
+	ye := uint32(entry.End.Lng()) + 0x80000000
+	x := xb ^ xe
+	y := yb ^ ye
+	w := x
+	if y > w {
+		w = y
+	}
+	lbh := uint64(1)
+	for w != 0 {
+		w &= ^uint32(lbh)
+		lbh <<= 1
+	}
+	lbh >>= 1
+	m := lbh - 1
+
+	x = xb & ^uint32(m)
+	xe = xe & ^uint32(m)
+	if xe > x {
+		x = xe
+	}
+	x |= uint32(lbh)
+	y = yb & ^uint32(m)
+	ye = ye & ^uint32(m)
+	if ye > y {
+		y = ye
+	}
+	y |= uint32(lbh)
+
+	return uint64(x) | (uint64(y) << 32)
+}
+
+func addbbox(boxbucket database.Bucket, boxindex uint64, w uint32, hash chainhash.Hash) error {
+	var bx [8]byte
+	qw := uint64(w - 1)
+	qw |= qw << 32
+	ww := uint64(w) | (uint64(w) << 32)
+	binary.LittleEndian.PutUint64(bx[:], (boxindex & ^qw) | ww)
+	bucket := boxbucket.Bucket(bx[:])
+	if bucket == nil {
+		var err error
+		if bucket,err = boxbucket.CreateBucket(bx[:]); err != nil {
+			return err
+		}
+	}
+	if (boxindex & qw) == 0 {
+		return bucket.Put(hash[:], []byte{1})
+	}
+	return addbbox(bucket, boxindex, w >> 1, hash)
+}
+
+func removebbox(boxbucket database.Bucket, boxindex uint64, w uint32, hash chainhash.Hash) {
+	var bx [8]byte
+	qw := uint64(w - 1)
+	qw |= qw << 32
+	ww := uint64(w) | (uint64(w) << 32)
+	binary.LittleEndian.PutUint64(bx[:], (boxindex & ^qw) | ww)
+	bucket := boxbucket.Bucket(bx[:])
+	if bucket == nil {
+		return
+	}
+	if (boxindex & qw) == 0 {
+		bucket.Delete(hash[:])
+		return
+	}
+	removebbox(bucket, boxindex, w >> 1, hash)
+}
+
+func inside(boxindex uint64, box [4]uint32, bit byte) bool {
+	left := uint32(boxindex & 0xFFFFFFFF) - (1 << bit)
+	right := uint32(boxindex & 0xFFFFFFFF) + (1 << bit)
+	bottom := uint32(boxindex >> 32) - (1 << bit)
+	top := uint32(boxindex >> 32) + (1 << bit)
+	return left >= box[0] && right <= box[1] && bottom >= box[2] && top <= box[3]
+}
+
+func intersects(boxindex uint64, box [4]uint32, bit byte) bool {
+	left := (boxindex & 0xFFFFFFFF) - (1 << bit)
+	right := (boxindex & 0xFFFFFFFF) + (1 << bit)
+	bottom := (boxindex >> 32) - (1 << bit)
+	top := (boxindex >> 32) + (1 << bit)
+	return !(left > uint64(box[1]) || right < uint64(box[0]) || bottom > uint64(box[3]) || top < uint64(box[2]))
+}
+
+func Findborders(dbTx database.Tx, box [4]uint32, lod byte) []chainhash.Hash {
+	boxbucket := dbTx.Metadata().Bucket(borderBoxSetBucketName)
+	bucket := boxbucket.Bucket([]byte{0, 0, 0, 0x80, 0, 0, 0, 0x80})
+
+	if bucket == nil {
+		return []chainhash.Hash{}
+	}
+
+	return findborders(dbTx, bucket, box, 0x8000000080000000, 31, lod, false)
+}
+
+func borderintersects(dbTx database.Tx, d *chainhash.Hash, box [4]uint32) bool {
+	e, err := DbFetchBorderEntry(dbTx, d)
+	if err != nil {
+		return false
+	}
+
+	bx := uint32(e.Begin.Lat()) + 0x80000000
+	ex := uint32(e.End.Lat()) + 0x80000000
+	by := uint32(e.Begin.Lng()) + 0x80000000
+	ey := uint32(e.End.Lng()) + 0x80000000
+	var left, right, bottom, top uint32
+	if bx > ex {
+		left = ex
+		right = bx
+	} else {
+		left = bx
+		right = ex
+	}
+	if by > ey {
+		bottom = ey
+		top = by
+	} else {
+		bottom = by
+		top = ey
+	}
+	if !(left > box[1] || right < box[0] || bottom > box[3] || top < box[2]) {
+		return false
+	}
+
+	px := 0
+	py := 0
+
+	if ey - by > 0 {
+		px = 1
+	}
+	if ex - bx > 0 {
+		py = 1
+	}
+
+	if (bx - box[px]) * (ey - by) - (by - box[py + 2]) * (ex - bx) < 0 {
+		return false
+	}
+
+	if (bx - box[1 - px]) * (ey - by) - (by - box[3 - py]) * (ex - bx) < 0 {
+		return false
+	}
+
+	return true
+}
+
+func mergeborders(dbTx database.Tx, e []chainhash.Hash) []chainhash.Hash {
+	fathers := make(map[chainhash.Hash]*[]chainhash.Hash)
+	merged := make([]chainhash.Hash, 0)
+	zeroHash := chainhash.Hash{}
+
+	for _, g := range e {
+		f, err := DbFetchBorderEntry(dbTx, &g)
+		if err != nil {	// never happens
+			continue
+		}
+		if f.Father.IsEqual(&zeroHash) {
+			merged = append(merged, g)
+		} else {
+			if p,ok := fathers[f.Father]; !ok {
+				t := make([]chainhash.Hash, 1)
+				t[0] = g
+				fathers[f.Father] = &t
+			} else {
+				*fathers[f.Father] = append(*p, g)
+			}
+		}
+	}
+
+	for len(fathers) != 0 {
+		for f, s := range fathers {
+			ft, _ := DbFetchBorderEntry(dbTx, &f)
+			if len(ft.Children) != len(*s) {
+				for _, q := range *s {
+					merged = append(merged, q)
+				}
+			} else {
+				if p, ok := fathers[ft.Father]; !ok {
+					t := make([]chainhash.Hash, 1)
+					t[0] = f
+					fathers[ft.Father] = &t
+				} else {
+					*fathers[ft.Father] = append(*p, f)
+				}
+			}
+			delete(fathers, f)
+		}
+	}
+	return merged
+}
+
+func findborders(dbTx database.Tx, boxbucket database.Bucket, box [4]uint32, boxindex uint64, bit, lod byte, mode bool) []chainhash.Hash {
+	res := make([]chainhash.Hash, 0)
+
+	cursor := boxbucket.Cursor()
+	for ok := cursor.First(); ok; ok = cursor.Next() {
+		d := cursor.Key()
+		if len(d) != 32 {
+			continue
+		}
+		h := chainhash.Hash{}
+		copy(h[:], d)
+		if mode || borderintersects(dbTx, &h, box) {
+			res = append(res, h)
+		}
+	}
+
+	if bit == 0 {
+		if bit < lod {
+			res = mergeborders(dbTx, res)
+		}
+
+		return res
+	}
+
+	if inside(boxindex, box, bit) {
+		mode = true
+	}
+
+	boxindex &^= (uint64(1) << bit) | (uint64(1) << (bit + 32))
+	boxindex |= (uint64(1) << (bit - 1)) | (uint64(1) << (bit + 31))
+
+	var bws [4]uint64
+	bws[0] = boxindex
+	bws[1] = boxindex | (uint64(1) << bit)
+	bws[2] = bws[0] | (uint64(1) << (bit + 32))
+	bws[3] = bws[1] | (uint64(1) << (bit + 32))
+
+	for i := 0; i < 4; i++ {
+		var bx [8]byte
+		bw := bws[i]
+		binary.LittleEndian.PutUint64(bx[:], bw)
+		bucket := boxbucket.Bucket(bx[:])
+		if bucket == nil {
+			continue
+		}
+		if mode || intersects(bw, box, bit) {
+			res = append(res, findborders(dbTx, bucket, box, bw, bit-1, lod, mode)...)
+		}
+	}
+
+	if bit < lod {
+		res = mergeborders(dbTx, res)
+	}
+
+	return res
+}
+
 // dbPutVtxView uses an existing database transaction to update the vertex set
 // in the database based on the provided utxo view contents and state. In
 // particular, only the entries that have been marked as modified (meaning new)
 // and not spent (meaning not to be deleted) are written to the database.
 func DbPutBorderView(dbTx database.Tx, view *BorderViewpoint) error {
 	bucket := dbTx.Metadata().Bucket(borderSetBucketName)
+	boxbucket := dbTx.Metadata().Bucket(borderBoxSetBucketName)
 
 	for hash, entry := range view.Entries() {
 		// No need to update the database if the entry was not modified.
@@ -525,11 +776,19 @@ func DbPutBorderView(dbTx database.Tx, view *BorderViewpoint) error {
 			continue
 		}
 
+		boxindex := entry.boxindex()
+
 		// Remove the utxo entry if it is spent.
 		if entry.toDelete() {
 			if err := bucket.Delete(hash[:]); err != nil {
 				return err
 			}
+			if len(entry.Children) == 0 {
+				// remove box
+				removebbox(boxbucket, boxindex, 0x80000000, hash)
+			}
+			entry.PackedFlags &^= TfModified
+			return nil
 		}
 
 		// Serialize and store the utxo entry.
@@ -541,6 +800,14 @@ func DbPutBorderView(dbTx database.Tx, view *BorderViewpoint) error {
 		if err = bucket.Put(hash[:], serialized); err != nil {
 			return err
 		}
+		if len(entry.Children) > 0 && entry.newchildren {
+			// remove box
+			removebbox(boxbucket, boxindex, 0x80000000, hash)
+		} else if len(entry.Children) == 0  {
+			addbbox(boxbucket, boxindex, 0x80000000, hash)
+		}
+
+		entry.PackedFlags &^= TfModified
 	}
 
 	return nil

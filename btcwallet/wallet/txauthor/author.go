@@ -92,7 +92,7 @@ func NewUnsignedTransaction(outputs []*wire.TxOut, relayFeePerKb btcutil.Amount,
 	fetchInputs InputSource, fetchChange ChangeSource) (*AuthoredTx, error) {
 
 	targetAmount := SumOutputValues(outputs)
-	estimatedSize := txsizes.EstimateVirtualSize(0, 1, 0, outputs, true)
+	estimatedSize := txsizes.EstimateSerializeSize(1, outputs, true)
 	targetFee := txrules.FeeForSerializeSize(relayFeePerKb, estimatedSize)
 
 	for {
@@ -104,22 +104,7 @@ func NewUnsignedTransaction(outputs []*wire.TxOut, relayFeePerKb btcutil.Amount,
 			return nil, insufficientFundsError{}
 		}
 
-		// We count the types of inputs, which we'll use to estimate
-		// the vsize of the transaction.
-		var nested, p2wpkh, p2pkh int
-		for _, pkScript := range scripts {
-			switch {
-			// If this is a p2sh output, we assume this is a
-			// nested P2WKH.
-			case txscript.IsPayToScriptHash(pkScript):
-				nested++
-			default:
-				p2pkh++
-			}
-		}
-
-		maxSignedSize := txsizes.EstimateVirtualSize(p2pkh, p2wpkh,
-			nested, outputs, true)
+		maxSignedSize := txsizes.EstimateSerializeSize(len(scripts), outputs, true)
 		maxRequiredFee := txrules.FeeForSerializeSize(relayFeePerKb, maxSignedSize)
 		remainingAmount := inputAmount - targetAmount
 		if remainingAmount < maxRequiredFee {

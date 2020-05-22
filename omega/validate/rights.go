@@ -317,8 +317,17 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (bool, error
 			}
 			txin := views.Utxo.LookupEntry(txIn.PreviousOutPoint).ToTxOut()
 			if txin.TokenType == 3 && checkPolygon && txin.Rights != nil {
-				rv := views.Rights.LookupEntry(*txin.Rights).(*viewpoint.RightSetEntry).ToToken()
-				if monitored(rv, views) {
+				rt := views.Rights.LookupEntry(*txin.Rights)
+				var m bool
+				switch rt.(type) {
+				case *viewpoint.RightSetEntry:
+					rv := rt.(*viewpoint.RightSetEntry).ToToken()
+					m = monitored(rv, views)
+				case *viewpoint.RightEntry:
+					m = monitored(&token.RightSetDef{Rights:[]chainhash.Hash{*txin.Rights}}, views)
+				}
+
+				if m {
 					checkPolygon = false
 				} else if polyhash.IsEqual(&zerohash) {
 					polyhash = txin.Token.Value.(*token.HashToken).Hash

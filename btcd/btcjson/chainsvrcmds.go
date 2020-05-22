@@ -88,6 +88,16 @@ type Right struct {
 
 func (t * Definition) ConvertTo() token.Definition {
 	switch t.DefType {
+	case token.DefTypeVertex:
+		v := Vertex{}
+		if err := mapstructure.Decode(t.DefData, &v); err != nil {
+			return nil
+		}
+		t := token.VertexDef{}
+		t.SetLat(v.Lat)
+		t.SetLng(v.Lng)
+		return &t
+
 	case token.DefTypeBorder:
 		b := Border{}
 		if err := mapstructure.Decode(t.DefData, &b); err != nil {
@@ -107,6 +117,9 @@ func (t * Definition) ConvertTo() token.Definition {
 		bd.End.SetLat(b.End.Lat)
 		bd.End.SetLng(b.End.Lng)
 		bd.End.SetAlt(b.End.Alt)
+		if bd.Begin.IsEqual(&bd.End) {
+			return nil
+		}
 		return bd
 
 	case token.DefTypePolygon:
@@ -174,14 +187,17 @@ func (t * Token) ConvertTo(mtx * wire.MsgTx) * wire.TxOut {
 		}
 		return nil
 	} else {
-		hh := t.Value["hash"]
-		s := hh.(string)
-		h,_ := chainhash.NewHashFromStr(s)
-		if h == nil {
-			h = &chainhash.Hash{}
-			copy(h[:], s[:])
+		if hh, ok := t.Value["Hash"]; ok {
+			s := hh.(string)
+			h, _ := chainhash.NewHashFromStr(s)
+			if h == nil {
+				h = &chainhash.Hash{}
+				copy(h[:], s[:])
+			}
+			v.Value = &token.HashToken{Hash: *h}
+		} else {
+			return nil
 		}
-		v.Value = &token.HashToken{Hash:*h}
 	}
 
 	return &v
@@ -276,6 +292,14 @@ type GetBlockCmd struct {
 	VerboseTx *bool `jsonrpcdefault:"false"`
 }
 
+type SearchBorderCmd struct {
+	Left int32
+	Right int32
+	Bottom int32
+	Top int32
+	Lod byte
+}
+
 type GetBlockTxHashesCmd struct {
 	Hash      string
 }
@@ -301,6 +325,16 @@ func NewGetBlockCmd(hash string, verbose, verboseTx *bool) *GetBlockCmd {
 func NewGetBlockTxHasesCmd(hash string) *GetBlockTxHashesCmd {
 	return &GetBlockTxHashesCmd{
 		Hash:      hash,
+	}
+}
+
+func NewSearchBorderCmd(left, right, bottom, top int32, lod byte) *SearchBorderCmd {
+	return &SearchBorderCmd{
+		Left: left,
+		Right: right,
+		Bottom: bottom,
+		Top: top,
+		Lod: lod,
 	}
 }
 
@@ -985,6 +1019,7 @@ func init() {
 	MustRegisterCmd("getbestminerblockhash", (*GetBestMinerBlockHashCmd)(nil), flags)
 	MustRegisterCmd("getblock", (*GetBlockCmd)(nil), flags)
 	MustRegisterCmd("getblocktxhashes", (*GetBlockTxHashesCmd)(nil), flags)
+	MustRegisterCmd("searchborder", (*SearchBorderCmd)(nil), flags)
 	MustRegisterCmd("getminerblock", (*GetMinerBlockCmd)(nil), flags)
 	MustRegisterCmd("getblockchaininfo", (*GetBlockChainInfoCmd)(nil), flags)
 	MustRegisterCmd("getblockcount", (*GetBlockCountCmd)(nil), flags)

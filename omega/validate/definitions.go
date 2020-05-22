@@ -111,6 +111,14 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 					break
 				}
 			}
+			for _,to := range msgTx.TxOut {
+				if to.IsSeparator() || !to.HasRight() {
+					continue
+				}
+				if to.Rights.IsEqual(&h) {
+					refd = true
+				}
+			}
 			if !refd {
 				str := fmt.Sprintf("Right %s is defined but not referenced.", h.String())
 				return ruleError(1, str)
@@ -210,7 +218,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 				f := &d.(*token.RightDef).Father
 				if !f.IsEqual(&chainhash.Hash{}) {
 					ft,_ := views.Rights.FetchEntry(views.Db, f)
-					if ft == nil || ft.(*token.RightDef).Attrib & token.Unsplittable != 0 {		// father is indivisible
+					if ft == nil || ft.(*viewpoint.RightEntry).Attrib & token.Unsplittable != 0 {		// father is indivisible
 						return ruleError(1, "Illegal Right definition.")
 					}
 				}

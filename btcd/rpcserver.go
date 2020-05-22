@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"github.com/btcsuite/omega/minerchain"
+	"github.com/btcsuite/omega/viewpoint"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -149,6 +150,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getminerblockcount":    handleGetMinerBlockCount,	// New
 	"getminerblockhash":     handleGetMinerBlockHash,	// New
 	"getblocktxhashes":      handleGetBlockTxHases,	// New
+	"searchborder":   		 handleSearchBorder,	// New
 
 	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
@@ -273,6 +275,7 @@ var rpcLimited = map[string]struct{}{
 	"getblockcount":         {},
 	"getblockhash":          {},
 	"getblocktxhashes":      {},
+	"searchborder":		 {},
 	"getblockheader":        {},
 	"getminerblockcount":    {},
 	"getminerblockhash":     {},
@@ -566,7 +569,14 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 	// Add all transaction definitions to a new transaction after performing
 	// some validity checks.
 	for _, d := range c.Definitions {
-		mtx.AddDef(mtx.RemapDef(d.ConvertTo()))
+		if cv := d.ConvertTo(); cv != nil {
+			mtx.AddDef(mtx.RemapDef(cv))
+		} else {
+			return nil, &btcjson.RPCError{
+				Code:    btcjson.ErrRPCInvalidParameter,
+				Message: "Invalid definition.",
+			}
+		}
 	}
 
 	// Add all transaction outputs to the transaction after performing
@@ -1173,6 +1183,34 @@ func getDifficultyRatio(bits uint32, params *chaincfg.Params) float64 {
 		return 0
 	}
 	return diff
+}
+
+func handleSearchBorder(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.SearchBorderCmd)
+
+	var hashes []chainhash.Hash
+
+	if err := s.cfg.DB.View(func(dbTx database.Tx) error {
+		hashes = viewpoint.Findborders(dbTx,
+			[4]uint32{uint32(c.Left) + 0x80000000,
+				uint32(c.Right) + 0x80000000,
+				uint32(c.Bottom) + 0x80000000,
+				uint32(c.Top) + 0x80000000}, c.Lod)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	if len(hashes) > 5000 {
+		hashes = hashes[:5000]
+	}
+
+	result := make([]string, len(hashes))
+	for i, h := range hashes {
+		result[i] = h.String()
+	}
+
+	return result, nil
 }
 
 // handleGetBlock implements the getblock command.
@@ -2911,6 +2949,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	var pkScript []byte
 	var rights string
 	var isCoinbase bool
+	var tokentype uint64
 	includeMempool := true
 	if c.IncludeMempool != nil {
 		includeMempool = *c.IncludeMempool
@@ -2943,6 +2982,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		bestBlockHash = best.Hash.String()
 		confirmations = 0
 		value = txOut.Value
+		tokentype = txOut.TokenType
 
 		if txOut.Rights != nil {
 			rights = (*txOut.Rights).String()
@@ -2970,6 +3010,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		bestBlockHash = best.Hash.String()
 		confirmations = 1 + best.Height - entry.BlockHeight()
 		value = entry.RawAmount()
+		tokentype = entry.TokenType
 
 		if entry.Rights != nil {
 			rights = (*entry.Rights).String()
@@ -3005,6 +3046,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	txOutReply := &btcjson.GetTxOutResult{
 		BestBlock:     bestBlockHash,
 		Confirmations: int64(confirmations),
+		TokenType:     tokentype,
 		Value:         ivalue,
 		Rights:		   rights,
 		ScriptPubKey: btcjson.ScriptPubKeyResult{
@@ -3031,11 +3073,8 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		if err != nil {
 			return nil, rpcDefinitionError(hash.String())
 		}
-		v := &token.BorderDef{
-			Father:  entry.Father,
-			Begin:  entry.Begin,
-			End: entry.End,
-		}
+		v := token.NewBorderDef(entry.Begin, entry.End, entry.Father)
+
 		result := make(map[string]interface{}, 0)
 		(*dup)[v.Hash().String()] = struct{}{}
 

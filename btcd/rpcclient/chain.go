@@ -81,6 +81,7 @@ func (c *Client) GetBestMinerBlockHash() (*chainhash.Hash, error) {
 // GetBlockAsync RPC invocation (or an applicable error).
 type FutureGetBlockResult chan *response
 type FutureGetBlockTxHasesResult chan *response
+type FutureSearchBorderResult chan *response
 type FutureGetMinerBlockResult chan *response
 
 // Receive waits for the response promised by the future and returns the raw
@@ -112,6 +113,37 @@ func (r FutureGetBlockResult) Receive() (*wire.MsgBlock, error) {
 		return nil, err
 	}
 	return &msgBlock, nil
+}
+
+func (c *Client) SearchBorder(west, east, south, north int32, lod byte) ([]chainhash.Hash, error) {
+	return c.SearchBorderAsync(west, east, south, north, lod).Receive()
+}
+
+func (r FutureSearchBorderResult) Receive() ([]chainhash.Hash, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal result as a string.
+	var blockHex string
+	err = json.Unmarshal(res, &blockHex)
+	if err != nil {
+		return nil, err
+	}
+
+	// Decode the serialized block hex to raw bytes.
+	serializedBlock, err := hex.DecodeString(blockHex)
+	if err != nil {
+		return nil, err
+	}
+
+	// Deserialize the block and return it.
+	h := make([]chainhash.Hash, len(serializedBlock) / chainhash.HashSize)
+	for i := 0; i < len(serializedBlock); i += chainhash.HashSize {
+		copy(h[i / chainhash.HashSize][:], serializedBlock[i:])
+	}
+	return h, nil
 }
 
 func (r FutureGetBlockTxHasesResult) Receive() ([]chainhash.Hash, error) {
@@ -191,6 +223,11 @@ func (c *Client) GetBlockTxHashesAsync(blockHash *chainhash.Hash) FutureGetBlock
 	}
 
 	cmd := btcjson.NewGetBlockTxHasesCmd(hash)
+	return c.sendCmd(cmd)
+}
+
+func (c *Client) SearchBorderAsync(west, east, south, north int32, lod byte) FutureSearchBorderResult {
+	cmd := btcjson.NewSearchBorderCmd(west, east, south, north, lod)
 	return c.sendCmd(cmd)
 }
 

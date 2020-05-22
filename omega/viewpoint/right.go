@@ -72,13 +72,12 @@ func (entry * RightEntry) Sibling() chainhash.Hash {
 	if s.Attrib & (token.Monitor | token.Monitored) == 0 {
 		s.Attrib &^= token.NegativeRight
 	} else if s.Attrib & token.IsMonitorCall != 0 {
-		s.Attrib &^= token.Monitor | token.Monitored
 		if (s.Attrib & token.Monitor) != 0 {
-			s.Attrib |= token.Unsplittable
-			s.Attrib &^= token.NegativeRight | token.Monitored
-		} else {
-			s.Attrib |= token.NegativeRight | token.Monitored
 			s.Attrib &^= token.Monitor
+			s.Attrib |= token.Monitored | token.NegativeRight
+		} else {
+			s.Attrib &^= token.Monitored | token.NegativeRight
+			s.Attrib |= token.Monitor
 		}
 	} else {
 		s.Attrib &^= token.NegativeRight
@@ -93,7 +92,7 @@ func (entry * RightEntry) Monitoring() chainhash.Hash {
 		return chainhash.Hash{}
 	}
 	
-	s.Attrib |= token.Monitor | token.Unsplittable
+	s.Attrib |= token.Monitor
 	s.Attrib &^= token.NegativeRight | token.Monitored
 
 	return s.Hash()
@@ -410,6 +409,7 @@ func (view * RightViewpoint) FetchEntry(db database.DB, hash *chainhash.Hash) (i
 		e, err := DbFetchRight(dbTx, hash)
 		if e != nil {
 			view.entries[*hash] = e
+			entry = e
 		}
 		return  err
 	})

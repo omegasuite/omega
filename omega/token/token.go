@@ -34,9 +34,12 @@ const (
 	DefTypeRight = 4
 	DefTypeRightSet = 5
 
-	DefTypeSeparator = 0xFF
+	DefTypeSeparator = 0xFC			// fd ~ ff are var int coding
 
-	CoordPrecision = 0x400000		// we use 32-bit fixed point (23 decimal points) number fir gei coords
+	CoordPrecision = 0x400000		// we use 32-bit fixed point (23 decimal points) number for alt/lng coords
+	AltPrecision = 0x400			// we use 32-bit fixed point (10 decimal points) number for alt coords (meter)
+									// if the value is between 0 & 100, it is considered as 0 and the coord is a nonce
+									// to change edge hash
 	MinDefinitionPayload = 68
 	MaxDefinitionPerMessage = (MaxMessagePayload / MinDefinitionPayload) + 1
 )
@@ -178,10 +181,10 @@ func (t * BorderDef) IsSeparator() bool {
 
 func (t * BorderDef) Hash() chainhash.Hash {
 	if t.hash == nil {
-		b := make([]byte, chainhash.HashSize * 3)
+		b := make([]byte, chainhash.HashSize + 24)
 		copy(b[:], t.Father[:])
 		copy(b[chainhash.HashSize:], t.Begin[:])
-		copy(b[2 * chainhash.HashSize:], t.End[:])
+		copy(b[12 + chainhash.HashSize:], t.End[:])
 
 		hash := chainhash.HashH(b)
 		hash[0] &= 0xFE		// LSB always 0, reserved for indicating its direction when used in polygon
@@ -199,6 +202,9 @@ func (t * BorderDef) Size() int {
 }
 
 func NewBorderDef(begin, end VertexDef, father chainhash.Hash) (* BorderDef) {
+	if begin.IsEqual(&end) {
+		return nil
+	}
 	t := BorderDef{}
 	t.Begin = begin
 	t.Father = father
@@ -420,6 +426,7 @@ type RightDef struct {
 						// bit 2: whether it is a monitored (only for polygon token). inherited always
 						// bit 3: whether it is a monitor (only for polygon token)
 						// bit 4: whether Desc is a contract call func.
+						// bit 7: 1. To force a non-0 value
 }
 
 func (s * RightDef) Match(p Definition) bool {
@@ -468,7 +475,7 @@ func NewRightDef(father chainhash.Hash, desc []byte, attrib uint8) (* RightDef) 
 	t := RightDef{}
 	t.Father = father
 	t.Desc = desc
-	t.Attrib = attrib
+	t.Attrib = attrib | 0x80
 
 	return &t
 }
@@ -690,7 +697,7 @@ func (t *Token) IsNumeric () bool {
 }
 
 func (t *Token) HasRight () bool {
-	return t.TokenType & 2 == 0
+	return t.TokenType & 2 != 0
 }
 
 func (t *Token) Diff(s *Token) bool {

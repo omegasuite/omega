@@ -355,7 +355,7 @@ func (m *CPUMiner) generateBlocks() {
 	ticker := time.NewTicker(time.Second * hashUpdateSecs)
 	defer ticker.Stop()
 
-	timegap := time.Now().UnixNano() / 1000
+	lastblkgen := time.Now().Unix()
 
 out:
 	for {
@@ -366,6 +366,8 @@ flushconnch:
 			case _, ok := <-m.connch: // prevent chan full & blocking
 				if !ok { // chan closed. we have received stop sig.
 					break out
+				} else {
+					lastblkgen = time.Now().Unix()
 				}
 
 			case <-m.quit:
@@ -477,25 +479,14 @@ flushconnch:
 		// in the memory pool as a source of transactions to potentially
 		// include in the block.
 
-		bt := true
-		var template *mining.BlockTemplate
-		var err error
-
-		for bt {
-			template, err = m.g.NewBlockTemplate(*payToAddr)
-			if err != nil {
-				errStr := fmt.Sprintf("Failed to create new block "+
-					"template: %v", err)
-				log.Errorf(errStr)
-				continue
-			}
-			if time.Now().UnixNano() / 1000 - timegap < wire.TimeGap {
-				time.Sleep(time.Millisecond * time.Duration(time.Now().UnixNano() / 1000 - int64(timegap)))
-			} else {
-				timegap = time.Now().UnixNano() / 1000
-				bt = false
-			}
+		template, err := m.g.NewBlockTemplate(*payToAddr)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to create new block template: %v", err)
+			log.Errorf(errStr)
+			continue
 		}
+
+		fmt.Printf("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
 
 		if !powMode {
 //			consensus.SetMiner(adr)
@@ -549,6 +540,19 @@ flushconnch:
 
 			m.minedBlock = block
 
+			blockMaxSize := m.g.Chain.GetBlockLimit(template.Height)
+
+			sz := block.Size()
+			block.ClearSize()
+
+			// if block is too small, wait upto wire.TimeGap
+			nt := wire.TimeGap - (time.Now().Unix() - lastblkgen)
+			if sz < int(blockMaxSize) / 2 && nt > 4 {
+				time.Sleep(time.Duration(nt) / 4 * time.Second)
+				continue
+			}
+			lastblkgen = time.Now().Unix()
+
 			if !powMode {
 				log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
 				if !m.submitBlock(block) {
@@ -579,10 +583,11 @@ flushconnch:
 			}
 		}
 
+		lastblkgen = time.Now().Unix()
 		m.minedBlock = nil
 
 		if !m.cfg.EnablePOWMining {
-			time.Sleep(time.Millisecond * wire.TimeGap)
+			time.Sleep(time.Second * wire.TimeGap)
 			continue
 		}
 

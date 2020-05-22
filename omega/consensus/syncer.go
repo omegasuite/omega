@@ -208,7 +208,11 @@ func (self *Syncer) run() {
 			if self.sigGiven >= 0 {
 				continue
 			}
-			log.Infof("newtree %s at %d", tree.hash.String(), self.Height)
+			if tree.block != nil {
+				log.Infof("newtree %s at %d width %d txs", tree.hash.String(), self.Height, len(tree.block.MsgBlock().Transactions))
+			} else {
+				log.Infof("newtree %s at %d", tree.hash.String(), self.Height)
+			}
 			if !self.validateMsg(tree.creator, nil, nil) {
 				log.Infof("tree creator %x is not a member of committee", tree.creator)
 				continue
@@ -933,14 +937,12 @@ func (self *Syncer) SetCommittee() {
 	}
 
 	c := int32(best.LastRotation)
-	log.Infof("SetCommittee for %d", c)
 
 	self.Committee = c
 	self.Base = c - wire.CommitteeSize + 1
 
 	copy(self.Me[:], miner.name[:])
 
-	log.Infof("My name in committee is %x", self.Me)
 	in := false
 
 	for i := c - wire.CommitteeSize + 1; i <= c; i++ {
@@ -957,16 +959,12 @@ func (self *Syncer) SetCommittee() {
 		if bytes.Compare(self.Me[:], blk.MsgBlock().Miner[:]) == 0 {
 			self.Myself = who
 			in = true
-			log.Infof("My local designation in committee is %d", self.Myself)
 		}
-
-		log.Infof("Member %d is %x", who, blk.MsgBlock().Miner)
 	}
 
 	self.knowledges = CreateKnowledge(self)
 
 	if in {
-		log.Infof("Consensus running block at %d", self.Height)
 		go self.run()
 	}
 
@@ -1117,6 +1115,8 @@ func (self *Syncer) Debug(w http.ResponseWriter, r *http.Request) {
 }
 
 func (self *Syncer) print() {
+	return
+
 	log.Infof("Syncer for %d = %x", self.Myself, self.Me)
 	log.Infof("Runnable = %d Committee = %d Base = %d", self.Runnable, self.Committee, self.Base)
 	log.Infof("agreed = %d sigGiven = %d Height = %d", self.agreed, self.sigGiven, self.Height)

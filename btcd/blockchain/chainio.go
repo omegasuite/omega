@@ -74,11 +74,15 @@ var (
 
 	// vertexSetBucketName is the name of the db bucket used to house the
 	// vertex definition set.
-	vertexSetBucketName = []byte("vertices")
+//	vertexSetBucketName = []byte("vertices")
 
 	// borderSetBucketName is the name of the db bucket used to house the
 	// border definition set.
 	borderSetBucketName = []byte("borders")
+	// border box is a square box that holds a collection of edges that is
+	// fully inside this box and can not be contained in any of its sub boxes.
+	// boxes are indexed by its center coords.
+	borderBoxSetBucketName = []byte("borderboxes")
 
 	// borderChildrenSetBucketName is the name of the db bucket used to house the
 	// border's children set.
@@ -830,12 +834,15 @@ func (b *BlockChain) createChainState() error {
 		}
 
 		// Create the bucket that houses the vertex hash to definition
-		if _, err = meta.CreateBucket(vertexSetBucketName); err != nil {
-			return err
-		}
+//		if _, err = meta.CreateBucket(vertexSetBucketName); err != nil {
+//			return err
+//		}
 
 		// Create the bucket that houses the border hash to definition
 		if _, err = meta.CreateBucket(borderSetBucketName); err != nil {
+			return err
+		}
+		if _, err = meta.CreateBucket(borderBoxSetBucketName); err != nil {
 			return err
 		}
 

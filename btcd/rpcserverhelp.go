@@ -698,6 +698,7 @@ var rpcResultTypes = map[string][]interface{}{
 	"getbestminerblockhash": {(*string)(nil)},
 	"getblock":              {(*string)(nil), (*btcjson.GetBlockVerboseResult)(nil)},
 	"getblocktxhashes":      {(*string)(nil), (*string)(nil)},
+	"searchborder":		 {(*string)(nil), (*string)(nil)},
 	"getminerblock":         {(*string)(nil), (*btcjson.GetMinerBlockVerboseResult)(nil)},
 	"getblockcount":         {(*int64)(nil)},
 	"getminerblockcount":    {(*int64)(nil)},

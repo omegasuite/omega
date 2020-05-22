@@ -155,6 +155,23 @@ func TestChainSvrCmds(t *testing.T) {
 			},
 		},
 		{
+			name: "searchborder",
+			newCmd: func() (interface{}, error) {
+				return btcjson.NewCmd("searchborder", "[123, 123, 123, 123, 8]")
+			},
+			staticCmd: func() interface{} {
+				return btcjson.NewSearchBorderCmd(123, 123, 123, 123, 8)
+			},
+			marshalled: `{"jsonrpc":"1.0","method":"searchborder","params":[123, 123, 123, 123, 8],"id":1}`,
+			unmarshalled: &btcjson.*SearchBorderCmd{
+				Left:      123,
+				Right:     123,
+				Bottom:    123,
+				Top:       123,
+				Lod: 8,
+			},
+		},
+		{
 			name: "getblocktxhashes",
 			newCmd: func() (interface{}, error) {
 				return btcjson.NewCmd("getblocktxhashes", "123")

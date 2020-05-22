@@ -1189,12 +1189,14 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	e := attachNodes.Front()
 	// check if it is within holding period: a miner can not do any transaction
 	// within MinerHoldingPeriod blocks since he becomes a member
-	minersonhold := make(map[[20]byte]int32)
+	minersonhold := make(map[wire.OutPoint]int32)
 	p := e.Value.(*chainutil.BlockNode)
 	for i := int32(0); p != nil && i < MinerHoldingPeriod; i++ {
 		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			mb,_ := b.Miners.BlockByHeight(-p.Data.GetNonce() - wire.MINER_RORATE_FREQ)
-			minersonhold[mb.MsgBlock().Miner] = p.Height
+			for _,q := range mb.MsgBlock().Utxos {
+				minersonhold[q] = p.Height
+			}
 		}
 		p = p.Parent
 	}
@@ -1256,7 +1258,9 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 		if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
 			mb,_ := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ)
-			minersonhold[mb.MsgBlock().Miner] = block.Height()
+			for _,q := range mb.MsgBlock().Utxos {
+				minersonhold[q] = block.Height()
+			}
 		}
 
 		b.index.SetStatusFlags(n, chainutil.StatusValid)
@@ -1368,15 +1372,16 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 
 	// check if it is within holding period: a miner can not do any transaction
 	// within MinerHoldingPeriod blocks since he becomes a member
-	minersonhold := make(map[[20]byte]int32)
+	minersonhold := make(map[wire.OutPoint]int32)
 	for i, p := int32(0), node.Parent; p != nil && i < MinerHoldingPeriod; i++ {
 		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			mb,_ := b.Miners.BlockByHeight(-p.Data.GetNonce() - wire.MINER_RORATE_FREQ)
 			if mb == nil {
 				return false, fmt.Errorf("missing miner block")
 			}
-
-			minersonhold[mb.MsgBlock().Miner] = p.Height
+			for _,q := range mb.MsgBlock().Utxos {
+				minersonhold[q] = p.Height
+			}
 		}
 		p = p.Parent
 	}
