@@ -260,42 +260,58 @@ func standardCoinbaseScript(nextBlockHeight int32, extraNonce uint64) ([]byte, e
 //
 // See the comment for NewBlockTemplate for more information about why the nil
 // address handling is useful.
-func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addr btcutil.Address, prevPows uint) (*btcutil.Tx, error) {
-	// Create the script to pay to the provided payment address if one was
-	// specified.  Otherwise create a script that allows the coinbase to be
-	// redeemable by anyone.
-	pkScript := make([]byte, 25)
-	if addr != nil {
-		pkScript[0] = addr.Version()
-		copy(pkScript[1:], addr.ScriptAddress())
-		pkScript[21] = ovm.OP_PAY2PKH
-	} else {
-		pkScript[0] = 0x6F
-		pkScript[1] = 1		// anything but 0
-		pkScript[21] = 0x45
-	}
-
+func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []btcutil.Address, chain *blockchain.BlockChain) (*btcutil.Tx, error) {
 	tx := wire.NewMsgTx(wire.TxVersion)
 	tx.AddTxIn(&wire.TxIn{
 		// Coinbase transactions have no inputs, so previous outpoint is
 		// zero hash and we use index portion to store nextBlockHeight so Coinbase transactions
 		// for different blocks will have different hash even when they have same outputs.
 		PreviousOutPoint: *wire.NewOutPoint(&chainhash.Hash{}, uint32(nextBlockHeight)),
-//			wire.MaxPrevOutIndex),
 		SignatureIndex: 0xFFFFFFFF,
 		Sequence:        wire.MaxTxInSequenceNum,
 	})
 
-	t := token.Token{
-		TokenType: 0,
-		Value:    &token.NumToken{
-			Val: blockchain.CalcBlockSubsidy(nextBlockHeight, params, prevPows),
-		},
+	prevPows := uint(0)
+	adj := int64(0)
+	best := chain.BestSnapshot()
+	for pw := chain.BestChain.Tip(); pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
+		prevPows++
 	}
-	tx.AddTxOut(&wire.TxOut{
-		Token: t,
-		PkScript: pkScript,
-	})
+	if prevPows != 0 {
+		adj = blockchain.CalcBlockSubsidy(best.Height, params, 0) -
+			blockchain.CalcBlockSubsidy(best.Height, params, prevPows)
+	}
+
+	val := blockchain.CalcBlockSubsidy(nextBlockHeight, params, prevPows) + adj
+	val /= int64(len(addrs))
+
+	for _,addr := range addrs {
+		t := token.Token{
+			TokenType: 0,
+			Value:    &token.NumToken{
+				Val: val,
+			},
+		}
+
+		// Create the script to pay to the provided payment address if one was
+		// specified.  Otherwise create a script that allows the coinbase to be
+		// redeemable by anyone.
+		pkScript := make([]byte, 25)
+		if addr != nil {
+			pkScript[0] = addr.Version()
+			copy(pkScript[1:], addr.ScriptAddress())
+			pkScript[21] = ovm.OP_PAY2PKH
+		} else {
+			pkScript[0] = 0x6F
+			pkScript[1] = 1			// anything but 0
+			pkScript[21] = ovm.OP_PAY2NONE
+		}
+
+		tx.AddTxOut(&wire.TxOut{
+			Token:    t,
+			PkScript: pkScript,
+		})
+	}
 	return btcutil.NewTx(tx), nil
 }
 
@@ -465,24 +481,17 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 //  |  transactions (while block size   |   |
 //  |  <= policy.BlockMinSize)          |   |
 //   -----------------------------------  --
-func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress btcutil.Address) (*BlockTemplate, error) {
+func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address) (*BlockTemplate, error) {
 	// Extend the most recently known best block.
 	best := g.Chain.BestSnapshot()
 	nextBlockHeight := best.Height + 1
 
 	// Create a standard coinbase transaction paying to the provided
-	// address.  NOTE: The coinbase value will be updated to include the
+	// addresses.  NOTE: The coinbase value will be updated to include the
 	// fees from the selected transactions later after they have actually
 	// been selected.  It is created here to detect any errors early
 	// before potentially doing a lot of work below.
-
-	prevPows := uint(0)
-	for pw := g.Chain.BestChain.Tip(); pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
-		prevPows++
-	}
-
-	// this coinbase is for POW block. for block bu committee, will do differently.
-	coinbaseTx, err := createCoinbaseTx(g.chainParams, nextBlockHeight, payToAddress, prevPows)
+	coinbaseTx, err := createCoinbaseTx(g.chainParams, nextBlockHeight, payToAddress, g.Chain)
 	if err != nil {
 		return nil, err
 	}
@@ -505,7 +514,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress btcutil.Address) (*Bloc
 	blockTxns := make([]*btcutil.Tx, 0, len(sourceTxns))
 	blockTxns = append(blockTxns, coinbaseTx)
 
-	views, Vm, SigVm := g.Chain.Canvas(nil)
+	views, Vm := g.Chain.Canvas(nil)
 
 	blockUtxos := views.Utxo	// blockchain.NewUtxoViewpoint()
 
@@ -536,6 +545,8 @@ mempoolLoop:
 		// A block can't have more than one coinbase or contain
 		// non-finalized transactions.
 		tx := txDesc.Tx
+		tx.MsgTx().Strip()
+		tx.HasIns, tx.HasDefs, tx.HasOuts = false, false, false
 		if blockchain.IsCoinBase(tx) {
 			log.Tracef("Skipping coinbase tx %s", tx.Hash())
 			continue
@@ -635,6 +646,14 @@ mempoolLoop:
 	totalFees := int64(0)
 
 	blockMaxSize := g.Chain.GetBlockLimit(nextBlockHeight)
+	coinBaseHash := chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, }
+	// we don't know coin Base Hash until we know all tx fees in the block.
+	// we don't know all tx fees until all contracts are executed.
+	// contract adds output to coinbase when mint, since we don't know coin Base Hash,
+	// we use a neg hash to hold the place.
 
 	Vm.SetCoinBaseOp(
 		func(txo wire.TxOut) wire.OutPoint {
@@ -642,17 +661,20 @@ mempoolLoop:
 			if !coinbaseTx.HasOuts {
 				// this servers as a separater. only TokenType is serialized
 				to := wire.TxOut{}
-				to.Token = token.Token{TokenType:^uint64(0)}
+				to.Token = token.Token{TokenType:token.DefTypeSeparator}
 				msg.AddTxOut(&to)
 				coinbaseTx.HasOuts = true
 			}
 			msg.AddTxOut(&txo)
-			op := wire.OutPoint { *coinbaseTx.Hash(), uint32(len(msg.TxOut) - 1)}
+			op := wire.OutPoint { coinBaseHash, uint32(len(msg.TxOut) - 1)}
+			views.Utxo.AddRawTxOut(op, &txo, false, nextBlockHeight)
 			return op
 		})
 	Vm.BlockNumber = func() uint64 {
 		return uint64(nextBlockHeight)
 	}
+	Vm.Block = func() *btcutil.Block { return nil }
+	Vm.GetCoinBase = func() *btcutil.Tx { return coinbaseTx }
 
 	// Choose which transactions make it into the block.
 	for priorityQueue.Len() > 0 {
@@ -749,7 +771,7 @@ mempoolLoop:
 			continue
 		}
 
-		err = SigVm.VerifySigs(tx, nextBlockHeight)
+		err = ovm.VerifySigs(tx, nextBlockHeight, g.chainParams, views)
 		if err != nil {
 			// we should roll back result of last contract execution here
 			log.Tracef("Skipping tx %s due to error in "+
@@ -762,12 +784,24 @@ mempoolLoop:
 		// in transaction, a new copy of tx will be returned.
 		savedCoinBase := *coinbaseTx.MsgTx().Copy()
 		newcoins := coinbaseTx.HasOuts
-		err = Vm.ExecContract(tx, nextBlockHeight, g.chainParams)
+		err = Vm.ExecContract(tx, nextBlockHeight)
 		if err != nil {
 			coinbaseTx.HasOuts = newcoins
 			*coinbaseTx.MsgTx() = savedCoinBase
 			log.Tracef("Skipping tx %s due to error in "+
 				"checkContract: %v", tx.Hash(), err)
+			logSkippedDeps(tx, deps)
+			continue
+		}
+
+		tx.Executed = true
+
+		err = blockchain.CheckAdditionalTransactionInputs(tx, nextBlockHeight,
+			views, g.chainParams)
+		if err != nil {
+			// we should roll back result of last contract execution here
+			log.Tracef("Skipping tx %s due to error in "+
+				"CheckTransactionInputs: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
 		}
@@ -829,11 +863,36 @@ mempoolLoop:
 	// Now that the actual transactions have been selected, update the
 	// block weight for the real transaction count and coinbase value with
 	// the total fees accordingly.
-	blockWeight -= common.MaxVarIntPayload // -
-//		(uint32(common.VarIntSerializeSize(uint64(len(blockTxns)))) *
-//			chaincfg.WitnessScaleFactor)
-	coinbaseTx.MsgTx().TxOut[0].Value.(*token.NumToken).Val += totalFees
+	blockWeight -= common.MaxVarIntPayload
+
+	// add fees to miner outputs
+	m := int64(0)
+	for _, txo := range coinbaseTx.MsgTx().TxOut {
+		if txo.IsSeparator() {
+			break
+		}
+		m++
+	}
+	df := totalFees / m
+	for _, txo := range coinbaseTx.MsgTx().TxOut {
+		if txo.IsSeparator() {
+			break
+		}
+		txo.Value.(*token.NumToken).Val += df
+	}
+	coinbaseTx.Executed = true
+
 	txFees[0] = -totalFees
+
+	// now the hash is fixed, back fill hashes in tx
+	hash := coinbaseTx.Hash()
+	for _,tx := range blockTxns {
+		for _,txin := range tx.MsgTx().TxIn {
+			if txin.PreviousOutPoint.Hash.IsEqual(&coinBaseHash) {
+				txin.PreviousOutPoint.Hash = *hash
+			}
+		}
+	}
 
 	// Next, obtain the merkle root of a tree which consists of the
 	// wtxid of all transactions in the block. The coinbase

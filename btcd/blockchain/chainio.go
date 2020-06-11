@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
-	"github.com/btcsuite/omega/ovm"
 	"math/big"
 	"time"
 
@@ -18,7 +17,7 @@ import (
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-//	"github.com/btcsuite/omega/ovm"
+	//	"github.com/btcsuite/omega/ovm"
 	"github.com/btcsuite/omega/token"
 	"github.com/btcsuite/omega/viewpoint"
 )
@@ -40,6 +39,10 @@ const (
 )
 
 var (
+	// IssuedTokenTypes is the name of the db bucket used to house the map
+	// from token type to contract.
+	IssuedTokenTypes = []byte("issuedTokens")
+
 	// blockIndexBucketName is the name of the db bucket used to house to the
 	// block headers and contextual information.
 	blockIndexBucketName = []byte("blockheaderidx")
@@ -785,11 +788,10 @@ func (b *BlockChain) createChainState() error {
 		meta := dbTx.Metadata()
 
 		var err error
-
-		ovm.DbPutNextTokenType(dbTx, uint64(0x100))
-		ovm.DbPutNextTokenType(dbTx, uint64(0x101))
-		ovm.DbPutNextTokenType(dbTx, uint64(0x102))
-		ovm.DbPutNextTokenType(dbTx, uint64(0x103))
+		// Create the bucket that houses map from tokentype to contract.
+		if _, err = meta.CreateBucket(IssuedTokenTypes); err != nil {
+			return err
+		}
 
 		// Create the bucket that houses the block index data.
 		if _, err = meta.CreateBucket(blockIndexBucketName); err != nil {

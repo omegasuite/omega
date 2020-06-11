@@ -308,6 +308,48 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 	return nil
 }
 
+func CheckTransactionAdditionalInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
+	additional := false
+	for _,d := range tx.MsgTx().TxDef {
+		if d.IsSeparator() {
+			additional = true
+			continue
+		}
+		if !additional {
+			continue
+		}
+		h := d.Hash()
+		switch d.(type) {
+		case *token.RightDef, *token.RightSetDef:
+			ft,_ := views.Rights.FetchEntry(views.Db, &h)
+			if ft != nil {		// father does not exist
+				return ruleError(1, "Illegal Rights definition.")
+			}
+
+			switch d.(type) {
+			case *token.RightDef:
+				f := &d.(*token.RightDef).Father
+				if !f.IsEqual(&chainhash.Hash{}) {
+					ft,_ := views.Rights.FetchEntry(views.Db, f)
+					if ft == nil || ft.(*viewpoint.RightEntry).Attrib & token.Unsplittable != 0 {		// father is indivisible
+						return ruleError(1, "Illegal Right definition.")
+					}
+				}
+
+			case *token.RightSetDef:
+				for _, r := range d.(*token.RightSetDef).Rights {
+					ft,_ := views.Rights.FetchEntry(views.Db, &r)
+					if ft == nil {
+						return ruleError(1, "Illegal Right definition.")
+					}
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 func appeared(p * chainhash.Hash, as map[chainhash.Hash]struct{}, views * viewpoint.ViewPointSet) int32 {
 	sum := int32(0)
 	plg,_ := views.Polygon.FetchEntry(views.Db, p)

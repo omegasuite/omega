@@ -13,6 +13,7 @@ import (
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega"
 	"github.com/btcsuite/omega/token"
@@ -29,11 +30,13 @@ type (
 	// and is used by the GETTX EVM op code.
 	GetTxFunc func() * btcutil.Tx
 
+	GetCoinBaseFunc func() * btcutil.Tx
+
 	// GetUtxoFunx returns the UTXO indicated by hash and seq #.
 	GetUtxoFunc func(chainhash.Hash, uint64) *wire.TxOut
 
 	// GetCurrentOutputFunx returns the output that triggers the current contract call.
-	GetCurrentOutputFunc func() (wire.OutPoint, *wire.TxOut)
+	GetCurrentOutputFunc func() wire.OutPoint
 
 	// SpendFunc adds an input to the transaction template for currect transaction
 	// and is used by the ADDTXIN EVM op code.
@@ -49,6 +52,7 @@ type (
 
 	// GetBlockNumberFunc returns the block numer of the block of current execution environment
 	GetBlockNumberFunc func() uint64
+	GetBlockFunc func() * btcutil.Block
 
 	AddCoinBaseFunc func(wire.TxOut) wire.OutPoint
 )
@@ -70,6 +74,7 @@ func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
 // Context provides the OVM with auxiliary information. Once provided
 // it shouldn't be modified.
 type Context struct {
+	GetCoinBase GetCoinBaseFunc
 	GetTx GetTxFunc
 	Spend SpendFunc
 	AddTxOutput AddTxOutputFunc
@@ -81,6 +86,7 @@ type Context struct {
 	// Block information
 	GasLimit    uint64 			      // GASLIMIT policy
 	BlockNumber GetBlockNumberFunc    // Provides information for NUMBER
+	Block 		GetBlockFunc
 }
 
 // OVM is the Omega Virtual Machine base object and provides
@@ -101,6 +107,7 @@ type OVM struct {
 
 	// stateDB gives access to the underlying state
 	StateDB map[Address]*stateDB
+	TokenTypes map[uint64]Address
 
 	// Depth of the current call stack
 	depth int
@@ -127,6 +134,7 @@ type OVM struct {
 func NewOVM(chainConfig *chaincfg.Params) *OVM {
 	evm := &OVM{
 		StateDB:     make(map[Address]*stateDB),
+		TokenTypes:  make(map[uint64]Address),
 		chainConfig: chainConfig,
 	}
 	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
@@ -138,6 +146,7 @@ func NewOVM(chainConfig *chaincfg.Params) *OVM {
 func NewSigVM(chainConfig *chaincfg.Params) *OVM {
 	evm := &OVM{
 		StateDB:     make(map[Address]*stateDB),
+		TokenTypes:  make(map[uint64]Address),
 		chainConfig: chainConfig,
 	}
 	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
@@ -153,6 +162,7 @@ func (v * OVM) SetContext(ctx Context) {
 type blockRollBack struct {
 	prevBlock uint64
 	rollBacks map[Address][2]rollback
+	tokentypes map[uint64]Address
 }
 
 func (v * OVM) Commit() {
@@ -167,7 +177,9 @@ func (v * OVM) Commit() {
 		return
 	}
 
-	rollBacks := blockRollBack{ lastBlock, make(map[Address][2]rollback)}
+	rollBacks := blockRollBack{ lastBlock, make(map[Address][2]rollback),
+		v.TokenTypes,
+	}
 
 	for k,d := range v.StateDB {
 		t := d.commit(v.BlockNumber())
@@ -186,9 +198,17 @@ func (v * OVM) Commit() {
 	binary.LittleEndian.PutUint64(rbkey[8:], v.BlockNumber())
 
 	v.DB.Update(func (dbTx  database.Tx) error {
+		bucket := dbTx.Metadata().Bucket(IssuedTokenTypes)
+		for t,a := range v.TokenTypes {
+			var mtk [8]byte
+			binary.LittleEndian.PutUint64(mtk[:], t)
+			bucket.Put(mtk[:], a[:])
+		}
 		DbPutVersion(dbTx, []byte("lastCommitBlock"), v.BlockNumber())
 		return dbTx.Metadata().Put(rbkey[:], s)
 	})
+	v.StateDB = make(map[Address]*stateDB)
+	v.GasLimit = uint64(v.chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
 }
 
 func (d *OVM) Rollback() {
@@ -223,6 +243,13 @@ func (d *OVM) Rollback() {
 	d.DB.Update(func (dbTx  database.Tx) error {
 		DbPutVersion(dbTx, []byte("lastCommitBlock"), rollBacks.prevBlock)
 		dbTx.Metadata().Delete(rbkey[:])
+
+		bucket := dbTx.Metadata().Bucket(IssuedTokenTypes)
+		for t,_ := range rollBacks.tokentypes {
+			var mtk [8]byte
+			binary.LittleEndian.PutUint64(mtk[:], t)
+			bucket.Delete(mtk[:])
+		}
 
 		for contract,d := range rollBacks.rollBacks {
 			bucket := dbTx.Metadata().Bucket([]byte("storage" + string(contract[:])))
@@ -291,7 +318,11 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	if contract == nil {
 		return nil, fmt.Errorf("Contract does not exist")
 	}
-	contract.SetCallCode(method, evm.StateDB[d].GetCodeHash(), evm.GetCode(d))
+	if bytes.Compare(method, []byte{0,0,0,0}) != 0 {
+		contract.SetCallCode(method, evm.GetCode(d))
+	} else {
+		contract.CodeAddr = []byte{0,0,0,0}
+	}
 
 	ret, err = run(evm, contract, params)
 
@@ -309,30 +340,27 @@ func (ovm *OVM) NewContract(d Address, value *token.Token) *Contract {
 		self: AccountRef(d),
 		Args: nil,
 		value: value,
+		libs: make(map[Address]lib),
 	}
 
 	if _, ok := ovm.StateDB[d]; !ok {
 		t := NewStateDB(ovm.views.Db, d)
 
-		existence := t.Exists(false)
+		existence := t.Exists(true)
 		if !existence {
 			return nil
 		}
 		ovm.StateDB[d] = t
 	}
 
-	c.owner = ovm.StateDB[d].GetOwner()
+//	c.owner = ovm.StateDB[d].GetOwner()
 
 	return c
 }
 
 // Create creates a new contract using code as deployment code.
 func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
-	// Ensure there's no existing contract already at the designated address
-	contractAddr := Hash160(chainhash.DoubleHashB(data))
-
-	var d Address
-	copy(d[:], contractAddr)
+	var d = contract.self.Address()
 
 	if _,ok := ovm.StateDB[d]; !ok {
 		return nil, omega.ScriptError(omega.ErrInternal, "Contract address incorrect.")
@@ -340,43 +368,93 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	if ovm.StateDB[d].Exists(false) {
 		return nil, omega.ScriptError(omega.ErrInternal, "Contract already exists.")
 	}
+	ovm.StateDB[d].fresh = true
 
-	contract.self = AccountRef(d)
-
-	contract.Code = ByteCodeParser(data)	// [20:]
+	contract.Code = ByteCodeParser(data)
 	if !ByteCodeValidator(contract.Code) {
 		return nil, omega.ScriptError(omega.ErrInternal, "Illegal instruction is contract code.")
 	}
-	copy(contract.CodeHash[:], chainhash.DoubleHashB(data))	// [20:]))
+//	copy(contract.CodeHash[:], chainhash.DoubleHashB(data))
 
 	ovm.SetAddres(d, contract.self.(AccountRef))
-	ovm.SetInsts(d, contract.Code)
-	ovm.SetCodeHash(d, contract.CodeHash)
+//	ovm.SetInsts(d, contract.Code)
+//	ovm.SetCodeHash(d, contract.CodeHash)
 
 	contract.CodeAddr = nil
 	ret, err := run(ovm, contract, nil)	// contract constructor. ret is the real contract code, ex. constructor
-	if err != nil || len(ret) == 0 {
+
+	if err != nil || len(ret) < 4 {
 		return nil, omega.ScriptError(omega.ErrInternal, "Fail to initialize contract.")
 	}
 
-	contract.Code = ByteCodeParser(ret)
-	ovm.SetCode(d, ret)
-	copy(contract.CodeHash[:], chainhash.DoubleHashB(ret))
-	ovm.SetCodeHash(d, contract.CodeHash)
+	block := ovm.Block()
+
+	if block == nil {
+		return nil, nil
+	}
+
+	m := ovm.GetCurrentOutput()
+
+	loc,_ := block.TxLoc()
+	tx := ovm.GetTx()
+	n := m.Index
+	msg := tx.MsgTx()
+
+	p := 4
+	p += common.VarIntSerializeSize(uint64(len(msg.TxDef)))
+	for _, ti := range msg.TxDef {
+		p += ti.SerializeSize()
+	}
+
+	p += common.VarIntSerializeSize(uint64(len(msg.TxIn)))
+	for _, ti := range msg.TxIn {
+		p += ti.SerializeSize()
+	}
+
+	p += common.VarIntSerializeSize(uint64(len(msg.TxOut)))
+	for i, ti := range msg.TxOut {
+		if i < int(n) {
+			p += ti.SerializeSize()
+		} else if i == int(n) {
+			p += ti.Token.SerializeSize() + 25 + common.VarIntSerializeSize(uint64(len(ti.PkScript)))
+		}
+	}
+	
+	start := common.LittleEndian.Uint32(ret)
+	ln := len(msg.TxOut[n].PkScript) - 25
+	pks := msg.TxOut[n].PkScript[25:]
+	dd := 0
+	for i := 0; start > 0; i++ {
+		if pks[i] == '\n' {
+			start--
+		}
+		p++
+		ln--
+		dd++
+	}
+	pks = pks[dd:]
+
+	r := database.BlockRegion {
+		ovm.Block().Hash(),
+		uint32(loc[n].TxStart + p),
+		uint32(ln),
+	}
+	br := make([]byte, 40)
+	copy(br, (*r.Hash)[:])
+	common.LittleEndian.PutUint32(br[32:], r.Offset)
+	common.LittleEndian.PutUint32(br[36:], r.Len)
+
+	ovm.setMeta(d, "code", br)
+	
+	log.Infof("Contract created: %x", d)
+
+//	contract.Code = ByteCodeParser(ret)
+//	ovm.SetCode(d, ret)
+//	copy(contract.CodeHash[:], chainhash.DoubleHashB(ret))
+//	ovm.SetCodeHash(d, contract.CodeHash)
 
 	return nil, nil
 }
-
-/*
-func CreateSysWallet(chainConfig *chaincfg.Params, db database.DB) {
-	var addr [20]byte
-
-	sdb := * NewStateDB(db, addr)
-
-	sdb.SetAddres(addr)
-	sdb.Commit(0)
-}
-*/
 
 // ChainConfig returns the environment's chain configuration
 func (evm *OVM) ChainConfig() *chaincfg.Params { return evm.chainConfig }

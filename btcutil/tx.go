@@ -30,6 +30,7 @@ type Tx struct {
 	HasOuts		  bool			  // temp data indicating whether there is TxOuts added by contracts
 	HasIns		  bool			  // temp data indicating whether there is TxIns added by contracts
 	HasDefs		  bool			  // temp data indicating whether there is TxDefs added by contracts
+	Executed	  bool			  // whether contracts in the tx have been executed
 }
 
 // MsgTx returns the underlying wire.MsgTx for the transaction.
@@ -65,10 +66,6 @@ func (s *Tx) VerifyContractOut(t *Tx) bool {
 }
 
 func (s *Tx) AddTxOut(t wire.TxOut) {
-	if !s.HasIns {
-		s.msgTx.TxIn = append(s.msgTx.TxIn, &wire.TxIn{})
-		s.HasIns = true
-	}
 	if !s.HasOuts {
 		// this servers as a separater. only TokenType is serialized
 		to := wire.TxOut{}
@@ -101,10 +98,6 @@ func (s *Tx) AddDef(t token.Definition) {
 }
 
 func (s *Tx) Match(t *Tx) bool {
-	if s.HasOuts != t.HasOuts || s.HasDefs != t.HasDefs || s.HasIns != t.HasIns {
-		return false
-	}
-
 	return s.msgTx.Match(t.msgTx)
 }
 

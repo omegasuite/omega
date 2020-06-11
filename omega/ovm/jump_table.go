@@ -110,10 +110,12 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opCopyImm,
 			valid:         true,
 		},
+/*		
 		CODECOPY: operation{
 			execute:       opCodeCopy,
 			valid:         true,
 		},
+ */
 		RECEIVED: operation{
 			execute:       opReceived,
 			valid:         true,

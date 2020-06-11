@@ -8,12 +8,12 @@ import (
 	"regexp"
 )
 
-var patOperand = regexp.MustCompile(`^n?(g?i+)?(([xa-f][0-9a-f]+)|([0-9]+))(\"[0-9]+)?(\'[0-9]+)?,`)
+var patOperand = regexp.MustCompile(`^n?(g?i+)?(([kK]?[xa-f][0-9a-f]+)|([0-9]+))(\"[0-9]+)?(\'[0-9]+)?,`)
 var addrOperand = regexp.MustCompile(`^n?g?i+(([xa-f][0-9a-f]+)|([0-9]+))(\"[0-9]+)?(\'[0-9]+)?,`)
-var numOperand = regexp.MustCompile(`^n?(([xa-f][0-9a-f]+)|([0-9]+)),`)
+var numOperand = regexp.MustCompile(`^n?(([kK]?[xa-f][0-9a-f]+)|([0-9]+)),`)
 var patNum = regexp.MustCompile(`[0-9a-f]+`)
 var patHex = regexp.MustCompile(`[xa-f]`)
-var dataType = regexp.MustCompile(`^\x75|\x67|\x42|\x57|\x44|\x51|\x48|\x68|\x41`)
+var dataType = regexp.MustCompile(`^[rRBWDQHhkK]`)
 
 func getNum(param []byte) (int64, int) {
 	s := patOperand.Find(param)
@@ -268,8 +268,7 @@ func opHash160Validator(param []byte) int {
 
 var formatSigCheck = []formatDesc{
 	{addrOperand, 0xffffffff}, {patOperand, 0},
-	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
-	{patOperand, 0xFFFFFFFF},
+	{patOperand, 0}, {addrOperand, 0xFFFFFFFF},
 }
 
 func opSigCheckValidator(param []byte) int {
@@ -307,8 +306,8 @@ func opCallValidator(param []byte) int {
 }
 
 var formatLoad = []formatDesc{
-	{addrOperand, 0xffffffff}, {patOperand, 0xff}, {patOperand, 0},
-	{dataType, 0},
+	{addrOperand, 0xffffffff}, {patOperand, 0xff},
+	{patOperand, 0},
 }
 
 func opLoadValidator(param []byte) int {
@@ -316,7 +315,7 @@ func opLoadValidator(param []byte) int {
 }
 
 var formatStore = []formatDesc{
-	{patOperand, 32}, {patOperand, 0}, {dataType, 0}, {patOperand, 0},
+	{patOperand, 0}, {dataType, 0}, {patOperand, 0},
 }
 
 func opStoreValidator(param []byte) int {
@@ -360,7 +359,7 @@ func opLibLoadValidator(param []byte) int {
 }
 
 var formatMalloc = []formatDesc{
-	{patOperand, 0}, {patOperand, 0xFFFFFFFF},
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
 }
 
 func opMallocValidator(param []byte) int {
@@ -406,14 +405,16 @@ func opCopyImmValidator(param []byte) int {
 	return formatParser(formatImm, param)
 }
 
+/*
 var formatCopyCode = []formatDesc{
-	{patOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
 	{patOperand, 0xFFFFFFFF},
 }
 
 func opCodeCopyValidator(param []byte) int {
 	return formatParser(formatCopyCode, param)
 }
+ */
 
 var formatSuicide = []formatDesc{
 	{patOperand, 0},
@@ -468,7 +469,7 @@ func opGetTxOutValidator(param []byte) int {
 }
 
 var formatSpend = []formatDesc{
-	{patOperand, 0xFFFFFFFF},
+	{patOperand, 0}, {patOperand, 0xFFFFFFFF},
 }
 
 func opSpendValidator(param []byte) int {
@@ -515,11 +516,16 @@ func opGetUtxoValidator(param []byte) int {
 }
 
 var formatMint = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {patOperand, 0}, {patOperand, 0}, {patOperand, 0},
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0},
+	{patOperand, 0}, {patOperand, 0},
 }
 
 func opMintValidator(param []byte) int {
-	return formatParser(formatMint, param)
+	d := formatParser(formatMint, param)
+	if d < 0 {
+		return formatParser(formatMint[:3], param)
+	}
+	return d
 }
 
 
@@ -528,5 +534,5 @@ var formatMeta = []formatDesc{
 }
 
 func opMetaValidator(param []byte) int {
-	return formatParser(formatMint, param)
+	return formatParser(formatMeta, param)
 }

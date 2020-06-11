@@ -17,8 +17,9 @@
 package ovm
 
 import (
-//	"fmt"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"encoding/hex"
+	"fmt"
+//	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/omega/token"
 	"math/big"
 )
@@ -29,6 +30,33 @@ func (d Address) Big() * big.Int {
 	z := big.NewInt(0)
 	z.SetBytes(d[:])
 	return z
+}
+
+func AddressFromString(src string) (Address, error) {
+	// Return error if hash string is too long.
+	if len(src) > 40 {
+		return Address{}, fmt.Errorf("Address Src is too long")
+	}
+
+	// Hex decoder expects the hash to be a multiple of two.  When not, pad
+	// with a leading zero.
+	var srcBytes []byte
+	if len(src)%2 == 0 {
+		srcBytes = []byte(src)
+	} else {
+		srcBytes = make([]byte, 1+len(src))
+		srcBytes[0] = '0'
+		copy(srcBytes[1:], src)
+	}
+
+	// Hex decode the source bytes to a temporary destination.
+	var addr Address
+	_, err := hex.Decode(addr[:], srcBytes)
+	if err != nil {
+		return Address{}, err
+	}
+
+	return addr, nil
 }
 
 // ContractRef is a reference to the contract's backing object
@@ -69,13 +97,10 @@ type Contract struct {
 	self          ContractRef	// contract address = hash160(owner + CodeHash)
 								// note: self is 0x000...000 for system contract.
 
-	owner Address				// address of owner. for system contract, owner = 0x000...000
-								// contracts with 0 zddress may execute privilege instructions
-
 	libs map[Address]lib
 
 	Code     []inst
-	CodeHash chainhash.Hash
+//	CodeHash chainhash.Hash
 	CodeAddr []byte				// precompiled code. 4-byte ABI func code. code 0-255 reserved for sys call
 	Input    []byte
 
@@ -131,9 +156,9 @@ func (c *Contract) Value() *token.Token {
 
 // SetCallCode sets the code of the contract and address of the backing data
 // object
-func (self *Contract) SetCallCode(addr []byte, hash chainhash.Hash, code []byte) {
+func (self *Contract) SetCallCode(addr []byte, code []byte) {
 	self.Code = ByteCodeParser(code)
-	self.CodeHash = hash
+//	self.CodeHash = hash
 	self.CodeAddr = addr
 }
 
@@ -143,19 +168,20 @@ func ByteCodeParser(code []byte) []inst {
 	empty := true
 	for i := 0; i < len(code); i++ {
 		switch {
-		case empty:
-			tmp.op = OpCode(code[i])
-			empty = false
-			tmp.param = make([]byte, 0, 32)
+		case code[i] == ' ' || code[i] == '\t' || code[i] == '\r':		// skip space or tab
 
-		case code[i] == 0x20 || code[i] == 0x9:		// skip space or tab
-
-		case code[i] != 0x3b && code[i] != 10 && code[i] != 13:	// ";\n":
-			tmp.param = append(tmp.param, code[i])
+		case code[i] != ';' && code[i] != '\n':	// ";\n":
+			if empty {
+				tmp.op = OpCode(code[i])
+				empty = false
+				tmp.param = make([]byte, 0, 32)
+			} else {
+				tmp.param = append(tmp.param, code[i])
+			}
 
 		default:	// ";\n":
 			instructions = append(instructions, tmp)
-			for ; i < len(code) && code[i] != 10; i++ {}
+			for ; i < len(code) && code[i] != '\n'; i++ {}
 			empty = true
 		}
 	}
@@ -189,7 +215,7 @@ var validators = map[OpCode]codeValidator {
 	ALLOC:  opAllocValidator,
 	COPY: opCopyValidator,
 	COPYIMM:  opCopyImmValidator,
-	CODECOPY: opCodeCopyValidator,
+//	CODECOPY: opCodeCopyValidator,
 	RECEIVED: opReceivedValidator,
 	TXIOCOUNT:  opTxIOCountValidator,
 	GETTXIN: opGetTxInValidator,

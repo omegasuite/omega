@@ -1539,7 +1539,7 @@ func sendFrom(icmd interface{}, w *wallet.Wallet, chainClient *chain.RPCClient) 
 		return nil, ErrNeedPositiveMinconf
 	}
 	// Create map of address and amount pairs.
-	amt, err := btcutil.NewAmount(cmd.Amount)
+	amt, err := btcutil.NewAmount(cmd.Amount, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -1582,7 +1582,7 @@ func sendMany(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	// Recreate address/amount pairs, using dcrutil.Amount.
 	pairs := make(map[string]btcutil.Amount, len(cmd.Amounts))
 	for k, v := range cmd.Amounts {
-		amt, err := btcutil.NewAmount(v)
+		amt, err := btcutil.NewAmount(v, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -1609,7 +1609,7 @@ func sendToAddress(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 		}
 	}
 
-	amt, err := btcutil.NewAmount(cmd.Amount)
+	amt, err := btcutil.NewAmount(cmd.Amount, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -1678,179 +1678,209 @@ func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.R
 	if err != nil {
 		return nil, err
 	}
-	var tx wire.MsgTx
-	err = tx.DeserializeNoWitness(bytes.NewBuffer(serializedTx))
-	if err != nil {
-		e := errors.New("TX decode failed")
-		return nil, DeserializationError{e}
-	}
 
-	var hashType txscript.SigHashType
-	switch *cmd.Flags {
-	case "ALL":
-		hashType = txscript.SigHashAll
-	case "NONE":
-		hashType = txscript.SigHashNone
-	case "SINGLE":
-		hashType = txscript.SigHashSingle
-	case "ALL|ANYONECANPAY":
-		hashType = txscript.SigHashAll | txscript.SigHashAnyOneCanPay
-	case "NONE|ANYONECANPAY":
-		hashType = txscript.SigHashNone | txscript.SigHashAnyOneCanPay
-	case "SINGLE|ANYONECANPAY":
-		hashType = txscript.SigHashSingle | txscript.SigHashAnyOneCanPay
-	default:
-		e := errors.New("Invalid sighash parameter")
-		return nil, InvalidParameterError{e}
-	}
+	if cmd.IsHash != nil && *cmd.IsHash {
+		if cmd.PrivKeys != nil {
+			for _, key := range *cmd.PrivKeys {
+				wif, err := btcutil.DecodeWIF(key)
+				if err != nil {
+					return nil, DeserializationError{err}
+				}
 
-	// TODO: really we probably should look these up with btcd anyway to
-	// make sure that they match the blockchain if present.
-	inputs := make(map[wire.OutPoint][]byte)
-	scripts := make(map[string][]byte)
-	var cmdInputs []btcjson.RawTxInput
-	if cmd.Inputs != nil {
-		cmdInputs = *cmd.Inputs
-	}
-	for _, rti := range cmdInputs {
-		inputHash, err := chainhash.NewHashFromStr(rti.Txid)
+				if !wif.IsForNet(w.ChainParams()) {
+					s := "key network doesn't match wallet's"
+					return nil, DeserializationError{errors.New(s)}
+				}
+
+				key := wif.PrivKey
+				signature, err := key.Sign(serializedTx)
+				if err != nil {
+					return nil, fmt.Errorf("cannot sign tx input: %s", err)
+				}
+
+				return btcjson.SignRawTransactionResult{
+					Hex:      hex.EncodeToString(signature.Serialize()),
+					Complete: true,
+					Errors:   nil,
+				}, nil
+			}
+		}
+		return nil, nil
+	} else {
+		var tx wire.MsgTx
+		err = tx.DeserializeNoWitness(bytes.NewBuffer(serializedTx))
 		if err != nil {
-			return nil, DeserializationError{err}
+			e := errors.New("TX decode failed")
+			return nil, DeserializationError{e}
 		}
 
-		script, err := decodeHexStr(rti.ScriptPubKey)
-		if err != nil {
-			return nil, err
+		var hashType txscript.SigHashType
+		switch *cmd.Flags {
+		case "ALL":
+			hashType = txscript.SigHashAll
+		case "NONE":
+			hashType = txscript.SigHashNone
+		case "SINGLE":
+			hashType = txscript.SigHashSingle
+		case "ALL|ANYONECANPAY":
+			hashType = txscript.SigHashAll | txscript.SigHashAnyOneCanPay
+		case "NONE|ANYONECANPAY":
+			hashType = txscript.SigHashNone | txscript.SigHashAnyOneCanPay
+		case "SINGLE|ANYONECANPAY":
+			hashType = txscript.SigHashSingle | txscript.SigHashAnyOneCanPay
+		default:
+			e := errors.New("Invalid sighash parameter")
+			return nil, InvalidParameterError{e}
 		}
 
-		// redeemScript is only actually used iff the user provided
-		// private keys. In which case, it is used to get the scripts
-		// for signing. If the user did not provide keys then we always
-		// get scripts from the wallet.
-		// Empty strings are ok for this one and hex.DecodeString will
-		// DTRT.
-		if cmd.PrivKeys != nil && len(*cmd.PrivKeys) != 0 {
-			redeemScript, err := decodeHexStr(rti.RedeemScript)
+		// TODO: really we probably should look these up with btcd anyway to
+		// make sure that they match the blockchain if present.
+		inputs := make(map[wire.OutPoint][]byte)
+		scripts := make(map[string][]byte)
+		var cmdInputs []btcjson.RawTxInput
+		if cmd.Inputs != nil {
+			cmdInputs = *cmd.Inputs
+		}
+		for _, rti := range cmdInputs {
+			inputHash, err := chainhash.NewHashFromStr(rti.Txid)
+			if err != nil {
+				return nil, DeserializationError{err}
+			}
+
+			script, err := decodeHexStr(rti.ScriptPubKey)
 			if err != nil {
 				return nil, err
 			}
 
-			addr, err := btcutil.NewAddressScriptHash(redeemScript,
-				w.ChainParams())
+			// redeemScript is only actually used iff the user provided
+			// private keys. In which case, it is used to get the scripts
+			// for signing. If the user did not provide keys then we always
+			// get scripts from the wallet.
+			// Empty strings are ok for this one and hex.DecodeString will
+			// DTRT.
+			if cmd.PrivKeys != nil && len(*cmd.PrivKeys) != 0 {
+				redeemScript, err := decodeHexStr(rti.RedeemScript)
+				if err != nil {
+					return nil, err
+				}
+
+				addr, err := btcutil.NewAddressScriptHash(redeemScript,
+					w.ChainParams())
+				if err != nil {
+					return nil, DeserializationError{err}
+				}
+				scripts[addr.String()] = redeemScript
+			}
+			inputs[wire.OutPoint{
+				Hash:  *inputHash,
+				Index: rti.Vout,
+			}] = script
+		}
+
+		// Now we go and look for any inputs that we were not provided by
+		// querying btcd with getrawtransaction. We queue up a bunch of async
+		// requests and will wait for replies after we have checked the rest of
+		// the arguments.
+		requested := make(map[wire.OutPoint]rpcclient.FutureGetTxOutResult)
+		for _, txIn := range tx.TxIn {
+			if txIn.IsSeparator() {
+				continue
+			}
+			// Did we get this outpoint from the arguments?
+			if _, ok := inputs[txIn.PreviousOutPoint]; ok {
+				continue
+			}
+
+			// Asynchronously request the output script.
+			requested[txIn.PreviousOutPoint] = chainClient.GetTxOutAsync(
+				&txIn.PreviousOutPoint.Hash, txIn.PreviousOutPoint.Index,
+				true)
+		}
+
+		// Parse list of private keys, if present. If there are any keys here
+		// they are the keys that we may use for signing. If empty we will
+		// use any keys known to us already.
+		var keys map[string]*btcutil.WIF
+		if cmd.PrivKeys != nil {
+			keys = make(map[string]*btcutil.WIF)
+
+			for _, key := range *cmd.PrivKeys {
+				wif, err := btcutil.DecodeWIF(key)
+				if err != nil {
+					return nil, DeserializationError{err}
+				}
+
+				if !wif.IsForNet(w.ChainParams()) {
+					s := "key network doesn't match wallet's"
+					return nil, DeserializationError{errors.New(s)}
+				}
+
+				addr, err := btcutil.NewAddressPubKey(wif.SerializePubKey(), w.ChainParams())
+
+				//			privKey := wif.PrivKey
+				//			addr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), w.ChainParams())
+
+				if err != nil {
+					return nil, DeserializationError{err}
+				}
+				keys[addr.EncodeAddress()] = wif
+				pkh := addr.AddressPubKeyHash()
+				pks := pkh.EncodeAddress()
+				keys[pks] = wif
+			}
+		}
+
+		// We have checked the rest of the args. now we can collect the async
+		// txs. TODO: If we don't mind the possibility of wasting work we could
+		// move waiting to the following loop and be slightly more asynchronous.
+		for outPoint, resp := range requested {
+			result, err := resp.Receive()
+			if err != nil || result == nil {
+				return nil, err
+			}
+			script, err := hex.DecodeString(result.ScriptPubKey.Hex)
 			if err != nil {
-				return nil, DeserializationError{err}
+				return nil, err
 			}
-			scripts[addr.String()] = redeemScript
-		}
-		inputs[wire.OutPoint{
-			Hash:  *inputHash,
-			Index: rti.Vout,
-		}] = script
-	}
-
-	// Now we go and look for any inputs that we were not provided by
-	// querying btcd with getrawtransaction. We queue up a bunch of async
-	// requests and will wait for replies after we have checked the rest of
-	// the arguments.
-	requested := make(map[wire.OutPoint]rpcclient.FutureGetTxOutResult)
-	for _, txIn := range tx.TxIn {
-		if txIn.IsSeparator() {
-			continue
-		}
-		// Did we get this outpoint from the arguments?
-		if _, ok := inputs[txIn.PreviousOutPoint]; ok {
-			continue
+			inputs[outPoint] = script
 		}
 
-		// Asynchronously request the output script.
-		requested[txIn.PreviousOutPoint] = chainClient.GetTxOutAsync(
-			&txIn.PreviousOutPoint.Hash, txIn.PreviousOutPoint.Index,
-			true)
-	}
-
-	// Parse list of private keys, if present. If there are any keys here
-	// they are the keys that we may use for signing. If empty we will
-	// use any keys known to us already.
-	var keys map[string]*btcutil.WIF
-	if cmd.PrivKeys != nil {
-		keys = make(map[string]*btcutil.WIF)
-
-		for _, key := range *cmd.PrivKeys {
-			wif, err := btcutil.DecodeWIF(key)
-			if err != nil {
-				return nil, DeserializationError{err}
-			}
-
-			if !wif.IsForNet(w.ChainParams()) {
-				s := "key network doesn't match wallet's"
-				return nil, DeserializationError{errors.New(s)}
-			}
-
-			addr, err := btcutil.NewAddressPubKey(wif.SerializePubKey(), w.ChainParams())
-
-//			privKey := wif.PrivKey
-//			addr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), w.ChainParams())
-
-			if err != nil {
-				return nil, DeserializationError{err}
-			}
-			keys[addr.EncodeAddress()] = wif
-			pkh := addr.AddressPubKeyHash()
-			pks := pkh.EncodeAddress()
-			keys[pks] = wif
-		}
-	}
-
-	// We have checked the rest of the args. now we can collect the async
-	// txs. TODO: If we don't mind the possibility of wasting work we could
-	// move waiting to the following loop and be slightly more asynchronous.
-	for outPoint, resp := range requested {
-		result, err := resp.Receive()
-		if err != nil || result == nil {
-			return nil, err
-		}
-		script, err := hex.DecodeString(result.ScriptPubKey.Hex)
+		// All args collected. Now we can sign all the inputs that we can.
+		// `complete' denotes that we successfully signed all outputs and that
+		// all scripts will run to completion. This is returned as part of the
+		// reply.
+		signErrs, err := w.SignTransaction(&tx, hashType, inputs, keys, scripts)
 		if err != nil {
 			return nil, err
 		}
-		inputs[outPoint] = script
+
+		var buf bytes.Buffer
+		buf.Grow(tx.SerializeSize())
+
+		// All returned errors (not OOM, which panics) encounted during
+		// bytes.Buffer writes are unexpected.
+		if err = tx.Serialize(&buf); err != nil {
+			panic(err)
+		}
+
+		signErrors := make([]btcjson.SignRawTransactionError, 0, len(signErrs))
+		for _, e := range signErrs {
+			input := tx.TxIn[e.InputIndex]
+			signErrors = append(signErrors, btcjson.SignRawTransactionError{
+				TxID:      input.PreviousOutPoint.Hash.String(),
+				Vout:      input.PreviousOutPoint.Index,
+				ScriptSig: hex.EncodeToString(tx.SignatureScripts[input.SignatureIndex]),
+				Sequence:  input.Sequence,
+				Error:     e.Error.Error(),
+			})
+		}
+
+		return btcjson.SignRawTransactionResult{
+			Hex:      hex.EncodeToString(buf.Bytes()),
+			Complete: len(signErrors) == 0,
+			Errors:   signErrors,
+		}, nil
 	}
-
-	// All args collected. Now we can sign all the inputs that we can.
-	// `complete' denotes that we successfully signed all outputs and that
-	// all scripts will run to completion. This is returned as part of the
-	// reply.
-	signErrs, err := w.SignTransaction(&tx, hashType, inputs, keys, scripts)
-	if err != nil {
-		return nil, err
-	}
-
-	var buf bytes.Buffer
-	buf.Grow(tx.SerializeSize())
-
-	// All returned errors (not OOM, which panics) encounted during
-	// bytes.Buffer writes are unexpected.
-	if err = tx.Serialize(&buf); err != nil {
-		panic(err)
-	}
-
-	signErrors := make([]btcjson.SignRawTransactionError, 0, len(signErrs))
-	for _, e := range signErrs {
-		input := tx.TxIn[e.InputIndex]
-		signErrors = append(signErrors, btcjson.SignRawTransactionError{
-			TxID:      input.PreviousOutPoint.Hash.String(),
-			Vout:      input.PreviousOutPoint.Index,
-			ScriptSig: hex.EncodeToString(tx.SignatureScripts[input.SignatureIndex]),
-			Sequence:  input.Sequence,
-			Error:     e.Error.Error(),
-		})
-	}
-
-	return btcjson.SignRawTransactionResult{
-		Hex:      hex.EncodeToString(buf.Bytes()),
-		Complete: len(signErrors) == 0,
-		Errors:   signErrors,
-	}, nil
 }
 
 // validateAddress handles the validateaddress command.

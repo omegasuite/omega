@@ -53,6 +53,11 @@ func (block *Block)  CountSpentOutputs() int {
 	var numSpent int
 	for _, tx := range block.Transactions()[1:] {
 		numSpent += len(tx.MsgTx().TxIn)
+		for _, ti := range tx.MsgTx().TxIn {
+			if ti.IsSeparator() {
+				numSpent--
+			}
+		}
 	}
 	return numSpent
 }

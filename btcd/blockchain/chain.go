@@ -962,7 +962,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// entails loading the blocks and their associated spent txos from the
 	// database and using that information to unspend all of the spent txos
 	// and remove the utxos created by the blocks.
-	views, Vm, SigVm := b.Canvas(nil)
+	views, Vm := b.Canvas(nil)
 //	views.db = &b.db
 	views.SetBestHash(&oldBest.Hash)
 
@@ -1117,7 +1117,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		// In the case the block is determined to be invalid due to a
 		// rule violation, mark it as invalid and mark all of its
 		// descendants as having an invalid ancestor.
-		err = b.checkConnectBlock(n, block, views, nil, Vm, SigVm)
+		err = b.checkConnectBlock(n, block, views, nil, Vm)
 		if err != nil {
 			if _, ok := err.(RuleError); ok {
 				b.index.SetStatusFlags(n, chainutil.StatusValidateFailed)
@@ -1142,7 +1142,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// view to be valid from the viewpoint of each block being connected or
 	// disconnected.
 //	views.Utxo = NewUtxoViewpoint()
-	views, Vm, SigVm = b.Canvas(nil)
+	views, Vm = b.Canvas(nil)
 	views.SetBestHash(&b.BestChain.Tip().Hash)
 
 	// Disconnect blocks from the main chain.
@@ -1158,6 +1158,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
 		}
+		Vm.Block = func() *btcutil.Block { return block }
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
@@ -1178,6 +1179,12 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		if err != nil {
 			return err
 		}
+
+		Vm.BlockNumber = func() uint64 {
+			return uint64(block.Height())
+		}
+		Vm.Block = func() *btcutil.Block { return block }
+		Vm.Rollback()
 
 		for *block.Hash() == b.Miners.Tip().MsgBlock().BestBlock {
 			// also disconnect the Miner chain tip. make it an orphan!
@@ -1201,6 +1208,61 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		p = p.Parent
 	}
 
+	for i := 0; e != nil; i, e = i+1, e.Next() {
+		if i >= len(attachBlocks) {
+			break
+		}
+		block := attachBlocks[i]
+
+		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
+		coinBase.SetIndex(block.Transactions()[0].Index())
+		coinBaseHash := *coinBase.Hash()
+		Vm.SetCoinBaseOp(
+			func(txo wire.TxOut) wire.OutPoint {
+				if !coinBase.HasOuts {
+					// this servers as a separater. only TokenType is serialized
+					to := wire.TxOut{}
+					to.Token = token.Token{TokenType: token.DefTypeSeparator}
+					coinBase.MsgTx().AddTxOut(&to)
+					coinBase.HasOuts = true
+				}
+				coinBase.MsgTx().AddTxOut(&txo)
+				op := wire.OutPoint { coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
+//				views.Utxo.AddRawTxOut(op, &txo, false, block.Height())
+				return op
+		})
+		Vm.BlockNumber = func() uint64 {
+			return uint64(block.Height())
+		}
+		Vm.Block = func() *btcutil.Block { return block }
+		Vm.GasLimit = block.MsgBlock().Header.ContractExec
+		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
+
+		for i, tx := range block.Transactions() {
+			if i == 0 {
+				continue
+			}
+			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
+			newtx.SetIndex(tx.Index())
+			err := Vm.ExecContract(newtx, block.Height())
+			if err != nil {
+				return err
+			}
+
+			// compare tx & newtx
+			if !tx.Match(newtx) {
+				return fmt.Errorf("Mismatch contract execution result")
+			}
+		}
+		if !block.Transactions()[0].Match(coinBase) {
+			return fmt.Errorf("Mismatch contract execution result")
+		}
+		if Vm.GasLimit != 0 {
+			return fmt.Errorf("Incorrect contract execution cost.")
+		}
+	}
+
+	e = attachNodes.Front()
 	for i := 0; e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 
@@ -1226,30 +1288,13 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
-		Vm.SetCoinBaseOp(
-			func(txo wire.TxOut) wire.OutPoint {
-				tx, _ := block.Tx(0)
-				msg := tx.MsgTx()
-				if !tx.HasOuts {
-					// this servers as a separater. only TokenType is serialized
-					to := wire.TxOut{}
-					to.Token = token.Token{TokenType: ^uint64(0)}
-					msg.AddTxOut(&to)
-					tx.HasOuts = true
-				}
-				msg.AddTxOut(&txo)
-				op := wire.OutPoint{*tx.Hash(), uint32(len(msg.TxOut) - 1)}
-				return op
-			})
-		Vm.BlockNumber = func() uint64 {
-			return uint64(block.Height())
-		}
-
 		// Update the database and chain state.
 		err = b.connectBlock(n, block, views, stxos, Vm)
 		if err != nil {
 			return err
 		}
+
+		Vm.Commit()
 
 		for u,v := range minersonhold {
 			if v + MinerHoldingPeriod < n.Height {
@@ -1308,19 +1353,18 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags
 	return nil
 }
 
-func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm.OVM, *ovm.OVM) {
+func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm.OVM) {
 	views := b.NewViewPointSet()
 
 	// initialize OVM
 	Vm := ovm.NewOVM(b.ChainParams)
-	SigVm := ovm.NewSigVM(b.ChainParams)
 	Vm.SetViewPoint(views)
-	SigVm.SetViewPoint(views)
 
 	if block != nil {
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
 		}
+		Vm.Block = func() *btcutil.Block { return block }
 		Vm.SetCoinBaseOp(
 			func(txo wire.TxOut) wire.OutPoint {
 				tx, _ := block.Tx(0)
@@ -1328,17 +1372,18 @@ func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm
 				if !tx.HasOuts {
 					// this servers as a separater. only TokenType is serialized
 					to := wire.TxOut{}
-					to.Token = token.Token{TokenType: ^uint64(0)}
+					to.Token = token.Token{TokenType: token.DefTypeSeparator}
 					msg.AddTxOut(&to)
 					tx.HasOuts = true
 				}
 				msg.AddTxOut(&txo)
 				op := wire.OutPoint{*tx.Hash(), uint32(len(msg.TxOut) - 1)}
+//				views.Utxo.AddRawTxOut(op, &txo, false, block.Height())
 				return op
 			})
 	}
 
-	return views, Vm, SigVm
+	return views, Vm
 }
 
 
@@ -1397,13 +1442,13 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		// Perform several checks to verify the block can be connected
 		// to the main chain without violating any rules and without
 		// actually connecting the block.
-		views, Vm, SigVm := b.Canvas(block)
+		views, Vm := b.Canvas(block)
 //		views.db = &b.db
 //		view := NewUtxoViewpoint()
 		views.Utxo.SetBestHash(parentHash)
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
 		if !fastAdd {
-			err := b.checkConnectBlock(node, block, views, &stxos, Vm, SigVm)
+			err := b.checkConnectBlock(node, block, views, &stxos, Vm)
 			if err == nil {
 				b.index.SetStatusFlags(node, chainutil.StatusValid)
 			} else if _, ok := err.(RuleError); ok {
@@ -1458,6 +1503,8 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			b.index.SetStatusFlags(node, chainutil.StatusValid)
 			flushIndexState()
 		}
+
+		Vm.Commit()
 
 		return true, nil
 	}

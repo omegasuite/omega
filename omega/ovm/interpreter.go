@@ -6,10 +6,10 @@ package ovm
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-//	"github.com/btcsuite/btcd/wire/common"
-	"sync/atomic"
 	"encoding/binary"
+	//	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	//	"github.com/btcsuite/btcd/wire/common"
+	"sync/atomic"
 )
 
 // Interpreter is used to run Ethereum based contracts and will utilise the
@@ -125,6 +125,11 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		end: int32(len(contract.Code)),
 	}
 	contract.Input = input
+	if len(input) > 0 {
+		stack.malloc(8 + len(input))
+		binary.LittleEndian.PutUint32(stack.data[0].space, uint32(len(input)))
+		copy(stack.data[0].space[8:], input)
+	}
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
@@ -154,7 +159,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		}
 
 		// execute the operation
-		fmt.Printf("%s(%c) %s\n", op.String(), op, string(contract.GetBytes(pc)))
+		fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
 
 		err = operation.execute(&pc, in.evm, contract, stack)
 		ln := binary.LittleEndian.Uint32(stack.data[0].space)
@@ -190,7 +195,7 @@ func (in *Interpreter) verifySig(txinidx int, pkScript, sigScript []byte) bool {
 
 	contract := Contract {
 		Code: []inst{inst{OpCode(sigScript[0]), sigScript[1:]}},
-		CodeHash: chainhash.Hash{},
+//		CodeHash: chainhash.Hash{},
 		self: nil,
 		Args:make([]byte, 4),
 	}

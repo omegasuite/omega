@@ -739,7 +739,7 @@ func parseTxAcceptedNtfnParams(params []json.RawMessage) (*chainhash.Hash,
 	}
 
 	// Bounds check amount.
-	amt, err := btcutil.NewAmount(famt)
+	amt, err := btcutil.NewAmount(famt, 0)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -822,7 +822,7 @@ func parseAccountBalanceNtfnParams(params []json.RawMessage) (account string,
 	}
 
 	// Bounds check amount.
-	bal, err := btcutil.NewAmount(fbal)
+	bal, err := btcutil.NewAmount(fbal, 0)
 	if err != nil {
 		return "", 0, false, err
 	}

@@ -282,6 +282,10 @@ func WithRandomKey() *GCSBuilder {
 	return WithRandomKeyPNM(DefaultP, 0, DefaultM)
 }
 
+func isContract(netid byte) bool {
+	return netid & 0x88 == 0x88
+}
+
 // BuildBasicFilter builds a basic GCS filter from a block. A basic GCS filter
 // will contain all the previous output scripts spent by inputs within a block,
 // as well as the data pushes within all the outputs created within a block.
@@ -302,11 +306,14 @@ func BuildBasicFilter(block *wire.MsgBlock, prevOutScripts [][]byte) (*gcs.Filte
 		// For each output in a transaction, we'll add each of the
 		// individual data pushes within the script.
 		for _, txOut := range tx.TxOut {
+			if txOut.IsSeparator() {
+				continue
+			}
 			if len(txOut.PkScript) == 0 {
 				continue
 			}
 
-			if txOut.PkScript[21] == ovm.OP_PAY2NONE {
+			if isContract(txOut.PkScript[0]) || txOut.PkScript[21] == ovm.OP_PAY2NONE {
 				continue
 			}
 

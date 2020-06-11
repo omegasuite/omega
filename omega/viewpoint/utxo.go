@@ -241,6 +241,10 @@ func (view *UtxoViewpoint) addTxOut(outpoint wire.OutPoint, txOut *wire.TxOut, i
 	return entry
 }
 
+func (view *UtxoViewpoint) AddRawTxOut(outpoint wire.OutPoint, txOut *wire.TxOut, isCoinBase bool, blockHeight int32) * UtxoEntry {
+	return view.addTxOut(outpoint, txOut, isCoinBase, blockHeight)
+}
+
 // AddTxOut adds the specified output of the passed transaction to the view if
 // it exists and is not provably unspendable.  When the view already has an
 // entry for the output, it will be marked unspent.  All fields will be updated
@@ -262,7 +266,17 @@ func (view *ViewPointSet) AddTxOut(tx *btcutil.Tx, txOutIdx uint32, blockHeight 
 		return
 	}
 
-	e := view.Utxo.addTxOut(prevOut, txOut, tx.IsCoinBase(), blockHeight)
+	coinbase := tx.IsCoinBase()
+	if coinbase {
+		for i, u := range tx.MsgTx().TxOut {
+			if u.IsSeparator() && i < int(txOutIdx) {
+				coinbase = false
+				break
+			}
+		}
+	}
+
+	e := view.Utxo.addTxOut(prevOut, txOut, coinbase, blockHeight)
 
 	// if it has a monitor right, add a monitor index
 	y := view.TokenRights(e)
@@ -288,6 +302,9 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 	prevOut := wire.OutPoint{Hash: *tx.Hash()}
 	for txOutIdx, txOut := range tx.MsgTx().TxOut {
 		if txOut.IsSeparator() {
+			continue
+		}
+		if txOut.IsNopaying() {
 			continue
 		}
 		// Update existing entries.  All fields are updated because it's
@@ -406,6 +423,10 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 		prevOut := wire.OutPoint{Hash: *txHash}
 		for txOutIdx, txOut := range tx.MsgTx().TxOut {
 			if txOut.IsSeparator() {
+				packedFlags &= ^TfCoinBase
+				continue
+			}
+			if txOut.IsNopaying() {
 				continue
 			}
 			prevOut.Index = uint32(txOutIdx)

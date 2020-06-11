@@ -287,12 +287,14 @@ func (w *Wallet) findEligibleOutputs(dbtx walletdb.ReadTx, account uint32, minco
 // spent, must be passed in the prevScripts slice.
 func validateMsgTx(tx *wire.MsgTx, prevScripts [][]byte, inputValues []btcutil.Amount) error {
 	ctx := ovm.Context{}
+	ctx.GetCoinBase = func() *btcutil.Tx { return nil }
 	ctx.GetTx = func() *btcutil.Tx { return btcutil.NewTx(tx) }
 	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
 	ctx.AddRight = func(t *token.RightDef) bool { return false }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
 //	ctx.GetHash = ovm.GetHash
 	ctx.BlockNumber = func() uint64 { return 0 }
+	ctx.Block = func() *btcutil.Block { return nil }
 
 	vm := ovm.NewOVM(nil)
 	vm.SetContext(ctx)

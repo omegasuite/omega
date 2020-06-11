@@ -58,6 +58,7 @@ func parsePkScript(script []byte) (byte, []byte, []byte, []byte) {
 
 type tbv struct {
 	txinidx	int
+	outpoint wire.OutPoint
 	sigScript []byte
 	pkScript []byte
 }
@@ -73,10 +74,12 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 
 	utx := btcutil.NewTx(tx)
 
+	ctx.GetCoinBase = func() *btcutil.Tx { return nil }
 	ctx.GetTx = func () * btcutil.Tx {	return utx	}
 	ctx.Spend = func(t wire.OutPoint) bool { return false }
 	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
+	ctx.Block = func() *btcutil.Block { return nil }
 	ctx.AddRight = func(t *token.RightDef) bool { return false }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
 
@@ -93,7 +96,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, error) {
 	contract := Contract {
 		Code: []inst{inst {OpCode(script[0]), script[1:]}},
-		CodeHash: chainhash.Hash{},
+//		CodeHash: chainhash.Hash{},
 		self: nil,
 		Args:make([]byte, 4),
 		libs: make(map[Address]lib),
@@ -114,30 +117,17 @@ func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, er
 
 // there are 2 sig verify methods: one in interpreter, one is here. the differernce is that
 // the one in interpreter is intended for client side. here is for the miner. here, verification
-// is deeper in that it checks monitering status, a tx will be rejected if monitore checing fails
+// is deeper in that it checks monitering status, a tx will be rejected if monitor checing fails
 // while it may pass interpreter verification because only signature verification is done there
-func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
+func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *viewpoint.ViewPointSet) error {
 	if tx.IsCoinBase() {
 		return nil
 	}
 
-	ovm.GetTx = func () * btcutil.Tx {	return tx }
-	ovm.Spend = func(t wire.OutPoint) bool { return false }
-	ovm.AddTxOutput = func(t wire.TxOut) bool { return false	}
-	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
-	ovm.AddRight = func(t *token.RightDef) bool { return false }
-	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
-
-	ovm.NoLoop = true
-
-	ovm.interpreter.readOnly = true
-
 	// set up for concurrent execution
-	verifiers := make(chan bool, ovm.chainConfig.SigVeriConcurrency)
-	queue := make(chan tbv, ovm.chainConfig.SigVeriConcurrency)
+	verifiers := make(chan bool, param.SigVeriConcurrency)
+	queue := make(chan tbv, param.SigVeriConcurrency)
 	final := make(chan bool, 1)
-
-	views := ovm.views
 
 	defer func () {
 		close(verifiers)
@@ -145,7 +135,7 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 
 	allrun := false
 
-	for i := 0; i < ovm.chainConfig.SigVeriConcurrency; i++ {
+	for i := 0; i < param.SigVeriConcurrency; i++ {
 		verifiers <- true
 	}
 
@@ -160,6 +150,23 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 				}
 				<-verifiers
 				go func() {
+					ovm := NewSigVM(param)
+					ovm.SetViewPoint(views)
+					ovm.GetCoinBase = func() *btcutil.Tx { return nil }
+					ovm.GetTx = func () * btcutil.Tx {	return tx }
+					ovm.Spend = func(t wire.OutPoint) bool { return false }
+					ovm.AddTxOutput = func(t wire.TxOut) bool { return false	}
+					ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
+					ovm.Block = func() *btcutil.Block { return nil }
+					ovm.AddRight = func(t *token.RightDef) bool { return false }
+					ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
+					ovm.NoLoop = true
+					ovm.interpreter.readOnly = true
+
+					ovm.GetCurrentOutput = func() wire.OutPoint {
+						return code.outpoint
+					}
+
 					res := ovm.Interpreter().verifySig(code.txinidx, code.pkScript, code.sigScript)
 					if res {
 						verifiers <- true
@@ -170,7 +177,7 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 					} else {
 						final <- false
 					}
-					log.Infof("verifySig result = %v", res)
+//					log.Infof("verifySig result = %v", res)
 				}()
 			}
 		}
@@ -178,8 +185,9 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 
 	// prepare and shoot the real work
 	for txinidx, txin := range tx.MsgTx().TxIn {
-		if txin.IsSeparator() {
-			continue
+		if txin.IsSeparator() || txin.SignatureIndex == 0xFFFFFFFF {
+			allrun = true
+			break
 		}
 		if tx.MsgTx().SignatureScripts[txin.SignatureIndex] == nil {		// no signature
 			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
@@ -190,10 +198,6 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 
 		if utxo == nil {
 			return omega.ScriptError(omega.ErrInternal, "UTXO does not exist.")
-		}
-
-		ovm.GetCurrentOutput = func() (wire.OutPoint, *wire.TxOut) {
-			return txin.PreviousOutPoint, utxo.ToTxOut()
 		}
 
 		version, addr, method, excode := parsePkScript(utxo.PkScript())
@@ -215,6 +219,7 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 				if e.(*viewpoint.RightEntry).Attrib & token.Monitored != 0 {
 					// all the way up to the right without Monitored flag, on the way find out all IsMonitorCall
 					re := e.(*viewpoint.RightEntry)
+					
 					monitoreds := make([]*viewpoint.RightEntry, 0)
 					for re != nil && re.Attrib & token.Monitored != 0 {
 						if re.Attrib & token.IsMonitorCall != 0 {
@@ -242,46 +247,37 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 						var d Address
 						copy(d[:], monitored[1:21])
 
-						existence := true
-
-						if _, ok := ovm.StateDB[d]; !ok {
-							t := NewStateDB(ovm.views.Db, d)
-
-							existence = t.Exists(true)
-							if !existence {
-								continue
-							}
-							ovm.StateDB[d] = t
+						if t := NewStateDB(views.Db, d); !t.Exists(true) {
+							continue
 						}
-						if existence {
-							owner := ovm.StateDB[d].GetOwner()
-							m := views.FindMonitor(owner[:], utxo.Amount.(*token.HashToken).Hash) // a utxo entry
-							if m == nil {
-								continue
+
+						owner := re.Desc[1:21]
+						m := views.FindMonitor(owner[:], utxo.Amount.(*token.HashToken).Hash) // a utxo entry
+						if m == nil {
+							continue
+						}
+						code := make([]byte, 24)
+
+						copy(code[:], monitored[21:25])
+						copy(code[4:], addr)
+
+						y := validate.TokenRights(views, m)
+
+						// do check only if the sibling right of the monitored right is present
+						param := make([]byte, 0, 100)
+						s := re.Sibling()
+						docheck := false
+						for _, r := range y {
+							if s.IsEqual(&r) {
+								docheck = true
+							} else {
+								e, _ := views.Rights.FetchEntry(views.Db, &r)
+								param = append(param, e.(*viewpoint.RightEntry).Desc...)
 							}
-							code := make([]byte, 24)
+						}
 
-							copy(code[:], monitored[21:25])
-							copy(code[4:], addr)
-
-							y := validate.TokenRights(views, m)
-
-							// do check only if the sibling right of the monitored right is present
-							param := make([]byte, 0, 100)
-							s := re.Sibling()
-							docheck := false
-							for _, r := range y {
-								if s.IsEqual(&r) {
-									docheck = true
-								} else {
-									e, _ := views.Rights.FetchEntry(views.Db, &r)
-									param = append(param, e.(*viewpoint.RightEntry).Desc...)
-								}
-							}
-
-							if docheck {
-								queue <- tbv{txinidx, param, code}
-							}
+						if docheck {
+							queue <- tbv{txinidx, txin.PreviousOutPoint,param, code}
 						}
 					}
 				}
@@ -301,7 +297,7 @@ func (ovm * OVM) VerifySigs(tx *btcutil.Tx, txHeight int32) error {
 			allrun = true
 		}
 
-		queue <- tbv { txinidx, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
+		queue <- tbv { txinidx, txin.PreviousOutPoint, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
 	}
 
 	close(queue)
@@ -328,7 +324,32 @@ func GetHash(d uint64) *chainhash.Hash {
 	return h
 }
 
-func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32, chainParams *chaincfg.Params) error {
+func (ovm * OVM) ContractCall(addr Address, input []byte) ([]byte, error) {
+	ovm.GetTx = func () * btcutil.Tx { return nil }
+	ovm.AddTxOutput = func(t wire.TxOut) bool {	return false }
+	ovm.Spend = func(t wire.OutPoint) bool { return false }
+	ovm.AddRight = func(t *token.RightDef) bool { return false }
+	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
+
+	ovm.NoLoop = false
+	ovm.interpreter.readOnly = true
+
+	if _,ok := ovm.StateDB[addr]; !ok {
+		t := NewStateDB(ovm.views.Db, addr)
+
+		if !t.Exists(true)  {
+			return nil, omega.ScriptError(omega.ErrInternal, "Contract does not exist.")
+		}
+
+		ovm.StateDB[addr] = t
+	}
+
+	ovm.GetCurrentOutput = func() wire.OutPoint { return wire.OutPoint{} }
+
+	return ovm.Call(addr, input[:4], nil, input)
+}
+
+func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 	// no need to make a copy of tx, if exec fails, the tx (even a block) will be abandoned
 	if tx.IsCoinBase() {
 		return nil
@@ -345,6 +366,7 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32, chainParams *chain
 		return true
 	}
 	ovm.Spend = func(t wire.OutPoint) bool {
+		// it has alreadty been verified that the coin belongs to the contract
 		tx.AddTxIn(t)
 		return true
 	}
@@ -360,12 +382,17 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32, chainParams *chain
 			return nil
 		}
 		e := ovm.views.Utxo.LookupEntry(p)
+		if e == nil {
+			return nil
+		}
 		return e.ToTxOut()
 	}
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 
 	ovm.NoLoop = false
 	ovm.interpreter.readOnly = false
+
+	anew := false
 
 	// do some validation w/o execution
 	for _, txOut := range tx.MsgTx().TxOut {
@@ -385,6 +412,8 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32, chainParams *chain
 		copy(d[:], addr)
 
 		creation := bytes.Compare(method, []byte{0,0,0,0}) == 0
+
+		anew = anew || creation
 
 		if _,ok := ovm.StateDB[d]; !ok {
 			t := NewStateDB(ovm.views.Db, d)
@@ -411,8 +440,8 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32, chainParams *chain
 		if i >= end {
 			continue
 		}
-		ovm.GetCurrentOutput = func() (wire.OutPoint, *wire.TxOut) {
-			return wire.OutPoint{hash, uint32(i) }, txOut
+		ovm.GetCurrentOutput = func() wire.OutPoint {
+			return wire.OutPoint{hash, uint32(i) }
 		}
 
 		version, addr, method, param := parsePkScript(txOut.PkScript)
@@ -429,45 +458,20 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32, chainParams *chain
 		if err != nil {
 			// if fail, ovm.Call should have restored ovm.stateDB[d]
 			// we need to restore Tx
-			tx.HasDefs = haves[0]
-			tx.HasIns = haves[1]
-			tx.HasOuts = haves[2]
+			tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
 			*tx.MsgTx() = savedTx
 			return err
 		}
+	}
+
+	if !anew {
+		tx.Executed = true
 	}
 
 	return nil
 }
 
 var byteOrder = binary.LittleEndian
-
-func DbPutNextTokenType(dbTx database.Tx, v uint64) error {
-	r := DbFetchNextTokenType(dbTx)
-
-	r[v & 0x3] = v
-
-	var serialized [32]byte
-	for i := 0; i < 4; i++ {
-		byteOrder.PutUint64(serialized[8 * i:], r[i])
-	}
-	return dbTx.Metadata().Put(IssuableTokenType, serialized[:])
-}
-
-func DbFetchNextTokenType(dbTx database.Tx) [4]uint64 {
-	var r [4]uint64
-	serialized := dbTx.Metadata().Get(IssuableTokenType)
-	if serialized == nil {
-		return r
-	}
-
-	r[0] = byteOrder.Uint64(serialized[:])
-	r[1] = byteOrder.Uint64(serialized[8:])
-	r[2] = byteOrder.Uint64(serialized[16:])
-	r[3] = byteOrder.Uint64(serialized[24:])
-
-	return r
-}
 
 func DbFetchVersion(dbTx database.Tx, key []byte) uint64 {
 	serialized := dbTx.Metadata().Get(key)

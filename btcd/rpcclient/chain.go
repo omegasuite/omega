@@ -82,6 +82,7 @@ func (c *Client) GetBestMinerBlockHash() (*chainhash.Hash, error) {
 type FutureGetBlockResult chan *response
 type FutureGetBlockTxHasesResult chan *response
 type FutureSearchBorderResult chan *response
+type FutureContractCallResult chan *response
 type FutureGetMinerBlockResult chan *response
 
 // Receive waits for the response promised by the future and returns the raw
@@ -117,6 +118,28 @@ func (r FutureGetBlockResult) Receive() (*wire.MsgBlock, error) {
 
 func (c *Client) SearchBorder(west, east, south, north int32, lod byte) ([]chainhash.Hash, error) {
 	return c.SearchBorderAsync(west, east, south, north, lod).Receive()
+}
+
+func (r FutureContractCallResult) Receive() ([]byte, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unmarshal result as a string.
+	var hexdata string
+	err = json.Unmarshal(res, &hexdata)
+	if err != nil {
+		return nil, err
+	}
+
+	// Decode the serialized block hex to raw bytes.
+	serialized, err := hex.DecodeString(hexdata)
+	if err != nil {
+		return nil, err
+	}
+
+	return serialized, nil
 }
 
 func (r FutureSearchBorderResult) Receive() ([]chainhash.Hash, error) {
@@ -228,6 +251,11 @@ func (c *Client) GetBlockTxHashesAsync(blockHash *chainhash.Hash) FutureGetBlock
 
 func (c *Client) SearchBorderAsync(west, east, south, north int32, lod byte) FutureSearchBorderResult {
 	cmd := btcjson.NewSearchBorderCmd(west, east, south, north, lod)
+	return c.sendCmd(cmd)
+}
+
+func (c *Client) ContractCallAsync(contract, input string) FutureContractCallResult {
+	cmd := btcjson.NewContractCallCmd(contract, input)
 	return c.sendCmd(cmd)
 }
 

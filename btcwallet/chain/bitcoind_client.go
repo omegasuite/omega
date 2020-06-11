@@ -193,8 +193,10 @@ func (c *BitcoindClient) IsCurrent() bool {
 // GetRawTransactionVerbose returns a transaction from the tx hash.
 func (c *BitcoindClient) GetRawTransactionVerbose(
 	hash *chainhash.Hash) (*btcjson.TxRawResult, error) {
+	var mempool bool
+	mempool = true
 
-	return c.chainConn.client.GetRawTransactionVerbose(hash)
+	return c.chainConn.client.GetRawTransactionVerbose(hash, &mempool)
 }
 
 // GetTxOut returns a txout from the outpoint info provided.

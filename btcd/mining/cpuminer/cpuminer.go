@@ -5,10 +5,9 @@
 package cpuminer
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/omega/ovm"
+	"github.com/btcsuite/omega/consensus"
 	"math/big"
 	//	"runtime"
 	"sync"
@@ -419,7 +418,6 @@ flushconnch:
 //		log.Infof("Preparing for minging at height = %d last rotation = %d", curHeight, bs.LastRotation)
 
 		if curHeight != 0 && !isCurrent {
-//			m.g.Chain.ChainLock.Unlock()
 			m.Stale = true
 			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent @ height %d", curHeight)
 
@@ -454,8 +452,6 @@ flushconnch:
 
 		committee := m.g.Committee()
 
-//		m.g.Chain.ChainLock.Unlock()
-
 		var adr [20]byte
 		powMode := true
 
@@ -463,34 +459,16 @@ flushconnch:
 		payToAddr = &m.cfg.SignAddress
 		if _,ok := committee[adr]; m.cfg.PrivKeys != nil && ok {
 			powMode = false
-			log.Infof("\n\nYeah, I am in committee. My name is %x\n\n", adr[:])
-		} /* else if len(m.cfg.MiningAddrs) > 0 {
-			payToAddr = &m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
-		} else {
-			m.Stale = true
-			time.Sleep(time.Millisecond * miningGap)
-			continue
 		}
-		*/
-
-//		payToAddr := m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
 
 		// Create a new block template using the available transactions
 		// in the memory pool as a source of transactions to potentially
 		// include in the block.
 
-		template, err := m.g.NewBlockTemplate(*payToAddr)
-		if err != nil {
-			errStr := fmt.Sprintf("Failed to create new block template: %v", err)
-			log.Errorf(errStr)
-			continue
-		}
+		payToAddress := []btcutil.Address{*payToAddr}
 
-		fmt.Printf("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
-
+		nonce := pb
 		if !powMode {
-//			consensus.SetMiner(adr)
-			nonce := pb
 			if nonce >= 0 || nonce <= -wire.MINER_RORATE_FREQ {
 				nonce = -1
 			} else if nonce == -wire.MINER_RORATE_FREQ+1 {
@@ -499,45 +477,40 @@ flushconnch:
 				nonce--
 			}
 
-			/*
-				if nonce == -wire.MINER_RORATE_FREQ || nonce >= 0 {
-					nonce = - int32(m.g.BestSnapshot().LastRotation + 1 + wire.MINER_RORATE_FREQ)
-				} else if nonce < -wire.MINER_RORATE_FREQ {
-					nonce = -1
-				}
-			*/
-
-			template.Block.(*wire.MsgBlock).Header.Nonce = nonce
-
-			wb := template.Block.(*wire.MsgBlock)
-			block := btcutil.NewBlock(wb)
-			block.SetHeight(template.Height)
-
-			if wire.CommitteeSize == 1 {
-				// solo miner, add signature to coinbase, otherwise will add after committee decides
-				mining.AddSignature(block, m.cfg.PrivKeys)
-			} else {
-				t0 := *block.MsgBlock().Transactions[0]
-				if !m.coinbaseByCommittee(block.MsgBlock().Transactions[0]) {
+			if wire.CommitteeSize > 1 {
+				payToAddress = m.coinbaseByCommittee(*payToAddr)
+				if len(payToAddress) <= 1 {
 					powMode = true
-					block.MsgBlock().Transactions[0] = &t0
-				} else {
-					if len(block.MsgBlock().Transactions[0].SignatureScripts) == 0 {
-						block.MsgBlock().Transactions[0].SignatureScripts = make([][]byte, 1)
-						block.MsgBlock().Transactions[0].SignatureScripts[0] = make([]byte, 0)
-					}
-					merkleTree := blockchain.BuildMerkleTreeStore(block.Transactions(),true)
-					merkleRoot := merkleTree[len(merkleTree)-1]
-					block.MsgBlock().Transactions[0].SignatureScripts[0] = (*merkleRoot)[:]
-
-					merkleTree = blockchain.BuildMerkleTreeStore(block.Transactions(),false)
-					merkleRoot = merkleTree[len(merkleTree)-1]
-					block.MsgBlock().Header.MerkleRoot = *merkleRoot
-
-					block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
+					payToAddress = []btcutil.Address{*payToAddr}
+					nonce = 1
 				}
 			}
+		} else {
+			nonce = 1
+		}
 
+		template, err := m.g.NewBlockTemplate(payToAddress)
+		if err != nil {
+			errStr := fmt.Sprintf("Failed to create new block template: %v", err)
+			log.Errorf(errStr)
+			continue
+		}
+
+		wb := template.Block.(*wire.MsgBlock)
+		block := btcutil.NewBlock(wb)
+		block.SetHeight(template.Height)
+
+		if !powMode && wire.CommitteeSize == 1 {
+			// solo miner, add signature to coinbase, otherwise will add after committee decides
+			mining.AddSignature(block, m.cfg.PrivKeys)
+		}
+
+		wb.Header.Nonce = nonce
+
+		fmt.Printf("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
+
+		if !powMode {
+			block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
 			m.minedBlock = block
 
 			blockMaxSize := m.g.Chain.GetBlockLimit(template.Height)
@@ -553,34 +526,31 @@ flushconnch:
 			}
 			lastblkgen = time.Now().Unix()
 
-			if !powMode {
-				log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
-				if !m.submitBlock(block) {
-					continue
-				}
-
-			connected:
-				for true {
-					select {
-					case blk,ok := <-m.connch:
-						if !ok || blk >= block.Height() {
-							break connected
-						}
-
-					case <-m.quit:
-						break out
-
-					case <-time.After(time.Second * 5):
-//						consensus.DebugInfo()
-						log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
-					}
-				}
-
-				m.minedBlock = nil
-				// wait until a block at this height is connect to mainchain
-				//			time.Sleep(time.Millisecond * miningGap)
+			log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
+			if !m.submitBlock(block) {
 				continue
 			}
+
+		connected:
+			for true {
+				select {
+				case blk,ok := <-m.connch:
+					if !ok || blk >= block.Height() {
+						break connected
+					}
+
+				case <-m.quit:
+					break out
+
+				case <-time.After(time.Second * 5):
+					consensus.DebugInfo()
+					log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
+				}
+			}
+
+			m.minedBlock = nil
+
+			continue
 		}
 
 		lastblkgen = time.Now().Unix()
@@ -590,12 +560,6 @@ flushconnch:
 			time.Sleep(time.Second * wire.TimeGap)
 			continue
 		}
-
-// ???		if m.g.Chain.Miners.(*minerchain.MinerChain).QualifiedMier(m.cfg.PrivKeys) != nil {
-//			continue
-//		}
-//		time.Sleep(time.Second * 5)
-// continue		// debug: committee mining only
 
 		pows := 0
 		blk := m.g.Chain.BestChain.Tip()
@@ -638,61 +602,65 @@ flushconnch:
 	log.Tracef("Generate blocks worker done")
 }
 
-func (m *CPUMiner) coinbaseByCommittee(tx * wire.MsgTx) bool {
-	prevPows := uint(0)
-	adj := int64(0)
+var negHash = chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, }
+
+func reBaseCoinbase(block * btcutil.Block) {
+	hash := block.Transactions()[0].Hash()
+	for i,tx := range block.MsgBlock().Transactions {
+		if i == 0 {
+			continue
+		}
+		cti := false
+		for _,ti := range tx.TxIn {
+			if ti.IsSeparator() {
+				cti = true
+				continue
+			}
+			if !cti {
+				continue
+			}
+			if ti.PreviousOutPoint.Hash.IsEqual(&negHash) {
+				ti.PreviousOutPoint.Hash = *hash
+			}
+		}
+	}
+}
+
+func (m *CPUMiner) coinbaseByCommittee(me btcutil.Address) []btcutil.Address {
+	addresses := make([]btcutil.Address, 0)
 
 	best := m.g.Chain.BestSnapshot()
 	bh := best.LastRotation
-	for pw := m.g.Chain.BestChain.Tip(); pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
-		prevPows++
-	}
-	if prevPows != 0 {
-		adj = blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, 0) -
-			blockchain.CalcBlockSubsidy(best.Height, m.cfg.ChainParams, prevPows)
-	}
-
-	oldtxo := tx.TxOut[0]
 
 	good := int64(0)
-
-	tx.TxOut = make([]*wire.TxOut, 0, wire.CommitteeSize)
 
 	// check collateral, any miner who has collateral spent will not
 	// be qualified for award, his signature will not be accepted. award
 	// will be distributed only among those whose collateral are intact.
 	qualified := false
 	for i := -int32(wire.CommitteeSize - 1); i <= 0; i++ {
-		if mb,_ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
+		if mb, _ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
 			if m.g.Chain.CheckCollateral(mb, blockchain.BFNone) != nil {
 				continue
 			}
-			ntx := wire.TxOut{}
-			ntx.TokenType = 0
-			ntx.Rights = nil
-			ntx.PkScript = make([]byte, 25)
-			ntx.PkScript[0] = m.cfg.ChainParams.PubKeyHashAddrID
-			ntx.PkScript[21] = ovm.OP_PAY2PKH
-			copy(ntx.PkScript[1:21], mb.MsgBlock().Miner[:])
-			tx.TxOut = append(tx.TxOut, &ntx)
+			adr, _ := btcutil.NewAddressPubKeyHash(mb.MsgBlock().Miner[:], m.cfg.ChainParams)
+			addresses = append(addresses, adr)
 
-			if bytes.Compare(ntx.PkScript[1:21], oldtxo.PkScript[1:21]) == 0 {
+			if !qualified && adr.EncodeAddress() == me.EncodeAddress() {
 				qualified = true
 			}
 			good++
 		}
 	}
 
-	if qualified && good > wire.CommitteeSize / 2 {
-		award := (adj + oldtxo.Value.(*token.NumToken).Val) / good
-		q := &token.NumToken{Val: award}
-		for _, txo := range tx.TxOut {
-			txo.Value = q
-		}
-		return true
+	if qualified && good > wire.CommitteeSize/2 {
+		return addresses
+	} else {
+		return nil
 	}
-
-	return false
 }
 
 // Start begins the CPU mining process as well as the speed monitor used to

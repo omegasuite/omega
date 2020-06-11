@@ -283,6 +283,20 @@ func (t *TxOut) IsSeparator() bool {
 	return t.TokenType == token.DefTypeSeparator
 }
 
+func (t *TxOut) SerializeSize() int {
+	n := len(t.PkScript) + common.VarIntSerializeSize(uint64(len(t.PkScript)))
+	return t.Token.SerializeSize() + n
+}
+
+const OP_PAY2NONE = 0x45	// from ovm.contracts. redeclare here to avoid circular importation
+
+func (t *TxOut) IsNopaying() bool {
+	if len(t.PkScript) >= 25 && bytes.Compare(t.PkScript[21:25], []byte{OP_PAY2NONE,0,0,0}) == 0 {
+		return true
+	}
+	return t.TokenType & 1 == 0 && t.Token.Value.(*token.NumToken).Val == 0
+}
+
 func (t *TxOut) HasRight () bool {
 	return t.Token.HasRight()
 }
@@ -322,16 +336,34 @@ func (s *MsgTx) Match(t *MsgTx) bool {
 		return false
 	}
 	for i,d := range s.TxDef {
+		if d.DefType() != t.TxDef[i].DefType() {
+			return false
+		}
+		if d.IsSeparator() {
+			continue
+		}
 		if !d.Match(t.TxDef[i]) {
 			return false
 		}
 	}
 	for i,d := range s.TxIn {
+		if d.IsSeparator() != t.TxIn[i].IsSeparator() {
+			return false
+		}
+		if d.IsSeparator() {
+			continue
+		}
 		if !d.Match(t.TxIn[i]) {
 			return false
 		}
 	}
 	for i,d := range s.TxOut {
+		if d.IsSeparator() != t.TxOut[i].IsSeparator() {
+			return false
+		}
+		if d.IsSeparator() {
+			continue
+		}
 		if !d.Match(t.TxOut[i]) {
 			return false
 		}
@@ -525,6 +557,29 @@ func (msg *MsgTx) Copy() *MsgTx {
 	}
 
 	return &newTx
+}
+
+func (msg *MsgTx) Strip() {
+	for i, oldTxOut := range msg.TxOut {
+		if oldTxOut.IsSeparator() {
+			msg.TxOut = msg.TxOut[:i]
+			break
+		}
+	}
+
+	for i, oldTxIn := range msg.TxIn {
+		if oldTxIn.IsSeparator() {
+			msg.TxIn = msg.TxIn[:i]
+			break
+		}
+	}
+
+	for i, oldDef := range msg.TxDef {
+		if oldDef.IsSeparator() {
+			msg.TxDef = msg.TxDef[:i]
+			break
+		}
+	}
 }
 
 // Stripped creates a copy of a transaction without addition of contract executions.
@@ -1113,7 +1168,7 @@ func (tx * MsgTx) WriteSignature(w io.Writer, pver uint32) error {
 	return nil
 }
 
-// writeSignature encodes the bitcoin protocol encoding for a transaction
+// ReadSignature decodes the bitcoin protocol encoding for a transaction
 // input's witness into to w.
 func (tx * MsgTx) ReadSignature(r io.Reader, pver uint32) error {
 	count, err := common.ReadVarInt(r, pver)
@@ -1168,6 +1223,9 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 	}
 
 	for _,to := range msgTx.TxOut {
+		if to.IsSeparator() {
+			return true
+		}
 		if to.TokenType != 0 {
 			return false
 		}

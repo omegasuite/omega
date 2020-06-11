@@ -315,19 +315,15 @@ type GetTxOutResult struct {
 }
 
 type VertexDefinition struct {
-	Kind		   int32   `json:"kind"`		// 0
 	Lat			   int32   `json:"lat"`		// a wire.Vertex
 	Lng			   int32   `json:"lng"`		// a wire.Vertex
 	Alt			   int32   `json:"alt"`		// a wire.Vertex
-	X			   float64   `json:"x"`		// a wire.Vertex
-	Y			   float64   `json:"y"`		// a wire.Vertex
-	H			   float64   `json:"h"`		// a wire.Vertex
 }
 type BorderDefinition struct {
 	Kind		   int32   `json:"kind"`		// 1
 	Father		   string   `json:"father"`
-	Begin		   string   `json:"begin"`
-	End		   string   `json:"end"`
+	Begin		   VertexDefinition   `json:"begin"`
+	End		 	   VertexDefinition   `json:"end"`
 }
 type PolygonDefinition struct {
 	Kind		   int32   `json:"kind"`		// 2

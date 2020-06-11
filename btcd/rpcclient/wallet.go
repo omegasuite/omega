@@ -1361,7 +1361,7 @@ func (r FutureListAccountsResult) Receive() (map[string]btcutil.Amount, error) {
 
 	accountsMap := make(map[string]btcutil.Amount)
 	for k, v := range accounts {
-		amount, err := btcutil.NewAmount(v)
+		amount, err := btcutil.NewAmount(v, 0)
 		if err != nil {
 			return nil, err
 		}
@@ -1428,7 +1428,7 @@ func (r FutureGetBalanceResult) Receive() (btcutil.Amount, error) {
 		return 0, err
 	}
 
-	amount, err := btcutil.NewAmount(balance)
+	amount, err := btcutil.NewAmount(balance, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -1461,7 +1461,7 @@ func (r FutureGetBalanceParseResult) Receive() (btcutil.Amount, error) {
 	if err != nil {
 		return 0, err
 	}
-	amount, err := btcutil.NewAmount(balance)
+	amount, err := btcutil.NewAmount(balance, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -1650,7 +1650,7 @@ func (r FutureGetReceivedByAccountResult) Receive() (btcutil.Amount, error) {
 		return 0, err
 	}
 
-	amount, err := btcutil.NewAmount(balance)
+	amount, err := btcutil.NewAmount(balance, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -1715,7 +1715,7 @@ func (r FutureGetUnconfirmedBalanceResult) Receive() (btcutil.Amount, error) {
 		return 0, err
 	}
 
-	amount, err := btcutil.NewAmount(balance)
+	amount, err := btcutil.NewAmount(balance, 0)
 	if err != nil {
 		return 0, err
 	}
@@ -1759,7 +1759,7 @@ func (r FutureGetReceivedByAddressResult) Receive() (btcutil.Amount, error) {
 		return 0, err
 	}
 
-	amount, err := btcutil.NewAmount(balance)
+	amount, err := btcutil.NewAmount(balance, 0)
 	if err != nil {
 		return 0, err
 	}

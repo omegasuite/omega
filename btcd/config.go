@@ -771,7 +771,7 @@ func loadConfig() (*config, []string, error) {
 	}
 
 	// Validate the the minrelaytxfee.
-	cfg.minRelayTxFee, err = btcutil.NewAmount(cfg.MinRelayTxFee)
+	cfg.minRelayTxFee, err = btcutil.NewAmount(cfg.MinRelayTxFee, 0)
 	cfg.MinBorderFee = cfg.MinBorderFee
 
 	if err != nil {

@@ -170,6 +170,7 @@ type Token struct {
 	TokenType uint64  `json:"tokentype"`
 	Value map[string]interface{} `json:"value"`	// either an numeric amount or a hash value
 	Rights string `json:"rights"`					// hash of rights
+	Script *string `json:"script"`					// script to use
 }
 
 func (t * Token) ConvertTo(mtx * wire.MsgTx) * wire.TxOut {
@@ -180,7 +181,7 @@ func (t * Token) ConvertTo(mtx * wire.MsgTx) * wire.TxOut {
 	if t.TokenType & 1 == 0 {
 		if i,ok := t.Value["val"]; ok {
 			if f, ok := i.(float64); ok {
-				nm, _ := btcutil.NewAmount(f)
+				nm, _ := btcutil.NewAmount(f, t.TokenType)
 				v.Value = &token.NumToken{Val: int64(nm)}
 				return &v
 			}
@@ -300,6 +301,11 @@ type SearchBorderCmd struct {
 	Lod byte
 }
 
+type ContractCallCmd struct {
+	Contract string
+	Input string
+}
+
 type GetBlockTxHashesCmd struct {
 	Hash      string
 }
@@ -325,6 +331,13 @@ func NewGetBlockCmd(hash string, verbose, verboseTx *bool) *GetBlockCmd {
 func NewGetBlockTxHasesCmd(hash string) *GetBlockTxHashesCmd {
 	return &GetBlockTxHashesCmd{
 		Hash:      hash,
+	}
+}
+
+func NewContractCallCmd(contract, input string) *ContractCallCmd {
+	return &ContractCallCmd{
+		Contract: contract,
+		Input: input,
 	}
 }
 
@@ -678,6 +691,7 @@ func NewGetRawMempoolCmd(verbose *bool) *GetRawMempoolCmd {
 type GetRawTransactionCmd struct {
 	Txid    string
 	Verbose *int `jsonrpcdefault:"0"`
+	IncludeMempool *bool `jsonrpcdefault:"true"`
 }
 
 // NewGetRawTransactionCmd returns a new instance which can be used to issue a
@@ -685,10 +699,11 @@ type GetRawTransactionCmd struct {
 //
 // The parameters which are pointers indicate they are optional.  Passing nil
 // for optional parameters will use the default value.
-func NewGetRawTransactionCmd(txHash string, verbose *int) *GetRawTransactionCmd {
+func NewGetRawTransactionCmd(txHash string, verbose *int, includeMempool *bool) *GetRawTransactionCmd {
 	return &GetRawTransactionCmd{
 		Txid:    txHash,
 		Verbose: verbose,
+		IncludeMempool: includeMempool,
 	}
 }
 
@@ -1020,6 +1035,7 @@ func init() {
 	MustRegisterCmd("getblock", (*GetBlockCmd)(nil), flags)
 	MustRegisterCmd("getblocktxhashes", (*GetBlockTxHashesCmd)(nil), flags)
 	MustRegisterCmd("searchborder", (*SearchBorderCmd)(nil), flags)
+	MustRegisterCmd("contractcall", (*ContractCallCmd)(nil), flags)
 	MustRegisterCmd("getminerblock", (*GetMinerBlockCmd)(nil), flags)
 	MustRegisterCmd("getblockchaininfo", (*GetBlockChainInfoCmd)(nil), flags)
 	MustRegisterCmd("getblockcount", (*GetBlockCountCmd)(nil), flags)

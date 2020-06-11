@@ -14,9 +14,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
+	"github.com/btcsuite/btcd/blockchain/indexers"
+	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcjson"
+	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/btcsuite/btcd/database"
+	"github.com/btcsuite/btcd/mempool"
+	"github.com/btcsuite/btcd/mining"
+	"github.com/btcsuite/btcd/mining/cpuminer"
+	"github.com/btcsuite/btcd/peer"
+	"github.com/btcsuite/btcd/wire"
+	"github.com/btcsuite/btcd/wire/common"
+	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/omega/minerchain"
+	"github.com/btcsuite/omega/ovm"
+	"github.com/btcsuite/omega/token"
 	"github.com/btcsuite/omega/viewpoint"
+	"github.com/btcsuite/websocket"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -29,23 +46,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"github.com/btcsuite/btcd/blockchain"
-	"github.com/btcsuite/btcd/blockchain/indexers"
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/btcjson"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/mempool"
-	"github.com/btcsuite/btcd/mining"
-	"github.com/btcsuite/btcd/mining/cpuminer"
-	"github.com/btcsuite/btcd/peer"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/websocket"
-	"github.com/btcsuite/omega/token"
-	"github.com/btcsuite/btcd/wire/common"
-	"github.com/btcsuite/omega/ovm"
 )
 
 // API version constants
@@ -151,8 +151,9 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getminerblockhash":     handleGetMinerBlockHash,	// New
 	"getblocktxhashes":      handleGetBlockTxHases,	// New
 	"searchborder":   		 handleSearchBorder,	// New
+	"contractcall":   		 handleContractCall,	// New
 
-	"getblocktemplate":      handleGetBlockTemplate,
+//	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
 	"getcfilterheader":      handleGetCFilterHeader,
 	"getconnectioncount":    handleGetConnectionCount,
@@ -536,7 +537,7 @@ func messageToHex(msg wire.Message) (string, error) {
 	return hex.EncodeToString(buf.Bytes()), nil
 }
 
-// handleCreateRawTransaction handles createrawtransaction commands.
+// handleCreateRawTra-nsaction handles createrawtransaction commands.
 func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.CreateRawTransactionCmd)
 
@@ -585,46 +586,60 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 	for _, mid := range c.Amounts {
 		for encodedAddr, amount := range mid {
 			// Decode the provided address.
-			addr, err := btcutil.DecodeAddress(encodedAddr, params)
-			if err != nil {
-				return nil, &btcjson.RPCError{
-					Code:    btcjson.ErrRPCInvalidAddressOrKey,
-					Message: "Invalid address or key: " + err.Error(),
+			var pkScript []byte
+			if encodedAddr == "contract" {
+				pkScript, _ = hex.DecodeString(*amount.Script)
+			} else {
+				addr, err := btcutil.DecodeAddress(encodedAddr, params)
+				if err != nil {
+					return nil, &btcjson.RPCError{
+						Code:    btcjson.ErrRPCInvalidAddressOrKey,
+						Message: "Invalid address or key: " + err.Error(),
+					}
 				}
-			}
 
-			var pkFunc []byte
+				var pkFunc []byte
 
-			// Ensure the address is one of the supported types and that
-			// the network encoded with the address matches the network the
-			// server is currently on.
+				// Ensure the address is one of the supported types and that
+				// the network encoded with the address matches the network the
+				// server is currently on.
 
-			// TODO: Other type pkscripts: contract, milti-sig
+				// TODO: Other type pkscripts: contract, milti-sig
 
-			switch addr.(type) {
-			case *btcutil.AddressPubKeyHash:
-				pkFunc = []byte{0x41, 0, 0, 0}		// pay2pkh
-			case *btcutil.AddressScriptHash:
-				pkFunc = []byte{0x42, 0, 0, 0}		// pay2scripth
-			default:
-				return nil, &btcjson.RPCError{
-					Code:    btcjson.ErrRPCInvalidAddressOrKey,
-					Message: "Invalid address or key",
+				switch addr.(type) {
+				case *btcutil.AddressPubKeyHash:
+					pkFunc = []byte{0x41, 0, 0, 0} // pay2pkh
+				case *btcutil.AddressScriptHash:
+					pkFunc = []byte{0x42, 0, 0, 0} // pay2scripth
+				default:
+					return nil, &btcjson.RPCError{
+						Code:    btcjson.ErrRPCInvalidAddressOrKey,
+						Message: "Invalid address or key",
+					}
 				}
-			}
-			if !addr.IsForNet(params) {
-				return nil, &btcjson.RPCError{
-					Code: btcjson.ErrRPCInvalidAddressOrKey,
-					Message: "Invalid address: " + encodedAddr +
-						" is for the wrong network",
-				}
-			}
+				if amount.Script != nil {
+					switch *amount.Script {
+					case "paynone":
+						pkFunc = []byte{0x45, 0, 0, 0}
 
-			// Create a new script which pays to the provided address.
-			pkScript := make([]byte, 25)
-			pkScript[0] = addr.Version()
-			copy(pkScript[1:], addr.ScriptAddress())
-			copy(pkScript[21:], pkFunc)
+					case "payany":
+						pkFunc = []byte{0x46, 0, 0, 0}
+					}
+				}
+				if !addr.IsForNet(params) {
+					return nil, &btcjson.RPCError{
+						Code: btcjson.ErrRPCInvalidAddressOrKey,
+						Message: "Invalid address: " + encodedAddr +
+							" is for the wrong network",
+					}
+				}
+
+				// Create a new script which pays to the provided address.
+				pkScript = make([]byte, 25)
+				pkScript[0] = addr.Version()
+				copy(pkScript[1:], addr.ScriptAddress())
+				copy(pkScript[21:], pkFunc)
+			}
 
 			txOut := amount.ConvertTo(mtx)
 			if txOut == nil {
@@ -1183,6 +1198,37 @@ func getDifficultyRatio(bits uint32, params *chaincfg.Params) float64 {
 		return 0
 	}
 	return diff
+}
+
+func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.ContractCallCmd)
+
+	vm := ovm.NewOVM(s.cfg.ChainParams)
+	vm.DB = s.cfg.DB
+	views := s.cfg.Chain.NewViewPointSet()
+	vm.SetViewPoint(views)
+
+	contract, err := ovm.AddressFromString(c.Contract)
+	if err != nil {
+		return nil, err
+	}
+
+	var srcBytes []byte
+	if len(c.Input)%2 == 0 {
+		srcBytes = []byte(c.Input)
+	} else {
+		srcBytes = make([]byte, 1+len(c.Input))
+		srcBytes[0] = '0'
+		copy(srcBytes[1:], c.Input)
+	}
+
+	input := make([]byte, len(srcBytes) / 2)
+	if _, err := hex.Decode(input, srcBytes); err != nil {
+		return nil, err
+	}
+
+	ret, err := vm.ContractCall(contract, input)
+	return hex.EncodeToString(ret), err
 }
 
 func handleSearchBorder(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
@@ -1799,6 +1845,7 @@ func (state *gbtWorkState) templateUpdateChan(prevHash *chainhash.Hash, lastGene
 // addresses.
 //
 // This function MUST be called with the state locked.
+/*
 func (state *gbtWorkState) updateBlockTemplate(s *rpcServer, useCoinbaseValue bool) error {
 	generator := s.cfg.Generator
 	lastTxUpdate := generator.TxSource().LastUpdated()
@@ -1922,6 +1969,7 @@ func (state *gbtWorkState) updateBlockTemplate(s *rpcServer, useCoinbaseValue bo
 
 	return nil
 }
+ */
 
 // blockTemplateResult returns the current block template associated with the
 // state as a btcjson.GetBlockTemplateResult that is ready to be encoded to JSON
@@ -2082,6 +2130,7 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 // has passed without finding a solution.
 //
 // See https://en.bitcoin.it/wiki/BIP_0022 for more details.
+/*
 func handleGetBlockTemplateLongPoll(s *rpcServer, longPollID string, useCoinbaseValue bool, closeChan <-chan struct{}) (interface{}, error) {
 	state := s.gbtWorkState
 	state.Lock()
@@ -2167,6 +2216,7 @@ func handleGetBlockTemplateLongPoll(s *rpcServer, longPollID string, useCoinbase
 
 	return result, nil
 }
+ */
 
 // handleGetBlockTemplateRequest is a helper for handleGetBlockTemplate which
 // deals with generating and returning block templates to the caller.  It
@@ -2175,6 +2225,7 @@ func handleGetBlockTemplateLongPoll(s *rpcServer, longPollID string, useCoinbase
 // in regards to whether or not it supports creating its own coinbase (the
 // coinbasetxn and coinbasevalue capabilities) and modifies the returned block
 // template accordingly.
+/*
 func handleGetBlockTemplateRequest(s *rpcServer, request *btcjson.TemplateRequest, closeChan <-chan struct{}) (interface{}, error) {
 	// Extract the relevant passed capabilities and restrict the result to
 	// either a coinbase value or a coinbase transaction object depending on
@@ -2253,6 +2304,7 @@ func handleGetBlockTemplateRequest(s *rpcServer, request *btcjson.TemplateReques
 	}
 	return state.blockTemplateResult(useCoinbaseValue, nil)
 }
+ */
 
 // chainErrToGBTErrString converts an error returned from btcchain to a string
 // which matches the reasons and format described in BIP0022 for rejection
@@ -2422,6 +2474,7 @@ func handleGetBlockTemplateProposal(s *rpcServer, request *btcjson.TemplateReque
 //
 // See https://en.bitcoin.it/wiki/BIP_0022 and
 // https://en.bitcoin.it/wiki/BIP_0023 for more details.
+/*
 func handleGetBlockTemplate(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetBlockTemplateCmd)
 	request := c.Request
@@ -2444,6 +2497,7 @@ func handleGetBlockTemplate(s *rpcServer, cmd interface{}, closeChan <-chan stru
 		Message: "Invalid mode",
 	}
 }
+ */
 
 // handleGetCFilter implements the getcfilter command.
 func handleGetCFilter(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
@@ -2830,8 +2884,11 @@ func handleGetRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan str
 	var mtx *wire.MsgTx
 	var blkHash *chainhash.Hash
 	var blkHeight int32
-	tx, err := s.cfg.TxMemPool.FetchTransaction(txHash)
-	if err != nil {
+	var tx *btcutil.Tx
+	if *c.IncludeMempool {
+		tx, err = s.cfg.TxMemPool.FetchTransaction(txHash)
+	}
+	if !*c.IncludeMempool || err != nil {
 		if s.cfg.TxIndex == nil {
 			return nil, &btcjson.RPCError{
 				Code: btcjson.ErrRPCNoTxInfo,
@@ -3081,8 +3138,16 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		result[v.Hash().String()] = &btcjson.BorderDefinition{
 			Kind: 1,
 			Father:  entry.Father.String(),
-			Begin:  entry.Begin.Hash().String(),
-			End: entry.End.Hash().String(),
+			Begin:  btcjson.VertexDefinition{
+				Lat: entry.Begin.Lat(),
+				Lng: entry.Begin.Lng(),
+				Alt: entry.Begin.Alt(),
+			},
+			End:  btcjson.VertexDefinition{
+				Lat: entry.End.Lat(),
+				Lng: entry.End.Lng(),
+				Alt: entry.End.Alt(),
+			},
 		}
 
 		if !rec {
@@ -3096,7 +3161,8 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			if _,ok := (*dup)[ch.String()]; !ok {
 				t, err := handleRecursiveGetDefine(s, token.DefTypeBorder, &ch, rec, dup)
 				if err != nil {
-					return nil, err
+					continue
+//					return nil, err
 				}
 				for h,u := range t.(*btcjson.GetDefineResult).Definition {
 					result[h] = u

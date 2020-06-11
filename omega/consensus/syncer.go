@@ -1016,7 +1016,7 @@ func (self *Syncer) HeaderInit(block *MsgMerkleBlock) {
 func (self *Syncer) BlockInit(block *btcutil.Block) {
 	var adr [20]byte
 	if len(block.MsgBlock().Transactions[0].SignatureScripts) < 2 {
-		log.Errorf("block does not contain enough signature. %d", len(block.MsgBlock().Transactions[0].SignatureScripts))
+		log.Errorf("block does not contain enough signatures. %d", len(block.MsgBlock().Transactions[0].SignatureScripts))
 		return
 	}
 	if len(block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSize / 2 + 1 {

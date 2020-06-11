@@ -644,8 +644,7 @@ func (mp *TxPool) fetchInputUtxos(tx *btcutil.Tx) (*viewpoint.ViewPointSet, erro
 		if poolTxDesc, exists := mp.pool[prevOut.Hash]; exists {
 			// AddTxOut ignores out of range index values, so it is
 			// safe to call without bounds checking here.
-			view.AddTxOut(poolTxDesc.Tx, prevOut.Index,
-				mining.UnminedHeight)
+			view.AddTxOut(poolTxDesc.Tx, prevOut.Index,	mining.UnminedHeight)
 		}
 	}
 

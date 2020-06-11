@@ -96,13 +96,13 @@ func (r FutureGetRawTransactionResult) Receive() (*btcutil.Tx, error) {
 // the returned instance.
 //
 // See GetRawTransaction for the blocking version and more details.
-func (c *Client) GetRawTransactionAsync(txHash *chainhash.Hash) FutureGetRawTransactionResult {
+func (c *Client) GetRawTransactionAsync(txHash *chainhash.Hash, includeMempool *bool) FutureGetRawTransactionResult {
 	hash := ""
 	if txHash != nil {
 		hash = txHash.String()
 	}
 
-	cmd := btcjson.NewGetRawTransactionCmd(hash, btcjson.Int(0))
+	cmd := btcjson.NewGetRawTransactionCmd(hash, btcjson.Int(0), includeMempool)
 	return c.sendCmd(cmd)
 }
 
@@ -110,8 +110,8 @@ func (c *Client) GetRawTransactionAsync(txHash *chainhash.Hash) FutureGetRawTran
 //
 // See GetRawTransactionVerbose to obtain additional information about the
 // transaction.
-func (c *Client) GetRawTransaction(txHash *chainhash.Hash) (*btcutil.Tx, error) {
-	return c.GetRawTransactionAsync(txHash).Receive()
+func (c *Client) GetRawTransaction(txHash *chainhash.Hash, includeMempool *bool) (*btcutil.Tx, error) {
+	return c.GetRawTransactionAsync(txHash, includeMempool).Receive()
 }
 
 // FutureGetRawTransactionVerboseResult is a future promise to deliver the
@@ -142,13 +142,13 @@ func (r FutureGetRawTransactionVerboseResult) Receive() (*btcjson.TxRawResult, e
 // function on the returned instance.
 //
 // See GetRawTransactionVerbose for the blocking version and more details.
-func (c *Client) GetRawTransactionVerboseAsync(txHash *chainhash.Hash) FutureGetRawTransactionVerboseResult {
+func (c *Client) GetRawTransactionVerboseAsync(txHash *chainhash.Hash, includeMempool *bool) FutureGetRawTransactionVerboseResult {
 	hash := ""
 	if txHash != nil {
 		hash = txHash.String()
 	}
 
-	cmd := btcjson.NewGetRawTransactionCmd(hash, btcjson.Int(1))
+	cmd := btcjson.NewGetRawTransactionCmd(hash, btcjson.Int(1), includeMempool)
 	return c.sendCmd(cmd)
 }
 
@@ -156,8 +156,8 @@ func (c *Client) GetRawTransactionVerboseAsync(txHash *chainhash.Hash) FutureGet
 // its hash.
 //
 // See GetRawTransaction to obtain only the transaction already deserialized.
-func (c *Client) GetRawTransactionVerbose(txHash *chainhash.Hash) (*btcjson.TxRawResult, error) {
-	return c.GetRawTransactionVerboseAsync(txHash).Receive()
+func (c *Client) GetRawTransactionVerbose(txHash *chainhash.Hash, includeMempool *bool) (*btcjson.TxRawResult, error) {
+	return c.GetRawTransactionVerboseAsync(txHash, includeMempool).Receive()
 }
 
 // FutureDecodeRawTransactionResult is a future promise to deliver the result
@@ -370,7 +370,40 @@ func (c *Client) SignRawTransactionAsync(tx *wire.MsgTx, privkeys []string) Futu
 		txHex = hex.EncodeToString(buf.Bytes())
 	}
 
-	cmd := btcjson.NewSignRawTransactionCmd(txHex, &[]btcjson.RawTxInput{}, &privkeys, nil)
+	cmd := btcjson.NewSignRawTransactionCmd(txHex, &[]btcjson.RawTxInput{}, &privkeys, nil, false)
+	return c.sendCmd(cmd)
+}
+
+// FutureSignRawTransactionResult is a future promise to deliver the result
+// of one of the SignRawTransactionAsync family of RPC invocations (or an
+// applicable error).
+type FutureSignHashResult chan *response
+
+// Receive waits for the response promised by the future and returns the
+// signed transaction as well as whether or not all inputs are now signed.
+func (r FutureSignHashResult) Receive() (string, bool, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return "", false, err
+	}
+
+	// Unmarshal as a signrawtransaction result.
+	var sign btcjson.SignHashResult
+	err = json.Unmarshal(res, &sign)
+	if err != nil {
+		return "", false, err
+	}
+
+	return sign.Hex, sign.Complete, nil
+}
+
+// SignRawHashAsync returns an instance of a type that can be used to get
+// the result of the RPC at some future time by invoking the Receive function on
+// the returned instance.
+//
+// See SignRawTransaction for the blocking version and more details.
+func (c *Client) SignRawHashAsync(hash string, privkeys []string) FutureSignHashResult {
+	cmd := btcjson.NewSignRawTransactionCmd(hash, &[]btcjson.RawTxInput{}, &privkeys, nil, true)
 	return c.sendCmd(cmd)
 }
 
@@ -383,6 +416,16 @@ func (c *Client) SignRawTransactionAsync(tx *wire.MsgTx, privkeys []string) Futu
 // specify that information if needed.
 func (c *Client) SignRawTransaction(tx *wire.MsgTx, privkey []string) (*wire.MsgTx, bool, error) {
 	return c.SignRawTransactionAsync(tx, privkey).Receive()
+}
+
+// SignHash signs inputs for the passed hash and returns the signature.
+//
+// This function assumes the RPC server already knows the input transactions and
+// private keys for the passed transaction which needs to be signed and uses the
+// default signature hash type.  Use one of the SignRawTransaction# variants to
+// specify that information if needed.
+func (c *Client) SignHash(tx string, privkey []string) (string, bool, error) {
+	return c.SignRawHashAsync(tx, privkey).Receive()
 }
 
 // SignRawTransaction2Async returns an instance of a type that can be used to
@@ -402,7 +445,7 @@ func (c *Client) SignRawTransaction2Async(tx *wire.MsgTx, inputs []btcjson.RawTx
 		txHex = hex.EncodeToString(buf.Bytes())
 	}
 
-	cmd := btcjson.NewSignRawTransactionCmd(txHex, &inputs, nil, nil)
+	cmd := btcjson.NewSignRawTransactionCmd(txHex, &inputs, nil, nil, false)
 	return c.sendCmd(cmd)
 }
 
@@ -441,7 +484,7 @@ func (c *Client) SignRawTransaction3Async(tx *wire.MsgTx,
 	}
 
 	cmd := btcjson.NewSignRawTransactionCmd(txHex, &inputs, &privKeysWIF,
-		nil)
+		nil, false)
 	return c.sendCmd(cmd)
 }
 
@@ -490,7 +533,7 @@ func (c *Client) SignRawTransaction4Async(tx *wire.MsgTx,
 	}
 
 	cmd := btcjson.NewSignRawTransactionCmd(txHex, &inputs, &privKeysWIF,
-		btcjson.String(string(hashType)))
+		btcjson.String(string(hashType)), false)
 	return c.sendCmd(cmd)
 }
 

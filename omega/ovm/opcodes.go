@@ -38,7 +38,7 @@ const (
 
 	COPY	// data copy
 	COPYIMM	// immediate data copy
-	CODECOPY	// copy code
+//	CODECOPY	// copy code
 	PUSH	// 
 
 	SELFDESTRUCT
@@ -88,7 +88,7 @@ var opCodeToString = map[OpCode]string{
 	COPY:       "COPY",
 	COPYIMM:       "COPYIMM",
 	PUSH:       "PUSH",
-	CODECOPY:       "CODECOPY",
+//	CODECOPY:       "CODECOPY",
 	RECEIVED:        "RECEIVED",
 	TXIOCOUNT:        "TXIOCOUNT",
 	GETTXIN:        "GETTXIN",
@@ -138,7 +138,7 @@ var stringToOp = map[string]OpCode{
 	"COPY":           COPY,
 	"COPYIMM":           COPYIMM,
 	"PUSH":           PUSH,
-	"CODECOPY":           CODECOPY,
+//	"CODECOPY":           CODECOPY,
 	"RECEIVED": RECEIVED,
 	"TXIOCOUNT": TXIOCOUNT,
 	"GETTXIN": GETTXIN,

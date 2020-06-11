@@ -176,6 +176,9 @@ func main() {
 
 //	addr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), &chaincfg.TestNet3Params)
 
+//	pubk := dwif.SerializePubKey()
+//	fmt.Printf("%x*", pubk)
+
 	addr, err := btcutil.DecodeAddress(priv.PublicKey.ToAddress(0x6F), &chaincfg.TestNet3Params)
 	if err != nil {
 		fmt.Printf("Failed to generate pay-to-address script")

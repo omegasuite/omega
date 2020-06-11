@@ -98,7 +98,7 @@ func (s *Stack) toInt32(p * pointer) (int32, error) {
 		return (int32(s.data[area].space[offset])) |
 			((int32(s.data[area].space[offset + 1])) << 8) |
 			((int32(s.data[area].space[offset + 2])) << 16) |
-			((int32(s.data[area].space[offset] + 3)) << 24), nil
+			((int32(s.data[area].space[offset + 3])) << 24), nil
 	}
 	return 0, outofmemory
 }

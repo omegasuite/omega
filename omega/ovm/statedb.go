@@ -6,6 +6,7 @@ import (
 	//	"fmt"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
+	"github.com/btcsuite/btcd/wire/common"
 //	"encoding/json"
 	//	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/omega"
@@ -49,6 +50,9 @@ type stateDB struct {
 
 	// Suicide flag
 	suicided bool
+
+	// fresh flag
+	fresh bool
 }
 
 func NewStateDB(db database.DB, addr [20]byte) *stateDB {
@@ -93,6 +97,10 @@ func (v * OVM) setMeta(contract [20]byte, key string, code []byte) {
 
 func (v * OVM) getMeta(contract [20]byte, key string) []byte {
 	d := v.StateDB[contract]
+	if d.suicided {
+		return nil
+	}
+
 	if t, ok := d.meta[key]; ok {
 		return t.data
 	}
@@ -110,7 +118,7 @@ func (v * OVM) getMeta(contract [20]byte, key string) []byte {
 }
 
 func (d *stateDB) getMeta(key string) []byte {
-	if d.suicided {
+	if d.suicided || d.fresh {
 		return nil
 	}
 
@@ -124,9 +132,26 @@ func (d *stateDB) getMeta(key string) []byte {
 }
 
 func (d * OVM) GetCode(contract [20]byte) []byte {
-	return d.StateDB[contract].getMeta("code")
+	r := d.getMeta(contract, "code")
+	var h chainhash.Hash
+	copy(h[:], r)
+	
+	g := database.BlockRegion {}
+	g.Hash = &h
+	g.Offset = common.LittleEndian.Uint32(r[32:])
+	g.Len = common.LittleEndian.Uint32(r[36:])
+
+	var codeBytes []byte
+	d.DB.View(func(dbTx database.Tx) error {
+		var err error
+		codeBytes, err = dbTx.FetchBlockRegion(&g)
+		return err
+	})
+
+	return codeBytes
 }
 
+/*
 func (d * OVM) SetInsts(contract [20]byte, insts []inst) {
 	code := make([]byte, 0, len(insts))
 	for _, d := range insts {
@@ -156,22 +181,7 @@ func (d *stateDB) GetCodeHash() chainhash.Hash {
 func (d * OVM) SetCodeHash(contract [20]byte, code chainhash.Hash) {
 	d.setMeta(contract, "codeHash", code[:])
 }
-
-func (d *stateDB) GetOwner() Address {
-	var codeHash Address
-
-	if d.suicided {
-		return codeHash
-	}
-
-	code := d.getMeta("owner")
-	copy(codeHash[:], code)
-	return codeHash
-}
-
-func (d * OVM) SetOwner(contract [20]byte, code Address) {
-	d.setMeta(contract, "owner", code[:])
-}
+ */
 
 func (d *stateDB) GetMint() (uint64, uint64) {
 	c := d.getMeta("mint")
@@ -225,6 +235,12 @@ func (d * OVM) SetAddres(contract [20]byte, code AccountRef) {
 
 func (d *stateDB) Copy() stateDB {
 	s := stateDB{ DB: d.DB }
+
+	if d.suicided {
+		s.suicided = true
+		return s
+	}
+
 	copy(s.contract[:], d.contract[:])
 	s.data = make(map[string]*entry)
 	for h,r := range d.data {
@@ -233,46 +249,21 @@ func (d *stateDB) Copy() stateDB {
 	for h,r := range d.meta {
 		s.meta[h] = r
 	}
-/*
-	s.wallet.Tokens = make(map[wire.OutPoint]token.Token)
-	for i, r := range d.wallet.Tokens {
-		s.wallet.Tokens[i] = r
-//		r.back.Copy(&s.wallet[i].back)
-	}
- */
 
 	return s
 }
 
-/*
-func (d * stateDB) GetWalletItems(tokenType uint64, right * chainhash.Hash) []token.Token {
-	w := make([]token.Token, 0)
-	for _, r := range d.wallet {
-		if tokenType != r.Token.TokenType {
-//		if r.flag & deleteFlag != 0 || tokenType != r.Token.TokenType {
-			continue
-		}
-		if right == nil || (r.Token.Rights != nil &&  r.Token.Rights.IsEqual(right)) {
-//		if right == nil || tokenType & 2 != 2 || r.Token.Rights.IsEqual(right) {
-			w = append(w, r.Token)
-		}
-	}
-	return w
-}
-
-type wentry struct {
-	right viewpoint.RightEntry
-	qty uint64
-}
-*/
-
 func (v * OVM) GetState(contract [20]byte, loc string) []byte {
 	d := v.StateDB[contract]
+	if d.suicided {
+		return nil
+	}
+
 	if t, ok := d.data[loc]; ok {
 		return t.data
 	}
 
-	if v.DB == nil {
+	if v.DB == nil || d.fresh {
 		return nil
 	}
 	var e []byte
@@ -295,6 +286,9 @@ func (v * OVM) GetState(contract [20]byte, loc string) []byte {
 
 func (v * OVM) SetState(contract [20]byte, key string, val []byte) {
 	d := v.StateDB[contract]
+	if d.suicided {
+		return
+	}
 	if _, ok := d.data[key]; !ok {
 		m := v.GetState(contract, key)
 		t := make([]byte, len(val))
@@ -315,6 +309,9 @@ func (v * OVM) SetState(contract [20]byte, key string, val []byte) {
 
 func (v * OVM) DeleteState(contract [20]byte, key string) {
 	d := v.StateDB[contract]
+	if d.suicided {
+		return
+	}
 	if _, ok := d.data[key]; ok {
 		d.data[key].data = nil
 		return
@@ -419,7 +416,8 @@ func (d *stateDB) commit(blockHeight uint64) [2]rollback {
 				bucket.Delete([]byte(k))
 				delete(d.data, k)
 			} else if bytes.Compare(t.olddata, t.data) != 0 {
-				if err := bucket.Put([]byte(k), t.data[:]); err != nil {
+				key := []byte(k)
+				if err := bucket.Put(key, t.data); err != nil {
 					return err
 				}
 			}
@@ -433,7 +431,8 @@ func (d *stateDB) commit(blockHeight uint64) [2]rollback {
 				bucket.Delete([]byte(k))
 				delete(d.meta, k)
 			} else if bytes.Compare(t.olddata, t.data) != 0 {
-				if err := bucket.Put([]byte(k), t.data[:]); err != nil {
+				key := []byte(k)
+				if err := bucket.Put(key, t.data); err != nil {
 					return err
 				}
 			}

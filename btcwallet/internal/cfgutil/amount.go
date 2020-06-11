@@ -34,7 +34,7 @@ func (a *AmountFlag) UnmarshalFlag(value string) error {
 	if err != nil {
 		return err
 	}
-	amount, err := btcutil.NewAmount(valueF64)
+	amount, err := btcutil.NewAmount(valueF64, 0)
 	if err != nil {
 		return err
 	}
