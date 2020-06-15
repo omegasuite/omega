@@ -2063,7 +2063,7 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		PreviousHash: header.PrevBlock.String(),
 //		WeightLimit:  chaincfg.MaxBlockWeight,
 		SigOpLimit:   chaincfg.MaxBlockSigOpsCost,
-		SizeLimit:    wire.MaxBlockPayload,
+//		SizeLimit:    wire.MaxBlockPayload,
 		Transactions: transactions,
 		Version:      header.Version,
 		LongPollID:   templateID,
@@ -3205,17 +3205,29 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		}
 
 		for _, loop := range v.Loops {
-			for _, b := range loop {
-				if _,ok := (*dup)[b.String()]; !ok {
-					rev := b[0] & 1
-					b[0] &= 0xFE
-					t, err := handleRecursiveGetDefine(s, token.DefTypeBorder, &b, rec, dup)
-					b[0] |= rev
+			if len(loop) == 1 {
+				if _, ok := (*dup)[loop[0].String()]; !ok {
+					t, err := handleRecursiveGetDefine(s, token.DefTypePolygon, &loop[0], rec, dup)
 					if err != nil {
 						return nil, err
 					}
-					for h,u := range t.(*btcjson.GetDefineResult).Definition {
+					for h, u := range t.(*btcjson.GetDefineResult).Definition {
 						result[h] = u
+					}
+				}
+			} else {
+				for _, b := range loop {
+					if _, ok := (*dup)[b.String()]; !ok {
+						rev := b[0] & 1
+						b[0] &= 0xFE
+						t, err := handleRecursiveGetDefine(s, token.DefTypeBorder, &b, rec, dup)
+						b[0] |= rev
+						if err != nil {
+							return nil, err
+						}
+						for h, u := range t.(*btcjson.GetDefineResult).Definition {
+							result[h] = u
+						}
 					}
 				}
 			}
@@ -4036,7 +4048,7 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 					block.Hash().String(), height, err.Error())
 				return err.Error(), err
 			}
-			if block.Size() > int(chain.GetBlockLimit(block.Height())) {
+			if len(block.MsgBlock().Transactions) > int(chain.GetBlockLimit(block.Height())) {
 				err = fmt.Errorf("serialized block is too big - got %d, "+
 					"max %d", block.Size(), chain.GetBlockLimit(block.Height()))
 				return err.Error(), err

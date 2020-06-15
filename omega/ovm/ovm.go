@@ -372,7 +372,7 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 
 	contract.Code = ByteCodeParser(data)
 	if !ByteCodeValidator(contract.Code) {
-		return nil, omega.ScriptError(omega.ErrInternal, "Illegal instruction is contract code.")
+		return nil, omega.ScriptError(omega.ErrInternal, "Illegal instruction in contract code.")
 	}
 //	copy(contract.CodeHash[:], chainhash.DoubleHashB(data))
 

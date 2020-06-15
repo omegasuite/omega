@@ -154,7 +154,7 @@ func DecodeAddress(addr string, defaultNet *chaincfg.Params) (Address, error) {
 	decoded, netID, err := base58.CheckDecode(addr)
 	if err != nil {
 		serialized, err := hex.DecodeString(addr)
-		if err != nil {
+		if serialized == nil || err != nil {
 			return nil, errors.New("decoded address is of unknown format")
 		}
 		netID = serialized[0]

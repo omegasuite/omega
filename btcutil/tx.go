@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"io"
 
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/omega/token"
@@ -37,6 +38,15 @@ type Tx struct {
 func (t *Tx) MsgTx() *wire.MsgTx {
 	// Return the cached transaction.
 	return t.msgTx
+}
+
+func (t *Tx) ContainContract() bool {
+	for _, p := range t.msgTx.TxOut {
+		if chaincfg.IsContractAddrID(p.PkScript[0]) {
+			return true
+		}
+	}
+	return false
 }
 
 func (t *Tx) IsCoinBase() bool {

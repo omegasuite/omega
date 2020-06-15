@@ -251,42 +251,22 @@ func fetchPolygon(p *token.PolygonDef, views *viewpoint.ViewPointSet) (*polygon,
 	q := &polygon{
 		loops:make([][]*edge, 0),
 	}
-	var err error
-	for i,loop := range p.Loops {
+	loops := views.Flattern(p.Loops)
+
+	for _,loop := range loops {
 		t := make([]*edge, 0, len(loop))
-		if len(loop) == 1 {
-			if i != 0 {
-				return nil, ruleError(3, "Illegal loop len = 1, but not the first one.")
-			}
-			plg, _ := views.Polygon.FetchEntry(views.Db, &loop[0])
-			if plg == nil {
-				return nil, ruleError(3, "Polygon expected")
-			}
-			q, err = fetchPolygon(plg.ToToken(), views)
-			if err != nil {
-				return nil, err
-			}
-		}
 		for _, l := range loop {
 			lp, _ := views.Border.FetchEntry(views.Db, &l)
 			if lp == nil {
-				return nil, ruleError(2, "Undefined border")
-			}
-			np := NewEdge(l[0] & 0x1, l, views, lp)
+					return nil, ruleError(2, "Undefined border")
+				}
+			np := NewEdge(l[0]&0x1, l, views, lp)
 			np.hash = l
 			t = append(t, np)
-			/*
-						res := expandBorder(l, views, l[0] & 0x1)
-						if res == nil {
-							str := fmt.Sprintf("Undefined border %s in polygon %s", l.String(), p.Hash().String())
-							return ruleError(2, str)
-						}
-						t = append(t, res[:]...)
-			*/
 		}
 
-		vp := &t[len(t) - 1].end
-		for i,l := range t {
+		vp := &t[len(t)-1].end
+		for i, l := range t {
 			q := &l.begin
 
 			fmt.Printf("Vertex: %f, %f\n", l.x, l.y)
@@ -714,9 +694,12 @@ func Borders(old map[chainhash.Hash]struct{}, views *viewpoint.ViewPointSet) map
 	borders := make(map[chainhash.Hash]struct{})
 	for p,_ := range old {
 		q, _ := views.Polygon.FetchEntry(views.Db, &p)
+		m := make([]token.LoopDef, 0)
 		for len(q.Loops[0]) == 1 {
+			m = append(m, q.Loops[1:]...)
 			q, _ = views.Polygon.FetchEntry(views.Db, &q.Loops[0][0])
 		}
+		q.Loops = append(q.Loops, m...)
 
 		for _, l := range q.Loops {
 			for _, r := range l {

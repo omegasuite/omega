@@ -33,6 +33,7 @@ type PolygonEntry struct {
 	// lot of these in memory, so a few extra bytes of padding adds up.
 
 	Loops []token.LoopDef
+	Bound BoundingBox
 
 	// packedFlags contains additional info about vertex. Currently unused.
 	PackedFlags txoFlags
@@ -56,13 +57,16 @@ func (entry * PolygonEntry) Clone() *PolygonEntry {
 
 	return &PolygonEntry{
 		Loops:   entry.Loops,
+		Bound:   entry.Bound,
 		PackedFlags: entry.PackedFlags,
 	}
 }
 
 func (entry * PolygonEntry) deReference(view * ViewPointSet) {
-	for _, loop := range entry.Loops {
+	loops :=  view.Flattern(entry.Loops)
+	for _, loop := range loops {
 		for _, b := range loop {
+			b[0] &= 0xFE
 			fb, _ := view.Border.FetchEntry(view.Db, &b)
 			fb.deReference()
 		}
@@ -70,8 +74,10 @@ func (entry * PolygonEntry) deReference(view * ViewPointSet) {
 }
 
 func (entry * PolygonEntry) reference(view * ViewPointSet) {
-	for _, loop := range entry.Loops {
+	loops :=  view.Flattern(entry.Loops)
+	for _, loop := range loops {
 		for _, b := range loop {
+			b[0] &= 0xFE
 			fb, _ := view.Border.FetchEntry(view.Db, &b)
 			fb.reference()
 		}
@@ -120,15 +126,38 @@ func (view * ViewPointSet) addPolygon(b *token.PolygonDef) bool {
 	if entry == nil {
 		entry = new(PolygonEntry)
 		entry.Loops = b.Loops
+		bx := (*BoundingBox)(nil)
 		for _, loop := range b.Loops {
-			for _, b := range loop {
-				d, _ := view.Border.FetchEntry(view.Db, &b)
+			if len(loop) == 1 {
+				d, _ := view.Polygon.FetchEntry(view.Db, &loop[0])
 				if d == nil {
 					return false
+				}
+				if bx == nil {
+					bx = &BoundingBox{}
+					*bx = d.Bound
+				} else {
+					bx.Merge(&d.Bound)
+				}
+			} else {
+				for _, b := range loop {
+					d, _ := view.Border.FetchEntry(view.Db, &b)
+					if d == nil {
+						return false
+					}
+					if bx == nil {
+						bx = &BoundingBox{}
+						*bx = *d.Bound
+					} else if d.Bound != nil {
+						bx.Merge(d.Bound)
+					} else {
+						bx.Merge(NewBound(d.Begin.Lng(), d.End.Lng(), d.Begin.Lat(), d.End.Lat()))
+					}
 				}
 			}
 		}
 		entry.PackedFlags = TfModified
+		entry.Bound = *bx
 		view.Polygon.entries[h] = entry
 	}
 	return true
@@ -138,10 +167,9 @@ func (view * ViewPointSet) AddOnePolygon(b *token.PolygonDef) bool {
 	return view.addPolygon(b)
 }
 
-// AddVertices adds all vertex definitions in the passed transaction to the view.
+// AddPolygon adds all vertex definitions in the passed transaction to the view.
 func (view * ViewPointSet) AddPolygon(tx *btcutil.Tx) bool {
 	// Loop all of the vertex definitions
-
 	for _, txVtx := range tx.MsgTx().TxDef {
 		switch txVtx.(type) {
 			case *token.PolygonDef:
@@ -174,6 +202,7 @@ func (view * PolygonViewpoint) FetchEntry(db database.DB, hash *chainhash.Hash) 
 		}
 		entry = &PolygonEntry{
 			Loops: e.Loops,
+			Bound: e.Bound,
 			PackedFlags: 0,
 		}
 		view.entries[*hash] = entry
@@ -272,6 +301,7 @@ func (view * PolygonViewpoint) fetchPolygonMain(db database.DB, b map[chainhash.
 
 			view.entries[vtx] = &PolygonEntry{
 				Loops: e.Loops,
+				Bound: e.Bound,
 				PackedFlags: 0,
 			}
 		}
@@ -354,7 +384,7 @@ func serializePolygonEntry(entry *PolygonEntry) ([]byte, error) {
 		return nil, nil
 	}
 
-	size := bccompress.SerializeSizeVLQ(uint64(len(entry.Loops)))
+	size := bccompress.SerializeSizeVLQ(uint64(len(entry.Loops)) + 16)
 	for _, l := range entry.Loops {
 		size += bccompress.SerializeSizeVLQ(uint64(len(l))) + len(l) * chainhash.HashSize
 	}
@@ -371,6 +401,8 @@ func serializePolygonEntry(entry *PolygonEntry) ([]byte, error) {
 			p +=  chainhash.HashSize
 		}
 	}
+
+	copy(serialized[p:], entry.Bound.serialize())
 
 	return serialized, nil
 }
@@ -401,6 +433,7 @@ func DbFetchPolygon(dbTx database.Tx, hash *chainhash.Hash) (*PolygonEntry, erro
 		}
 		b.Loops[i] = loop
 	}
+	b.Bound.unserialize(serialized[pos:])
 
 	return &b, nil
 }

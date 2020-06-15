@@ -853,7 +853,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	}
 
 	txFee, err := blockchain.CheckTransactionFees(tx, nextBlockHeight, views, mp.cfg.ChainParams)
-	if err != nil {
+	if err != nil && !tx.ContainContract() {
 		if cerr, ok := err.(blockchain.RuleError); ok {
 			return nil, nil, chainRuleError(cerr)
 		}
@@ -915,6 +915,9 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	serializedSize := blockchain.GetTransactionWeight(tx)
 	minFee := calcMinRequiredTxRelayFee(serializedSize,
 		mp.cfg.Policy.MinRelayTxFee)
+	if tx.ContainContract() && txFee < minFee {	// assume a contract will pay the minFee at least
+		txFee = minFee
+	}
 	if serializedSize >= (DefaultBlockPrioritySize-1000) && txFee < minFee {
 		str := fmt.Sprintf("transaction %v has %d fees which is under "+
 			"the required amount of %d", txHash, txFee,
@@ -960,19 +963,6 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 			"limit %v", oldTotal, mp.pennyTotal,
 			mp.cfg.Policy.FreeTxRelayLimit*10*1000)
 	}
-
-	// Verify crypto signatures for each input and reject the transaction if
-	// any don't verify.
-/*	defer until we actually try to add it to a block
-	err = blockchain.ValidateTransactionScripts(tx, utxoView)
-//		txscript.StandardVerifyFlags, mp.cfg.SigCache,		mp.cfg.HashCache)
-	if err != nil {
-		if cerr, ok := err.(blockchain.RuleError); ok {
-			return nil, nil, chainRuleError(cerr)
-		}
-		return nil, nil, err
-	}
-*/
 
 	// Add to transaction pool.
 	txD := mp.addTransaction(utxoView, tx, bestHeight, txFee)

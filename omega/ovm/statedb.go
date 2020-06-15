@@ -246,6 +246,7 @@ func (d *stateDB) Copy() stateDB {
 	for h,r := range d.data {
 		s.data[h] = r
 	}
+	s.meta = make(map[string]*entry)
 	for h,r := range d.meta {
 		s.meta[h] = r
 	}

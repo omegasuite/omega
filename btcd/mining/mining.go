@@ -641,7 +641,7 @@ mempoolLoop:
 	// transaction.
 //	blockWeight := uint32((blockHeaderOverhead * chaincfg.WitnessScaleFactor) +
 //		blockchain.GetTransactionWeight(coinbaseTx))
-	blockWeight := uint32(blockchain.GetTransactionWeight(coinbaseTx))
+	blockWeight := uint32(1)	// blockchain.GetTransactionWeight(coinbaseTx))
 	blockSigOpCost := coinbaseSigOpCost
 	totalFees := int64(0)
 
@@ -687,10 +687,9 @@ mempoolLoop:
 		deps := dependers[*tx.Hash()]
 
 		// Enforce maximum block size.  Also check for overflow.
-		txWeight := uint32(blockchain.GetTransactionWeight(tx))
-		blockPlusTxWeight := blockWeight + txWeight
-		if blockPlusTxWeight < blockWeight ||
-			blockPlusTxWeight >= blockMaxSize {
+//		txWeight := uint32(blockchain.GetTransactionWeight(tx))
+		blockPlusTxWeight := blockWeight + 1
+		if blockPlusTxWeight >= blockMaxSize {
 			log.Tracef("Skipping tx %s because it would exceed "+
 				"the max block weight", tx.Hash())
 			logSkippedDeps(tx, deps)
@@ -836,7 +835,7 @@ mempoolLoop:
 		// save the fees and signature operation counts to the block
 		// template.
 		blockTxns = append(blockTxns, tx)
-		blockWeight += txWeight
+		blockWeight++ 	// += txWeight
 		blockSigOpCost += int64(sigOpCost)
 		totalFees += prioItem.fee
 		txFees = append(txFees, prioItem.fee)
@@ -859,11 +858,6 @@ mempoolLoop:
 	}
 
 	contractExec := uint64(g.Chain.ChainParams.ContractExecLimit) - Vm.GasLimit
-
-	// Now that the actual transactions have been selected, update the
-	// block weight for the real transaction count and coinbase value with
-	// the total fees accordingly.
-	blockWeight -= common.MaxVarIntPayload
 
 	// add fees to miner outputs
 	m := int64(0)
@@ -948,9 +942,9 @@ mempoolLoop:
 	}
 
 	log.Debugf("Created new block template (%d transactions, %d in "+
-		"fees, %d signature operations cost, %d weight, target difficulty "+
+		"fees, %d signature operations cost, target difficulty "+
 		"%064x)", len(msgBlock.Transactions), totalFees, blockSigOpCost,
-		blockWeight, blockchain.CompactToBig(reqDifficulty))
+		blockchain.CompactToBig(reqDifficulty))
 
 	return &BlockTemplate{
 		Block:             &msgBlock,

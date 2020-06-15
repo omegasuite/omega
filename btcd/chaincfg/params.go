@@ -48,7 +48,7 @@ const (
 	// based on space utilization of the most recent 100,000 weighing blocks.
 	// A weighing block is a signed block that is at least 10,000 blocks before
 	// the checking point.
-	BlockBaseSize = 4096	// 4KB, amount to increase or decrease.
+	BlockBaseSize = 4	// 4Txs.
 	TargetBlockRate = 3		// 3 seconds.
 	BlockSizeEvalPeriod = 100000	// re-evaluate block size every 100000 blocks
 	SkipBlocks = 10000
@@ -65,11 +65,10 @@ const (
 
 	// MaxBlockBaseSize is the maximum number of bytes within a block
 	// which can be allocated to non-witness data.
-	MaxBlockBaseSize = 1000000
+//	MaxBlockBaseSize = 1000000
 
 	// MaxBlockSigOpsCost is the maximum number of signature operations
-	// allowed for a block. It is calculated via a weighted algorithm which
-	// weights segregated witness sig ops lower than regular sig ops.
+	// allowed for a block.
 	MaxBlockSigOpsCost = 80000
 
 	// WitnessScaleFactor determines the level of "discount" witness data

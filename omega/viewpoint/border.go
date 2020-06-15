@@ -30,6 +30,23 @@ type BoundingBox struct {
 	north int32
 }
 
+func (b * BoundingBox) serialize() []byte {
+	var s [16]byte
+	binary.LittleEndian.PutUint32(s[:], uint32(b.east))
+	binary.LittleEndian.PutUint32(s[4:], uint32(b.west))
+	binary.LittleEndian.PutUint32(s[8:], uint32(b.south))
+	binary.LittleEndian.PutUint32(s[12:], uint32(b.north))
+
+	return s[:]
+}
+
+func (b * BoundingBox) unserialize(s []byte) {
+	b.east = int32(binary.LittleEndian.Uint32(s))
+	b.west = int32(binary.LittleEndian.Uint32(s[4:]))
+	b.south = int32(binary.LittleEndian.Uint32(s[8:]))
+	b.north = int32(binary.LittleEndian.Uint32(s[12:]))
+}
+
 // BorderEntry houses details about an individual Border definition in a definition
 // view.
 type BorderEntry struct {

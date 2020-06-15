@@ -103,7 +103,7 @@ type BlackList interface {
 }
 
 type sizeCalculator struct {
-	knownLimits map[int32]uint32		// block size limits height to bytes
+	knownLimits map[int32]uint32		// block size limits height to tx
 
 	// accumulator
 	target int32

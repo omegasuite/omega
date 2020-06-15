@@ -218,12 +218,14 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 
 	// A transaction must not exceed the maximum allowed block payload when
 	// serialized.
+/*
 	serializedTxSize := tx.MsgTx().SerializeSizeStripped()
 	if serializedTxSize > chaincfg.MaxBlockBaseSize {
 		str := fmt.Sprintf("serialized transaction is too big - got "+
 			"%d, max %d", serializedTxSize, chaincfg.MaxBlockBaseSize)
 		return ruleError(ErrTxTooBig, str)
 	}
+ */
 
 	// Ensure the transaction amounts are in range.  Each transaction
 	// output must not be negative or more than the max allowed per
@@ -505,6 +507,9 @@ func CheckProofOfWork(stubBlock * btcutil.Block, powLimit *big.Int) error {
 // quicker, but imprecise, signature operation counting mechanism from
 // txscript.
 func CountSigOps(tx *btcutil.Tx) int {
+	if tx.IsCoinBase() {
+		return len(tx.MsgTx().SignatureScripts) - 1
+	}
 	return len(tx.MsgTx().SignatureScripts)
 }
 
@@ -568,24 +573,6 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 		return ruleError(ErrNoTransactions, "block does not contain "+
 			"any transactions")
 	}
-/*
-	// A block must not have more transactions than the max block payload or
-	// else it is certainly over the weight limit.
-	if numTx > chaincfg.MaxBlockBaseSize {
-		str := fmt.Sprintf("block contains too many transactions - "+
-			"got %d, max %d", numTx, chaincfg.MaxBlockBaseSize)
-		return ruleError(ErrBlockTooBig, str)
-	}
-
-	// A block must not exceed the maximum allowed block payload when
-	// serialized.
-	serializedSize := msgBlock.SerializeSizeStripped()
-	if serializedSize > chaincfg.MaxBlockBaseSize {
-		str := fmt.Sprintf("serialized block is too big - got %d, "+
-			"max %d", serializedSize, chaincfg.MaxBlockBaseSize)
-		return ruleError(ErrBlockTooBig, str)
-	}
- */
 
 	// The first transaction in a block must be a coinbase.
 	transactions := block.Transactions()
@@ -794,8 +781,8 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 			// op cost have been validated, we can finally assert
 			// that the block's weight doesn't exceed the current
 			// consensus parameter.
-			blockWeight := GetBlockWeight(block)
-			blockLimit := int64(b.GetBlockLimit(block.Height()))
+			blockWeight := len(block.MsgBlock().Transactions) // GetBlockWeight(block)
+			blockLimit := int(b.GetBlockLimit(block.Height()))
 			if blockWeight > blockLimit { // chaincfg.MaxBlockWeight {
 				str := fmt.Sprintf("block's weight metric is "+
 					"too high - got %v, max %v",
@@ -1448,12 +1435,6 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 //	log.Infof("CheckConnectBlockTemplate: ChainLock.RLock")
 	b.ChainLock.Lock()
 	defer b.ChainLock.Unlock()
-/*
-	func() {
-		b.ChainLock.Unlock()
-		log.Infof("CheckConnectBlockTemplate: ChainLock.Unlock")
-	} ()
-*/
 
 	// Skip the proof of work check as this is just a block template.
 	flags := BFNoPoWCheck
@@ -1473,7 +1454,7 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 		return err
 	}
 
-	if block.Size() > int(b.GetBlockLimit(block.Height())) {
+	if len(block.MsgBlock().Transactions) > int(b.GetBlockLimit(block.Height())) {
 		str := fmt.Sprintf("serialized block is too big - got %d, "+
 			"max %d", block.Size(), b.GetBlockLimit(block.Height()))
 		return ruleError(ErrBlockTooBig, str)

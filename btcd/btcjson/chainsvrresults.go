@@ -159,8 +159,8 @@ type GetBlockTemplateResult struct {
 	Height        int64                      `json:"height"`
 	PreviousHash  string                     `json:"previousblockhash"`
 	SigOpLimit    int64                      `json:"sigoplimit,omitempty"`
-	SizeLimit     int64                      `json:"sizelimit,omitempty"`
-	WeightLimit   int64                      `json:"weightlimit,omitempty"`
+//	SizeLimit     int64                      `json:"sizelimit,omitempty"`
+//	WeightLimit   int64                      `json:"weightlimit,omitempty"`
 	Transactions  []GetBlockTemplateResultTx `json:"transactions"`
 	Version       int32                      `json:"version"`
 	CoinbaseAux   *GetBlockTemplateResultAux `json:"coinbaseaux,omitempty"`

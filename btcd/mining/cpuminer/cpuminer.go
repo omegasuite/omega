@@ -515,7 +515,7 @@ flushconnch:
 
 			blockMaxSize := m.g.Chain.GetBlockLimit(template.Height)
 
-			sz := block.Size()
+			sz := len(block.MsgBlock().Transactions)
 			block.ClearSize()
 
 			// if block is too small, wait upto wire.TimeGap

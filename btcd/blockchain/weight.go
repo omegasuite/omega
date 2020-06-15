@@ -37,10 +37,6 @@ func GetTransactionWeight(tx *btcutil.Tx) int64 {
 
 	totalSize := int64(msgTx.SerializeSize())
 	return totalSize
-//	baseSize := msgTx.SerializeSizeStripped()
-
-	// (baseSize * 3) + totalSize
-//	return int64((baseSize * (chaincfg.WitnessScaleFactor - 1)) + totalSize)
 }
 
 // GetSigOpCost returns the unified sig op cost for the passed transaction
@@ -50,7 +46,7 @@ func GetTransactionWeight(tx *btcutil.Tx) int64 {
 // count for all p2sh inputs scaled by the WitnessScaleFactor, and finally the
 // unscaled sig op count for any inputs spending witness programs.
 func GetSigOpCost(tx *btcutil.Tx, isCoinBaseTx bool, utxoView *viewpoint.UtxoViewpoint, bip16, segWit bool) (int, error) {
-	return 0, nil
+	return CountSigOps(tx), nil
 /*
 	numSigOps := CountSigOps(tx) * chaincfg.WitnessScaleFactor
 	if bip16 {
@@ -89,6 +85,7 @@ func GetSigOpCost(tx *btcutil.Tx, isCoinBaseTx bool, utxoView *viewpoint.UtxoVie
 }
 
 func (b *BlockChain) GetBlockLimit(h int32) uint32 {
+	// block limit in number of tx
 	if h < 0 {
 		return 0
 	}
@@ -218,8 +215,8 @@ func (b *BlockChain) take(block *btcutil.Block) {
 			p.Data.GetNonce() < 0 {
 			b.blockSizer.blockCount++
 			q, _ := b.BlockByHash(&p.Hash)
-			s, _ := q.Bytes()
-			b.blockSizer.sizeSum += int64(len(s))
+//			s, _ := q.Bytes()
+			b.blockSizer.sizeSum += int64(len(q.MsgBlock().Transactions))	// s))
 			b.blockSizer.timeSum += b.blockSizer.lastNode.Data.TimeStamp() - p.Data.TimeStamp()
 		}
 		b.blockSizer.lastNode = p

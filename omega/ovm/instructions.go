@@ -1788,15 +1788,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				top++
 
 			case 1:
-				if allZero(libAddr[:]) {
-					offset = int(num)
-				} else {
-					var bn [4]byte
-					for i := 0; i < 4; i++ {
-						bn[i] = byte((num >> (i * 8)) & 0xFF)
-					}
-					f.space = append(f.space, bn[:]...)
-				}
+				offset = int(num)			// entry point
 				top++
 
 			default:
@@ -1825,7 +1817,11 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 			*pc = int(target)
 		} else {
-			*pc = int(contract.libs[libAddr].address)
+			target := contract.libs[libAddr].address + int32(offset)
+			if target < contract.libs[libAddr].address || target >= contract.libs[libAddr].end {
+				return fmt.Errorf("Out of range func call")
+			}
+			*pc = int(target)
 		}
 		stack.data = append(stack.data, f)
 		return nil
@@ -1839,13 +1835,11 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	ln := len(param)
 
 	num := int64(0)
-	slen := int64(0)
-	dataType := []byte{0xFF, 0x42, 'r'}
+	dataType := []byte{0xFF, 'D'}
 	var err error
 	var tl int
-	var h []byte
+	var h [4]byte
 	var store pointer
-//	var dt byte
 	top := 0
 
 	for j := 0; j < ln; j++ {
@@ -1853,36 +1847,23 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
-			if dataType[top] == 'r' {
-				if h, tl, err = stack.getBytes(param[j:], 'r', 0); err != nil {
-					return err
-				}
+			if num, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
+				return err
+			}
+			if dataType[top] == 'D' {
+				binary.LittleEndian.PutUint32(h[:], uint32(num))
 			} else {
-				if num, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
-					return err
-				}
-				if top == 0 {
-					store = pointer(num)
-				} else {
-					slen = num
-				}
+				store = pointer(num)
 			}
 			top++
 			j += tl
-
-//		case 'R', 'r', 'B', 'W', 'D', 'Q', 'H', 'h', 'k', 'K':	// b
-//			dt = param[j]
 		}
 	}
 
-	d := evm.GetState(contract.self.Address(), string(h[:slen]))
+	d := evm.GetState(contract.self.Address(), string(h[:4]))
 
 	var n uint32
-//	if dt == 0 {
-		n = uint32(len(d))
-//	} else {
-//		n = sizeOfType[dt]
-//	}
+	n = uint32(len(d))
 
 	if d == nil || len(d) < int(n) {
 		return fmt.Errorf("Load failure")
@@ -1915,8 +1896,8 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	idx := 0
 	var dt byte
 
-	dataType := []byte{'r', 'h'}
-	dt = 'r'
+	dataType := []byte{'D', 'h'}
+	dt = 'D'
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {

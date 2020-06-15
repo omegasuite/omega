@@ -306,7 +306,7 @@ func opCallValidator(param []byte) int {
 }
 
 var formatLoad = []formatDesc{
-	{addrOperand, 0xffffffff}, {patOperand, 0xff},
+	{addrOperand, 0xffffffff},
 	{patOperand, 0},
 }
 
