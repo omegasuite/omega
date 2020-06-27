@@ -12,16 +12,14 @@ package validate
 
 import (
 	"fmt"
-	"math"
 
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/omega"
-	"github.com/btcsuite/omega/viewpoint"
 	"github.com/btcsuite/btcutil"
-	"sort"
 	"github.com/btcsuite/omega/token"
+	"github.com/btcsuite/omega/viewpoint"
 )
 
+/*
 func saneVertex(v * token.VertexDef) bool {
 	// it is a valid earth geo coord?
 	x := float64(int32(v.Lng())) / token.CoordPrecision
@@ -62,7 +60,8 @@ func saneVertex(v * token.VertexDef) bool {
 	}
 	return true
 }
-
+ */
+/*
 func containEdge(p * viewpoint.PolygonEntry, views * viewpoint.ViewPointSet, r * token.BorderDef) byte {
 	for r != nil {
 		for _,loop := range p.Loops {
@@ -78,7 +77,7 @@ func containEdge(p * viewpoint.PolygonEntry, views * viewpoint.ViewPointSet, r *
 		if r.Father.IsEqual(&chainhash.Hash{}) {
 			return 2
 		}
-		f,_ := views.Border.FetchEntry(views.Db, &r.Father)
+		f,_ := views.FetchBorderEntry(&r.Father)
 		if f == nil {
 			return 2
 		}
@@ -87,14 +86,13 @@ func containEdge(p * viewpoint.PolygonEntry, views * viewpoint.ViewPointSet, r *
 
 	return 2
 }
-
-const GeoError = float64(0.0001)	// allowed error relative to length of edge
+ */
 
 func online(r * token.VertexDef, begin * token.VertexDef, end * token.VertexDef, delim * token.VertexDef) bool {
 	// determine whether point r is on the line segment of (begin, end) relatively within GeoError
-	rf := [2]float64{float64(int64(r.Lng())), float64(int64(r.Lat()))}
-	bf := [2]float64{float64(int64(begin.Lng())), float64(int64(begin.Lat()))}
-	ef := [2]float64{float64(int64(end.Lng())), float64(int64(end.Lat()))}
+	rf := [2]int64{int64(r.Lng()), int64(r.Lat())}
+	bf := [2]int64{int64(begin.Lng()), int64(begin.Lat())}
+	ef := [2]int64{int64(end.Lng()), int64(end.Lat())}
 
 	len := (ef[0] - bf[0]) * (ef[0] - bf[0]) + (ef[1] - bf[1]) * (ef[1] - bf[1])
 
@@ -103,13 +101,13 @@ func online(r * token.VertexDef, begin * token.VertexDef, end * token.VertexDef,
 		return false
 	}
 	d := (rf[0] - bf[0]) * (ef[1] - bf[1]) - (rf[1] - bf[1]) * (ef[0] - bf[0])
-	if math.Abs(d) > GeoError * len {
+	if d != 0 {
 		return false
 	}
 
 	if delim != nil {
 		// further restrict it to not beyond the range defined by delim
-		df := [2]float64{float64(int64(delim.Lng())), float64(int64(delim.Lat()))}
+		df := [2]int64{int64(delim.Lng()), int64(delim.Lat())}
 		if (df[0] - bf[0]) * (ef[0] - bf[0]) + (df[1] - bf[1]) * (ef[1] - bf[1]) >= t {
 			return false
 		}
@@ -117,6 +115,7 @@ func online(r * token.VertexDef, begin * token.VertexDef, end * token.VertexDef,
 	return true
 }
 
+/*
 type edge struct {
 	begin token.VertexDef
 	end token.VertexDef
@@ -144,23 +143,23 @@ func NewEdge(rev byte, hash chainhash.Hash, views *viewpoint.ViewPointSet, lp * 
 			begin: lp.Begin,
 			end: lp.End,
 			rev: 0,
-			lat: lp.Lat(views, false),
-			lng: lp.Lng(views, false),
+			lat: lp.Lat(false),
+			lng: lp.Lng(false),
 		}
 	} else {
 		np = & edge{
 			begin: lp.End,
 			end: lp.Begin,
 			rev: 1,
-			lng: lp.Lng(views, true),
-			lat: lp.Lat(views, true),
+			lng: lp.Lng(true),
+			lat: lp.Lat(true),
 		}
 	}
 	np.rev = rev
 	copy(np.hash[:], hash[:])
 	np.hash[0] &= 0xFE
 	np.children = lp.Children
-	np.west,np.east,np.south,np.north = lp.West(views),lp.East(views),lp.South(views),lp.North(views)
+	np.west,np.east,np.south,np.north = lp.West(),lp.East(),lp.South(),lp.North()
 	np.x, np.y = float64(np.lng) / token.CoordPrecision, float64(np.lat) / token.CoordPrecision
 	return np
 }
@@ -169,12 +168,11 @@ type polygon struct {
 	loops [][]*edge
 }
 
-func expandBorder(hash chainhash.Hash, views *viewpoint.ViewPointSet, rev byte) []*edge {
-	var h chainhash.Hash
+ */
 
-	h.SetBytes(hash.CloneBytes())
-	h[0] &= 0xFE
-	lp, _ := views.Border.FetchEntry(views.Db, &h)
+/*
+func expandBorder(hash chainhash.Hash, views *viewpoint.ViewPointSet, rev byte) []*edge {
+	lp, _ := views.FetchBorderEntry(&hash)
 	if lp == nil {
 		return nil
 	}
@@ -186,9 +184,9 @@ func expandBorder(hash chainhash.Hash, views *viewpoint.ViewPointSet, rev byte) 
 				return nil
 			}
 			if rev == 1 {
-				t = append(res, t[:]...)
+				t = append(res, t...)
 			} else {
-				t = append(t, res[:]...)
+				t = append(t, res...)
 			}
 		}
 		return t
@@ -199,10 +197,10 @@ func expandBorder(hash chainhash.Hash, views *viewpoint.ViewPointSet, rev byte) 
 				end:lp.Begin,
 				hash:hash,
 				rev:rev,
-				west: lp.West(views),
-				east: lp.East(views),
-				south: lp.South(views),
-				north: lp.North(views),
+				west: lp.West(),
+				east: lp.East(),
+				south: lp.South(),
+				north: lp.North(),
 			},
 		}
 	}
@@ -210,16 +208,18 @@ func expandBorder(hash chainhash.Hash, views *viewpoint.ViewPointSet, rev byte) 
 		begin:lp.Begin,
 		end:lp.End,
 		hash:hash,
-		west: lp.West(views),
-		east: lp.East(views),
-		south: lp.South(views),
-		north: lp.North(views),
+		west: lp.West(),
+		east: lp.East(),
+		south: lp.South(),
+		north: lp.North(),
 		},
 	}
 }
+ */
 
+/*
 func expandBorderOnce(hash chainhash.Hash, views *viewpoint.ViewPointSet, rev byte) []*edge {
-	lp, _ := views.Border.FetchEntry(views.Db, &hash)
+	lp, _ := views.FetchBorderEntry(&hash)
 
 	if lp.Children != nil && len(lp.Children) > 0 {
 		t := make([]*edge, len(lp.Children))
@@ -228,14 +228,16 @@ func expandBorderOnce(hash chainhash.Hash, views *viewpoint.ViewPointSet, rev by
 			if rev == 1 {
 				n = len(lp.Children) - 1 - i
 			}
-			p, _ := views.Border.FetchEntry(views.Db, &c)
+			p, _ := views.FetchBorderEntry(&c)
 			t[n] = NewEdge(rev, c, views, p)
 		}
 		return t
 	}
 	return nil
 }
+ */
 
+/*
 func disjoint(a * edge, b * edge) bool {
 	// test whether bounding boxes are disjoint
 	if a.west > b.east || b.west > a.east {
@@ -246,7 +248,9 @@ func disjoint(a * edge, b * edge) bool {
 	}
 	return false
 }
+ */
 
+/*
 func fetchPolygon(p *token.PolygonDef, views *viewpoint.ViewPointSet) (*polygon, error) {
 	q := &polygon{
 		loops:make([][]*edge, 0),
@@ -256,7 +260,7 @@ func fetchPolygon(p *token.PolygonDef, views *viewpoint.ViewPointSet) (*polygon,
 	for _,loop := range loops {
 		t := make([]*edge, 0, len(loop))
 		for _, l := range loop {
-			lp, _ := views.Border.FetchEntry(views.Db, &l)
+			lp, _ := views.FetchBorderEntry(&l)
 			if lp == nil {
 					return nil, ruleError(2, "Undefined border")
 				}
@@ -282,16 +286,11 @@ func fetchPolygon(p *token.PolygonDef, views *viewpoint.ViewPointSet) (*polygon,
 	}
 	return q, nil
 }
+ */
 
-func sanePolygon(p *token.PolygonDef, views *viewpoint.ViewPointSet) error {
-	// 1. check everything has been defined and loop is indeed a loop
-	q, err := fetchPolygon(p, views)
-	if err != nil {
-		return err
-	}
-
-	// 2. check the first loop in polygon is ccw
-	cl, sum := q.loops[0], 0.0
+/*
+func loopccw(cl []*edge) bool {
+	sum := 0.0
 	vp := cl[len(cl) - 1]
 	ex, ey := cl[0].x - vp.x, cl[0].y - vp.y
 	for i,l := range cl {
@@ -302,196 +301,195 @@ func sanePolygon(p *token.PolygonDef, views *viewpoint.ViewPointSet) error {
 		ex = fx
 		ey = fy
 	}
-	if sum <= 0 {
-		str := fmt.Sprintf("First loop is not counter clock-wise in polygon %s", p.Hash().String())
-		return ruleError(1, str)
+	return sum > 0
+}
+ */
+
+func commonEdge(p, q *token.LoopDef, views *viewpoint.ViewPointSet) bool {
+	ploops := make([]token.LoopDef, 0)
+	qloops := make([]token.LoopDef, 0)
+	if len(*p) == 1 {
+		plg, _ := views.FetchPolygonEntry(&(*p)[0])
+		ploops = plg.Loops
+	} else {
+		ploops = append(ploops, *p)
 	}
-
-	// 3. check all other loops are completely inside the ccw loop
-
-	// prepare:
-	// we need to find out how many intersections there are
-	// for a ray from a vertex with the ccw loop. If the number is
-	// odd, it is inside. otherwise it is outseide of the ccw loop.
-	// remember that edges here are not bottom edges. so we first expand edges until their bounding
-	// boxes are not intersecting or the edge is bottom
-	// if the bouding boxes are not intersecting, we can use center of bouding box to represent all
-	// vertices
-	// the the bouding boxes are intersecting even when we have reached the bottom, we have to do it
-	// conventional way
-
-	for k,loop := range q.loops {
-		if k == 0 {
-			continue
+	if len(*q) == 1 {
+		plg, _ := views.FetchPolygonEntry(&(*q)[0])
+		qloops = plg.Loops
+	} else {
+		qloops = append(qloops, *q)
+	}
+	pboxes := make([]viewpoint.BoundingBox, len(ploops))
+	qboxes := make([]viewpoint.BoundingBox, len(qloops))
+	if len(ploops) > 1 || len(qloops) > 1 {
+		for i,pb := range ploops {
+			pboxes[i] = views.LoopBound(&pb)
 		}
-reloop:
-		for i,v := range loop {
-		reloop2:
-			for j,l := range cl {
-				if disjoint(v, l) {
+		for i,pb := range qloops {
+			qboxes[i] = views.LoopBound(&pb)
+		}
+		for i, lp := range ploops {
+			for j, lq := range qloops {
+				if !pboxes[i].Intersects(&qboxes[j], false) {
 					continue
 				}
-				var xspan int32
-				var yspan int32
-				if v.west < l.west {
-					if v.east > l.west {
-						xspan = v.east - l.west
-					}
-				} else {
-					if v.east < l.west {
-						xspan = l.east - v.west
-					}
+				if commonEdge(&lp, &lq, views) {
+					return true
 				}
-				if v.south < l.south {
-					if v.north > l.south {
-						yspan = v.north - l.south
-					}
-				} else {
-					if v.north < l.south {
-						yspan = l.north - v.south
-					}
-				}
-				splitv := false
-				if (yspan > xspan && v.north-v.south > l.north-l.south) || (xspan > yspan && v.east-v.west > l.east-l.west) {
-					splitv = true
-					lp,_ := views.Border.FetchEntry(views.Db, &v.hash)
-					if lp.Children != nil && len(lp.Children) > 0 {
-						qr := append(loop[:i], expandBorderOnce(v.hash, views, v.hash[0] & 1)[:]...)
-						qr = append(qr, loop[i+1:]...)
-						q.loops[k] = qr
-						loop = qr
-						goto reloop
-					} else {
-						splitv = false
-					}
-				}
-				if !splitv {
-					lp,_ := views.Border.FetchEntry(views.Db, &l.hash)
-					if lp.Children != nil && len(lp.Children) > 0 {
-						qr := append(cl[:j], expandBorderOnce(l.hash, views, l.hash[0] & 1)[:]...)
-						qr = append(qr, cl[j+1:]...)
-						q.loops[0] = qr
-						cl = qr
-						goto reloop2
-					}
-				}
+			}
+		}
+		return false
+	}
+
+	return views.CommonEdge(p, q)
+}
+
+func sanePolygon(p *token.PolygonDef, views *viewpoint.ViewPointSet,
+	ccwloops, cwloops Cs2Loop, inloops, unxloops MatchLoop) error {
+	for _,q := range p.Loops {
+		if len(q) == 1 {
+			d, _ := views.FetchPolygonEntry(&q[0])
+			if d.Depth >= 100 {
+				return fmt.Errorf("Polygon definition is too deep")
 			}
 		}
 	}
 
-	for k,loop := range q.loops {
-		if k == 0 {
+	// 1. check everything has been defined and loop is indeed a loop and
+	// all loops except for the first are CW
+	firstCW := false
+	css := make([]string, len(p.Loops))
+	boxes := make([]*viewpoint.BoundingBox, len(p.Loops))
+	var ccw bool
+
+	for i, lp := range p.Loops {
+		css[i] = lp.CheckSum()
+		if cwloops.Match(css[i], &lp) || (i == 0 && ccwloops.Match(css[i], &lp)) {
 			continue
 		}
 
-		// check # of intersections of an ray from inner loop vertex in an optimal direction
-		// that results in smaller error in intersection calculation
-
-		for _,v := range loop {
-			// selection direction
-			points := make([]float64, 0, len(loop))
-			var dir float64
-			for _,l := range cl {
-				if l.y <= v.y {
-					continue
-				}
-				points = append(points, (l.x - v.x) / (l.y - v.y))
-			}
-			if len(points) == 0 {
-				str := fmt.Sprintf("Border %s ouside counter clock-wise loops in polygon %s", v.hash.String(), p.Hash().String())
+		if len(lp) == 1 {
+			plg, _ := views.FetchPolygonEntry(&lp[0])
+			if plg == nil {
+				str := fmt.Sprintf("Polygon %s contains invalid", p.Hash().String())
 				return ruleError(1, str)
 			}
-			if len(points) == 1 {
-				for i,l := range cl {
-					if l.y <= v.y {
-						continue
-					}
-					m := cl[(i+1) % len(cl)]
-					dir = ((l.x - v.x) / (l.y - v.y) + (m.x - v.x) / (m.y - v.y)) / 2.0
-				}
+			boxes[i] = &plg.Bound
+			if i == 0 {
+				firstCW = plg.FirstCW
+			} else if !plg.FirstCW {
+				str := fmt.Sprintf("Polygon %s contains invalid", p.Hash().String())
+				return ruleError(1, str)
+			}
+		} else if !views.IsLoop(&lp) {
+			str := fmt.Sprintf("Polygon %s contains invalid loop", p.Hash().String())
+			return ruleError(1, str)
+		} else if i != 0 {
+			ccw, boxes[i] = views.LoopCCW(&lp)
+			if ccw {
+				str := fmt.Sprintf("Polygon %s contains invalid loop", p.Hash().String())
+				return ruleError(1, str)
+			}
+		} else {
+			firstCW, boxes[i] = views.LoopCCW(&lp)
+			firstCW = !firstCW
+		}
+	}
+
+	for i, lp := range p.Loops {
+		exa := cwloops.Match(css[i], &lp) || (i == 0 && ccwloops.Match(css[i], &lp))
+		for j := 0; j < i; j++ {
+			lq := p.Loops[j]
+			exb := cwloops.Match(css[j], &lq) || (j == 0 && ccwloops.Match(css[j], &lq))
+			if exa && exb {
+				continue
+			}
+			if !boxes[i].Intersects(boxes[j], false) {
+				continue
+			}
+			if commonEdge(&lp, &lq, views) {
+				str := fmt.Sprintf("Polygon %s contains invalid loop", p.Hash().String())
+				return ruleError(1, str)
+			}
+		}
+	}
+
+	// 2. if first loop is ccw, check all other loops are completely inside it
+	if !firstCW {
+		for i := 1; i < len(p.Loops); i++ {
+			if inloops.Match(css[0], css[i], &p.Loops[0], &p.Loops[i]) {
+				continue
+			}
+			if !boxes[0].Contain(boxes[i]) {
+				str := fmt.Sprintf("Polygon %s contains invalid loop", p.Hash().String())
+				return ruleError(1, str)
+			}
+			if tb := views.Intersects(&p.Loops[0], &p.Loops[i], boxes[0], boxes[i], false); tb {
+				str := fmt.Sprintf("Polygon %s contains self intersecting loop", p.Hash().String())
+				return ruleError(1, str)
+			}
+			if !views.InOutCheck(&p.Loops[0], &p.Loops[i], boxes[i]) {
+				str := fmt.Sprintf("Polygon %s contains invalid loop", p.Hash().String())
+				return ruleError(1, str)
+			}
+		}
+	}
+
+	// 3. check that there is no intersection between edges in a loop
+	for i, lp := range p.Loops {
+		if len(lp) == 1 {
+			continue
+		}
+		if cwloops.Match(css[i], &lp) || (i == 0 && ccwloops.Match(css[i], &lp)) {
+			// known valid loop
+			continue
+		}
+		if tb := views.Intersects(&p.Loops[i], &p.Loops[i], boxes[i], boxes[i], true); tb {
+			str := fmt.Sprintf("Polygon %s contains self intersecting loop", p.Hash().String())
+			return ruleError(1, str)
+		}
+	}
+
+	// 4. check that there is no intersection between loops
+	start := 1
+	if firstCW {
+		start = 0
+	}
+	for i := start; i < len(p.Loops); i++ {
+		lp := &p.Loops[i]
+		um := cwloops.Match(css[i], lp) || (i == 0 && ccwloops.Match(css[i], lp))
+		for j := start; j < i; j++ {
+			lq := &p.Loops[j]
+			if unxloops.Match(css[i], css[j], lp, lq) {
+				continue
+			}
+			if !boxes[i].Intersects(boxes[j], false) {
+				continue
+			}
+			// pick the newly defined (if has one) as the main loop
+			var major, minor * token.LoopDef
+			var b1, b2 int
+			if um {
+				major, minor, b1, b2 = lp, lq, i, j
 			} else {
-				sort.Float64s(points)
-				diff := float64(0.0)
-				for i := 1; i < len(points); i++ {
-					if diff < points[i] - points[i-1] {
-						dir = (points[i] + points[i-1]) / 2
-						diff = points[i] - points[i-1]
-					}
-				}
+				major, minor, b1, b2 = lq, lp, j, i
 			}
-
-			intersects := 0
-			// the direction we choose is (dir, 1.0). now find out how many intersections there are
-			// for a ray in this direction starting from current vertex with the ccw loop. If the number is
-			// odd, it is inside. otherwise it is outseide of the ccw loop
-			// remember that edges here are not bottom edges. so we first expand edges until their bounding
-			// boxes are not intersecting or the edge is bottom
-			// if the bouding boxes are not intersecting, we can use center of bouding box to represent all
-			// vertices
-			// the the bouding boxes are intersecting even when we have reached the bottom, we have to do it
-			// conventional way
-
-			vp := cl[len(cl) - 1]
-			for _,l := range cl {
-				if vp.y < v.y && l.y <= v.y {
-					vp = l
-					continue
-				}
-				if vp.x > v.x && l.x >= v.x {
-					vp = l
-					continue
-				}
-				if vp.x < v.x && l.x <= v.x {
-					vp = l
-					continue
-				}
-				if intersect(v, dir, vp, l) {
-					intersects++
-				}
-				vp = l
-			}
-			if intersects > 0 && intersects & 1 == 0 {
-				str := fmt.Sprintf("Vertex %f, %f is ouside polygon %s (%d loops)\n", v.x, v.y, p.Hash().String(), len(p.Loops))
-				str += fmt.Sprintf("intersects = %d, dir = (%f, 1.0)", intersects, dir)
+			if tb := views.Intersects(major, minor, boxes[b1], boxes[b2], false); tb {
+				str := fmt.Sprintf("Polygon %s contains intersecting loop", p.Hash().String())
 				return ruleError(1, str)
 			}
-		}
-	}
 
-	// 4. check that there is no intersection between edges
-	for i,loop := range q.loops {
-		vp := loop[len(loop) - 1]
-		for j,l := range loop {
-			for m := i; m < len(q.loops); m++ {
-				loop2 := q.loops[m]
-				if m == i {
-					vp2 := loop2[j]
-					for n := j; n <= len(loop2); n++ {
-						l2 := loop2[n % len(loop2)]
-						if intersect2(vp, l, vp2, l2) {
-							str := fmt.Sprintf("Intersecting edges in polygon %s", p.Hash().String())
-							return ruleError(1, str)
-						}
-						vp2 = l2
-					}
-				} else {
-					vp2 := loop2[len(loop2) - 1]
-					for _,l2 := range loop2 {
-						if intersect2(vp, l, vp2, l2) {
-							str := fmt.Sprintf("Intersecting edges in polygon %s", p.Hash().String())
-							return ruleError(1, str)
-						}
-						vp2 = l2
-					}
-				}
+			if boxes[b1].Contain(boxes[b2]) && views.InOutCheck(major, minor, boxes[b2]) {
+				str := fmt.Sprintf("Polygon %s contains invalid loop", p.Hash().String())
+				return ruleError(1, str)
 			}
-			vp = l
 		}
 	}
 
 	return nil
 }
-
+/*
 func intersect2(a *edge, b *edge, c *edge, d *edge) bool {
 	if disjoint(a, c) {
 		return false
@@ -510,6 +508,121 @@ func intersect(v *edge, dir float64, vp *edge, l *edge) bool {
 	}
 
 	return v.y - (vp.y + (t1 / t2) * (l.y - vp.y)) > 0
+}
+ */
+
+type quadtree struct {
+	index uint64
+	substrees map[uint64]*quadtree
+	inedges map[chainhash.Hash]*viewpoint.BorderEntry
+	outedges map[chainhash.Hash]*viewpoint.BorderEntry
+}
+
+func (t * quadtree) reset(x uint64) {
+	t.index = x
+	t.substrees = make(map[uint64]*quadtree)
+	t.inedges = make(map[chainhash.Hash]*viewpoint.BorderEntry)
+	t.outedges = make(map[chainhash.Hash]*viewpoint.BorderEntry)
+}
+
+func (t * quadtree) add(h chainhash.Hash, e *viewpoint.BorderEntry, x uint64, in bool) {
+	if in {
+		if _,ok := t.outedges[h]; ok {
+			delete(t.outedges, h)
+			return
+		}
+	} else {
+		if _,ok := t.inedges[h]; ok {
+			delete(t.inedges, h)
+			return
+		}
+	}
+	if t.index == x {
+		if in {
+			t.inedges[h] = e
+		} else {
+			t.outedges[h] = e
+		}
+		return
+	}
+	hi, n := uint64(1), 1
+	for hi & t.index == 0 {
+		hi, n = hi << 1, n + 1
+	}
+	mx := (t.index & 0xFFFFFFFF) >> n
+	my := t.index >> (n + 32)
+	if (x & 0xFFFFFFFF) > mx {
+		mx += hi
+	} else {
+		mx -= hi
+	}
+	if (x >> 32) > my {
+		my += hi
+	} else {
+		my -= hi
+	}
+	hi >>= 1
+	ni := mx | hi | ((my | hi) << 32)
+	if _,ok := t.substrees[ni]; !ok {
+		t := &quadtree{}
+		t.reset(ni)
+		t.substrees[ni] = t
+	}
+	t.substrees[ni].add(h, e, x, in)
+}
+
+func (t * quadtree) expand(view *viewpoint.ViewPointSet) bool {
+	check := true
+	for check {
+		check = false
+		for h, e := range t.inedges {
+			if len(e.Children) > 0 {
+				c := viewpoint.ReorderChildren(e.Children, h[0]&1 == 1)
+				delete(t.inedges, h)
+				for _, p := range c {
+					if _, ok := t.outedges[p]; ok {
+						delete(t.outedges, p)
+					} else {
+						be, _ := view.FetchBorderEntry(&p)
+						t.add(p, be, be.Boxindex(), true)
+						check = true
+					}
+				}
+			}
+		}
+	}
+
+	check = true
+	for check {
+		check = false
+		for h, e := range t.outedges {
+			if len(e.Children) > 0 {
+				c := viewpoint.ReorderChildren(e.Children, h[0]&1 == 1)
+				delete(t.outedges, h)
+				for _, p := range c {
+					if _, ok := t.inedges[p]; ok {
+						delete(t.inedges, p)
+					} else {
+						be, _ := view.FetchBorderEntry(&p)
+						t.add(p, be, be.Boxindex(), false)
+						check = true
+					}
+				}
+			}
+		}
+	}
+
+	if len(t.inedges) > 0 || len(t.outedges) > 0 {
+		return false
+	}
+
+	for _, s := range t.substrees {
+		if !s.expand(view) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func CheckGeometryIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet) bool {
@@ -532,7 +645,7 @@ func CheckGeometryIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet) bool 
 
 			for s, _ := range basicRS {
 				emt.right = s
-				e, _ := views.Rights.FetchEntry(views.Db, &s)
+				e, _ := views.FetchRightEntry(&s)
 				v := e.(*viewpoint.RightEntry)
 				isdecedent := false
 decendent:
@@ -541,7 +654,7 @@ decendent:
 						isdecedent = true
 						break decendent
 					}
-					e, _ := views.Rights.FetchEntry(views.Db, &r)
+					e, _ := views.FetchRightEntry(&r)
 					u := e.(*viewpoint.RightEntry)
 
 					if decentOf(v, &s, u, &r, views) {
@@ -568,9 +681,11 @@ decendent:
 		}
 	}
 
-	// for each group, check geometry integrity
+	// for each group, check geometry integrity: since wu know all polygons are sane,
+	// we only need to check after cancellation, in & out have the same set of borders
 	for i, g := range groups {
-		// quick cancellation: if one polygon/right combination appears in both sides, cancel them out
+		// polygon quick cancellation: if one polygon/right combination appears in both
+		// sides, cancel them out
 		for in,_ := range g[0] {
 			if _,ok := g[1][in]; ok {
 				delete(groups[i][0], in)
@@ -590,17 +705,36 @@ decendent:
 			return false
 		}
 
-		ingeo := Borders(g[0], views)
-		outgeo := Borders(g[1], views)
+		// map is always passed as reference in func calls
+		ingeo := make(map[chainhash.Hash]struct{})
+		outgeo := make(map[chainhash.Hash]struct{})
 
+		Borders(g[0], views, ingeo)
+		Borders(g[1], views, outgeo)
+
+		for b, _ := range ingeo {
+			if _, ok := outgeo[b]; ok {
+				delete(outgeo, b)
+				delete(ingeo, b)
+			}
+		}
+
+		var root quadtree
+		root.reset(0x8000000080000000)
+		for b, _ := range ingeo {
+			e,_ := views.FetchBorderEntry(&b)
+			root.add(b, e, e.Boxindex(), true)
+		}
+		for b, _ := range outgeo {
+			e,_ := views.FetchBorderEntry(&b)
+			root.add(b, e, e.Boxindex(), false)
+		}
+		if !root.expand(views) {
+			return false
+		}
+/*
 		bentry := make(map[chainhash.Hash]*viewpoint.BorderEntry)
 		for check := true; check; {
-			for b, _ := range ingeo {
-				if _, ok := outgeo[b]; ok {
-					delete(outgeo, b)
-					delete(ingeo, b)
-				}
-			}
 			if len(ingeo) == 0 && len(outgeo) == 0 {
 				return true
 			}
@@ -611,14 +745,14 @@ decendent:
 				s := b
 				s[0] &^= 1
 				if _,ok := bentry[b]; !ok {
-					e,_ := views.Border.FetchEntry(views.Db, &s)
+					e,_ := views.FetchBorderEntry(&s)
 					bentry[s] = e
 				}
 				for d, _ := range outgeo {
 					t := d
 					t[0] &^= 1
 					if _,ok := bentry[d]; !ok {
-						e,_ := views.Border.FetchEntry(views.Db, &t)
+						e,_ := views.FetchBorderEntry(&t)
 						bentry[t] = e
 					}
 					if bentry[s].Enclose(bentry[t]) && len(bentry[s].Children) > 0 {
@@ -644,8 +778,9 @@ decendent:
 		if len(ingeo) != 0 || len(outgeo) != 0 {
 			return false
 		}
+ */
 
-		/*
+ /*
 				// now we have merge and compare
 				wpolygon := make(map[chainhash.Hash][][]*edge, 0)
 				// merge geometries
@@ -671,15 +806,18 @@ decendent:
 	return true
 }
 
+/*
 func BorderDeeper(geo *map[chainhash.Hash]struct{}, b chainhash.Hash, bentry * map[chainhash.Hash]*viewpoint.BorderEntry, views *viewpoint.ViewPointSet) {
 	s := b
 	s[0] &^= 1
 	delete(*bentry, s)
 	delete(*geo, b)
+	var rev byte
+	if !s.IsEqual(&b) {
+		rev = 1
+	}
 	for _,h := range (*bentry)[s].Children {
-		if !s.IsEqual(&b) {
-			h[0] |= 1
-		}
+		h[0] |= rev
 		r := h
 		r[0] &^= 1
 		if _,ok := (*geo)[r]; ok {
@@ -689,32 +827,29 @@ func BorderDeeper(geo *map[chainhash.Hash]struct{}, b chainhash.Hash, bentry * m
 		(*geo)[h] = struct{}{}
 	}
 }
+ */
 
-func Borders(old map[chainhash.Hash]struct{}, views *viewpoint.ViewPointSet) map[chainhash.Hash]struct{} {
-	borders := make(map[chainhash.Hash]struct{})
+func Borders(old map[chainhash.Hash]struct{}, views *viewpoint.ViewPointSet, borders map[chainhash.Hash]struct{}) {
 	for p,_ := range old {
-		q, _ := views.Polygon.FetchEntry(views.Db, &p)
-		m := make([]token.LoopDef, 0)
-		for len(q.Loops[0]) == 1 {
-			m = append(m, q.Loops[1:]...)
-			q, _ = views.Polygon.FetchEntry(views.Db, &q.Loops[0][0])
-		}
-		q.Loops = append(q.Loops, m...)
-
-		for _, l := range q.Loops {
-			for _, r := range l {
-				t := r
-				t[0] ^= 1
-				if _, ok := borders[t]; ok {
-					delete(borders, t)
-				} else {
-					borders[r] = struct{}{}
+		q, _ := views.FetchPolygonEntry(&p)
+		for _,l := range q.Loops {
+			if len(l) == 1 {
+				Borders(map[chainhash.Hash]struct{}{l[0]: {}}, views, borders)
+			} else {
+				for _, r := range l {
+					t := r
+					t[0] ^= 1
+					if _, ok := borders[t]; ok {
+						delete(borders, t)
+					} else {
+						borders[r] = struct{}{}
+					}
 				}
 			}
 		}
 	}
-	return borders
 }
+
 /*
 func GeoMerge(old map[chainhash.Hash]struct{}, views *viewpoint.ViewPointSet, realgeo * map[chainhash.Hash][][]*edge) [][][]*edge {
 	polygons := make([][][]*edge, 0, len(old))

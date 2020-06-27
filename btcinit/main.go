@@ -640,12 +640,8 @@ func printminerblock(blk wire.MingingRightBlock) {
 	fmt.Printf("]\n\tBlackList: %s\n", blk.BlackList)
 }
 
-func printbytes(p []byte) {
-	fmt.Printf("[12]byte{")
-	for _,r := range p {
-		fmt.Printf("0x%02x, ", r)
-	}
-	fmt.Printf("}")
+func printvertex(p token.VertexDef) {
+	fmt.Printf("* token.NewVertexDef(%d, %d, %d)", p.Lat(), p.Lng(), p.Alt())
 }
 
 func printdef(def []token.Definition) {
@@ -662,9 +658,9 @@ func printdef(def []token.Definition) {
 				printhash(v.Father)
 			}
 			fmt.Printf(",\n\t\tBegin: ")
-			printbytes(v.Begin[:])
+			printvertex(v.Begin)
 			fmt.Printf(",\n\t\tEnd: ")
-			printbytes(v.End[:])
+			printvertex(v.End)
 			fmt.Printf(",\n\t},")
 			break
 		case *token.PolygonDef:

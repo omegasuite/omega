@@ -32,7 +32,7 @@ import (
 	"github.com/btcsuite/omega/minerchain"
 	"github.com/btcsuite/omega/ovm"
 	"github.com/btcsuite/omega/token"
-	"github.com/btcsuite/omega/viewpoint"
+//	"github.com/btcsuite/omega/viewpoint"
 	"github.com/btcsuite/websocket"
 	"io"
 	"io/ioutil"
@@ -150,7 +150,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getminerblockcount":    handleGetMinerBlockCount,	// New
 	"getminerblockhash":     handleGetMinerBlockHash,	// New
 	"getblocktxhashes":      handleGetBlockTxHases,	// New
-	"searchborder":   		 handleSearchBorder,	// New
+//	"searchborder":   		 handleSearchBorder,	// New
 	"contractcall":   		 handleContractCall,	// New
 
 //	"getblocktemplate":      handleGetBlockTemplate,
@@ -1231,6 +1231,7 @@ func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	return hex.EncodeToString(ret), err
 }
 
+/*
 func handleSearchBorder(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.SearchBorderCmd)
 
@@ -1258,6 +1259,7 @@ func handleSearchBorder(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 
 	return result, nil
 }
+ */
 
 // handleGetBlock implements the getblock command.
 func handleGetBlockTxHases(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {

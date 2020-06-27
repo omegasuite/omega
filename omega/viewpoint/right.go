@@ -176,7 +176,7 @@ func SetOfRights(view * ViewPointSet, r interface{}) []*RightEntry {
 	case *RightSetEntry:
 		rs := make([]*RightEntry, 0, len(r.(*RightSetEntry).Rights))
 		for _, r := range r.(*RightSetEntry).Rights {
-			p,_ := view.Rights.FetchEntry(view.Db, &r)
+			p,_ := view.FetchRightEntry(&r)
 			if p != nil {
 				rs = append(rs, p.(*RightEntry))
 			}
@@ -189,7 +189,7 @@ func InSet(view * ViewPointSet, r chainhash.Hash, s *chainhash.Hash) bool {
 	if s == nil {
 		return false
 	}
-	p,_ := view.Rights.FetchEntry(view.Db, s)
+	p,_ := view.FetchRightEntry(s)
 	if p == nil {
 		return false
 	}
@@ -307,7 +307,7 @@ func (view * ViewPointSet) addRight(b *token.RightDef) bool {
 			entry.Depth = 0
 			entry.Root = h
 		} else {
-			f, _ := view.Rights.FetchEntry(view.Db, &b.Father)
+			f, _ := view.FetchRightEntry(&b.Father)
 			if f == nil {
 				return false
 			}
@@ -381,7 +381,7 @@ func (views *ViewPointSet) TokenRights(x *UtxoEntry) []chainhash.Hash {
 	if tokenType & 2 == 0 {
 		return []chainhash.Hash{}
 	} else {
-		t, _ := views.Rights.FetchEntry(views.Db, rs)
+		t, _ := views.FetchRightEntry(rs)
 		if yy := SetOfRights(views, t); yy != nil {
 			y := make([]chainhash.Hash, 0, len(yy))
 			for _, r := range yy {
@@ -395,9 +395,9 @@ func (views *ViewPointSet) TokenRights(x *UtxoEntry) []chainhash.Hash {
 // fetchEntry attempts to find any vertex for the given hash by
 // searching the entire view.  It checks the view first and then falls
 // back to the database if needed.
-func (view * RightViewpoint) FetchEntry(db database.DB, hash *chainhash.Hash) (interface{}, error) {
+func (view * ViewPointSet) FetchRightEntry(hash *chainhash.Hash) (interface{}, error) {
 	// First attempt to find a utxo with the provided hash in the view.
-	entry := view.LookupEntry(*hash)
+	entry := view.Rights.LookupEntry(*hash)
 	if entry != nil {
 		return entry, nil
 	}
@@ -405,10 +405,10 @@ func (view * RightViewpoint) FetchEntry(db database.DB, hash *chainhash.Hash) (i
 	// Check the database since it doesn't exist in the view.  This will
 	// often by the case since only specifically referenced vertex are loaded
 	// into the view.
-	err := db.View(func(dbTx database.Tx) error {
+	err := view.Db.View(func(dbTx database.Tx) error {
 		e, err := DbFetchRight(dbTx, hash)
 		if e != nil {
-			view.entries[*hash] = e
+			view.Rights.entries[*hash] = e
 			entry = e
 		}
 		return  err
@@ -431,15 +431,15 @@ func (entry *RightEntry) RollBack() {
 // disconnectTransactions updates the view by removing all of the transactions
 // created by the passed block, removing all vertices defined in the transactions,
 // and setting the best hash for the view to the block before the passed block.
-func (view * RightViewpoint) disconnectTransactions(db database.DB, block *btcutil.Block) error {
+func (view * ViewPointSet) disconnectRightTransactions(block *btcutil.Block) error {
 	for _,tx := range block.Transactions() {
 		for _, txDef := range tx.MsgTx().TxDef {
 			switch txDef.(type) {
 			case *token.RightDef:
 				h := txDef.Hash()
-				p := view.LookupEntry(h)
+				p := view.Rights.LookupEntry(h)
 				if p == nil {
-					p,_ = view.FetchEntry(db, &h)
+					p,_ = view.FetchRightEntry(&h)
 				}
 				if p != nil {
 					p.(*RightEntry).RollBack()
@@ -447,9 +447,9 @@ func (view * RightViewpoint) disconnectTransactions(db database.DB, block *btcut
 
 			case *token.RightSetDef:
 				h := txDef.Hash()
-				p := view.LookupEntry(h)
+				p := view.Rights.LookupEntry(h)
 				if p == nil {
-					p,_ = view.FetchEntry(db, &h)
+					p,_ = view.FetchRightEntry(&h)
 				}
 				if p != nil {
 					p.(*RightSetEntry).RollBack()
@@ -460,7 +460,7 @@ func (view * RightViewpoint) disconnectTransactions(db database.DB, block *btcut
 
 	// Update the best hash for view to the previous block since all of the
 	// transactions for the current block have been disconnected.
-	view.SetBestHash(&block.MsgBlock().Header.PrevBlock)
+	view.Rights.SetBestHash(&block.MsgBlock().Header.PrevBlock)
 	return nil
 }
 
@@ -558,7 +558,6 @@ func NewRightViewpoint() * RightViewpoint {
 		entries: make(map[chainhash.Hash]interface{}),
 	}
 }
-
 
 // dbPutRightView uses an existing database transaction to update the right set
 // in the database based on the provided right view contents and state. In

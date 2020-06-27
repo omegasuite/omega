@@ -12,7 +12,6 @@ package validate
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/omega/viewpoint"
@@ -25,8 +24,9 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 	// in the same tx. for every top border (father=nil) definition, it must be referenced by a polygon definition
 	// in the same tx. for every polygon definition, it must be referenced by a txout in the same tx.
 	// for every right definition, it must be referenced by a txout in the same tx.
-	for _, def := range msgTx.TxDef {
+	for i, def := range msgTx.TxDef {
 		switch def.(type) {
+/*
 		case *token.VertexDef:
 			v := def.(*token.VertexDef)
 			refd := false
@@ -50,7 +50,7 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 					float64(int32(v.Alt())) / token.CoordPrecision, v.Lat(), v.Lng(), v.Alt())
 				return ruleError(1, str)
 			}
-			break
+ */
 		case *token.BorderDef:
 			v := def.(*token.BorderDef)
 			if !v.Father.IsEqual(&chainhash.Hash{}) {
@@ -76,7 +76,7 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 				str := fmt.Sprintf("Border %s is defined but not referenced.", h.String())
 				return ruleError(1, str)
 			}
-			break
+
 		case *token.PolygonDef:
 			v := def.(*token.PolygonDef)
 			refd := false
@@ -88,13 +88,30 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 				n := to.Value.(*token.HashToken).Hash
 				if n.IsEqual(&h) {
 					refd = true
+					break
+				}
+			}
+			if !refd {
+			checked:
+				for j := i + 1; j < len(msgTx.TxDef); j++ {
+					q := msgTx.TxDef[j]
+					switch q.(type) {
+					case *token.PolygonDef:
+						v := q.(*token.PolygonDef)
+						for _, lp := range v.Loops {
+							if len(lp) == 1 && lp[0].IsEqual(&h) {
+								refd = true
+								break checked
+							}
+						}
+					}
 				}
 			}
 			if !refd {
 				str := fmt.Sprintf("Polygon %s is defined but not referenced.", h.String())
 				return ruleError(1, str)
 			}
-			break
+
 		case *token.RightDef:
 			v := def.(*token.RightDef)
 			refd := false
@@ -157,29 +174,169 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 //
 // NOTE: The transaction MUST have already been sanity checked with the
 // CheckTransactionSanity function prior to calling this function.
-func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
+type Cs2Loop map[string]*struct {
+	Loops []*token.LoopDef
+}
+
+func (s *Cs2Loop) Add(cs string, loop *token.LoopDef) {
+	if _,ok := (*s)[cs]; !ok {
+		t := struct { Loops []*token.LoopDef }{
+			make([]*token.LoopDef, 0, 1),
+		}
+		(*s)[cs] = &t
+	}
+	t := (*s)[cs]
+	t.Loops = append(t.Loops, loop)
+}
+
+func (s *Cs2Loop) Match(cs string, loop *token.LoopDef) bool {
+	if _, ok := (*s)[cs]; !ok {
+		return false
+	}
+	t := (*s)[cs]
+	for _,p := range t.Loops {
+		if loop.Equal(p) {
+			return true
+		}
+	}
+	return false
+}
+
+type MatchLoop map[string]*struct {
+	Loops []struct{
+		checksum string
+		loop *token.LoopDef
+	}
+}
+
+func (s *MatchLoop) Match(cs1, cs2 string, loop1, loop2 *token.LoopDef) bool {
+	if _,ok := (*s)[cs1]; !ok {
+		return false
+	}
+	if _,ok := (*s)[cs2]; !ok {
+		return false
+	}
+	t := (*s)[cs1]
+	m := false
+	for _,p := range t.Loops {
+		if p.checksum == cs2 && loop2.Equal(p.loop) {
+			m = true
+			break
+		}
+	}
+	if !m {
+		return false
+	}
+	t = (*s)[cs2]
+	for _,p := range t.Loops {
+		if p.checksum == cs1 && loop1.Equal(p.loop) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *MatchLoop) Add(cs string, loopcs string, loop *token.LoopDef) {
+	if _,ok := (*s)[cs]; !ok {
+		t := struct { Loops []struct{
+			checksum string
+			loop *token.LoopDef
+		}} {
+			make([]struct{
+				checksum string
+				loop *token.LoopDef
+			}, 0, 1),
+		}
+		(*s)[cs] = &t
+	}
+	t := (*s)[cs]
+	t.Loops = append(t.Loops, struct{
+		checksum string
+		loop *token.LoopDef
+	}{ loopcs, loop})
+}
+
+func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) error {
 	// add definitions
 	pendBdr := make(map[chainhash.Hash][]*token.BorderDef)
 	redefbl := make(map[chainhash.Hash]struct{})
 	redefbl[chainhash.Hash{}] = struct{}{}
 
+	// known facts about loops based on inputs
+	ccwloops := make(Cs2Loop, 0)	// ccw loops
+	cwloops := make(Cs2Loop, 0)		// cw loops
+
+	inloops := make(MatchLoop, 0)	// loops in a ccw loop
+	unxloops := make(MatchLoop, 0)	// loops not intersect each other
+
+	for _,d := range tx.MsgTx().TxIn {
+		if d.IsSeparator() {
+			continue
+		}
+		utxo := views.Utxo.LookupEntry(d.PreviousOutPoint)
+		if utxo.TokenType != 3 {
+			continue
+		}
+		plg,_ := views.FetchPolygonEntry(&utxo.Amount.(*token.HashToken).Hash)
+		ccws := make([]string, 0, 1)
+		cs := plg.Loops[0].CheckSum()
+		ccws = append(ccws, cs)
+		ccwloops.Add(cs, &plg.Loops[0])
+		for len(plg.Loops[0]) == 1 {
+			plg2,_ := views.FetchPolygonEntry(&plg.Loops[0][0])
+			cs := plg2.Loops[0].CheckSum()
+			ccws = append(ccws, cs)
+			ccwloops.Add(cs, &plg2.Loops[0])
+		}
+		cwws := make([]string, len(plg.Loops) - 1)
+		for i := 1; i < len(plg.Loops); i++ {
+			is := plg.Loops[i].CheckSum()
+			cwws[i-1] = is
+			cwloops.Add(is, &plg.Loops[i])
+			for _,m := range ccws {
+				inloops.Add(m, is, &plg.Loops[i])
+			}
+			for j := 1; j < i; j++ {
+				unxloops.Add(is, cwws[j-1], &plg.Loops[j])
+				unxloops.Add(cwws[j-1], is, &plg.Loops[i])
+			}
+		}
+	}
+
 	for _,d := range tx.MsgTx().TxDef {
 		h := d.Hash()
 		switch d.(type) {
 		case *token.PolygonDef:
-			ft,_ := views.Polygon.FetchEntry(views.Db, &h)
+			ft,_ := views.FetchPolygonEntry(&h)
 			if ft != nil {		// polygon already exists
 				return ruleError(1, "Illegal Polygon definition.")
 			}
 
 			p := d.(*token.PolygonDef)
-			if err := sanePolygon(p, views); err != nil {
+			if err := sanePolygon(p, views, ccwloops, cwloops, inloops, unxloops); err != nil {
 				return err
 			}
-			views.AddOnePolygon(p)
+			
+			// a newly defined polygon must be used in this Tx. it is either a polygon in txout,
+			// or be used by other polygon. if it is used in a txout, the first loop must be ccw,
+			// otherwise cw.
+			ccw := false
+			th := p.Hash()
+			for _,out := range tx.MsgTx().TxOut {
+				if out.TokenType == 3 && out.Value.(*token.HashToken).Hash.IsEqual(&th) {
+					ccw = true
+					break
+				}
+			}
+			var rcw bool
+			var bx viewpoint.BoundingBox
+			if rcw,bx = views.PolygonInfo(p); rcw != ccw {
+				return ruleError(1, "Illegal Polygon definition.")
+			}
+			views.AddOnePolygon(p, ccw, bx)
 
 		case *token.BorderDef:
-			ft,_ := views.Border.FetchEntry(views.Db, &h)
+			ft,_ := views.FetchBorderEntry(&h)
 			if ft != nil {		// no repeat definition
 				return ruleError(1, "Illegal Border definition.")
 			}
@@ -192,8 +349,8 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 			}
 
 			if !f.IsEqual(&chainhash.Hash{}) {
-				ft,_ = views.Border.FetchEntry(views.Db, f)
-				if ft == nil || len(ft.Children) > 0 {		// father does not exist or already has children
+				ft,_ = views.FetchBorderEntry(f)
+				if ft == nil {		// father does not exist
 					return ruleError(1, "Illegal Border definition.")
 				}
 
@@ -201,6 +358,16 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 					pendBdr[b.Father] = make([]*token.BorderDef, 0, 4)
 				}
 				pendBdr[b.Father] = append(pendBdr[b.Father], b)
+
+				depth := 0
+				for !f.IsEqual(&chainhash.Hash{}) {
+					depth++
+					if depth > 100 {
+						return ruleError(1, "Border definition is too deep.")
+					}
+					ft,_ = views.FetchBorderEntry(f)
+					f = &ft.Father
+				}
 			}
 
 			if !views.AddOneBorder(b) {
@@ -208,7 +375,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 			}
 
 		case *token.RightDef, *token.RightSetDef:
-			ft,_ := views.Rights.FetchEntry(views.Db, &h)
+			ft,_ := views.FetchRightEntry(&h)
 			if ft != nil {		// father does not exist
 				return ruleError(1, "Illegal Rights definition.")
 			}
@@ -217,7 +384,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 			case *token.RightDef:
 				f := &d.(*token.RightDef).Father
 				if !f.IsEqual(&chainhash.Hash{}) {
-					ft,_ := views.Rights.FetchEntry(views.Db, f)
+					ft,_ := views.FetchRightEntry(f)
 					if ft == nil || ft.(*viewpoint.RightEntry).Attrib & token.Unsplittable != 0 {		// father is indivisible
 						return ruleError(1, "Illegal Right definition.")
 					}
@@ -225,7 +392,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 
 			case *token.RightSetDef:
 				for _, r := range d.(*token.RightSetDef).Rights {
-					ft,_ := views.Rights.FetchEntry(views.Db, &r)
+					ft,_ := views.FetchRightEntry(&r)
 					if ft == nil {
 						return ruleError(1, "Illegal Right definition.")
 					}
@@ -236,7 +403,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 
 	for f, pend := range pendBdr {
 		// check whether these borders are allowed
-		fb, _ := views.Border.FetchEntry(views.Db, &f)
+		fb, _ := views.FetchBorderEntry(&f)
 
 		// check for proper connection, build children record
 		v := fb.Begin
@@ -260,7 +427,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 			continue
 		}
 
-		// border is allowed if the new vertex is exactly on the border line (w/i error range)
+		// border is allowed if the new vertex is exactly on the border line
 		// or total reference count of this border and its anciesters in the inputs is the same as in all the UTXOs
 
 		isonline := true
@@ -308,7 +475,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chai
 	return nil
 }
 
-func CheckTransactionAdditionalInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
+func CheckTransactionAdditionalInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) error {
 	additional := false
 	for _,d := range tx.MsgTx().TxDef {
 		if d.IsSeparator() {
@@ -321,7 +488,7 @@ func CheckTransactionAdditionalInputs(tx *btcutil.Tx, views * viewpoint.ViewPoin
 		h := d.Hash()
 		switch d.(type) {
 		case *token.RightDef, *token.RightSetDef:
-			ft,_ := views.Rights.FetchEntry(views.Db, &h)
+			ft,_ := views.FetchRightEntry(&h)
 			if ft != nil {		// father does not exist
 				return ruleError(1, "Illegal Rights definition.")
 			}
@@ -330,7 +497,7 @@ func CheckTransactionAdditionalInputs(tx *btcutil.Tx, views * viewpoint.ViewPoin
 			case *token.RightDef:
 				f := &d.(*token.RightDef).Father
 				if !f.IsEqual(&chainhash.Hash{}) {
-					ft,_ := views.Rights.FetchEntry(views.Db, f)
+					ft,_ := views.FetchRightEntry(f)
 					if ft == nil || ft.(*viewpoint.RightEntry).Attrib & token.Unsplittable != 0 {		// father is indivisible
 						return ruleError(1, "Illegal Right definition.")
 					}
@@ -338,7 +505,7 @@ func CheckTransactionAdditionalInputs(tx *btcutil.Tx, views * viewpoint.ViewPoin
 
 			case *token.RightSetDef:
 				for _, r := range d.(*token.RightSetDef).Rights {
-					ft,_ := views.Rights.FetchEntry(views.Db, &r)
+					ft,_ := views.FetchRightEntry(&r)
 					if ft == nil {
 						return ruleError(1, "Illegal Right definition.")
 					}
@@ -352,7 +519,7 @@ func CheckTransactionAdditionalInputs(tx *btcutil.Tx, views * viewpoint.ViewPoin
 
 func appeared(p * chainhash.Hash, as map[chainhash.Hash]struct{}, views * viewpoint.ViewPointSet) int32 {
 	sum := int32(0)
-	plg,_ := views.Polygon.FetchEntry(views.Db, p)
+	plg,_ := views.FetchPolygonEntry(p)
 	for _, loop := range plg.Loops {
 		if len(loop) == 1 {
 			// it is a polygon

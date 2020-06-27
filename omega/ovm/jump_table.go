@@ -190,6 +190,14 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opMeta,
 			valid:         true,
 		},
+		TIME: {
+			execute:       opTime,
+			valid:         true,
+		},
+		HEIGHT: {
+			execute:       opHeight,
+			valid:         true,
+		},
 	}
 }
 

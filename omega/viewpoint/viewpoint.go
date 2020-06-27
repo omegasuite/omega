@@ -13,12 +13,13 @@ package viewpoint
 import (
 	"encoding/binary"
 
+	"fmt"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
+	"github.com/btcsuite/omega"
 	"github.com/btcsuite/omega/token"
-	"fmt"
 )
 
 var (
@@ -80,15 +81,15 @@ func (t * ViewPointSet) SetBestHash(hash * chainhash.Hash) {
 }
 
 func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Block, stxos []SpentTxOut) error {
-	err := t.Rights.disconnectTransactions(db, block)
+	err := t.disconnectRightTransactions(block)
 	if err != nil {
 		return err
 	}
-	err = t.Polygon.disconnectTransactions(db, block)
+	err = t.disconnectPolygonTransactions(block)
 	if err != nil {
 		return err
 	}
-	err = t.Border.disconnectTransactions(db, block)
+	err = t.disconnectBorderTransactions(block)
 	if err != nil {
 		return err
 	}
@@ -136,6 +137,19 @@ func DbPutViews(dbTx database.Tx,  view * ViewPointSet) error {
 	return DbPutRightView(dbTx, view.Rights)
 }
 
+var GlobalBoundingBox = func() BoundingBox {
+	box := BoundingBox{}
+	box.Reset()
+	for _,b := range omega.InitDefs {
+		switch b.(type) {
+		case *token.BorderDef:
+			v := b.(*token.BorderDef).Begin
+			box.Expand(v.Lat(), v.Lng())
+		}
+	}
+	return box
+}()
+
 func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSet) error {
 	bdrview := view.Border
 	plgview := view.Polygon
@@ -152,7 +166,7 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 			}
 			break;
 		case *token.PolygonDef:
-			view.addPolygon(d.(*token.PolygonDef))
+			view.addPolygon(d.(*token.PolygonDef), true, GlobalBoundingBox)
 			bdr := view.Flattern(d.(*token.PolygonDef).Loops)
 			for _, loop := range bdr {
 				for _,b := range loop {
@@ -179,7 +193,7 @@ func (views *ViewPointSet) Flattern(p []token.LoopDef) []token.LoopDef {
 	loops := make([]token.LoopDef, 1)
 	for _, q := range p {
 		if len(q) == 1 {
-			plg, _ := views.Polygon.FetchEntry(views.Db, &q[0])
+			plg, _ := views.FetchPolygonEntry(&q[0])
 			if plg == nil {
 				return nil
 			}
@@ -219,7 +233,7 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 				if entry.TokenType&3 == 3 {
 					p := view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
 					if p == nil {
-						view.Polygon.FetchEntry(view.Db, &entry.Amount.(*token.HashToken).Hash)
+						view.FetchPolygonEntry(&entry.Amount.(*token.HashToken).Hash)
 						p = view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
 					}
 					if p != nil {

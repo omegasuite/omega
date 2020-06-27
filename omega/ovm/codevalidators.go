@@ -536,3 +536,19 @@ var formatMeta = []formatDesc{
 func opMetaValidator(param []byte) int {
 	return formatParser(formatMeta, param)
 }
+
+var formatTime = []formatDesc{
+	{addrOperand, 0xFFFFFFFF},
+}
+
+func opTimeValidator(param []byte) int {
+	return formatParser(formatTime, param)
+}
+
+var formatHeight = []formatDesc{
+	{addrOperand, 0xFFFFFFFF},
+}
+
+func opHeightValidator(param []byte) int {
+	return formatParser(formatHeight, param)
+}

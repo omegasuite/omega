@@ -215,7 +215,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 			y := validate.TokenRights(views, utxo)
 
 			for _, r := range y {
-				e, _ := views.Rights.FetchEntry(views.Db, &r)
+				e, _ := views.FetchRightEntry(&r)
 				if e.(*viewpoint.RightEntry).Attrib & token.Monitored != 0 {
 					// all the way up to the right without Monitored flag, on the way find out all IsMonitorCall
 					re := e.(*viewpoint.RightEntry)
@@ -228,7 +228,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 						if re.Father.IsEqual(&chainhash.Hash{}) {
 							re = nil
 						} else {
-							te, _ := views.Rights.FetchEntry(views.Db, &re.Father)
+							te, _ := views.FetchRightEntry(&re.Father)
 							re = te.(*viewpoint.RightEntry)
 						}
 					}
@@ -271,7 +271,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 							if s.IsEqual(&r) {
 								docheck = true
 							} else {
-								e, _ := views.Rights.FetchEntry(views.Db, &r)
+								e, _ := views.FetchRightEntry(&r)
 								param = append(param, e.(*viewpoint.RightEntry).Desc...)
 							}
 						}

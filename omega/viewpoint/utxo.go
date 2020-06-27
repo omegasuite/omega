@@ -281,7 +281,7 @@ func (view *ViewPointSet) AddTxOut(tx *btcutil.Tx, txOutIdx uint32, blockHeight 
 	// if it has a monitor right, add a monitor index
 	y := view.TokenRights(e)
 	for _, r := range y {
-		re, _ := view.Rights.FetchEntry(view.Db, &r)
+		re, _ := view.FetchRightEntry(&r)
 		if re.(*RightEntry).Attrib & token.Monitor != 0 {
 			e.packedFlags |= TfMonitoring | TfModified
 			e.monitor = make([]byte, 52)
@@ -318,7 +318,7 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 		// if it has a monitor right, add a monitor index
 		y := view.TokenRights(e)
 		for _, r := range y {
-			re, _ := view.Rights.FetchEntry(view.Db, &r)
+			re, _ := view.FetchRightEntry(&r)
 			if re.(*RightEntry).Attrib & token.Monitor != 0 {
 				e.packedFlags |= TfMonitoring
 				e.monitor = make([]byte, 52)
@@ -445,7 +445,7 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 			// if it has a monitor right, add a monitor index
 			y := view.TokenRights(entry)
 			for _, r := range y {
-				re, _ := view.Rights.FetchEntry(view.Db, &r)
+				re, _ := view.FetchRightEntry(&r)
 				if re.(*RightEntry).Attrib & token.Monitor != 0 {
 					entry.packedFlags |= TfMonitoring | TfModified
 					entry.monitor = make([]byte, 52)
@@ -529,7 +529,7 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 			// if it has a monitor right, add a monitor index
 			y := view.TokenRights(entry)
 			for _, r := range y {
-				re, _ := view.Rights.FetchEntry(view.Db, &r)
+				re, _ := view.FetchRightEntry(&r)
 				if re.(*RightEntry).Attrib & token.Monitor != 0 {
 					entry.packedFlags |= TfMonitoring
 					entry.monitor = make([]byte, 52)

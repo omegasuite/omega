@@ -813,7 +813,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 
 	utxoView := views.Utxo
 
-	if err := validate.CheckTransactionInputs(tx, views, chainParams); err != nil {
+	if err := validate.CheckTransactionInputs(tx, views); err != nil {
 		// actually check definitions only
 		return err
 	}
@@ -900,7 +900,7 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 
 	utxoView := views.Utxo
 
-	if err := validate.CheckTransactionAdditionalInputs(tx, views, chainParams); err != nil {
+	if err := validate.CheckTransactionAdditionalInputs(tx, views); err != nil {
 		// actually check definitions only
 		return err
 	}

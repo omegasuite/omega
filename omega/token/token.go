@@ -36,7 +36,7 @@ const (
 
 	DefTypeSeparator = 0xFC			// fd ~ ff are var int coding
 
-	CoordPrecision = 0x400000		// we use 32-bit fixed point (23 decimal points) number for alt/lng coords
+	CoordPrecision = 0x200000		// we use 32-bit fixed point (22 decimal points) number for alt/lng coords
 	AltPrecision = 0x400			// we use 32-bit fixed point (10 decimal points) number for alt coords (meter)
 									// if the value is between 0 & 100, it is considered as 0 and the coord is a nonce
 									// to change edge hash
@@ -67,26 +67,44 @@ type Definition interface {
 	Dup() Definition
 }
 
-type VertexDef [12]byte
+type VertexDef struct {
+	lat int32
+	lng int32
+	alt int32
+}
 
 func (s VertexDef) Lat() int32 {
-	return int32(binary.LittleEndian.Uint32(s[:]))
+	return s.lat
 }
 func (s VertexDef) Lng() int32 {
-	return int32(binary.LittleEndian.Uint32(s[4:]))
+	return s.lng
 }
 func (s VertexDef) Alt() int32 {
-	return int32(binary.LittleEndian.Uint32(s[8:]))
+	return s.alt
 }
 
 func (s * VertexDef) SetLat(x int32) {
-	binary.LittleEndian.PutUint32(s[:], uint32(x))
+	s.lat = x
 }
 func (s * VertexDef) SetLng(x int32) {
-	binary.LittleEndian.PutUint32(s[4:], uint32(x))
+	s.lng = x
 }
 func (s * VertexDef) SetAlt(x int32) {
-	binary.LittleEndian.PutUint32(s[8:], uint32(x))
+	s.alt = x
+}
+
+func (s * VertexDef) Serialize() []byte {
+	var r [12]byte
+	binary.LittleEndian.PutUint32(r[:], uint32(s.lat))
+	binary.LittleEndian.PutUint32(r[4:], uint32(s.lng))
+	binary.LittleEndian.PutUint32(r[8:], uint32(s.alt))
+	return r[:]
+}
+
+func (s * VertexDef) Deserialize(r []byte) {
+	s.lat = int32(binary.LittleEndian.Uint32(r))
+	s.lng = int32(binary.LittleEndian.Uint32(r[4:]))
+	s.alt = int32(binary.LittleEndian.Uint32(r[8:]))
 }
 
 func (s * VertexDef) IsEqual(t * VertexDef) bool {
@@ -113,16 +131,16 @@ func (t * VertexDef) IsSeparator() bool {
 
 func (t * VertexDef) Hash() chainhash.Hash {
 	h := chainhash.Hash{}
-	copy(h[:], t[:8])
+	copy(h[:], t.Serialize()[:8])
 	return h
 }
 
 func (t * VertexDef) SerializeSize() int {
-	return 4 + 4 + 4
+	return 12
 }
 
 func (t * VertexDef) Size() int {
-	return 4 + 4 + 4
+	return 12
 }
 
 func NewVertexDef(lat, lng, alt int32) (* VertexDef) {
@@ -140,13 +158,15 @@ func (msg * VertexDef) MemRead(r io.Reader, pver uint32) error {
 }
 
 func (msg * VertexDef) Read(r io.Reader, pver uint32) error {
-	_, err := r.Read(msg[:])
+	var b [12]byte
+	_, err := r.Read(b[:])
+	msg.Deserialize(b[:])
 
 	return err
 }
 
 func (msg * VertexDef) Write(w io.Writer, pver uint32) error {
-	_, err := w.Write(msg[:])
+	_, err := w.Write(msg.Serialize())
 	return err
 }
 
@@ -183,8 +203,8 @@ func (t * BorderDef) Hash() chainhash.Hash {
 	if t.hash == nil {
 		b := make([]byte, chainhash.HashSize + 24)
 		copy(b[:], t.Father[:])
-		copy(b[chainhash.HashSize:], t.Begin[:])
-		copy(b[12 + chainhash.HashSize:], t.End[:])
+		copy(b[chainhash.HashSize:], t.Begin.Serialize())
+		copy(b[12 + chainhash.HashSize:], t.End.Serialize())
 
 		hash := chainhash.HashH(b)
 		hash[0] &= 0xFE		// LSB always 0, reserved for indicating its direction when used in polygon
@@ -194,11 +214,11 @@ func (t * BorderDef) Hash() chainhash.Hash {
 }
 
 func (t * BorderDef) SerializeSize() int {
-	return chainhash.HashSize * 3
+	return chainhash.HashSize + 24
 }
 
 func (t * BorderDef) Size() int {
-	return chainhash.HashSize * 3
+	return chainhash.HashSize + 24
 }
 
 func NewBorderDef(begin, end VertexDef, father chainhash.Hash) (* BorderDef) {
@@ -218,8 +238,13 @@ func (t * BorderDef) MemRead(r io.Reader, pver uint32) error {
 
 func (t * BorderDef) Read(r io.Reader, pver uint32) error {
 	io.ReadFull(r, t.Father[:])
-	io.ReadFull(r, t.Begin[:])
-	io.ReadFull(r, t.End[:])
+
+	var b [12]byte
+	io.ReadFull(r, b[:])
+	t.Begin.Deserialize(b[:])
+
+	io.ReadFull(r, b[:])
+	t.End.Deserialize(b[:])
 
 	return nil
 }
@@ -230,13 +255,38 @@ func (t * BorderDef) MemWrite(w io.Writer, pver uint32) error {
 
 func (t * BorderDef) Write(w io.Writer, pver uint32) error {
 	w.Write(t.Father[:])
-	w.Write(t.Begin[:])
-	w.Write(t.End[:])
+	w.Write(t.Begin.Serialize())
+	w.Write(t.End.Serialize())
 
 	return nil
 }
 
 type LoopDef []chainhash.Hash		// if the loops has only one item, it is not a border, it is another polygon!!!
+
+func (s * LoopDef) CheckSum() string {
+	if len(*s) == 1 {
+		return string((*s)[0][:])
+	}
+	var r chainhash.Hash
+	for _,p := range *s {
+		for i := 0; i < chainhash.HashSize; i++ {
+			r[i] ^= p[i]
+		}
+	}
+	return string(r[:])
+}
+
+func (s * LoopDef) Equal(t * LoopDef) bool {
+	if len(*s) != len(*t) {
+		return false
+	}
+	for i,p := range *s {
+		if !p.IsEqual(&(*t)[i]) {
+			return false
+		}
+	}
+	return true
+}
 
 type PolygonDef struct {
 	hash * chainhash.Hash
@@ -795,15 +845,15 @@ func RemapDef(txDef []Definition, to Definition) Definition {
 
 func (d *VertexDef) Dup() Definition {
 	t := VertexDef{ }
-	copy(t[:], d[:])
+	t = *d
 	return &t
 }
 
 func (c *BorderDef) Dup() Definition {
 	newDefinitions := BorderDef{}
 	newDefinitions.Father.SetBytes(c.Father[:])
-	copy(newDefinitions.Begin[:], c.Begin[:])
-	copy(newDefinitions.End[:], c.End[:])
+	newDefinitions.Begin = c.Begin
+	newDefinitions.End = c.End
 	return &newDefinitions
 }
 

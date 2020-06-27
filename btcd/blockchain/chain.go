@@ -963,7 +963,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// database and using that information to unspend all of the spent txos
 	// and remove the utxos created by the blocks.
 	views, Vm := b.Canvas(nil)
-//	views.db = &b.db
 	views.SetBestHash(&oldBest.Hash)
 
 	for e := detachNodes.Front(); e != nil; e = e.Next() {
@@ -1073,9 +1072,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			skipList(attachNodes, e)
 			skipped = true
 			continue
-//			return fmt.Errorf("attach block failed to pass consistency check")
 		}
-//		prevNode = n
 
 		shift := 0
 		if n.Data.GetNonce() > 0 {
@@ -1141,7 +1138,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// the reorg would be successful and the connection code requires the
 	// view to be valid from the viewpoint of each block being connected or
 	// disconnected.
-//	views.Utxo = NewUtxoViewpoint()
+
 	views, Vm = b.Canvas(nil)
 	views.SetBestHash(&b.BestChain.Tip().Hash)
 
@@ -1228,7 +1225,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 				}
 				coinBase.MsgTx().AddTxOut(&txo)
 				op := wire.OutPoint { coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
-//				views.Utxo.AddRawTxOut(op, &txo, false, block.Height())
 				return op
 		})
 		Vm.BlockNumber = func() uint64 {

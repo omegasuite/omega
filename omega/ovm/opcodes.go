@@ -58,6 +58,8 @@ const (
 	GETUTXO
 	MINT
 	META		// get contract meta data
+	TIME		// timestamp in block
+	HEIGHT		// block height
 	
 	STOP	 OpCode = 0x7A	//  "z"
 )
@@ -103,6 +105,8 @@ var opCodeToString = map[OpCode]string{
 	REVERT:    "REVERT",
 	RETURN:    "RETURN",
 	MINT:    "MINT",
+	TIME:    "TIME",
+	HEIGHT:    "HEIGHT",
 	META:    "META",
 }
 
@@ -154,6 +158,8 @@ var stringToOp = map[string]OpCode{
 	"RETURN":         RETURN,
 	"MINT": MINT,
 	"META": META,
+	"TIME": TIME,
+	"HEIGHT": HEIGHT,
 }
 
 func StringToOp(str string) OpCode {

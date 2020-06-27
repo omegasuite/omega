@@ -33,7 +33,7 @@ func decentOf(son * viewpoint.RightEntry, h * chainhash.Hash, anc * viewpoint.Ri
 	d := anc.Depth - son.Depth
 	lh := *h
 	for d > 0 {
-		f, _ := views.Rights.FetchEntry(views.Db, &lh)
+		f, _ := views.FetchRightEntry(&lh)
 		lh = f.(*viewpoint.RightEntry).Father
 		if lh.IsEqual(h2) {
 			return true
@@ -73,7 +73,7 @@ func TokenRights(views *viewpoint.ViewPointSet, x interface{}) []chainhash.Hash 
 	y := make([]chainhash.Hash, 0)
 
 	if tokenType & 2 != 0 {
-		t, _ := views.Rights.FetchEntry(views.Db, rs)
+		t, _ := views.FetchRightEntry(rs)
 		if yy := viewpoint.SetOfRights(views, t); yy != nil {
 			for _, r := range yy {
 				y = append(y, r.ToToken().Hash())
@@ -118,7 +118,7 @@ func parseRights(tx *btcutil.Tx, views *viewpoint.ViewPointSet, checkPolygon boo
 		if txOut.Rights != nil {
 			p := views.Rights.LookupEntry(*txOut.Rights)
 			if p == nil {
-				views.Rights.FetchEntry(views.Db, txOut.Rights)
+				views.FetchRightEntry(txOut.Rights)
 				p = views.Rights.LookupEntry(*txOut.Rights)
 			}
 
@@ -144,7 +144,7 @@ func getBasicRightSet(rset map[chainhash.Hash]struct{}, view * viewpoint.ViewPoi
 	for _, as := range *ancester {
 		for i := len(as) - 1; i > 0; i-- {
 			if _, ok := rset[as[i]]; ok {
-				p,_ := view.Rights.FetchEntry(view.Db, &as[i-1])
+				p,_ := view.FetchRightEntry(&as[i-1])
 				q := p.(*viewpoint.RightEntry).Sibling()
 				delete(rset, as[i])
 				rset[q] = struct{}{}
@@ -164,7 +164,7 @@ func getAncester(rset * map[chainhash.Hash]struct{}, view * viewpoint.ViewPointS
 	roots := make(map[chainhash.Hash]int32, 0)
 
 	for r,_ := range * rset {
-		p,_ := view.Rights.FetchEntry(view.Db, &r)
+		p,_ := view.FetchRightEntry(&r)
 		if p == nil {
 			continue
 		}
@@ -187,7 +187,7 @@ func getAncester(rset * map[chainhash.Hash]struct{}, view * viewpoint.ViewPointS
 		ok := true
 		for _,ok = (*rset)[p.(*viewpoint.RightEntry).Father]; !ok && p.(*viewpoint.RightEntry).Depth > roots[p.(*viewpoint.RightEntry).Root]; {
 			ancester[r] = append(ancester[r], p.(*viewpoint.RightEntry).Father)
-			p,_ = view.Rights.FetchEntry(view.Db, &p.(*viewpoint.RightEntry).Father)
+			p,_ = view.FetchRightEntry(&p.(*viewpoint.RightEntry).Father)
 		}
 		if !ok {
 			ancester[r] = make([]chainhash.Hash, 1)
@@ -276,7 +276,7 @@ func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 
 func monitored(r * token.RightSetDef, views *viewpoint.ViewPointSet) bool {
 	for _,d := range r.Rights {
-		e, _ := views.Rights.FetchEntry(views.Db, &d)
+		e, _ := views.FetchRightEntry(&d)
 		if e.(*viewpoint.RightEntry).Attrib & token.Monitored != 0 {
 			return true
 		}

@@ -2764,28 +2764,28 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error 
 
 	switch defType {
 	case token.DefTypeBorder:
-		b, err := evm.views.Border.FetchEntry(evm.views.Db, &hash)
+		b, err := evm.views.FetchBorderEntry(&hash)
 		if err != nil {
 			return err
 		}
 		t = token.Definition(b.ToToken())
 
 	case token.DefTypePolygon:
-		b, err := evm.views.Polygon.FetchEntry(evm.views.Db, &hash)
+		b, err := evm.views.FetchPolygonEntry(&hash)
 		if err != nil {
 			return err
 		}
 		t = token.Definition(b.ToToken())
 
 	case token.DefTypeRight:
-		b, err := evm.views.Rights.FetchEntry(evm.views.Db, &hash)
+		b, err := evm.views.FetchRightEntry(&hash)
 		if err != nil {
 			return err
 		}
 		t = token.Definition(b.(*viewpoint.RightEntry).ToToken())
 
 	case token.DefTypeRightSet:
-		b, err := evm.views.Rights.FetchEntry(evm.views.Db, &hash)
+		b, err := evm.views.FetchRightEntry(&hash)
 		if err != nil {
 			return err
 		}
@@ -3082,6 +3082,53 @@ func opMeta(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	}
 	dest += 4
 	return stack.saveBytes(&dest, m)
+}
+
+func opTime(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+	param := contract.GetBytes(*pc)
+
+	ln := len(param)
+	var dest pointer
+
+	for j := 0; j < ln; j++ {
+		switch param[j] {
+		case '0', '1', '2', '3', '4', '5',
+			'6', '7', '8', '9', 'a', 'b', 'c',
+			'd', 'e', 'f', 'x', 'i', 'g':
+			num, tl, err := stack.getNum(param[j:], 0xFF)
+			if err != nil { return err }
+			j += tl
+
+			dest = pointer(num)
+		}
+	}
+
+	m := ovm.Block().MsgBlock().Header.Timestamp.Unix()
+	return stack.saveInt32(&dest, int32(m))
+}
+
+func opHeight(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+	param := contract.GetBytes(*pc)
+
+	ln := len(param)
+	var dest pointer
+
+	for j := 0; j < ln; j++ {
+		switch param[j] {
+		case '0', '1', '2', '3', '4', '5',
+			'6', '7', '8', '9', 'a', 'b', 'c',
+			'd', 'e', 'f', 'x', 'i', 'g':
+			num, tl, err := stack.getNum(param[j:], 0xFF)
+			if err != nil { return err }
+			j += tl
+
+			dest = pointer(num)
+
+		}
+	}
+
+	m := ovm.Block().Height()
+	return stack.saveInt32(&dest, int32(m))
 }
 
 // Below are signature VM engine insts. They are in binary formats.
