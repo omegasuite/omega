@@ -358,12 +358,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// no longer Orphans) and repeat for those accepted blocks until
 	// there are no more.
 	err = b.ProcessOrphans(blockHash, BFNone)	// flags)
-//	if err != nil {
-//		return false, false, err, -1
-//	}
-
-//	log.Debugf("Accepted block %v", blockHash)
-//	log.Infof("ProcessBlock: Tx chian = %d Miner chain = %d", b.BestSnapshot().Height, b.Miners.BestSnapshot().Height)
 
 	log.Infof("ProcessBlock finished with height = %d Miner height = %d Orphans = %d", b.BestSnapshot().Height,
 		b.Miners.BestSnapshot().Height, b.Orphans.Count())

@@ -1490,17 +1490,17 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 
 // softForkStatus converts a ThresholdState state into a human readable string
 // corresponding to the particular state.
-func softForkStatus(state blockchain.ThresholdState) (string, error) {
+func softForkStatus(state minerchain.ThresholdState) (string, error) {
 	switch state {
-	case blockchain.ThresholdDefined:
+	case minerchain.ThresholdDefined:
 		return "defined", nil
-	case blockchain.ThresholdStarted:
+	case minerchain.ThresholdStarted:
 		return "started", nil
-	case blockchain.ThresholdLockedIn:
+	case minerchain.ThresholdLockedIn:
 		return "lockedin", nil
-	case blockchain.ThresholdActive:
+	case minerchain.ThresholdActive:
 		return "active", nil
-	case blockchain.ThresholdFailed:
+	case minerchain.ThresholdFailed:
 		return "failed", nil
 	default:
 		return "", fmt.Errorf("unknown deployment state: %v", state)

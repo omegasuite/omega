@@ -243,12 +243,6 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 	header.Block.(*wire.MingingRightBlock).Bits = header.Bits
 
 	factorPOW := m.factorPOW(uint32(header.Height) - 1)
-/*
-	if factorPOW != nil {
-		targetDifficulty.Mul(targetDifficulty, big.NewInt(1024))
-		targetDifficulty.Div(targetDifficulty, factorPOW)
-	}
-*/
 
 	// Initial state.
 	hashesCompleted := uint64(0)
@@ -275,10 +269,6 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 				}
 
 				m.g.UpdateMinerBlockTime(header.Block.(*wire.MingingRightBlock))
-
-//				if m.cfg.ChainParams.ReduceMinDifficulty {
-//					targetDifficulty = blockchain.CompactToBig(header.Bits)
-//				}
 
 			default:
 				// Non-blocking select to fall through
@@ -411,6 +401,7 @@ out:
 
 		if good {
 			template, err = m.g.NewMinerBlockTemplate(m.cfg.SignAddress)
+
 			if err != nil {
 				log.Infof("miner.NewMinerBlockTemplate error: %s", err.Error())
 			}

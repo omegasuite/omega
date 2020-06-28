@@ -91,6 +91,8 @@ type MinerChain interface {
 	Subscribe(callback NotificationCallback)
 	Tip() *wire.MinerBlock
 	DisconnectTip()
+	CalcNextBlockVersion() (int32, error)
+	IsDeploymentActive(uint32) (bool, error)
 }
 
 type BlackList interface {
@@ -176,34 +178,6 @@ type BlockChain struct {
 	// chain state can be quickly reconstructed on load.
 	StateLock     sync.RWMutex
 	stateSnapshot *BestState
-
-	// The following caches are used to efficiently keep track of the
-	// current deployment threshold state of each rule change deployment.
-	//
-	// This information is stored in the database so it can be quickly
-	// reconstructed on load.
-	//
-	// warningCaches caches the current deployment threshold state for blocks
-	// in each of the **possible** deployments.  This is used in order to
-	// detect when new unrecognized rule changes are being voted on and/or
-	// have been activated such as will be the case when older versions of
-	// the software are being used
-	//
-	// deploymentCaches caches the current deployment threshold state for
-	// blocks in each of the actively defined deployments.
-	warningCaches    []ThresholdStateCache
-	deploymentCaches []ThresholdStateCache
-
-	// The following fields are used to determine if certain warnings have
-	// already been shown.
-	//
-	// unknownRulesWarned refers to warnings due to unknown rules being
-	// activated.
-	//
-	// unknownVersionsWarned refers to warnings due to unknown versions
-	// being mined.
-	unknownRulesWarned    bool
-	unknownVersionsWarned bool
 
 	// The notifications field stores a slice of callbacks to be executed on
 	// certain blockchain events.
@@ -553,22 +527,6 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	if len(stxos) != block.CountSpentOutputs() {
 		return AssertError("connectBlock called with inconsistent " +
 			"spent transaction out information")
-	}
-
-	// No warnings about unknown rules or versions until the chain is
-	// current.
-	if b.isCurrent() {
-		// Warn if any unknown new rules are either about to activate or
-		// have already been activated.
-		if err := b.warnUnknownRuleActivations(node); err != nil {
-			return err
-		}
-
-		// Warn if a high enough percentage of the last blocks have
-		// unexpected versions.
-		if err := b.warnUnknownVersions(node); err != nil {
-			return err
-		}
 	}
 
 	// Write any block status changes to DB before updating best state.
@@ -2154,8 +2112,6 @@ func New(config *Config) (*BlockChain, error) {
 		index:               chainutil.NewBlockIndex(config.DB, params),
 		BestChain:           chainutil.NewChainView(nil),
 		Orphans:             chainutil.NewOrphanMgr(),
-		warningCaches:       NewThresholdCaches(vbNumBits),
-		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
 		Miner:               config.Miner,
 	}
 
@@ -2179,13 +2135,6 @@ func New(config *Config) (*BlockChain, error) {
 			return nil, err
 		}
 	}
-
-	// Initialize rule change threshold state caches.
-	if err := b.InitThresholdCaches(); err != nil {
-		return nil, err
-	}
-
-//	b.Vm = Vm.NewOVM(ctx, params, vmcfg, config.DB)
 
 	bestNode := b.BestChain.Tip()
 	log.Infof("Chain state (height %d, hash %v, totaltx %d)",

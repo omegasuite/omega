@@ -2,7 +2,7 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
-package blockchain
+package minerchain
 
 import (
 	"fmt"
@@ -127,7 +127,7 @@ func NewThresholdCaches(numCaches uint32) []ThresholdStateCache {
 // threshold states for previous windows are only calculated once.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) thresholdState(prevNode *chainutil.BlockNode, checker thresholdConditionChecker, cache *ThresholdStateCache) (ThresholdState, error) {
+func (b *MinerChain) thresholdState(prevNode *chainutil.BlockNode, checker thresholdConditionChecker, cache *ThresholdStateCache) (ThresholdState, error) {
 	// The threshold state for the window that contains the genesis block is
 	// defined by definition.
 	confirmationWindow := int32(checker.MinerConfirmationWindow())
@@ -264,11 +264,11 @@ func (b *BlockChain) thresholdState(prevNode *chainutil.BlockNode, checker thres
 // deployment ID for the block AFTER the end of the current best chain.
 //
 // This function is safe for concurrent access.
-func (b *BlockChain) ThresholdState(deploymentID uint32) (ThresholdState, error) {
+func (b *MinerChain) ThresholdState(deploymentID uint32) (ThresholdState, error) {
 //	log.Infof("ThresholdState: ChainLock.RLock")
-	b.ChainLock.Lock()
+	b.chainLock.Lock()
 	state, err := b.deploymentState(b.BestChain.Tip(), deploymentID)
-	b.ChainLock.Unlock()
+	b.chainLock.Unlock()
 //	log.Infof("ThresholdState: ChainLock.Unlock")
 
 	return state, err
@@ -278,11 +278,11 @@ func (b *BlockChain) ThresholdState(deploymentID uint32) (ThresholdState, error)
 // false otherwise.
 //
 // This function is safe for concurrent access.
-func (b *BlockChain) IsDeploymentActive(deploymentID uint32) (bool, error) {
+func (b *MinerChain) IsDeploymentActive(deploymentID uint32) (bool, error) {
 //	log.Infof("IsDeploymentActive: ChainLock.RLock")
-	b.ChainLock.Lock()
+	b.chainLock.Lock()
 	state, err := b.deploymentState(b.BestChain.Tip(), deploymentID)
-	b.ChainLock.Unlock()
+	b.chainLock.Unlock()
 //	log.Infof("IsDeploymentActive: ChainLock.Unlock")
 
 	if err != nil {
@@ -302,12 +302,12 @@ func (b *BlockChain) IsDeploymentActive(deploymentID uint32) (bool, error) {
 // AFTER the passed node.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) deploymentState(prevNode *chainutil.BlockNode, deploymentID uint32) (ThresholdState, error) {
-	if deploymentID > uint32(len(b.ChainParams.Deployments)) {
+func (b *MinerChain) deploymentState(prevNode *chainutil.BlockNode, deploymentID uint32) (ThresholdState, error) {
+	if deploymentID > uint32(len(b.chainParams.Deployments)) {
 		return ThresholdFailed, DeploymentError(deploymentID)
 	}
 
-	deployment := &b.ChainParams.Deployments[deploymentID]
+	deployment := &b.chainParams.Deployments[deploymentID]
 	checker := deploymentChecker{deployment: deployment, chain: b}
 	cache := &b.deploymentCaches[deploymentID]
 
@@ -317,7 +317,7 @@ func (b *BlockChain) deploymentState(prevNode *chainutil.BlockNode, deploymentID
 // InitThresholdCaches initializes the threshold state caches for each warning
 // bit and defined deployment and provides warnings if the chain is current per
 // the warnUnknownVersions and warnUnknownRuleActivations functions.
-func (b *BlockChain) InitThresholdCaches() error {
+func (b *MinerChain) InitThresholdCaches() error {
 	// Initialize the warning and deployment caches by calculating the
 	// threshold state for each of them.  This will ensure the caches are
 	// populated and any states that needed to be recalculated due to
@@ -331,8 +331,8 @@ func (b *BlockChain) InitThresholdCaches() error {
 			return err
 		}
 	}
-	for id := 0; id < len(b.ChainParams.Deployments); id++ {
-		deployment := &b.ChainParams.Deployments[id]
+	for id := 0; id < len(b.chainParams.Deployments); id++ {
+		deployment := &b.chainParams.Deployments[id]
 		cache := &b.deploymentCaches[id]
 		checker := deploymentChecker{deployment: deployment, chain: b}
 		_, err := b.thresholdState(prevNode, checker, cache)
@@ -343,7 +343,7 @@ func (b *BlockChain) InitThresholdCaches() error {
 
 	// No warnings about unknown rules or versions until the chain is
 	// current.
-	if b.isCurrent() {
+	if b.IsCurrent() {
 		// Warn if a high enough percentage of the last blocks have
 		// unexpected versions.
 		bestNode := b.BestChain.Tip()

@@ -908,18 +908,11 @@ mempoolLoop:
 
 	reqDifficulty := g.Chain.BestSnapshot().Bits
 
-	// Calculate the next expected block version based on the state of the
-	// rule change deployments.
-	nextBlockVersion, err := g.Chain.CalcNextBlockVersion()
-	if err != nil {
-		return nil, err
-	}
-
 	// Create a new block ready to be solved.
 	merkles := blockchain.BuildMerkleTreeStore(blockTxns, false)
 	var msgBlock wire.MsgBlock
 	msgBlock.Header = wire.BlockHeader{
-		Version:    nextBlockVersion,
+		Version:    0x20000000,
 		PrevBlock:  best.Hash,
 		MerkleRoot: *merkles[len(merkles)-1],
 		Timestamp:  ts,
@@ -976,7 +969,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 
 	// Calculate the next expected block version based on the state of the
 	// rule change deployments.
-	nextBlockVersion, err := g.Chain.CalcNextBlockVersion()
+	nextBlockVersion, err := g.Chain.Miners.CalcNextBlockVersion()
 	if err != nil {
 		return nil, err
 	}

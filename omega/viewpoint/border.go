@@ -172,25 +172,14 @@ func (b *BorderEntry) Intersects(c *BorderEntry, r1, r2 bool) bool {
 	d1 := int64(c.End.Lat() - b.Begin.Lat()) * int64(b.End.Lng() - b.Begin.Lng()) -
 		int64(c.End.Lng() - b.Begin.Lng()) * int64(b.End.Lat() - b.Begin.Lat())
 
-//	if d1 == 0 && !r2 {
-//		return false
-//	}
 	d2 := int64(c.Begin.Lat() - b.Begin.Lat()) * int64(b.End.Lng() - b.Begin.Lng()) -
 		int64(c.Begin.Lng() - b.Begin.Lng()) * int64(b.End.Lat() - b.Begin.Lat())
-//	if d2 == 0 && r2 {
-//		return false
-//	}
 
 	d3 := int64(b.End.Lat() - c.Begin.Lat()) * int64(c.End.Lng() - c.Begin.Lng()) -
 		int64(b.End.Lng() - c.Begin.Lng()) * int64(c.End.Lat() - c.Begin.Lat())
-//	if d3 == 0 && !r1 {
-//		return false
-//	}
+
 	d4 := int64(b.Begin.Lat() - c.Begin.Lat()) * int64(c.End.Lng() - c.Begin.Lng()) -
 		int64(b.Begin.Lng() - c.Begin.Lng()) * int64(c.End.Lat() - c.Begin.Lat())
-//	if d4 == 0 && r1 {
-//		return false
-//	}
 
 	if d1 < 0 {
 		d1 = -1
@@ -214,16 +203,6 @@ func (b *BorderEntry) Intersects(c *BorderEntry, r1, r2 bool) bool {
 	}
 
 	return d1 * d2 < 0 && d3 * d4 < 0
-/*
-	if d1 == 0 || d2 == 0 {
-		return false 	// d3 * d4 < 0
-	}
-	if d3 == 0 || d4 == 0 {
-		return false 	// d1 * d2 < 0
-	}
-
-	return d1 * d2 < 0 && d3 * d4 < 0
- */
 }
 
 func (b *BorderEntry) Lat(rev bool) int32 {

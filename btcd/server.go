@@ -3207,7 +3207,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		CalcSequenceLock: func(tx *btcutil.Tx, view *viewpoint.UtxoViewpoint) (*blockchain.SequenceLock, error) {
 			return s.chain.CalcSequenceLock(tx, view, true)
 		},
-		IsDeploymentActive: s.chain.IsDeploymentActive,
+		IsDeploymentActive: s.chain.Miners.IsDeploymentActive,
 //		SigCache:           s.sigCache,
 //		HashCache:          s.hashCache,
 		AddrIndex:          s.addrIndex,

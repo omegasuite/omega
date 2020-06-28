@@ -92,6 +92,34 @@ type MinerChain struct {
 	// fields in this struct below this point.
 	chainLock * sync.RWMutex
 
+	// The following caches are used to efficiently keep track of the
+	// current deployment threshold state of each rule change deployment.
+	//
+	// This information is stored in the database so it can be quickly
+	// reconstructed on load.
+	//
+	// warningCaches caches the current deployment threshold state for blocks
+	// in each of the **possible** deployments.  This is used in order to
+	// detect when new unrecognized rule changes are being voted on and/or
+	// have been activated such as will be the case when older versions of
+	// the software are being used
+	//
+	// deploymentCaches caches the current deployment threshold state for
+	// blocks in each of the actively defined deployments.
+	warningCaches    []ThresholdStateCache
+	deploymentCaches []ThresholdStateCache
+
+	// The following fields are used to determine if certain warnings have
+	// already been shown.
+	//
+	// unknownRulesWarned refers to warnings due to unknown rules being
+	// activated.
+	//
+	// unknownVersionsWarned refers to warnings due to unknown versions
+	// being mined.
+	unknownRulesWarned    bool
+	unknownVersionsWarned bool
+
 	// These fields are related to the memory block index.  They both have
 	// their own locks, however they are often also protected by the chain
 	// lock to help prevent logic races when blocks are being processed.
@@ -327,6 +355,22 @@ func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBl
 	if !prevHash.IsEqual(&b.BestChain.Tip().Hash) {
 		return AssertError("connectBlock must be called with a block " +
 			"that extends the main chain")
+	}
+
+	// No warnings about unknown rules or versions until the chain is
+	// current.
+	if b.IsCurrent() {
+		// Warn if any unknown new rules are either about to activate or
+		// have already been activated.
+		if err := b.warnUnknownRuleActivations(node); err != nil {
+			return err
+		}
+
+		// Warn if a high enough percentage of the last blocks have
+		// unexpected versions.
+		if err := b.warnUnknownVersions(node); err != nil {
+			return err
+		}
 	}
 
 	// Write any block status changes to DB before updating best state.
@@ -1344,6 +1388,8 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		Orphans:             chainutil.NewOrphanMgr(),
 		stateLock:           &s.StateLock,
 		chainLock:			 &s.ChainLock,
+		warningCaches:       NewThresholdCaches(vbNumBits),
+		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
 	}
 
 	// Initialize the chain state from the passed database.  When the db
@@ -1447,6 +1493,11 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		s.ChainLock.Lock()
 		s.ReorganizeChain(detachNodes, list.New())
 		s.ChainLock.Unlock()
+	}
+
+	// Initialize rule change threshold state caches.
+	if err := b.InitThresholdCaches(); err != nil {
+		return nil, err
 	}
 
 	if !ok {
