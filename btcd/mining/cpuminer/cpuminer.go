@@ -403,19 +403,8 @@ flushconnch:
 
 		isCurrent := m.cfg.IsCurrent()
 
-//		m.g.Chain.ChainLock.Lock()
 		bs := m.g.BestSnapshot()
 		curHeight := bs.Height
-/*
-		if int32(bs.LastRotation) > 2 * wire.CommitteeSize && int32(bs.LastRotation) > m.g.Chain.Miners.BestSnapshot().Height - 2 * wire.CommitteeSize {
-			m.Stale = true
-			log.Infof("generateBlocks: height %d sleep on LastRotation %d > Miners.Height %d - 2 * CommitteeSize", curHeight, bs.LastRotation, m.g.Chain.Miners.BestSnapshot().Height)
-			time.Sleep(time.Second * 5)
-			continue
-		}
- */
-
-//		log.Infof("Preparing for minging at height = %d last rotation = %d", curHeight, bs.LastRotation)
 
 		if curHeight != 0 && !isCurrent {
 			m.Stale = true
@@ -433,14 +422,6 @@ flushconnch:
 		}
 
 		m.Stale = false
-/*
-		if time.Now().UnixNano() - m.g.BestSnapshot().Updated.UnixNano() <= miningGap * 1000000 {
-			m.g.Chain.ChainLock.Unlock()
-			m.submitBlockLock.Unlock()
-			time.Sleep(time.Millisecond * miningGap)
-			continue
-		}
-*/
 
 		// Choose a payment address.
 		// check whether the address is allowed to mine a POW block
@@ -606,28 +587,6 @@ var negHash = chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, }
-
-func reBaseCoinbase(block * btcutil.Block) {
-	hash := block.Transactions()[0].Hash()
-	for i,tx := range block.MsgBlock().Transactions {
-		if i == 0 {
-			continue
-		}
-		cti := false
-		for _,ti := range tx.TxIn {
-			if ti.IsSeparator() {
-				cti = true
-				continue
-			}
-			if !cti {
-				continue
-			}
-			if ti.PreviousOutPoint.Hash.IsEqual(&negHash) {
-				ti.PreviousOutPoint.Hash = *hash
-			}
-		}
-	}
-}
 
 func (m *CPUMiner) coinbaseByCommittee(me btcutil.Address) []btcutil.Address {
 	addresses := make([]btcutil.Address, 0)
