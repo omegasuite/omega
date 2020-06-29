@@ -2640,7 +2640,7 @@ func handleGetInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 		Connections:     s.cfg.ConnMgr.ConnectedCount(),
 		Proxy:           cfg.Proxy,
 		Difficulty:      getDifficultyRatio(best.Bits, s.cfg.ChainParams),
-		TestNet:         cfg.TestNet3,
+		TestNet:         cfg.TestNet,
 		RelayFee:        cfg.minRelayTxFee.ToBTC(),
 	}
 
@@ -2695,7 +2695,7 @@ func handleGetMiningInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		HashesPerSec:       int64(s.cfg.CPUMiner.HashesPerSecond()),
 		NetworkHashPS:      networkHashesPerSec,
 		PooledTx:           uint64(s.cfg.TxMemPool.Count()),
-		TestNet:            cfg.TestNet3,
+		TestNet:            cfg.TestNet,
 	}
 	return &result, nil
 }
@@ -4059,7 +4059,7 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 
 		// check signature
 		if block.MsgBlock().Header.Nonce < 0 {
-			if len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
+			if len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 				rpcsLog.Errorf("Verify is unable to validate "+
 					"block at hash %s height %d: insufficient signatures",
 					block.Hash().String(), height)

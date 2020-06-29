@@ -259,7 +259,7 @@ func TestReadMessageWireErrors(t *testing.T) {
 			0,
 		},
 
-		// Wrong network.  Want MainNet, but giving TestNet3.
+		// Wrong network.  Want MainNet, but giving TestNet.
 		{
 			testNet3Bytes,
 			pver,

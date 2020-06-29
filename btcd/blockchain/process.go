@@ -392,7 +392,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 		for p := b.BestChain.Tip(); p != nil && p != fork; p = p.Parent {
 			switch {
 			case p.Data.GetNonce() > 0:
-				rotate -= wire.CommitteeSize / 2 + 1
+				rotate -= wire.POWRotate
 
 			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate--
@@ -401,7 +401,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 		for p := pn; p != nil && p != fork; p = p.Parent {
 			switch {
 			case p.Data.GetNonce() > 0:
-				rotate += wire.CommitteeSize / 2 + 1
+				rotate += wire.POWRotate
 
 			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate++

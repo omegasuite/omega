@@ -367,7 +367,7 @@ func (b *BlockChain) TotalRotate(lst * list.List) int32 {
 	for e := lst.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 		if n.Data.GetNonce() > 0 {
-			s += wire.CommitteeSize / 2 + 1
+			s += wire.POWRotate
 		} else if n.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			s++
 		}
@@ -509,7 +509,7 @@ func (s * BlockChain) GetRollbackList(h int32) * list.List {
 func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Block,
 	view *viewpoint.ViewPointSet, stxos []viewpoint.SpentTxOut, vm * ovm.OVM) error {
 
-	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize/2 + 1 {
+	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		return fmt.Errorf("insifficient signatures")
 	}
 	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts[1]) < btcec.PubKeyBytesLenCompressed {
@@ -551,7 +551,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		bst.LastRotation)
 
 	if node.Data.GetNonce() > 0 {
-		state.LastRotation += wire.CommitteeSize / 2 + 1
+		state.LastRotation += wire.POWRotate
 		log.Infof("Update LastRotation to %d", state.LastRotation)
 	} else if node.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 		state.LastRotation = uint32(-node.Data.GetNonce() - wire.MINER_RORATE_FREQ)
@@ -702,7 +702,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	}
 
 	if node.Data.GetNonce() >= 0 {
-		rotation -= wire.CommitteeSize / 2 + 1
+		rotation -= wire.POWRotate
 	} else if node.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 		rotation--
 	}
@@ -801,7 +801,7 @@ func (b *BlockChain) Advance(x * list.Element) int32 {
 	m := x.Value.(*chainutil.BlockNode)
 	shift := int32(0)
 	if m.Data.GetNonce() > 0 {
-		shift = wire.CommitteeSize / 2 + 1
+		shift = wire.POWRotate
 	} else if m.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 		shift = 1
 	}
@@ -974,7 +974,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		if n.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			rotate--
 		} else if n.Data.GetNonce() > 0 {
-			rotate -= wire.CommitteeSize / 2 + 1
+			rotate -= wire.POWRotate
 		}
 
 		newBest = n.Parent
@@ -1034,7 +1034,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		shift := 0
 		if n.Data.GetNonce() > 0 {
-			shift = wire.CommitteeSize/2 + 1
+			shift = wire.POWRotate
 		} else if n.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			shift = 1
 		}

@@ -1178,7 +1178,7 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 	blockBytes := w.Bytes()
 
 	// we really shout not be doing it here
-	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize/2 + 1 {
+	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		panic(fmt.Sprintf("insifficient signatures for block %s", block.Hash().String()))
 		os.Exit(-8)
 		return makeDbErr(database.ErrTxNotWritable, "insifficient signatures", nil)
@@ -2053,7 +2053,7 @@ func initDB(ldb *leveldb.DB) error {
 
 // openDB opens the database at the provided path.  database.ErrDbDoesNotExist
 // is returned if the database doesn't exist and the create flag is not set.
-func openDB(dbPath string, network common.BitcoinNet, create bool) (database.DB, error) {
+func openDB(dbPath string, network common.OmegaNet, create bool) (database.DB, error) {
 	// Error if the database doesn't exist and the create flag is not set.
 	metadataDbPath := filepath.Join(dbPath, metadataDbName)
 	dbExists := fileExists(metadataDbPath)

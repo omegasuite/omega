@@ -366,7 +366,7 @@ func (self *Syncer) run() {
 			if self.sigGiven != -1 {
 				owner := self.Names[self.sigGiven]
 				if self.Runnable && self.forest[owner] != nil && self.forest[owner].block != nil &&
-					len(self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSize/2+1 {
+					len(self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
 					log.Info("passing NewConsusBlock on quit")
 					miner.server.NewConsusBlock(self.forest[owner].block)
 				}
@@ -439,7 +439,7 @@ func (self *Syncer) Signature(msg * wire.MsgSignature) bool {
 		msg.Signature[:])
 	self.signed[msg.From] = struct{}{}
 
-	return len(self.signed) > wire.CommitteeSize / 2
+	return len(self.signed) >= wire.CommitteeSigs
 }
 
 func (self *Syncer) Consensus(msg * wire.MsgConsensus) {
@@ -518,7 +518,7 @@ func (self *Syncer) Release(msg * wire.MsgRelease) {
 }
 
 func (self *Syncer) ckconsensus() {
-	if self.agreed != self.Myself || len(self.agrees) + 1 <= wire.CommitteeSize / 2 {
+	if self.agreed != self.Myself || len(self.agrees) + 1 < wire.CommitteeSigs {
 		return
 	}
 
@@ -1019,7 +1019,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 		log.Errorf("block does not contain enough signatures. %d", len(block.MsgBlock().Transactions[0].SignatureScripts))
 		return
 	}
-	if len(block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSize / 2 + 1 {
+	if len(block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
 		log.Infof("it is a consensus block. Skip it.")
 		return
 	}
@@ -1039,7 +1039,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 		}
 	}
 
-	if len(block.MsgBlock().Transactions[0].TxOut) <= wire.CommitteeSize / 2 {
+	if len(block.MsgBlock().Transactions[0].TxOut) < wire.CommitteeSigs {
 		return
 	}
 

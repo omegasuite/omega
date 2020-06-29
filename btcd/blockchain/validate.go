@@ -31,19 +31,9 @@ const (
 	// hours.
 	MaxTimeOffsetSeconds = 2 * 60 * 60
 
-	// MinCoinbaseScriptLen is the minimum length a coinbase script can be.
-	MinCoinbaseScriptLen = 2
-
-	// MaxCoinbaseScriptLen is the maximum length a coinbase script can be.
-	MaxCoinbaseScriptLen = 100
-
-	// serializedHeightVersion is the block version which changed block
-	// coinbases to start with the serialized block height.
-	serializedHeightVersion = 2
-
 	// baseSubsidy is the starting subsidy amount for mined blocks.  This
 	// value is halved every SubsidyHalvingInterval blocks.
-	baseSubsidy = 50 * btcutil.SatoshiPerBitcoin
+	baseSubsidy = 1 * btcutil.SatoshiPerBitcoin
 )
 
 var (
@@ -61,17 +51,6 @@ func isNullOutpoint(outpoint *wire.OutPoint) bool {
 	}
 	return false
 }
-
-// ShouldHaveSerializedBlockHeight determines if a block should have a
-// serialized block height embedded within the scriptSig of its
-// coinbase transaction. Judgement is based on the block version in the block
-// header. Blocks with version 2 and above satisfy this criteria. See BIP0034
-// for further information.
-/*
-func ShouldHaveSerializedBlockHeight(header *wire.BlockHeader) bool {
-	return header.Version >= serializedHeightVersion
-}
-*/
 
 // IsCoinBaseTx determines whether or not a transaction is a coinbase.  A coinbase
 // is a special transaction created by miners that has no inputs.  This is
@@ -216,22 +195,10 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		return ruleError(ErrNoTxOutputs, "transaction has no outputs")
 	}
 
-	// A transaction must not exceed the maximum allowed block payload when
-	// serialized.
-/*
-	serializedTxSize := tx.MsgTx().SerializeSizeStripped()
-	if serializedTxSize > chaincfg.MaxBlockBaseSize {
-		str := fmt.Sprintf("serialized transaction is too big - got "+
-			"%d, max %d", serializedTxSize, chaincfg.MaxBlockBaseSize)
-		return ruleError(ErrTxTooBig, str)
-	}
- */
-
 	// Ensure the transaction amounts are in range.  Each transaction
 	// output must not be negative or more than the max allowed per
 	// transaction.  Also, the total of all outputs must abide by the same
 	// restrictions.
-
 	totals := make(map[uint64]int64)
 	for _, txOut := range msgTx.TxOut {
 		if txOut.IsSeparator() || !txOut.IsNumeric() {
@@ -317,7 +284,7 @@ func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
 	for p := b.BestChain.Tip(); p != nil && p.Hash != hash; p = p.Parent {
 		switch {
 		case p.Data.GetNonce() > 0:
-			rotate -= wire.CommitteeSize / 2 + 1
+			rotate -= wire.POWRotate
 
 		case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 			rotate--
@@ -354,7 +321,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		for p := b.BestChain.Tip(); p != nil && p != fork; p = p.Parent {
 			switch {
 			case p.Data.GetNonce() > 0:
-				rotate -= wire.CommitteeSize / 2 + 1
+				rotate -= wire.POWRotate
 
 			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate--
@@ -363,7 +330,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		for p := pn; p != nil && p != fork; p = p.Parent {
 			switch {
 			case p.Data.GetNonce() > 0:
-				rotate += wire.CommitteeSize / 2 + 1
+				rotate += wire.POWRotate
 
 			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate++
@@ -444,7 +411,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			return fmt.Errorf("Unexpected flags"), true
 		}
 
-		if len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
+		if len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 			return fmt.Errorf("Insufficient signature"), false
 		}
 		if len(block.MsgBlock().Transactions[0].SignatureScripts[1]) < btcec.PubKeyBytesLenCompressed {
@@ -482,7 +449,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 
 			usigns[*pkh] = struct{}{}
 		}
-		if len(usigns) <= wire.CommitteeSize/2 {
+		if len(usigns) < wire.CommitteeSigs {
 			return fmt.Errorf("Insufficient number of Miner signatures."), false
 		}
 	}
@@ -1468,7 +1435,7 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 	// Leave the spent txouts entry nil in the state since the information
 	// is not needed and thus extra work can be avoided.
 	views, Vm := b.Canvas(block)
-//	views.db = &b.db
+
 	views.SetBestHash(&tip.Hash)
 
 	newNode := NewBlockNode(&header, tip)

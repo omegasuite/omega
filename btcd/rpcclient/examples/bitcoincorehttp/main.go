@@ -336,7 +336,7 @@ func main() {
 
 			h,_ := chainhash.NewHashFromStr(s)
 
-			res, err := client.GetRawTransaction(h)
+			res, err := client.GetRawTransaction(h, nil)
 			if err != nil {
 				log.Print(err)
 			}
@@ -539,7 +539,6 @@ func main() {
 							log.Printf("Bits:%d\n", blk.Bits)
 						}
 						log.Printf("PrevBlock:%s\n", blk.PrevBlock.String())
-						log.Printf("ReferredBlock:%s\n", blk.ReferredBlock.String())
 						log.Printf("BestBlock:%s\n", blk.BestBlock.String())
 					}
 					log.Printf("Miner:%s (%s)\n", hex.EncodeToString(blk.Miner[:]), mn)

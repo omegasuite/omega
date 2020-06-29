@@ -891,7 +891,7 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 			if i < len(hashList) {
 				h, _ := chain.HeaderByHash(&th)
 				if h.Nonce > 0 {
-					rot += wire.CommitteeSize/2 + 1
+					rot += wire.POWRotate
 				} else if h.Nonce <= -wire.MINER_RORATE_FREQ {
 					rot++
 				}
@@ -3237,10 +3237,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	// NOTE: The CPU miner relies on the mempool, so the mempool has to be
 	// created before calling the function to create the CPU miner.
 	policy := mining.Policy{
-//		BlockMinWeight:    cfg.BlockMinWeight,
-//		BlockMaxWeight:    cfg.BlockMaxWeight,
-//		BlockMinSize:      cfg.BlockMinSize,
-//		BlockMaxSize:      cfg.BlockMaxSize,
 		BlockPrioritySize: cfg.BlockPrioritySize,
 		TxMinFreeFee:      cfg.minRelayTxFee,
 	}

@@ -677,7 +677,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	// if it is a block being processed by the committee, veryfy it is from the peer
 	// producing, i.e. the address in coinbase signature is the peer's
 	if wire.CommitteeSize > 1 && bmsg.block.MsgBlock().Header.Nonce < 0 &&
-		len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
+		len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		if len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) < 2 {
 			log.Errorf("handleBlockMsg: blocked because of insufficient signatures. Require 2 items in coinbase signatures.")
 			return
@@ -2065,22 +2065,15 @@ func (sm *SyncManager) SyncPeerID() int32 {
 func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) (bool, error) {
 	reply := make(chan processBlockResponse, 1)
 
-	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSize / 2 + 1 {
+	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		log.Infof("procssing a comittee block, height = %d", block.Height())
-		// need to go through a committee to finalize it
-//		if flags & blockchain.BFSubmission == blockchain.BFSubmission {
-//			log.Infof("this is a local submission")
-			// this is a locally mined block
-			// this would add the block to the chain as an orphan
-//			log.Infof("send for local ProcessBlock")
-
 			sm.msgChan <- processBlockMsg{block: block, flags: flags | blockchain.BFSubmission, reply: reply}
 
-			response := <-reply
-			if response.err != nil {
+		response := <-reply
+		if response.err != nil {
 				return false, response.err
 			}
-//		}
+
 		// for local consensus generation
 		log.Infof("send for consensus generation")
 		sm.msgChan <- processConsusMsg{block: block, flags: flags }

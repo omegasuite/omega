@@ -226,7 +226,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 				continue
 			}
 
-			if len(blk.block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSize / 2 + 1 {
+			if len(blk.block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
 				// should never gets here
 				log.Infof("Block is a consensus. Accept it and close processing for height %d.", bh)
 				continue

@@ -276,15 +276,9 @@ func (b *BlockChain) calcNextRequiredDifficulty(lastNode *blockNode, newBlockTim
 	oldTarget := CompactToBig(lastNode.bits)
 	var newTarget * big.Int
 
-	if b.ChainParams.Name != "mainnet" {
-		newTarget = new(big.Int).Mul(oldTarget, big.NewInt(adjustedTimespan))
-		targetTimeSpan := int64(b.ChainParams.TargetTimespan / time.Second)
-		newTarget.Div(newTarget, big.NewInt(targetTimeSpan))
-	} else {
-		newTarget = new(big.Int).Mul(oldTarget, big.NewInt(adjustedTimespan))
-		targetTimeSpan := int64(b.ChainParams.TargetTimespan / time.Second)
-		newTarget.Div(newTarget, big.NewInt(targetTimeSpan))
-	}
+	newTarget = new(big.Int).Mul(oldTarget, big.NewInt(adjustedTimespan))
+	targetTimeSpan := int64(b.ChainParams.TargetTimespan / time.Second)
+	newTarget.Div(newTarget, big.NewInt(targetTimeSpan))
 
 	// Limit new value to the proof of work limit.
 	if newTarget.Cmp(b.ChainParams.PowLimit) > 0 {

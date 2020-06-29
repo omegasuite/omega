@@ -23,7 +23,7 @@ import (
 	"github.com/btcsuite/btcd/wire/common"
 )
 
-const MaxMessagePayload = (1024 * 1024 * 32)	// must be same as in wire.message.go
+const MaxMessagePayload = (1024 * 1024 * 400)	// must be same as in wire.message.go
 
 const (
 	// definition related consts. to defined a new vertes, border, polygon, rightset, or a right

@@ -15,10 +15,12 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"time"
 
 	"github.com/btcsuite/btcd/blockchain/indexers"
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/limits"
+	"github.com/btcsuite/btcutil"
 )
 
 const (
@@ -180,6 +182,29 @@ func btcdMain(serverChan chan<- *server) error {
 		server.WaitForShutdown()
 		srvrLog.Infof("Server shutdown complete")
 	}()
+
+	if cfg.Generate && cfg.privateKeys == nil {
+		// read from stdin. for security.
+		// expect user to do something like: echo privkey | btcd
+		fmt.Printf("Private Key in GIF ... ")
+		var pvk [80]byte
+		n, err := os.Stdin.Read(pvk[:])
+		if err == nil {
+			dwif, err := btcutil.DecodeWIF(string(pvk[:n]))
+			if err == nil {
+				privKey := dwif.PrivKey
+				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
+				if err == nil {
+					addr := pkaddr.AddressPubKeyHash()
+					if addr.IsForNet(activeNetParams.Params) {
+						cfg.miningAddrs = append(cfg.miningAddrs, addr)
+						cfg.signAddress = addr
+						cfg.privateKeys = privKey
+					}
+				}
+			}
+		}
+	}
 
 	if cfg.privateKeys != nil && cfg.Generate {
 		go consensus.Consensus(server, cfg.signAddress, activeNetParams.Params)

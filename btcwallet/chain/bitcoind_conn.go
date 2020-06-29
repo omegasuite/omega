@@ -318,7 +318,7 @@ func (c *BitcoindConn) txEventHandler() {
 }
 
 // getCurrentNet returns the network on which the bitcoind node is running.
-func (c *BitcoindConn) getCurrentNet() (common.BitcoinNet, error) {
+func (c *BitcoindConn) getCurrentNet() (common.OmegaNet, error) {
 	hash, err := c.client.GetBlockHash(0)
 	if err != nil {
 		return 0, err

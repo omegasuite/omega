@@ -510,7 +510,7 @@ func (s * server) service() {
 				block = q.block
 			}
 
-			if s.state.Height < block.Height() && len(block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSize / 2 + 1 {
+			if s.state.Height < block.Height() && len(block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
 				s.state.Height = block.Height()
 				s.state.Hash = *block.Hash()
 				blkchain = append(blkchain, s.state.Hash)

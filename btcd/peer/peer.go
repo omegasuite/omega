@@ -1161,7 +1161,7 @@ func (p *Peer) writeMessage(msg wire.Message, enc wire.MessageEncoding) error {
 // to send malformed messages without the peer being disconnected.
 func (p *Peer) isAllowedReadError(err error) bool {
 	// Only allow read errors in regression test mode.
-	if p.cfg.ChainParams.Net != common.TestNet {
+	if p.cfg.ChainParams.Net != common.RegNet {
 		return false
 	}
 

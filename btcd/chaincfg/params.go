@@ -48,33 +48,15 @@ const (
 	// based on space utilization of the most recent 100,000 weighing blocks.
 	// A weighing block is a signed block that is at least 10,000 blocks before
 	// the checking point.
-	BlockBaseSize = 4	// 4Txs.
+	BlockBaseSize = 4		// 4Txs.
 	TargetBlockRate = 3		// 3 seconds.
 	BlockSizeEvalPeriod = 100000	// re-evaluate block size every 100000 blocks
 	SkipBlocks = 10000
 	StartEvalBlocks = 2000
 
-	// MaxBlockWeight defines the maximum block weight, where "block
-	// weight" is interpreted as defined in BIP0141. A block's weight is
-	// calculated as the sum of the of bytes in the existing transactions
-	// and header, plus the weight of each byte within a transaction. The
-	// weight of a "base" byte is 4, while the weight of a witness byte is
-	// 1. As a result, for a block to be valid, the BlockLimit MUST be
-	// less than, or equal to MaxBlockWeight.
-//	MaxBlockWeight = 4000000
-
-	// MaxBlockBaseSize is the maximum number of bytes within a block
-	// which can be allocated to non-witness data.
-//	MaxBlockBaseSize = 1000000
-
 	// MaxBlockSigOpsCost is the maximum number of signature operations
 	// allowed for a block.
 	MaxBlockSigOpsCost = 80000
-
-	// WitnessScaleFactor determines the level of "discount" witness data
-	// receives compared to "base" data. A scale factor of 4, denotes that
-	// witness data is 1/4 as cheap as regular non-witness data.
-//	WitnessScaleFactor = 4
 
 	// MaxOutputsPerBlock is the maximum number of transaction outputs there
 	// can be in a block of max weight size.
@@ -127,11 +109,6 @@ const (
 	// purposes.
 	DeploymentTestDummy = iota
 
-	// DeploymentSegwit defines the rule change deployment ID for the
-	// Segregated Witness (segwit) soft-fork package. The segwit package
-	// includes the deployment of BIPS 141, 142, 144, 145, 147 and 173.
-	DeploymentSegwit
-
 	// NOTE: DefinedDeployments must always come last since it is used to
 	// determine how many defined deployments there currently are.
 
@@ -147,7 +124,7 @@ type Params struct {
 	Name string
 
 	// Net defines the magic bytes used to identify the network.
-	Net common.BitcoinNet
+	Net common.OmegaNet
 
 	// DefaultPort defines the default peer-to-peer port for the network.
 	DefaultPort string
@@ -245,8 +222,8 @@ type Params struct {
 	ScriptHashAddrID        byte // First byte of a P2SH address
 	ContractAddrID	        byte // First byte of a P2C address
 	PrivateKeyID            byte // First byte of a WIF private key
-	WitnessPubKeyHashAddrID byte // First byte of a P2WPKH address
-	WitnessScriptHashAddrID byte // First byte of a P2WSH address
+//	WitnessPubKeyHashAddrID byte // First byte of a P2WPKH address
+//	WitnessScriptHashAddrID byte // First byte of a P2WSH address
 
 	// BIP32 hierarchical deterministic extended key magics
 	HDPublicKeyID  [4]byte
@@ -265,18 +242,13 @@ type Params struct {
 	MinBorderFee int
 }
 
-// MainNetParams defines the network parameters for the main Bitcoin network.
+// MainNetParams defines the network parameters for the main Omega network.
 var MainNetParams = Params{
 	Name:        "mainnet",
 	Net:         common.MainNet,
-	DefaultPort: "8333",
+	DefaultPort: "8383",
 	DNSSeeds: []DNSSeed{
-		{"seed.bitcoin.sipa.be", true},
-		{"dnsseed.bluematt.me", true},
-		{"dnsseed.bitcoin.dashjr.org", false},
-		{"seed.bitcoinstats.com", true},
-		{"seed.bitnodes.io", false},
-		{"seed.bitcoin.jonasschnelli.ch", true},
+		{"45.32.93.90", false},
 	},
 
 	// Chain parameters
@@ -286,8 +258,8 @@ var MainNetParams = Params{
 	GenesisMinerHash:         &genesisMinerHash,
 	PowLimit:                 mainPowLimit,
 	PowLimitBits:             0x1d00ffff,
-	CoinbaseMaturity:         100,
-	SubsidyReductionInterval: 210000,
+	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
@@ -326,8 +298,8 @@ var MainNetParams = Params{
 	ScriptHashAddrID:        0x05, // starts with 3
 	ContractAddrID:			 0x88, // start with 8
 	PrivateKeyID:            0x80, // starts with 5 (uncompressed) or K (compressed)
-	WitnessPubKeyHashAddrID: 0x06, // starts with p2
-	WitnessScriptHashAddrID: 0x0A, // starts with 7Xh
+//	WitnessPubKeyHashAddrID: 0x06, // starts with p2
+//	WitnessScriptHashAddrID: 0x0A, // starts with 7Xh
 
 	HDPublicKeyID:  [4]byte{0x04, 0x88, 0xad, 0xe4},
 	HDPrivateKeyID:  [4]byte{0x04, 0x88, 0xb2, 0x1e},
@@ -344,8 +316,8 @@ var MainNetParams = Params{
 // 3), this network is sometimes simply called "testnet".
 var RegressionNetParams = Params{
 	Name:        "regtest",
-	Net:         common.TestNet,
-	DefaultPort: "18444",
+	Net:         common.RegNet,
+	DefaultPort: "18484",
 	DNSSeeds:    []DNSSeed{},
 
 	// Chain parameters
@@ -355,8 +327,8 @@ var RegressionNetParams = Params{
 	GenesisMinerHash:         &regTestGenesisMinerHash,
 	PowLimit:                 regressionPowLimit,
 	PowLimitBits:             0x207fffff,
-	CoinbaseMaturity:         100,
-	SubsidyReductionInterval: 150,
+	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+	SubsidyReductionInterval: 150 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
@@ -402,22 +374,19 @@ var RegressionNetParams = Params{
 	// address generation.
 	HDCoinType: 1,
 
-	ContractExecLimit: 10000,
-	SigVeriConcurrency: 1,
+	ContractExecLimit: 1000000,
+	SigVeriConcurrency: 4,
 }
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
 // (version 3).  Not to be confused with the regression test network, this
 // network is sometimes simply called "testnet".
 var TestNet3Params = Params{
-	Name:        "testnet3",
-	Net:         common.TestNet3,
-	DefaultPort: "18333",
+	Name:        "testnet",
+	Net:         common.TestNet,
+	DefaultPort: "18383",
 	DNSSeeds: []DNSSeed{
-		{"testnet-seed.bitcoin.jonasschnelli.ch", true},
-		{"testnet-seed.bitcoin.schildbach.de", false},
-		{"seed.tbtc.petertodd.org", true},
-		{"testnet-seed.bluematt.me", false},
+		{"45.32.93.90", false},
 	},
 
 	// Chain parameters
@@ -427,8 +396,8 @@ var TestNet3Params = Params{
 	GenesisMinerHash:         &testNet3GenesisMinerHash,
 	PowLimit:                 testNet3PowLimit,
 	PowLimitBits:             0x1f00ffff,
-	CoinbaseMaturity:         100,
-	SubsidyReductionInterval: 210000,
+	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 4,    // 10 minutes
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
@@ -466,8 +435,8 @@ var TestNet3Params = Params{
 	PubKeyHashAddrID:        0x6f, // starts with m or n
 	ScriptHashAddrID:        0xc4, // starts with 2
 	ContractAddrID:	 		 0x88, // start with 8
-	WitnessPubKeyHashAddrID: 0x03, // starts with QW
-	WitnessScriptHashAddrID: 0x28, // starts with T7n
+//	WitnessPubKeyHashAddrID: 0x03, // starts with QW
+//	WitnessScriptHashAddrID: 0x28, // starts with T7n
 	PrivateKeyID:            0xef, // starts with 9 (uncompressed) or c (compressed)
 
 	HDPublicKeyID:  [4]byte{0x04, 0x35, 0x83, 0x94},
@@ -477,8 +446,8 @@ var TestNet3Params = Params{
 	// address generation.
 	HDCoinType: 1,
 
-	ContractExecLimit: 10000,
-	SigVeriConcurrency: 1,
+	ContractExecLimit: 1000000,
+	SigVeriConcurrency: 4,
 }
 
 // SimNetParams defines the network parameters for the simulation test Bitcoin
@@ -491,7 +460,7 @@ var TestNet3Params = Params{
 var SimNetParams = Params{
 	Name:        "simnet",
 	Net:         common.SimNet,
-	DefaultPort: "18555",
+	DefaultPort: "18585",
 	DNSSeeds:    []DNSSeed{}, // NOTE: There must NOT be any seeds.
 
 	// Chain parameters
@@ -501,8 +470,8 @@ var SimNetParams = Params{
 	GenesisMinerHash:         &simNetGenesisMinerHash,
 	PowLimit:                 simNetPowLimit,
 	PowLimitBits:             0x207fffff,
-	CoinbaseMaturity:         100,
-	SubsidyReductionInterval: 210000,
+	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
@@ -540,8 +509,8 @@ var SimNetParams = Params{
 	ScriptHashAddrID:        0x7b, // starts with s
 	ContractAddrID:			 0x88, // start with 8
 	PrivateKeyID:            0x64, // starts with 4 (uncompressed) or F (compressed)
-	WitnessPubKeyHashAddrID: 0x19, // starts with Gg
-	WitnessScriptHashAddrID: 0x28, // starts with ?
+//	WitnessPubKeyHashAddrID: 0x19, // starts with Gg
+//	WitnessScriptHashAddrID: 0x28, // starts with ?
 
 	HDPublicKeyID:  [4]byte{0x04, 0x20, 0xb9, 0x00},
 	HDPrivateKeyID:  [4]byte{0x04, 0x35, 0xbd, 0x3a},
@@ -550,8 +519,8 @@ var SimNetParams = Params{
 	// address generation.
 	HDCoinType: 115, // ASCII for s
 
-	ContractExecLimit: 10000,
-	SigVeriConcurrency: 1,
+	ContractExecLimit: 1000000,
+	SigVeriConcurrency: 4,
 }
 
 var (
@@ -567,7 +536,7 @@ var (
 )
 
 var (
-	registeredNets       = make(map[common.BitcoinNet]struct{})
+	registeredNets       = make(map[common.OmegaNet]struct{})
 	pubKeyHashAddrIDs    = make(map[byte]struct{})
 	contractAddrIDs      = make(map[byte]struct{})
 	scriptHashAddrIDs    = make(map[byte]struct{})

@@ -656,7 +656,7 @@ func (m *CPUMiner) coinbaseByCommittee(me btcutil.Address) []btcutil.Address {
 		}
 	}
 
-	if qualified && good > wire.CommitteeSize/2 {
+	if qualified && good >= wire.CommitteeSigs {
 		return addresses
 	} else {
 		return nil

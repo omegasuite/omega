@@ -479,10 +479,10 @@ func (net *netParams) ReadFrom(r io.Reader) (int64, error) {
 		return n64, err
 	}
 
-	switch common.BitcoinNet(binary.LittleEndian.Uint32(uint32Bytes)) {
+	switch common.OmegaNet(binary.LittleEndian.Uint32(uint32Bytes)) {
 	case common.MainNet:
 		*net = (netParams)(chaincfg.MainNetParams)
-	case common.TestNet3:
+	case common.TestNet:
 		*net = (netParams)(chaincfg.TestNet3Params)
 	case common.SimNet:
 		*net = (netParams)(chaincfg.SimNetParams)

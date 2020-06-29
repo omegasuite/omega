@@ -60,8 +60,8 @@ const CommandSize = 12
 // ServiceFlag identifies services supported by a bitcoin peer.
 type ServiceFlag uint64
 
-// BitcoinNet represents which bitcoin network a message belongs to.
-type BitcoinNet uint32
+// OmegaNet represents which bitcoin network a message belongs to.
+type OmegaNet uint32
 
 // BloomUpdateType specifies how the filter is updated when a match is found
 type BloomUpdateType uint8
@@ -355,12 +355,12 @@ func ReadElement(r io.Reader, element interface{}) error {
 		*e = InvType(rv)
 		return nil
 
-	case *BitcoinNet:
+	case *OmegaNet:
 		rv, err := BinarySerializer.Uint32(r, LittleEndian)
 		if err != nil {
 			return err
 		}
-		*e = BitcoinNet(rv)
+		*e = OmegaNet(rv)
 		return nil
 
 	case *BloomUpdateType:
@@ -487,7 +487,7 @@ func WriteElement(w io.Writer, element interface{}) error {
 		}
 		return nil
 
-	case BitcoinNet:
+	case OmegaNet:
 		err := BinarySerializer.PutUint32(w, LittleEndian, uint32(e))
 		if err != nil {
 			return err
@@ -912,41 +912,40 @@ func (f ServiceFlag) String() string {
 	return s
 }
 
-
-// Constants used to indicate the message bitcoin network.  They can also be
+// Constants used to indicate the message network.  They can also be
 // used to seek to the next message when a stream's state is unknown, but
 // this package does not provide that functionality since it's generally a
 // better idea to simply disconnect clients that are misbehaving over TCP.
 const (
 	// MainNet represents the main bitcoin network.
-	MainNet BitcoinNet = 0xd9b4bef9
+	MainNet OmegaNet = 0x956ca366
 
-	// TestNet represents the regression test network.
-	TestNet BitcoinNet = 0xdab5bffa
+	// RegNet represents the regression test network.
+	RegNet OmegaNet = 0x6241456c
 
-	// TestNet3 represents the test network (version 3).
-	TestNet3 BitcoinNet = 0x0709110b
+	// TestNet represents the test network.
+	TestNet OmegaNet = 0x709c5fed
 
 	// SimNet represents the simulation test network.
-	SimNet BitcoinNet = 0x12141c16
+	SimNet OmegaNet = 0xe10b70ad
 )
 
-// bnStrings is a map of bitcoin networks back to their constant names for
+// bnStrings is a map of omega networks back to their constant names for
 // pretty printing.
-var bnStrings = map[BitcoinNet]string{
-	MainNet:  "MainNet",
-	TestNet:  "TestNet",
-	TestNet3: "TestNet3",
-	SimNet:   "SimNet",
+var bnStrings = map[OmegaNet]string{
+	MainNet: "OmgMain",
+	RegNet:  "OmgReg",
+	TestNet: "OmgTest",
+	SimNet:  "OmgSim",
 }
 
-// String returns the BitcoinNet in human-readable form.
-func (n BitcoinNet) String() string {
+// String returns the OmegaNet in human-readable form.
+func (n OmegaNet) String() string {
 	if s, ok := bnStrings[n]; ok {
 		return s
 	}
 
-	return fmt.Sprintf("Unknown BitcoinNet (%d)", uint32(n))
+	return fmt.Sprintf("Unknown OmegaNet (%d)", uint32(n))
 }
 
 // HashToBig converts a chainhash.Hash into a big.Int that can be used to

@@ -26,31 +26,6 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 	// for every right definition, it must be referenced by a txout in the same tx.
 	for i, def := range msgTx.TxDef {
 		switch def.(type) {
-/*
-		case *token.VertexDef:
-			v := def.(*token.VertexDef)
-			refd := false
-			for _, b := range msgTx.TxDef {
-				switch b.(type) {
-				case *token.BorderDef:
-					bd := b.(*token.BorderDef)
-					if bd.Begin.IsEqual(v) || bd.End.IsEqual(v) {
-						refd = true
-					}
-					break
-				}
-			}
-			if !refd {
-				str := fmt.Sprintf("Vertex %s is defined but not referenced.", v.Hash().String())
-				return ruleError(1, str)
-			}
-			if !saneVertex(v) {	// check coords is in valid range
-				str := fmt.Sprintf("Insane vertex %v (%f， %f, %f) => (%d， %d, %d)", v.Hash(),
-					float64(int32(v.Lat())) / token.CoordPrecision, float64(int32(v.Lng())) / token.CoordPrecision,
-					float64(int32(v.Alt())) / token.CoordPrecision, v.Lat(), v.Lng(), v.Alt())
-				return ruleError(1, str)
-			}
- */
 		case *token.BorderDef:
 			v := def.(*token.BorderDef)
 			if !v.Father.IsEqual(&chainhash.Hash{}) {

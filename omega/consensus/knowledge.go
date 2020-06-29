@@ -85,27 +85,22 @@ func (self *Knowledgebase) Debug(w http.ResponseWriter, r *http.Request) {
 var Mapping16 = []int{0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4}
 
 func (self *Knowledgebase) Qualified(who int32) bool {
-//	for j := int(self.cfg.CommitteeSize) - 1; j >= 0; j-- {
 		j := who
 		qualified := 0
-//		leading := false
+
 		for i := int32(0); i < wire.CommitteeSize; i++ {
 			s := 0
 			for k := uint(0); k < 64; k += 4 {
 				s += Mapping16[((self.Knowledge[j][i] >> k) & 0xF)]
 			}
-			if s > int(wire.CommitteeSize/2) {
+			if s >= wire.CommitteeSigs {
 				qualified++
-//				if i == j {
-//					leading = true
-//				}
 			}
 		}
-		if qualified > int(wire.CommitteeSize/2) {
+		if qualified >= wire.CommitteeSigs {
 			return true
-//			return j == self.committee.P(self.cfg.GetSelf())-1 && leading
 		}
-//	}
+
 	return false
 }
 
