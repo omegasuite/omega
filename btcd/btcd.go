@@ -15,7 +15,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
-	"time"
+//	"time"
 
 	"github.com/btcsuite/btcd/blockchain/indexers"
 	"github.com/btcsuite/btcd/database"

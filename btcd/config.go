@@ -767,27 +767,6 @@ func loadConfig() (*config, []string, error) {
 		return nil, nil, err
 	}
 
-	// Limit the block priority and minimum block sizes to max block size.
-//	cfg.BlockPrioritySize = minUint32(cfg.BlockPrioritySize, cfg.BlockMaxSize)
-//	cfg.BlockMinSize = minUint32(cfg.BlockMinSize, cfg.BlockMaxSize)
-//	cfg.BlockMinWeight = minUint32(cfg.BlockMinWeight, cfg.BlockMaxWeight)
-
-	switch {
-	// If the max block size isn't set, but the max weight is, then we'll
-	// set the limit for the max block size to a safe limit so weight takes
-	// precedence.
-//	case cfg.BlockMaxSize == defaultBlockMaxSize &&
-//		cfg.BlockMaxWeight != defaultBlockMaxWeight:
-
-//		cfg.BlockMaxSize = chaincfg.MaxBlockBaseSize - 1000
-
-	// If the max block weight isn't set, but the block size is, then we'll
-	// scale the set weight accordingly based on the max block size value.
-//	case cfg.BlockMaxSize != defaultBlockMaxSize &&
-//		cfg.BlockMaxWeight == defaultBlockMaxWeight:
-//		cfg.BlockMaxWeight = cfg.BlockMaxSize * chaincfg.WitnessScaleFactor
-	}
-
 	// Look for illegal characters in the user agent comments.
 	for _, uaComment := range cfg.UserAgentComments {
 		if strings.ContainsAny(uaComment, "/:()") {
@@ -905,7 +884,7 @@ func loadConfig() (*config, []string, error) {
 
 	// Ensure there is at least one mining address when the generate flag is
 	// set.
-	if cfg.GenerateMiner && len(cfg.MiningAddrs) == 0 {
+	if cfg.GenerateMiner && len(cfg.miningAddrs) == 0 {
 		str := "%s: the generate flag is set, but there are no mining " +
 			"addresses specified "
 		err := fmt.Errorf(str, funcName)
@@ -916,13 +895,11 @@ func loadConfig() (*config, []string, error) {
 
 	// Add default port to all listener addresses if needed and remove
 	// duplicate addresses.
-	cfg.Listeners = normalizeAddresses(cfg.Listeners,
-		activeNetParams.DefaultPort)
+	cfg.Listeners = normalizeAddresses(cfg.Listeners, activeNetParams.DefaultPort)
 
 	// Add default port to all rpc listener addresses if needed and remove
 	// duplicate addresses.
-	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners,
-		activeNetParams.rpcPort)
+	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.rpcPort)
 
 	// Only allow TLS to be disabled if the RPC is bound to localhost
 	// addresses.
@@ -956,10 +933,8 @@ func loadConfig() (*config, []string, error) {
 
 	// Add default port to all added peer addresses if needed and remove
 	// duplicate addresses.
-	cfg.AddPeers = normalizeAddresses(cfg.AddPeers,
-		activeNetParams.DefaultPort)
-	cfg.ConnectPeers = normalizeAddresses(cfg.ConnectPeers,
-		activeNetParams.DefaultPort)
+	cfg.AddPeers = normalizeAddresses(cfg.AddPeers, activeNetParams.DefaultPort)
+	cfg.ConnectPeers = normalizeAddresses(cfg.ConnectPeers, activeNetParams.DefaultPort)
 
 	// --noonion and --onion do not mix.
 	if cfg.NoOnion && cfg.OnionProxy != "" {
