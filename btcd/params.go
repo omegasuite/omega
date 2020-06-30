@@ -44,14 +44,14 @@ var regressionNetParams = params{
 // reference implementation - see the mainNetParams comment for details.
 var testNet3Params = params{
 	Params:  &chaincfg.TestNet3Params,
-	rpcPort: "18834",
+	rpcPort: "18840",
 }
 
 // simNetParams contains parameters specific to the simulation test network
 // (wire.SimNet).
 var simNetParams = params{
 	Params:  &chaincfg.SimNetParams,
-	rpcPort: "18856",
+	rpcPort: "18848",
 }
 
 // netName returns the name used when referring to a bitcoin network.  At the

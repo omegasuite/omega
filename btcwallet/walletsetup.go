@@ -13,7 +13,6 @@ import (
 
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/wire/common"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcwallet/internal/legacy/keystore"
 	"github.com/btcsuite/btcwallet/internal/prompt"
@@ -27,15 +26,6 @@ import (
 // files.
 func networkDir(dataDir string, chainParams *chaincfg.Params) string {
 	netname := chainParams.Name
-
-	// For now, we must always name the testnet data directory as "testnet"
-	// and not "testnet3" or any other version, as the chaincfg testnet3
-	// paramaters will likely be switched to being named "testnet3" in the
-	// future.  This is done to future proof that change, and an upgrade
-	// plan to move the testnet3 data directory can be worked out later.
-	if chainParams.Net == common.TestNet {
-		netname = "testnet"
-	}
 
 	return filepath.Join(dataDir, netname)
 }

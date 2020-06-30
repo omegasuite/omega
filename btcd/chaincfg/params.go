@@ -257,7 +257,7 @@ var MainNetParams = Params{
 	GenesisHash:              &genesisHash,
 	GenesisMinerHash:         &genesisMinerHash,
 	PowLimit:                 mainPowLimit,
-	PowLimitBits:             0x1d00ffff,
+	PowLimitBits:             0x1e00fff0,
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
@@ -298,8 +298,6 @@ var MainNetParams = Params{
 	ScriptHashAddrID:        0x05, // starts with 3
 	ContractAddrID:			 0x88, // start with 8
 	PrivateKeyID:            0x80, // starts with 5 (uncompressed) or K (compressed)
-//	WitnessPubKeyHashAddrID: 0x06, // starts with p2
-//	WitnessScriptHashAddrID: 0x0A, // starts with 7Xh
 
 	HDPublicKeyID:  [4]byte{0x04, 0x88, 0xad, 0xe4},
 	HDPrivateKeyID:  [4]byte{0x04, 0x88, 0xb2, 0x1e},
@@ -395,7 +393,7 @@ var TestNet3Params = Params{
 	GenesisHash:              &testNet3GenesisHash,
 	GenesisMinerHash:         &testNet3GenesisMinerHash,
 	PowLimit:                 testNet3PowLimit,
-	PowLimitBits:             0x1f00ffff,
+	PowLimitBits:             0x1f0fffff,	// 0x1d3fffff
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
@@ -435,8 +433,6 @@ var TestNet3Params = Params{
 	PubKeyHashAddrID:        0x6f, // starts with m or n
 	ScriptHashAddrID:        0xc4, // starts with 2
 	ContractAddrID:	 		 0x88, // start with 8
-//	WitnessPubKeyHashAddrID: 0x03, // starts with QW
-//	WitnessScriptHashAddrID: 0x28, // starts with T7n
 	PrivateKeyID:            0xef, // starts with 9 (uncompressed) or c (compressed)
 
 	HDPublicKeyID:  [4]byte{0x04, 0x35, 0x83, 0x94},
@@ -509,8 +505,6 @@ var SimNetParams = Params{
 	ScriptHashAddrID:        0x7b, // starts with s
 	ContractAddrID:			 0x88, // start with 8
 	PrivateKeyID:            0x64, // starts with 4 (uncompressed) or F (compressed)
-//	WitnessPubKeyHashAddrID: 0x19, // starts with Gg
-//	WitnessScriptHashAddrID: 0x28, // starts with ?
 
 	HDPublicKeyID:  [4]byte{0x04, 0x20, 0xb9, 0x00},
 	HDPrivateKeyID:  [4]byte{0x04, 0x35, 0xbd, 0x3a},

@@ -12,47 +12,47 @@ var InitDefs = omega.InitDefs
 
 // genesisMerkleRoot is the hash of the first transaction in the genesis block
 // for the main network. ----
-var genesisMerkleRoot = omega.GenesisMerkleRoot
+var genesisMerkleRoot = omega.MainNetGenesisMerkleRoot
 
 // genesisBlock defines the genesis block of the block chain which serves as the
 // public transaction ledger for the main network.
-var genesisBlock = omega.GenesisBlock
-var genesisMinerBlock = omega.GenesisMinerBlock
+var genesisBlock = omega.MainNetGenesisBlock
+var genesisMinerBlock = omega.MainNetGenesisMinerBlock
 
 // genesisHash is the hash of the first block in the block chain for the main
 // network (genesis block). ----
-var genesisHash = omega.GenesisHash[0]
-var genesisMinerHash = omega.GenesisHash[1]
+var genesisHash = omega.MainNetGenesisHash[0]
+var genesisMinerHash = omega.MainNetGenesisHash[1]
 
 // regTestGenesisHash is the hash of the first block in the block chain for the
 // regression test network (genesis block).
-var regTestGenesisHash = omega.RegTestGenesisHash[0]
-var regTestGenesisMinerHash = omega.RegTestGenesisHash[1]
+var regTestGenesisHash = omega.RegNetGenesisHash[0]
+var regTestGenesisMinerHash = omega.RegNetGenesisHash[1]
 
 // regTestGenesisMerkleRoot is the hash of the first transaction in the genesis
 // block for the regression test network.  It is the same as the merkle root for
 // the main network.
-var regTestGenesisMerkleRoot = omega.RegTestGenesisMerkleRoot
+var regTestGenesisMerkleRoot = omega.RegNetGenesisMerkleRoot
 
 // regTestGenesisBlock defines the genesis block of the block chain which serves
 // as the public transaction ledger for the regression test network.
-var regTestGenesisBlock = omega.RegTestGenesisBlock
-var regTestGenesisMinerBlock = omega.RegTestGenesisMinerBlock
+var regTestGenesisBlock = omega.RegNetGenesisBlock
+var regTestGenesisMinerBlock = omega.RegNetGenesisMinerBlock
 
 // testNet3GenesisHash is the hash of the first block in the block chain for the
 // test network (version 3).
-var testNet3GenesisHash = omega.TestNet3GenesisHash[0]
-var testNet3GenesisMinerHash = omega.TestNet3GenesisHash[1]
+var testNet3GenesisHash = omega.TestNetGenesisHash[0]
+var testNet3GenesisMinerHash = omega.TestNetGenesisHash[1]
 
 // testNet3GenesisMerkleRoot is the hash of the first transaction in the genesis
 // block for the test network (version 3).  It is the same as the merkle root
 // for the main network.
-var testNet3GenesisMerkleRoot = omega.TestNet3GenesisMerkleRoot
+var testNet3GenesisMerkleRoot = omega.TestNetGenesisMerkleRoot
 
 // testNet3GenesisBlock defines the genesis block of the block chain which
 // serves as the public transaction ledger for the test network (version 3).
-var testNet3GenesisBlock = omega.TestNet3GenesisBlock
-var testNet3GenesisMinerBlock = omega.TestNet3GenesisMinerBlock
+var testNet3GenesisBlock = omega.TestNetGenesisBlock
+var testNet3GenesisMinerBlock = omega.TestNetGenesisMinerBlock
 
 // simNetGenesisHash is the hash of the first block in the block chain for the
 // simulation test network.
