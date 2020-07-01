@@ -248,7 +248,8 @@ var MainNetParams = Params{
 	Net:         common.MainNet,
 	DefaultPort: "8383",
 	DNSSeeds: []DNSSeed{
-		{"45.32.93.90", false},
+//		{"localhost:8383", false},
+		{"omegasuite.org", false},
 	},
 
 	// Chain parameters
@@ -384,7 +385,7 @@ var TestNet3Params = Params{
 	Net:         common.TestNet,
 	DefaultPort: "18383",
 	DNSSeeds: []DNSSeed{
-		{"45.32.93.90", false},
+		{"omegasuite.org", false},
 	},
 
 	// Chain parameters
