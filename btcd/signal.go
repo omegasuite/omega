@@ -5,11 +5,8 @@
 package main
 
 import (
-	"github.com/btcsuite/omega/consensus"
 	"os"
 	"os/signal"
-	"runtime/pprof"
-	"time"
 )
 
 // shutdownRequestChannel is used to initiate shutdown from one of the
@@ -25,7 +22,7 @@ var interruptSignals = []os.Signal{os.Interrupt}
 // when either signal is received.
 func interruptListener() <-chan struct{} {
 	c := make(chan struct{})
-	last := int64(0)
+//	last := int64(0)
 
 	go func() {
 		interruptChannel := make(chan os.Signal, 1)
@@ -33,30 +30,30 @@ func interruptListener() <-chan struct{} {
 
 		// Listen for initial shutdown signal and close the returned
 		// channel to notify the caller.
-	shutdown:
-		for true {
+//	shutdown:
+//		for true {
 			select {
 			case sig := <-interruptChannel:
 				btcdLog.Infof("Received signal (%s).  Shutting down...", sig)
-				t := time.Now().Unix()
-				if t-last < 20 {
-					break shutdown
-				}
-				last = t
+//				t := time.Now().Unix()
+//				if t-last < 20 {
+//					break shutdown
+//				}
+//				last = t
 
 //				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
-				consensus.CommitteePolling()
+//				consensus.CommitteePolling()
 
 			case <-shutdownRequestChannel:
 				btcdLog.Info("Shutdown requested.  Shutting down...")
-				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
-				consensus.CommitteePolling()
-				break shutdown
+//				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+//				consensus.CommitteePolling()
+//				break shutdown
 			}
-		}
+//		}
 
 		close(c)
-
+/*
 		repeats := 0
 
 		// Listen for repeated signals and display a message so the user
@@ -80,6 +77,7 @@ func interruptListener() <-chan struct{} {
 				repeats = 0
 			}
 		}
+ */
 	}()
 
 	return c
