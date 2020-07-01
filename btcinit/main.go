@@ -386,7 +386,7 @@ func main() {
 			BlackList: make([]wire.BlackList, 0),
 			Utxos:     make([]wire.OutPoint, 0),
 		}
-		copy(minerBlock.Miner[:], addr)
+
 		solveMinerBlock(&minerBlock)
 
 		// genesisHash is the hash of the first block in the block chain for the main
