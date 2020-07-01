@@ -247,6 +247,8 @@ func main() {
 		fmt.Printf("\n\nvar " + params[net].Name + "creator = [20]byte{")
 		printKey(addr)
 		fmt.Printf("}\n")
+		var miner [20]byte
+		copy(miner[:], addr)
 
 		addr, _, err = base58.CheckDecode(k[1])
 		if err != nil {
@@ -379,6 +381,8 @@ func main() {
 			Timestamp: genesisBlock.Header.Timestamp,
 			Bits:      params[net].PowLimitBits,
 			Nonce:     0,
+			Miner:     miner,
+			Connection:  []byte("45.32.93.90:8383"),
 			BlackList: make([]wire.BlackList, 0),
 			Utxos:     make([]wire.OutPoint, 0),
 		}
@@ -405,8 +409,15 @@ func main() {
 			"\n\t\tTimestamp:  time.Unix(0x%x, 0), "+
 			"\n\tBits:      0x%x,"+
 			"\n\tNonce:      %d,"+
+			"\n\tConnection:      []byte{", minerBlock.Timestamp.Unix(), minerBlock.Bits, minerBlock.Nonce)
+
+		printKey(minerBlock.Connection)
+
+		fmt.Printf("},"+
+			"\n\tBlackList: []wire.BlackList{},"+
+			"\n\tUtxos: []wire.OutPoint{},"+
 			"\n\tMiner: " + params[net].Name + "creator,"+
-			"\n}", minerBlock.Timestamp.Unix(), minerBlock.Bits, minerBlock.Nonce)
+			"\n}")
 	}
 }
 
