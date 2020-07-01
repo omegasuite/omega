@@ -1069,7 +1069,7 @@ type blockchainNodeData struct {
 	// reconstructing headers from memory.  These must be treated as
 	// immutable and are intentionally ordered to avoid padding on 64-bit
 	// platforms.
-	Version   int32
+	Version   uint32
 	Bits      uint32
 	Nonce     int32
 	Timestamp int64
@@ -1103,7 +1103,7 @@ func (d * blockchainNodeData) GetBits() uint32 {
 	return d.Bits
 }
 
-func (d * blockchainNodeData) GetVersion() int32 {
+func (d * blockchainNodeData) GetVersion() uint32 {
 	return d.Version
 }
 

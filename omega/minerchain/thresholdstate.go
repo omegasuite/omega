@@ -222,13 +222,7 @@ func (b *MinerChain) thresholdState(prevNode *chainutil.BlockNode, checker thres
 			var count uint32
 			countNode := prevNode
 			for i := int32(0); i < confirmationWindow; i++ {
-				condition, err := checker.Condition(countNode)
-				if err != nil {
-					return ThresholdFailed, err
-				}
-				if condition {
-					count++
-				}
+				count++
 
 				// Get the previous block node.
 				countNode = countNode.Parent

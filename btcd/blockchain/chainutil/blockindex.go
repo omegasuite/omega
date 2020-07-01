@@ -72,7 +72,7 @@ type NodeData interface {
 	GetNonce() int32
 	GetBits() uint32
 	SetBits(uint32)
-	GetVersion() int32
+	GetVersion() uint32
 	WorkSum() *big.Int
 }
 

@@ -13,6 +13,7 @@ package minerchain
 import (
 	"bytes"
 	"fmt"
+	"github.com/btcsuite/btcutil/base58"
 
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
@@ -91,6 +92,15 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	if err != nil {
 		log.Infof("connectBestChain failed. %s", err.Error())
 		return false, err
+	}
+
+	if isMainChain {
+		// check version for mandatory update.
+		// If the block creator address is one of chain admin address
+		// and version bit, mandate block version to it to signal consent
+		if MandateVersion(block.MsgBlock().Version, block.MsgBlock().Miner) {
+			wire.CodeVersion = block.MsgBlock().Version
+		}
 	}
 //	log.Infof("isMainChain = %d", isMainChain)
 
@@ -303,4 +313,38 @@ func (b *MinerChain) CheckConnectBlockTemplate(block *wire.MinerBlock) error {
 	}
 
 	return b.checkBlockContext(block, tip, flags)
+}
+
+var admins = []string{
+	"1KcMgJmKZFM1qzqNGUtjMVNGxLJREo9uZh",
+	"1EmsFJk7cdJWkNgWYpwcKhAwD9GbPrrt1f",
+	"1QGWuK7x5VDXSDSkWi1Yke3ZGgerxm7MFX",
+	"15bT8a3gaqdmko9fqCq7No7gKewQDaoZk6",
+	"1NHgdsr37DCkf7SPKwoLZCNeMuz63x4Avd",
+	"1CxK1Kne5dFy17xarbdUnCDzHm2F8q5brA",
+	"14VoEJngMszKGvWAtN6L1YVNqZmWSXiEGk",
+	"18vzRnYh6hMGGxN5cQU55Dm1knNoxoH2DW",
+}
+
+var scriptAddr [][20]byte
+
+func MandateVersion(version uint32, miner [20]byte) bool {
+	if (wire.CodeVersion >> 16) > (version >> 16) || (version & 0xFFFF) == 0 {
+		return false
+	}
+
+	if scriptAddr == nil {
+		scriptAddr = make([][20]byte, 8)
+		for i, s := range admins {
+			addr, _, _ := base58.CheckDecode(s)
+			copy(scriptAddr[i][:], addr)
+		}
+	}
+
+	for _, s := range scriptAddr {
+		if bytes.Compare(miner[:], s[:]) == 0 {
+			return true
+		}
+	}
+	return false
 }

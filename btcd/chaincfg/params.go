@@ -280,7 +280,7 @@ var MainNetParams = Params{
 	MinerConfirmationWindow:       2016, //
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
-			BitNumber:  28,
+			BitNumber:  16,
 			StartTime:  1199145601, // January 1, 2008 UTC
 			ExpireTime: 1230767999, // December 31, 2008 UTC
 		},
@@ -346,7 +346,7 @@ var RegressionNetParams = Params{
 	MinerConfirmationWindow:       144,
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
-			BitNumber:  28,
+			BitNumber:  16,
 			StartTime:  0,             // Always available for vote
 			ExpireTime: math.MaxInt64, // Never expires
 		},
@@ -416,7 +416,7 @@ var TestNet3Params = Params{
 	MinerConfirmationWindow:       2016,
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
-			BitNumber:  28,
+			BitNumber:  16,
 			StartTime:  1199145601, // January 1, 2008 UTC
 			ExpireTime: 1230767999, // December 31, 2008 UTC
 		},
@@ -487,7 +487,7 @@ var SimNetParams = Params{
 	MinerConfirmationWindow:       100,
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
-			BitNumber:  28,
+			BitNumber:  16,
 			StartTime:  0,             // Always available for vote
 			ExpireTime: math.MaxInt64, // Never expires
 		},

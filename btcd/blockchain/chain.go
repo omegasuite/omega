@@ -90,7 +90,7 @@ type MinerChain interface {
 	Subscribe(callback NotificationCallback)
 	Tip() *wire.MinerBlock
 	DisconnectTip()
-	CalcNextBlockVersion() (int32, error)
+	CalcNextBlockVersion() (uint32, error)
 	IsDeploymentActive(uint32) (bool, error)
 }
 

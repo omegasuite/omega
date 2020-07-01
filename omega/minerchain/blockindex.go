@@ -40,7 +40,7 @@ func (d * blockchainNodeData) GetBits() uint32 {
 	return d.block.Bits
 }
 
-func (d * blockchainNodeData) GetVersion() int32 {
+func (d * blockchainNodeData) GetVersion() uint32 {
 	return d.block.Version
 }
 

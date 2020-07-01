@@ -5,28 +5,23 @@
 package minerchain
 
 import (
+	"fmt"
 	"github.com/btcsuite/btcd/blockchain/chainutil"
 	"math"
 
 	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/btcsuite/btcd/wire"
 )
 
 const (
-	// vbLegacyBlockVersion is the highest legacy block version before the
-	// version bits scheme became active.
-	vbLegacyBlockVersion = 4
-
 	// vbTopBits defines the bits to set in the version to signal that the
 	// version bits scheme is being used.
-	vbTopBits = 0x20000000
-
-	// vbTopMask is the bitmask to use to determine whether or not the
-	// version bits scheme is in use.
-	vbTopMask = 0xe0000000
+	vbTopBits = 0x10000
 
 	// vbNumBits is the total number of bits available for use with the
 	// version bits scheme.
-	vbNumBits = 29
+	vbNumBits = 16
+	vbNumMask = 0xFFFF
 
 	// unknownVerNumToCheck is the number of previous blocks to consider
 	// when checking for a threshold of unknown block versions for the
@@ -107,9 +102,7 @@ func (c bitConditionChecker) MinerConfirmationWindow() uint32 {
 func (c bitConditionChecker) Condition(node *chainutil.BlockNode) (bool, error) {
 	conditionMask := uint32(1) << c.bit
 	version := uint32(node.Data.GetVersion())
-	if version&vbTopMask != vbTopBits {
-		return false, nil
-	}
+
 	if version&conditionMask == 0 {
 		return false, nil
 	}
@@ -185,8 +178,7 @@ func (c deploymentChecker) MinerConfirmationWindow() uint32 {
 func (c deploymentChecker) Condition(node *chainutil.BlockNode) (bool, error) {
 	conditionMask := uint32(1) << c.deployment.BitNumber
 	version := uint32(node.Data.GetVersion())
-	return (version&vbTopMask == vbTopBits) && (version&conditionMask != 0),
-		nil
+	return (version & conditionMask != 0), nil
 }
 
 // calcNextBlockVersion calculates the expected version of the block after the
@@ -198,11 +190,11 @@ func (c deploymentChecker) Condition(node *chainutil.BlockNode) (bool, error) {
 // while this function accepts any block node.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (int32, error) {
+func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (uint32, error) {
 	// Set the appropriate bits for each actively defined rule deployment
 	// that is either in the process of being voted on, or locked in for the
 	// activation at the next threshold window change.
-	expectedVersion := uint32(vbTopBits)
+	expectedVersion := uint32(0x10000)
 	for id := 0; id < len(b.chainParams.Deployments); id++ {
 		deployment := &b.chainParams.Deployments[id]
 		cache := &b.deploymentCaches[id]
@@ -213,9 +205,11 @@ func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (int32,
 		}
 		if state == ThresholdStarted || state == ThresholdLockedIn {
 			expectedVersion |= uint32(1) << deployment.BitNumber
+		} else if state == ThresholdActive {
+			expectedVersion += (2 << vbNumBits)
 		}
 	}
-	return int32(expectedVersion), nil
+	return expectedVersion, nil
 }
 
 // CalcNextBlockVersion calculates the expected version of the block after the
@@ -223,7 +217,7 @@ func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (int32,
 // rule change deployments.
 //
 // This function is safe for concurrent access.
-func (b *MinerChain) CalcNextBlockVersion() (int32, error) {
+func (b *MinerChain) CalcNextBlockVersion() (uint32, error) {
 //	log.Infof("CalcNextBlockVersion: ChainLock.RLock")
 	b.chainLock.Lock()
 	version, err := b.calcNextBlockVersion(b.BestChain.Tip())
@@ -283,17 +277,22 @@ func (b *MinerChain) warnUnknownVersions(node *chainutil.BlockNode) error {
 	numUpgraded := uint32(0)
 	for i := uint32(0); i < unknownVerNumToCheck && node != nil; i++ {
 		expectedVersion, err := b.calcNextBlockVersion(node.Parent)
+		if (expectedVersion >> vbNumBits) > (wire.CodeVersion >> vbNumBits) {
+			log.Error("New rules are in effect. You are running an older version of the software.")
+			b.unknownVersionsWarned = true
+			return fmt.Errorf("New rules are in effect. You are running an older version of the software.")
+		}
 		if err != nil {
 			return err
 		}
-		if expectedVersion > vbLegacyBlockVersion &&
-			(node.Data.GetVersion() & ^expectedVersion) != 0 {
-
+		v := node.Data.GetVersion()
+		if ((v & ^expectedVersion) & vbNumMask) != 0 || ((v >> vbNumBits) > (expectedVersion >> vbNumBits)) {
 			numUpgraded++
 		}
 
 		node = node.Parent
 	}
+
 	if numUpgraded > unknownVerWarnNum {
 		log.Warn("Unknown block versions are being mined, so new " +
 			"rules might be in effect.  Are you running the " +

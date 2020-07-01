@@ -29,6 +29,12 @@ const (
 	collateralBase				= 1e8 * 5	// base is 5 BTC
 )
 
+// current code version
+// version (in block) is a uint32, consists of 2 parts:
+// high 16 bits is a odd number increases with each code revision
+// low 16 bits is for version bits scheme.
+var	CodeVersion = uint32(0x10000) // current version of code.
+
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.
 // Version 4 bytes + Timestamp 4 bytes + Bits 4 bytes + Nonce 4 bytes +
 // PrevBlock and MerkleRoot hashes.
@@ -99,7 +105,7 @@ func (b * BlackList) Write(w io.Writer) error {
 // MingingRightBlock is miner candidate chain struct
 type MingingRightBlock struct {
 	// Version of the block. This is not the same as the protocol version.
-	Version int32
+	Version uint32
 
 	// Hash of the previous MingingRightBlock block in the block chain.
 	PrevBlock chainhash.Hash
@@ -148,7 +154,7 @@ type MingingRightBlock struct {
 // block (MsgBlock) and headers (MsgHeaders) messages.
 type BlockHeader struct {
 	// Version of the block.  This is not the same as the protocol version.
-	Version int32
+	Version uint32
 
 	// Hash of the previous block header in the block chain.
 	PrevBlock chainhash.Hash
@@ -245,7 +251,7 @@ func (h *BlockHeader) Serialize(w io.Writer) error {
 // NewBlockHeader returns a new BlockHeader using the provided version, previous
 // block hash, merkle root hash, difficulty bits, and nonce used to generate the
 // block with defaults for the remaining fields.
-func NewBlockHeader(version int32, prevHash, merkleRootHash *chainhash.Hash,
+func NewBlockHeader(version uint32, prevHash, merkleRootHash *chainhash.Hash,
 	bits uint32, nonce int32) *BlockHeader {
 
 	// Limit the timestamp to one second precision since the protocol
@@ -327,26 +333,6 @@ func (h *MingingRightBlock) Serialize(w io.Writer) error {
 	// at protocol version 0 and the stable long-term storage format.  As
 	// a result, make use of writeBlockHeader.
 	return writeMinerBlock(w, 0, h)
-}
-
-// NewBlockHeader returns a new BlockHeader using the provided version, previous
-// block hash, merkle root hash, difficulty bits, and nonce used to generate the
-// block with defaults for the remaining fields.
-func NewMinerNodeBlock(version int32, prevHash, referredHash, bestHash *chainhash.Hash,
-	bits uint32, nonce int32, address []byte, ip string) *MingingRightBlock {
-
-	// Limit the timestamp to one second precision since the protocol
-	// doesn't support better.
-	t := &MingingRightBlock{
-		Version:       version,
-		PrevBlock:     *prevHash,
-		BestBlock:     *bestHash,
-		Timestamp:     time.Unix(time.Now().Unix(), 0),
-		Bits:          bits,
-		Nonce:         nonce,
-	}
-	copy(t.Miner[:], address)
-	return t
 }
 
 // readBlockHeader reads a bitcoin block header from r.  See Deserialize for
