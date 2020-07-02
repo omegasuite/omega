@@ -12,9 +12,9 @@ package consensus
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire"
 	"net/http"
-//	"github.com/btcsuite/btcd/btcec"
+//	"github.com/omegasuite/btcd/btcec"
 )
 
 type Knowledgebase struct {

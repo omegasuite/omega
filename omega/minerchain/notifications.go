@@ -11,7 +11,7 @@
 package minerchain
 
 import (
-	"github.com/btcsuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/blockchain"
 )
 
 // Subscribe to block chain notifications. Registers a callback to be executed

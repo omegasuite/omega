@@ -23,9 +23,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcd/wire/common"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
 )
 
 // AddrManager provides a concurrency safe address manager for caching potential

@@ -5,7 +5,7 @@
 package btcjson
 
 import (
-//	"github.com/btcsuite/btcd/wire"
+//	"github.com/omegasuite/btcd/wire"
 )
 // GetTransactionDetailsResult models the details data from the gettransaction command.
 //

@@ -18,9 +18,9 @@ import (
 	"regexp"
 //	"math"
 
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"encoding/binary"
-	"github.com/btcsuite/btcd/wire/common"
+	"github.com/omegasuite/btcd/wire/common"
 )
 
 const MaxMessagePayload = (1024 * 1024 * 400)	// must be same as in wire.message.go

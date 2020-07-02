@@ -12,11 +12,11 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/btcsuite/btcd/btcjson"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcd/wire/common"
+	"github.com/omegasuite/btcd/btcjson"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/btcd/wire/common"
 )
 
 // FutureDebugLevelResult is a future promise to deliver the result of a

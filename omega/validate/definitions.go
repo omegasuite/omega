@@ -12,11 +12,11 @@ package validate
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/omega/viewpoint"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/omega/token"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/omega/viewpoint"
 )
 
 func CheckDefinitions(msgTx *wire.MsgTx) error {

@@ -13,13 +13,13 @@ package minerchain
 import (
 	"bytes"
 	"fmt"
-	"github.com/btcsuite/btcutil/base58"
+	"github.com/omegasuite/btcutil/base58"
 
-	"github.com/btcsuite/btcd/blockchain"
-	"github.com/btcsuite/btcd/blockchain/chainutil"
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/wire"
+	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/btcd/wire"
 	"math/big"
 )
 

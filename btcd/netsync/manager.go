@@ -6,24 +6,24 @@ package netsync
 
 import (
 	"container/list"
-	"github.com/btcsuite/omega/minerchain"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/omegasuite/omega/minerchain"
 	"net"
 	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/btcsuite/btcd/blockchain"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/mempool"
-	peerpkg "github.com/btcsuite/btcd/peer"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcd/wire/common"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/omega/consensus"
+	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/btcd/mempool"
+	peerpkg "github.com/omegasuite/btcd/peer"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/omega/consensus"
 )
 
 const (

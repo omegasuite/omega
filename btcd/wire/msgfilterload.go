@@ -7,7 +7,7 @@ package wire
 import (
 	"fmt"
 	"io"
-	"github.com/btcsuite/btcd/wire/common"
+	"github.com/omegasuite/btcd/wire/common"
 )
 
 const (

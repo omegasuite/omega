@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/omega/ovm"
-	"github.com/btcsuite/btcutil/gcs"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/omega/ovm"
+	"github.com/omegasuite/btcutil/gcs"
 )
 
 const (

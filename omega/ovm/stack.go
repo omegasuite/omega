@@ -6,7 +6,7 @@ package ovm
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 )
 
 type frame struct {

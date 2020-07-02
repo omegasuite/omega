@@ -6,8 +6,8 @@ package btcutil
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/chaincfg"
 )
 
 func VerifySigScript(sign, hash []byte, chainParams *chaincfg.Params) (*AddressPubKeyHash, error) {

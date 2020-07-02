@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btclog"
-	"github.com/btcsuite/btcd/wire/common"
-	"github.com/btcsuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btclog"
+	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/btcd/blockchain"
 )
 
 const (

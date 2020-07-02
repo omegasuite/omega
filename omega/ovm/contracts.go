@@ -8,10 +8,10 @@ import (
 
 	"bytes"
 	"encoding/binary"
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-//	"github.com/btcsuite/btcd/database"
-//	"github.com/btcsuite/omega/token"
+	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+//	"github.com/omegasuite/btcd/database"
+//	"github.com/omegasuite/omega/token"
 	"golang.org/x/crypto/ripemd160"
 )
 

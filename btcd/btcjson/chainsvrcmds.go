@@ -10,11 +10,11 @@ package btcjson
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/goinggo/mapstructure"
-	"github.com/btcsuite/omega/token"
+	"github.com/omegasuite/omega/token"
 )
 
 // AddNodeSubCmd defines the type used in the addnode JSON-RPC command for the

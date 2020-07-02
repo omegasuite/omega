@@ -11,12 +11,11 @@
 package viewpoint
 
 import (
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/database"
-	//	"github.com/btcsuite/btcd/txscript"
-	//	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/omega/token"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/database"
+	//	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/omega/token"
 	"fmt"
 	"encoding/binary"
 )

@@ -17,12 +17,12 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/btcsuite/btcd/blockchain"
-	"github.com/btcsuite/btcd/blockchain/bccompress"
-	"github.com/btcsuite/btcd/blockchain/chainutil"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/wire"
+	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/blockchain/bccompress"
+	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/btcd/wire"
 )
 
 const (

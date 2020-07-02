@@ -6,9 +6,9 @@ package minerchain
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/btcd/blockchain/chainutil"
 
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 )
 
 // ThresholdState define the various threshold states used when voting on

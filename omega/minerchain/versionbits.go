@@ -6,11 +6,11 @@ package minerchain
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"math"
 
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/wire"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/wire"
 )
 
 const (

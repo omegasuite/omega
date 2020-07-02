@@ -10,7 +10,7 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
-	"github.com/btcsuite/omega/consensus"
+	"github.com/omegasuite/omega/consensus"
 	"io"
 	"math/rand"
 	"net"
@@ -19,12 +19,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/go-socks/socks"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/go-socks/socks"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/btcsuite/btcd/wire/common"
+	"github.com/omegasuite/btcd/wire/common"
 )
 
 const (

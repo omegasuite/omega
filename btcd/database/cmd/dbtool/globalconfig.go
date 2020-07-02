@@ -10,11 +10,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/database"
-	_ "github.com/btcsuite/btcd/database/ffldb"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/database"
+	_ "github.com/omegasuite/btcd/database/ffldb"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcutil"
 )
 
 var (

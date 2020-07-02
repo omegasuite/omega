@@ -8,9 +8,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire/common"
-	"github.com/btcsuite/omega/token"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/omega/token"
 	"io"
 	"strconv"
 )

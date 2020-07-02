@@ -5,8 +5,8 @@
 package ovm
 
 import (
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btclog"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btclog"
 	"math/big"
 )
 

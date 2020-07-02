@@ -7,7 +7,7 @@ package wire
 import (
 	"fmt"
 	"io"
-	"github.com/btcsuite/btcd/wire/common"
+	"github.com/omegasuite/btcd/wire/common"
 )
 
 // MsgFeeFilter implements the Message interface and represents a bitcoin

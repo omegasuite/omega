@@ -4,12 +4,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcd/txscript/txsparser"
-	"github.com/btcsuite/btcd/blockchain/indexers"
-	"github.com/btcsuite/omega/ovm"
+	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/btcd/txscript/txsparser"
+	"github.com/omegasuite/btcd/blockchain/indexers"
+	"github.com/omegasuite/omega/ovm"
 )
 
 const (

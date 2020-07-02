@@ -12,12 +12,12 @@ package minerchain
 
 import (
 	"bytes"
-	"github.com/btcsuite/btcd/blockchain"
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/mining"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
+	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/mining"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcutil"
 	"math/big"
 	//	"runtime"
 	"sync"

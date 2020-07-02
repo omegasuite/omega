@@ -6,8 +6,8 @@ package wire
 
 import (
 	"bytes"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire/common"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire/common"
 	"io"
 )
 

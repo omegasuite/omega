@@ -9,7 +9,7 @@ import (
 	"io"
 	"net"
 	"time"
-	"github.com/btcsuite/btcd/wire/common"
+	"github.com/omegasuite/btcd/wire/common"
 )
 
 // maxNetAddressPayload returns the max payload size for a bitcoin NetAddress

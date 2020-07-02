@@ -15,9 +15,9 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/btcsuite/btcd/blockchain/chainutil"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
+	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire"
 )
 
 var (

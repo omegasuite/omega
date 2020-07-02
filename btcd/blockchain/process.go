@@ -6,14 +6,14 @@ package blockchain
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/blockchain/chainutil"
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/wire"
+	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/wire"
 	"time"
 
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcutil"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/btcutil"
 )
 
 // BehaviorFlags is a bitmask defining tweaks to the normal behavior when

@@ -7,20 +7,20 @@ package mining
 import (
 	"bytes"
 	"container/heap"
-	"github.com/btcsuite/btcd/blockchain/chainutil"
-	"github.com/btcsuite/omega/ovm"
+	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/omega/ovm"
 	"time"
 
 	"encoding/binary"
-	"github.com/btcsuite/btcd/blockchain"
-	"github.com/btcsuite/btcd/btcec"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcd/wire/common"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/omega/token"
-	"github.com/btcsuite/omega/viewpoint"
+	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/omega/viewpoint"
 )
 
 const (

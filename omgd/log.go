@@ -21,12 +21,12 @@ import (
 	"github.com/omegasuite/btcd/netsync"
 	"github.com/omegasuite/btcd/peer"
 
-	"github.com/btcsuite/btclog"
-	"github.com/btcsuite/omega/consensus"
-	"github.com/btcsuite/omega/minerchain"
-	"github.com/btcsuite/omega/ovm"
-	"github.com/btcsuite/omega/token"
 	"github.com/jrick/logrotate/rotator"
+	"github.com/omegasuite/btclog"
+	"github.com/omegasuite/omega/consensus"
+	"github.com/omegasuite/omega/minerchain"
+	"github.com/omegasuite/omega/ovm"
+	"github.com/omegasuite/omega/token"
 )
 
 // logWriter implements an io.Writer that outputs to both standard output and

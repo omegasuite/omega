@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"encoding/binary"
 
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/txscript/txsparser"
-	"github.com/btcsuite/omega/ovm"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/txscript/txsparser"
+	"github.com/omegasuite/omega/ovm"
 )
 
 const (

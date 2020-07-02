@@ -7,8 +7,8 @@ package ovm
 import (
 	"fmt"
 	"encoding/binary"
-	//	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	//	"github.com/btcsuite/btcd/wire/common"
+	//	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	//	"github.com/omegasuite/btcd/wire/common"
 	"sync/atomic"
 )
 

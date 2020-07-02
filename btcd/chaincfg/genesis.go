@@ -5,7 +5,7 @@
 package chaincfg
 
 import (
-	"github.com/btcsuite/omega"
+	"github.com/omegasuite/omega"
 )
 
 var InitDefs = omega.InitDefs

@@ -10,7 +10,7 @@ import (
 	"io"
 	"strings"
 	"time"
-	"github.com/btcsuite/btcd/wire/common"
+	"github.com/omegasuite/btcd/wire/common"
 )
 
 // MaxUserAgentLen is the maximum allowed length for the user agent field in a

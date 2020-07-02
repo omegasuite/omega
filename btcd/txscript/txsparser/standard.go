@@ -7,7 +7,7 @@ package txsparser
 import (
 	"fmt"
 	"encoding/binary"
-	"github.com/btcsuite/omega/ovm"
+	"github.com/omegasuite/omega/ovm"
 )
 
 // ScriptFlags is a bitmask defining additional operations or tests that will be

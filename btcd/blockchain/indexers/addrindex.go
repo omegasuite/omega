@@ -7,16 +7,16 @@ package indexers
 import (
 	"errors"
 	"fmt"
-//	"github.com/btcsuite/omega/token"
+//	"github.com/omegasuite/omega/token"
 	"sync"
 
-//	"github.com/btcsuite/btcd/blockchain"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/omega/viewpoint"
+//	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/omega/viewpoint"
 )
 
 const (

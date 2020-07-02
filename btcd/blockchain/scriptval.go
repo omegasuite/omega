@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/omega/viewpoint"
-	"github.com/btcsuite/omega/Vm"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/omega/Vm"
 )
 
 // txValidateItem holds a transaction along with which input to validate.

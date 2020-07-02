@@ -19,8 +19,8 @@ package ovm
 import (
 	"encoding/hex"
 	"fmt"
-//	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/omega/token"
+//	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/omega/token"
 	"math/big"
 )
 

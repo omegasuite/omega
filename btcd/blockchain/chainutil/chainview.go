@@ -5,7 +5,7 @@
 package chainutil
 
 import (
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"sync"
 )
 

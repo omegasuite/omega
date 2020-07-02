@@ -8,18 +8,18 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/btcsuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"math/big"
 	"time"
 
-	"github.com/btcsuite/btcd/blockchain/bccompress"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/database"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
-	//	"github.com/btcsuite/omega/ovm"
-	"github.com/btcsuite/omega/token"
-	"github.com/btcsuite/omega/viewpoint"
+	"github.com/omegasuite/btcd/blockchain/bccompress"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcutil"
+	//	"github.com/omegasuite/omega/ovm"
+	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/omega/viewpoint"
 )
 
 const (

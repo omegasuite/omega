@@ -9,7 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/btcsuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/blockchain"
 	"io"
 	"math"
 	"math/rand"
@@ -17,9 +17,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/mining"
-	"github.com/btcsuite/btcutil"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/mining"
+	"github.com/omegasuite/btcutil"
 )
 
 // TODO incorporate Alex Morcos' modifications to Gavin's initial model
