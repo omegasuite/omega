@@ -382,7 +382,7 @@ func main() {
 			Bits:      params[net].PowLimitBits,
 			Nonce:     0,
 			Miner:     miner,
-			Connection:  []byte("45.32.93.90:8383"),
+			Connection:  []byte("omegasuite.org"),
 			BlackList: make([]wire.BlackList, 0),
 			Utxos:     make([]wire.OutPoint, 0),
 		}

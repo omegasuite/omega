@@ -4390,8 +4390,7 @@ func (s *rpcServer) checkAuth(r *http.Request, require bool) (bool, bool, error)
 	authhdr := r.Header["Authorization"]
 	if len(authhdr) <= 0 {
 		if require {
-			rpcsLog.Warnf("RPC authentication failure from %s",
-				r.RemoteAddr)
+			rpcsLog.Warnf("RPC authentication failure from %s", r.RemoteAddr)
 			return false, false, errors.New("auth failure")
 		}
 
@@ -4414,7 +4413,7 @@ func (s *rpcServer) checkAuth(r *http.Request, require bool) (bool, bool, error)
 	}
 
 	// Request's auth doesn't match either user
-	rpcsLog.Warnf("RPC authentication failure from %s", r.RemoteAddr)
+	rpcsLog.Warnf("RPC authentication failure from %s in comparion of auth %s, %v vs. %v", r.RemoteAddr, authhdr[0], authsha, s.authsha)
 	return false, false, errors.New("auth failure")
 }
 
