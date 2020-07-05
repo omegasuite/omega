@@ -1877,14 +1877,10 @@ out:
 		case msg := <-p.sendQueue:
 			switch m := msg.msg.(type) {
 			case *wire.MsgPing:
-				// Only expects a pong message in later protocol
-				// versions.  Also set up statistics.
-				if p.ProtocolVersion() > wire.BIP0031Version {
-					p.statsMtx.Lock()
-					p.lastPingNonce = m.Nonce
-					p.lastPingTime = time.Now()
-					p.statsMtx.Unlock()
-				}
+				p.statsMtx.Lock()
+				p.lastPingNonce = m.Nonce
+				p.lastPingTime = time.Now()
+				p.statsMtx.Unlock()
 			}
 
 			p.stallControl <- stallControlMsg{sccSendMessage, msg.msg}

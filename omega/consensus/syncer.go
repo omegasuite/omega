@@ -85,7 +85,8 @@ type Syncer struct {
 	pulling map[int32]int
 
 	messages chan Message
-	
+	repeating chan struct{}
+
 	mutex sync.Mutex
 
 	// debug only
@@ -96,6 +97,15 @@ type Syncer struct {
 	// wait for end of task
 //	wg          sync.WaitGroup
 	idles		int
+}
+
+func (self *Syncer) findBlock(h * chainhash.Hash) * btcutil.Block {
+	for _,f := range self.forest {
+		if f.block != nil && f.hash.IsEqual(h) {
+			return f.block
+		}
+	}
+	return nil
 }
 
 func (self *Syncer) repeater() {
@@ -177,7 +187,7 @@ func (self *Syncer) repeater() {
 				if p.K[len(p.K)-1] != int32(i) {
 					// send it
 					pp := *p
-//					pp.K = append(pp.K, self.Myself)
+					//					pp.K = append(pp.K, self.Myself)
 					pp.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
 					pp.From = self.Me
 					if miner.server.CommitteeMsg(self.Names[int32(i)], &pp) {
@@ -188,6 +198,62 @@ func (self *Syncer) repeater() {
 			}
 			self.mutex.Unlock()
 		}
+
+		// resend candidacy
+		if _, ok := self.asked[self.Myself]; ok && self.agreed == self.Myself {
+			msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
+			msg.Sign(miner.server.GetPrivKey(self.Me))
+			miner.server.CommitteeCastMG(self.Me, msg, self.Height)
+		}
+
+		// resend consensus
+		self.reckconsensus()
+
+		// resend signatures
+		if self.sigGiven != -1 {
+			privKey := miner.server.GetPrivKey(self.Me)
+			if privKey == nil {
+				return
+			}
+
+			from := self.Names[self.agreed]
+			hash := blockchain.MakeMinerSigHash(self.Height, self.forest[from].hash)
+
+			sig, _ := privKey.Sign(hash)
+			s := sig.Serialize()
+
+			sigmsg := wire.MsgSignature {
+				For:	   from,
+			}
+			sigmsg.MsgConsensus = wire.MsgConsensus {
+				Height:    self.Height,
+				From:      self.Me,
+				M:		   self.forest[from].hash,
+				Signature: make([]byte, btcec.PubKeyBytesLenCompressed + len(s)),
+			}
+
+			copy(sigmsg.Signature[:], privKey.PubKey().SerializeCompressed())
+			copy(sigmsg.Signature[btcec.PubKeyBytesLenCompressed:], s)
+
+			miner.server.CommitteeCastMG(self.Me, &sigmsg, self.Height)
+		}
+	}
+}
+
+func (self *Syncer) Release(msg * wire.MsgRelease) {
+	delete(self.asked, self.Members[msg.From])
+
+	if self.agreed == self.Members[msg.From] {
+		//		self.knowledges.ProcFlatKnowledge(msg.Better, msg.K)
+
+		self.agreed = -1
+		/*
+			self.agreed = msg.Better
+			d := wire.MsgCandidateResp{Height: msg.Height, K: self.makeAbout(msg.Better).K,
+				M:self.makeAbout(msg.Better).M, Better: msg.Better,
+				From: self.Me, Reply:"cnst"}
+			miner.server.CommitteeMsg(msg.Better, &d)
+		*/
 	}
 }
 
@@ -199,9 +265,14 @@ func (self *Syncer) run() {
 
 	ticker := time.NewTicker(time.Second * 2)
 
+	self.repeating = make(chan struct{}, 10)
+
 	for going {
 		select {
 		case <-ticker.C:
+			self.repeating <- struct{}{}
+
+		case <-self.repeating:
 			self.repeater()
 
 		case tree := <- self.newtree:
@@ -269,6 +340,10 @@ func (self *Syncer) run() {
 					continue
 				}
 
+				if _, ok := self.forest[k.Finder]; !ok || self.forest[k.Finder].block == nil {
+					self.pull(k.M, self.Members[k.Finder])
+				}
+
 				self.mutex.Lock()
 				if self.knows[k.Finder] == nil {
 					self.knows[k.Finder] = make([]*wire.MsgKnowledge, 0)
@@ -282,8 +357,10 @@ func (self *Syncer) run() {
 
 			case *wire.MsgCandidate:		// announce candidacy
 				if self.sigGiven >= 0 {
+					log.Infof("MsgCandidate declied. sig already given to %d", self.sigGiven)
 					continue
 				}
+
 				k := m.(*wire.MsgCandidate)
 
 				self.candRevd[self.Members[k.F]] = self.Members[k.F]
@@ -294,12 +371,18 @@ func (self *Syncer) run() {
 					log.Infof("Invalid MsgCandidate message")
 					continue
 				}
+
+				if _, ok := self.forest[k.F]; !ok || self.forest[k.F].block == nil {
+					self.pull(k.M, self.Members[k.F])
+				}
+
 				self.Candidate(k)
 
 			case *wire.MsgCandidateResp:		// response to candidacy announcement
 				if self.sigGiven >= 0 {
 					continue
 				}
+
 				k := m.(*wire.MsgCandidateResp)
 				if !self.validateMsg(k.From, nil, m) {
 					continue
@@ -325,14 +408,19 @@ func (self *Syncer) run() {
 					continue
 				}
 				k := m.(*wire.MsgConsensus)
-				self.consRevd[self.Members[k.From]] = self.Members[k.From]
 
 				if !self.validateMsg(k.From, nil, m) {
 					continue
 				}
+
+				if _, ok := self.forest[k.From]; !ok || self.forest[k.From].block == nil {
+					self.pull(k.M, self.Members[k.From])
+				}
+
+				self.consRevd[self.Members[k.From]] = self.Members[k.From]
+				self.Consensus(k)
 				log.Infof("MsgConsensus: From = %x\nHeight = %d\nM = %s",
 					k.From, k.Height, k.M.String())
-				self.Consensus(k)
 
 			case *wire.MsgSignature:		// received signature
 				k := m.(*wire.MsgSignature)
@@ -373,6 +461,7 @@ func (self *Syncer) run() {
 			}
 			self.Done = true
 			self.Runnable = false
+//			close(self.repeating)
 //			close(self.messages)
 //			self.Names, self.forest, self.Malice, self.consents = nil, nil, nil, nil
 //			self.Members, self.pending, self.signed, self.agrees = nil, nil, nil, nil
@@ -396,6 +485,10 @@ func (self *Syncer) releasenb() {
  */
 
 func (self *Syncer) Signature(msg * wire.MsgSignature) bool {
+	if _, ok := self.signed[msg.From]; ok {
+		return len(self.signed) >= wire.CommitteeSigs
+	}
+
 	tree := int32(-1)
 	for i,f := range self.forest {
 		if msg.M == f.hash && i == msg.For && f.block != nil {
@@ -407,7 +500,6 @@ func (self *Syncer) Signature(msg * wire.MsgSignature) bool {
 		return false
 	}
 
-	self.sigGiven = tree
 	owner := self.Names[tree]
 
 	// TODO: detect double signature
@@ -428,11 +520,13 @@ func (self *Syncer) Signature(msg * wire.MsgSignature) bool {
 		return false
 	}
 
-	if len(self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts[1]) <= 20 {
+	if self.sigGiven == -1 {	// len(self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts[1]) <= 20 {
 		// remove the sig 1 that contained the miner's name
 		self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts =
 			self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts[:1]
 	}
+
+	self.sigGiven = tree
 
 	self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts = append(
 		self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts,
@@ -443,77 +537,104 @@ func (self *Syncer) Signature(msg * wire.MsgSignature) bool {
 }
 
 func (self *Syncer) Consensus(msg * wire.MsgConsensus) {
-	if self.agreed == self.Members[msg.From] && self.sigGiven == -1 {
-		// verify signature
-		hash := blockchain.MakeMinerSigHash(self.Height, self.forest[msg.From].hash)
+	if self.agreed != self.Members[msg.From] {
+		return
+	}
 
-		k,err := btcec.ParsePubKey(msg.Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
-		if err != nil {
-			return
+	// verify signature
+	hash := blockchain.MakeMinerSigHash(self.Height, self.forest[msg.From].hash)
+
+	k,err := btcec.ParsePubKey(msg.Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+	if err != nil {
+		return
+	}
+
+	s, err := btcec.ParseDERSignature(msg.Signature[btcec.PubKeyBytesLenCompressed:], btcec.S256())
+	if err != nil {
+		return
+	}
+
+	if !s.Verify(hash, k) {
+		return
+	}
+
+	privKey := miner.server.GetPrivKey(self.Me)
+	if privKey == nil {
+		return
+	}
+
+
+	sig, _ := privKey.Sign(hash)
+	sgs := sig.Serialize()
+
+	sigmsg := wire.MsgSignature {
+		For:	   msg.From,
+	}
+	sigmsg.MsgConsensus = wire.MsgConsensus {
+		Height:    self.Height,
+		From:      self.Me,
+		M:		   msg.M,
+		Signature: make([]byte, btcec.PubKeyBytesLenCompressed + len(sgs)),
+	}
+
+	copy(sigmsg.Signature[:], privKey.PubKey().SerializeCompressed())
+	copy(sigmsg.Signature[btcec.PubKeyBytesLenCompressed:], sgs)
+
+	miner.server.CommitteeCastMG(self.Me, &sigmsg, self.Height)
+
+	if self.sigGiven == -1 {
+		self.sigGiven = self.agreed
+		if self.forest[msg.From].block != nil {
+			// remove the sig 1 that contained the miner's name
+			self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts =
+				self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts[:1]
+			// add signatures to block
+			self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts = append(
+				self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts,
+				sigmsg.Signature[:])
+			self.signed[self.Me] = struct{}{}
 		}
+	}
 
-		s, err := btcec.ParseDERSignature(msg.Signature[btcec.PubKeyBytesLenCompressed:], btcec.S256())
-		if err != nil {
-			return
-		}
-
-		if !s.Verify(hash, k) {
-			return
-		}
-
-		if privKey := miner.server.GetPrivKey(self.Me); privKey != nil {
-			self.sigGiven = self.agreed
-			sig, _ := privKey.Sign(hash)
-			s := sig.Serialize()
-
-			sigmsg := wire.MsgSignature {
-				For:	   msg.From,
-			}
-			sigmsg.MsgConsensus = wire.MsgConsensus {
-				Height:    self.Height,
-				From:      self.Me,
-				M:		   msg.M,
-				Signature: make([]byte, btcec.PubKeyBytesLenCompressed + len(s)),
-			}
-
-			copy(sigmsg.Signature[:], privKey.PubKey().SerializeCompressed())
-			copy(sigmsg.Signature[btcec.PubKeyBytesLenCompressed:], s)
-
-			miner.server.CommitteeCastMG(self.Me, &sigmsg, self.Height)
-
-			if self.forest[msg.From].block != nil {
-				// remove the sig 1 that contained the miner's name
-				self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts =
-					self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts[:1]
-
-				// add signatures to block
-				self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts = append(
-					self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts,
-					msg.Signature[:])
-				self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts = append(
-					self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts,
-					sigmsg.Signature[:])
-				self.signed[msg.From] = struct{}{}
-				self.signed[self.Me] = struct{}{}
-			}
-		}
+	if _, ok := self.signed[msg.From]; !ok && self.forest[msg.From].block != nil {
+		self.signed[msg.From] = struct{}{}
+		// add signatures to block
+		self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts = append(
+			self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts,
+			msg.Signature[:])
+		self.signed[msg.From] = struct{}{}
 	}
 }
 
-func (self *Syncer) Release(msg * wire.MsgRelease) {
-	delete(self.asked, self.Members[msg.From])
+func (self *Syncer) reckconsensus() {
+	if self.agreed != self.Myself || self.sigGiven != self.Myself || len(self.agrees) + 1 < wire.CommitteeSigs {
+		return
+	}
 
-	if self.agreed == self.Members[msg.From] {
-//		self.knowledges.ProcFlatKnowledge(msg.Better, msg.K)
+	if self.forest[self.Me] == nil || self.forest[self.Me].block == nil {
+		return
+	}
 
-		self.agreed = -1
-/*
-		self.agreed = msg.Better
-		d := wire.MsgCandidateResp{Height: msg.Height, K: self.makeAbout(msg.Better).K,
-			M:self.makeAbout(msg.Better).M, Better: msg.Better,
-			From: self.Me, Reply:"cnst"}
-		miner.server.CommitteeMsg(msg.Better, &d)
- */
+	if _,ok := self.signed[self.Me]; !ok {
+		return
+	}
+
+	hash := blockchain.MakeMinerSigHash(self.Height, self.forest[self.Me].hash)
+
+	if privKey := miner.server.GetPrivKey(self.Me); privKey != nil && self.sigGiven == -1 {
+		sig, _ := privKey.Sign(hash)
+		ss := sig.Serialize()
+		msg := wire.MsgConsensus{
+			Height:    self.Height,
+			From:      self.Me,
+			M:		   self.forest[self.Me].hash,
+			Signature: make([]byte, btcec.PubKeyBytesLenCompressed + len(ss)),
+		}
+
+		copy(msg.Signature[:], privKey.PubKey().SerializeCompressed())
+		copy(msg.Signature[btcec.PubKeyBytesLenCompressed:], ss)
+
+		miner.server.CommitteeCastMG(self.Me, &msg, self.Height)
 	}
 }
 
@@ -1115,7 +1236,7 @@ func (self *Syncer) Debug(w http.ResponseWriter, r *http.Request) {
 }
 
 func (self *Syncer) print() {
-	return
+//	return
 
 	log.Infof("Syncer for %d = %x", self.Myself, self.Me)
 	log.Infof("Runnable = %d Committee = %d Base = %d", self.Runnable, self.Committee, self.Base)
@@ -1141,9 +1262,11 @@ func (self *Syncer) print() {
 }
 
 func (self *Syncer) DebugInfo() {
+	self.repeating <- struct{}{}
+
 	log.Infof("I am %x, %d", self.Me, self.Myself)
 	self.print()
-	log.Infof("Members & Names:")
+	log.Infof("Members & Names (%d):", len(self.Members))
 	for m,n := range self.Members {
 		if self.Names[n] != m {
 			log.Infof("Unmatched Members & Names: %x, %d", m, n)
@@ -1162,18 +1285,9 @@ func (self *Syncer) DebugInfo() {
 			log.Infof("%x", m)
 		}
 	}
-/*
-	if len(self.consents) > 0 {
-		log.Infof("My consents:")
-		for m,n := range self.consents {
-			log.Infof("%x %d", m, n)
-		}
-	}
-
- */
 
 	if len(self.signed) > 0 {
-		log.Infof("Who has signed for this block:")
+		log.Infof("Who has signed for this block (%d):", len(self.signed))
 		for m,_ := range self.signed {
 			log.Infof("%x", m)
 		}
@@ -1188,7 +1302,7 @@ func (self *Syncer) DebugInfo() {
 		}
 	}
 
-	log.Infof("Forrest:")
+	log.Infof("Forrest (%d):", len(self.forest))
 	for w,t := range self.forest {
 		log.Infof("Tree of %x:", w)
 		log.Infof("creator of %x:", t.creator)

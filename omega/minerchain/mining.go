@@ -536,19 +536,21 @@ func (m *CPUMiner) Start(collateral []wire.OutPoint) {
 //
 // This function is safe for concurrent access.
 func (m *CPUMiner) Stop() {
-	m.Lock()
-	defer m.Unlock()
+	if m.started {
+		m.Lock()
+		defer m.Unlock()
 
-	// Nothing to do if the miner is not currently running or if running in
-	// discrete mode (using GenerateNBlocks).
-	if !m.started || m.discreteMining {
-		return
+		// Nothing to do if the miner is not currently running or if running in
+		// discrete mode (using GenerateNBlocks).
+		if !m.started || m.discreteMining {
+			return
+		}
+
+		close(m.quit)
+		m.started = false
+
+		m.wg.Wait()
 	}
-
-	close(m.quit)
-	m.started = false
-
-	m.wg.Wait()
 }
 
 // IsMining returns whether or not the CPU miner has been started and is

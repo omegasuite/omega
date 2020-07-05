@@ -1626,7 +1626,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		if m != nil {
 			msgBlock = *m.(*wire.MsgBlock)
 			err = nil
-		} else if block := s.cpuMiner.CurrentBlock(); block != nil && * block.Hash() == * hash {
+		} else if block := s.cpuMiner.CurrentBlock(hash); block != nil {
 			ht := s.chain.BestSnapshot().Height
 			if heightSent < ht {
 				// sending the requesting peer new inventory
@@ -2772,13 +2772,16 @@ func (s *server) Stop() error {
 	btcdLog.Info("Server shutting down")
 	srvrLog.Warnf("Server shutting down")
 
-	btcdLog.Info("Server minerMiner Stop")
-	s.minerMiner.Stop()
+	if s.minerMiner != nil {
+		btcdLog.Info("Server minerMiner Stop")
+		s.minerMiner.Stop()
+	}
 
 	// Stop the CPU miner if needed
-	btcdLog.Info("Server cpuMiner Stop")
-
-	s.cpuMiner.Stop()
+	if s.cpuMiner != nil {
+		btcdLog.Info("Server cpuMiner Stop")
+		s.cpuMiner.Stop()
+	}
 
 	// Shutdown the RPC server if it's not disabled.
 	if !cfg.DisableRPC {

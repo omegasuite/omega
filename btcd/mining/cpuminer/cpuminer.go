@@ -9,6 +9,7 @@ import (
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/omega/consensus"
 	"math/big"
+	"math/rand"
 	//	"runtime"
 	"sync"
 	"time"
@@ -254,6 +255,9 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 			case <- m.connch:
 				return false
 
+			case <-consensus.POWStopper:
+				return false
+
 			case <-ticker.C:
 				m.updateHashes <- hashesCompleted
 				hashesCompleted = 0
@@ -335,8 +339,14 @@ func (m *CPUMiner) notice (notification *blockchain.Notification) {
 	}
 }
 
-func (m *CPUMiner) CurrentBlock() * btcutil.Block {
-	return m.minedBlock
+func (m *CPUMiner) CurrentBlock(h * chainhash.Hash) * btcutil.Block {
+	if m.minedBlock != nil {
+		bh := m.minedBlock.Hash()
+		if bh.IsEqual(h) {
+			return m.minedBlock
+		}
+	}
+	return consensus.ServeBlock(h)
 }
 
 // generateBlocks is a worker that is controlled by the miningWorkerController.
@@ -371,6 +381,8 @@ flushconnch:
 
 			case <-m.quit:
 				break out
+				
+			case <-consensus.POWStopper:
 
 			default:
 				break flushconnch
@@ -384,14 +396,7 @@ flushconnch:
 		if m.cfg.ConnectedCount() == 0 {
 			log.Info("Sleep 5 sec because there is no connected peer.")
 			m.Stale = true
-			select {
-			case <-m.connch:
-
-			case <-m.quit:
-				break out
-
-			case <-time.After(time.Second * 5):
-			}
+			time.Sleep(time.Second * 5)
 			continue
 		}
 
@@ -409,15 +414,7 @@ flushconnch:
 		if curHeight != 0 && !isCurrent {
 			m.Stale = true
 			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent @ height %d", curHeight)
-
-			select {
-			case <-m.connch:
-
-			case <-m.quit:
-				break out
-
-			case <-time.After(time.Second * 5):
-			}
+			time.Sleep(time.Second * 5)
 			continue
 		}
 
@@ -436,10 +433,15 @@ flushconnch:
 		var adr [20]byte
 		powMode := true
 
-		copy(adr[:], m.cfg.SignAddress.ScriptAddress())
-		payToAddr = &m.cfg.SignAddress
-		if _,ok := committee[adr]; m.cfg.PrivKeys != nil && ok {
-			powMode = false
+		if m.cfg.SignAddress != nil {
+			copy(adr[:], m.cfg.SignAddress.ScriptAddress())
+			payToAddr = &m.cfg.SignAddress
+			if _, ok := committee[adr]; m.cfg.PrivKeys != nil && ok {
+				powMode = false
+			}
+		} else {
+			// pick one from address list
+			payToAddr = &m.cfg.MiningAddrs[rand.Int() % len(m.cfg.MiningAddrs)]
 		}
 
 		// Create a new block template using the available transactions
@@ -488,7 +490,7 @@ flushconnch:
 
 		wb.Header.Nonce = nonce
 
-		fmt.Printf("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
+//		fmt.Printf("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
 
 		if !powMode {
 			block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
@@ -507,7 +509,7 @@ flushconnch:
 			}
 			lastblkgen = time.Now().Unix()
 
-			log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
+//			fmt.Printf("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
 			if !m.submitBlock(block) {
 				continue
 			}
@@ -519,6 +521,8 @@ flushconnch:
 					if !ok || blk >= block.Height() {
 						break connected
 					}
+					
+				case <-consensus.POWStopper:
 
 				case <-m.quit:
 					break out
@@ -538,7 +542,14 @@ flushconnch:
 		m.minedBlock = nil
 
 		if !m.cfg.EnablePOWMining {
-			time.Sleep(time.Second * wire.TimeGap)
+			select {
+			case <-consensus.POWStopper:
+
+			case <-m.quit:
+				break out
+
+			case <-time.After(time.Second * wire.TimeGap):
+			}
 			continue
 		}
 
@@ -548,17 +559,21 @@ flushconnch:
 			pows++
 			blk = blk.Parent
 		}
+
 		select {
 		case <-m.connch:
+			continue
+
+		case <-consensus.POWStopper:
 			continue
 
 		case <-m.quit:
 			break out
 
-		case <-time.After(time.Second * time.Duration(1 << pows)):
+		case <-time.After(time.Second * time.Duration(2*wire.TimeGap+(1<<pows))):
 		}
 
-		log.Info("Try to solve block ")
+		fmt.Printf("Try to solve block ")
 
 		// Attempt to solve the block.  The function will exit early
 		// with false when conditions that trigger a stale block, so
@@ -643,6 +658,8 @@ func (m *CPUMiner) Start() {
 	go m.speedMonitor()
 	go m.generateBlocks()
 
+	consensus.POWStopper = make(chan struct{}, 3 * wire.MINER_RORATE_FREQ)
+
 	m.started = true
 	log.Infof("CPU miner started")
 }
@@ -665,6 +682,10 @@ func (m *CPUMiner) Stop() {
 	m.connLock.Lock()
 	close(m.connch)
 	m.connLock.Unlock()
+
+	t := consensus.POWStopper
+	consensus.POWStopper = nil
+	close(t)
 
 	close(m.quit)
 	m.started = false
@@ -846,6 +867,9 @@ func New(cfg *Config) *CPUMiner {
 		updateHashes:      make(chan uint64),
 		connch: 		   make(chan int32, 100),
 	}
+
+	consensus.POWStopper = make(chan struct{}, 3 * wire.MINER_RORATE_FREQ)
+	
 	m.g.Chain.Subscribe(m.notice)	// Miners.(*minerchain.MinerChain).
 	return m
 }

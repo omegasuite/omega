@@ -6,14 +6,14 @@ package main
 
 import (
 	"fmt"
-	"github.com/btcsuite/btcd/blockchain"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcd/wire/common"
-	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcutil/base58"
-	"github.com/btcsuite/omega/token"
+	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/btcutil/base58"
+	"github.com/omegasuite/omega/token"
 	"math/big"
 	_ "net/http/pprof"
 	"os"
@@ -113,9 +113,9 @@ func main() {
 	fmt.Printf("// This is generated code. Should not be manually modified.\n\n" +
 		"package omega" +
 		"\n\nimport (\n\t\"time\"" +
-		"\n\t\"github.com/btcsuite/btcd/chaincfg/chainhash\"" +
-		"\n\t\"github.com/btcsuite/btcd/wire\"" +
-		"\n\t\"github.com/btcsuite/omega/token\"\n)\n\n" +
+		"\n\t\"github.com/omegasuite/btcd/chaincfg/chainhash\"" +
+		"\n\t\"github.com/omegasuite/btcd/wire\"" +
+		"\n\t\"github.com/omegasuite/omega/token\"\n)\n\n" +
 		"var IntlDateLine = [][2]float64 {	// international date line")
 	for _, v := range vertices {
 		fmt.Printf("\n\t{ %f, %f },", v.Lat, v.Lng)
@@ -170,7 +170,7 @@ func main() {
 
 	fmt.Printf("\n\nvar coinToken = token.Token{\n\t" +
 		"TokenType: 0,\n\t" +
-		"Value: &token.NumToken{Val: 700000000},\n\t" +
+		"Value: &token.NumToken{Val: 600000000},\n\t" +
 		"Rights: &chainhash.Hash{},\n}")
 
 	fmt.Printf("\n\nvar polygonToken = token.Token{" +
@@ -201,35 +201,6 @@ func main() {
 		common.TestNet:  "TestNet",
 		common.SimNet:  "SimNet",
 	}
-/*
-	for net, k := range addresses {
-		// for coin
-		addr, _, err := base58.CheckDecode(k[0])
-		if err != nil {
-			fmt.Printf("Failed to generate pay-to-address script")
-			os.Exit(1)
-		}
-
-		coinpkScript := make([]byte, 25)
-		coinpkScript[0] = params[net].PubKeyHashAddrID
-		copy(coinpkScript[1:], addr)
-		coinpkScript[21] = 0x41
-
-		fmt.Printf("\nCoin Address for %s is %s\n", names[net], base58.CheckEncode(addr, params[net].PubKeyHashAddrID));
-		addr, _, err = base58.CheckDecode(k[1])
-		if err != nil {
-			fmt.Printf("Failed to generate pay-to-address script")
-			os.Exit(1)
-		}
-
-		plgpkScript := make([]byte, 25)
-		plgpkScript[0] = params[net].PubKeyHashAddrID
-		copy(plgpkScript[1:], addr)
-		plgpkScript[21] = 0x41
-
-		fmt.Printf("\nPolygon Address for %s is %s\n", names[net], base58.CheckEncode(addr, params[net].PubKeyHashAddrID));
-	}
- */
 
 	for net, k := range addresses {
 		// for coin
@@ -288,7 +259,7 @@ func main() {
 		}
 
 		genesisCoinbaseTx.TxOut[0].TokenType = 0
-		genesisCoinbaseTx.TxOut[0].Value = &token.NumToken{Val: 0x12a05f200}
+		genesisCoinbaseTx.TxOut[0].Value = &token.NumToken{Val: 600000000}
 		genesisCoinbaseTx.TxOut[0].Rights = &chainhash.Hash{}
 
 		var genesisInitPolygonTx = wire.MsgTx{

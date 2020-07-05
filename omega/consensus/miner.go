@@ -96,6 +96,19 @@ func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 	newblockch <- newblock { block, flags }
 }
 
+func ServeBlock(h * chainhash.Hash) *btcutil.Block {
+	if miner.shutdown {
+		return nil
+	}
+	for _, s := range miner.Sync {
+		b := s.findBlock(h)
+		if b != nil {
+			return b
+		}
+	}
+	return nil
+}
+
 /*
 func ProcessHeader(b *blockchain.BlockChain, block *MsgMerkleBlock) {
 	flags := blockchain.BFNoConnect
@@ -107,6 +120,7 @@ func ProcessHeader(b *blockchain.BlockChain, block *MsgMerkleBlock) {
 var miner * Miner
 
 var Quit chan struct{}
+var POWStopper chan struct{}
 var errMootBlock error
 var errInvalidBlock error
 
@@ -207,7 +221,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 			}
 			miner.syncMutex.Unlock()
 
-		case height := <- miner.updateheight:
+		case height := <-miner.updateheight:
 			log.Infof("updateheight %d", height)
 			cleaner(height)
 			miner.syncMutex.Lock()
@@ -216,10 +230,10 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 			}
 			miner.syncMutex.Unlock()
 
-		case blk := <- newblockch:
+		case blk := <-newblockch:
 			top := miner.server.BestSnapshot().Height
 			bh := blk.block.Height()
-			log.Infof("miner received newblockch %s at %d vs. %d",
+			log.Infof("miner received newblock %s at %d vs. %d",
 				blk.block.Hash().String(), top, bh)
 
 			if bh <= top {
@@ -240,6 +254,10 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 			log.Infof(" BlockInit at %d for block %s", bh, blk.block.Hash().String())
 			snr := miner.Sync[bh]
 			miner.syncMutex.Unlock()
+
+			if POWStopper != nil {
+				POWStopper <-struct{}{}
+			}
 
 			snr.BlockInit(blk.block)
 

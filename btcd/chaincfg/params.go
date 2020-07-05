@@ -34,7 +34,7 @@ var (
 	// testNet3PowLimit is the highest proof of work value a Bitcoin block
 	// can have for the test network (version 3).  It is the value
 	// 2^240 - 1.
-	testNet3PowLimit = new(big.Int).Sub(new(big.Int).Lsh(bigOne, 240), bigOne)
+	testNet3PowLimit = new(big.Int).Sub(new(big.Int).Lsh(bigOne, 250), bigOne)
 
 	// simNetPowLimit is the highest proof of work value a Bitcoin block
 	// can have for the simulation test network.  It is the value 2^255 - 1.
@@ -246,9 +246,8 @@ type Params struct {
 var MainNetParams = Params{
 	Name:        "mainnet",
 	Net:         common.MainNet,
-	DefaultPort: "8383",
+	DefaultPort: "8788",
 	DNSSeeds: []DNSSeed{
-//		{"localhost:8383", false},
 		{"omegasuite.org", false},
 	},
 

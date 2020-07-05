@@ -218,6 +218,10 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 }
 
 func (s *server) SendInvAck(peer [20]byte, sp *serverPeer) {
+	if s.signAddress == nil {
+		return
+	}
+
 	// send an acknowledgement so the peer knows we are too
 	me := s.MyPlaceInCommittee(int32(s.chain.BestSnapshot().LastRotation))
 	if me == 0 {	// should never happen
@@ -413,6 +417,10 @@ func (s *server) phaseoutCommittee(r int32) {
 }
 
 func (s *server) MyPlaceInCommittee(r int32) int32 {
+	if s.signAddress == nil {
+		return 0
+	}
+
 	minerTop := s.chain.Miners.BestSnapshot().Height
 
 	for i := r - wire.CommitteeSize + 1; i < r + advanceCommitteeConnection; i++ {
@@ -432,6 +440,10 @@ func (s *server) MyPlaceInCommittee(r int32) int32 {
 }
 
 func (s * server) makeInvitation(me int32, miner []byte) (* wire.Invitation, * btcutil.Address) {
+	if s.signAddress == nil {
+		return nil, nil
+	}
+
 	inv := wire.Invitation{
 		Height: me,
 	}
@@ -741,12 +753,29 @@ func (s *server) CommitteeMsg(p [20]byte, m wire.Message) bool {
 				return <-done
 			}
 		}
+	} else {
+		best := s.chain.BestSnapshot()
+		my := s.MyPlaceInCommittee(int32(best.LastRotation))
+		for i := 0; i < wire.CommitteeSize; i++ {
+			blk, _ := s.chain.Miners.BlockByHeight(int32(best.LastRotation) - int32(i))
+			if blk == nil || bytes.Compare(blk.MsgBlock().Miner[:], p[:]) != 0{
+				continue
+			}
+			s.peerState.cmutex.Lock()
+			s.makeConnection(blk.MsgBlock().Connection, p, blk.Height(), my)
+			s.peerState.cmutex.Unlock()
+			return false
+		}
 	}
 
 	return false
 }
 
 func (s *server) CommitteePolling() {
+	if s.signAddress == nil {
+		return
+	}
+
 	best := s.chain.BestSnapshot()
 	ht := best.Height
 	mht := s.chain.Miners.BestSnapshot().Height
@@ -881,6 +910,9 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 }
 
 func (s *server) CommitteeCast(msg wire.Message) {
+	if s.signAddress == nil {
+		return
+	}
 	var name [20]byte
 	copy(name[:], s.signAddress.ScriptAddress())
 
