@@ -1151,7 +1151,10 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// check if it is within holding period: a miner can not do any transaction
 	// within MinerHoldingPeriod blocks since he becomes a member
 	minersonhold := make(map[wire.OutPoint]int32)
-	p := e.Value.(*chainutil.BlockNode)
+	var p *chainutil.BlockNode
+	if e != nil {
+		p = e.Value.(*chainutil.BlockNode)
+	}
 	for i := int32(0); p != nil && i < MinerHoldingPeriod; i++ {
 		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			mb,_ := b.Miners.BlockByHeight(-p.Data.GetNonce() - wire.MINER_RORATE_FREQ)

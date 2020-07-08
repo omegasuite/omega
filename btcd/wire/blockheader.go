@@ -26,7 +26,7 @@ const (
 	MINER_RORATE_FREQ			= 200		// rotate committee every MINER_RORATE_FREQ block
 	DESIRABLE_MINER_CANDIDATES	= 40		// the desirable number of miner candidate we want to have
 	SCALEFACTORCAP				= 48
-	DifficultyRatio				= 16		// ratio of difficulty for tx chain and miner chain
+	DifficultyRatio				= 4			// ratio of difficulty for tx chain and miner chain
 	collateralWaiver			= 50000		// before this point, no collateral is required
 	collateralBase				= 1e8 * 5	// base is 5 BTC
 )

@@ -70,6 +70,7 @@ type serializedAddrManager struct {
 type localAddress struct {
 	na    *wire.NetAddress
 	score AddressPriority
+	origin AddressPriority
 }
 
 // AddressPriority type is used to describe the hierarchy of local address
@@ -767,6 +768,12 @@ func (a *AddrManager) GetAddress() *KnownAddress {
 				e = e.Next()
 			}
 			ka := e.Value.(*KnownAddress)
+			if a.isMyself(ka.na) {
+				if a.addrTried[bucket].Len() <= len(a.localAddresses) {
+					return nil
+				}
+				continue
+			}
 			randval := a.rand.Intn(large)
 			if float64(randval) < (factor * ka.chance() * float64(large)) {
 				log.Tracef("Selected %v from tried bucket",
@@ -977,6 +984,7 @@ func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPrior
 			a.localAddresses[key] = &localAddress{
 				na:    na,
 				score: priority,
+				origin: priority,
 			}
 		}
 	}

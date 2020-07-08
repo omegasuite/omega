@@ -126,7 +126,7 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	k, err := btcec.ParsePubKey(msg.Invitation.Pubkey[:], btcec.S256())
 	if err != nil {
 		// refuse by disconnect
-		consensusLog.Infof("refuses AckInv. disconnect from %s", sp.Addr())
+		consensusLog.Infof("refuses AckInv (1) %s", sp.Addr())
 //		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
@@ -134,7 +134,7 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	mb, err := sp.server.chain.Miners.BlockByHeight(msg.Invitation.Height)
 	if err != nil {
 		// refuse by disconnect
-		consensusLog.Infof("refuses AckInv. disconnect from %s", sp.Addr())
+		consensusLog.Infof("refuses AckInv (2) %s", sp.Addr())
 //		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
@@ -144,11 +144,17 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 
 	// check signature
 	pk, _ := btcutil.NewAddressPubKeyPubKey(*k, sp.server.chainParams)
-	pkh := pk.AddressPubKeyHash().Hash160()
+	pk.SetFormat(btcutil.PKFUncompressed)
+	pkh1 := pk.AddressPubKeyHash().ScriptAddress()
+	pk.SetFormat(btcutil.PKFCompressed)
+	pkh2 := pk.AddressPubKeyHash().ScriptAddress()
+//	pkhc := pk.AddressPubKeyHash().Hash160()
 
-	if bytes.Compare(pkh[:], mb.MsgBlock().Miner[:]) != 0 {
+	if bytes.Compare(pkh1[:], mb.MsgBlock().Miner[:]) != 0 &&
+		bytes.Compare(pkh2[:], mb.MsgBlock().Miner[:]) != 0 {
 		// refuse by disconnect
-		consensusLog.Infof("refuses AckInv. disconnect from %s", sp.Addr())
+		consensusLog.Infof("refuses AckInv (3) %s miner = %x pkh1 = %x pkh2 = %x at %d", sp.Addr(),
+			mb.MsgBlock().Miner, pkh1, pkh2, msg.Invitation.Height)
 //		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
@@ -156,7 +162,7 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	s, err := btcec.ParseSignature(msg.Sig, btcec.S256())
 	if err != nil {
 		// refuse by disconnect
-		consensusLog.Infof("refuses AckInv. disconnect from %s", sp.Addr())
+		consensusLog.Infof("refuses AckInv (4) %s", sp.Addr())
 //		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
@@ -164,7 +170,7 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	var w bytes.Buffer
 	if msg.Invitation.Serialize(&w) != nil {
 		// refuse by disconnect
-		consensusLog.Infof("refuses AckInv. disconnect from %s", sp.Addr())
+		consensusLog.Infof("refuses AckInv (5) %s", sp.Addr())
 //		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
@@ -172,7 +178,7 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	hash := chainhash.DoubleHashB(w.Bytes())
 	if !s.Verify(hash, pk.PubKey()) {
 		// refuse by disconnect
-		consensusLog.Infof("refuses AckInv. disconnect from %s", sp.Addr())
+		consensusLog.Infof("refuses AckInv (6) %s", sp.Addr())
 //		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
@@ -212,6 +218,8 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 			m.lastMinerBlockSent = m.bestMinerBlock
 		}
 	}
+
+	consensusLog.Infof("AckInv. %d = %x", msg.Invitation.Height, mb.MsgBlock().Miner)
 
 	sp.Peer.Committee = msg.Invitation.Height
 	copy(sp.Peer.Miner[:], mb.MsgBlock().Miner[:])
@@ -452,7 +460,10 @@ func (s * server) makeInvitation(me int32, miner []byte) (* wire.Invitation, * b
 		return nil, nil
 	}
 
-	copy(inv.Pubkey[:], s.privKeys.PubKey().SerializeCompressed())
+	pk := s.privKeys.PubKey()
+
+	copy(inv.Pubkey[:], pk.SerializeCompressed())
+//	copy(inv.Pubkey[:], s.privKeys.PubKey().SerializeUncompressed())
 	inv.IP = []byte(cfg.ExternalIPs[0])
 	return &inv, &s.signAddress
 }

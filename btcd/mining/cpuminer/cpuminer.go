@@ -236,7 +236,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	header := &msgBlock.Header
 
 	targetDifficulty := blockchain.CompactToBig(template.Bits)
-	targetDifficulty = targetDifficulty.Div(targetDifficulty, big.NewInt(wire.DifficultyRatio))
+	targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(wire.DifficultyRatio))
 
 	// Initial state.
 	lastGenerated := time.Now()
@@ -490,7 +490,7 @@ flushconnch:
 
 		wb.Header.Nonce = nonce
 
-//		fmt.Printf("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
+		log.Infof("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
 
 		if !powMode {
 			block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
@@ -506,10 +506,14 @@ flushconnch:
 			if sz < int(blockMaxSize) / 2 && nt > 4 {
 				time.Sleep(time.Duration(nt) / 4 * time.Second)
 				continue
+			} else if sz < int(blockMaxSize) / 2 && nt > 0 {
+				time.Sleep(time.Duration(nt) * time.Second)
+				continue
 			}
+
 			lastblkgen = time.Now().Unix()
 
-//			fmt.Printf("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
+			log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
 			if !m.submitBlock(block) {
 				continue
 			}

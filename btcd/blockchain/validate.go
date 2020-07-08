@@ -360,7 +360,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			// The block hash must be less than the claimed target.
 			hash := header.BlockHash()
 			hashNum := HashToBig(&hash)
-			target = target.Div(target, big.NewInt(wire.DifficultyRatio))
+			target = target.Mul(target, big.NewInt(wire.DifficultyRatio))
 			if hashNum.Cmp(target) > 0 {
 				str := fmt.Sprintf("block hash of %064x is higher than "+
 					"expected max of %064x", hashNum, target)

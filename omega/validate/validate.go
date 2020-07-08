@@ -19,77 +19,16 @@ import (
 	"github.com/omegasuite/omega/viewpoint"
 )
 
-/*
-func saneVertex(v * token.VertexDef) bool {
-	// it is a valid earth geo coord?
-	x := float64(int32(v.Lng())) / token.CoordPrecision
-	y := float64(int32(v.Lat())) / token.CoordPrecision
-	if y < -90 || y > 90 {
-		return false
+func abs(x int64) int64 {
+	if x < 0 {
+		return -x
 	}
-
-	var vertices = omega.IntlDateLine
-
-	k := 0
-	for i := 0; i < len(vertices) - 1; i++ {
-		if vertices[i][0] >= y && y >= vertices[i+1][0] {
-			k = i
-		}
-	}
-	var l [2]float64
-	var r [2]float64
-
-	if vertices[k][1] > 0 {
-		l[0] = vertices[k][1] - 360.0
-		r[0] = vertices[k][1]
-	} else {
-		r[0] = vertices[k][1] + 360.0
-		l[0] = vertices[k][1]
-	}
-	if vertices[k+1][1] > 0 {
-		l[0] = vertices[k+1][1] - 360.0
-		r[0] = vertices[k+1][1]
-	} else {
-		r[0] = vertices[k+1][1] + 360.0
-		l[0] = vertices[k+1][1]
-	}
-
-	if x < (l[0] + (l[1] - l[0]) * (y - vertices[k][0]) / (vertices[k][1] - vertices[k][0])) ||
-		x > (r[0] + (r[1] - r[0]) * (y - vertices[k][0]) / (vertices[k][1] - vertices[k][0])) {
-		return false
-	}
-	return true
+	return x
 }
- */
-/*
-func containEdge(p * viewpoint.PolygonEntry, views * viewpoint.ViewPointSet, r * token.BorderDef) byte {
-	for r != nil {
-		for _,loop := range p.Loops {
-			for _,b := range loop {
-				d := b[0] & 0x1
-				b[0] &= 0xFE
-				rh := r.Hash()
-				if rh.IsEqual(&b) {
-					return d
-				}
-			}
-		}
-		if r.Father.IsEqual(&chainhash.Hash{}) {
-			return 2
-		}
-		f,_ := views.FetchBorderEntry(&r.Father)
-		if f == nil {
-			return 2
-		}
-		r = token.NewBorderDef(f.Begin, f.End, f.Father)
-	}
-
-	return 2
-}
- */
 
 func online(r * token.VertexDef, begin * token.VertexDef, end * token.VertexDef, delim * token.VertexDef) bool {
-	// determine whether point r is on the line segment of (begin, end) relatively within GeoError
+	// determine whether point r is on the line segment of (begin, end) in that it
+	// is the closest grid point to the line.
 	rf := [2]int64{int64(r.Lng()), int64(r.Lat())}
 	bf := [2]int64{int64(begin.Lng()), int64(begin.Lat())}
 	ef := [2]int64{int64(end.Lng()), int64(end.Lat())}
@@ -97,11 +36,18 @@ func online(r * token.VertexDef, begin * token.VertexDef, end * token.VertexDef,
 	len := (ef[0] - bf[0]) * (ef[0] - bf[0]) + (ef[1] - bf[1]) * (ef[1] - bf[1])
 
 	t := (rf[0] - bf[0]) * (ef[0] - bf[0]) + (rf[1] - bf[1]) * (ef[1] - bf[1])
-	if t < 0 || t > len {
+	if t < 0 || t > len {	// outside begin & end point
 		return false
 	}
+
 	d := (rf[0] - bf[0]) * (ef[1] - bf[1]) - (rf[1] - bf[1]) * (ef[0] - bf[0])
-	if d != 0 {
+	mn1 := abs(ef[1] - bf[1])
+	mn2 := abs(ef[0] - bf[0])
+	if mn2 < mn1 {
+		mn1 = mn2
+	}
+	mn1 /= 2
+	if d > mn1 {
 		return false
 	}
 
