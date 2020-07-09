@@ -736,6 +736,15 @@ func NetAddressKey(na *wire.NetAddress) string {
 	return net.JoinHostPort(ipString(na), port)
 }
 
+func (a *AddrManager) isMyself(na *wire.NetAddress) bool {
+	for _, p := range a.localAddresses {
+		if p.origin == ManualPrio && p.na.IP.Equal(na.IP) && p.na.Port == na.Port {
+			return true
+		}
+	}
+	return false
+}
+
 // GetAddress returns a single address that should be routable.  It picks a
 // random one from the possible addresses with preference given to ones that
 // have not been used recently and should not pick 'close' addresses

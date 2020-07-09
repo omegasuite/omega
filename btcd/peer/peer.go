@@ -518,9 +518,9 @@ func (p *Peer) String() string {
 // This function is safe for concurrent access.
 func (p *Peer) UpdateLastBlockHeight(newHeight int32) {
 	p.statsMtx.Lock()
+	if p.lastBlock < newHeight {
 	log.Infof("Updating last block height of peer %s from %v to %v",
 		p.Addr(), p.lastBlock, newHeight)
-	if p.lastBlock < newHeight {
 		p.lastBlock = newHeight
 	}
 	p.statsMtx.Unlock()
@@ -528,9 +528,9 @@ func (p *Peer) UpdateLastBlockHeight(newHeight int32) {
 
 func (p *Peer) UpdateLastMinerBlockHeight(newHeight int32) {
 	p.statsMtx.Lock()
+	if p.lastMinerBlock < newHeight {
 	log.Tracef("Updating last block height of peer %v from %v to %v",
 		p.addr, p.lastBlock, newHeight)
-	if p.lastMinerBlock < newHeight {
 		p.lastMinerBlock = newHeight
 	}
 	p.statsMtx.Unlock()
