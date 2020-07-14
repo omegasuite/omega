@@ -359,7 +359,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// there are no more.
 	err = b.ProcessOrphans(blockHash, BFNone)	// flags)
 
-	log.Infof("ProcessBlock finished with height = %d Miner height = %d Orphans = %d", b.BestSnapshot().Height,
+	log.Infof("ProcessBlock.ProcessOrphans finished with height = %d Miner height = %d Orphans = %d", b.BestSnapshot().Height,
 		b.Miners.BestSnapshot().Height, b.Orphans.Count())
 
 	return isMainChain, false, nil, -1

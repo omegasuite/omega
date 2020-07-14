@@ -374,11 +374,8 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	if !ByteCodeValidator(contract.Code) {
 		return nil, omega.ScriptError(omega.ErrInternal, "Illegal instruction in contract code.")
 	}
-//	copy(contract.CodeHash[:], chainhash.DoubleHashB(data))
 
 	ovm.SetAddres(d, contract.self.(AccountRef))
-//	ovm.SetInsts(d, contract.Code)
-//	ovm.SetCodeHash(d, contract.CodeHash)
 
 	contract.CodeAddr = nil
 	ret, err := run(ovm, contract, nil)	// contract constructor. ret is the real contract code, ex. constructor
@@ -387,15 +384,14 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 		return nil, omega.ScriptError(omega.ErrInternal, "Fail to initialize contract.")
 	}
 
-	block := ovm.Block()
-
-	if block == nil {
-		return nil, nil
-	}
+//	block := ovm.Block()
+//	if block == nil {
+//		return nil, nil
+//	}
 
 	m := ovm.GetCurrentOutput()
 
-	loc,_ := block.TxLoc()
+//	loc,_ := block.TxLoc()
 	tx := ovm.GetTx()
 	n := m.Index
 	msg := tx.MsgTx()
@@ -435,8 +431,8 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	pks = pks[dd:]
 
 	r := database.BlockRegion {
-		ovm.Block().Hash(),
-		uint32(loc[n].TxStart + p),
+		tx.Hash(),	// has of this tx
+		uint32(p),	// offset from start of tx
 		uint32(ln),
 	}
 	br := make([]byte, 40)

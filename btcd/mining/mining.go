@@ -72,6 +72,8 @@ type TxSource interface {
 	// transactions in the source pool.
 	MiningDescs() []*TxDesc
 
+	RemoveTransaction(tx *btcutil.Tx, removeRedeemers bool)
+
 	// HaveTransaction returns whether or not the passed transaction hash
 	// exists in the source pool.
 	HaveTransaction(hash *chainhash.Hash) bool
@@ -786,6 +788,9 @@ mempoolLoop:
 		if err != nil {
 			coinbaseTx.HasOuts = newcoins
 			*coinbaseTx.MsgTx() = savedCoinBase
+
+			g.txSource.RemoveTransaction(tx, true)
+
 			log.Tracef("Skipping tx %s due to error in "+
 				"checkContract: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)

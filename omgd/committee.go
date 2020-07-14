@@ -451,6 +451,9 @@ func (s * server) makeInvitation(me int32, miner []byte) (* wire.Invitation, * b
 	if s.signAddress == nil {
 		return nil, nil
 	}
+	if len(cfg.ExternalIPs) == 0 {
+		return nil, nil
+	}
 
 	inv := wire.Invitation{
 		Height: me,
@@ -719,10 +722,9 @@ func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message, h int32) {
 				return
 			}
 		}
-		consensusLog.Infof("Failed to find a useful connection")
-	} else {
-		consensusLog.Infof("Failed to find a useful connection")
 	}
+	consensusLog.Infof("Failed to find a useful connection. inboundPeers=%d outboundPeers=%d committee=%d",
+		len(s.peerState.inboundPeers), len(s.peerState.outboundPeers), len(s.peerState.committee))
 }
 
 func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {

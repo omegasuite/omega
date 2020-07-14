@@ -319,13 +319,13 @@ func (sm *SyncManager) updateSyncPeer() {
 		n--
 		if j.peer.Connected() {
 			txmoot := false
-			if *j.stopHash != zeroHash {
+			if !zeroHash.IsEqual(j.stopHash) {
 				txmoot,_ = sm.chain.HaveBlock(j.stopHash)
 			} else if len(j.locator) > 0 && *j.locator[0] != sm.chain.BestSnapshot().Hash {
 				txmoot = true
 			}
 			mnmoot := false
-			if *j.mstopHash != zeroHash {
+			if !zeroHash.IsEqual(j.mstopHash) {
 				mnmoot,_ = sm.chain.HaveBlock(j.stopHash)
 			} else if len(j.mlocator) > 0 && *j.mlocator[0] != sm.chain.Miners.BestSnapshot().Hash {
 				mnmoot = true

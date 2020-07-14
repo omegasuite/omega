@@ -265,7 +265,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 			log.Info("consensus received Quit")
 			polling = false
 			ticker.Stop()
-			DebugInfo()
+//			DebugInfo()
 			break out
 		}
 	}

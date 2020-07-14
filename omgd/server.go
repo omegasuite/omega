@@ -186,6 +186,17 @@ type peerState struct {
 	committee       map[[20]byte]*committeeState
 }
 
+func (p * peerState) IsConnected(c *connmgr.ConnReq) bool {
+	iscontd := false
+	p.forAllOutboundPeers(func(sp *serverPeer) {
+		if !iscontd && c.Addr.String() == sp.connReq.Addr.String() {
+			iscontd = true
+		}
+	})
+
+	return iscontd
+}
+
 // Count returns the count of all known peers.
 func (ps *peerState) Count() int {
 	return len(ps.inboundPeers) + len(ps.outboundPeers) +
@@ -1971,12 +1982,12 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 			state.outboundPeers[sp.ID()] = sp
 		}
 		if sp.connReq.Committee > 0 {
-			consensusLog.Infof("handleAddPeerMsg Lock")
+//			consensusLog.Infof("handleAddPeerMsg Lock")
 			if _,ok := state.committee[sp.connReq.Miner]; !ok {
 				state.committee[sp.connReq.Miner] = newCommitteeState()
 			}
 			state.committee[sp.connReq.Miner].peers = append(state.committee[sp.connReq.Miner].peers, sp)
-			consensusLog.Infof("handleAddPeerMsg Unlock")
+//			consensusLog.Infof("handleAddPeerMsg Unlock")
 
 			sp.Peer.Committee = sp.connReq.Committee
 			sb, _ := s.chain.Miners.BlockByHeight(sp.connReq.Committee)
@@ -2487,7 +2498,13 @@ func (s *server) peerHandler() {
 				s.addrManager.AddAddresses(addrs, addrs[0])
 			})
 	}
-	go s.connManager.Start()
+	go s.connManager.Start(s.peerState)
+
+	s.chain.Subscribe(func (msg *blockchain.Notification) {
+		if msg.Type == blockchain.NTBlockConnected {
+			s.connManager.NewBlock()
+		}
+	})
 
 	newBlock := make(chan int32, 50)
 
@@ -3069,6 +3086,10 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 				s.rsaPrivateKey, _ = x509.ParsePKCS1PrivateKey(block.Bytes)
 			}
 		}
+	}
+
+	if cfg.Generate && !cfg.TxIndex {	// must allow txindex when mining
+		return nil, errors.New("Must enable tx index (width full history) when mining.")
 	}
 
 	// Create the transaction and address indexes if needed.

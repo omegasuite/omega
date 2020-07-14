@@ -3,11 +3,12 @@ package ovm
 import (
 	"bytes"
 	"encoding/binary"
-	//	"fmt"
+	"errors"
+	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/wire/common"
-//	"encoding/json"
+	//	"encoding/json"
 	//	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/omega"
 	//	"github.com/omegasuite/omega/token"
@@ -131,20 +132,83 @@ func (d *stateDB) getMeta(key string) []byte {
 	return code
 }
 
+func dbFetchBlockHashBySerializedID(dbTx database.Tx, serializedID []byte) (*chainhash.Hash, error) {
+	hashByIDIndexBucketName := []byte("hashbyididx")
+	errNoBlockIDEntry := errors.New("no entry in the block ID index")
+
+	idIndex := dbTx.Metadata().Bucket(hashByIDIndexBucketName)
+	hashBytes := idIndex.Get(serializedID)
+	if hashBytes == nil {
+		return nil, errNoBlockIDEntry
+	}
+
+	var hash chainhash.Hash
+	copy(hash[:], hashBytes)
+	return &hash, nil
+}
+
+func dbFetchTxIndexEntry(dbTx database.Tx, txHash *chainhash.Hash) (*database.BlockRegion, error) {
+	// Load the record from the database and return now if it doesn't exist.
+	txIndexKey := []byte("txbyhashidx")
+
+	txIndex := dbTx.Metadata().Bucket(txIndexKey)
+	serializedData := txIndex.Get(txHash[:])
+	if len(serializedData) == 0 {
+		return nil, nil
+	}
+
+	// Ensure the serialized data has enough bytes to properly deserialize.
+	if len(serializedData) < 12 {
+		return nil, database.Error{
+			ErrorCode: database.ErrCorruption,
+			Description: fmt.Sprintf("corrupt transaction index "+
+				"entry for %s", txHash),
+		}
+	}
+
+	// Load the block hash associated with the block ID.
+	hash, err := dbFetchBlockHashBySerializedID(dbTx, serializedData[0:4])
+	if err != nil {
+		return nil, database.Error{
+			ErrorCode: database.ErrCorruption,
+			Description: fmt.Sprintf("corrupt transaction index "+
+				"entry for %s: %v", txHash, err),
+		}
+	}
+
+	// Deserialize the final entry.
+	region := database.BlockRegion{Hash: &chainhash.Hash{}}
+	copy(region.Hash[:], hash[:])
+	region.Offset = byteOrder.Uint32(serializedData[4:8])
+	region.Len = byteOrder.Uint32(serializedData[8:12])
+
+	return &region, nil
+}
+
 func (d * OVM) GetCode(contract [20]byte) []byte {
 	r := d.getMeta(contract, "code")
 	var h chainhash.Hash
 	copy(h[:], r)
-	
-	g := database.BlockRegion {}
-	g.Hash = &h
-	g.Offset = common.LittleEndian.Uint32(r[32:])
+
+	var g *database.BlockRegion
+
+	err := d.DB.View(func(dbTx database.Tx) error {
+		var err error
+		g, err = dbFetchTxIndexEntry(dbTx, &h)
+		return err
+	})
+	if err != nil {
+		return nil
+	}
+
 	g.Len = common.LittleEndian.Uint32(r[36:])
+	offset := common.LittleEndian.Uint32(r[32:])
+	g.Offset += offset	// 324
 
 	var codeBytes []byte
 	d.DB.View(func(dbTx database.Tx) error {
 		var err error
-		codeBytes, err = dbTx.FetchBlockRegion(&g)
+		codeBytes, err = dbTx.FetchBlockRegion(g)
 		return err
 	})
 

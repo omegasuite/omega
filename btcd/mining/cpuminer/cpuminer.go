@@ -279,8 +279,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 					return false
 				}
 
-				m.g.UpdateBlockTime(msgBlock)
-
+//				m.g.UpdateBlockTime(msgBlock) don't do this! it may cause inconsistent result on contract
 //				if m.cfg.ChainParams.ReduceMinDifficulty {
 //					targetDifficulty = blockchain.CompactToBig(template.Bits)
 //				}

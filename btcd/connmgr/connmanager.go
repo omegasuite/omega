@@ -178,6 +178,10 @@ type handleFailed struct {
 	err error
 }
 
+type ConnectedPeers interface {
+	IsConnected(*ConnReq) bool
+}
+
 // ConnManager provides a manager to handle network connections.
 type ConnManager struct {
 	// The following variables must only be used atomically.
@@ -190,6 +194,8 @@ type ConnManager struct {
 	failedAttempts uint64
 	requests       chan interface{}
 	quit           chan struct{}
+	newBlocks      chan struct{}
+	dupChecker	   ConnectedPeers
 }
 
 // handleFailedConn handles a connection failed due to a disconnect or any
@@ -242,9 +248,23 @@ func (cm *ConnManager) connHandler() {
 		conns = make(map[uint64]*ConnReq, cm.cfg.TargetOutbound)
 	)
 
+	var alive time.Time
+
+	ticker := time.NewTicker(time.Second * 60)
+
 out:
 	for {
 		select {
+		case <-cm.newBlocks:
+			alive = time.Now()
+
+		case t := <-ticker.C:
+			if t.Unix() - alive.Unix() <= 60 {
+				continue
+			}
+			// nothing happened in 1 minute, try a new connection
+			go cm.NewConnReq()
+
 		case req := <-cm.requests:
 			switch msg := req.(type) {
 
@@ -404,6 +424,10 @@ func (cm *ConnManager) NewConnReq() {
 
 	c.Addr = addr
 
+	if cm.dupChecker != nil && cm.dupChecker.IsConnected(c) {
+		return
+	}
+
 	cm.Connect(c)
 }
 
@@ -506,12 +530,19 @@ func (cm *ConnManager) listenHandler(listener net.Listener) {
 	log.Tracef("Listener handler done for %s", listener.Addr())
 }
 
+func (cm *ConnManager) NewBlock() {
+	cm.newBlocks <- struct{}{}
+}
+
 // Start launches the connection manager and begins connecting to the network.
-func (cm *ConnManager) Start() {
+func (cm *ConnManager) Start(dup ConnectedPeers) {
 	// Already started?
 	if atomic.AddInt32(&cm.start, 1) != 1 {
 		return
 	}
+
+	cm.newBlocks = make(chan struct{}, 20)
+	cm.dupChecker = dup
 
 	log.Trace("Connection manager started")
 	cm.wg.Add(1)
