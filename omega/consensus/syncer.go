@@ -273,16 +273,10 @@ func (self *Syncer) run() {
 			self.repeating <- struct{}{}
 
 		case <-self.repeating:
-/*
-			for {
-				select {
-				case <-self.repeating:
-				default:
-					break
-				}
-			}
- */
 			self.repeater()
+			for len(self.repeating) > 0 {
+				<-self.repeating
+			}
 
 		case tree := <- self.newtree:
 			if self.sigGiven >= 0 {
