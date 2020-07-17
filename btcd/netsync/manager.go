@@ -1875,39 +1875,62 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 
 	// A block has been connected to the main block chain.
 	case blockchain.NTBlockConnected:
-		block, ok := notification.Data.(*btcutil.Block)
-		if !ok {
-//			log.Warnf("Chain NTBlockConnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
+		if block, ok := notification.Data.(*wire.MinerBlock); ok {
+			for peer, _ := range sm.peerStates {
+				if peer.LastMinerBlock() < block.Height() {
+					// should send an inv msg
+					invVect := &wire.InvVect {
+						Type: common.InvTypeMinerBlock,
+						Hash: *block.Hash(),
+					}
+					peer.QueueInventory(invVect)
+				}
+			}
+			//			log.Warnf("Chain NTBlockConnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
 			break
 		}
 
-		// Remove all of the transactions (except the coinbase) in the
-		// connected block from the transaction pool.  Secondly, remove any
-		// transactions which are now double spends as a result of these
-		// new transactions.  Finally, remove any transaction that is
-		// no longer an orphan. Height which depend on a confirmed
-		// transaction are NOT removed recursively because they are still
-		// valid.
-		for _, tx := range block.Transactions()[1:] {
-			sm.txMemPool.RemoveTransaction(tx, false)
-			sm.txMemPool.RemoveDoubleSpends(tx)
-			sm.txMemPool.RemoveOrphan(tx)
-			sm.peerNotifier.TransactionConfirmed(tx)
-			acceptedTxs := sm.txMemPool.ProcessOrphans(tx)
-			sm.peerNotifier.AnnounceNewTransactions(acceptedTxs)
-		}
+		block, ok := notification.Data.(*btcutil.Block)
+		if ok {
+			// notify peers of new height if our height is greater than we know the peer has
+			for peer, _ := range sm.peerStates {
+				if peer.LastBlock() < block.Height() {
+					invVect := &wire.InvVect{
+						Type: common.InvTypeWitnessBlock,
+						Hash: *block.Hash(),
+					}
+					peer.QueueInventory(invVect)
+				}
+			}
 
-		// Register block with the fee estimator, if it exists.
-		if sm.feeEstimator != nil {
-			err := sm.feeEstimator.RegisterBlock(block)
+			// Remove all of the transactions (except the coinbase) in the
+			// connected block from the transaction pool.  Secondly, remove any
+			// transactions which are now double spends as a result of these
+			// new transactions.  Finally, remove any transaction that is
+			// no longer an orphan. Height which depend on a confirmed
+			// transaction are NOT removed recursively because they are still
+			// valid.
+			for _, tx := range block.Transactions()[1:] {
+				sm.txMemPool.RemoveTransaction(tx, false)
+				sm.txMemPool.RemoveDoubleSpends(tx)
+				sm.txMemPool.RemoveOrphan(tx)
+				sm.peerNotifier.TransactionConfirmed(tx)
+				acceptedTxs := sm.txMemPool.ProcessOrphans(tx)
+				sm.peerNotifier.AnnounceNewTransactions(acceptedTxs)
+			}
 
-			// If an error is somehow generated then the fee estimator
-			// has entered an invalid state. Since it doesn't know how
-			// to recover, create a new one.
-			if err != nil {
-				sm.feeEstimator = mempool.NewFeeEstimator(
-					mempool.DefaultEstimateFeeMaxRollback,
-					mempool.DefaultEstimateFeeMinRegisteredBlocks)
+			// Register block with the fee estimator, if it exists.
+			if sm.feeEstimator != nil {
+				err := sm.feeEstimator.RegisterBlock(block)
+
+				// If an error is somehow generated then the fee estimator
+				// has entered an invalid state. Since it doesn't know how
+				// to recover, create a new one.
+				if err != nil {
+					sm.feeEstimator = mempool.NewFeeEstimator(
+						mempool.DefaultEstimateFeeMaxRollback,
+						mempool.DefaultEstimateFeeMinRegisteredBlocks)
+				}
 			}
 		}
 

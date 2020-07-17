@@ -314,24 +314,28 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 func (m *CPUMiner) notice (notification *blockchain.Notification) {
 	switch notification.Type {
 	case blockchain.NTBlockConnected:
-		m.connLock.Lock()
-		defer m.connLock.Unlock()
+		if !m.started {
+			return
+		}
 
-		for true {
-			switch notification.Data.(type) {
-			//		case *wire.MinerBlock:
-			case *btcutil.Block:
-				if m.started {
-					select {
-					case _, ok := <-m.connch:
-						if !ok {
-							return
-						}
+		switch notification.Data.(type) {
+		//		case *wire.MinerBlock:
+		case *btcutil.Block:
+			m.connLock.Lock()
+			defer m.connLock.Unlock()
 
-					default:
-						m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
+			log.Infof("cpuminer notice: drain m.connch and send new block height %d", notification.Data.(*btcutil.Block).Height())
+
+			for true {
+				select {
+				case _, ok := <-m.connch:
+					if !ok {
 						return
 					}
+
+				default:
+					m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
+					return
 				}
 			}
 		}

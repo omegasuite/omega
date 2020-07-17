@@ -80,23 +80,24 @@ var (
 
 // Initialize package-global logger variables.
 func init() {
-	addrmgr.UseLogger(btclog.Disabled)	// amgrLog)
+	addrmgr.UseLogger(amgrLog)
 	connmgr.UseLogger(cmgrLog)
 	database.UseLogger(btclog.Disabled)	// bcdbLog)
 	blockchain.UseLogger(chanLog)
 	indexers.UseLogger(btclog.Disabled)	// indxLog)
 	mining.UseLogger(btclog.Disabled)	// minrLog)
 	cpuminer.UseLogger(btclog.Disabled)	// minrLog)
-	peer.UseLogger(btclog.Disabled)	// peerLog)
+	peer.UseLogger(peerLog)
 //	UseLogger(scrpLog)
 
-	netsync.UseLogger(btclog.Disabled)	// syncLog)
-	syncLog.SetLevel(btclog.LevelWarn)
+	netsync.UseLogger(syncLog)
+//	syncLog.SetLevel(btclog.LevelWarn)
+	syncLog.SetLevel(btclog.LevelTrace)
 
 	mempool.UseLogger(btclog.Disabled)	// txmpLog)
 	ovm.UseLogger(btclog.Disabled)	// ovmLog)
-	consensus.UseLogger(btclog.Disabled)	// consensusLog)
-	minerchain.UseLogger(btclog.Disabled)	// minerLog)
+	consensus.UseLogger(consensusLog)
+	minerchain.UseLogger(minerLog)
 	token.UseLogger(btclog.Disabled)	// tokenLog)
 
 	srvrLog = btclog.Disabled

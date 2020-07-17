@@ -273,6 +273,15 @@ func (self *Syncer) run() {
 			self.repeating <- struct{}{}
 
 		case <-self.repeating:
+/*
+			for {
+				select {
+				case <-self.repeating:
+				default:
+					break
+				}
+			}
+ */
 			self.repeater()
 
 		case tree := <- self.newtree:
@@ -1262,8 +1271,6 @@ func (self *Syncer) print() {
 }
 
 func (self *Syncer) DebugInfo() {
-	self.repeating <- struct{}{}
-
 	log.Infof("I am %x, %d", self.Me, self.Myself)
 	self.print()
 	log.Infof("Members & Names (%d):", len(self.Members))

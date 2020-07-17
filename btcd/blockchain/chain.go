@@ -1250,8 +1250,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
-		Vm.Commit()
-
 		for u,v := range minersonhold {
 			if v + MinerHoldingPeriod < n.Height {
 				delete(minersonhold, u)
@@ -1266,6 +1264,9 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		b.index.SetStatusFlags(n, chainutil.StatusValid)
 	}
+
+	// reconsider it! there is a bug.
+//	Vm.Commit()
 
 	// Log the point where the chain forked and old and new best chain
 	// heads.
@@ -1460,7 +1461,8 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			flushIndexState()
 		}
 
-		Vm.Commit()
+
+//		Vm.Commit() it's done in connect block
 
 		return true, nil
 	}

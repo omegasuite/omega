@@ -188,8 +188,8 @@ type peerState struct {
 
 func (p * peerState) IsConnected(c *connmgr.ConnReq) bool {
 	iscontd := false
-	p.forAllOutboundPeers(func(sp *serverPeer) {
-		if !iscontd && c.Addr.String() == sp.connReq.Addr.String() {
+	p.ForAllOutboundPeers(func(sp *serverPeer) {
+		if !iscontd && c.Addr.String() == sp.connReq.Addr.String() && sp.Connected() {
 			iscontd = true
 		}
 	})
@@ -203,32 +203,43 @@ func (ps *peerState) Count() int {
 		len(ps.persistentPeers)
 }
 
-// forAllOutboundPeers is a helper function that runs closure on all outbound
+// ForAllOutboundPeers is a helper function that runs closure on all outbound
 // peers known to peerState.
-func (ps *peerState) forAllOutboundPeers(closure func(sp *serverPeer)) {
-//	btcdLog.Infof("cmutex.Lock @ forAllOutboundPeers")
+func (ps *peerState) ForAllOutboundPeers(closure func(sp *serverPeer)) {
+	btcdLog.Infof("cmutex.Lock @ ForAllOutboundPeers")
 	ps.cmutex.Lock()
+
+	ps.forAllOutboundPeers(closure)
+
+	btcdLog.Infof("cmutex.Unlock")
+	ps.cmutex.Unlock()
+}
+
+func (ps *peerState) forAllOutboundPeers(closure func(sp *serverPeer)) {
 	for _, e := range ps.outboundPeers {
 		closure(e)
 	}
 	for _, e := range ps.persistentPeers {
 		closure(e)
 	}
+}
+
+// ForAllPeers is a helper function that runs closure on all peers known to
+// peerState.
+func (ps *peerState) ForAllPeers(closure func(sp *serverPeer)) {
+//	btcdLog.Infof("cmutex.Lock @ ForAllPeers")
+	ps.cmutex.Lock()
+	ps.forAllPeers(closure)
+
 //	btcdLog.Infof("cmutex.Unlock")
 	ps.cmutex.Unlock()
 }
 
-// forAllPeers is a helper function that runs closure on all peers known to
-// peerState.
 func (ps *peerState) forAllPeers(closure func(sp *serverPeer)) {
-//	btcdLog.Infof("cmutex.Lock @ forAllPeers")
-	ps.cmutex.Lock()
+	//	btcdLog.Infof("cmutex.Lock @ ForAllPeers")
 	for _, e := range ps.inboundPeers {
 		closure(e)
 	}
-//	btcdLog.Infof("cmutex.Unlock")
-	ps.cmutex.Unlock()
-
 	ps.forAllOutboundPeers(closure)
 }
 
@@ -820,9 +831,11 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 
 // OnGetBlocks is invoked when a peer receives a getblocks bitcoin
 // message.
-func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
-  	invMsg := wire.NewMsgInv()
+func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
+	btcdLog.Infof("OnGetBlocks from %s", p.String())
 
+  	invMsg := wire.NewMsgInv()
+/*
   	ht := int32(len(msg.TxBlockLocatorHashes))
   	if ht > 10 {
   		ht = (1 << (ht - 10)) + 9
@@ -831,13 +844,18 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 	if mt > 12 {
 		mt = (1 << (mt - 10)) + 9
 	}
+ */
 
 	chain := sp.server.chain
 	mchain := sp.server.chain.Miners.(*minerchain.MinerChain)
-
+/*
 	if ht > chain.BestSnapshot().Height + wire.MaxBlocksPerMsg && mt > mchain.BestSnapshot().Height + wire.MaxBlocksPerMsg {
+		btcdLog.Infof("OnGetBlocks return w/o doing anything because %d > %d && %d > %d",
+			ht, chain.BestSnapshot().Height + wire.MaxBlocksPerMsg,
+			mt, mchain.BestSnapshot().Height + wire.MaxBlocksPerMsg)
 		return
 	}
+ */
 
 	// Find the most recent known block in the best chain based on the block
 	// locator and fetch all of the block hashes after it until either
@@ -851,13 +869,20 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 	// This mirrors the behavior in the reference implementation.
 	var hashList []chainhash.Hash
 	var mhashList []chainhash.Hash
-	if len(msg.TxBlockLocatorHashes) > 0 {
+
+	if sp.continueHash != nil {
+		hashList = chain.LocateBlocks([]*chainhash.Hash{sp.continueHash}, &msg.TxHashStop,
+			wire.MaxBlocksPerMsg)
+	} else if len(msg.TxBlockLocatorHashes) > 0 {
 		hashList = chain.LocateBlocks(msg.TxBlockLocatorHashes, &msg.TxHashStop,
 			wire.MaxBlocksPerMsg)
 	} else {
 		hashList = make([]chainhash.Hash, 0)
 	}
-	if len(msg.MinerBlockLocatorHashes) > 0 {
+	if sp.continueMinerHash != nil {
+		mhashList = mchain.LocateBlocks([]*chainhash.Hash{sp.continueMinerHash}, &msg.MinerHashStop,
+			wire.MaxBlocksPerMsg)
+	} else if len(msg.MinerBlockLocatorHashes) > 0 {
 		mhashList = mchain.LocateBlocks(msg.MinerBlockLocatorHashes, &msg.MinerHashStop,
 			wire.MaxBlocksPerMsg)
 	} else {
@@ -927,20 +952,26 @@ func (sp *serverPeer) OnGetBlocks(_ *peer.Peer, msg *wire.MsgGetBlocks) {
 		sp.continueHash = &continueHash
 		sp.continueMinerHash = &mcontinueHash
 		sp.QueueMessage(invMsg, nil)
+		btcdLog.Infof("OnBlock done with sending %d invs", len(invMsg.InvList))
 	} else if (continueHash != zeroHash && continueHash != sp.server.chain.BestSnapshot().Hash) ||
 			(mcontinueHash != zeroHash && mcontinueHash != sp.server.chain.Miners.BestSnapshot().Hash) {
 		mlocator, err := sp.server.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 		if err != nil {
+			btcdLog.Infof("OnBlock failed to get miner chain locator: ", err.Error())
 			return
 		}
 
 		locator, err := sp.server.chain.LatestBlockLocator()
 		if err != nil {
+			btcdLog.Infof("OnBlock failed to get tx chain locator: ", err.Error())
 			return
 		}
+
 		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
+		btcdLog.Infof("OnBlock done with sending a PushGetBlocksMsg")
 	} else {
 		sp.QueueMessage(invMsg, nil)
+		btcdLog.Infof("OnBlock done with sending %d invs", len(invMsg.InvList))
 	}
 }
 
@@ -1868,7 +1899,7 @@ func (s *server) pushMerkleBlockMsg(sp *serverPeer, hash *chainhash.Hash,
 // handleUpdatePeerHeight updates the heights of all peers who were known to
 // announce a block we recently accepted.
 func (s *server) handleUpdatePeerHeights(state *peerState, umsg updatePeerHeightsMsg) {
-	state.forAllPeers(func(sp *serverPeer) {
+	state.ForAllPeers(func(sp *serverPeer) {
 		// The origin peer should already have the updated height.
 		if sp.Peer == umsg.originPeer {
 			return
@@ -1894,7 +1925,7 @@ func (s *server) handleUpdatePeerHeights(state *peerState, umsg updatePeerHeight
 }
 
 func (s *server) handleUpdatePeerMinerHeights(state *peerState, umsg updatePeerHeightsMsg) {
-	state.forAllPeers(func(sp *serverPeer) {
+	state.ForAllPeers(func(sp *serverPeer) {
 		// The origin peer should already have the updated height.
 		if sp.Peer == umsg.originPeer {
 			return
@@ -2083,7 +2114,7 @@ func (s *server) handleBanPeerMsg(state *peerState, sp *serverPeer) {
 // handleRelayInvMsg deals with relaying inventory to peers that are not already
 // known to have it.  It is invoked from the peerHandler goroutine.
 func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
-	state.forAllPeers(func(sp *serverPeer) {
+	state.ForAllPeers(func(sp *serverPeer) {
 		if !sp.Connected() {
 			return
 		}
@@ -2149,7 +2180,7 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 // handleBroadcastMsg deals with broadcasting messages to peers.  It is invoked
 // from the peerHandler goroutine.
 func (s *server) handleBroadcastMsg(state *peerState, bmsg *broadcastMsg) {
-	state.forAllPeers(func(sp *serverPeer) {
+	state.ForAllPeers(func(sp *serverPeer) {
 		if !sp.Connected() {
 			return
 		}
@@ -2203,7 +2234,7 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 	switch msg := querymsg.(type) {
 	case getConnCountMsg:
 		nconnected := int32(0)
-		state.forAllPeers(func(sp *serverPeer) {
+		state.ForAllPeers(func(sp *serverPeer) {
 			if sp.Connected() {
 				nconnected++
 			}
@@ -2212,7 +2243,7 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 
 	case getPeersMsg:
 		peers := make([]*serverPeer, 0, state.Count())
-		state.forAllPeers(func(sp *serverPeer) {
+		state.ForAllPeers(func(sp *serverPeer) {
 			if !sp.Connected() {
 				return
 			}
@@ -2227,6 +2258,7 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 			msg.reply <- errors.New("max peers reached")
 			return
 		}
+
 //		btcdLog.Infof("cmutex.Lock @ connectNodeMsg")
 		state.cmutex.Lock()
 		for _, peer := range state.persistentPeers {
@@ -2236,6 +2268,7 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 				} else {
 					msg.reply <- errors.New("peer exists as a permanent peer")
 				}
+				state.cmutex.Unlock()
 				return
 			}
 		}
@@ -2500,16 +2533,12 @@ func (s *server) peerHandler() {
 	}
 	go s.connManager.Start(s.peerState)
 
-	s.chain.Subscribe(func (msg *blockchain.Notification) {
-		if msg.Type == blockchain.NTBlockConnected {
-			s.connManager.NewBlock()
-		}
-	})
-
 	newBlock := make(chan int32, 50)
 
 	s.chain.Subscribe(func (msg *blockchain.Notification) {
 		if msg.Type == blockchain.NTBlockConnected {
+			s.connManager.Alive = time.Now()
+
 			block := msg.Data.(*btcutil.Block)
 			nonce := block.MsgBlock().Header.Nonce
 			if nonce <= -wire.MINER_RORATE_FREQ || nonce > 0 {
@@ -2525,7 +2554,7 @@ out:
 	for {
 		select {
 		case r := <-newBlock:
-			s.handleCommitteRotation(state, r)
+			s.handleCommitteRotation(r)
 
 		// New peers connected to the server.
 		case p := <-s.newPeers:
@@ -2560,7 +2589,7 @@ out:
 
 		case <-s.quit:
 			// Disconnect all peers on server shutdown.
-			state.forAllPeers(func(sp *serverPeer) {
+			state.ForAllPeers(func(sp *serverPeer) {
 				srvrLog.Tracef("Shutdown peer %s", sp)
 				sp.Disconnect("peerHandler @ quit")
 			})

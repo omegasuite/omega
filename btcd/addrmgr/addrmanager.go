@@ -84,6 +84,9 @@ const (
 	// BoundPrio signifies the address has been explicitly bounded to.
 	BoundPrio
 
+	// CommitteePrio signifies the address was provided by committee rotation.
+	CommitteePrio
+
 	// UpnpPrio signifies the address was obtained from UPnP.
 	UpnpPrio
 
@@ -988,7 +991,11 @@ func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPrior
 	la, ok := a.localAddresses[key]
 	if !ok || la.score < priority {
 		if ok {
-			la.score = priority + 1
+			if la.origin == priority {
+				la.score++
+			} else {
+				la.score = priority + 1
+			}
 		} else {
 			a.localAddresses[key] = &localAddress{
 				na:    na,
@@ -998,6 +1005,21 @@ func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPrior
 		}
 	}
 	return nil
+}
+
+func (a *AddrManager) PhaseoutCommittee(na *wire.NetAddress) {
+	a.lamtx.Lock()
+	defer a.lamtx.Unlock()
+
+	key := NetAddressKey(na)
+	la, ok := a.localAddresses[key]
+	if ok && la.origin == CommitteePrio {
+		if la.score == CommitteePrio {
+			delete(a.localAddresses, key)
+		} else {
+			la.score--
+		}
+	}
 }
 
 // getReachabilityFrom returns the relative reachability of the provided local

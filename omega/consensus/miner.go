@@ -147,6 +147,8 @@ func (m *Miner) notice (notification *blockchain.Notification) {
 			h := b.Height()
 
 			log.Infof("new tx block at %d connected", h)
+			var sny * Syncer
+
 
 			miner.syncMutex.Lock()
 			next := int32(0x7FFFFFFF)
@@ -154,14 +156,17 @@ func (m *Miner) notice (notification *blockchain.Notification) {
 				if n > h && n < next {
 					next = n
 				} else if n <= h {
-					go s.Quit()
 					delete(miner.Sync, n)
+					go s.Quit()
 				}
 			}
 			if next != 0x7FFFFFFF && !miner.Sync[next].Runnable {
-				miner.Sync[next].SetCommittee()
+				sny = miner.Sync[next]
 			}
 			miner.syncMutex.Unlock()
+			if sny != nil {
+				sny.SetCommittee()
+			}
 		}
 	}
 }
@@ -273,8 +278,8 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 	miner.syncMutex.Lock()
 	for i, t := range miner.Sync {
 		log.Infof("Sync %d to Quit", i)
-		go t.Quit()
 		delete(miner.Sync, i)
+		go t.Quit()
 	}
 	miner.syncMutex.Unlock()
 
@@ -358,8 +363,8 @@ func cleaner(top int32) {
 	miner.syncMutex.Lock()
 	for i, t := range miner.Sync {
 		if i < top {
-			go t.Quit()
 			delete(miner.Sync, i)
+			go t.Quit()
 		}
 	}
 	miner.syncMutex.Unlock()
@@ -398,11 +403,14 @@ func DebugInfo() {
 	log.Infof("\nI am %x. Miner has %d Syncers\n\nThe top syncer is %d:", miner.name, len(miner.Sync), top)
 	for h,s := range miner.Sync {
 		if h < top - 2 {
-			go s.Quit()
 			delete(miner.Sync, h)
+			go s.Quit()
 		}
 	}
 	if s,ok := miner.Sync[top]; ok {
+		if len(s.repeating) == 0 {
+			s.repeating <- struct{}{}
+		}
 		s.DebugInfo()
 	}
 	miner.syncMutex.Unlock()
