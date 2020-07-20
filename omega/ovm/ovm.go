@@ -18,6 +18,7 @@ import (
 	"github.com/omegasuite/omega"
 	"github.com/omegasuite/omega/token"
 	"github.com/omegasuite/omega/viewpoint"
+	"sort"
 	"sync/atomic"
 )
 
@@ -89,6 +90,19 @@ type Context struct {
 	Block 		GetBlockFunc
 }
 
+type blockRollBack struct {
+	prevBlock uint64
+	rollBacks map[Address][2]rollback
+	tokentypes map[uint64]Address
+}
+
+type fstate struct {
+	issuedToken uint64
+	suicided bool
+	data map[string]*entry
+	meta map[string]*entry
+}
+
 // OVM is the Omega Virtual Machine base object and provides
 // the necessary tools to run a contract on the given state with
 // the provided context. It should be noted that any error
@@ -108,6 +122,11 @@ type OVM struct {
 	// stateDB gives access to the underlying state
 	StateDB map[Address]*stateDB
 	TokenTypes map[uint64]Address
+
+	// roll back mgmt
+	lastBlock uint64
+	rollbacks map[uint64]*blockRollBack
+	final map[Address] * fstate
 
 	// Depth of the current call stack
 	depth int
@@ -135,7 +154,10 @@ func NewOVM(chainConfig *chaincfg.Params) *OVM {
 	evm := &OVM{
 		StateDB:     make(map[Address]*stateDB),
 		TokenTypes:  make(map[uint64]Address),
+		rollbacks: make(map[uint64]*blockRollBack),
+		final: make(map[Address] * fstate),
 		chainConfig: chainConfig,
+		lastBlock: 0,
 	}
 	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
 
@@ -143,10 +165,21 @@ func NewOVM(chainConfig *chaincfg.Params) *OVM {
 	return evm
 }
 
+func (v * OVM) Reset() {
+	v.StateDB =  make(map[Address]*stateDB)
+	v.TokenTypes = make(map[uint64]Address)
+	v.rollbacks = make(map[uint64]*blockRollBack)
+	v.final = make(map[Address] * fstate)
+	v.lastBlock = 0
+	v.GasLimit = uint64(v.chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
+}
+
 func NewSigVM(chainConfig *chaincfg.Params) *OVM {
 	evm := &OVM{
 		StateDB:     make(map[Address]*stateDB),
-		TokenTypes:  make(map[uint64]Address),
+//		TokenTypes:  make(map[uint64]Address),
+//		TokenCheckSupression: make(map[uint64]struct{}),
+//		rollbacks: make(map[uint64]*blockRollBack),
 		chainConfig: chainConfig,
 	}
 	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
@@ -159,13 +192,11 @@ func (v * OVM) SetContext(ctx Context) {
 	v.Context = ctx
 }
 
-type blockRollBack struct {
-	prevBlock uint64
-	rollBacks map[Address][2]rollback
-	tokentypes map[uint64]Address
-}
-
 func (v * OVM) Commit() {
+	if len(v.StateDB) == 0 {
+		return
+	}
+
 	var lastBlock uint64
 
 	v.DB.View(func (dbTx  database.Tx) error {
@@ -208,39 +239,84 @@ func (v * OVM) Commit() {
 		return dbTx.Metadata().Put(rbkey[:], s)
 	})
 	v.StateDB = make(map[Address]*stateDB)
+	v.TokenTypes = make(map[uint64]Address)
+	v.rollbacks = make(map[uint64]*blockRollBack)
+	v.final = make(map[Address] * fstate)
+	v.lastBlock = v.BlockNumber()
 	v.GasLimit = uint64(v.chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
 }
 
-func (d *OVM) Rollback() {
-	var lastBlock uint64
-
-	d.DB.View(func (dbTx  database.Tx) error {
-		lastBlock = DbFetchVersion(dbTx, []byte("lastCommitBlock"))
-		return nil
+func (v * OVM) AbortRollback() {
+	rbbs := make([]uint64, len(v.rollbacks))
+	j := 0
+	for i, _ := range v.rollbacks {
+		rbbs[j] = i
+		j++
+	}
+	sort.Slice(rbbs, func(i, j int) bool {
+		return rbbs[i] < rbbs[j]
 	})
 
-	if d.BlockNumber() != lastBlock {
+	var rbkey [16]byte
+	copy(rbkey[:], []byte("rollback"))
+
+	v.DB.Update(func (dbTx  database.Tx) error {
+		for _,i := range rbbs {
+			binary.LittleEndian.PutUint64(rbkey[8:], i)
+
+			s,_ := json.Marshal(v.rollbacks[i])
+
+			dbTx.Metadata().Put(rbkey[:], s)
+			v.lastBlock = i
+		}
+
+		bucket := dbTx.Metadata().Bucket(IssuedTokenTypes)
+
+		for t,a := range v.final {
+			if a.issuedToken != 0 {
+				var mtk [8]byte
+				binary.LittleEndian.PutUint64(mtk[:], a.issuedToken)
+				bucket.Put(mtk[:], t[:])
+			}
+		}
+
+		for t,a := range v.final {
+			s := stateDB {
+				DB: v.DB,
+				contract: t,
+				data: a.data,
+				meta: a.meta,
+				suicided: a.suicided,
+				fresh: false,
+			}
+			s.commit(v.lastBlock)
+		}
+
+		return DbPutVersion(dbTx, []byte("lastCommitBlock"), v.lastBlock)
+	})
+}
+
+func (d *OVM) Rollback() {
+	if d.BlockNumber() != d.lastBlock {
 		return
 	}
 
 	var rbkey [16]byte
 	copy(rbkey[:], []byte("rollback"))
 
-	binary.LittleEndian.PutUint64(rbkey[8:], lastBlock)
-
-	var data []byte
-	d.DB.View(func (dbTx  database.Tx) error {
-		data = dbTx.Metadata().Get(rbkey[:])
-		return nil
-	})
-
-	rollBacks := blockRollBack{ }
-	err := json.Unmarshal(data, &rollBacks)
-	if err != nil {
-		return
-	}
+	binary.LittleEndian.PutUint64(rbkey[8:], d.lastBlock)
 
 	d.DB.Update(func (dbTx  database.Tx) error {
+		data := dbTx.Metadata().Get(rbkey[:])
+
+		rollBacks := blockRollBack{ }
+		err := json.Unmarshal(data, &rollBacks)
+		if err != nil {
+			return err
+		}
+
+		d.rollbacks[d.lastBlock] = &rollBacks
+		d.lastBlock = rollBacks.prevBlock
 		DbPutVersion(dbTx, []byte("lastCommitBlock"), rollBacks.prevBlock)
 		dbTx.Metadata().Delete(rbkey[:])
 
@@ -248,13 +324,57 @@ func (d *OVM) Rollback() {
 		for t,_ := range rollBacks.tokentypes {
 			var mtk [8]byte
 			binary.LittleEndian.PutUint64(mtk[:], t)
+			ct := bucket.Get(mtk[:])
+			var adr Address
+			copy(adr[:], ct)
+			if _,ok := d.final[adr]; !ok {
+				suicided := false
+				if scd := dbTx.Metadata().Bucket([]byte("contract" + string(adr[:]))).Get([]byte("suicided")); scd != nil {
+					suicided = true
+				}
+
+				d.final[adr] = &fstate {
+					t,
+					suicided,
+					make(map[string]*entry),
+					make(map[string]*entry),
+				}
+			} else {
+				d.final[adr].issuedToken = t
+			}
 			bucket.Delete(mtk[:])
 		}
 
-		for contract,d := range rollBacks.rollBacks {
-			bucket := dbTx.Metadata().Bucket([]byte("storage" + string(contract[:])))
+		for contract,dd := range rollBacks.rollBacks {
+			bucket = dbTx.Metadata().Bucket([]byte("contract" + string(contract[:])))
+			if _,ok := d.final[contract]; !ok {
+				suicided := false
+				if scd := bucket.Get([]byte("suicided")); scd != nil {
+					suicided = true
+				}
 
-			for k,v := range d[0] {
+				d.final[contract] = &fstate {
+					0,
+					suicided,
+					make(map[string]*entry),
+					make(map[string]*entry),
+				}
+			}
+
+			for k,v := range dd[0] {
+				if _, ok := d.final[contract].meta[k]; !ok {
+					fv := bucket.Get([]byte(k))
+					if fv == nil {
+						d.final[contract].meta[k] = &entry{
+							olddata: v,
+						}
+					} else {
+						d.final[contract].meta[k] = &entry{
+							olddata: v,
+							data: fv,
+						}
+					}
+				}
 				if len(v) == 0 {
 					bucket.Delete([]byte(k))
 				} else if err := bucket.Put([]byte(k), v); err != nil {
@@ -262,9 +382,21 @@ func (d *OVM) Rollback() {
 				}
 			}
 
-			bucket = dbTx.Metadata().Bucket([]byte("contract" + string(contract[:])))
-
-			for k,v := range d[1] {
+			bucket := dbTx.Metadata().Bucket([]byte("storage" + string(contract[:])))
+			for k,v := range dd[1] {
+				if _, ok := d.final[contract].data[k]; !ok {
+					fv := bucket.Get([]byte(k))
+					if fv == nil {
+						d.final[contract].data[k] = &entry{
+							olddata: v,
+						}
+					} else {
+						d.final[contract].data[k] = &entry{
+							olddata: v,
+							data: fv,
+						}
+					}
+				}
 				if len(v) == 0 {
 					bucket.Delete([]byte(k))
 				} else if err := bucket.Put([]byte(k), v); err != nil {
@@ -283,6 +415,11 @@ func (v * OVM) SetCoinBaseOp(b AddCoinBaseFunc) {
 func (v * OVM) SetViewPoint(vp * viewpoint.ViewPointSet) {
 	v.views = vp
 	v.DB = vp.Db
+
+	v.DB.View(func (dbTx  database.Tx) error {
+		v.lastBlock = DbFetchVersion(dbTx, []byte("lastCommitBlock"))
+		return nil
+	})
 }
 
 // Cancel cancels any running EVM operation. This may be called concurrently and

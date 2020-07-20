@@ -1204,7 +1204,6 @@ func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	c := cmd.(*btcjson.ContractCallCmd)
 
 	vm := ovm.NewOVM(s.cfg.ChainParams)
-	vm.DB = s.cfg.DB
 	views := s.cfg.Chain.NewViewPointSet()
 	vm.SetViewPoint(views)
 

@@ -624,7 +624,7 @@ func (self *Syncer) reckconsensus() {
 
 	hash := blockchain.MakeMinerSigHash(self.Height, self.forest[self.Me].hash)
 
-	if privKey := miner.server.GetPrivKey(self.Me); privKey != nil && self.sigGiven == -1 {
+	if privKey := miner.server.GetPrivKey(self.Me); privKey != nil && self.sigGiven == self.Myself {
 		sig, _ := privKey.Sign(hash)
 		ss := sig.Serialize()
 		msg := wire.MsgConsensus{

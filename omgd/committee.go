@@ -566,7 +566,7 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 	found := false
 
 	s.peerState.forAllPeers(func(ob *serverPeer) {
-		if bytes.Compare(ob.Peer.Miner[:], miner[:]) == 0 {
+		if !found && bytes.Compare(ob.Peer.Miner[:], miner[:]) == 0 {
 			m.peers = append(m.peers, ob)
 			ob.Peer.Committee = j
 			found = true
@@ -614,6 +614,21 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 
 			btcdLog.Infof("makeConnection: new %s", addr)
 			s.addrManager.AddLocalAddress(wire.NewNetAddressIPPort(tcp.IP, uint16(tcp.Port), 0), addrmgr.CommitteePrio)
+
+			found := false
+
+			s.peerState.forAllOutboundPeers(func(ob *serverPeer) {
+				if !found && ob.connReq.Addr.String() == addr {
+					m.peers = append(m.peers, ob)
+					ob.Peer.Committee = j
+					found = true
+					return
+				}
+			})
+
+			if found {
+				return
+			}
 
 			go s.connManager.Connect(&connmgr.ConnReq{
 				Addr:      tcp,

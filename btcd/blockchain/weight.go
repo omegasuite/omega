@@ -96,6 +96,9 @@ func (b *BlockChain) GetBlockLimit(h int32) uint32 {
 	h = h + chaincfg.BlockSizeEvalPeriod - 1
 	h -= h % chaincfg.BlockSizeEvalPeriod
 
+	b.blockSizer.mtx.Lock()
+	defer b.blockSizer.mtx.Unlock()
+	
 	if z, ok := b.blockSizer.knownLimits[h]; ok {
 		return z
 	}
@@ -113,23 +116,47 @@ func (b *BlockChain) GetBlockLimit(h int32) uint32 {
 		start = b.blockSizer.lastNode.Height - 1
 	}
 
+	log.Infof("blockSizer accounting at %d", start)
+
 	p := b.BestChain.NodeByHeight(start)
-	for i := start; i >= stop; i-- {
+	for i := start; i >= stop && p != nil; i-- {
+		if i % 1000 == 0 {
+			log.Infof("blockSizer handling block %d", i)
+		}
 		if b.blockSizer.lastNode != nil && b.blockSizer.lastNode.Height == i + 1 &&
 			p.Data.GetNonce() < 0 {
 			q,_ := b.BlockByHash(&p.Hash)
 			b.blockSizer.blockCount++
-			b.blockSizer.sizeSum += int64(q.Size())
+			b.blockSizer.sizeSum += int64(len(q.MsgBlock().Transactions))
 			b.blockSizer.timeSum += b.blockSizer.lastNode.Data.TimeStamp() - p.Data.TimeStamp()
 		}
 		b.blockSizer.lastNode = p
 		p = p.Parent
 	}
 
+	log.Infof("blockSizer stats: blockCount = %d, sizeSum = %d timeSum = %d",
+		b.blockSizer.blockCount, b.blockSizer.sizeSum, b.blockSizer.timeSum)
+
 	b.blockSizer.conclude()
 	b.blockSizer.reset(0)
 
+	if len(b.blockSizer.knownLimits) >= 5 {
+		delete(b.blockSizer.knownLimits, h - 4 * chaincfg.BlockSizeEvalPeriod)
+	}
+
 	return b.blockSizer.knownLimits[h]
+}
+
+func (b *sizeCalculator) RollBackTo(h int32) {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	for i,_ := range b.knownLimits {
+		if h <= i - chaincfg.SkipBlocks {
+			// most likely it would never happend, because it require roll back of 2000 blks
+			delete(b.knownLimits, i)
+		}
+	}
 }
 
 func (b *sizeCalculator) reset(h int32) {
@@ -155,20 +182,23 @@ func (b *sizeCalculator) conclude() {
 		b.reset(0)
 		return
 	}
+
 	avgTime := b.timeSum / int64(b.blockCount)
-	csz := avgSize + chaincfg.BlockBaseSize - 1
-	csz -= csz % chaincfg.BlockBaseSize
+
+	csz := int64(chaincfg.BlockBaseSize)
+	if avgTime >= chaincfg.TargetBlockRate {
+		avgSize = (avgSize * chaincfg.TargetBlockRate) / avgTime
+	}
+
+	for csz < avgSize {
+		csz <<= 1
+	}
 
 	b.reset(0)
 
-	if avgTime < chaincfg.TargetBlockRate {
-		if avgSize * 10 > csz * 8 {		// 80% full. increase size
-			csz += chaincfg.BlockBaseSize
-		}
-		b.knownLimits[h] = uint32(csz)
-		return
+	if avgSize * 10 > csz * 6 {		// 60% full. increase size
+		csz <<= 1
 	}
-	csz -= chaincfg.BlockBaseSize
 	b.knownLimits[h] = uint32(csz)
 }
 
@@ -180,6 +210,9 @@ func (b *BlockChain) take(block *btcutil.Block) {
 
 	h += chaincfg.BlockSizeEvalPeriod - 1
 	h -= h % chaincfg.BlockSizeEvalPeriod
+
+	b.blockSizer.mtx.Lock()
+	defer b.blockSizer.mtx.Unlock()
 
 	if _,ok := b.blockSizer.knownLimits[h]; ok {
 		return
@@ -210,7 +243,7 @@ func (b *BlockChain) take(block *btcutil.Block) {
 
 	p := b.BestChain.NodeByHeight(start)
 
-	for i := start; i >= stop; i-- {
+	for i := start; i >= stop && p != nil; i-- {
 		if b.blockSizer.lastNode != nil && b.blockSizer.lastNode.Height == i + 1 &&
 			p.Data.GetNonce() < 0 {
 			b.blockSizer.blockCount++
@@ -236,6 +269,9 @@ func (b *BlockChain) untake(block *btcutil.Block) {
 
 	t := h + chaincfg.BlockSizeEvalPeriod - 1
 	t -= t % chaincfg.BlockSizeEvalPeriod
+
+	b.blockSizer.mtx.Lock()
+	defer b.blockSizer.mtx.Unlock()
 
 	if _,ok := b.blockSizer.knownLimits[t]; !ok {
 		return

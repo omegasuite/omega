@@ -557,6 +557,8 @@ func (sp *serverPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 
 	// Add the remote peer time as a sample for creating an offset against
 	// the local clock to keep the network time in sync.
+
+//	btcdLog.Infof("Msg time stamp is: %d and local time is %d", msg.Timestamp.Unix(), time.Now().Unix())
 	sp.server.timeSource.AddTimeSample(sp.Addr(), msg.Timestamp)
 
 	// Signal the sync manager this peer is a new sync candidate.
@@ -870,7 +872,7 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 	var hashList []chainhash.Hash
 	var mhashList []chainhash.Hash
 
-	if sp.continueHash != nil {
+	if sp.continueHash != nil && !sp.continueHash.IsEqual(&zeroHash) {
 		hashList = chain.LocateBlocks([]*chainhash.Hash{sp.continueHash}, &msg.TxHashStop,
 			wire.MaxBlocksPerMsg)
 	} else if len(msg.TxBlockLocatorHashes) > 0 {
@@ -879,7 +881,7 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 	} else {
 		hashList = make([]chainhash.Hash, 0)
 	}
-	if sp.continueMinerHash != nil {
+	if sp.continueMinerHash != nil && !sp.continueMinerHash.IsEqual(&zeroHash) {
 		mhashList = mchain.LocateBlocks([]*chainhash.Hash{sp.continueMinerHash}, &msg.MinerHashStop,
 			wire.MaxBlocksPerMsg)
 	} else if len(msg.MinerBlockLocatorHashes) > 0 {
@@ -891,8 +893,8 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 
 	// Generate inventory message.
 	m := 0
-	continueHash := chainhash.Hash{}
-	mcontinueHash := chainhash.Hash{}
+	var continueHash * chainhash.Hash
+	var mcontinueHash * chainhash.Hash
 
 	sp.hashStop = msg.TxHashStop
 	sp.minerHashStop = msg.MinerHashStop
@@ -905,11 +907,11 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 
 	if len(hashList) > 0 {
 		rot = chain.Rotation(hashList[0])
-		continueHash = hashList[0]
+//		continueHash = &hashList[0]
 	}
 
 	if len(mhashList) > 0 {
-		mcontinueHash = mhashList[0]
+//		mcontinueHash = &mhashList[0]
 		mblock,_ = mchain.BlockByHash(&mhashList[0])
 	}
 
@@ -922,7 +924,7 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 			iv := wire.NewInvVect(common.InvTypeWitnessBlock, &th)
 			invMsg.AddInvVect(iv)
 
-			continueHash = th
+			continueHash = &th
 			i++
 			if i < len(hashList) {
 				h, _ := chain.HeaderByHash(&th)
@@ -938,7 +940,7 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 			invMsg.AddInvVect(iv)
 
 			j++
-			mcontinueHash = th
+			mcontinueHash = &th
 			if j < len(mhashList) {
 				mblock, _ = mchain.BlockByHash(&th)
 			} else {
@@ -949,29 +951,49 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 
 	// Send the inventory message if there is anything to send.
 	if len(invMsg.InvList) > 0 {
-		sp.continueHash = &continueHash
-		sp.continueMinerHash = &mcontinueHash
+		sp.continueHash = continueHash
+		sp.continueMinerHash = mcontinueHash
 		sp.QueueMessage(invMsg, nil)
 		btcdLog.Infof("OnBlock done with sending %d invs", len(invMsg.InvList))
-	} else if (continueHash != zeroHash && continueHash != sp.server.chain.BestSnapshot().Hash) ||
-			(mcontinueHash != zeroHash && mcontinueHash != sp.server.chain.Miners.BestSnapshot().Hash) {
-		mlocator, err := sp.server.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
-		if err != nil {
-			btcdLog.Infof("OnBlock failed to get miner chain locator: ", err.Error())
-			return
-		}
-
-		locator, err := sp.server.chain.LatestBlockLocator()
-		if err != nil {
-			btcdLog.Infof("OnBlock failed to get tx chain locator: ", err.Error())
-			return
-		}
-
-		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
-		btcdLog.Infof("OnBlock done with sending a PushGetBlocksMsg")
 	} else {
 		sp.QueueMessage(invMsg, nil)
-		btcdLog.Infof("OnBlock done with sending %d invs", len(invMsg.InvList))
+		btcdLog.Infof("Signal OnBlock finished by sending 0 invs")
+	}
+
+	btcdLog.Infof("len(invMsg.InvList) = %d", len(invMsg.InvList))
+
+	if len(invMsg.InvList) < wire.MaxBlocksPerMsg {
+		h1 := true
+		if len(msg.TxBlockLocatorHashes) > 0 {
+			h1, _ = sp.server.chain.HaveBlock(msg.TxBlockLocatorHashes[0])
+		}
+		h2 := true
+		if len(msg.TxBlockLocatorHashes) > 0 {
+			h2, _ = sp.server.chain.Miners.HaveBlock(msg.TxBlockLocatorHashes[0])
+		}
+
+		if !h1 || !h2 {
+			// we have sent everything to them and they have something we don't
+			mlocator, err := sp.server.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+			if err != nil {
+				btcdLog.Infof("OnBlock: failed to get miner chain locator: ", err.Error())
+				return
+			}
+
+			locator, err := sp.server.chain.LatestBlockLocator()
+			if err != nil {
+				btcdLog.Infof("OnBlock: failed to get tx chain locator: ", err.Error())
+				return
+			}
+
+			sp.server.syncManager.AddSyncJob(p, locator, mlocator, &zeroHash, &zeroHash)
+			btcdLog.Infof("OnBlock: Queueing a new sync job with %s", p.String())
+		} else {
+			btcdLog.Infof("OnBlock: We are in sync with %s", p.String())
+		}
+
+//		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
+//		btcdLog.Infof("OnBlock done with sending a PushGetBlocksMsg")
 	}
 }
 
@@ -1984,17 +2006,32 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	// TODO: Check for max peers from a single IP.
 
 	// Limit max number of total peers.
-	if state.Count() >= cfg.MaxPeers  && sp.Peer.Committee <= 0 {
+	if state.Count() >= cfg.MaxPeers {
 		btcdLog.Infof("%v", newLogClosure(func() string {
 			return spew.Sdump(state)
 		}))
 
-		srvrLog.Infof("Max peers reached [%d] - disconnecting peer %s",
-			cfg.MaxPeers, sp)
-		sp.Disconnect("handleAddPeerMsg @ MaxPeers")
-		// TODO: how to handle permanent peers here?
-		// they should be rescheduled.
-		return false
+		skip := false
+
+		if sp.Peer.Committee <= 0 {	// this is not a committee connection
+			skip = true
+		} else {
+			for _, q := range state.persistentPeers {
+				if q.connReq.Addr.String() == sp.connReq.Addr.String() {
+					skip = true
+					break
+				}
+			}
+		}
+
+		if skip {
+			srvrLog.Infof("Max peers reached [%d] - disconnecting peer %s",
+				cfg.MaxPeers, sp)
+			sp.Disconnect("handleAddPeerMsg @ MaxPeers")
+			// TODO: how to handle permanent peers here?
+			// they should be rescheduled.
+			return false
+		}
 	}
 
 	// Add the new peer and start it.

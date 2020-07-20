@@ -667,6 +667,7 @@ type bestChainState struct {
 	height    uint32
 	totalTxns uint64
 	rotation  uint32
+	sizeLimits  map[int32]uint32
 }
 
 // serializeBestChainState returns the serialization of the passed block best
@@ -688,6 +689,14 @@ func serializeBestChainState(state bestChainState) []byte {
 	byteOrder.PutUint32(serializedData[offset:], state.rotation)
 	offset += 4
 	byteOrder.PutUint64(serializedData[offset:], state.totalTxns)
+
+	offset += 8
+	for k,v := range state.sizeLimits {
+		byteOrder.PutUint32(serializedData[offset:], uint32(k))
+		offset += 4
+		byteOrder.PutUint32(serializedData[offset:], v)
+		offset += 4
+	}
 /*
 	offset += 8
 	byteOrder.PutUint32(serializedData[offset:], workSumBytesLen)
@@ -721,22 +730,35 @@ func deserializeBestChainState(serializedData []byte) (bestChainState, error) {
 	state.rotation = byteOrder.Uint32(serializedData[offset : offset+4])
 	offset += 4
 	state.totalTxns = byteOrder.Uint64(serializedData[offset : offset+8])
-/*
-	offset += 8
-	workSumBytesLen := byteOrder.Uint32(serializedData[offset : offset+4])
-	offset += 4
 
-	// Ensure the serialized data has enough bytes to deserialize the work
-	// sum.
-	if uint32(len(serializedData[offset:])) < workSumBytesLen {
-		return bestChainState{}, database.Error{
-			ErrorCode:   database.ErrCorruption,
-			Description: "corrupt best chain state",
+	state.sizeLimits =  make(map[int32]uint32)
+	offset += 8
+	if int(offset) < len(serializedData) {
+		for m := (len(serializedData) - int(offset)) / 8; m > 0; m-- {
+			k := byteOrder.Uint32(serializedData[offset : offset+4])
+			offset += 4
+			v := byteOrder.Uint32(serializedData[offset : offset+4])
+			offset += 4
+			state.sizeLimits[int32(k)] = v
 		}
 	}
-	workSumBytes := serializedData[offset : offset+workSumBytesLen]
-	state.workSum = new(big.Int).SetBytes(workSumBytes)
-*/
+
+	/*
+		offset += 8
+		workSumBytesLen := byteOrder.Uint32(serializedData[offset : offset+4])
+		offset += 4
+
+		// Ensure the serialized data has enough bytes to deserialize the work
+		// sum.
+		if uint32(len(serializedData[offset:])) < workSumBytesLen {
+			return bestChainState{}, database.Error{
+				ErrorCode:   database.ErrCorruption,
+				Description: "corrupt best chain state",
+			}
+		}
+		workSumBytes := serializedData[offset : offset+workSumBytesLen]
+		state.workSum = new(big.Int).SetBytes(workSumBytes)
+	*/
 
 	return state, nil
 }
@@ -892,6 +914,8 @@ func (b *BlockChain) createChainState() error {
 		// Store the genesis block into the database.
 		return dbStoreBlock(dbTx, genesisBlock)
 	})
+
+	b.blockSizer.knownLimits = b.stateSnapshot.sizeLimits
 
 	// Create system wallet
 //	ovm.CreateSysWallet(b.ChainParams, b.db)
@@ -1054,6 +1078,9 @@ func (b *BlockChain) initChainState() error {
 
 		return nil
 	})
+
+	b.blockSizer.knownLimits = b.stateSnapshot.sizeLimits
+
 	if err != nil {
 		return err
 	}

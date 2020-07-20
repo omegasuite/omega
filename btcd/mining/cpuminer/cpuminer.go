@@ -105,7 +105,7 @@ type CPUMiner struct {
 	numWorkers        uint32
 	started           bool
 	discreteMining    bool
-	connLock          sync.Mutex
+//	connLock          sync.Mutex
 	wg                sync.WaitGroup
 	updateNumWorkers  chan struct{}
 	queryHashesPerSec chan float64
@@ -178,7 +178,7 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 
 	best := m.g.BestSnapshot()
 	if !msgBlock.Header.PrevBlock.IsEqual(&best.Hash) {
-		log.Info("Block submitted via CPU miner with previous "+
+		log.Infof("Block submitted via CPU miner with previous "+
 			"block %s is stale", msgBlock.Header.PrevBlock)
 		return false
 	}
@@ -198,12 +198,12 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 		// Anything other than a rule violation is an unexpected error,
 		// so log that error as an internal error.
 		if _, ok := err.(blockchain.RuleError); !ok {
-			log.Info("Unexpected error while processing "+
+			log.Infof("Unexpected error while processing "+
 				"block submitted via CPU miner: %v", err)
 			return false
 		}
 
-		log.Info("Block submitted via CPU miner rejected: ", err)
+		log.Infof("Block submitted via CPU miner rejected: %s", err.Error())
 //		log.Info("Block submitted via CPU miner rejected: %v", err)
 		return false
 	}
@@ -214,7 +214,7 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 	}
 
 	// The block was accepted.
-	log.Info("Block submitted via CPU miner accepted (hash %s, "+
+	log.Infof("Block submitted via CPU miner accepted (hash %s, "+
 		"amount %v)", block.Hash(), btcutil.Amount(coinbaseTx.Value.(*token.NumToken).Val))
 	return true
 }
@@ -321,6 +321,7 @@ func (m *CPUMiner) notice (notification *blockchain.Notification) {
 		switch notification.Data.(type) {
 		//		case *wire.MinerBlock:
 		case *btcutil.Block:
+/*
 			m.connLock.Lock()
 			defer m.connLock.Unlock()
 
@@ -328,16 +329,19 @@ func (m *CPUMiner) notice (notification *blockchain.Notification) {
 
 			for true {
 				select {
-				case _, ok := <-m.connch:
+				case h, ok := <-m.connch:
 					if !ok {
 						return
 					}
+					log.Infof("cpuminer notice: draind %d", h)
 
 				default:
+ */
 					m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
-					return
-				}
-			}
+					log.Infof("cpuminer notice: sending %d", notification.Data.(*btcutil.Block).Height())
+//					return
+//				}
+//			}
 		}
 	}
 }
@@ -392,6 +396,8 @@ flushconnch:
 				// Non-blocking select to fall through
 			}
 		}
+
+		log.Infof("generate Block go!")
 
 		// Wait until there is a connection to at least one other peer
 		// since there is no way to relay a found block or receive
@@ -455,6 +461,8 @@ flushconnch:
 
 		nonce := pb
 		if !powMode {
+			log.Infof("Non-POW mode")
+
 			if nonce >= 0 || nonce <= -wire.MINER_RORATE_FREQ {
 				nonce = -1
 			} else if nonce == -wire.MINER_RORATE_FREQ+1 {
@@ -472,13 +480,15 @@ flushconnch:
 				}
 			}
 		} else {
+			log.Infof("POW mode")
 			nonce = 1
 		}
 
 		template, err := m.g.NewBlockTemplate(payToAddress)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to create new block template: %v", err)
-			log.Errorf(errStr)
+			log.Info(errStr)
+//			log.Error(errStr)
 			continue
 		}
 
@@ -520,11 +530,13 @@ flushconnch:
 			if !m.submitBlock(block) {
 				continue
 			}
+			log.Infof("Waiting for block connected at %d", block.Height())
 
 		connected:
 			for true {
 				select {
 				case blk,ok := <-m.connch:
+					log.Infof("Noticed of new connected block %d", blk)
 					if !ok || blk >= block.Height() {
 						break connected
 					}
@@ -532,15 +544,21 @@ flushconnch:
 				case <-consensus.POWStopper:
 
 				case <-m.quit:
+					m.minedBlock = nil
 					break out
 
 				case <-time.After(time.Second * 5):
-					consensus.DebugInfo()
+					if m.g.Chain.BestSnapshot().Height >= block.Height() {
+						break connected
+					}
 					log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
+					consensus.DebugInfo()
 				}
 			}
 
 			m.minedBlock = nil
+
+			log.Infof("Proceed to generate next block")
 
 			continue
 		}
@@ -686,9 +704,7 @@ func (m *CPUMiner) Stop() {
 		return
 	}
 
-	m.connLock.Lock()
 	close(m.connch)
-	m.connLock.Unlock()
 
 	t := consensus.POWStopper
 	consensus.POWStopper = nil

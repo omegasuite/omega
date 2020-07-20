@@ -149,7 +149,6 @@ func (m *Miner) notice (notification *blockchain.Notification) {
 			log.Infof("new tx block at %d connected", h)
 			var sny * Syncer
 
-
 			miner.syncMutex.Lock()
 			next := int32(0x7FFFFFFF)
 			for n,s := range miner.Sync {
@@ -165,7 +164,10 @@ func (m *Miner) notice (notification *blockchain.Notification) {
 			}
 			miner.syncMutex.Unlock()
 			if sny != nil {
+				log.Infof("SetCommittee for next syner %d", sny.Height)
 				sny.SetCommittee()
+			} else {
+				log.Infof("No pending syners")
 			}
 		}
 	}
@@ -325,7 +327,7 @@ func HandleMessage(m Message) * chainhash.Hash {
 	var hash * chainhash.Hash
 
 	if !s.Runnable {
-		log.Infof("syncer is not ready for height %d, message will be queues. Current que len = %d", h, len(s.messages))
+		log.Infof("syncer is not ready for height %d, message will be queued. Current que len = %d", h, len(s.messages))
 
 		switch m.(type) {
 		case *wire.MsgKnowledge:
@@ -345,6 +347,11 @@ func HandleMessage(m Message) * chainhash.Hash {
 
 		case *wire.MsgSignature:
 			hash = &m.(*wire.MsgSignature).M
+		}
+
+		if len(s.messages) > (wire.CommitteeSize - 1) * 10 {
+			log.Infof("too many message are queued. Discard.")
+			return hash
 		}
 	}
 

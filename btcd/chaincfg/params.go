@@ -48,7 +48,7 @@ const (
 	// based on space utilization of the most recent 100,000 weighing blocks.
 	// A weighing block is a signed block that is at least 10,000 blocks before
 	// the checking point.
-	BlockBaseSize = 4		// 4Txs.
+	BlockBaseSize = 4		// 4Txs. must be 2 ^ n
 	TargetBlockRate = 3		// 3 seconds.
 	BlockSizeEvalPeriod = 100000	// re-evaluate block size every 100000 blocks
 	SkipBlocks = 10000

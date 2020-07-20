@@ -261,7 +261,7 @@ func (sm *SyncManager) findNextHeaderCheckpoint(height int32) *chaincfg.Checkpoi
 	return nextCheckpoint
 }
 
-func (sm *SyncManager) addSyncJob(peer *peerpkg.Peer, locator, mlocator chainhash.BlockLocator, stopHash, mstopHash *chainhash.Hash) {
+func (sm *SyncManager) AddSyncJob(peer *peerpkg.Peer, locator, mlocator chainhash.BlockLocator, stopHash, mstopHash *chainhash.Hash) {
 	h := make([]byte, chainhash.HashSize * (len(locator) + len(mlocator) + 2))
 	p := 0
 	for i := 0; i < len(locator); i,p = i+1,p+chainhash.HashSize {
@@ -296,6 +296,7 @@ func (sm *SyncManager) updateSyncPeer() {
 	if sm.bshutdown {
 		return
 	}
+
 	p := sm.syncPeer
 	if p != nil {
 		state,ok := sm.peerStates[p]
@@ -309,6 +310,7 @@ func (sm *SyncManager) updateSyncPeer() {
 		}
 	}
 
+
 	n := len(sm.syncjobs)
 
 	log.Infof("updateSyncPeer: %d outstanfing jobs", n)
@@ -319,15 +321,21 @@ func (sm *SyncManager) updateSyncPeer() {
 		n--
 		if j.peer.Connected() {
 			txmoot := false
-			if !zeroHash.IsEqual(j.stopHash) {
+			if j.stopHash != nil && !zeroHash.IsEqual(j.stopHash) {
 				txmoot,_ = sm.chain.HaveBlock(j.stopHash)
-			} else if len(j.locator) > 0 && *j.locator[0] != sm.chain.BestSnapshot().Hash {
+			} else if len(j.locator) > 0 {	// && *j.locator[0] != sm.chain.BestSnapshot().Hash {
+				txmoot,_ = sm.chain.HaveBlock(j.locator[0])
+//				txmoot = true
+			} else {
 				txmoot = true
 			}
 			mnmoot := false
-			if !zeroHash.IsEqual(j.mstopHash) {
+			if j.mstopHash != nil && !zeroHash.IsEqual(j.mstopHash) {
 				mnmoot,_ = sm.chain.HaveBlock(j.stopHash)
-			} else if len(j.mlocator) > 0 && *j.mlocator[0] != sm.chain.Miners.BestSnapshot().Hash {
+			} else if len(j.mlocator) > 0 {	// && *j.mlocator[0] != sm.chain.Miners.BestSnapshot().Hash {
+				mnmoot,_ = sm.chain.HaveBlock(j.mlocator[0])
+//				mnmoot = true
+			} else {
 				mnmoot = true
 			}
 			if txmoot && mnmoot {
@@ -666,11 +674,11 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		return
 	}
 
-	defer func() {
-		if len(state.requestedBlocks) == 0 {	// && sm.syncPeer == peer {
-			sm.updateSyncPeer()
-		}
-	}()
+//	defer func() {
+//		if len(state.requestedBlocks) == 0 {	// && sm.syncPeer == peer {
+//			sm.updateSyncPeer()
+//		}
+//	}()
 
 	behaviorFlags := blockchain.BFNone
 
@@ -754,7 +762,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		} else {
 			h = sm.chain.Miners.(*minerchain.MinerChain).BlockLocatorFromHash(&zeroHash)
 		}
-		sm.addSyncJob(peer,
+		sm.AddSyncJob(peer,
 			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
 			h,
 			&zeroHash, &zeroHash)
@@ -825,7 +833,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 			orphanRoot := sm.chain.Orphans.GetOrphanRoot(blockHash)
 			if *orphanRoot == *blockHash {
 				locator, _ := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
-				sm.addSyncJob(peer, tlocator, locator, orphanRoot, &zeroHash)
+				sm.AddSyncJob(peer, tlocator, locator, orphanRoot, &zeroHash)
 			}
 		}
 
@@ -973,7 +981,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	isMainchain, isOrphan, err, h := sm.chain.Miners.ProcessBlock(bmsg.block, behaviorFlags)
 
 	if h != nil {
-		sm.addSyncJob(peer,
+		sm.AddSyncJob(peer,
 			sm.chain.BlockLocatorFromHash(&zeroHash),
 			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
 			h, &zeroHash)
@@ -1032,7 +1040,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 					tlocator, _ := sm.chain.LatestBlockLocator()
 
 					log.Infof("handleMinerBlockMsg: PushGetBlocksMsg from %s because received an miner orphan %s", peer.Addr(), orphanRoot.String())
-					sm.addSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot)
+					sm.AddSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot)
 					//			peer.PushGetBlocksMsg(tlocator, locator, &zerohash, orphanRoot)
 				}
 			}
@@ -1293,6 +1301,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 
 	if len(imsg.inv.InvList) == 0 {
 		sm.updateSyncPeer()
+		return
 	}
 
 //	log.Infof("handleInvMsg from %s: %d items", imsg.peer.String(), len(imsg.inv.InvList))
@@ -1455,7 +1464,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 							continue
 						}
 //						log.Infof("handleInvMsg: PushGetBlocksMsg from %s because encountered an tx orphan %s", peer.Addr(), iv.Hash.String())
-						sm.addSyncJob(peer, locator, mlocator, orphanRoot,&zeroHash)
+						sm.AddSyncJob(peer, locator, mlocator, orphanRoot,&zeroHash)
 //						peer.PushGetBlocksMsg(locator, mlocator, orphanRoot, &zeroHash)
 					} else {
 						sm.requestedOrphans[iv.Hash]++
@@ -1517,7 +1526,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 						}
 						log.Infof("handleInvMsg: PushGetBlocksMsg from %s because encountered an miner orphan %s", peer.Addr(), iv.Hash.String())
 						tlocator, _ := sm.chain.LatestBlockLocator()
-						sm.addSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot)
+						sm.AddSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot)
 //						peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, orphanRoot)
 					} else {
 						sm.requestedOrphans[iv.Hash]++
@@ -1562,7 +1571,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			mlocator = nil
 		}
 		if mlocator != nil || tlocator != nil {
-			sm.addSyncJob(peer, tlocator, mlocator, &zeroHash, &zeroHash)
+			sm.AddSyncJob(peer, tlocator, mlocator, &zeroHash, &zeroHash)
 		}
 	}
 

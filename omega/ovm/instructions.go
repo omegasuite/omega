@@ -2969,7 +2969,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 			var mtk [8]byte
 			binary.LittleEndian.PutUint64(mtk[:], tokentype)
 			// mint for the first time. fail if the tokentype has been issued.
-			if err := ovm.StateDB[address].DB.Update(func(dbTx database.Tx) error {
+			if err := ovm.StateDB[address].DB.View(func(dbTx database.Tx) error {
 				bucket := dbTx.Metadata().Bucket(IssuedTokenTypes)
 				adr := bucket.Get(mtk[:])
 				if adr != nil && bytes.Compare(adr, address[:]) != 0 {

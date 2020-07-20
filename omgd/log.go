@@ -86,7 +86,7 @@ func init() {
 	blockchain.UseLogger(chanLog)
 	indexers.UseLogger(btclog.Disabled)	// indxLog)
 	mining.UseLogger(btclog.Disabled)	// minrLog)
-	cpuminer.UseLogger(btclog.Disabled)	// minrLog)
+	cpuminer.UseLogger(minrLog)
 	peer.UseLogger(peerLog)
 //	UseLogger(scrpLog)
 

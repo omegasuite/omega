@@ -53,8 +53,8 @@ type BestState struct {
 							   // it is nonce in last rotation block.
 							   // for every POW block, it increase by CommitteeSize
 							   // to phase out the last committee EVEN it means to pass the
-							   // end of Miner chain (for consistency among nodes)
-//	BlockLimit uint64 			// The weight of the block.
+							   // end of Miner chain (for consistency among nodes
+	sizeLimits map[int32]uint32	// up to 5 most recent size limits
 
 	// values below are not store in DB
 	BlockSize   uint64         // The size of the block.
@@ -71,6 +71,8 @@ func newBestState(node *chainutil.BlockNode, blockSize, numTxns,
 		Height:       node.Height,
 		Bits:         bits,
 		LastRotation: rotation,
+		sizeLimits:	  make(map[int32]uint32),
+
 		BlockSize:    blockSize,
 		NumTxns:      numTxns,
 		TotalTxns:    totalTxns,
@@ -92,6 +94,7 @@ type MinerChain interface {
 	DisconnectTip()
 	CalcNextBlockVersion() (uint32, error)
 	IsDeploymentActive(uint32) (bool, error)
+	HaveBlock(hash *chainhash.Hash) (bool, error)
 }
 
 type BlackList interface {
@@ -112,6 +115,8 @@ type sizeCalculator struct {
 	timeSum int64
 	blockCount int32
 	lastNode * chainutil.BlockNode
+
+	mtx sync.Mutex
 }
 
 // BlockChain provides functions for working with the bitcoin block chain.
@@ -1099,6 +1104,8 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	views, Vm = b.Canvas(nil)
 	views.SetBestHash(&b.BestChain.Tip().Hash)
 
+	detachto := 0x7FFFFFFF
+
 	// Disconnect blocks from the main chain.
 	for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
@@ -1144,7 +1151,11 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			// also disconnect the Miner chain tip. make it an orphan!
 			b.Miners.DisconnectTip()
 		}
+		
+		detachto = n.Height
 	}
+
+	b.blockSizer.RollBackTo(detachto)
 
 	// Connect the new best chain blocks.
 	e := attachNodes.Front()
@@ -1202,22 +1213,27 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			newtx.SetIndex(tx.Index())
 			err := Vm.ExecContract(newtx, block.Height())
 			if err != nil {
+				Vm.AbortRollback()
 				return err
 			}
 
 			// compare tx & newtx
 			if !tx.Match(newtx) {
+				Vm.AbortRollback()
 				return fmt.Errorf("Mismatch contract execution result")
 			}
 		}
 		if !block.Transactions()[0].Match(coinBase) {
+			Vm.AbortRollback()
 			return fmt.Errorf("Mismatch contract execution result")
 		}
 		if Vm.GasLimit != 0 {
+			Vm.AbortRollback()
 			return fmt.Errorf("Incorrect contract execution cost.")
 		}
 	}
 
+	Vm.Reset()
 	e = attachNodes.Front()
 	for i := 0; e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
@@ -1231,8 +1247,41 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		// already in the view.
 		err := views.FetchInputUtxos(block)
 		if err != nil {
-			return err
+			return err		// should panic. this should never happend and would potentially corrupt the database
 		}
+
+		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
+		coinBase.SetIndex(block.Transactions()[0].Index())
+		coinBaseHash := *coinBase.Hash()
+		Vm.SetCoinBaseOp(
+			func(txo wire.TxOut) wire.OutPoint {
+				if !coinBase.HasOuts {
+					// this servers as a separater. only TokenType is serialized
+					to := wire.TxOut{}
+					to.Token = token.Token{TokenType: token.DefTypeSeparator}
+					coinBase.MsgTx().AddTxOut(&to)
+					coinBase.HasOuts = true
+				}
+				coinBase.MsgTx().AddTxOut(&txo)
+				op := wire.OutPoint { coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
+				return op
+			})
+		Vm.BlockNumber = func() uint64 {
+			return uint64(block.Height())
+		}
+		Vm.Block = func() *btcutil.Block { return block }
+		Vm.GasLimit = block.MsgBlock().Header.ContractExec
+		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
+
+		for i, tx := range block.Transactions() {
+			if i == 0 {
+				continue
+			}
+			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
+			newtx.SetIndex(tx.Index())
+			Vm.ExecContract(newtx, block.Height())
+		}
+		Vm.Commit()	// commit state change & establish a rollback point
 
 		// Update the view to mark all utxos referenced by the block
 		// as spent and add all transactions being created by this block
@@ -1241,13 +1290,13 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
 		err = views.ConnectTransactions(block, &stxos, minersonhold)
 		if err != nil {
-			return err
+			return err		// should panic. this should never happend and would potentially corrupt the database
 		}
 
 		// Update the database and chain state.
 		err = b.connectBlock(n, block, views, stxos, Vm)
 		if err != nil {
-			return err
+			return err		// should panic. this should never happend and would potentially corrupt the database
 		}
 
 		for u,v := range minersonhold {
@@ -1264,9 +1313,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		b.index.SetStatusFlags(n, chainutil.StatusValid)
 	}
-
-	// reconsider it! there is a bug.
-//	Vm.Commit()
 
 	// Log the point where the chain forked and old and new best chain
 	// heads.
@@ -1533,6 +1579,7 @@ func (b *BlockChain) isCurrent() bool {
 	// latest known good checkpoint (when checkpoints are enabled).
 	checkpoint := b.LatestCheckpoint()
 	if checkpoint != nil && b.BestChain.Tip().Height < checkpoint.Height {
+		log.Infof("Tx chain is below check point %d", checkpoint.Height)
 		return false
 	}
 
@@ -1544,7 +1591,16 @@ func (b *BlockChain) isCurrent() bool {
 		// otherwise.
 		minus24Hours := b.timeSource.AdjustedTime().Add(-24 * time.Hour).Unix()
 
-		return b.BestChain.Tip().Data.TimeStamp() >= minus24Hours
+		r := b.BestChain.Tip().Data.TimeStamp() >= minus24Hours
+/*
+		if !r {
+			log.Infof("Tx BestChain tip is %v", b.BestChain.Tip())
+			blk,_ := b.BlockByHash(&b.BestChain.Tip().Hash)
+			log.Infof("Tx BestChain tip block is %v", blk.MsgBlock().Header)
+			log.Infof("Tx chain is more than 24 old %d < $d", b.BestChain.Tip().Data.TimeStamp(), minus24Hours)
+		}
+ */
+		return r
 	}
 	return true
 }

@@ -428,6 +428,9 @@ func (cm *ConnManager) NewConnReq() {
 	cm.Connect(c)
 }
 
+var pendingConn = map[net.Addr]struct{}{}
+var cmtx sync.Mutex
+
 // Connect assigns an id and dials a connection to the address of the
 // connection request.
 func (cm *ConnManager) Connect(c *ConnReq) {
@@ -457,7 +460,25 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 		}
 	}
 
-//	log.Infof("Attempting to connect to %v", c)
+	if cm.dupChecker.IsConnected(c) {
+		return
+	}
+
+	cmtx.Lock()
+	if _,ok := pendingConn[c.Addr]; ok {
+		cmtx.Unlock()
+		return
+	}
+	pendingConn[c.Addr] = struct{}{}
+	cmtx.Unlock()
+
+	defer func() {
+		cmtx.Lock()
+		delete(pendingConn, c.Addr)
+		cmtx.Unlock()
+	} ()
+
+	log.Infof("Attempting to connect to %v", c)
 
 	conn, err := cm.cfg.Dial(c.Addr)
 	if err != nil {
