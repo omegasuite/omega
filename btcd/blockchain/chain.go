@@ -1104,7 +1104,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	views, Vm = b.Canvas(nil)
 	views.SetBestHash(&b.BestChain.Tip().Hash)
 
-	detachto := 0x7FFFFFFF
+	detachto := int32(0x7FFFFFFF)
 
 	// Disconnect blocks from the main chain.
 	for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
