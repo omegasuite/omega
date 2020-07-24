@@ -50,11 +50,17 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 			p.ForAllPeers(func(sp *serverPeer) {
 				if sp.Connected() &&
 					(sp.Peer.Miner == s.member ||
-					(((sp.persistent || !sp.Inbound()) && sp.Peer.Addr() == s.address) ||
-					(sp.Inbound() && sp.Peer.LocalAddr().String() == s.address))) {
+					(((sp.persistent || !sp.Inbound()) && sp.Peer.Addr() == s.address))) {
 					sp.Peer.Committee = s.minerHeight
 					copy(sp.Peer.Miner[:], s.member[:])
 					s.peers = append(s.peers, sp)
+					if len(s.address) == 0 {
+						if sp.persistent || !sp.Inbound() {
+							s.address = sp.Peer.Addr()
+//						} else {
+//							s.address = sp.Peer.LocalAddr().String()
+						}
+					}
 				}
 			})
 			if len(s.peers) > 0 {
@@ -523,8 +529,8 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 				if ob.persistent || !ob.Inbound() {
 					s.peerState.committee[miner].address = ob.Peer.Addr()
 					match = true
-				} else {
-					s.peerState.committee[miner].address = ob.Peer.LocalAddr().String()
+//				} else {
+//					s.peerState.committee[miner].address = ob.Peer.LocalAddr().String()
 				}
 			}
 			return
@@ -549,7 +555,7 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 		isin := false
 
 		addr := tcp.String()
-		if !match {
+		if !match || len(s.peerState.committee[miner].address) == 0 {
 			s.peerState.committee[miner].address = addr
 		}
 
@@ -652,8 +658,8 @@ func (s *server) handleCommitteRotation(r int32) {
 			p.Peer.Committee = j
 			if p.persistent || !p.Inbound() {
 				s.peerState.committee[mb.MsgBlock().Miner].address = p.Peer.Addr()
-			} else {
-				s.peerState.committee[mb.MsgBlock().Miner].address = p.Peer.LocalAddr().String()
+//			} else {
+//				s.peerState.committee[mb.MsgBlock().Miner].address = p.Peer.LocalAddr().String()
 			}
 			s.SendInvAck(mb.MsgBlock().Miner, p)
 			continue
@@ -748,6 +754,17 @@ func (s *server) CommitteePolling() {
 	if s.signAddress == nil {
 		return
 	}
+
+	consensusLog.Infof("Connected Peers: %d\nInbound: %s\nOutbound: %d\nPersistent: %d",
+		len(s.peerState.inboundPeers) + len(s.peerState.outboundPeers) + len(s.peerState.persistentPeers),
+		len(s.peerState.inboundPeers), len(s.peerState.outboundPeers), len(s.peerState.persistentPeers))
+
+	s.peerState.cmutex.Lock()
+	for c, p := range s.peerState.committee {
+		consensusLog.Infof("Committee member %x has %d connections. Address: %s. %d queued messages", c, len(p.peers), p.address, len(p.queue))
+	}
+	s.peerState.cmutex.Unlock()
+	return
 
 	best := s.chain.BestSnapshot()
 	ht := best.Height

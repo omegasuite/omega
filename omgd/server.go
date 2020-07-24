@@ -2082,10 +2082,11 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 				state.committee[sp.connReq.Miner] = state.NewCommitteeState(sp.connReq.Miner)
 			}
 			state.committee[sp.connReq.Miner].peers = append(state.committee[sp.connReq.Miner].peers, sp)
+			state.committee[sp.connReq.Miner].address = sp.Peer.Addr()
 
 			sp.Peer.Committee = sp.connReq.Committee
-			sb, _ := s.chain.Miners.BlockByHeight(sp.connReq.Committee)
-			copy(sp.Peer.Miner[:], sb.MsgBlock().Miner[:])
+//			sb, _ := s.chain.Miners.BlockByHeight(sp.connReq.Committee)
+			copy(sp.Peer.Miner[:], sp.connReq.Miner[:])
 		}
 		state.cmutex.Unlock()
 

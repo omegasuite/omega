@@ -410,7 +410,9 @@ out:
 
 		var payToAddr * btcutil.Address
 
-		pb := m.g.Chain.BestChain.Tip().Data.GetNonce()
+		tip := m.g.Chain.BestChain.Tip()
+		pb := tip.Data.GetNonce()
+		height := tip.Height
 
 		committee := m.g.Committee()
 
@@ -470,6 +472,11 @@ out:
 		wb := template.Block.(*wire.MsgBlock)
 		block := btcutil.NewBlock(wb)
 		block.SetHeight(template.Height)
+
+		if template.Height != height + 1 {
+			// a new block got inserted between we get tip ino and gen template
+			continue
+		}
 
 		if !powMode && wire.CommitteeSize == 1 {
 			// solo miner, add signature to coinbase, otherwise will add after committee decides

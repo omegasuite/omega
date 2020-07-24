@@ -21,7 +21,6 @@ import (
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/token"
 	"net/http"
-	"reflect"
 	"sync"
 	"time"
 )
@@ -134,6 +133,8 @@ func (self *Syncer) repeater() {
 		log.Infof("Repeater: exit")
 	}()
 
+	miner.server.CommitteePolling()
+
 	// enough sigs to conclude?
 	if self.agreed != -1 && len(self.signed) >= wire.CommitteeSigs {
 		self.mutex.Lock()
@@ -190,24 +191,25 @@ func (self *Syncer) repeater() {
 
 	if self.idles > 2 {
 		// resend candidacy
-		if _, ok := self.asked[self.Myself]; ok && self.agreed == self.Myself {
-			log.Infof("Repeater: resend candidacy %d", self.agreed)
+		if self.agreed == self.Myself {
+			log.Infof("Repeater: cast candidacy %d", self.agreed)
 			msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
 			msg.Sign(miner.server.GetPrivKey(self.Me))
 			self.CommitteeCastMG(msg)
 		}
 
 		// resend consensus
-		log.Infof("Repeater: resend reckconsensus")
+		log.Infof("Repeater: reckconsensus")
 		self.reckconsensus()
 
 		// resend signatures
 		if self.sigGiven != -1 {
-			log.Infof("Repeater: resend signature %d", self.sigGiven)
 			privKey := miner.server.GetPrivKey(self.Me)
 			if privKey == nil {
 				return
 			}
+
+			log.Infof("Repeater: resend signature %d", self.sigGiven)
 
 			from := self.Names[self.agreed]
 			hash := blockchain.MakeMinerSigHash(self.Height, self.forest[from].hash)
@@ -318,7 +320,7 @@ func (self *Syncer) run() {
 			self.print()
 
 		case m := <- self.messages:
-			log.Infof("processing %s message", reflect.TypeOf(m).String())
+			log.Infof("processing %s message at %d", m.Command(), m.Block())
 			switch m.(type) {
 			case *wire.MsgKnowledge:		// passing knowledge
 				if self.sigGiven >= 0 {
@@ -475,18 +477,6 @@ func (self *Syncer) run() {
 	}
 }
 
-/*
-func (self *Syncer) releasenb() {
-	self.Runnable = false
-	self.Quit()
-
-	miner.server.NewConsusBlock(self.forest[self.Me].block)
-
-	cleaner(self.Height)
-}
-
- */
-
 func (self *Syncer) Signature(msg * wire.MsgSignature) bool {
 	if self.agreed == -1 {
 		return false
@@ -590,6 +580,8 @@ func (self *Syncer) Consensus(msg * wire.MsgConsensus) {
 	copy(sigmsg.Signature[:], privKey.PubKey().SerializeCompressed())
 	copy(sigmsg.Signature[btcec.PubKeyBytesLenCompressed:], sgs)
 
+	log.Infof("Consensus: cast signature")
+
 	self.CommitteeCastMG(&sigmsg)
 
 	if self.sigGiven == -1 {
@@ -644,6 +636,8 @@ func (self *Syncer) reckconsensus() {
 		copy(msg.Signature[:], privKey.PubKey().SerializeCompressed())
 		copy(msg.Signature[btcec.PubKeyBytesLenCompressed:], ss)
 
+		log.Infof("reckconsensus: cast Consensus")
+
 		self.CommitteeCastMG(&msg)
 	}
 }
@@ -682,6 +676,8 @@ func (self *Syncer) ckconsensus() {
 			msg.Signature[:])
 		self.signed[self.Me] = struct{}{}
 
+		log.Infof("ckconsensus: cast Consensus")
+
 		self.CommitteeCastMG(&msg)
 	}
 }
@@ -689,7 +685,6 @@ func (self *Syncer) ckconsensus() {
 func (self *Syncer) makeRelease(better int32) *wire.MsgRelease {
 	d := &wire.MsgRelease{
 		Better: better,
-//		K:      self.makeAbout(better).K,
 		M:      self.forest[self.Names[better]].hash,	//self.makeAbout(better).M,
 		Height: self.Height,
 		From:   self.Me,
@@ -714,7 +709,6 @@ func (self *Syncer) dupKnowledge(fmp int32) {
 			}
 
 			t := *ks
-//			t.K = append(t.K, self.Myself)
 			t.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
 
 			if ng,_ := self.knowledges.gain(self.agreed, t.K); ng {
@@ -747,6 +741,9 @@ func (self *Syncer) yield(better int32) bool {
 			d.M = self.forest[self.Names[better]].hash
 			self.agreed = better
 			d.Sign(miner.server.GetPrivKey(self.Me))
+
+			log.Infof("yield: yield to %x", self.Names[better])
+
 			self.CommitteeMsgMG(self.Names[better], &d)
 		}
 		return true
@@ -792,6 +789,9 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 				if self.agreed == self.Myself {
 					msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
 					msg.Sign(miner.server.GetPrivKey(self.Me))
+
+					log.Infof("candidateResp: reaffirm candidacy")
+
 					self.CommitteeMsgMG(self.Me, msg) // ask again
 				}
 			}
@@ -864,6 +864,8 @@ func (self *Syncer) candidacy() {
 
 	msg.Sign(miner.server.GetPrivKey(self.Me))
 
+	log.Infof("candidacy: Announce candicacy")
+
 	self.CommitteeCastMG(msg)
 }
 
@@ -882,6 +884,9 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 		d.Reply = "rjct"
 		d.Better = -1
 		d.Sign(miner.server.GetPrivKey(self.Me))
+
+		log.Infof("Candidate: Reject candicacy by %x", self.Names[fmp])
+
 		self.CommitteeMsgMG(self.Names[fmp], &d)
 		return
 	}
@@ -897,6 +902,9 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 		d.Reply = "rjct"
 		d.Better = -2
 		d.Sign(miner.server.GetPrivKey(self.Me))
+
+		log.Infof("Candidate: Reject candicacy by %x", self.Names[fmp])
+
 		self.CommitteeMsgMG(self.Names[fmp], &d)
 		return
 	}
@@ -911,6 +919,9 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 		d.Better = fmp
 		self.agreed = fmp
 		d.Sign(miner.server.GetPrivKey(self.Me))
+
+		log.Infof("Candidate: Consent candicacy by %x", self.Names[fmp])
+
 		self.CommitteeMsgMG(self.Names[fmp], &d)
 		return
 	}
@@ -928,6 +939,9 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 	d.Better = self.agreed
 	d.M = self.forest[self.Names[self.agreed]].hash
 	d.Sign(miner.server.GetPrivKey(self.Me))
+
+	log.Infof("Candidate: Reject candicacy by %x", self.Names[fmp])
+
 	self.CommitteeMsgMG(self.Names[fmp], &d)
 }
 
@@ -1113,36 +1127,6 @@ func (self *Syncer) UpdateChainHeight(h int32) {
 //	self.SetCommittee()
 }
 
-/*
-func (self *Syncer) HeaderInit(block *MsgMerkleBlock) {
-	var adr [20]byte
-	copy(adr[:], block.From[:])
-
-	if !self.Runnable {
-		best := self.Chain.BestSnapshot()
-
-		if best.Height > self.Height {
-			self.Quit()
-			return
-		}
-
-		self.Runnable = self.Height == best.Height + 1
-
-		if self.Runnable {
-			self.SetCommittee(int32(best.LastRotation))
-		}
-	}
-
-	self.newtree <- tree {
-		creator: adr,
-		fees: block.Fees,
-		hash: block.Header.BlockHash(),
-		header: &block.Header,
-		block: nil,
-	}
-}
- */
-
 func (self *Syncer) BlockInit(block *btcutil.Block) {
 	var adr [20]byte
 	if len(block.MsgBlock().Transactions[0].SignatureScripts) < 2 {
@@ -1190,24 +1174,6 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	}
 }
 
-/*
-func (self *Syncer) makeAbout(better int32) *wire.MsgKnowledge {
-	k := []int32{-1024} // indicate we are sending a map
-	for _, p := range self.knowledges.Knowledge[better] {
-		k = append(k, p)
-	}
-	t := self.forest[self.Names[better]]
-	return &wire.MsgKnowledge {
-		M:      t.hash,
-		Height: self.Height,
-		K:      k,
-		Finder: t.creator,
-		From:   self.Me,
-		Signatures:   make(map[int32][]byte),
-	}
-}
-*/
-
 func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 	if _,ok := self.pulling[from]; !ok || self.pulling[from] == 0 {
 		// pull block
@@ -1227,7 +1193,7 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 
 func (self *Syncer) Quit() {
 	log.Info("sync quit")
-	// to prevent entering SetCommittee
+
 	self.Runnable = true
 	for true {
 		select {
