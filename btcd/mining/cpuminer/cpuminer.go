@@ -317,31 +317,10 @@ func (m *CPUMiner) notice (notification *blockchain.Notification) {
 		if !m.started {
 			return
 		}
-
 		switch notification.Data.(type) {
-		//		case *wire.MinerBlock:
 		case *btcutil.Block:
-/*
-			m.connLock.Lock()
-			defer m.connLock.Unlock()
-
-			log.Infof("cpuminer notice: drain m.connch and send new block height %d", notification.Data.(*btcutil.Block).Height())
-
-			for true {
-				select {
-				case h, ok := <-m.connch:
-					if !ok {
-						return
-					}
-					log.Infof("cpuminer notice: draind %d", h)
-
-				default:
- */
-					m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
-					log.Infof("cpuminer notice: sending %d", notification.Data.(*btcutil.Block).Height())
-//					return
-//				}
-//			}
+			m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
+			log.Infof("cpuminer notice: sending %d", notification.Data.(*btcutil.Block).Height())
 		}
 	}
 }
@@ -376,9 +355,7 @@ func (m *CPUMiner) generateBlocks() {
 out:
 	for {
 		// Quit when the miner is stopped.
-flushconnch:
-		for true {
-			select {
+		select {
 			case _, ok := <-m.connch: // prevent chan full & blocking
 				if !ok { // chan closed. we have received stop sig.
 					break out
@@ -392,9 +369,7 @@ flushconnch:
 			case <-consensus.POWStopper:
 
 			default:
-				break flushconnch
 				// Non-blocking select to fall through
-			}
 		}
 
 		log.Infof("generate Block go!")

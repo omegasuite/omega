@@ -222,6 +222,8 @@ type MessageListeners struct {
 	// not an error in the write occurred.  This can be useful for
 	// circumstances such as keeping track of server-wide byte counts.
 	OnWrite func(p *Peer, bytesWritten int, msg wire.Message, err error)
+
+	PushGetBlock func(p *Peer)
 }
 
 // Config is the struct to hold configuration options useful to Peer.
@@ -1676,8 +1678,10 @@ out:
 			}
 
 		case consensus.Message:
-			h := consensus.HandleMessage(msg)
-			if h != nil {
+			push, h := consensus.HandleMessage(msg)
+			if push && p.cfg.Listeners.PushGetBlock != nil {
+				p.cfg.Listeners.PushGetBlock(p)
+			} else if h != nil {
 				nmsg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *h}}}
 				p.QueueMessageWithEncoding(&nmsg, nil, wire.SignatureEncoding)
 			}

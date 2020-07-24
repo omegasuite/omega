@@ -124,8 +124,9 @@ func (self *Knowledgebase) ProcFlatKnowledge(mp int32, k []int64) bool {
 	return more
 }
 
+
 func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
-//	k := msg.K
+	//	k := msg.K
 	finder := msg.Finder
 	mp, ok := self.syncer.Members[finder]
 	if !ok {
@@ -139,62 +140,70 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 
 	me := self.syncer.Myself
 
-/*
-	if k[0] < 0 {
-		return self.ProcFlatKnowledge(mp, k[1:])
-	}
-
-
-	tmsg := *msg
-	tmsg.K = make([]int64, 0)
-
-	for _,i := range msg.K {
-		signature, err := btcec.ParseSignature(msg.Signatures[i], btcec.S256())
-		tmsg.K = append(tmsg.K, i)
-		tmsg.From = self.committee.AddrStr[int32(i)]
-		p := self.committee.Addresses[int32(i)]
-		if err != nil || !signature.Verify(tmsg.DoubleHashB(), p.PubKey()) {
-			return -1
+	/*
+		if k[0] < 0 {
+			return self.ProcFlatKnowledge(mp, k[1:])
 		}
-	}
-*/
+
+
+		tmsg := *msg
+		tmsg.K = make([]int64, 0)
+
+		for _,i := range msg.K {
+			signature, err := btcec.ParseSignature(msg.Signatures[i], btcec.S256())
+			tmsg.K = append(tmsg.K, i)
+			tmsg.From = self.committee.AddrStr[int32(i)]
+			p := self.committee.Addresses[int32(i)]
+			if err != nil || !signature.Verify(tmsg.DoubleHashB(), p.PubKey()) {
+				return -1
+			}
+		}
+	*/
 
 	lmg := *msg
 	lmg.AddK(me, miner.server.GetPrivKey(self.syncer.Me))
 
-	res := self.gain(mp, lmg.K)
+	ng, res := self.gain(mp, lmg.K)
 	lmg.From = self.syncer.Me
 
-	if res {
-		miner.server.CommitteeCastMG(self.syncer.Me, &lmg, self.syncer.Height)
-	}
-/*
-	for j, m := range self.Knowledge[mp] {
-		if m != self.Knowledge[mp][me] {
-			t := self.sendout(&lmg, mp, me, int32(j))
-			res = res || t
+	for i, q := range self.Knowledge[mp] {
+		if ng || (res &^ q != 0) {
+			miner.server.CommitteeMsgMG(self.syncer.Names[int32(i)], &lmg)
 		}
 	}
 
-/*
-	nmg := *msg
-	nmg.K = k
-	nmg.From = self.syncer.Me
+	/*
+	   	if res {
+	   		miner.server.CommitteeCastMG(self.syncer.Me, &lmg, self.syncer.Height)
+	   	}
 
-//		miner.server.CommitteeCast(me, &nmg)
+	   	for j, m := range self.Knowledge[mp] {
+	   		if m != self.Knowledge[mp][me] {
+	   			t := self.sendout(&lmg, mp, me, int32(j))
+	   			res = res || t
+	   		}
+	   	}
 
-//		sig, _ := self.Cfg.PrivKey.Sign(nmg.DoubleHashB())
-//		nmg.Signatures[me] = sig.Serialize()
-/*
-		for _, p := range self.syncer.Members {
-			if p == me {
-				continue
-			}
-			go self.sendout(&nmg, mp, me, p)
-		}
-*/
+	   /*
+	   	nmg := *msg
+	   	nmg.K = k
+	   	nmg.From = self.syncer.Me
+
+	   //		miner.server.CommitteeCast(me, &nmg)
+
+	   //		sig, _ := self.Cfg.PrivKey.Sign(nmg.DoubleHashB())
+	   //		nmg.Signatures[me] = sig.Serialize()
+	   /*
+	   		for _, p := range self.syncer.Members {
+	   			if p == me {
+	   				continue
+	   			}
+	   			go self.sendout(&nmg, mp, me, p)
+	   		}
+	*/
 
 	// does he have knowledge about me? In case he is late comer
+
 	if _,ok := self.syncer.forest[self.syncer.Names[me]]; ok && self.Knowledge[me][mp] & (0x1 << me) == 0 {
 		// send knowledge about me
 		lmg := wire.NewMsgKnowledge()
@@ -203,10 +212,24 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 		lmg.M = self.syncer.forest[self.syncer.Names[me]].hash
 		lmg.Height = msg.Height
 		lmg.AddK(me, miner.server.GetPrivKey(self.syncer.Me))
-		res = res || self.sendout(lmg, me, me, mp)
+		ng = ng || self.sendout(lmg, me, me, mp)
 	}
 
-	return res
+	return ng
+}
+
+func (self *Knowledgebase) ProcKnowledgeDone(msg *wire.MsgKnowledge) bool {
+//	k := msg.K
+	finder := msg.Finder
+	mp := self.syncer.Members[finder]
+	from := msg.From
+
+	lmg := *msg
+	lmg.K = append(lmg.K, self.syncer.Members[from])
+
+	ng, _ := self.gain(mp, lmg.K)
+
+	return ng
 }
 
 func (self *Knowledgebase) improve(fact int32, k []int64, to int32) bool {
@@ -253,24 +276,17 @@ func (self *Knowledgebase) sendout(msg *wire.MsgKnowledge, mp int32, me int32, q
 	return false
 }
 
-func (self *Knowledgebase) gain(mp int32, k []int32) bool {
+func (self *Knowledgebase) gain(mp int32, k []int32) (bool, int64) {
 	newknowledge := false
 	c := int64(0)
-	for i := 1; i < len(k); i++ {
-		viewer := k[i - 1]
-		c = 0
-		for j := 0; j <= i; j++ {
-			c |= 1 << uint(k[j])
-		}
+	for i := 0; i < len(k); i++ {
+		viewer := k[i]
+		c |= 1 << uint(k[i])
 		if self.Knowledge[mp][viewer] & c != c {
 			self.Knowledge[mp][viewer] |= c
 			newknowledge = true
 		}
 	}
-	if self.Knowledge[mp][k[len(k) - 1]] & c != c {
-		self.Knowledge[mp][k[len(k)-1]] |= c
-		newknowledge = true
-	}
 
-	return newknowledge
+	return newknowledge, c
 }

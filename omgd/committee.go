@@ -14,11 +14,11 @@ import (
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/connmgr"
+	"github.com/omegasuite/omega/consensus"
 	"github.com/omegasuite/omega/minerchain"
 	"github.com/davecgh/go-spew/spew"
 	"math/big"
 	"net"
-	"sync"
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -29,90 +29,83 @@ import (
 
 const advanceCommitteeConnection = wire.CommitteeSize	// # of miner blocks we should prepare for connection
 
-type retryQ struct {
-	sp * serverPeer
-	start int
-	end	  int
-	size  int
-	items []wire.Message
-}
+// This must be a go routine
+func (p * peerState) CommitteeOut(s * committeeState) {
+	for {
+		msg, ok := <-s.queue
+		if !ok {
+			return
+		}
+		done := make(chan bool)
+		sent := false
+		for _,sp := range s.peers {
+			if !sent && sp.Connected() {
+				sp.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
+				sent = true
+			}
+		}
+		if !sent {
+			// get a new connections and send it
+			s.peers = s.peers[:0]
+			p.ForAllPeers(func(sp *serverPeer) {
+				if sp.Connected() &&
+					(sp.Peer.Miner == s.member ||
+					(((sp.persistent || !sp.Inbound()) && sp.Peer.Addr() == s.address) ||
+					(sp.Inbound() && sp.Peer.LocalAddr().String() == s.address))) {
+					sp.Peer.Committee = s.minerHeight
+					copy(sp.Peer.Miner[:], s.member[:])
+					s.peers = append(s.peers, sp)
+				}
+			})
+			if len(s.peers) > 0 {
+				s.peers[0].QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
+				sent = true
+			} else if len(s.address) > 0 {
+				tcp, err := net.ResolveTCPAddr("", s.address)
+				if err != nil {
+					continue
+				}
 
-var retry = make(map[uint64]*retryQ)
-var retryMutex sync.Mutex
+				var callback = func (q connmgr.ServerPeer) {
+					p := q.(*serverPeer)
+					p.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 
-// this must be a go routing starting at the same time as consensus
-func (s* server) trying() {
-	for true {
-		time.Sleep(time.Second * 2)
-		if len(retry) != 0 {
-			height := s.chain.BestSnapshot().Height
-			retryMutex.Lock()
-			for h,q := range retry {
-				if int32(h) <= height {
-					delete(retry, h)
-				} else {
-					m := q.items[q.start]
-					q.start = (q.start + 1) % q.size
+					s.peers = append(s.peers, p)
 
-					done := make(chan bool)
-					q.sp.QueueMessageWithEncoding(m, done, wire.SignatureEncoding)
 					r := <- done
-
-					if !r {
-						q.items[q.end] = m
-						q.end = (q.end + 1) % q.size
-					} else if q.start == q.end {
-						delete(retry, h)
+					m, ok := msg.(*wire.MsgKnowledge)
+					if ok && r {
+						reply := (*wire.MsgKnowledgeDone)(m)
+						reply.From = s.member
+						consensus.HandleMessage(reply)
 					}
 				}
-			}
-			retryMutex.Unlock()
-		}
-	}
-}
 
-func senNewMsg(sp * serverPeer, msg wire.Message, h int32) {
-	done := make(chan bool)
-	sp.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
-	r := <- done
-	if !r {
-		retryMutex.Lock()
-		m := (uint64(sp.ID()) << 32) | uint64(h)
-		if _, ok := retry[m]; !ok {
-			retry[m] = &retryQ{
-				sp: sp, start: 0, end: 0, size: 10,
-				items: make([]wire.Message, 10),
-			}
-		}
-		q := retry[m]
-		if (q.end + 1) % q.size == q.start { // grow queue size by double it
-			bdl := make([]wire.Message, 2 * q.size)
-			if q.end > q.start {
-				copy(bdl[q.start:], q.items[q.start:q.end])
+				go p.connManager.Connect(&connmgr.ConnReq{
+					Addr:      tcp,
+					Permanent: false,
+					Committee: s.minerHeight,
+					Miner: s.member,
+					Initcallback: callback,
+				})
+
+				// should sleep at least the amount of time to connection timeout
+				// to prevent dup connection
+				time.Sleep(connectionRetryInterval)
+				continue
 			} else {
-				copy(bdl[q.start:], q.items[q.start:])
-				if q.end > 0 {
-					copy(bdl[q.size:], q.items[:q.end])
-				}
-				q.end += q.size
+				// should we send invitation?
+				continue
 			}
-			q.items = bdl
-			q.size *= 2
 		}
-		q.items[q.end] = msg
-		q.end = (q.end + 1) % q.size
-		retryMutex.Unlock()
+		r := <- done
+		m, ok := msg.(*wire.MsgKnowledge)
+		if ok && r {
+			reply := (*wire.MsgKnowledgeDone)(m)
+			reply.From = s.member
+			consensus.HandleMessage(reply)
+		}
 	}
-}
-
-func (ps *peerState) forAllCommittee(closure func(name [20]byte, sp *committeeState)) {
-//	btcdLog.Infof("cmutex.Lock @ forAllCommittee")
-	ps.cmutex.Lock()
-	for i, e := range ps.committee {
-		closure(i, e)
-	}
-//	btcdLog.Infof("cmutex.Unlock")
-	ps.cmutex.Unlock()
 }
 
 func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) {
@@ -126,17 +119,13 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 
 	k, err := btcec.ParsePubKey(msg.Invitation.Pubkey[:], btcec.S256())
 	if err != nil {
-		// refuse by disconnect
 		consensusLog.Infof("refuses AckInv (1) %s", sp.Addr())
-//		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
 
 	mb, err := sp.server.chain.Miners.BlockByHeight(msg.Invitation.Height)
 	if err != nil {
-		// refuse by disconnect
 		consensusLog.Infof("refuses AckInv (2) %s", sp.Addr())
-//		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
 	if sp.server.chain.CheckCollateral(mb, blockchain.BFNone) != nil {
@@ -149,76 +138,40 @@ func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) 
 	pkh1 := pk.AddressPubKeyHash().ScriptAddress()
 	pk.SetFormat(btcutil.PKFCompressed)
 	pkh2 := pk.AddressPubKeyHash().ScriptAddress()
-//	pkhc := pk.AddressPubKeyHash().Hash160()
 
 	if bytes.Compare(pkh1[:], mb.MsgBlock().Miner[:]) != 0 &&
 		bytes.Compare(pkh2[:], mb.MsgBlock().Miner[:]) != 0 {
-		// refuse by disconnect
 		consensusLog.Infof("refuses AckInv (3) %s miner = %x pkh1 = %x pkh2 = %x at %d", sp.Addr(),
 			mb.MsgBlock().Miner, pkh1, pkh2, msg.Invitation.Height)
-//		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
 
 	s, err := btcec.ParseSignature(msg.Sig, btcec.S256())
 	if err != nil {
-		// refuse by disconnect
 		consensusLog.Infof("refuses AckInv (4) %s", sp.Addr())
-//		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
 
 	var w bytes.Buffer
 	if msg.Invitation.Serialize(&w) != nil {
-		// refuse by disconnect
 		consensusLog.Infof("refuses AckInv (5) %s", sp.Addr())
-//		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
 
 	hash := chainhash.DoubleHashB(w.Bytes())
 	if !s.Verify(hash, pk.PubKey()) {
-		// refuse by disconnect
 		consensusLog.Infof("refuses AckInv (6) %s", sp.Addr())
-//		sp.server.handleDonePeerMsg(sp.server.peerState, sp)
 		return
 	}
-
-	// have we already connected to it?
-/*
-	refused := false
-	sp.server.peerState.ForAllPeers(func(ob * serverPeer) {
-		if sp != ob && bytes.Compare(ob.Peer.Miner[:], mb.MsgBlock().Miner[:]) == 0 {
-			// refuse by disconnect
-			refused = true
-		}
-	})
-	if refused {
-		consensusLog.Infof("refuses AckInv. disconnect from %s", sp.Addr())
-		return
-	}
- */
 
 	sp.server.peerState.cmutex.Lock()
 	if sp.server.peerState.committee[mb.MsgBlock().Miner] == nil {
-		sp.server.peerState.committee[mb.MsgBlock().Miner] = &committeeState{ peers: make([]*serverPeer, 0) }
+		sp.server.peerState.committee[mb.MsgBlock().Miner] = sp.server.peerState.NewCommitteeState(mb.MsgBlock().Miner)
 	}
 	m := sp.server.peerState.committee[mb.MsgBlock().Miner]
 	sp.server.peerState.cmutex.Unlock()
 
 	m.peers = append(m.peers, sp)
-	if m.bestBlock < sp.LastBlock() {
-		m.bestBlock = sp.LastBlock()
-		if m.lastBlockSent < m.bestBlock {
-			m.lastBlockSent = m.bestBlock
-		}
-	}
-	if m.bestMinerBlock < sp.LastMinerBlock() {
-		m.bestMinerBlock = sp.LastMinerBlock()
-		if m.lastMinerBlockSent < m.bestMinerBlock {
-			m.lastMinerBlockSent = m.bestMinerBlock
-		}
-	}
 
 	consensusLog.Infof("AckInv. %d = %x", msg.Invitation.Height, mb.MsgBlock().Miner)
 
@@ -327,7 +280,7 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 
 			sp.server.peerState.cmutex.Lock()
 			if _, ok := sp.server.peerState.committee[mb.MsgBlock().Miner]; !ok {
-				sp.server.peerState.committee[mb.MsgBlock().Miner] = newCommitteeState()
+				sp.server.peerState.committee[mb.MsgBlock().Miner] = sp.server.peerState.NewCommitteeState(mb.MsgBlock().Miner)
 			}
 			m := sp.server.peerState.committee[mb.MsgBlock().Miner]
 			sp.server.peerState.cmutex.Unlock()
@@ -339,10 +292,14 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 				}
 			}
 
+			addr := tcp.String()
+
 			sp.server.peerState.ForAllPeers(func(ob *serverPeer) {
-				if !isin && ob.Addr() == tcp.String() {
-					for _, b := range m.peers {
-						if b.ID() == ob.ID() {
+				if !isin && (ob.Addr() == addr || ob.Peer.LocalAddr().String() == addr) && ob.Connected() {
+					for i, b := range m.peers {
+						if !b.Connected() {
+							m.peers = append(m.peers[:i], m.peers[i+1:]...)
+						} else if b.ID() == ob.ID() {
 							added = true
 						}
 					}
@@ -370,7 +327,10 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 					sp.server.SendInvAck(mb.MsgBlock().Miner, p)
 				}
 
-				sp.server.addrManager.AddLocalAddress(wire.NewNetAddressIPPort(tcp.IP, uint16(tcp.Port), 0), addrmgr.CommitteePrio)
+				priority,_ := sp.server.addrManager.AddLocalAddress(wire.NewNetAddressIPPort(tcp.IP, uint16(tcp.Port), 0), addrmgr.CommitteePrio)
+				if priority == addrmgr.ManualPrio {
+					btcdLog.Infof("This is a perm conn")
+				}
 
 				go sp.server.connManager.Connect(&connmgr.ConnReq{
 					Addr:      tcp,
@@ -404,29 +364,13 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 	sp.server.Broadcasted[mh] = time.Now().Unix() + 300
 
 	sp.server.BroadcastMessage(msg, sp)
-//	sp.server.broadcast <- broadcastMsg{msg, []*serverPeer{sp} }
 }
 
 func (s *server) phaseoutCommittee(r int32) {
-	b := s.chain
-
-	keep := make(map[[20]byte]struct{})
-	for j := r; j < r + advanceCommitteeConnection + wire.CommitteeSize; j++ {
-		mb, _ := b.Miners.BlockByHeight(j)
-		if mb != nil {
-			keep[mb.MsgBlock().Miner] = struct{}{}
-		} else {
-			break
-		}
-	}
-
 	s.peerState.cmutex.Lock()
-	for i, _ := range s.peerState.committee {
-		if _, ok := keep[i]; !ok {
-			for _, sp := range s.peerState.committee[i].peers {
-				sp.Committee = -1
-				sp.Peer.Committee = -1
-			}
+	for i, p := range s.peerState.committee {
+		if p.minerHeight < r {
+			close(s.peerState.committee[i].queue)
 			delete(s.peerState.committee, i)
 		}
 	}
@@ -538,6 +482,8 @@ func (s *server) MinerBlockByHeight(n int32) (* wire.MinerBlock,error) {
 }
 
 func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
+	found, match := false, false
+
 	if _, ok := s.peerState.committee[miner]; ok {
 		np := make([]*serverPeer, 0, len(s.peerState.committee[miner].peers))
 		for _,r := range s.peerState.committee[miner].peers {
@@ -545,7 +491,7 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 			exist := false
 
 			s.peerState.forAllPeers(func (sp * serverPeer) {
-				if sp.ID() == r.ID() {
+				if sp.ID() == r.ID() && sp.Connected() {
 					exist = true
 				}
 			})
@@ -558,18 +504,29 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 		if len(s.peerState.committee[miner].peers) > 0 {
 			return
 		}
+		match = true
+		if s.peerState.committee[miner].minerHeight < j {
+			s.peerState.committee[miner].minerHeight = j
+		}
 	} else {
-		s.peerState.committee[miner] = newCommitteeState()
+		s.peerState.committee[miner] = s.peerState.NewCommitteeState(miner)
+		s.peerState.committee[miner].minerHeight = j
 	}
 	m := s.peerState.committee[miner]
 
-	found := false
-
 	s.peerState.forAllPeers(func(ob *serverPeer) {
-		if !found && bytes.Compare(ob.Peer.Miner[:], miner[:]) == 0 {
+		if !found && bytes.Compare(ob.Peer.Miner[:], miner[:]) == 0 && ob.Connected() {
 			m.peers = append(m.peers, ob)
 			ob.Peer.Committee = j
 			found = true
+			if !match {
+				if ob.persistent || !ob.Inbound() {
+					s.peerState.committee[miner].address = ob.Peer.Addr()
+					match = true
+				} else {
+					s.peerState.committee[miner].address = ob.Peer.LocalAddr().String()
+				}
+			}
 			return
 		}
 	})
@@ -583,24 +540,22 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 		// that that as an IP address
 		tcp, err := net.ResolveTCPAddr("", string(conn))
 		if err != nil {
-			// not a valid address. should have validated before
+			if !match {
+				delete(s.peerState.committee, miner)
+			}
 			return
 		}
 
 		isin := false
-		added := false
 
-		s.peerState.forAllOutboundPeers(func (ob *serverPeer) {
-			if !isin && ob.Addr() == tcp.String() {
-				for _, b := range m.peers {
-					if b.ID() == ob.ID() {
-						added = true
-					}
-				}
-				if !added {
-					m.peers = append(m.peers, ob)
-				}
+		addr := tcp.String()
+		if !match {
+			s.peerState.committee[miner].address = addr
+		}
 
+		s.peerState.forAllPeers(func(ob *serverPeer) {
+			if !isin && (ob.Addr() == addr || ob.Peer.LocalAddr().String() == addr) && ob.Connected() {
+				m.peers = append(m.peers, ob)
 				ob.Peer.Committee = j
 				copy(ob.Peer.Miner[:], miner[:])
 
@@ -610,24 +565,11 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 		})
 
 		if !isin {
-			addr := tcp.String()
-
 			btcdLog.Infof("makeConnection: new %s", addr)
-			s.addrManager.AddLocalAddress(wire.NewNetAddressIPPort(tcp.IP, uint16(tcp.Port), 0), addrmgr.CommitteePrio)
+			priority,_ := s.addrManager.AddLocalAddress(wire.NewNetAddressIPPort(tcp.IP, uint16(tcp.Port), 0), addrmgr.CommitteePrio)
 
-			found := false
-
-			s.peerState.forAllOutboundPeers(func(ob *serverPeer) {
-				if !found && ob.connReq.Addr.String() == addr {
-					m.peers = append(m.peers, ob)
-					ob.Peer.Committee = j
-					found = true
-					return
-				}
-			})
-
-			if found {
-				return
+			if priority == addrmgr.ManualPrio {
+				btcdLog.Infof("This is a perm conn")
 			}
 
 			go s.connManager.Connect(&connmgr.ConnReq{
@@ -635,7 +577,10 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j, me int32) {
 				Permanent: false,
 				Committee: j,
 				Miner: miner,
-				Initcallback: func(sp connmgr.ServerPeer) { s.SendInvAck(miner, sp.(*serverPeer)) },
+				Initcallback: func(sp connmgr.ServerPeer) {
+					m.peers = append(m.peers, sp.(*serverPeer))
+					s.SendInvAck(miner, sp.(*serverPeer))
+				},
 			})
 		}
 	} else if len(cfg.ExternalIPs) == 0 {
@@ -689,28 +634,27 @@ func (s *server) handleCommitteRotation(r int32) {
 		if mb == nil {
 			break
 		}
+		if _, ok := s.peerState.committee[mb.MsgBlock().Miner]; ok {
+			continue
+		}
 
 		if s.chain.CheckCollateral(mb, blockchain.BFNone) != nil {
 			continue
 		}
 
-		if _, ok := s.peerState.committee[mb.MsgBlock().Miner]; !ok {
-			s.peerState.committee[mb.MsgBlock().Miner] = newCommitteeState()
-		}
+		s.peerState.committee[mb.MsgBlock().Miner] = s.peerState.NewCommitteeState(mb.MsgBlock().Miner)
+		s.peerState.committee[mb.MsgBlock().Miner].minerHeight = j
 
 		p := s.peerState.peerByName(mb.MsgBlock().Miner[:])
 
 		if p != nil {
-			hasp := false
-			for _,q := range s.peerState.committee[mb.MsgBlock().Miner].peers {
-				if q == p {
-					hasp = true
-				}
-			}
-			if !hasp {
-				s.peerState.committee[mb.MsgBlock().Miner].peers = append(s.peerState.committee[mb.MsgBlock().Miner].peers, p)
-			}
+			s.peerState.committee[mb.MsgBlock().Miner].peers = append(s.peerState.committee[mb.MsgBlock().Miner].peers, p)
 			p.Peer.Committee = j
+			if p.persistent || !p.Inbound() {
+				s.peerState.committee[mb.MsgBlock().Miner].address = p.Peer.Addr()
+			} else {
+				s.peerState.committee[mb.MsgBlock().Miner].address = p.Peer.LocalAddr().String()
+			}
 			s.SendInvAck(mb.MsgBlock().Miner, p)
 			continue
 		}
@@ -727,24 +671,20 @@ func (s *server) handleCommitteRotation(r int32) {
 	}
 }
 
-func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message, h int32) {
+func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message) {
 	s.peerState.print()
 
 	s.peerState.cmutex.Lock()
+
 	sp,ok := s.peerState.committee[p]
+
+	if !ok {
+		sp = s.peerState.NewCommitteeState(p)
+		s.peerState.committee[p] = sp
+	}
 	s.peerState.cmutex.Unlock()
 
-	if ok {
-		for _,r := range sp.peers {
-			if r.Connected() {
-				srvrLog.Infof("sending it to %s (remote = %s)", r.Peer.LocalAddr().String(), r.Peer.Addr())
-				senNewMsg(r, m, h)
-				return
-			}
-		}
-	}
-	consensusLog.Infof("Failed to find a useful connection. inboundPeers=%d outboundPeers=%d committee=%d",
-		len(s.peerState.inboundPeers), len(s.peerState.outboundPeers), len(s.peerState.committee))
+	sp.queue <- m
 }
 
 func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {
@@ -851,25 +791,6 @@ func (s *server) CommitteePolling() {
 		consensusLog.Infof("\tis in committee at %d", cmt[pname].Height())
 		delete(cmt, pname)
 
-		for _,r := range sp.peers {
-			if r.LastBlock() > sp.bestBlock {
-				sp.bestBlock = r.LastBlock()
-				if sp.lastBlockSent < sp.bestBlock {
-					sp.lastBlockSent = sp.bestBlock
-				}
-			}
-			if r.LastMinerBlock() > sp.bestMinerBlock {
-				sp.bestMinerBlock = r.LastMinerBlock()
-				if sp.lastMinerBlockSent < sp.bestMinerBlock {
-					sp.lastMinerBlockSent = sp.bestMinerBlock
-				}
-			}
-		}
-		for _,r := range sp.peers {
-			r.UpdateLastBlockHeight(sp.bestBlock)
-			r.UpdateLastMinerBlockHeight(sp.bestMinerBlock)
-		}
-
 		idmap := make(map[int32]struct{})
 		addrmap := make(map[string]int32)
 
@@ -937,9 +858,13 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 		consensusLog.Infof("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
 	} else if err != nil {
 		consensusLog.Infof("consensus faield to process ProcessBlock!!! %s", err.Error())
+		if r,ok := err.(blockchain.RuleError); !ok || r.ErrorCode != blockchain.ErrDuplicateBlock {
+			s.chain.ProcessBlock(m, blockchain.BFNone) // for debugging
+		}
 	}
 }
 
+/*
 func (s *server) CommitteeCast(msg wire.Message) {
 	if s.signAddress == nil {
 		return
@@ -964,6 +889,8 @@ func (s *server) CommitteeCast(msg wire.Message) {
 					srvrLog.Infof("casting %s message to %s (remote = %s)", msg.Command(), peer.Peer.LocalAddr().String(), peer.Peer.Addr())
 					peer.QueueMessageWithEncoding(msg, nil, wire.SignatureEncoding)
 				}
+				s.connManager.Connect(peer.connReq)
+				return
 			}
 		}
 	})
@@ -984,6 +911,7 @@ func (s *server) CommitteeCastMG(sender [20]byte, msg wire.Message, h int32) {
 		senNewMsg(r, msg, h)
 	}
 }
+ */
 
 func (s *server) GetPrivKey(who [20]byte) * btcec.PrivateKey {
 	return cfg.privateKeys

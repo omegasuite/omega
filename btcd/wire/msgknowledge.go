@@ -21,6 +21,36 @@ type MsgKnowledge struct {
 	Signatures [][]byte
 }
 
+type MsgKnowledgeDone MsgKnowledge
+
+func (msg * MsgKnowledgeDone) MaxPayloadLength(pver uint32) uint32 {
+	return (*MsgKnowledge)(msg).MaxPayloadLength(pver)
+}
+func (msg * MsgKnowledgeDone) BtcEncode(w io.Writer, pver uint32, t MessageEncoding) error {
+	return (*MsgKnowledge)(msg).BtcEncode(w, pver, t)
+}
+func (msg * MsgKnowledgeDone) BtcDecode(r io.Reader, pver uint32, t MessageEncoding) error {
+	return (*MsgKnowledge)(msg).BtcDecode(r, pver, t)
+}
+func (msg * MsgKnowledgeDone) Block() int32 {
+	return (*MsgKnowledge)(msg).Block()
+}
+func (msg * MsgKnowledgeDone) Sign(key *btcec.PrivateKey) {
+	(*MsgKnowledge)(msg).Sign(key)
+}
+func (msg * MsgKnowledgeDone) DoubleHashB() []byte {
+	return (*MsgKnowledge)(msg).DoubleHashB()
+}
+func (msg * MsgKnowledgeDone) GetSignature() []byte {
+	return (*MsgKnowledge)(msg).GetSignature()
+}
+func (msg * MsgKnowledgeDone) Sender() []byte {
+	return (*MsgKnowledge)(msg).Sender()
+}
+func (msg * MsgKnowledgeDone) Command() string {
+	return CmdKnowledgeDone
+}
+
 func (msg * MsgKnowledge) Sign(key *btcec.PrivateKey) {
 	// to make interface happy. never used.
 }

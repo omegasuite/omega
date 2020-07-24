@@ -64,6 +64,7 @@ const (
 
 	// consensus protocol message
 	CmdKnowledge = "knowledge"
+	CmdKnowledgeDone = "knowledgeDone"
 	CmdCandidate = "candidate"
 	CmdCandidateReply = "candidReply"
 	CmdRelease = "release"
@@ -216,6 +217,9 @@ func makeEmptyMessage(command string) (Message, error) {
 
 	case CmdKnowledge:
 		msg = &MsgKnowledge{}
+
+	case CmdKnowledgeDone:
+		msg = &MsgKnowledgeDone{}
 
 	case CmdCandidate:
 		msg = &MsgCandidate{}

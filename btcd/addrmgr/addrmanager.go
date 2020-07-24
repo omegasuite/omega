@@ -979,9 +979,9 @@ func (a *AddrManager) SetServices(addr *wire.NetAddress, services common.Service
 
 // AddLocalAddress adds na to the list of known local addresses to advertise
 // with the given priority.
-func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPriority) error {
+func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPriority) (AddressPriority, error) {
 	if !IsRoutable(na) {
-		return fmt.Errorf("address %s is not routable", na.IP)
+		return InterfacePrio, fmt.Errorf("address %s is not routable", na.IP)
 	}
 
 	a.lamtx.Lock()
@@ -989,6 +989,7 @@ func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPrior
 
 	key := NetAddressKey(na)
 	la, ok := a.localAddresses[key]
+
 	if !ok || la.score < priority {
 		if ok {
 			if la.origin == priority {
@@ -1003,8 +1004,11 @@ func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPrior
 				origin: priority,
 			}
 		}
+	} else {
+		priority = la.origin
 	}
-	return nil
+
+	return priority, nil
 }
 
 func (a *AddrManager) PhaseoutCommittee(na *wire.NetAddress) {

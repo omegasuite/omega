@@ -162,28 +162,37 @@ type updatePeerHeightsMsg struct {
 
 type committeeState struct {
 	peers []*serverPeer
-	bestBlock int32
-	bestMinerBlock  int32
-	lastBlockSent	int32
-	lastMinerBlockSent	int32
-}
-
-func newCommitteeState() * committeeState {
-	return &committeeState{	peers: make([]*serverPeer, 0) }
+	member [20]byte
+	queue chan wire.Message
+	address string
+	minerHeight int32
 }
 
 // peerState maintains state of inbound, persistent, outbound peers as well
 // as banned peers and outbound groups.
 type peerState struct {
+	connManager     *connmgr.ConnManager
 	inboundPeers    map[int32]*serverPeer
 	outboundPeers   map[int32]*serverPeer
 	persistentPeers map[int32]*serverPeer
 	banned          map[string]time.Time
 	outboundGroups  map[string]int
 
-	// connected committee members. it is a map into index of outboundPeers
+	// committee members.
 	cmutex			sync.Mutex
 	committee       map[[20]byte]*committeeState
+}
+
+func (p * peerState) NewCommitteeState(m [20]byte) * committeeState {
+	t := &committeeState{
+		peers: make([]*serverPeer, 0),
+		queue: make(chan wire.Message, 50),
+		member: m,
+	}
+
+	go p.CommitteeOut(t)
+
+	return t
 }
 
 func (p * peerState) IsConnected(c *connmgr.ConnReq) bool {
@@ -1557,6 +1566,25 @@ func (sp *serverPeer) OnWrite(_ *peer.Peer, bytesWritten int, msg wire.Message, 
 	sp.server.AddBytesSent(uint64(bytesWritten))
 }
 
+// PushGetBlock is invoked when consensus handler receives a moot consensus message
+// which indicates a consensus peer is behind us.
+func (sp *serverPeer) PushGetBlock(p *peer.Peer) {
+	mlocator, err := sp.server.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+	if err != nil {
+		btcdLog.Infof("OnBlock: failed to get miner chain locator: ", err.Error())
+		return
+	}
+
+	locator, err := sp.server.chain.LatestBlockLocator()
+	if err != nil {
+		btcdLog.Infof("OnBlock: failed to get tx chain locator: ", err.Error())
+		return
+	}
+
+	sp.server.syncManager.AddSyncJob(p, locator, mlocator, &zeroHash, &zeroHash)
+	btcdLog.Infof("OnBlock: Queueing a new sync job with %s", p.String())
+}
+
 // randomUint16Number returns a random uint16 in a specified input range.  Note
 // that the range is in zeroth ordering; if you pass it 1800, you will get
 // values from 0 to 1800.
@@ -2050,12 +2078,10 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 			state.outboundPeers[sp.ID()] = sp
 		}
 		if sp.connReq.Committee > 0 {
-//			consensusLog.Infof("handleAddPeerMsg Lock")
 			if _,ok := state.committee[sp.connReq.Miner]; !ok {
-				state.committee[sp.connReq.Miner] = newCommitteeState()
+				state.committee[sp.connReq.Miner] = state.NewCommitteeState(sp.connReq.Miner)
 			}
 			state.committee[sp.connReq.Miner].peers = append(state.committee[sp.connReq.Miner].peers, sp)
-//			consensusLog.Infof("handleAddPeerMsg Unlock")
 
 			sp.Peer.Committee = sp.connReq.Committee
 			sb, _ := s.chain.Miners.BlockByHeight(sp.connReq.Committee)
@@ -2456,6 +2482,7 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 			OnAckInvitation:	sp.OnAckInvitation,
 			OnRead:         sp.OnRead,
 			OnWrite:        sp.OnWrite,
+			PushGetBlock:	sp.PushGetBlock,
 
 			// Note: The reference client currently bans peers that send alerts
 			// not signed with its key.  We could verify against their key, but
@@ -2546,6 +2573,7 @@ func (s *server) peerHandler() {
 	srvrLog.Tracef("Starting peer handler")
 
 	state := &peerState{
+		connManager: s.connManager,
 		inboundPeers:    make(map[int32]*serverPeer),
 		persistentPeers: make(map[int32]*serverPeer),
 		outboundPeers:   make(map[int32]*serverPeer),
@@ -3009,7 +3037,7 @@ out:
 				}
 				na := wire.NewNetAddressIPPort(externalip, uint16(listenPort),
 					s.services)
-				err = s.addrManager.AddLocalAddress(na, addrmgr.UpnpPrio)
+				_, err = s.addrManager.AddLocalAddress(na, addrmgr.UpnpPrio)
 				if err != nil {
 					// XXX DeletePortMapping?
 				}
@@ -3608,7 +3636,7 @@ func initListeners(amgr *addrmgr.AddrManager, listenAddrs []string, services com
 				continue
 			}
 
-			err = amgr.AddLocalAddress(na, addrmgr.ManualPrio)
+			_, err = amgr.AddLocalAddress(na, addrmgr.ManualPrio)
 			if err != nil {
 				amgrLog.Warnf("Skipping specified external IP: %v", err)
 			}

@@ -209,7 +209,6 @@ func btcdMain(serverChan chan<- *server) error {
 	if cfg.privateKeys != nil && cfg.Generate {
 		go consensus.Consensus(server, cfg.signAddress, activeNetParams.Params)
 		btcdLog.Infof("Address of miner %x", cfg.signAddress.ScriptAddress())
-		go server.trying()
 	}
 
 	server.Start()

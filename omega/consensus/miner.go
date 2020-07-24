@@ -41,14 +41,12 @@ var Debug        int // hash of last block
 type PeerNotifier interface {
 	MyPlaceInCommittee(r int32) int32
 	CommitteeMsg([20]byte, wire.Message) bool
-	CommitteeCast(wire.Message)
-	CommitteeMsgMG([20]byte, wire.Message, int32)
-	CommitteeCastMG([20]byte, wire.Message, int32)
-	NewConsusBlock(block * btcutil.Block)
-	GetPrivKey([20]byte) * btcec.PrivateKey
-	BestSnapshot() * blockchain.BestState
-	MinerBlockByHeight(int32) (* wire.MinerBlock,error)
-	SubscribeChain(func (*blockchain.Notification))
+	CommitteeMsgMG([20]byte, wire.Message)
+	NewConsusBlock(block *btcutil.Block)
+	GetPrivKey([20]byte) *btcec.PrivateKey
+	BestSnapshot() *blockchain.BestState
+	MinerBlockByHeight(int32) (*wire.MinerBlock, error)
+	SubscribeChain(func(*blockchain.Notification))
 	CommitteePolling()
 	ChainSync(chainhash.Hash, [20]byte)
 }
@@ -108,14 +106,6 @@ func ServeBlock(h * chainhash.Hash) *btcutil.Block {
 	}
 	return nil
 }
-
-/*
-func ProcessHeader(b *blockchain.BlockChain, block *MsgMerkleBlock) {
-	flags := blockchain.BFNoConnect
-	fmt.Printf("Consensus for header at %d", block.Height)
-	newheadch <- newhead { b,block, flags }
-}
-*/
 
 var miner * Miner
 
@@ -297,14 +287,13 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 	}
 }
 
-func HandleMessage(m Message) * chainhash.Hash {
+func HandleMessage(m Message) (bool, * chainhash.Hash) {
 	// the messages here are consensus messages. specifically, it does not include block msg.
 	h := m.Block()
 	bh := miner.server.BestSnapshot().Height
 
-	if h < bh {
-//		miner.server.CommitteePolling()
-		return nil
+	if h <= bh {
+		return true, nil
 	}
 
 	miner.syncMutex.Lock()
@@ -316,7 +305,7 @@ func HandleMessage(m Message) * chainhash.Hash {
 	} else if miner.Sync[h].Done {
 		miner.syncMutex.Unlock()
 		log.Infof("syncer has finished with %h. Ignore this message", h)
-		return nil
+		return false, nil
 	}
 	miner.syncMutex.Unlock()
 	
@@ -349,15 +338,19 @@ func HandleMessage(m Message) * chainhash.Hash {
 			hash = &m.(*wire.MsgSignature).M
 		}
 
+		if len(s.messages) > 1 {
+			hash = nil
+		}
+
 		if len(s.messages) > (wire.CommitteeSize - 1) * 10 {
 			log.Infof("too many message are queued. Discard.")
-			return hash
+			return false, nil
 		}
 	}
 
 	s.messages <- m
 
-	return hash
+	return false, hash
 }
 
 func UpdateChainHeight(latestHeight int32) {
