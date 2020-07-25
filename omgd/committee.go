@@ -873,10 +873,12 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 
 	if isMainchain, orphan, err, _ := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil && !orphan && isMainchain {
 		consensusLog.Infof("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
-	} else if err != nil {
-		consensusLog.Infof("consensus faield to process ProcessBlock!!! %s", err.Error())
-		if r,ok := err.(blockchain.RuleError); !ok || r.ErrorCode != blockchain.ErrDuplicateBlock {
-			s.chain.ProcessBlock(m, blockchain.BFNone) // for debugging
+	} else {
+		s.chain.SendNotification(blockchain.NTBlockRejected, m)
+		if err != nil {
+			consensusLog.Infof("consensus faield to process ProcessBlock!!! %s", err.Error())
+//		if r,ok := err.(blockchain.RuleError); !ok || r.ErrorCode != blockchain.ErrDuplicateBlock {
+//			s.chain.ProcessBlock(m, blockchain.BFNone) // for debugging
 		}
 	}
 }

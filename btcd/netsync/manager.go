@@ -1747,7 +1747,7 @@ out:
 			sm.updateSyncPeer()
 
 		case m := <-sm.msgChan:
-//			log.Infof("blockHandler took a message from sm.msgChan: ", reflect.TypeOf(m).String())
+			log.Infof("blockHandler took a message from sm.msgChan: ", reflect.TypeOf(m).String())
 			sm.lastBlockOp = spew.Sdump(m)
 
 			switch msg := m.(type) {
@@ -1838,7 +1838,7 @@ out:
 					"handler: %T", msg)
 			}
 
-//			log.Infof("blockHandler finished with message: ", reflect.TypeOf(m).String())
+			log.Infof("blockHandler finished with message: ", reflect.TypeOf(m).String())
 
 		case <-sm.quit:
 			break out

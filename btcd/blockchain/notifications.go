@@ -29,6 +29,9 @@ const (
 	// NTBlockDisconnected indicates the associated block was disconnected
 	// from the main chain.
 	NTBlockDisconnected
+
+	// NTBlockRejected indicates the associated block was rejected.
+	NTBlockRejected
 )
 
 // notificationTypeStrings is a map of notification types back to their constant
@@ -37,6 +40,7 @@ var notificationTypeStrings = map[NotificationType]string{
 	NTBlockAccepted:     "NTBlockAccepted",
 	NTBlockConnected:    "NTBlockConnected",
 	NTBlockDisconnected: "NTBlockDisconnected",
+	NTBlockRejected: "NTBlockRejected",
 }
 
 // String returns the NotificationType in human-readable form.
@@ -70,7 +74,7 @@ func (b *BlockChain) Subscribe(callback NotificationCallback) {
 // sendNotification sends a notification with the passed type and data if the
 // caller requested notifications by providing a callback function in the call
 // to New.
-func (b *BlockChain) sendNotification(typ NotificationType, data interface{}) {
+func (b *BlockChain) SendNotification(typ NotificationType, data interface{}) {
 	// Generate and send the notification.
 	n := Notification{Type: typ, Data: data}
 	b.notificationsLock.RLock()

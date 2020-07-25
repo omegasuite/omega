@@ -313,7 +313,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 
 func (m *CPUMiner) notice (notification *blockchain.Notification) {
 	switch notification.Type {
-	case blockchain.NTBlockConnected:
+	case blockchain.NTBlockConnected, blockchain.NTBlockRejected:
 		if !m.started {
 			return
 		}
@@ -360,6 +360,9 @@ out:
 				if !ok { // chan closed. we have received stop sig.
 					break out
 				} else {
+					for len(m.connch) > 0 {
+						<-m.connch
+					}
 					lastblkgen = time.Now().Unix()
 				}
 

@@ -70,15 +70,6 @@ type newblock struct {
 	flags blockchain.BehaviorFlags
 }
 
-/*
-type newhead struct {
-	chain *blockchain.BlockChain
-	head *MsgMerkleBlock
-	flags blockchain.BehaviorFlags
-}
-
- */
-
 var newblockch chan newblock
 // var newheadch chan newhead
 
@@ -404,11 +395,14 @@ func DebugInfo() {
 	for h,s := range miner.Sync {
 		if h < top - 2 {
 			delete(miner.Sync, h)
+			log.Infof("\nStopping %d", h)
 			go s.Quit()
 		}
 	}
+	log.Infof("\nDone examing syner heights")
 	if s,ok := miner.Sync[top]; ok {
-		if len(s.repeating) == 0 {
+		if len(s.repeating) == 0 && s.Runnable {
+			log.Infof("\nSendng repeating to %d", top)
 			s.repeating <- struct{}{}
 		}
 		s.DebugInfo()

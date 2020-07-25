@@ -634,7 +634,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	// The caller would typically want to react with actions such as
 	// updating wallets.
 	b.ChainLock.Unlock()
-	b.sendNotification(NTBlockConnected, block)
+	b.SendNotification(NTBlockConnected, block)
 	b.ChainLock.Lock()
 
 	return nil
@@ -795,7 +795,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	// chain.  The caller would typically want to react with actions such as
 	// updating wallets.
 	b.ChainLock.Unlock()
-	b.sendNotification(NTBlockDisconnected, block)
+	b.SendNotification(NTBlockDisconnected, block)
 	b.ChainLock.Lock()
 
 	return nil
