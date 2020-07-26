@@ -215,12 +215,10 @@ func (ps *peerState) Count() int {
 // ForAllOutboundPeers is a helper function that runs closure on all outbound
 // peers known to peerState.
 func (ps *peerState) ForAllOutboundPeers(closure func(sp *serverPeer)) {
-	btcdLog.Infof("cmutex.Lock @ ForAllOutboundPeers")
 	ps.cmutex.Lock()
 
 	ps.forAllOutboundPeers(closure)
 
-	btcdLog.Infof("cmutex.Unlock")
 	ps.cmutex.Unlock()
 }
 
@@ -236,16 +234,13 @@ func (ps *peerState) forAllOutboundPeers(closure func(sp *serverPeer)) {
 // ForAllPeers is a helper function that runs closure on all peers known to
 // peerState.
 func (ps *peerState) ForAllPeers(closure func(sp *serverPeer)) {
-//	btcdLog.Infof("cmutex.Lock @ ForAllPeers")
 	ps.cmutex.Lock()
 	ps.forAllPeers(closure)
 
-//	btcdLog.Infof("cmutex.Unlock")
 	ps.cmutex.Unlock()
 }
 
 func (ps *peerState) forAllPeers(closure func(sp *serverPeer)) {
-	//	btcdLog.Infof("cmutex.Lock @ ForAllPeers")
 	for _, e := range ps.inboundPeers {
 		closure(e)
 	}
@@ -843,30 +838,10 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 // OnGetBlocks is invoked when a peer receives a getblocks bitcoin
 // message.
 func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
-	btcdLog.Infof("OnGetBlocks from %s", p.String())
-
   	invMsg := wire.NewMsgInv()
-/*
-  	ht := int32(len(msg.TxBlockLocatorHashes))
-  	if ht > 10 {
-  		ht = (1 << (ht - 10)) + 9
-	}
-	mt := int32(len(msg.MinerBlockLocatorHashes))
-	if mt > 12 {
-		mt = (1 << (mt - 10)) + 9
-	}
- */
 
 	chain := sp.server.chain
 	mchain := sp.server.chain.Miners.(*minerchain.MinerChain)
-/*
-	if ht > chain.BestSnapshot().Height + wire.MaxBlocksPerMsg && mt > mchain.BestSnapshot().Height + wire.MaxBlocksPerMsg {
-		btcdLog.Infof("OnGetBlocks return w/o doing anything because %d > %d && %d > %d",
-			ht, chain.BestSnapshot().Height + wire.MaxBlocksPerMsg,
-			mt, mchain.BestSnapshot().Height + wire.MaxBlocksPerMsg)
-		return
-	}
- */
 
 	// Find the most recent known block in the best chain based on the block
 	// locator and fetch all of the block hashes after it until either
@@ -963,13 +938,9 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 		sp.continueHash = continueHash
 		sp.continueMinerHash = mcontinueHash
 		sp.QueueMessage(invMsg, nil)
-		btcdLog.Infof("OnBlock done with sending %d invs", len(invMsg.InvList))
 	} else {
 		sp.QueueMessage(invMsg, nil)
-		btcdLog.Infof("Signal OnBlock finished by sending 0 invs")
 	}
-
-	btcdLog.Infof("len(invMsg.InvList) = %d", len(invMsg.InvList))
 
 	if len(invMsg.InvList) < wire.MaxBlocksPerMsg {
 		h1 := true
@@ -985,24 +956,16 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 			// we have sent everything to them and they have something we don't
 			mlocator, err := sp.server.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 			if err != nil {
-				btcdLog.Infof("OnBlock: failed to get miner chain locator: ", err.Error())
 				return
 			}
 
 			locator, err := sp.server.chain.LatestBlockLocator()
 			if err != nil {
-				btcdLog.Infof("OnBlock: failed to get tx chain locator: ", err.Error())
 				return
 			}
 
 			sp.server.syncManager.AddSyncJob(p, locator, mlocator, &zeroHash, &zeroHash)
-			btcdLog.Infof("OnBlock: Queueing a new sync job with %s", p.String())
-		} else {
-			btcdLog.Infof("OnBlock: We are in sync with %s", p.String())
 		}
-
-//		sp.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
-//		btcdLog.Infof("OnBlock done with sending a PushGetBlocksMsg")
 	}
 }
 
@@ -1571,18 +1534,15 @@ func (sp *serverPeer) OnWrite(_ *peer.Peer, bytesWritten int, msg wire.Message, 
 func (sp *serverPeer) PushGetBlock(p *peer.Peer) {
 	mlocator, err := sp.server.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
 	if err != nil {
-		btcdLog.Infof("OnBlock: failed to get miner chain locator: ", err.Error())
 		return
 	}
 
 	locator, err := sp.server.chain.LatestBlockLocator()
 	if err != nil {
-		btcdLog.Infof("OnBlock: failed to get tx chain locator: ", err.Error())
 		return
 	}
 
 	sp.server.syncManager.AddSyncJob(p, locator, mlocator, &zeroHash, &zeroHash)
-	btcdLog.Infof("OnBlock: Queueing a new sync job with %s", p.String())
 }
 
 // randomUint16Number returns a random uint16 in a specified input range.  Note
@@ -1816,8 +1776,6 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		sp.continueHash = nil
 	}
 
-	btcdLog.Infof("Send the block msg")
-
 	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)	// | wire.FullEncoding)
 
 	return nil
@@ -1825,8 +1783,6 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 
 func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan chan<- bool,
 	waitChan <-chan bool, encoding wire.MessageEncoding) error {
-
-//	btcdLog.Infof("pushMinerBlockMsg: %s", hash.String())
 
 	// Fetch the raw block bytes from the database.
 	var blockBytes []byte
@@ -1836,9 +1792,6 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 		return err
 	})
 	if err != nil {
-		btcdLog.Infof("Unable to fetch requested block hash %s: %s",
-			hash.String(), err.Error())
-
 		if doneChan != nil {
 			doneChan <- false
 		}
@@ -1849,9 +1802,6 @@ func (s *server) pushMinerBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneCha
 	var msgBlock wire.MingingRightBlock
 	err = msgBlock.Deserialize(bytes.NewReader(blockBytes))
 	if err != nil {
-		btcdLog.Infof("Unable to deserialize requested block hash "+
-			"%s: %s", hash.String(), err.Error())
-
 		if doneChan != nil {
 			doneChan <- false
 		}
@@ -2067,7 +2017,6 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	// Add the new peer and start it.
 	srvrLog.Debugf("New peer %s", sp)
 
-//	btcdLog.Infof("cmutex.Lock @ handleAddPeerMsg")
 	state.cmutex.Lock()
 	if sp.Inbound() {
 		state.inboundPeers[sp.ID()] = sp
@@ -2340,7 +2289,6 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 			return
 		}
 
-//		btcdLog.Infof("cmutex.Lock @ connectNodeMsg")
 		state.cmutex.Lock()
 		for _, peer := range state.persistentPeers {
 			if peer.Addr() == msg.addr {
@@ -2353,7 +2301,6 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 				return
 			}
 		}
-//		btcdLog.Infof("cmutex.Unlock")
 		state.cmutex.Unlock()
 
 		netAddr, err := addrStringToNetAddr(msg.addr)
@@ -2369,14 +2316,12 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 		})
 		msg.reply <- nil
 	case removeNodeMsg:
-//		btcdLog.Infof("cmutex.Lock @ removeNodeMsg")
 		state.cmutex.Lock()
 		found := disconnectPeer(state.persistentPeers, msg.cmp, func(sp *serverPeer) {
 			// Keep group counts ok since we remove from
 			// the list now.
 			state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
 		})
-//		btcdLog.Infof("cmutex.Unlock")
 		state.cmutex.Unlock()
 
 		if found {
@@ -2394,13 +2339,11 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 	// Request a list of the persistent (added) peers.
 	case getAddedNodesMsg:
 		// Respond with a slice of the relevant peers.
-//		btcdLog.Infof("cmutex.Lock @ getAddedNodesMsg")
 		state.cmutex.Lock()
 		peers := make([]*serverPeer, 0, len(state.persistentPeers))
 		for _, sp := range state.persistentPeers {
 			peers = append(peers, sp)
 		}
-//		btcdLog.Infof("cmutex.Unlock")
 		state.cmutex.Unlock()
 		msg.reply <- peers
 	case disconnectNodeMsg:

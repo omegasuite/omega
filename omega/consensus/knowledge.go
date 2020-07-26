@@ -20,6 +20,7 @@ import (
 type Knowledgebase struct {
 	syncer *Syncer
 	Knowledge [][]int64	// row = knowledge; col = member; bits = know who knows the fact
+	rejections int64	// who has rejected out condidacy announcement
 	status    uint // 0 normal, 1 candidate, 2 consensus, 3 released
 }
 
@@ -52,7 +53,7 @@ func (k * Knowledgebase) ProcessTree(t int32) {
 
 func CreateKnowledge(s *Syncer) *Knowledgebase {
 	var k Knowledgebase
-	k = Knowledgebase{s, make([][]int64, wire.CommitteeSize), 0}
+	k = Knowledgebase{s, make([][]int64, wire.CommitteeSize), 0, 0}
 
 	for i := range k.Knowledge {
 		k.Knowledge[i] = make([]int64, wire.CommitteeSize)
@@ -72,6 +73,10 @@ func (self *Knowledgebase) print() {
 	}
 }
 
+func (self *Knowledgebase) Rejected(who int32) {
+	self.rejections |= 1 << who
+}
+
 func (self *Knowledgebase) Debug(w http.ResponseWriter, r *http.Request) {
 	for ii, jj := range self.Knowledge {
 		fmt.Fprintf(w, "%d => ", ii)
@@ -85,19 +90,24 @@ func (self *Knowledgebase) Debug(w http.ResponseWriter, r *http.Request) {
 var Mapping16 = []int{0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4}
 
 func (self *Knowledgebase) Qualified(who int32) bool {
-		j := who
-		qualified := 0
+	j := who
+	qualified := 0
+	rej := ^self.rejections
+	if who != self.syncer.Myself {
+		rej = ^0
+	}
 
-		for i := int32(0); i < wire.CommitteeSize; i++ {
-			s := 0
-			for k := uint(0); k < 64; k += 4 {
-				s += Mapping16[((self.Knowledge[j][i] >> k) & 0xF)]
-			}
-			if s >= wire.CommitteeSigs {
-				qualified++
-			}
+	for i := int32(0); i < wire.CommitteeSize; i++ {
+		s := 0
+		for k := uint(0); k < 64; k += 4 {
+			s += Mapping16[(((self.Knowledge[j][i] & rej) >> k) & 0xF)]
 		}
-		if qualified >= wire.CommitteeSigs {
+		if s >= wire.CommitteeSigs {
+			qualified++
+		}
+	}
+
+	if qualified >= wire.CommitteeSigs {
 			return true
 		}
 

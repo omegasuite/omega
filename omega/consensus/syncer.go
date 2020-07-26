@@ -156,7 +156,6 @@ func (self *Syncer) repeater() {
 				continue
 			}
 
-			log.Infof("Repeater: knowledge to %x", p.From)
 			repeated[self.Members[p.From]] = struct{}{}
 
 			// send it
@@ -165,6 +164,8 @@ func (self *Syncer) repeater() {
 			pp.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
 			to := pp.From
 			pp.From = self.Me
+
+			log.Infof("Repeater: Sending knowledge info about %s to %s", pp.Finder, to)
 
 			self.CommitteeMsg(to, &pp)
 		}
@@ -183,6 +184,7 @@ func (self *Syncer) repeater() {
 			if i == self.Myself {
 				continue
 			}
+			log.Infof("Repeater: Sending my knowledge info to %s", p)
 			self.CommitteeMsg(p, k)
 		}
 	}
@@ -200,7 +202,7 @@ func (self *Syncer) repeater() {
 			d.Better = fmp
 			d.Sign(miner.server.GetPrivKey(self.Me))
 
-			log.Infof("Candidate: Consent candicacy by %x", from)
+			log.Infof("Repeater: Consent candicacy by %x", from)
 
 			self.CommitteeMsgMG(from, &d)
 		}
@@ -211,7 +213,7 @@ func (self *Syncer) repeater() {
 	if self.idles > 2 {
 		// resend candidacy
 		if self.agreed == self.Myself {
-			log.Infof("Repeater: cast candidacy %d", self.agreed)
+			log.Infof("Repeater: cast my candidacy %d", self.agreed)
 			msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
 			msg.Sign(miner.server.GetPrivKey(self.Me))
 			self.CommitteeCastMG(msg)
@@ -259,8 +261,9 @@ func (self *Syncer) Release(msg * wire.MsgRelease) {
 
 	if self.agreed == self.Members[msg.From] {
 		//		self.knowledges.ProcFlatKnowledge(msg.Better, msg.K)
-
 		self.agreed = -1
+
+		self.candidacy()
 		/*
 			self.agreed = msg.Better
 			d := wire.MsgCandidateResp{Height: msg.Height, K: self.makeAbout(msg.Better).K,
@@ -406,8 +409,8 @@ func (self *Syncer) run() {
 				if !self.validateMsg(k.From, nil, m) {
 					continue
 				}
-				log.Infof("candidateResp: From = %x\nHeight = %d\nM = %s",
-					k.From, k.Height, k.M.String())
+				log.Infof("candidateResp: From = %x\nHeight = %d\nM = %s %s",
+					k.From, k.Height, k.M.String(), k.Reply)
 				self.candidateResp(k)
 
 			case *wire.MsgRelease:			// grant a release from duty
@@ -705,9 +708,13 @@ func (self *Syncer) ckconsensus() {
 }
 
 func (self *Syncer) makeRelease(better int32) *wire.MsgRelease {
+	var h chainhash.Hash
+	if better != -1 {
+		h = self.forest[self.Names[better]].hash //self.makeAbout(better).M,
+	}
 	d := &wire.MsgRelease{
 		Better: better,
-		M:      self.forest[self.Names[better]].hash,	//self.makeAbout(better).M,
+		M:      h,
 		Height: self.Height,
 		From:   self.Me,
 	}
@@ -784,22 +791,22 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 			self.agrees[self.Members[msg.From]] = struct{}{}
 			self.ckconsensus()
 		}
+	} else if msg.Reply == "cnst" && self.agreed == -1 {
+		log.Infof("consent received from %x but I am not taking it", msg.From)
+		self.CommitteeMsgMG(msg.From, self.makeRelease(self.agreed))
 	} else if msg.Reply == "rjct" && self.agreed == self.Myself {
 		log.Infof("rejection received from %x", msg.From)
+		self.knowledges.Rejected(self.Members[msg.From])
 
 		switch msg.Better {
 		case -1:
-			// reject because not in committee. can't help
+			// reject because signed another candidate
 			return
 
-		case -2:
-			// reject because not Qualified. send knowledge about what I have agreed
-			self.dupKnowledge(self.Members[msg.From])
-			break
-
 		default:
+			// reject because there is a better choice
 			t,ok := self.forest[self.Names[msg.Better]]
-			if !ok || t.block == nil{
+			if !ok || t.block == nil {
 				self.pull(msg.M, msg.Better)
 //				self.pending[wire.CmdBlock] = append(self.pending[wire.CmdBlock], msg)
 				return
@@ -807,7 +814,8 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 			// check if Better is indeed better, if yes, release it (in yield)
 			if !self.yield(msg.Better) {
 				// no. we are better, send knowledge about it
-				self.dupKnowledge(self.Members[msg.From])
+				// peer is misbehaving, because we should agree on who is better
+//				self.dupKnowledge(self.Members[msg.From])
 				if self.agreed == self.Myself {
 					msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
 					msg.Sign(miner.server.GetPrivKey(self.Me))
@@ -816,8 +824,11 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 
 					self.CommitteeMsgMG(self.Me, msg) // ask again
 				}
+			} else {
+				self.agreed = -1
 			}
 		}
+
 /*
 		if self.knowledges.ProcFlatKnowledge(msg.Better, msg.K) {
 			// gained more knowledge, check if we are better than msg.better, if not
@@ -921,6 +932,8 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 	}
 
 	if !self.knowledges.Qualified(fmp) {
+		// we might not have enough info. so keep silent.
+/*
 		d.Reply = "rjct"
 		d.Better = -2
 		d.Sign(miner.server.GetPrivKey(self.Me))
@@ -928,6 +941,7 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 		log.Infof("Candidate: Reject candicacy by %x", self.Names[fmp])
 
 		self.CommitteeMsgMG(self.Names[fmp], &d)
+ */
 		return
 	}
 
