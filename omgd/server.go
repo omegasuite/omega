@@ -756,7 +756,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	numAdded := 0
 	notFound := wire.NewMsgNotFound()
 
-//	btcdLog.Infof("OnGetData：getting % items", len(msg.InvList))
+	btcdLog.Infof("OnGetData：getting % items", len(msg.InvList))
 
 	length := len(msg.InvList)
 	// A decaying ban score increase is applied to prevent exhausting resources
@@ -891,19 +891,20 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 
 	if len(hashList) > 0 {
 		rot = chain.Rotation(hashList[0])
-//		continueHash = &hashList[0]
 	}
 
 	if len(mhashList) > 0 {
-//		mcontinueHash = &mhashList[0]
 		mblock,_ = mchain.BlockByHash(&mhashList[0])
 	}
+
+	nonce := int32(-1)
 
 	for i, j := 0,0; i < len(hashList) || j < len(mhashList); m++ {
 		if m == wire.MaxBlocksPerMsg {
 			break
 		}
-		if i < len(hashList) && (mblock == nil || rot < mblock.Height()) {
+		if i < len(hashList) && (mblock == nil ||
+			(nonce > 2 - wire.MINER_RORATE_FREQ && rot + 1 < mblock.Height())) {
 			th := hashList[i]
 			iv := wire.NewInvVect(common.InvTypeWitnessBlock, &th)
 			invMsg.AddInvVect(iv)
@@ -915,8 +916,11 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 				if h.Nonce > 0 {
 					rot += wire.POWRotate
 				} else if h.Nonce <= -wire.MINER_RORATE_FREQ {
-					rot++
+					rot = -(h.Nonce + wire.MINER_RORATE_FREQ)
 				}
+				nonce = h.Nonce
+			} else {
+				continueHash = nil
 			}
 		} else {
 			th := mhashList[j]
@@ -929,6 +933,7 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 				mblock, _ = mchain.BlockByHash(&th)
 			} else {
 				mblock = nil
+				mcontinueHash = nil
 			}
 		}
 	}
@@ -1680,6 +1685,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 			err = nil
 		} else if block := s.cpuMiner.CurrentBlock(hash); block != nil {
 			ht := s.chain.BestSnapshot().Height
+			peerLog.Infof("fetch consensus block, height = %d", ht)
 			if heightSent < ht {
 				// sending the requesting peer new inventory
 				inv := wire.NewMsgInv()
@@ -1720,7 +1726,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 			msgBlock = * block.MsgBlock()
 			err = nil
 		} else {
-			peerLog.Tracef("Unable to fetch requested block hash %v: %v",
+			peerLog.Infof("Unable to fetch requested block hash %v: %v",
 				hash, err)
 
 			if doneChan != nil {
@@ -1755,6 +1761,10 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 	// We only send the channel for this message if we aren't sending
 	// an inv straight after.
 //	var dc chan<- bool
+
+	// TBD: be careful here. consider the situation when reqs for newly mined block
+	// and sync reqs are mixed. how do we handle continueHash? here and mining
+	// right blocks
 	continueHash := sp.continueHash
 	sendInv := continueHash != nil && continueHash.IsEqual(hash)
 
@@ -1775,6 +1785,8 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		sp.QueueMessage(invMsg, doneChan)
 		sp.continueHash = nil
 	}
+
+	peerLog.Infof("sending block %d", msgBlock.Transactions[0].TxIn[0].PreviousOutPoint.Index)
 
 	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)	// | wire.FullEncoding)
 

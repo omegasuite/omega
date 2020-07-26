@@ -184,7 +184,7 @@ func (self *Syncer) repeater() {
 			if i == self.Myself {
 				continue
 			}
-			log.Infof("Repeater: Sending my knowledge info to %s", p)
+			log.Infof("Repeater: Sending my knowledge info to %x", p)
 			self.CommitteeMsg(p, k)
 		}
 	}
@@ -252,6 +252,16 @@ func (self *Syncer) repeater() {
 			copy(sigmsg.Signature[btcec.PubKeyBytesLenCompressed:], s)
 
 			self.CommitteeCastMG(&sigmsg)
+		}
+
+		for k, _ := range self.asked {
+			if k == self.Myself {
+				continue
+			}
+			if self.forest[self.Names[k]].block != nil {
+				continue
+			}
+			self.pull(self.forest[self.Names[k]].hash, k)
 		}
 	}
 }

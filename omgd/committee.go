@@ -10,13 +10,13 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/json"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/omegasuite/btcd/addrmgr"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/connmgr"
 	"github.com/omegasuite/omega/consensus"
 	"github.com/omegasuite/omega/minerchain"
-	"github.com/davecgh/go-spew/spew"
 	"math/big"
 	"net"
 	"time"
@@ -40,6 +40,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 		sent := false
 		for _,sp := range s.peers {
 			if !sent && sp.Connected() {
+				btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), sp.Addr())
 				sp.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 				sent = true
 			}
@@ -64,6 +65,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 				}
 			})
 			if len(s.peers) > 0 {
+				btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), s.peers[0].Addr())
 				s.peers[0].QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 				sent = true
 			} else if len(s.address) > 0 {
@@ -74,6 +76,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 
 				var callback = func (q connmgr.ServerPeer) {
 					p := q.(*serverPeer)
+					btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), p.Addr())
 					p.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 
 					s.peers = append(s.peers, p)
@@ -86,6 +89,8 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 						consensus.HandleMessage(reply)
 					}
 				}
+
+				btcdLog.Infof("CommitteeOut: make a connection to %s", msg.Command(), tcp.String())
 
 				go p.connManager.Connect(&connmgr.ConnReq{
 					Addr:      tcp,
@@ -100,6 +105,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 				time.Sleep(connectionRetryInterval)
 				continue
 			} else {
+				btcdLog.Infof("CommitteeOut: can't send %s msg", msg.Command())
 				// should we send invitation?
 				continue
 			}
@@ -688,6 +694,8 @@ func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message) {
 		sp = s.peerState.NewCommitteeState(p)
 		s.peerState.committee[p] = sp
 	}
+
+	btcdLog.Info("Committee Msg %s queued for sending to %x", m.Command(), sp.member)
 	sp.queue <- m
 
 	s.peerState.cmutex.Unlock()

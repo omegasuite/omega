@@ -319,11 +319,15 @@ func (m *CPUMiner) notice (notification *blockchain.Notification) {
 		}
 		switch notification.Data.(type) {
 		case *btcutil.Block:
+			if len(m.connch) > 50 {
+				<- m.connch
+			}
 			m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
 			log.Infof("cpuminer notice: sending %d", notification.Data.(*btcutil.Block).Height())
 		}
 	}
 }
+
 
 func (m *CPUMiner) CurrentBlock(h * chainhash.Hash) * btcutil.Block {
 	if m.minedBlock != nil {

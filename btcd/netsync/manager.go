@@ -162,7 +162,7 @@ type headerNode struct {
 // about a peer.
 type peerSyncState struct {
 	syncCandidate   bool
-//	requestQueue    []*wire.InvVect
+	requestQueue    []*wire.InvVect
 	requestedTxns   map[chainhash.Hash]struct{}
 	requestedBlocks map[chainhash.Hash]int
 	syncTime	int64	// unix time this peer became a sync peer
@@ -313,7 +313,7 @@ func (sm *SyncManager) updateSyncPeer() {
 
 	n := len(sm.syncjobs)
 
-	log.Infof("updateSyncPeer: %d outstanfing jobs", n)
+	log.Infof("updateSyncPeer: %d outstanding jobs", n)
 
 	for n > 0 {
 		j := sm.syncjobs[n - 1]
@@ -393,9 +393,12 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) {
 		bestPeer = peer
 	}
 
-	if bestPeer == nil || bestPeer == p {
-		sm.syncPeer = bestPeer
+	if bestPeer == nil {
 		return
+	}
+
+	if bestPeer == p {
+		sm.syncPeer = bestPeer
 	}
 
 	sm.peerStates[bestPeer].syncTime = time.Now().Unix()
@@ -515,6 +518,7 @@ func (sm *SyncManager) handleNewPeerMsg(peer *peerpkg.Peer) {
 		syncCandidate:   isSyncCandidate,
 		requestedTxns:   make(map[chainhash.Hash]struct{}),
 		requestedBlocks: make(map[chainhash.Hash]int),
+		requestQueue: 	 make([]* wire.InvVect, 0, 1000),
 	}
 
 	// Start syncing by choosing the best candidate if needed.
@@ -1304,15 +1308,6 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		return
 	}
 
-//	log.Infof("handleInvMsg from %s: %d items", imsg.peer.String(), len(imsg.inv.InvList))
-/*
-	for _,r := range imsg.inv.InvList {
-		if r.Type & common.InvTypeBlock == common.InvTypeBlock {
-			log.Infof("requested block: %s", r.Hash.String())
-		}
-	}
- */
-
 	// Attempt to find the final block in the inventory list.  There may
 	// not be one.
 	lastBlock := -1
@@ -1333,11 +1328,9 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	// update the heights of peers based on blocks we've accepted that they
 	// previously announced.
 	if lastBlock != -1 {
-//	if lastBlock != -1 && (peer != sm.syncPeer || sm.current(0)) {
 		peer.UpdateLastAnnouncedBlock(&invVects[lastBlock].Hash)
 	}
 	if lastMinerBlock != -1 {
-//	if lastMinerBlock != -1 && (peer != sm.syncPeer || sm.current(1)) {
 		peer.UpdateLastAnnouncedMinerBlock(&invVects[lastMinerBlock].Hash)
 	}
 
@@ -1347,20 +1340,14 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		//	if lastBlock != -1 && sm.current(0) {
 		blkHeight, err := sm.chain.BlockHeightByHash(&invVects[lastBlock].Hash)
 		if err == nil {
-//			log.Infof("last tx block %s height = %d", invVects[lastBlock].Hash.String(), blkHeight)
 			peer.UpdateLastBlockHeight(blkHeight)
-//		} else {
-//			log.Infof("last tx block %s is new", invVects[lastBlock].Hash.String())
 		}
 	}
 	if lastMinerBlock != -1 {
 		//	if lastMinerBlock != -1 && sm.current(1) {
 		blkHeight, err := sm.chain.Miners.(*minerchain.MinerChain).BlockHeightByHash(&invVects[lastMinerBlock].Hash)
 		if err == nil {
-//			log.Infof("last miner block %s height = %d", invVects[lastMinerBlock].Hash.String(), blkHeight)
 			peer.UpdateLastMinerBlockHeight(blkHeight)
-//		} else {
-//			log.Infof("last miner block %s is new", invVects[lastMinerBlock].Hash.String())
 		}
 	}
 
@@ -1376,14 +1363,11 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	var lastMinerIgnored * wire.InvVect
 	var ignoreMinerrun int
 
-	requestQueue := make([]* wire.InvVect, 0, 1000)
-
 	// Request the advertised inventory if we don't already have it.  Also,
 	// request parent blocks of orphans if we receive one we already have.
 	// Finally, attempt to detect potential stalls due to long side chains
 	// we already have and request more blocks to prevent them.
 	for i, iv := range invVects {
-		// Ignore unsupported inventory types.
 		switch iv.Type {
 		case common.InvTypeBlock:
 		case common.InvTypeMinerBlock:
@@ -1391,6 +1375,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		case common.InvTypeWitnessBlock:
 		case common.InvTypeWitnessTx:
 		default:
+			// Ignore unsupported inventory types.
 			continue
 		}
 
@@ -1423,8 +1408,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 
 			// Add it to the request queue.
 //			log.Infof("%s does not exist add to requestQueue", iv.Hash.String())
-//			state.requestQueue = append(state.requestQueue, iv)
-			requestQueue = append(requestQueue, iv)
+			state.requestQueue = append(state.requestQueue, iv)
 			continue
 		}
 		if (i == lastBlock || i == lastMinerBlock) && len(imsg.inv.InvList) > 1 {
@@ -1432,7 +1416,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// the peer to send us new batch of inv list if any
 			// TBD: optimization: instead of requesting a block which may be a waste,
 			// can we ask for something else?
-			requestQueue = append(requestQueue, iv)
+			state.requestQueue = append(state.requestQueue, iv)
 		}
 
 		if iv.Type & common.InvTypeBlock == common.InvTypeBlock {
@@ -1463,9 +1447,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 								"%v", err)
 							continue
 						}
-//						log.Infof("handleInvMsg: PushGetBlocksMsg from %s because encountered an tx orphan %s", peer.Addr(), iv.Hash.String())
 						sm.AddSyncJob(peer, locator, mlocator, orphanRoot,&zeroHash)
-//						peer.PushGetBlocksMsg(locator, mlocator, orphanRoot, &zeroHash)
 					} else {
 						sm.requestedOrphans[iv.Hash]++
 					}
@@ -1474,8 +1456,6 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				}
 				continue
 			}
-
-//			log.Infof("request %s ignored", iv.Hash.String())
 
 			lastIgnored = iv
 			ignorerun++
@@ -1556,8 +1536,11 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		}
 	}
 
-	if ignorerun + ignoreMinerrun == len(invVects) {
-		// we got nothing new. retry a new sync job
+	if ignorerun + ignoreMinerrun == len(invVects) ||
+		(len(invVects) == 1 && len(sm.syncjobs) == 0 && (!sm.current(0) || !sm.current(1))) {
+		// either we got nothing new. retry a new sync job
+		// or we receive one inv. most likely because of new block, which
+		// could interrupt our sync process
 		mlocator := make([]*chainhash.Hash, 1)
 		tlocator := make([]*chainhash.Hash, 1)
 		if lastIgnored != nil {
@@ -1603,17 +1586,15 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	// the request will be requested on the next inv message.
 	numRequested := 0
 	gdmsg := wire.NewMsgGetData()
-//	requestQueue := state.requestQueue
 
 	resync := false
 	
 	tm := int(time.Now().Unix())
-	for len(requestQueue) != 0 {
-		iv := requestQueue[0]
-		requestQueue[0] = nil
-		requestQueue = requestQueue[1:]
+	for len(state.requestQueue) != 0 {
+		iv := state.requestQueue[0]
+		state.requestQueue[0] = nil
+		state.requestQueue = state.requestQueue[1:]
 
-//		log.Infof("handleInvMsg: send getDate %s %s", iv.Type.String(), iv.Hash.String())
 		switch iv.Type {
 		case common.InvTypeBlock:
 			iv.Type = common.InvTypeWitnessBlock
@@ -1679,9 +1660,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			break
 		}
 	}
-//	state.requestQueue = requestQueue
+
 	if len(gdmsg.InvList) > 0 {
-//		log.Infof("%d requests sent", numRequested)
 		peer.QueueMessage(gdmsg, nil)
 	}
 }
