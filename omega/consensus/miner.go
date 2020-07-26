@@ -20,7 +20,7 @@ import (
 	"github.com/omegasuite/btcutil"
 	"net/http"
 	"sync"
-	"time"
+//	"time"
 )
 
 const (
@@ -82,7 +82,11 @@ func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 	log.Infof("Consensus.ProcessBlock for block %s at %d, flags=%x",
 		block.Hash().String(), block.Height(), flags)
 
+	log.Infof("newblockch.len = %d", len(newblockch))
+
 	newblockch <- newblock { block, flags }
+
+	log.Infof("newblockch.len queued")
 }
 
 func ServeBlock(h * chainhash.Hash) *btcutil.Block {
@@ -182,13 +186,14 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 	log.Info("Consensus running")
 	miner.wg.Add(1)
 
-	ticker := time.NewTicker(time.Second * 10)
+//	ticker := time.NewTicker(time.Second * 10)
 	defer miner.wg.Done()
 
 	polling := true
 	out:
 	for polling {
 		select {
+/*
 		case <-ticker.C:
 			best := miner.server.BestSnapshot()
 			log.Infof("Best tx chain height: %d Last rotation: %d", best.Height, best.LastRotation)
@@ -208,6 +213,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 				}
 			}
 			miner.syncMutex.Unlock()
+ */
 
 		case height := <-miner.updateheight:
 			log.Infof("updateheight %d", height)
@@ -217,6 +223,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 				t.UpdateChainHeight(height)
 			}
 			miner.syncMutex.Unlock()
+			log.Infof("updateheight done")
 
 		case blk := <-newblockch:
 			top := miner.server.BestSnapshot().Height
@@ -225,6 +232,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 				blk.block.Hash().String(), top, bh)
 
 			if bh <= top {
+				log.Infof("newblock ignored")
 				continue
 			}
 
@@ -244,15 +252,18 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 			miner.syncMutex.Unlock()
 
 			if POWStopper != nil {
+				if len(POWStopper) > wire.CommitteeSize {
+					log.Infof("len(POWStopper) = %d", len(POWStopper))
+				}
 				POWStopper <-struct{}{}
 			}
-
 			snr.BlockInit(blk.block)
+			log.Infof("newblock initialized")
 
 		case <- Quit:
 			log.Info("consensus received Quit")
 			polling = false
-			ticker.Stop()
+//			ticker.Stop()
 //			DebugInfo()
 			break out
 		}
@@ -262,7 +273,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 	for i, t := range miner.Sync {
 		log.Infof("Sync %d to Quit", i)
 		delete(miner.Sync, i)
-		go t.Quit()
+		t.Quit()
 	}
 	miner.syncMutex.Unlock()
 
@@ -279,6 +290,10 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 }
 
 func HandleMessage(m Message) (bool, * chainhash.Hash) {
+	if miner.shutdown {
+		return false, nil
+	}
+
 	// the messages here are consensus messages. specifically, it does not include block msg.
 	h := m.Block()
 	bh := miner.server.BestSnapshot().Height
@@ -345,12 +360,18 @@ func HandleMessage(m Message) (bool, * chainhash.Hash) {
 }
 
 func UpdateChainHeight(latestHeight int32) {
+	if miner.shutdown {
+		return
+	}
 	if miner != nil {
 		miner.updateheight <- latestHeight
 	}
 }
 
 func cleaner(top int32) {
+	if miner.shutdown {
+		return
+	}
 	miner.syncMutex.Lock()
 	for i, t := range miner.Sync {
 		if i < top {
@@ -363,12 +384,21 @@ func cleaner(top int32) {
 
 func Shutdown() {
 	miner.shutdown = true
+
+	log.Infof("Syners:")
+	for h,s := range miner.Sync {
+		log.Infof("%d Runnable = %v", h, s.Runnable)
+	}
+
+	DebugInfo()
+
 	select {
 	case <-Quit:
 	default:
 		close(Quit)
 	}
 	miner.wg.Wait()
+	log.Infof("Consensus Shutdown completed")
 }
 
 func VerifyMsg(msg wire.OmegaMessage, pubkey * btcec.PublicKey) bool {

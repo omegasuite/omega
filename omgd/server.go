@@ -1816,7 +1816,9 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		sp.continueHash = nil
 	}
 
-	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding | wire.FullEncoding)
+	btcdLog.Infof("Send the block msg")
+
+	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)	// | wire.FullEncoding)
 
 	return nil
 }
@@ -2071,10 +2073,25 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		state.inboundPeers[sp.ID()] = sp
 		state.cmutex.Unlock()
 	} else {
+		// check dups
 		state.outboundGroups[addrmgr.GroupKey(sp.NA())]++
 		if sp.persistent {
+			for _,dup := range state.persistentPeers {
+				if sp.Addr() == dup.Addr() {
+					if dup.Connected() {
+						sp.Disconnect("handleAddPeerMsg @ dup conn")
+						sp = dup
+					}
+				}
+			}
 			state.persistentPeers[sp.ID()] = sp
 		} else {
+			for _,dup := range state.outboundPeers {
+				if sp.Addr() == dup.Addr() {
+					sp.Disconnect("handleAddPeerMsg @ dup conn")
+					sp = dup
+				}
+			}
 			state.outboundPeers[sp.ID()] = sp
 		}
 		if sp.connReq.Committee > 0 {
@@ -2666,6 +2683,8 @@ out:
 	s.connManager.Stop()
 	s.syncManager.Stop()
 	s.addrManager.Stop()
+
+	btcdLog.Tracef("All Peer handler go routines shut down")
 
 	// Drain channels before exiting so nothing is left waiting around
 	// to send.

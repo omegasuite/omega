@@ -169,18 +169,18 @@ func btcdMain(serverChan chan<- *server) error {
 		return err
 	}
 	defer func() {
-		btcdLog.Infof("Gracefully shutting down the server...")
-		server.Stop()
-
 		if cfg.privateKeys != nil && cfg.Generate {
 			btcdLog.Infof("Gracefully shutting down consensus server...")
 			consensus.Shutdown()
-			srvrLog.Infof("consensus Server shutdown complete")
+			btcdLog.Infof("consensus Server shutdown complete")
 		}
+
+		btcdLog.Infof("Gracefully shutting down the server...")
+		server.Stop()
 
 		btcdLog.Infof(" server Stopped")
 		server.WaitForShutdown()
-		srvrLog.Infof("Server shutdown complete")
+		btcdLog.Infof("Server shutdown complete")
 	}()
 
 	if cfg.Generate && cfg.privateKeys == nil {

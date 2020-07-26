@@ -688,9 +688,9 @@ func (s *server) CommitteeMsgMG(p [20]byte, m wire.Message) {
 		sp = s.peerState.NewCommitteeState(p)
 		s.peerState.committee[p] = sp
 	}
-	s.peerState.cmutex.Unlock()
-
 	sp.queue <- m
+
+	s.peerState.cmutex.Unlock()
 }
 
 func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {
@@ -727,19 +727,30 @@ func (s *server) CommitteeMsg(p [20]byte, m wire.Message) bool {
 	if ok {
 		for _,r := range sp.peers {
 			if r.Connected() {
-				srvrLog.Infof("sending it to %s (remote = %s)", r.Peer.LocalAddr().String(), r.Peer.Addr())
+				btcdLog.Infof("sending %s to %s (remote = %s)", m.Command(), r.Peer.LocalAddr().String(), r.Peer.Addr())
 				r.QueueMessageWithEncoding(m, done, wire.SignatureEncoding)
 				return <-done
 			}
 		}
+		btcdLog.Infof("No Connected peer in %x for sending %s", p, m.Command())
 	} else {
+		btcdLog.Infof("%x not in committee yet, add it", p)
+
 		best := s.chain.BestSnapshot()
 		my := s.MyPlaceInCommittee(int32(best.LastRotation))
+
+		s.peerState.committee[p] = s.peerState.NewCommitteeState(p)
+		s.peerState.committee[p].minerHeight = my
+
 		for i := 0; i < wire.CommitteeSize; i++ {
-			blk, _ := s.chain.Miners.BlockByHeight(int32(best.LastRotation) - int32(i))
-			if blk == nil || bytes.Compare(blk.MsgBlock().Miner[:], p[:]) != 0{
+			if my == int32(best.LastRotation) - int32(i) {
 				continue
 			}
+			blk, _ := s.chain.Miners.BlockByHeight(int32(best.LastRotation) - int32(i))
+			if blk == nil || bytes.Compare(blk.MsgBlock().Miner[:], p[:]) == 0 {
+				continue
+			}
+			btcdLog.Infof("%x is at %d. makeConnection", p, blk.Height())
 			s.peerState.cmutex.Lock()
 			s.makeConnection(blk.MsgBlock().Connection, p, blk.Height(), my)
 			s.peerState.cmutex.Unlock()

@@ -1841,6 +1841,7 @@ out:
 			log.Infof("blockHandler finished with message: ", reflect.TypeOf(m).String())
 
 		case <-sm.quit:
+			sm.syncjobs = sm.syncjobs[:0]
 			break out
 		}
 		sm.lastBlockOp += " ... Done."
@@ -2082,6 +2083,8 @@ func (sm *SyncManager) Stop() error {
 
 	close(sm.quit)
 	sm.wg.Wait()
+
+	log.Infof("Sync mstopped")
 	return nil
 }
 

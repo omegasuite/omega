@@ -163,9 +163,10 @@ func (self *Syncer) repeater() {
 			pp := *p
 			//		pp.K = append(pp.K, self.Myself)
 			pp.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
+			to := pp.From
 			pp.From = self.Me
 
-			self.CommitteeMsg(p.From, &pp)
+			self.CommitteeMsg(to, &pp)
 		}
 	}
 	if tree,ok := self.forest[self.Me]; ok {
@@ -186,6 +187,24 @@ func (self *Syncer) repeater() {
 		}
 	}
 	self.mutex.Unlock()
+
+	if self.agreed != self.Myself && self.agreed != -1 {
+		// resend an agree message
+		fmp := self.agreed
+		from := self.Names[fmp]
+
+		d := wire.MsgCandidateResp{Height: self.Height, K: []int64{}, From: self.Me, M: self.forest[from].hash}
+
+		if self.sigGiven == -1 {
+			d.Reply = "cnst"
+			d.Better = fmp
+			d.Sign(miner.server.GetPrivKey(self.Me))
+
+			log.Infof("Candidate: Consent candicacy by %x", from)
+
+			self.CommitteeMsgMG(from, &d)
+		}
+	}
 
 	self.idles++
 
@@ -258,21 +277,12 @@ func (self *Syncer) run() {
 	miner.wg.Add(1)
 	defer miner.wg.Done()
 
-	ticker := time.NewTicker(time.Second * 2)
+	ticker := time.NewTicker(time.Second * 4)
 
 	self.repeating = make(chan struct{}, 10)
 
 	for going {
 		select {
-		case <-ticker.C:
-			self.repeating <- struct{}{}
-
-		case <-self.repeating:
-			self.repeater()
-			for len(self.repeating) > 0 {
-				<-self.repeating
-			}
-
 		case tree := <- self.newtree:
 			if self.sigGiven >= 0 {
 				continue
@@ -439,10 +449,22 @@ func (self *Syncer) run() {
 					going = false
 				}
 			}
+			for len(self.repeating) > 1 {
+				<-self.repeating
+			}
 //			self.print()
 
 		case <-self.quit:
 			going = false
+
+		case <-self.repeating:
+			self.repeater()
+			for len(self.repeating) > 0 {
+				<-self.repeating
+			}
+
+		case <-ticker.C:
+			self.repeating <- struct{}{}
 		}
 	}
 
@@ -1067,9 +1089,9 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 
 func (self *Syncer) SetCommittee() {
 	self.mutex.Lock()
-	defer self.mutex.Unlock()
 
 	if self.Runnable {
+		self.mutex.Unlock()
 		return
 	}
 
@@ -1077,6 +1099,7 @@ func (self *Syncer) SetCommittee() {
 	self.Runnable = self.Height == best.Height + 1
 
 	if !self.Runnable {
+		self.mutex.Unlock()
 		return
 	}
 
@@ -1092,6 +1115,7 @@ func (self *Syncer) SetCommittee() {
 	for i := c - wire.CommitteeSize + 1; i <= c; i++ {
 		blk,_ := miner.server.MinerBlockByHeight(i)
 		if blk == nil {
+			self.mutex.Unlock()
 			return
 		}
 
@@ -1108,8 +1132,12 @@ func (self *Syncer) SetCommittee() {
 
 	self.knowledges = CreateKnowledge(self)
 
+	self.mutex.Unlock()
+
 	if in {
 		go self.run()
+	} else {
+		self.Runnable = false
 	}
 
 //	miner.updateheight <- self.Height
@@ -1180,7 +1208,7 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 		msg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, hash}}}
 		log.Infof("Pull request: to %d hash %s", from+self.Base, hash.String())
 		if self.CommitteeMsg(self.Names[from], &msg) {
-			log.Infof("Pull request sent")
+			log.Infof("Pull request sent to %d", from)
 			self.pulling[from] = 5
 		} else {
 			log.Infof("Fail to Pull !!!!!!!!")
@@ -1192,9 +1220,11 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 }
 
 func (self *Syncer) Quit() {
-	log.Info("sync quit")
+	log.Info("sync %d quit", self.Height)
+	if !self.Runnable {
+		return
+	}
 
-	self.Runnable = true
 	for true {
 		select {
 		case <-self.messages:
