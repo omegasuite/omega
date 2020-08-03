@@ -183,11 +183,19 @@ type peerState struct {
 	committee       map[[20]byte]*committeeState
 }
 
-func (p * peerState) NewCommitteeState(m [20]byte) * committeeState {
+func (p * peerState) NewCommitteeState(m [20]byte, h int32, addr string) * committeeState {
+	tcp, err := net.ResolveTCPAddr("", addr)
+	adr := tcp.String()
+	if err != nil {
+		adr = addr
+	}
+
 	t := &committeeState{
 		peers: make([]*serverPeer, 0),
 		queue: make(chan wire.Message, 50),
 		member: m,
+		minerHeight: h,
+		address: adr,
 	}
 
 	go p.CommitteeOut(t)
@@ -195,10 +203,32 @@ func (p * peerState) NewCommitteeState(m [20]byte) * committeeState {
 	return t
 }
 
+func (state * peerState) RemovePeer(sp *serverPeer) {
+	for _, m := range state.committee {
+		for todel := true; todel; {
+			todel = false
+			for i, p := range m.peers {
+				if p.ID() == sp.ID() {
+					if i == len(m.peers)-1 {
+						m.peers = m.peers[:i]
+					} else if i == 0 {
+						m.peers = m.peers[i+1:]
+					} else {
+						m.peers = append(m.peers[:i], m.peers[i+1:]...)
+					}
+					todel = true
+					break
+				}
+			}
+		}
+	}
+}
+
 func (p * peerState) IsConnected(c *connmgr.ConnReq) bool {
 	iscontd := false
 	p.ForAllOutboundPeers(func(sp *serverPeer) {
-		if !iscontd && c.Addr.String() == sp.connReq.Addr.String() && sp.Connected() {
+		if !iscontd && c.Addr.String() == sp.connReq.Addr.String() &&
+			(sp.Connected() || sp.persistent) {
 			iscontd = true
 		}
 	})
@@ -725,7 +755,7 @@ func (sp *serverPeer) OnInv(_ *peer.Peer, msg *wire.MsgInv) {
 			peerLog.Tracef("Ignoring tx %v in inv from %v -- "+
 				"blocksonly enabled", invVect.Hash, sp)
 			if sp.ProtocolVersion() >= wire.BIP0037Version {
-				peerLog.Infof("Peer %v is announcing "+
+				peerLog.Tracef("Peer %v is announcing "+
 					"transactions -- disconnecting", sp)
 				sp.Disconnect("OnInv")
 				return
@@ -756,7 +786,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	numAdded := 0
 	notFound := wire.NewMsgNotFound()
 
-	btcdLog.Infof("OnGetData：getting % items", len(msg.InvList))
+	btcdLog.Tracef("OnGetData: getting %d items %s", len(msg.InvList), msg.InvList[0].Hash.String())
 
 	length := len(msg.InvList)
 	// A decaying ban score increase is applied to prevent exhausting resources
@@ -1681,11 +1711,12 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		s.chain.ChainLock.RUnlock()
 
 		if m != nil {
+			peerLog.Tracef("fetch orphan block %s", hash.String())
 			msgBlock = *m.(*wire.MsgBlock)
 			err = nil
 		} else if block := s.cpuMiner.CurrentBlock(hash); block != nil {
 			ht := s.chain.BestSnapshot().Height
-			peerLog.Infof("fetch consensus block, height = %d", ht)
+			peerLog.Tracef("fetch consensus block %s, height = %d", hash.String(), ht)
 			if heightSent < ht {
 				// sending the requesting peer new inventory
 				inv := wire.NewMsgInv()
@@ -1726,8 +1757,8 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 			msgBlock = * block.MsgBlock()
 			err = nil
 		} else {
-			peerLog.Infof("Unable to fetch requested block hash %v: %v",
-				hash, err)
+			peerLog.Tracef("Unable to fetch requested block hash %s: %v",
+				hash.String(), err)
 
 			if doneChan != nil {
 				doneChan <- false
@@ -1740,13 +1771,14 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 
 		if err != nil {
 			peerLog.Tracef("Unable to deserialize requested block hash "+
-				"%v: %v", hash, err)
+				"%s: %v", hash.String(), err)
 
 			if doneChan != nil {
 				doneChan <- false
 			}
 			return err
 		}
+		peerLog.Tracef("fetch regular block %s",	hash.String())
 		h,_ := s.chain.BlockHeightByHash(hash)
 		if h > heightSent {
 			heightSent = h
@@ -1786,7 +1818,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		sp.continueHash = nil
 	}
 
-	peerLog.Infof("sending block %d", msgBlock.Transactions[0].TxIn[0].PreviousOutPoint.Index)
+	peerLog.Tracef("sending block %d", msgBlock.Transactions[0].TxIn[0].PreviousOutPoint.Index)
 
 	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)	// | wire.FullEncoding)
 
@@ -1971,7 +2003,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 
 	// Ignore new peers if we're shutting down.
 	if atomic.LoadInt32(&s.shutdown) != 0 {
-		srvrLog.Infof("New peer %s ignored - server is shutting down", sp)
+		srvrLog.Tracef("New peer %s ignored - server is shutting down", sp)
 		sp.Disconnect("handleAddPeerMsg @ shutdown")
 		return false
 	}
@@ -2037,34 +2069,35 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		// check dups
 		state.outboundGroups[addrmgr.GroupKey(sp.NA())]++
 		if sp.persistent {
-			for _,dup := range state.persistentPeers {
+			for r,dup := range state.persistentPeers {
 				if sp.Addr() == dup.Addr() {
 					if dup.Connected() {
 						sp.Disconnect("handleAddPeerMsg @ dup conn")
+						delete(state.persistentPeers, r)
+						state.RemovePeer(dup)
 						sp = dup
 					}
 				}
 			}
 			state.persistentPeers[sp.ID()] = sp
 		} else {
-			for _,dup := range state.outboundPeers {
+			for r,dup := range state.outboundPeers {
 				if sp.Addr() == dup.Addr() {
 					sp.Disconnect("handleAddPeerMsg @ dup conn")
 					sp = dup
+					delete(state.outboundPeers, r)
+					state.RemovePeer(dup)
 				}
 			}
 			state.outboundPeers[sp.ID()] = sp
 		}
 		if sp.connReq.Committee > 0 {
-			if _,ok := state.committee[sp.connReq.Miner]; !ok {
-				state.committee[sp.connReq.Miner] = state.NewCommitteeState(sp.connReq.Miner)
-			}
-			state.committee[sp.connReq.Miner].peers = append(state.committee[sp.connReq.Miner].peers, sp)
-			state.committee[sp.connReq.Miner].address = sp.Peer.Addr()
-
 			sp.Peer.Committee = sp.connReq.Committee
-//			sb, _ := s.chain.Miners.BlockByHeight(sp.connReq.Committee)
 			copy(sp.Peer.Miner[:], sp.connReq.Miner[:])
+
+			if _,ok := state.committee[sp.connReq.Miner]; ok {
+				state.committee[sp.connReq.Miner].peers = append(state.committee[sp.connReq.Miner].peers, sp)
+			}
 		}
 		state.cmutex.Unlock()
 
@@ -2099,25 +2132,7 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 			s.connManager.Disconnect(sp.connReq.ID())
 		}
 		delete(list, sp.ID())
-
-		for _,m := range state.committee {
-			for todel := true; todel; {
-				todel = false
-				for i, p := range m.peers {
-					if p.ID() == sp.ID() {
-						if i == len(m.peers)-1 {
-							m.peers = m.peers[:i]
-						} else if i == 0 {
-							m.peers = m.peers[i+1:]
-						} else {
-							m.peers = append(m.peers[:i], m.peers[i+1:]...)
-						}
-						todel = true
-						break
-					}
-				}
-			}
-		}
+		state.RemovePeer(sp)
 		state.cmutex.Unlock()
 
 		srvrLog.Debugf("Removed peer %s", sp)
@@ -2451,8 +2466,8 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 			OnFilterLoad:   sp.OnFilterLoad,
 			OnGetAddr:      sp.OnGetAddr,
 			OnAddr:         sp.OnAddr,
-			OnInvitation:	sp.OnInvitation,
-			OnAckInvitation:	sp.OnAckInvitation,
+//			OnInvitation:	sp.OnInvitation,
+//			OnAckInvitation:	sp.OnAckInvitation,
 			OnRead:         sp.OnRead,
 			OnWrite:        sp.OnWrite,
 			PushGetBlock:	sp.PushGetBlock,
@@ -2488,6 +2503,9 @@ func (s *server) inboundPeerConnected(conn net.Conn) {
 	sp.Peer = peer.NewInboundPeer(newPeerConfig(sp))
 	sp.AssociateConnection(conn)
 	go s.peerDoneHandler(sp)
+}
+
+func (s *server) outboundPeerDisConnected(c *connmgr.ConnReq) {
 }
 
 // outboundPeerConnected is invoked by the connection manager when a new
@@ -2592,45 +2610,66 @@ out:
 	for {
 		select {
 		case r := <-newBlock:
+			btcdLog.Tracef("peerHandler: newBlock - handleCommitteRotation")
 			s.handleCommitteRotation(r)
+			btcdLog.Tracef("peerHandler: newBlock - handleCommitteRotation - done")
 
 		// New peers connected to the server.
 		case p := <-s.newPeers:
+			btcdLog.Tracef("peerHandler: newPeers - handleAddPeerMsg")
 			s.handleAddPeerMsg(state, p)
+			btcdLog.Tracef("peerHandler: newPeers - handleAddPeerMsg - done")
 
 		// Disconnected peers.
 		case p := <-s.donePeers:
+			btcdLog.Tracef("peerHandler: donePeers - handleDonePeerMsg")
 			s.handleDonePeerMsg(state, p)
+			btcdLog.Tracef("peerHandler: donePeers - handleDonePeerMsg - done")
 
 		// Block accepted in mainchain or orphan, update peer height.
 		case umsg := <-s.peerHeightsUpdate:
+			btcdLog.Tracef("peerHeightsUpdate: newBlock - handleUpdatePeerHeights")
 			s.handleUpdatePeerHeights(state, umsg)
+			btcdLog.Tracef("peerHeightsUpdate: newBlock - handleUpdatePeerHeights - done")
 
 		case umsg := <-s.peerMinerHeightsUpdate:
+			btcdLog.Tracef("peerHandler: peerMinerHeightsUpdate - handleUpdatePeerMinerHeights")
 			s.handleUpdatePeerMinerHeights(state, umsg)
+			btcdLog.Tracef("peerHandler: peerMinerHeightsUpdate - handleUpdatePeerMinerHeights - done")
 
 		// Peer to ban.
 		case p := <-s.banPeers:
+			btcdLog.Tracef("peerHandler: banPeers - handleBanPeerMsg")
 			s.handleBanPeerMsg(state, p)
+			btcdLog.Tracef("peerHandler: banPeers - handleBanPeerMsg - done")
 
 		// New inventory to potentially be relayed to other peers.
 		case invMsg := <-s.relayInv:
+			btcdLog.Tracef("peerHandler: relayInv - handleRelayInvMsg")
 			s.handleRelayInvMsg(state, invMsg)
+			btcdLog.Tracef("peerHandler: relayInv - handleRelayInvMsg - done")
 
 		// Message to broadcast to all connected peers except those
 		// which are excluded by the message.
 		case bmsg := <-s.broadcast:
+			btcdLog.Tracef("peerHandler: broadcast - handleBroadcastMsg")
 			s.handleBroadcastMsg(state, &bmsg)
+			btcdLog.Tracef("peerHandler: broadcast - handleBroadcastMsg - done")
 
 		case qmsg := <-s.query:
+			btcdLog.Tracef("peerHandler: query - handleQuery")
 			s.handleQuery(state, qmsg)
+			btcdLog.Tracef("peerHandler: query - handleQuery - done")
 
 		case <-s.quit:
+			btcdLog.Tracef("peerHandler: quit")
 			// Disconnect all peers on server shutdown.
 			state.ForAllPeers(func(sp *serverPeer) {
 				srvrLog.Tracef("Shutdown peer %s", sp)
 				sp.Disconnect("peerHandler @ quit")
 			})
+			btcdLog.Tracef("peerHandler: quit - done")
+
 			break out
 		}
 	}
@@ -3403,8 +3442,8 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 					continue
 				}
 
-				// allow nondefault ports after 50 failed tries.
-				if tries < 50 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
+				// allow nondefault ports after 5 failed tries.
+				if tries < 5 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
 					activeNetParams.DefaultPort {
 					continue
 				}

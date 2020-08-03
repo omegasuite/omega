@@ -197,6 +197,7 @@ type ConnManager struct {
 	newBlocks      chan struct{}
 	dupChecker	   ConnectChecker
 	Alive		   time.Time
+	Committee	   int32		// highest Committee so far
 }
 
 // handleFailedConn handles a connection failed due to a disconnect or any
@@ -225,10 +226,10 @@ func (cm *ConnManager) handleFailedConn(c *ConnReq) {
 				"-- retrying connection in: %v", maxFailedAttempts,
 				cm.cfg.RetryDuration)
 			time.AfterFunc(cm.cfg.RetryDuration, func() {
-				cm.NewConnReq()
+				cm.NewConnReq(nil)
 			})
 		} else {
-			go cm.NewConnReq()
+			go cm.NewConnReq(nil)
 		}
 	}
 }
@@ -258,9 +259,9 @@ out:
 			if t.Unix() - cm.Alive.Unix() <= 60 {
 				continue
 			}
-			log.Infof("Make a new conn because no activity in 1 min")
+			log.Tracef("Make a new conn because no activity in 1 min")
 			// nothing happened in 1 minute, try a new connection
-			go cm.NewConnReq()
+			go cm.NewConnReq(nil)
 
 		case req := <-cm.requests:
 			switch msg := req.(type) {
@@ -289,6 +290,9 @@ out:
 				log.Debugf("Connected to %v", connReq)
 				connReq.retryCount = 0
 				cm.failedAttempts = 0
+				if cm.Committee < connReq.Committee {
+					cm.Committee = connReq.Committee
+				}
 
 				delete(pending, connReq.id)
 
@@ -314,7 +318,6 @@ out:
 					log.Debugf("Canceling: %v", connReq)
 					delete(pending, msg.id)
 					continue
-
 				}
 
 				// An existing connection was located, mark as
@@ -346,11 +349,9 @@ out:
 				// subsequent processing of connections and
 				// failures do not ignore the request.
 				if uint32(len(conns)) < cm.cfg.TargetOutbound ||
-					connReq.Permanent {
-
+					connReq.Permanent || connReq.Committee >= cm.Committee - wire.CommitteeSize {
 					connReq.updateState(ConnPending)
-					log.Debugf("Reconnecting to %v",
-						connReq)
+					log.Debugf("Reconnecting to %v", connReq)
 					pending[msg.id] = connReq
 					cm.handleFailedConn(connReq)
 				}
@@ -380,7 +381,13 @@ out:
 
 // NewConnReq creates a new connection request and connects to the
 // corresponding address.
-func (cm *ConnManager) NewConnReq() {
+func (cm *ConnManager) NewConnReq(result chan struct{}) {
+	defer func() {
+		if result != nil {
+			result <- struct{}{}
+		}
+	}()
+
 	if atomic.LoadInt32(&cm.stop) != 0 {
 		return
 	}
@@ -478,18 +485,18 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 		cmtx.Unlock()
 	} ()
 
-	log.Infof("Attempting to connect to %v", c)
+	log.Tracef("Attempting to connect to %v", c)
 
 	conn, err := cm.cfg.Dial(c.Addr)
 	if err != nil {
-		log.Infof(". Failed to connect to %s\n", c.Addr.String())
+		log.Tracef(". Failed to connect to %s\n", c.Addr.String())
 		select {
 		case cm.requests <- handleFailed{c, err}:
 		case <-cm.quit:
 		}
 		return
 	} else {
-		log.Infof(". Succeed to connect to %s\n", c.Addr.String())
+		log.Tracef(". Succeed to connect to %s\n", c.Addr.String())
 	}
 
 	select {
@@ -570,8 +577,11 @@ func (cm *ConnManager) Start(dup ConnectChecker) {
 		}
 	}
 
+	seq := make(chan struct{})
+
 	for i := atomic.LoadUint64(&cm.connReqCount); i < uint64(cm.cfg.TargetOutbound); i++ {
-		go cm.NewConnReq()
+		go cm.NewConnReq(seq)
+		<- seq
 	}
 }
 

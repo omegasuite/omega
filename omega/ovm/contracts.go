@@ -1,9 +1,7 @@
 package ovm
 
 import (
-	"crypto/sha256"
 	"fmt"
-	"math/big"
 	"sync/atomic"
 
 	"bytes"
@@ -12,7 +10,6 @@ import (
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 //	"github.com/omegasuite/btcd/database"
 //	"github.com/omegasuite/omega/token"
-	"golang.org/x/crypto/ripemd160"
 )
 
 // PrecompiledContract is the basic interface for native Go contracts.
@@ -26,9 +23,15 @@ type create struct {
 	contract *Contract
 }
 
+type meta struct {
+	ovm * OVM
+	contract *Contract
+}
+
 const (
 	OP_CREATE				= 0
-	OP_MINT					= 0x40
+	OP_META					= 1
+//	OP_MINT					= 0x40
 
 	PAYFUNC_MIN				= 0x41
 	PAYFUNC_MAX				= 0x46
@@ -39,15 +42,12 @@ const (
 	OP_PAY2MULTISCRIPTH		= 0x44
 	OP_PAY2NONE				= 0x45
 	OP_PAY2ANY				= 0x46
-
-	MINER_RORATE_FREQ		= 50		// const: rotate frequency. How many blocks between rotation
-	MAX_WITNESS				= 5			// max number of witnesses in a block
-	COMMITTEE_DEF_SIZE		= 5			// default committee size
 )
 
 // PrecompiledContracts contains the default set of pre-compiled contracts
 var PrecompiledContracts = map[[4]byte]PrecompiledContract{
 	([4]byte{OP_CREATE, 0, 0, 0}): &create{},			// create a contract
+	([4]byte{OP_META, 0, 0, 0}): &meta{},			// create a contract
 
 	// pk script functions
 	([4]byte{OP_PAY2PKH, 0, 0, 0}): &pay2pkh{},			// pay to pubkey hash script
@@ -56,13 +56,6 @@ var PrecompiledContracts = map[[4]byte]PrecompiledContract{
 	([4]byte{OP_PAY2MULTISCRIPTH, 0, 0, 0}): &pay2scripths{},		// pay to script hash script, multi-sig
 	([4]byte{OP_PAY2NONE, 0, 0, 0}): &payreturn{},			// pay to no one and spend it
 	([4]byte{OP_PAY2ANY, 0, 0, 0}): &payanyone{},			// pay to anyone
-
-	// other callable public functions
-	([4]byte{1, 0, 0, 0}): &ecrecover{},
-	([4]byte{2, 0, 0, 0}): &sha256hash{},
-	([4]byte{3, 0, 0, 0}): &ripemd160hash{},
-	([4]byte{4, 0, 0, 0}): &dataCopy{},
-	([4]byte{5, 0, 0, 0}): &bigModExp{},
 }
 
 type payanyone struct {}
@@ -360,106 +353,6 @@ func (c *create) Run(input []byte) ([]byte, error) {
 	return c.ovm.Create(input[4:], c.contract)
 }
 
-// ECRECOVER implemented as a native contract.
-type ecrecover struct{}
-
-func (c *ecrecover) Run(input []byte) ([]byte, error) {
-	// input is: pub key, signature, signature hash.
-	// returns pubkey hash160 padded to 32 bytes if the signature verifies
-	pkBytes, pos := reformatData(input[0:])
-
-	pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
-	if err != nil {
-		return nil, err
-	}
-
-	sigBytes, siglen := reformatData(input[pos:])
-	pos += siglen
-
-	hash := input[pos:pos + 32]
-
-	var signature *btcec.Signature
-
-	signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
-
-	if err != nil {
-		return nil, err
-	}
-
-	valid := signature.Verify(hash, pubKey)
-
-	if valid {
-		ph := Hash160(pkBytes)
-		return LeftPadBytes(ph, 32), nil
-	}
-	return nil, err
-}
-
-// SHA256 implemented as a native contract.
-type sha256hash struct{}
-
-func (c *sha256hash) Run(input []byte) ([]byte, error) {
-	h := sha256.Sum256(input)
-	return h[:], nil
-}
-
-// RIPMED160 implemented as a native contract.
-type ripemd160hash struct{}
-
-func (c *ripemd160hash) Run(input []byte) ([]byte, error) {
-	ripemd := ripemd160.New()
-	ripemd.Write(input)
-	return LeftPadBytes(ripemd.Sum(nil), 32), nil
-}
-
-// data copy implemented as a native contract.
-type dataCopy struct{}
-
-func (c *dataCopy) Run(in []byte) ([]byte, error) {
-	return in, nil
-}
-
-// bigModExp implements a native big integer exponential modular operation.
-type bigModExp struct{}
-
-var (
-	big1      = big.NewInt(1)
-	big4      = big.NewInt(4)
-	big8      = big.NewInt(8)
-	big16     = big.NewInt(16)
-	big32     = big.NewInt(32)
-	big64     = big.NewInt(64)
-	big96     = big.NewInt(96)
-	big480    = big.NewInt(480)
-	big1024   = big.NewInt(1024)
-	big3072   = big.NewInt(3072)
-	big199680 = big.NewInt(199680)
-)
-
-func (c *bigModExp) Run(input []byte) ([]byte, error) {
-	var (
-		baseLen = new(big.Int).SetBytes(getData(input, 0, 32)).Uint64()
-		expLen  = new(big.Int).SetBytes(getData(input, 32, 32)).Uint64()
-		modLen  = new(big.Int).SetBytes(getData(input, 64, 32)).Uint64()
-	)
-	if len(input) > 96 {
-		input = input[96:]
-	} else {
-		input = input[:0]
-	}
-	// Handle a special case when both the base and mod length is zero
-	if baseLen == 0 && modLen == 0 {
-		return []byte{}, nil
-	}
-	// Retrieve the operands and execute the exponentiation
-	var (
-		base = new(big.Int).SetBytes(getData(input, 0, baseLen))
-		exp  = new(big.Int).SetBytes(getData(input, baseLen, expLen))
-		mod  = new(big.Int).SetBytes(getData(input, baseLen+expLen, modLen))
-	)
-	if mod.BitLen() == 0 {
-		// Modulo 0 is undefined, return zero
-		return LeftPadBytes([]byte{}, int(modLen)), nil
-	}
-	return LeftPadBytes(base.Exp(base, exp, mod).Bytes(), int(modLen)), nil
+func (c *meta) Run(input []byte) ([]byte, error) {
+	return c.ovm.getMeta(c.contract.self.Address(), string(input)), nil
 }

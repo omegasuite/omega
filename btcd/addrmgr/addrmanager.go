@@ -1012,6 +1012,7 @@ func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPrior
 }
 
 func (a *AddrManager) PhaseoutCommittee(na *wire.NetAddress) {
+/*
 	a.lamtx.Lock()
 	defer a.lamtx.Unlock()
 
@@ -1019,11 +1020,12 @@ func (a *AddrManager) PhaseoutCommittee(na *wire.NetAddress) {
 	la, ok := a.localAddresses[key]
 	if ok && la.origin == CommitteePrio {
 		if la.score == CommitteePrio {
-			delete(a.localAddresses, key)
+			ls.origin = BoundPrio
 		} else {
 			la.score--
 		}
 	}
+ */
 }
 
 // getReachabilityFrom returns the relative reachability of the provided local

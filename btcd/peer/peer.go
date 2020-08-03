@@ -107,8 +107,8 @@ type MessageListeners struct {
 	// OnAddr is invoked when a peer receives an addr bitcoin message.
 	OnAddr func(p *Peer, msg *wire.MsgAddr)
 
-	OnInvitation func(p *Peer, msg *wire.MsgInvitation)
-	OnAckInvitation func(p *Peer, msg *wire.MsgAckInvitation)
+//	OnInvitation func(p *Peer, msg *wire.MsgInvitation)
+//	OnAckInvitation func(p *Peer, msg *wire.MsgAckInvitation)
 
 	// OnPing is invoked when a peer receives a ping bitcoin message.
 	OnPing func(p *Peer, msg *wire.MsgPing)
@@ -521,8 +521,7 @@ func (p *Peer) String() string {
 func (p *Peer) UpdateLastBlockHeight(newHeight int32) {
 	p.statsMtx.Lock()
 	if p.lastBlock < newHeight {
-	log.Infof("Updating last block height of peer %s from %v to %v",
-		p.Addr(), p.lastBlock, newHeight)
+	log.Tracef("Updating last block height of peer %s from %v to %v", p.Addr(), p.lastBlock, newHeight)
 		p.lastBlock = newHeight
 	}
 	p.statsMtx.Unlock()
@@ -531,8 +530,7 @@ func (p *Peer) UpdateLastBlockHeight(newHeight int32) {
 func (p *Peer) UpdateLastMinerBlockHeight(newHeight int32) {
 	p.statsMtx.Lock()
 	if p.lastMinerBlock < newHeight {
-	log.Tracef("Updating last block height of peer %v from %v to %v",
-		p.addr, p.lastBlock, newHeight)
+	log.Tracef("Updating last block height of peer %v from %v to %v", p.addr, p.lastBlock, newHeight)
 		p.lastMinerBlock = newHeight
 	}
 	p.statsMtx.Unlock()
@@ -543,7 +541,7 @@ func (p *Peer) UpdateLastMinerBlockHeight(newHeight int32) {
 //
 // This function is safe for concurrent access.
 func (p *Peer) UpdateLastAnnouncedBlock(blkHash *chainhash.Hash) {
-	log.Infof("Updating last blk for peer %s, %s", p.Addr(), blkHash.String())
+	log.Tracef("Updating last blk for peer %s, %s", p.Addr(), blkHash.String())
 
 	p.statsMtx.Lock()
 	p.lastAnnouncedBlock = blkHash
@@ -1363,12 +1361,12 @@ out:
 					continue
 				}
 
-				if p.Committee > 0 {
+//				if p.Committee > 0 {
 					// keep connected if it is a committee member
-					continue
-				}
+//					continue
+//				}
 
-				log.Debugf("Peer %s appears to be stalled or "+
+				log.Infof("Peer %s appears to be stalled or "+
 					"misbehaving, %s timeout -- "+
 					"disconnecting", p, command)
 				p.Disconnect("stallHandler")
@@ -1414,12 +1412,13 @@ cleanup:
 func (p *Peer) inHandler() {
 	// The timer is stopped when a new message is received and reset after it
 	// is processed.
+	var lastmsg string
 	idleTimer := time.AfterFunc(idleTimeout, func() {
-		if p.Committee <= 0 {
-			log.Warnf("Peer %s no answer for %s -- disconnecting", p, idleTimeout)
-			p.Disconnect("inHandler @ idleTimeout")
-		}
+		log.Infof("Peer %s no answer for %s -- disconnecting. Last msg is %s", p, idleTimeout, lastmsg)
+		p.Disconnect("inHandler @ idleTimeout")
 	})
+
+	var seq int
 
 out:
 	for atomic.LoadInt32(&p.disconnect) == 0 {
@@ -1462,13 +1461,16 @@ out:
 			break out
 		}
 
-//		log.Infof("inHandler read: %s", rmsg.Command())
+		log.Tracef("%s inHandler %d %d read: %s", p.Addr(), p.id, seq, rmsg.Command())
 
 		atomic.StoreInt64(&p.lastRecv, time.Now().Unix())
 		p.stallControl <- stallControlMsg{sccReceiveMessage, rmsg}
 
 		// Handle each supported message type.
 		p.stallControl <- stallControlMsg{sccHandlerStart, rmsg}
+
+		lastmsg = rmsg.Command()
+
 		switch msg := rmsg.(type) {
 		case *wire.MsgVersion:
 			log.Infof("duplicate version message -- terminate")
@@ -1495,7 +1497,7 @@ out:
 			}
 
 		case *wire.MsgGetAddr:
-//			log.Infof("inHandler MsgGetAddr")
+			log.Tracef("inHandler MsgGetAddr")
 			if p.cfg.Listeners.OnGetAddr != nil {
 				p.cfg.Listeners.OnGetAddr(p, msg)
 			}
@@ -1505,7 +1507,7 @@ out:
 			if p.cfg.Listeners.OnAddr != nil {
 				p.cfg.Listeners.OnAddr(p, msg)
 			}
-
+/*
 		case *wire.MsgInvitation:
 			if p.cfg.Listeners.OnInvitation != nil {
 				p.cfg.Listeners.OnInvitation(p, msg)
@@ -1515,6 +1517,7 @@ out:
 			if p.cfg.Listeners.OnAckInvitation != nil {
 				p.cfg.Listeners.OnAckInvitation(p, msg)
 			}
+ */
 
 		case *wire.MsgPing:
 //			log.Infof("inHandler MsgPing")
@@ -1549,7 +1552,7 @@ out:
 			}
 
 		case *wire.MsgBlock:
-//			log.Infof("inHandler MsgBlock")
+			log.Tracef("inHandler MsgBlock")
 			if p.cfg.Listeners.OnBlock != nil {
 				p.cfg.Listeners.OnBlock(p, msg, buf)
 			}
@@ -1561,6 +1564,7 @@ out:
 			}
 
 		case *wire.MsgInv:
+			log.Tracef("inHandler MsgInv")
 			if p.cfg.Listeners.OnInv != nil {
 				p.cfg.Listeners.OnInv(p, msg)
 			}
@@ -1578,7 +1582,7 @@ out:
 			}
 
 		case *wire.MsgGetData:
-			log.Infof("inHandler %s MsgGetData: %s", msg.InvList[0].Type.String(), msg.InvList[0].Hash.String())
+			log.Tracef("inHandler %s MsgGetData: %s", msg.InvList[0].Type.String(), msg.InvList[0].Hash.String())
 			if p.cfg.Listeners.OnGetData != nil {
 				p.cfg.Listeners.OnGetData(p, msg)
 			}
@@ -1662,7 +1666,7 @@ out:
 			}
 
 		case *wire.MsgReject:
-//			log.Infof("inHandler MsgReject")
+			log.Tracef("inHandler MsgReject")
 			if p.cfg.Listeners.OnReject != nil {
 				p.cfg.Listeners.OnReject(p, msg)
 			}
@@ -1678,20 +1682,37 @@ out:
 			}
 
 		case consensus.Message:
+			log.Tracef("inHandler consensus.Message %s", msg.Command())
+			var ea [20]byte
+			if p.Inbound() && bytes.Compare(p.Miner[:], ea[:]) == 0 {
+				sender := consensus.Sender(msg)
+				if sender == nil {
+					log.Tracef("inHandler consensus.Message %s sender unknown", msg.Command())
+				} else {
+					log.Tracef("set miner for peer %s (%s %s) to %x", p.id, p.Addr(), p.LocalAddr().String(), sender)
+					copy(p.Miner[:], sender)
+				}
+			}
+
 			push, h := consensus.HandleMessage(msg)
 			if push && p.cfg.Listeners.PushGetBlock != nil {
+				log.Tracef("inHandler consensus.Message asks PushGetBlock")
 				p.cfg.Listeners.PushGetBlock(p)
 			} else if h != nil {
+				log.Tracef("inHandler consensus.Message require MsgGetData %s", h.String())
 				nmsg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *h}}}
 				p.QueueMessageWithEncoding(&nmsg, nil, wire.SignatureEncoding)
 			}
+			log.Tracef("inHandler consensus.Message %s processed", msg.Command())
 
 		default:
 //			log.Infof("inHandler default")
 			log.Debugf("Received unhandled message of type %v "+
 				"from %v", rmsg.Command(), p)
 		}
-//		log.Infof("inHandler message processed")
+		lastmsg = ""
+		log.Tracef("inHandler %d %d message processed", p.id, seq)
+		seq++
 		p.stallControl <- stallControlMsg{sccHandlerDone, rmsg}
 
 		// A message was received so reset the idle timer.
@@ -1743,7 +1764,7 @@ out:
 	for {
 		select {
 		case msg := <-p.outputQueue:
-			log.Infof("outputQueue len = %d", len(p.outputQueue))
+			log.Tracef("output %s, queue = %d", msg.msg.Command(), len(p.sendQueue) + pendingMsgs.Len())
 			waiting = queuePacket(msg, pendingMsgs, waiting)
 
 		// This channel is notified when a message has been sent across
@@ -1799,6 +1820,7 @@ out:
 				// Don't send inventory that became known after
 				// the initial check.
 				if p.knownInventory.Exists(iv) {
+					log.Tracef("Skip inventory %s because it is known", iv.Hash.String())
 					continue
 				}
 
@@ -1889,14 +1911,15 @@ out:
 
 			p.stallControl <- stallControlMsg{sccSendMessage, msg.msg}
 
-			if msg.msg.Command() == wire.CmdInv && len(msg.msg.(*wire.MsgInv).InvList) == 1 {
-				log.Infof("invetory %s actually sent to %s", msg.msg.(*wire.MsgInv).InvList[0].Hash.String(), p.Addr())
-			}
+//			if msg.msg.Command() == wire.CmdGetData && len(msg.msg.(*wire.MsgGetData).InvList) == 1 {
+//				log.Infof("GetData %s actually sent to %s", msg.msg.(*wire.MsgGetData).InvList[0].Hash.String(), p.Addr())
+//			}
+			log.Tracef("%s actually sent to %s", msg.msg.Command(), p.Addr())
 
 			err := p.writeMessage(msg.msg, msg.encoding)
 			if err != nil {
 				p.Disconnect("outHandler @ sendQueue")
-				log.Infof("Failed to send message to %s: %s", p, err.Error())
+				log.Tracef("Failed to send message to %s: %s", p, err.Error())
 				if p.shouldLogWriteError(err) {
 					log.Errorf("Failed to send message to "+
 						"%s: %v", p, err)
@@ -1995,7 +2018,7 @@ func (p *Peer) QueueMessageWithEncoding(msg wire.Message, doneChan chan<- bool,
 		}
 		return
 	}
-	log.Infof("%s Message added to outputQueue len = %d", msg.Command(), len(p.outputQueue))
+	log.Tracef("%s Message added to outputQueue len = %d", msg.Command(), len(p.outputQueue))
 	p.outputQueue <- outMsg{msg: msg, encoding: encoding, doneChan: doneChan}
 }
 
@@ -2011,12 +2034,12 @@ func (p *Peer) QueueInventory(invVect *wire.InvVect) {
 		return
 	}
 
-	log.Infof("\nTry to relay %d inventory to %s", invVect.Type.String(), p.String())
+	log.Tracef("\nTry to relay %d inventory to %s", invVect.Type.String(), p.String())
 	// Avoid risk of deadlock if goroutine already exited.  The goroutine
 	// we will be sending to hangs around until it knows for a fact that
 	// it is marked as disconnected and *then* it drains the channels.
 	if !p.Connected() {
-		log.Infof("Inventry %s is not relayed because peer %s is not connected", invVect.Hash.String(), p.String())
+		log.Tracef("Inventry %s is not relayed because peer %s is not connected", invVect.Hash.String(), p.String())
 		return
 	}
 
@@ -2039,7 +2062,7 @@ func (p *Peer) Disconnect(s string) {
 		return
 	}
 
-	log.Infof("Disconnecting %s by reason %s", p.String(), s)
+//	log.Infof("Disconnecting %s by reason %s", p.String(), s)
 
 	log.Tracef("Disconnecting %s by %s", p, s)
 	if atomic.LoadInt32(&p.connected) != 0 {

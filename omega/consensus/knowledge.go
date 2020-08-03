@@ -28,6 +28,7 @@ func (k * Knowledgebase) Malice(c int32) {
 	k.Knowledge[c] = make([]int64, wire.CommitteeSize)
 }
 
+/*
 func (k * Knowledgebase) ProcessTree(t int32) {
 	m := k.syncer.Myself
 	k.Knowledge[t][m] |= (1 << t) | (1 << m)
@@ -44,12 +45,13 @@ func (k * Knowledgebase) ProcessTree(t int32) {
 		if q & (1 << t) != 0 {
 			continue
 		}
-		if miner.server.CommitteeMsg(k.syncer.Names[int32(p)], nmg) {
+		if miner.server.CommitteeMsg(k.syncer.Names[int32(p)], int32(p), nmg) {
 			k.Knowledge[t][p] |= 1 << t
 		}
 	}
 	k.syncer.candidacy()
 }
+ */
 
 func CreateKnowledge(s *Syncer) *Knowledgebase {
 	var k Knowledgebase
@@ -150,26 +152,6 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 
 	me := self.syncer.Myself
 
-	/*
-		if k[0] < 0 {
-			return self.ProcFlatKnowledge(mp, k[1:])
-		}
-
-
-		tmsg := *msg
-		tmsg.K = make([]int64, 0)
-
-		for _,i := range msg.K {
-			signature, err := btcec.ParseSignature(msg.Signatures[i], btcec.S256())
-			tmsg.K = append(tmsg.K, i)
-			tmsg.From = self.committee.AddrStr[int32(i)]
-			p := self.committee.Addresses[int32(i)]
-			if err != nil || !signature.Verify(tmsg.DoubleHashB(), p.PubKey()) {
-				return -1
-			}
-		}
-	*/
-
 	lmg := *msg
 	lmg.AddK(me, miner.server.GetPrivKey(self.syncer.Me))
 
@@ -177,44 +159,14 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 	lmg.From = self.syncer.Me
 
 	for i, q := range self.Knowledge[mp] {
-		if ng || (res &^ q != 0) {
-			miner.server.CommitteeMsgMG(self.syncer.Names[int32(i)], &lmg)
+		if int32(i) != me && (ng || (res &^ q != 0)) {
+			self.syncer.CommitteeMsgMG(self.syncer.Names[int32(i)], &lmg)
 		}
 	}
 
-	/*
-	   	if res {
-	   		miner.server.CommitteeCastMG(self.syncer.Me, &lmg, self.syncer.Height)
-	   	}
-
-	   	for j, m := range self.Knowledge[mp] {
-	   		if m != self.Knowledge[mp][me] {
-	   			t := self.sendout(&lmg, mp, me, int32(j))
-	   			res = res || t
-	   		}
-	   	}
-
-	   /*
-	   	nmg := *msg
-	   	nmg.K = k
-	   	nmg.From = self.syncer.Me
-
-	   //		miner.server.CommitteeCast(me, &nmg)
-
-	   //		sig, _ := self.Cfg.PrivKey.Sign(nmg.DoubleHashB())
-	   //		nmg.Signatures[me] = sig.Serialize()
-	   /*
-	   		for _, p := range self.syncer.Members {
-	   			if p == me {
-	   				continue
-	   			}
-	   			go self.sendout(&nmg, mp, me, p)
-	   		}
-	*/
-
 	// does he have knowledge about me? In case he is late comer
 
-	if _,ok := self.syncer.forest[self.syncer.Names[me]]; ok && self.Knowledge[me][mp] & (0x1 << me) == 0 {
+	if _,ok := self.syncer.forest[self.syncer.Names[me]]; ok && mp != me && self.Knowledge[me][mp] & (0x1 << me) == 0 {
 		// send knowledge about me
 		lmg := wire.NewMsgKnowledge()
 		lmg.From = self.syncer.Names[me]
@@ -271,7 +223,7 @@ func (self *Knowledgebase) improve(fact int32, k []int64, to int32) bool {
 }
 
 func (self *Knowledgebase) sendout(msg *wire.MsgKnowledge, mp int32, me int32, q int32) bool {
-	if !miner.server.CommitteeMsg(self.syncer.Names[q], msg) {
+	if !self.syncer.CommitteeMsg(self.syncer.Names[q], msg) {
 		log.Infof("Fail to send knowledge to %d. Knowledge %v about %x", q, msg.K, msg.M)
 		// fail to send
 		return false

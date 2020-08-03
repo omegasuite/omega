@@ -99,14 +99,14 @@ type Syncer struct {
 }
 
 func (self *Syncer) CommitteeMsgMG(p [20]byte, m wire.Message) {
-	if _, ok := self.Members[p]; ok {
-		miner.server.CommitteeMsgMG(p, m)
+	if h, ok := self.Members[p]; ok {
+		miner.server.CommitteeMsgMG(p, h + self.Base, m)
 	}
 }
 
 func (self *Syncer) CommitteeMsg(p [20]byte, m wire.Message) bool {
-	_, ok := self.Members[p]
-	return ok && miner.server.CommitteeMsg(p, m)
+	h, ok := self.Members[p]
+	return ok && miner.server.CommitteeMsg(p, h + self.Base, m)
 }
 
 func (self *Syncer) CommitteeCastMG(msg wire.Message) {
@@ -114,7 +114,7 @@ func (self *Syncer) CommitteeCastMG(msg wire.Message) {
 		if i == self.Myself {
 			continue
 		}
-		miner.server.CommitteeMsgMG(p, msg)
+		self.CommitteeMsgMG(p, msg)
 	}
 }
 
@@ -152,6 +152,9 @@ func (self *Syncer) repeater() {
 		repeated := make(map[int32]struct{})
 		for j := len(kp) - 1; j >= 0; j-- {
 			p := kp[j]
+			if p.From == self.Me {
+				continue
+			}
 			if _, ok := repeated[self.Members[p.From]]; ok {
 				continue
 			}
@@ -165,7 +168,7 @@ func (self *Syncer) repeater() {
 			to := pp.From
 			pp.From = self.Me
 
-			log.Infof("Repeater: Sending knowledge info about %s to %s", pp.Finder, to)
+			log.Infof("Repeater: Sending knowledge info about %x to %x", pp.Finder, to)
 
 			self.CommitteeMsg(to, &pp)
 		}
@@ -211,6 +214,7 @@ func (self *Syncer) repeater() {
 	self.idles++
 
 	if self.idles > 2 {
+		self.idles = 0
 		// resend candidacy
 		if self.agreed == self.Myself {
 			log.Infof("Repeater: cast my candidacy %d", self.agreed)
@@ -450,7 +454,9 @@ func (self *Syncer) run() {
 				}
 
 				self.consRevd[self.Members[k.From]] = self.Members[k.From]
-				self.Consensus(k)
+				if self.Consensus(k) {
+					going = false
+				}
 				log.Infof("MsgConsensus: From = %x\nHeight = %d\nM = %s",
 					k.From, k.Height, k.M.String())
 
@@ -461,7 +467,12 @@ func (self *Syncer) run() {
 				if self.Signature(k) {
 					going = false
 				}
+
+			default:
+				log.Infof("unable to handle message type %s at %d", m.Command(), m.Block())
 			}
+			log.Infof("%d message processed %s at %d", m.Command(), m.Block())
+
 			for len(self.repeating) > 1 {
 				<-self.repeating
 			}
@@ -503,6 +514,7 @@ func (self *Syncer) run() {
 					miner.server.NewConsusBlock(self.forest[owner].block)
 				}
 			}
+
 			self.Done = true
 			self.Runnable = false
 
@@ -510,6 +522,63 @@ func (self *Syncer) run() {
 			return
 		}
 	}
+}
+
+func Sender(msg Message) []byte {
+	switch msg.(type) {
+	case *wire.MsgKnowledge:
+		return nil
+/*
+		tmsg := *msg.(*wire.MsgKnowledge)
+		tmsg.K = make([]int32, 0)
+		tmsg.Signatures = make([][]byte, 0)
+		tmsg.From = tmsg.Finder
+
+		for j,i := range msg.(*wire.MsgKnowledge).K {
+			sig := msg.(*wire.MsgKnowledge).Signatures[j]
+
+			signer, err := btcutil.VerifySigScript(sig, tmsg.DoubleHashB(), miner.cfg)
+			if err != nil {
+				log.Infof("MsgKnowledge VerifySigScript fail")
+				return nil
+			}
+
+			pkh := signer.Hash160()
+
+			tmsg.K = append(tmsg.K, i)
+			tmsg.Signatures = append(tmsg.Signatures, sig)
+			tmsg.From = *pkh
+		}
+		return tmsg.From[:]
+ */
+
+	case *wire.MsgCandidate, *wire.MsgCandidateResp, *wire.MsgRelease:
+		signer, err := btcutil.VerifySigScript(msg.GetSignature(), msg.DoubleHashB(), miner.cfg)
+		if err != nil {
+			log.Infof("%s VerifySigScript fail", msg.Command())
+			return nil
+		}
+		return (*signer.Hash160())[:]
+
+	case *wire.MsgSignature:
+		k,err := btcec.ParsePubKey(msg.(*wire.MsgSignature).Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+		if err != nil {
+			return nil
+		}
+		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, miner.cfg)
+		pk.SetFormat(btcutil.PKFCompressed)
+		return pk.ScriptAddress()
+
+	case *wire.MsgConsensus:
+		k,err := btcec.ParsePubKey(msg.(*wire.MsgConsensus).Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+		if err != nil {
+			return nil
+		}
+		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, miner.cfg)
+		pk.SetFormat(btcutil.PKFCompressed)
+		return pk.ScriptAddress()
+	}
+	return nil
 }
 
 func (self *Syncer) Signature(msg * wire.MsgSignature) bool {
@@ -530,8 +599,8 @@ func (self *Syncer) Signature(msg * wire.MsgSignature) bool {
 			tree = self.Members[i]
 		}
 	}
-	if tree < 0 || (self.sigGiven != -1 && self.sigGiven != tree) {
-		log.Infof("signature ignored, it is for %d (%s), not what I gave %d.", tree, msg.M.String(), self.sigGiven)
+	if tree < 0 || tree != self.agreed {
+		log.Infof("signature ignored, it is for %d (%s), not what I agreed %d.", tree, msg.M.String(), self.agreed)
 		return false
 	}
 
@@ -571,9 +640,9 @@ func (self *Syncer) Signature(msg * wire.MsgSignature) bool {
 	return len(self.signed) >= wire.CommitteeSigs
 }
 
-func (self *Syncer) Consensus(msg * wire.MsgConsensus) {
+func (self *Syncer) Consensus(msg * wire.MsgConsensus) bool {
 	if self.agreed != self.Members[msg.From] {
-		return
+		return false
 	}
 
 	// verify signature
@@ -581,23 +650,22 @@ func (self *Syncer) Consensus(msg * wire.MsgConsensus) {
 
 	k,err := btcec.ParsePubKey(msg.Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 	if err != nil {
-		return
+		return false
 	}
 
 	s, err := btcec.ParseDERSignature(msg.Signature[btcec.PubKeyBytesLenCompressed:], btcec.S256())
 	if err != nil {
-		return
+		return false
 	}
 
 	if !s.Verify(hash, k) {
-		return
+		return false
 	}
 
 	privKey := miner.server.GetPrivKey(self.Me)
 	if privKey == nil {
-		return
+		return false
 	}
-
 
 	sig, _ := privKey.Sign(hash)
 	sgs := sig.Serialize()
@@ -640,7 +708,14 @@ func (self *Syncer) Consensus(msg * wire.MsgConsensus) {
 			self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts,
 			msg.Signature[:])
 		self.signed[msg.From] = struct{}{}
+
+		if len(self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
+			return true
+//			log.Info("passing NewConsusBlock & quit")
+//			miner.server.NewConsusBlock(self.forest[msg.From].block)
+		}
 	}
+	return false
 }
 
 func (self *Syncer) reckconsensus() {
@@ -767,24 +842,26 @@ func (self *Syncer) yield(better int32) bool {
 		delete(self.asked, self.Myself)
 		rls := self.makeRelease(better)
 		for r, _ := range self.agrees {
-			rls.Sign(miner.server.GetPrivKey(self.Me))
-			self.CommitteeMsgMG(self.Names[r], rls)
+			if r != self.Myself {
+				rls.Sign(miner.server.GetPrivKey(self.Me))
+				self.CommitteeMsgMG(self.Names[r], rls)
+			}
 		}
 		self.agrees = make(map[int32]struct{})
 		self.agreed = -1
-		if _, ok := self.asked[better]; ok {
+		if _, ok := self.asked[better]; ok && better != self.Myself {
 			// give a consent to Better
 			d := wire.MsgCandidateResp{Height: self.Height, K: []int64{}, From: self.Me}
 			d.Reply = "cnst"
 			d.Better = better
 			d.M = self.forest[self.Names[better]].hash
-			self.agreed = better
 			d.Sign(miner.server.GetPrivKey(self.Me))
 
 			log.Infof("yield: yield to %x", self.Names[better])
 
 			self.CommitteeMsgMG(self.Names[better], &d)
 		}
+		self.agreed = better
 		return true
 	}
 	return false
@@ -832,7 +909,7 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 
 					log.Infof("candidateResp: reaffirm candidacy")
 
-					self.CommitteeMsgMG(self.Me, msg) // ask again
+					self.CommitteeMsgMG(msg.F, msg) // ask again
 				}
 			} else {
 				self.agreed = -1
@@ -871,7 +948,7 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 }
 
 func (self *Syncer) candidacy() {
-	if (self.agreed != -1 && self.agreed != self.Myself) || !self.knowledges.Qualified(self.Myself) {
+	if self.agreed == self.Myself || self.agreed != -1 || !self.knowledges.Qualified(self.Myself) {
 		return
 	}
 
@@ -898,7 +975,7 @@ func (self *Syncer) candidacy() {
 
 //	self.consents[self.Me] = 1
 
-	log.Infof("Announce candicacy by %d", self.Myself)
+	log.Infof("Announce candicacy by %d at %d", self.Myself, self.Height)
 //	self.DebugInfo()
 
 	msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
@@ -931,6 +1008,9 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 		log.Infof("Candidate: Reject candicacy by %x", self.Names[fmp])
 
 		self.CommitteeMsgMG(self.Names[fmp], &d)
+		return
+	}
+	if self.sigGiven != -1 {
 		return
 	}
 
@@ -1168,9 +1248,9 @@ func (self *Syncer) SetCommittee() {
 }
 
 func (self *Syncer) UpdateChainHeight(h int32) {
-	if h < self.Height {
-		return
-	}
+//	if h < self.Height {
+//		return
+//	}
 	if h > self.Height {
 		self.Quit()
 		return

@@ -40,8 +40,8 @@ var Debug        int // hash of last block
 
 type PeerNotifier interface {
 	MyPlaceInCommittee(r int32) int32
-	CommitteeMsg([20]byte, wire.Message) bool
-	CommitteeMsgMG([20]byte, wire.Message)
+	CommitteeMsg([20]byte, int32, wire.Message) bool
+	CommitteeMsgMG([20]byte, int32, wire.Message)
 	NewConsusBlock(block *btcutil.Block)
 	GetPrivKey([20]byte) *btcec.PrivateKey
 	BestSnapshot() *blockchain.BestState
@@ -252,10 +252,11 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 			miner.syncMutex.Unlock()
 
 			if POWStopper != nil {
-				if len(POWStopper) > wire.CommitteeSize {
+				if len(POWStopper) < wire.CommitteeSize {
+					POWStopper <- struct{}{}
+				} else {
 					log.Infof("len(POWStopper) = %d", len(POWStopper))
 				}
-				POWStopper <-struct{}{}
 			}
 			snr.BlockInit(blk.block)
 			log.Infof("newblock initialized")
@@ -290,7 +291,7 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 }
 
 func HandleMessage(m Message) (bool, * chainhash.Hash) {
-	if miner.shutdown {
+	if miner == nil || miner.shutdown {
 		return false, nil
 	}
 
@@ -349,9 +350,14 @@ func HandleMessage(m Message) (bool, * chainhash.Hash) {
 		}
 
 		if len(s.messages) > (wire.CommitteeSize - 1) * 10 {
-			log.Infof("too many message are queued. Discard.")
+			log.Infof("too many messages are queued. Discard.")
 			return false, nil
 		}
+	}
+
+	if len(s.messages) > (wire.CommitteeSize - 1) * 10 {
+		log.Infof("Runnable syner has too many (%d) messages queued.", len(s.messages))
+		s.DebugInfo()
 	}
 
 	s.messages <- m

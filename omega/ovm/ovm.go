@@ -565,26 +565,50 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 		ln--
 		dd++
 	}
+
 	pks = pks[dd:]
 
-	r := database.BlockRegion {
-		tx.Hash(),	// has of this tx
-		uint32(p),	// offset from start of tx
-		uint32(ln),
+	mintable := false
+	isopcode := true
+	for i := 0; i < len(pks); i++ {
+		if isopcode {
+			if OpCode(pks[i]) == MINT {
+				mintable = true
+				break
+			} else if OpCode(pks[i]) == LIBLOAD {
+				var lib [20]byte
+				copy(lib[:], pks[i+1 : i+21])
+				m := ovm.getMeta(lib, "mintable")
+				mintable = mintable || (m[0] == 1)
+				break
+			}
+			isopcode = false
+		}
+		if pks[i] == '\n' {
+			isopcode = true
+		}
 	}
+
 	br := make([]byte, 40)
-	copy(br, (*r.Hash)[:])
-	common.LittleEndian.PutUint32(br[32:], r.Offset)
-	common.LittleEndian.PutUint32(br[36:], r.Len)
+	copy(br, (*tx.Hash())[:])
+	common.LittleEndian.PutUint32(br[32:], uint32(p))
+	common.LittleEndian.PutUint32(br[36:], uint32(ln))
 
 	ovm.setMeta(d, "code", br)
-	
-	log.Infof("Contract created: %x", d)
 
-//	contract.Code = ByteCodeParser(ret)
-//	ovm.SetCode(d, ret)
-//	copy(contract.CodeHash[:], chainhash.DoubleHashB(ret))
-//	ovm.SetCodeHash(d, contract.CodeHash)
+	if !mintable {
+		if _, total := ovm.StateDB[d].GetMint(); total != 0 {
+			// total amount of token issueable
+			var tb [8]byte
+			common.LittleEndian.PutUint64(tb[:], total)
+			ovm.setMeta(d, "coincap", tb[:])
+		}
+		ovm.setMeta(d, "mintable", []byte{0})
+	} else {
+		ovm.setMeta(d, "mintable", []byte{1})
+	}
+
+	log.Infof("Contract created: %x", d)
 
 	return nil, nil
 }

@@ -27,7 +27,7 @@ type Options struct {
 	Port string `short:"p" long:"port" description:"port"`
 }
 
-var options = Options { Host: "localhost", Port: "18334"}
+var options = Options { Host: "localhost", Port: "8789"}
 
 var minerName = map[string]string{
 	"6beafade16563e9f87e5625708af74196d2a523c":"alice",
@@ -53,7 +53,7 @@ func main() {
 	connCfg := &rpcclient.ConnConfig{
 		Host:         options.Host + ":" + options.Port,
 		User:         "admin",
-		Pass:         "123456",
+		Pass:         "FFh5rL",
 		HTTPPostMode: true, // Bitcoin core only supports HTTP POST mode
 		DisableTLS:   true, // Bitcoin core does not provide TLS by default
 	}

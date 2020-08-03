@@ -94,8 +94,7 @@ type lib struct{
 // Contract represents an contract in the state database. It contains
 // the the contract code, calling arguments. Contract implements ContractRef
 type Contract struct {
-	self          ContractRef	// contract address = hash160(owner + CodeHash)
-								// note: self is 0x000...000 for system contract.
+	self          ContractRef
 
 	libs map[Address]lib
 

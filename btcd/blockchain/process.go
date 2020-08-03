@@ -428,8 +428,11 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 	for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 		k, _ := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.ChainParams)
+		pk.SetFormat(btcutil.PKFCompressed)
+		ppk := pk.AddressPubKeyHash()
+		snr := *(ppk.Hash160())
 		// is the signer in committee?
-		if _,ok := miners[*(pk.AddressPubKeyHash().Hash160())]; !ok {
+		if _,ok := miners[snr]; !ok {
 //			b.index.RemoveNode(b.index.LookupNode(block.Hash()))
 			return false
 		}
