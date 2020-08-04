@@ -39,7 +39,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 		sent := false
 		for _,sp := range s.peers {
 			if !sent && sp.Connected() {
-				btcdLog.Tracef("CommitteeOut: %s msg to %s", msg.Command(), sp.Addr())
+				btcdLog.Debugf("CommitteeOut: %s msg to %s", msg.Command(), sp.Addr())
 				sp.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 				sent = true
 			}
@@ -64,7 +64,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 				}
 			})
 			if len(s.peers) > 0 {
-				btcdLog.Tracef("CommitteeOut: %s msg to %s", msg.Command(), s.peers[0].Addr())
+				btcdLog.Debugf("CommitteeOut: %s msg to %s", msg.Command(), s.peers[0].Addr())
 				s.peers[0].QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 				sent = true
 			} else {	// if len(s.address) > 0
@@ -75,7 +75,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 
 				var callback = func (q connmgr.ServerPeer) {
 					p := q.(*serverPeer)
-					btcdLog.Tracef("CommitteeOut: %s msg to %s", msg.Command(), p.Addr())
+					btcdLog.Debugf("CommitteeOut: %s msg to %s", msg.Command(), p.Addr())
 					p.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 
 					s.peers = append(s.peers, p)
@@ -89,7 +89,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 					}
 				}
 
-				btcdLog.Tracef("CommitteeOut: make a connection to %s", msg.Command(), tcp.String())
+				btcdLog.Debugf("CommitteeOut: make a connection to %s", msg.Command(), tcp.String())
 
 				go p.connManager.Connect(&connmgr.ConnReq{
 					Addr:      tcp,
@@ -581,7 +581,7 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 		})
 
 		if !isin {
-			btcdLog.Tracef("makeConnection: new %s", addr)
+			btcdLog.Debugf("makeConnection: new %s", addr)
 //			priority,_ := s.addrManager.AddLocalAddress(wire.NewNetAddressIPPort(tcp.IP, uint16(tcp.Port), 0), addrmgr.CommitteePrio)
 
 //			if priority == addrmgr.ManualPrio {
@@ -640,7 +640,6 @@ func (s *server) handleCommitteRotation(r int32) {
 		bot = r - wire.CommitteeSize + 1
 	}
 
-	btcdLog.Tracef("cmutex.Lock @ handleCommitteRotation")
 	s.peerState.cmutex.Lock()
 	defer s.peerState.cmutex.Unlock()
 
@@ -696,19 +695,19 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 	if !ok {
 		mb,_ := s.chain.Miners.BlockByHeight(h)
 		if p != mb.MsgBlock().Miner {
-			btcdLog.Tracef("CommitteeMsgMG passed inconsistent peer & height")
+			btcdLog.Debugf("CommitteeMsgMG passed inconsistent peer & height")
 			return
 		}
 		s.makeConnection(mb.MsgBlock().Connection, p, mb.Height())
 		sp,ok = s.peerState.committee[p]
 		if !ok {
-			btcdLog.Tracef("Fail to send Committee Msg %s to %x because unable ot connect", m.Command(), sp.member)
+			btcdLog.Debugf("Fail to send Committee Msg %s to %x because unable ot connect", m.Command(), sp.member)
 			s.peerState.cmutex.Unlock()
 			return
 		}
 	}
 
-	btcdLog.Tracef("Committee Msg %s queued for sending to %x", m.Command(), sp.member)
+	btcdLog.Debugf("Committee Msg %s queued for sending to %x", m.Command(), sp.member)
 	sp.queue <- m
 
 	s.peerState.cmutex.Unlock()
@@ -748,14 +747,14 @@ func (s *server) CommitteeMsg(p [20]byte, h int32, m wire.Message) bool {
 	if ok {
 		for _,r := range sp.peers {
 			if r.Connected() {
-				btcdLog.Tracef("sending %s to %s (remote = %s)", m.Command(), r.Peer.LocalAddr().String(), r.Peer.Addr())
+				btcdLog.Debugf("sending %s to %s (remote = %s)", m.Command(), r.Peer.LocalAddr().String(), r.Peer.Addr())
 				r.QueueMessageWithEncoding(m, done, wire.SignatureEncoding)
 				return <-done
 			}
 		}
-		btcdLog.Tracef("No Connected peer in %x for sending %s", p, m.Command())
+		btcdLog.Debugf("No Connected peer in %x for sending %s", p, m.Command())
 	} else {
-		btcdLog.Tracef("%x not in committee yet, add it", p)
+		btcdLog.Debugf("%x not in committee yet, add it", p)
 
 //		best := s.chain.BestSnapshot()
 //		my := s.MyPlaceInCommittee(int32(best.LastRotation))
@@ -763,12 +762,12 @@ func (s *server) CommitteeMsg(p [20]byte, h int32, m wire.Message) bool {
 		blk, _ := s.chain.Miners.BlockByHeight(h)
 
 		if p != blk.MsgBlock().Miner {
-			btcdLog.Tracef("CommitteeMsg passed inconsistent peer & height")
+			btcdLog.Debugf("CommitteeMsg passed inconsistent peer & height")
 			return false
 		}
 
 		s.peerState.cmutex.Lock()
-		btcdLog.Tracef("%x is at %d. makeConnection", p, h)
+		btcdLog.Debugf("%x is at %d. makeConnection", p, h)
 		s.makeConnection(blk.MsgBlock().Connection, p, blk.Height())
 		s.peerState.cmutex.Unlock()
 	}
@@ -905,11 +904,11 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 //	s.peerState.print()
 
 	if isMainchain, orphan, err, _ := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil && !orphan && isMainchain {
-		consensusLog.Tracef("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
+		consensusLog.Debugf("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
 	} else {
 		s.chain.SendNotification(blockchain.NTBlockRejected, m)
 		if err != nil {
-			consensusLog.Tracef("consensus faield to process ProcessBlock!!! %s", err.Error())
+			consensusLog.Debugf("consensus faield to process ProcessBlock!!! %s", err.Error())
 //		if r,ok := err.(blockchain.RuleError); !ok || r.ErrorCode != blockchain.ErrDuplicateBlock {
 //			s.chain.ProcessBlock(m, blockchain.BFNone) // for debugging
 		}

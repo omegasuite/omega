@@ -81,13 +81,20 @@ var (
 // Initialize package-global logger variables.
 func init() {
 	addrmgr.UseLogger(amgrLog)
+	amgrLog.SetLevel(btclog.LevelTrace)
+
 	connmgr.UseLogger(cmgrLog)
+	cmgrLog.SetLevel(btclog.LevelTrace)
+
 	database.UseLogger(btclog.Disabled)	// bcdbLog)
 	blockchain.UseLogger(chanLog)
+	chanLog.SetLevel(btclog.LevelTrace)
+
 	indexers.UseLogger(btclog.Disabled)	// indxLog)
 	mining.UseLogger(btclog.Disabled)	// minrLog)
 	cpuminer.UseLogger(minrLog)
 	peer.UseLogger(peerLog)
+	peerLog.SetLevel(btclog.LevelTrace)
 //	UseLogger(scrpLog)
 
 	netsync.UseLogger(syncLog)
@@ -100,7 +107,20 @@ func init() {
 	minerchain.UseLogger(minerLog)
 	token.UseLogger(btclog.Disabled)	// tokenLog)
 
+	btcdLog.SetLevel(btclog.LevelTrace)
+
 	srvrLog = btclog.Disabled
+}
+
+func debugLevel() {
+/*
+	amgrLog.SetLevel(btclog.LevelDebug)
+	cmgrLog.SetLevel(btclog.LevelDebug)
+	chanLog.SetLevel(btclog.LevelDebug)
+	peerLog.SetLevel(btclog.LevelDebug)
+	syncLog.SetLevel(btclog.LevelDebug)
+	btcdLog.SetLevel(btclog.LevelDebug)
+ */
 }
 
 // subsystemLoggers maps each subsystem identifier to its associated logger.

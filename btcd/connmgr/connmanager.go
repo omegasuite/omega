@@ -259,7 +259,7 @@ out:
 			if t.Unix() - cm.Alive.Unix() <= 60 {
 				continue
 			}
-			log.Tracef("Make a new conn because no activity in 1 min")
+			log.Debugf("Make a new conn because no activity in 1 min")
 			// nothing happened in 1 minute, try a new connection
 			go cm.NewConnReq(nil)
 
@@ -485,18 +485,18 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 		cmtx.Unlock()
 	} ()
 
-	log.Tracef("Attempting to connect to %v", c)
+	log.Debugf("Attempting to connect to %v", c)
 
 	conn, err := cm.cfg.Dial(c.Addr)
 	if err != nil {
-		log.Tracef(". Failed to connect to %s\n", c.Addr.String())
+		log.Debugf(". Failed to connect to %s\n", c.Addr.String())
 		select {
 		case cm.requests <- handleFailed{c, err}:
 		case <-cm.quit:
 		}
 		return
 	} else {
-		log.Tracef(". Succeed to connect to %s\n", c.Addr.String())
+		log.Debugf(". Succeed to connect to %s\n", c.Addr.String())
 	}
 
 	select {

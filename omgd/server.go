@@ -786,7 +786,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	numAdded := 0
 	notFound := wire.NewMsgNotFound()
 
-	btcdLog.Tracef("OnGetData: getting %d items %s", len(msg.InvList), msg.InvList[0].Hash.String())
+	btcdLog.Debugf("OnGetData: getting %d items %s", len(msg.InvList), msg.InvList[0].Hash.String())
 
 	length := len(msg.InvList)
 	// A decaying ban score increase is applied to prevent exhausting resources
@@ -2925,6 +2925,7 @@ func (s *server) Stop() error {
 
 	// Signal the remaining goroutines to quit.
 	btcdLog.Info("Signal the remaining goroutines to quit")
+	close(blockchain.BlockSizerQuit)
 	close(s.quit)
 	return nil
 }
@@ -3262,6 +3263,8 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		return nil, err
 	}
 
+	go s.chain.BlockSizeUpdater()
+
 	s.chain.Subscribe(s.chain.BlockSizerNotice)
 
 	// Search for a FeeEstimator state in the database. If none can be found
@@ -3442,8 +3445,8 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 					continue
 				}
 
-				// allow nondefault ports after 5 failed tries.
-				if tries < 5 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
+				// allow nondefault ports after 50 failed tries.
+				if tries < 50 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
 					activeNetParams.DefaultPort {
 					continue
 				}

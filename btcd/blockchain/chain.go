@@ -553,6 +553,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	state := newBestState(node, blockSize, numTxns,
 		curTotalTxns+numTxns, node.CalcPastMedianTime(), bst.Bits,
 		bst.LastRotation)
+	state.sizeLimits = b.blockSizer.knownLimits
 
 	if node.Data.GetNonce() > 0 {
 		state.LastRotation += wire.POWRotate
@@ -717,6 +718,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 
 	state := newBestState(prevNode, blockSize, numTxns,
 		newTotalTxns, prevNode.CalcPastMedianTime(), bits, rotation)	// prevNode.bits, b.BestSnapshot().LastRotation)
+	state.sizeLimits = b.blockSizer.knownLimits
 
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.

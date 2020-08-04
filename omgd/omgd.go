@@ -51,6 +51,9 @@ func btcdMain(serverChan chan<- *server) error {
 	if err != nil {
 		return err
 	}
+
+	debugLevel()
+
 	cfg = tcfg
 	defer func() {
 		if logRotator != nil {

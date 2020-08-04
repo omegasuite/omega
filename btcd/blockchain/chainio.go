@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/btcd/chaincfg"
 	"math/big"
 	"time"
 
@@ -678,6 +679,8 @@ func serializeBestChainState(state bestChainState) []byte {
 //	workSumBytesLen := uint32(len(workSumBytes))
 	serializedLen := chainhash.HashSize + 4 + 8 + 4 + 4 + 4	// + workSumBytesLen
 
+	serializedLen += 8 * len(state.sizeLimits)
+
 	// Serialize the chain state.
 	serializedData := make([]byte, serializedLen)
 	copy(serializedData[0:chainhash.HashSize], state.hash[:])
@@ -773,6 +776,7 @@ func dbPutBestState(dbTx database.Tx, snapshot *BestState) error {
 		rotation:  snapshot.LastRotation,
 		height:    uint32(snapshot.Height),
 		totalTxns: snapshot.TotalTxns,
+		sizeLimits: snapshot.sizeLimits,
 	})
 
 	// Store the current best chain state into the database.
@@ -893,6 +897,8 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
+		b.stateSnapshot.sizeLimits = map[int32]uint32{0 : chaincfg.BlockBaseSize }
+
 		// Store the current best chain state into the database.
 		if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
 			return err
@@ -956,7 +962,7 @@ func (b *BlockChain) initChainState() error {
 		// initialized for use with chain yet, so break out now to allow
 		// that to happen under a writable database transaction.
 		serializedData := dbTx.Metadata().Get(chainStateKeyName)
-		log.Tracef("Serialized chain state: %x", serializedData)
+		log.Debugf("Serialized chain state: %x", serializedData)
 		state, err := deserializeBestChainState(serializedData)
 		if err != nil {
 			return err
@@ -1074,12 +1080,16 @@ func (b *BlockChain) initChainState() error {
 
 		tip.Data.SetBits(state.bits)
 		b.stateSnapshot = newBestState(tip, blockSize,
-			numTxns, state.totalTxns, tip.CalcPastMedianTime(), state.bits, state.rotation)
+			numTxns, state.totalTxns, tip.CalcPastMedianTime(),
+			state.bits, state.rotation)
+		b.stateSnapshot.sizeLimits = state.sizeLimits
 
 		return nil
 	})
 
 	b.blockSizer.knownLimits = b.stateSnapshot.sizeLimits
+
+	log.Debugf("BlockSizer: %v", b.blockSizer)
 
 	if err != nil {
 		return err

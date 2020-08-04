@@ -1412,10 +1412,14 @@ cleanup:
 func (p *Peer) inHandler() {
 	// The timer is stopped when a new message is received and reset after it
 	// is processed.
-	var lastmsg string
+//	var lastmsg string
 	idleTimer := time.AfterFunc(idleTimeout, func() {
-		log.Infof("Peer %s no answer for %s -- disconnecting. Last msg is %s", p, idleTimeout, lastmsg)
-		p.Disconnect("inHandler @ idleTimeout")
+		if p.Committee <= 0 {
+			log.Warnf("Peer %s no answer for %s -- disconnecting", p, idleTimeout)
+			p.Disconnect("inHandler @ idleTimeout")
+		}
+//		log.Infof("Peer %s no answer for %s -- disconnecting. Last msg is %s", p, idleTimeout, lastmsg)
+//		p.Disconnect("inHandler @ idleTimeout")
 	})
 
 	var seq int
@@ -1461,7 +1465,7 @@ out:
 			break out
 		}
 
-		log.Tracef("%s inHandler %d %d read: %s", p.Addr(), p.id, seq, rmsg.Command())
+		log.Debugf("%s inHandler %d %d read: %s", p.Addr(), p.id, seq, rmsg.Command())
 
 		atomic.StoreInt64(&p.lastRecv, time.Now().Unix())
 		p.stallControl <- stallControlMsg{sccReceiveMessage, rmsg}
@@ -1469,7 +1473,7 @@ out:
 		// Handle each supported message type.
 		p.stallControl <- stallControlMsg{sccHandlerStart, rmsg}
 
-		lastmsg = rmsg.Command()
+//		lastmsg = rmsg.Command()
 
 		switch msg := rmsg.(type) {
 		case *wire.MsgVersion:
@@ -1682,36 +1686,36 @@ out:
 			}
 
 		case consensus.Message:
-			log.Tracef("inHandler consensus.Message %s", msg.Command())
+			log.Debugf("inHandler consensus.Message %s", msg.Command())
 			var ea [20]byte
 			if p.Inbound() && bytes.Compare(p.Miner[:], ea[:]) == 0 {
 				sender := consensus.Sender(msg)
 				if sender == nil {
-					log.Tracef("inHandler consensus.Message %s sender unknown", msg.Command())
+					log.Debugf("inHandler consensus.Message %s sender unknown", msg.Command())
 				} else {
-					log.Tracef("set miner for peer %s (%s %s) to %x", p.id, p.Addr(), p.LocalAddr().String(), sender)
+					log.Debugf("set miner for peer %s (%s %s) to %x", p.id, p.Addr(), p.LocalAddr().String(), sender)
 					copy(p.Miner[:], sender)
 				}
 			}
 
 			push, h := consensus.HandleMessage(msg)
 			if push && p.cfg.Listeners.PushGetBlock != nil {
-				log.Tracef("inHandler consensus.Message asks PushGetBlock")
+				log.Debugf("inHandler consensus.Message asks PushGetBlock")
 				p.cfg.Listeners.PushGetBlock(p)
 			} else if h != nil {
-				log.Tracef("inHandler consensus.Message require MsgGetData %s", h.String())
+				log.Debugf("inHandler consensus.Message require MsgGetData %s", h.String())
 				nmsg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *h}}}
 				p.QueueMessageWithEncoding(&nmsg, nil, wire.SignatureEncoding)
 			}
-			log.Tracef("inHandler consensus.Message %s processed", msg.Command())
+			log.Debugf("inHandler consensus.Message %s processed", msg.Command())
 
 		default:
 //			log.Infof("inHandler default")
 			log.Debugf("Received unhandled message of type %v "+
 				"from %v", rmsg.Command(), p)
 		}
-		lastmsg = ""
-		log.Tracef("inHandler %d %d message processed", p.id, seq)
+//		lastmsg = ""
+		log.Debugf("inHandler %d %d message processed", p.id, seq)
 		seq++
 		p.stallControl <- stallControlMsg{sccHandlerDone, rmsg}
 
@@ -1728,7 +1732,7 @@ out:
 	p.Disconnect("inHandler @ end")
 
 	close(p.inQuit)
-	log.Tracef("Peer input handler done for %s", p)
+	log.Debugf("Peer input handler done for %s", p)
 }
 
 // queueHandler handles the queuing of outgoing data for the peer. This runs as
@@ -1914,12 +1918,12 @@ out:
 //			if msg.msg.Command() == wire.CmdGetData && len(msg.msg.(*wire.MsgGetData).InvList) == 1 {
 //				log.Infof("GetData %s actually sent to %s", msg.msg.(*wire.MsgGetData).InvList[0].Hash.String(), p.Addr())
 //			}
-			log.Tracef("%s actually sent to %s", msg.msg.Command(), p.Addr())
+			log.Debugf("%s actually sent to %s", msg.msg.Command(), p.Addr())
 
 			err := p.writeMessage(msg.msg, msg.encoding)
 			if err != nil {
 				p.Disconnect("outHandler @ sendQueue")
-				log.Tracef("Failed to send message to %s: %s", p, err.Error())
+				log.Debugf("Failed to send message to %s: %s", p, err.Error())
 				if p.shouldLogWriteError(err) {
 					log.Errorf("Failed to send message to "+
 						"%s: %v", p, err)
@@ -1965,7 +1969,7 @@ cleanup:
 		}
 	}
 	close(p.outQuit)
-	log.Tracef("Peer output handler done for %s", p)
+	log.Debugf("Peer output handler done for %s", p)
 }
 
 // pingHandler periodically pings the peer.  It must be run as a goroutine.
@@ -2064,7 +2068,7 @@ func (p *Peer) Disconnect(s string) {
 
 //	log.Infof("Disconnecting %s by reason %s", p.String(), s)
 
-	log.Tracef("Disconnecting %s by %s", p, s)
+	log.Debugf("Disconnecting %s by %s", p, s)
 	if atomic.LoadInt32(&p.connected) != 0 {
 		p.conn.Close()
 	}
@@ -2276,7 +2280,7 @@ func (p *Peer) negotiateOutboundProtocol() error {
 
 // start begins processing input and output messages.
 func (p *Peer) start() error {
-	log.Tracef("Starting peer %s", p)
+	log.Debugf("Starting peer %s", p)
 
 	negotiateErr := make(chan error, 1)
 	go func() {
