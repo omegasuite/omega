@@ -1465,7 +1465,7 @@ out:
 			break out
 		}
 
-		log.Debugf("%s inHandler %d %d read: %s", p.Addr(), p.id, seq, rmsg.Command())
+		log.Infof("%s inHandler %d %d read: %s", p.Addr(), p.id, seq, rmsg.Command())
 
 		atomic.StoreInt64(&p.lastRecv, time.Now().Unix())
 		p.stallControl <- stallControlMsg{sccReceiveMessage, rmsg}
@@ -1918,7 +1918,7 @@ out:
 //			if msg.msg.Command() == wire.CmdGetData && len(msg.msg.(*wire.MsgGetData).InvList) == 1 {
 //				log.Infof("GetData %s actually sent to %s", msg.msg.(*wire.MsgGetData).InvList[0].Hash.String(), p.Addr())
 //			}
-			log.Debugf("%s actually sent to %s", msg.msg.Command(), p.Addr())
+			log.Infof("%s actually sent to %s", msg.msg.Command(), p.Addr())
 
 			err := p.writeMessage(msg.msg, msg.encoding)
 			if err != nil {
@@ -2066,9 +2066,9 @@ func (p *Peer) Disconnect(s string) {
 		return
 	}
 
-//	log.Infof("Disconnecting %s by reason %s", p.String(), s)
+	log.Infof("Disconnecting %s by reason %s", p.String(), s)
 
-	log.Debugf("Disconnecting %s by %s", p, s)
+//	log.Debugf("Disconnecting %s by %s", p, s)
 	if atomic.LoadInt32(&p.connected) != 0 {
 		p.conn.Close()
 	}

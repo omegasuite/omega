@@ -39,7 +39,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 		sent := false
 		for _,sp := range s.peers {
 			if !sent && sp.Connected() {
-				btcdLog.Debugf("CommitteeOut: %s msg to %s", msg.Command(), sp.Addr())
+				btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), sp.Addr())
 				sp.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 				sent = true
 			}
@@ -64,7 +64,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 				}
 			})
 			if len(s.peers) > 0 {
-				btcdLog.Debugf("CommitteeOut: %s msg to %s", msg.Command(), s.peers[0].Addr())
+				btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), s.peers[0].Addr())
 				s.peers[0].QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 				sent = true
 			} else {	// if len(s.address) > 0
@@ -75,7 +75,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 
 				var callback = func (q connmgr.ServerPeer) {
 					p := q.(*serverPeer)
-					btcdLog.Debugf("CommitteeOut: %s msg to %s", msg.Command(), p.Addr())
+					btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), p.Addr())
 					p.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 
 					s.peers = append(s.peers, p)
@@ -89,7 +89,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 					}
 				}
 
-				btcdLog.Debugf("CommitteeOut: make a connection to %s", msg.Command(), tcp.String())
+				btcdLog.Infof("CommitteeOut: make a connection to %s", msg.Command(), tcp.String())
 
 				go p.connManager.Connect(&connmgr.ConnReq{
 					Addr:      tcp,
@@ -695,13 +695,13 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 	if !ok {
 		mb,_ := s.chain.Miners.BlockByHeight(h)
 		if p != mb.MsgBlock().Miner {
-			btcdLog.Debugf("CommitteeMsgMG passed inconsistent peer & height")
+			btcdLog.Infof("CommitteeMsgMG passed inconsistent peer & height")
 			return
 		}
 		s.makeConnection(mb.MsgBlock().Connection, p, mb.Height())
 		sp,ok = s.peerState.committee[p]
 		if !ok {
-			btcdLog.Debugf("Fail to send Committee Msg %s to %x because unable ot connect", m.Command(), sp.member)
+			btcdLog.Infof("Fail to send Committee Msg %s to %x because unable ot connect", m.Command(), sp.member)
 			s.peerState.cmutex.Unlock()
 			return
 		}
@@ -747,14 +747,14 @@ func (s *server) CommitteeMsg(p [20]byte, h int32, m wire.Message) bool {
 	if ok {
 		for _,r := range sp.peers {
 			if r.Connected() {
-				btcdLog.Debugf("sending %s to %s (remote = %s)", m.Command(), r.Peer.LocalAddr().String(), r.Peer.Addr())
+				btcdLog.Infof("sending %s to %s (remote = %s)", m.Command(), r.Peer.LocalAddr().String(), r.Peer.Addr())
 				r.QueueMessageWithEncoding(m, done, wire.SignatureEncoding)
 				return <-done
 			}
 		}
-		btcdLog.Debugf("No Connected peer in %x for sending %s", p, m.Command())
+		btcdLog.Infof("No Connected peer in %x for sending %s", p, m.Command())
 	} else {
-		btcdLog.Debugf("%x not in committee yet, add it", p)
+		btcdLog.Infof("%x not in committee yet, add it", p)
 
 //		best := s.chain.BestSnapshot()
 //		my := s.MyPlaceInCommittee(int32(best.LastRotation))
@@ -762,12 +762,12 @@ func (s *server) CommitteeMsg(p [20]byte, h int32, m wire.Message) bool {
 		blk, _ := s.chain.Miners.BlockByHeight(h)
 
 		if p != blk.MsgBlock().Miner {
-			btcdLog.Debugf("CommitteeMsg passed inconsistent peer & height")
+			btcdLog.Infof("CommitteeMsg passed inconsistent peer & height")
 			return false
 		}
 
 		s.peerState.cmutex.Lock()
-		btcdLog.Debugf("%x is at %d. makeConnection", p, h)
+		btcdLog.Infof("%x is at %d. makeConnection", p, h)
 		s.makeConnection(blk.MsgBlock().Connection, p, blk.Height())
 		s.peerState.cmutex.Unlock()
 	}
@@ -908,7 +908,7 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 	} else {
 		s.chain.SendNotification(blockchain.NTBlockRejected, m)
 		if err != nil {
-			consensusLog.Debugf("consensus faield to process ProcessBlock!!! %s", err.Error())
+			consensusLog.Infof("consensus faield to process ProcessBlock!!! %s", err.Error())
 //		if r,ok := err.(blockchain.RuleError); !ok || r.ErrorCode != blockchain.ErrDuplicateBlock {
 //			s.chain.ProcessBlock(m, blockchain.BFNone) // for debugging
 		}

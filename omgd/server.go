@@ -2059,7 +2059,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	}
 
 	// Add the new peer and start it.
-	srvrLog.Debugf("New peer %s", sp)
+	srvrLog.Infof("New peer %s", sp)
 
 	state.cmutex.Lock()
 	if sp.Inbound() {
@@ -2135,7 +2135,7 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 		state.RemovePeer(sp)
 		state.cmutex.Unlock()
 
-		srvrLog.Debugf("Removed peer %s", sp)
+		srvrLog.Infof("Removed peer %s", sp)
 		return
 	}
 	state.cmutex.Unlock()
@@ -2541,7 +2541,7 @@ func (s *server) peerDoneHandler(sp *serverPeer) {
 		// Evict any remaining orphans that were sent by the peer.
 		numEvicted := s.txMemPool.RemoveOrphansByTag(mempool.Tag(sp.ID()))
 		if numEvicted > 0 {
-			txmpLog.Debugf("Evicted %d %s from peer %v (id %d)",
+			txmpLog.Infof("Evicted %d %s from peer %v (id %d)",
 				numEvicted, pickNoun(numEvicted, "orphan",
 					"orphans"), sp, sp.ID())
 		}

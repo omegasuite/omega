@@ -18,14 +18,14 @@ var queue chan sizerAct
 
 // BlockSizeUpdater must run as a go routine
 func (b *BlockChain) BlockSizeUpdater() {
-	BlockSizerQuit = make(chan struct {})
+	BlockSizerQuit = make(chan struct{})
 	queue = make(chan sizerAct, 1000)
 
 	if len(b.blockSizer.knownLimits) == 0 {
 		b.blockSizer.knownLimits[0] = chaincfg.BlockBaseSize
 	}
 
-	log.Debugf("BlockSizeUpdater: initial state: %v", b.blockSizer)
+	log.Infof("BlockSizeUpdater: initial state: %v", b.blockSizer)
 
 	for {
 		select {
@@ -60,7 +60,10 @@ func (b *BlockChain) BlockSizeUpdater() {
 
 			var runto int32
 			if act.result != nil {
-				runto = h - chaincfg.BlockSizeEvalPeriod
+				runto = h - chaincfg.BlockSizeEvalPeriod - chaincfg.SkipBlocks
+				if runto < 0 {
+					runto = 0
+				}
 			} else {
 				b.blockSizer.mtx.Lock()
 				_, ok := b.blockSizer.knownLimits[h]
@@ -82,14 +85,21 @@ func (b *BlockChain) BlockSizeUpdater() {
 						runto = h - chaincfg.SkipBlocks
 					} else {
 						t := h - act.action
-						g := b.blockSizer.lastNode.Height - h + chaincfg.BlockSizeEvalPeriod
-						runto = b.blockSizer.lastNode.Height - 1 - (g / t)
-						if runto < h-chaincfg.BlockSizeEvalPeriod {
-							runto = h - chaincfg.BlockSizeEvalPeriod
+						g := b.blockSizer.lastNode.Height - h + chaincfg.BlockSizeEvalPeriod + chaincfg.SkipBlocks
+						s := (g / t) + 1
+						if s < 20 {
+							s = 20
+						}
+						runto = b.blockSizer.lastNode.Height - s
+						if runto < h-chaincfg.BlockSizeEvalPeriod-chaincfg.SkipBlocks {
+							runto = h - chaincfg.BlockSizeEvalPeriod - chaincfg.SkipBlocks
 						}
 					}
 				} else {
-					runto = h - chaincfg.BlockSizeEvalPeriod
+					runto = h - chaincfg.BlockSizeEvalPeriod - chaincfg.SkipBlocks
+					if runto < 0 {
+						runto = 0
+					}
 				}
 				b.blockSizer.mtx.Unlock()
 			}
@@ -101,15 +111,17 @@ func (b *BlockChain) BlockSizeUpdater() {
 				b.blockSizer.lastNode = b.BestChain.NodeByHeight(h - chaincfg.SkipBlocks)
 			}
 
-			log.Infof("blockSizer accounting at %d", b.blockSizer.lastNode.Height)
+			log.Infof("blockSizer accounting %d - %d by act @ %d", b.blockSizer.lastNode.Height, runto, act.action)
 
 			p := b.blockSizer.lastNode.Parent
 			for i := b.blockSizer.lastNode.Height - 1; i >= runto && p != nil; i-- {
-				if i%1000 == 0 {
-					log.Infof("blockSizer handling block %d", i)
-				}
 				if p.Data.GetNonce() < 0 {
 					q, _ := b.BlockByHash(&p.Hash)
+					if q == nil {
+						// this may happen during shutdown
+						runto = -1
+						break
+					}
 					b.blockSizer.blockCount++
 					b.blockSizer.sizeSum += int64(len(q.MsgBlock().Transactions))
 					b.blockSizer.timeSum += b.blockSizer.lastNode.Data.TimeStamp() - p.Data.TimeStamp()
@@ -117,7 +129,7 @@ func (b *BlockChain) BlockSizeUpdater() {
 				b.blockSizer.lastNode = p
 				p = p.Parent
 			}
-			if runto == h-chaincfg.BlockSizeEvalPeriod {
+			if runto == 0 || runto == h-chaincfg.BlockSizeEvalPeriod-chaincfg.SkipBlocks {
 				log.Infof("blockSizer stats: blockCount = %d, sizeSum = %d timeSum = %d",
 					b.blockSizer.blockCount, b.blockSizer.sizeSum, b.blockSizer.timeSum)
 
@@ -131,6 +143,13 @@ func (b *BlockChain) BlockSizeUpdater() {
 					act.result <- b.blockSizer.knownLimits[h]
 				}
 			}
+		}
+	}
+
+	// drain the queue
+	for {
+		select {
+		case act := <-queue:
 		}
 	}
 }

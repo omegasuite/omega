@@ -399,7 +399,7 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) bool {
 	}
 
 	if bestPeer == nil {
-		log.Debugf("No sync peer available out of %d peers", len(sm.peerStates))
+		log.Infof("No sync peer available out of %d peers", len(sm.peerStates))
 		return false
 	}
 
@@ -574,7 +574,7 @@ func (sm *SyncManager) handleDonePeerMsg(peer *peerpkg.Peer) {
 	// Remove the peer from the list of candidate peers.
 	delete(sm.peerStates, peer)
 
-	log.Debugf("Lost peer %s", peer)
+	log.Infof("Lost peer %s", peer)
 
 	// Remove requested transactions from the global map so that they will
 	// be fetched from elsewhere next time we get an inv.
