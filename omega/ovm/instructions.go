@@ -2449,6 +2449,7 @@ func opReturn(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
+/*
 func opTxIOCount(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	param := contract.GetBytes(*pc)
 
@@ -2555,6 +2556,7 @@ func opGetTxIO(pc *int, evm *OVM, contract *Contract, stack *Stack, in bool) err
 func opGetTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return opGetTxIO(pc, evm, contract, stack, false)
 }
+ */
 
 var negHash = chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,

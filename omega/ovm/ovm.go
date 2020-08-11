@@ -61,11 +61,15 @@ type (
 // run runs the given contract and takes care of running precompiles with a fallback to the byte code interpreter.
 func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
 	if contract.CodeAddr != nil {
-		precompiles := PrecompiledContracts
-		precompiles[[4]byte{0,0,0,0}] = &create{evm, contract }
 		var abi [4]byte
 		copy(abi[:], contract.CodeAddr)
-		if p := precompiles[abi]; p != nil {
+		p := PrecompiledContracts[abi]
+
+		if abi == [4]byte{0,0,0,0} {
+			p = &create{evm, contract }
+		}
+
+		if p != nil {
 			return evm.interpreter.RunPrecompiledContract(p, input, contract)
 		}
 	}

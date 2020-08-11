@@ -120,6 +120,7 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opReceived,
 			valid:         true,
 		},
+/*
 		TXIOCOUNT: operation{
 			execute:       opTxIOCount,
 			valid:         true,
@@ -132,6 +133,7 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opGetTxOut,
 			valid:         true,
 		},
+ */
 		SPEND: operation{
 			execute:       opSpend,
 			valid:         true,

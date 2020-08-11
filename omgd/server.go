@@ -53,8 +53,7 @@ import (
 const (
 	// defaultServices describes the default services that are supported by
 	// the server.
-	defaultServices = common.SFNodeNetwork | common.SFNodeBloom |
-		common.SFNodeWitness | common.SFNodeCF
+	defaultServices = common.SFNodeNetwork | common.SFNodeBloom | common.SFNodeCF
 
 	// defaultRequiredServices describes the default services that are
 	// required to be supported by outbound peers.
@@ -212,7 +211,7 @@ func (state * peerState) RemovePeer(sp *serverPeer) {
 					if i == len(m.peers)-1 {
 						m.peers = m.peers[:i]
 					} else if i == 0 {
-						m.peers = m.peers[i+1:]
+						m.peers = m.peers[1:]
 					} else {
 						m.peers = append(m.peers[:i], m.peers[i+1:]...)
 					}
@@ -237,9 +236,18 @@ func (p * peerState) IsConnected(c *connmgr.ConnReq) bool {
 }
 
 // Count returns the count of all known peers.
-func (ps *peerState) Count() int {
-	return len(ps.inboundPeers) + len(ps.outboundPeers) +
-		len(ps.persistentPeers)
+func (ps *peerState) Count(m byte) int {
+	s := 0
+	if m & 1 != 0 {
+		s += len(ps.inboundPeers)
+	}
+	if m & 2 != 0 {
+		s += len(ps.outboundPeers)
+	}
+	if m & 4 != 0 {
+		s += len(ps.persistentPeers)
+	}
+	return s
 }
 
 // ForAllOutboundPeers is a helper function that runs closure on all outbound
@@ -2030,11 +2038,16 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	// TODO: Check for max peers from a single IP.
 
 	// Limit max number of total peers.
-	if state.Count() >= cfg.MaxPeers {
+	pt := byte(6)
+	if sp.Inbound() {
+		pt = 1
+	}
+
+	if state.Count(pt) >= cfg.MaxPeers {
 		btcdLog.Infof("%v", newLogClosure(func() string {
 			return spew.Sdump(state)
 		}))
-
+/*
 		skip := false
 
 		if sp.Peer.Committee <= 0 {	// this is not a committee connection
@@ -2049,13 +2062,14 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		}
 
 		if skip {
+ */
 			srvrLog.Infof("Max peers reached [%d] - disconnecting peer %s",
 				cfg.MaxPeers, sp)
 			sp.Disconnect("handleAddPeerMsg @ MaxPeers")
 			// TODO: how to handle permanent peers here?
 			// they should be rescheduled.
 			return false
-		}
+//		}
 	}
 
 	// Add the new peer and start it.
@@ -2072,6 +2086,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 			for r,dup := range state.persistentPeers {
 				if sp.Addr() == dup.Addr() {
 					if dup.Connected() {
+						state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
 						sp.Disconnect("handleAddPeerMsg @ dup conn")
 						delete(state.persistentPeers, r)
 						state.RemovePeer(dup)
@@ -2083,6 +2098,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		} else {
 			for r,dup := range state.outboundPeers {
 				if sp.Addr() == dup.Addr() {
+					state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
 					sp.Disconnect("handleAddPeerMsg @ dup conn")
 					sp = dup
 					delete(state.outboundPeers, r)
@@ -2299,7 +2315,7 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 		msg.reply <- nconnected
 
 	case getPeersMsg:
-		peers := make([]*serverPeer, 0, state.Count())
+		peers := make([]*serverPeer, 0, state.Count(7))
 		state.ForAllPeers(func(sp *serverPeer) {
 			if !sp.Connected() {
 				return
@@ -2311,7 +2327,7 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 	case connectNodeMsg:
 		// TODO: duplicate oneshots?
 		// Limit max number of total peers.
-		if state.Count() >= cfg.MaxPeers {
+		if state.Count(6) >= cfg.MaxPeers {
 			msg.reply <- errors.New("max peers reached")
 			return
 		}

@@ -683,7 +683,6 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	// weed out duplicates.
 	if mp.isTransactionInPool(txHash) || (rejectDupOrphans &&
 		mp.isOrphanInPool(txHash)) {
-
 		str := fmt.Sprintf("already have transaction %v", txHash)
 		return nil, nil, txRuleError(common.RejectDuplicate, str)
 	}

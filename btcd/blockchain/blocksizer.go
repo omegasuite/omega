@@ -149,7 +149,7 @@ func (b *BlockChain) BlockSizeUpdater() {
 	// drain the queue
 	for {
 		select {
-		case act := <-queue:
+		case <-queue:
 		}
 	}
 }

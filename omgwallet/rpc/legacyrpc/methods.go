@@ -1294,6 +1294,7 @@ func listReceivedByAddress(icmd interface{}, w *wallet.Wallet) (interface{}, err
 // with details of sent and received wallet transactions since the given block.
 func listSinceBlock(icmd interface{}, w *wallet.Wallet, chainClient *chain.RPCClient) (interface{}, error) {
 	cmd := icmd.(*btcjson.ListSinceBlockCmd)
+	finalHeight := cmd.FinalBlockHeight
 
 	syncBlock := w.Manager.SyncedTo()
 	targetConf := int64(*cmd.TargetConfirmations)
@@ -1316,7 +1317,14 @@ func listSinceBlock(icmd interface{}, w *wallet.Wallet, chainClient *chain.RPCCl
 		start = int32(block.Height) + 1
 	}
 
-	txInfoList, err := w.ListSinceBlock(start, -1, syncBlock.Height)
+	var final int32
+	if finalHeight == nil {
+		final = -1
+	} else {
+		final = int32(*finalHeight) + start
+	}
+
+	txInfoList, err := w.ListSinceBlock(start, final, syncBlock.Height)
 	if err != nil {
 		return nil, err
 	}

@@ -444,9 +444,14 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 	if atomic.LoadInt32(&cm.stop) != 0 {
 		return
 	}
+
+	if cm.dupChecker != nil && cm.dupChecker.IsConnected(c) {
+		log.Infof("Connect failed due to dupChecker")
+		return
+	}
+
 	if atomic.LoadUint64(&c.id) == 0 {
 		atomic.StoreUint64(&c.id, atomic.AddUint64(&cm.connReqCount, 1))
-
 		// Submit a request of a pending connection attempt to the
 		// connection manager. By registering the id before the
 		// connection is even established, we'll be able to later
@@ -467,13 +472,10 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 		}
 	}
 
-	if cm.dupChecker.IsConnected(c) {
-		return
-	}
-
 	cmtx.Lock()
 	if _,ok := pendingConn[c.Addr]; ok {
 		cmtx.Unlock()
+		log.Infof("Connect failed due to pendingConn %d", pendingConn[c.Addr])
 		return
 	}
 	pendingConn[c.Addr] = struct{}{}
@@ -489,7 +491,7 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 
 	conn, err := cm.cfg.Dial(c.Addr)
 	if err != nil {
-		log.Debugf(". Failed to connect to %s\n", c.Addr.String())
+		log.Infof(". Failed to Dial connect to %s\n", c.Addr.String())
 		select {
 		case cm.requests <- handleFailed{c, err}:
 		case <-cm.quit:

@@ -401,6 +401,7 @@ func NewListReceivedByAddressCmd(minConf *int, includeEmpty, includeWatchOnly *b
 // ListSinceBlockCmd defines the listsinceblock JSON-RPC command.
 type ListSinceBlockCmd struct {
 	BlockHash           *string
+	FinalBlockHeight    *int  `jsonrpcdefault:"-1"`
 	TargetConfirmations *int  `jsonrpcdefault:"1"`
 	IncludeWatchOnly    *bool `jsonrpcdefault:"false"`
 }

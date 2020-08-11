@@ -842,10 +842,6 @@ const (
 	// filtering.
 	SFNodeBloom
 
-	// SFNodeWitness is a flag used to indicate a peer supports blocks
-	// and transactions including witness data (BIP0144).
-	SFNodeWitness
-
 	// SFNodeXthin is a flag used to indicate a peer supports xthin blocks.
 	SFNodeXthin
 
@@ -867,7 +863,6 @@ var sfStrings = map[ServiceFlag]string{
 	SFNodeNetwork: "SFNodeNetwork",
 	SFNodeGetUTXO: "SFNodeGetUTXO",
 	SFNodeBloom:   "SFNodeBloom",
-	SFNodeWitness: "SFNodeWitness",
 	SFNodeXthin:   "SFNodeXthin",
 	SFNodeBit5:    "SFNodeBit5",
 	SFNodeCF:      "SFNodeCF",
@@ -880,7 +875,6 @@ var orderedSFStrings = []ServiceFlag{
 	SFNodeNetwork,
 	SFNodeGetUTXO,
 	SFNodeBloom,
-	SFNodeWitness,
 	SFNodeXthin,
 	SFNodeBit5,
 	SFNodeCF,

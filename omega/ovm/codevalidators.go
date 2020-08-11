@@ -448,6 +448,7 @@ func opReturnValidator(param []byte) int {
 	return 1
 }
 
+/*
 var formatTxIOCount = []formatDesc{
 	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
 }
@@ -467,6 +468,7 @@ func opGetTxInValidator(param []byte) int {
 func opGetTxOutValidator(param []byte) int {
 	return formatParser(formatTxIO, param)
 }
+ */
 
 var formatSpend = []formatDesc{
 	{patOperand, 0}, {patOperand, 0xFFFFFFFF},

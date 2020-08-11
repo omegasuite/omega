@@ -183,13 +183,15 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 		}
 	} ()
 
+	nsigs := uint32(len(tx.MsgTx().SignatureScripts))
+
 	// prepare and shoot the real work
 	for txinidx, txin := range tx.MsgTx().TxIn {
 		if txin.IsSeparator() || txin.SignatureIndex == 0xFFFFFFFF {
 			allrun = true
 			break
 		}
-		if tx.MsgTx().SignatureScripts[txin.SignatureIndex] == nil {		// no signature
+		if txin.SignatureIndex >= nsigs || tx.MsgTx().SignatureScripts[txin.SignatureIndex] == nil {		// no signature
 			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
 		}
 

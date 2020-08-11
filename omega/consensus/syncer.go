@@ -1219,6 +1219,7 @@ func (self *Syncer) SetCommittee() {
 	for i := c - wire.CommitteeSize + 1; i <= c; i++ {
 		blk,_ := miner.server.MinerBlockByHeight(i)
 		if blk == nil {
+			self.Runnable = false
 			self.mutex.Unlock()
 			return
 		}
@@ -1236,12 +1237,12 @@ func (self *Syncer) SetCommittee() {
 
 	self.knowledges = CreateKnowledge(self)
 
-	self.mutex.Unlock()
-
 	if in {
+		self.mutex.Unlock()
 		go self.run()
 	} else {
 		self.Runnable = false
+		self.mutex.Unlock()
 	}
 
 //	miner.updateheight <- self.Height

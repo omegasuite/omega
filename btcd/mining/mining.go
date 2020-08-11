@@ -773,8 +773,10 @@ mempoolLoop:
 
 		err = ovm.VerifySigs(tx, nextBlockHeight, g.chainParams, views)
 		if err != nil {
+			g.txSource.RemoveTransaction(tx, true)
+
 			// we should roll back result of last contract execution here
-			log.Tracef("Skipping tx %s due to error in "+
+			log.Infof("Remove tx %s due to error in "+
 				"VerifySigs: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
@@ -791,8 +793,8 @@ mempoolLoop:
 
 			g.txSource.RemoveTransaction(tx, true)
 
-			log.Tracef("Skipping tx %s due to error in "+
-				"checkContract: %v", tx.Hash(), err)
+			log.Infof("Remove tx %s due to error in "+
+				"ExecContract: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
 		}

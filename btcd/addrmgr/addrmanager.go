@@ -1139,7 +1139,7 @@ func (a *AddrManager) GetBestLocalAddress(remoteAddr *wire.NetAddress) *wire.Net
 		} else {
 			ip = net.IPv4zero
 		}
-		services := common.SFNodeNetwork | common.SFNodeWitness | common.SFNodeBloom
+		services := common.SFNodeNetwork | common.SFNodeBloom
 		bestAddress = wire.NewNetAddressIPPort(ip, 0, services)
 	}
 
