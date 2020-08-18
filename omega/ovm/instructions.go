@@ -2726,6 +2726,11 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				if !isContract(pks[0]) || bytes.Compare(pks[1:21], adr[:]) != 0 {
 					return fmt.Errorf("Contract try to spend what does not belong to it.")
 				}
+				var allzero [20]byte
+				if bytes.Compare(stack.data[len(stack.data) - 1].inlib[:], allzero[:]) != 0 &&
+					bytes.Compare(stack.data[len(stack.data) - 1].inlib[:], adr[:]) != 0 {
+					return fmt.Errorf("Spending allowed by owning contract exactly.")
+				}
 
 				if evm.Spend(p) {
 					return nil
@@ -2811,9 +2816,17 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					return err
 				}
 
-				me := contract.self.Address()
-				if isContract(tk.PkScript[0]) && bytes.Compare(tk.PkScript[1:21], me[:]) != 0 {
-					return fmt.Errorf("Contract may not add a txout to another contract")
+				if isContract(tk.PkScript[0]) {
+					me := contract.self.Address()
+					allowed := bytes.Compare(tk.PkScript[1:21], me[:]) == 0
+					for lib,_ := range contract.libs {
+						if !allowed {
+							allowed = bytes.Compare(tk.PkScript[1:21], lib[:]) == 0
+						}
+					}
+					if !allowed {
+						return fmt.Errorf("Contract may not add a txout outside scope")
+					}
 				}
 
 				seq := evm.AddTxOutput(tk)
@@ -3016,11 +3029,6 @@ func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	op := evm.GetCurrentOutput()
 	coin := tx.MsgTx().TxOut[op.Index].Token
 
-	adr := contract.self.Address()
-	if err := stack.saveBytes(&dest, adr[:]); err != nil {
-		return err
-	}
-	dest += 20
 	if err := stack.saveInt64(&dest, int64(coin.TokenType)); err != nil {
 		return err
 	}
