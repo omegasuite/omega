@@ -85,7 +85,6 @@ func (b *Block) Bytes() ([]byte, error) {
 }
 
 func (b *Block) ClearSize() {
-	// Return the cached serialized bytes if it has already been generated.
 	b.serializedBlock = nil
 	b.serializedBlockNoWitness = nil
 }
