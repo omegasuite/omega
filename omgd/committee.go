@@ -893,6 +893,7 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 //	consensusLog.Infof("NewConsusBlock at %d", m.Height())
 //	s.peerState.print()
 
+	m.ClearSize()
 	if isMainchain, orphan, err, _ := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil && !orphan && isMainchain {
 		consensusLog.Debugf("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
 	} else {

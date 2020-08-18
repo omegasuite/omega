@@ -84,6 +84,7 @@ func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 
 	log.Infof("newblockch.len = %d", len(newblockch))
 
+	block.ClearSize()
 	newblockch <- newblock { block, flags }
 
 	log.Infof("newblockch.len queued")

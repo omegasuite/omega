@@ -1117,6 +1117,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 
 		block := detachBlocks[i]
+		block.ClearSize()
 
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
@@ -1183,6 +1184,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			break
 		}
 		block := attachBlocks[i]
+		block.ClearSize()
 
 		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
 		coinBase.SetIndex(block.Transactions()[0].Index())
