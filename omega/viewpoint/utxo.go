@@ -138,6 +138,7 @@ func (entry *UtxoEntry) Clone() *UtxoEntry {
 	}
 
 	return &UtxoEntry{
+		TokenType:   entry.TokenType,
 		Amount:      entry.Amount,
 		pkScript:    entry.pkScript,
 		blockHeight: entry.blockHeight,
@@ -433,6 +434,7 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 			entry := view.Utxo.entries[prevOut]
 			if entry == nil {
 				entry = &UtxoEntry{
+					TokenType:	 txOut.TokenType,
 					Amount:      txOut.Value,
 					pkScript:    txOut.PkScript,
 					blockHeight: block.Height(),
@@ -452,6 +454,10 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 					copy(entry.monitor, re.(*RightEntry).Desc[1:21])
 					copy(entry.monitor[20:], txOut.Value.(*token.HashToken).Hash[:])
 				}
+			}
+
+			if txOut.TokenType == 3 {
+				view.Polygon.LookupEntry(txOut.Token.Value.(*token.HashToken).Hash).deReference(view)
 			}
 
 			entry.Spend()
@@ -518,12 +524,17 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 
 			// Restore the utxo using the stxo data from the spend
 			// journal and mark it as modified.
+			entry.TokenType = stxo.TokenType
 			entry.Amount = stxo.Amount
 			entry.pkScript = stxo.PkScript
 			entry.blockHeight = stxo.Height
 			entry.packedFlags = TfModified
 			if stxo.IsCoinBase {
 				entry.packedFlags |= TfCoinBase
+			}
+
+			if entry.TokenType&3 == 3 {
+				view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).reference(view)
 			}
 
 			// if it has a monitor right, add a monitor index

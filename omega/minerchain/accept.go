@@ -53,7 +53,10 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	// position of the block within the block chain.
 	err := b.checkBlockContext(block, prevNode, flags)
 	if err != nil {
-		return false, err
+		if _,ok := err.(RuleError); ok {
+			return false, err
+		}
+		flags |= blockchain.BFNoReorg | blockchain.BFSideChain
 	}
 
 	// Insert the block into the database if it's not already there.  Even
@@ -161,6 +164,10 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 		hashNum := HashToBig(&hash)
 
 		factor := m.factorPOW(m.index.LookupNode(&header.PrevBlock))
+		if factor < 0 {
+			return fmt.Errorf("Curable POW factor error.")
+		}
+
 		hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
 
 		if hashNum.Cmp(target) > 0 {
@@ -175,10 +182,11 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 
 func (m *MinerChain) factorPOW(firstNode *chainutil.BlockNode) int64 {
 	baseh := uint32(firstNode.Height)
+	best := firstNode.Data.(*blockchainNodeData).block.BestBlock
+	h := m.blockChain.Rotation(best)
 
-	h := m.blockChain.BestSnapshot().LastRotation
-	if h == 0 {
-		return 1 	// nil
+	if h < 0 {
+		return -1
 	}
 
 	d := int32(baseh) - int32(h)
@@ -258,25 +266,25 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	for _, p := range block.MsgBlock().BlackList {
 		// verify the signatures
 		if refh,err := b.blockChain.BlockHeightByHash(&p.Hashes[0]); err != nil {
-			return err
+			return ruleError(ErrBlackList, err.Error())
 			if refh != int32(p.Height) {
-				return fmt.Errorf("The first hash must be a block in main chain at the given height")
+				return ruleError(ErrBlackList, "The first hash must be a block in main chain at the given height")
 			}
 		}
 
 		for i := 0; i < 2; i++ {
 			k, err := btcec.ParsePubKey(p.Signatures[i][:btcec.PubKeyBytesLenCompressed], btcec.S256())
 			if err != nil {
-				return err
+				return ruleError(ErrBlackList, err.Error())
 			}
 			sig, err := btcec.ParseDERSignature(p.Signatures[i][btcec.PubKeyBytesLenCompressed:], btcec.S256())
 			if err != nil {
-				return err
+				return ruleError(ErrBlackList, err.Error())
 			}
 
 			h := blockchain.MakeMinerSigHash(int32(p.Height), p.Hashes[i])
 			if !sig.Verify(h, k) {
-				return fmt.Errorf("Incorrect balck list signature")
+				return ruleError(ErrBlackList, "Incorrect balck list signature")
 			}
 		}
 	}

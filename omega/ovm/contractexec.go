@@ -77,7 +77,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	ctx.GetCoinBase = func() *btcutil.Tx { return nil }
 	ctx.GetTx = func () * btcutil.Tx {	return utx	}
 	ctx.Spend = func(t wire.OutPoint) bool { return false }
-	ctx.AddTxOutput = func(t wire.TxOut) bool { return false	}
+	ctx.AddTxOutput = func(t wire.TxOut) int { return -1	}
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ctx.Block = func() *btcutil.Block { return nil }
 	ctx.AddRight = func(t *token.RightDef) bool { return false }
@@ -155,7 +155,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 					ovm.GetCoinBase = func() *btcutil.Tx { return nil }
 					ovm.GetTx = func () * btcutil.Tx {	return tx }
 					ovm.Spend = func(t wire.OutPoint) bool { return false }
-					ovm.AddTxOutput = func(t wire.TxOut) bool { return false	}
+					ovm.AddTxOutput = func(t wire.TxOut) int { return -1 }
 					ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 					ovm.Block = func() *btcutil.Block { return nil }
 					ovm.AddRight = func(t *token.RightDef) bool { return false }
@@ -328,7 +328,7 @@ func GetHash(d uint64) *chainhash.Hash {
 
 func (ovm * OVM) ContractCall(addr Address, input []byte) ([]byte, error) {
 	ovm.GetTx = func () * btcutil.Tx { return nil }
-	ovm.AddTxOutput = func(t wire.TxOut) bool {	return false }
+	ovm.AddTxOutput = func(t wire.TxOut) int {	return -1 }
 	ovm.Spend = func(t wire.OutPoint) bool { return false }
 	ovm.AddRight = func(t *token.RightDef) bool { return false }
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
@@ -358,14 +358,8 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 	}
 
 	ovm.GetTx = func () * btcutil.Tx { return tx }
-	ovm.AddTxOutput = func(t wire.TxOut) bool {
-		if isContract(t.PkScript[0]) {
-			// can't add a contract call txout within a contract execution
-			// it must be done by Exec instruction
-			return false
-		}
-		tx.AddTxOut(t)
-		return true
+	ovm.AddTxOutput = func(t wire.TxOut) int {
+		return tx.AddTxOut(t)
 	}
 	ovm.Spend = func(t wire.OutPoint) bool {
 		// it has alreadty been verified that the coin belongs to the contract

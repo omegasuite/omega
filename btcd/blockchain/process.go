@@ -40,6 +40,8 @@ const (
 
 	BFNoReorg
 
+	BFSideChain
+
 	// BFNone is a convenience value to specifically indicate no flags.
 	BFNone BehaviorFlags = 0
 )

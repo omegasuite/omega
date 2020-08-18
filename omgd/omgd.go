@@ -162,6 +162,8 @@ func btcdMain(serverChan chan<- *server) error {
 		return nil
 	}
 
+	activeNetParams.Params.MinRelayTxFee = int64(cfg.minRelayTxFee)
+
 	// Create server and start it.
 	server, err := newServer(cfg.Listeners, db, minerdb, activeNetParams.Params,
 		interrupt)

@@ -47,16 +47,16 @@ const (
 )
 
 const (
-	RECEIVED OpCode = 0x61 + iota	// "a"
-	NULOP1		// TXIOCOUNT
-	NULOP2		// GETTXIN
+	RECEIVED OpCode = 0x61 + iota	// "a". outpoint of the current call
+	TXFEE		// TXIOCOUNT. min tx fee for current tx
+	GETCOIN		// GETTXIN. coin received for the current call
 	NULOP3		// GETTXOUT
-	SPEND
-	ADDRIGHTDEF
-	ADDTXOUT
-	GETDEFINITION
-	GETUTXO
-	MINT
+	SPEND		// add tx in
+	ADDRIGHTDEF	// add def
+	ADDTXOUT	// add tx out
+	GETDEFINITION	// get def
+	GETUTXO			// get any utxo
+	MINT		// mint a coin
 	META		// get contract meta data
 	TIME		// timestamp in block
 	HEIGHT		// block height
@@ -92,14 +92,15 @@ var opCodeToString = map[OpCode]string{
 	PUSH:       "PUSH",
 //	CODECOPY:       "CODECOPY",
 	RECEIVED:        "RECEIVED",
-	TXIOCOUNT:        "TXIOCOUNT",
-	GETTXIN:        "GETTXIN",
-	GETTXOUT:        "GETTXOUT",
+	TXFEE: "TXFEE",
+//	TXIOCOUNT:        "TXIOCOUNT",
+//	GETTXIN:        "GETTXIN",
+//	GETTXOUT:        "GETTXOUT",
 	SPEND:         "SPEND",
 	ADDRIGHTDEF:     "ADDRIGHTDEF",
 	ADDTXOUT: "ADDTXOUT",
 	GETDEFINITION:    "GETDEFINITION",
-//	GETCOIN:     "GETCOIN",
+	GETCOIN:     "GETCOIN",
 	GETUTXO:    "GETUTXO",
 	SELFDESTRUCT:   "SELFDESTRUCT",
 	REVERT:    "REVERT",
@@ -144,14 +145,15 @@ var stringToOp = map[string]OpCode{
 	"PUSH":           PUSH,
 //	"CODECOPY":           CODECOPY,
 	"RECEIVED": RECEIVED,
-	"TXIOCOUNT": TXIOCOUNT,
-	"GETTXIN": GETTXIN,
-	"GETTXOUT": GETTXOUT,
+	"TXFEE": TXFEE,
+//	"TXIOCOUNT": TXIOCOUNT,
+//	"GETTXIN": GETTXIN,
+//	"GETTXOUT": GETTXOUT,
 	"SPEND": SPEND,
 	"ADDRIGHTDEF": ADDRIGHTDEF,
 	"ADDTXOUT": ADDTXOUT,
 	"GETDEFINITION": GETDEFINITION,
-//	"GETCOIN": GETCOIN,
+	"GETCOIN": GETCOIN,
 	"GETUTXO": GETUTXO,
 	"SELFDESTRUCT":   SELFDESTRUCT,
 	"REVERT":         REVERT,

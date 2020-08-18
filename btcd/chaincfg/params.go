@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
 )
 
 // These variables are the chain proof-of-work limit parameters for each default
@@ -240,6 +240,7 @@ type Params struct {
 	SigVeriConcurrency int
 
 	MinBorderFee int
+	MinRelayTxFee int64
 }
 
 // MainNetParams defines the network parameters for the main Omega network.
@@ -325,7 +326,7 @@ var RegressionNetParams = Params{
 	GenesisMinerHash:         &regTestGenesisMinerHash,
 	PowLimit:                 regressionPowLimit,
 	PowLimitBits:             0x207fffff,
-	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+	CoinbaseMaturity:         10,
 	SubsidyReductionInterval: 150 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
@@ -394,7 +395,7 @@ var TestNet3Params = Params{
 	GenesisMinerHash:         &testNet3GenesisMinerHash,
 	PowLimit:                 testNet3PowLimit,
 	PowLimitBits:             0x1f0fffff,	// 0x1d3fffff
-	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+	CoinbaseMaturity:         10,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 4,    // 10 minutes

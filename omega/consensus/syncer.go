@@ -379,6 +379,7 @@ func (self *Syncer) run() {
 					self.knows[k.Finder] = append(self.knows[k.Finder], k)
 					self.mutex.Unlock()
 				}
+				log.Infof("MsgKnowledge processed")
 
 			case *wire.MsgKnowledgeDone:
 				if self.sigGiven >= 0 {
@@ -1219,9 +1220,10 @@ func (self *Syncer) SetCommittee() {
 	for i := c - wire.CommitteeSize + 1; i <= c; i++ {
 		blk,_ := miner.server.MinerBlockByHeight(i)
 		if blk == nil {
-			self.Runnable = false
-			self.mutex.Unlock()
-			return
+			continue
+//			self.Runnable = false
+//			self.mutex.Unlock()
+//			return
 		}
 
 		who := i - (c - wire.CommitteeSize + 1)
@@ -1388,6 +1390,8 @@ func (self *Syncer) DebugInfo() {
 			log.Infof("Unmatched Members & Names: %d, %x", m, n)
 		}
 	}
+	log.Infof("Queues: repeating = %d, newtrees = %d messages = %d",
+		len(self.repeating), len(self.newtree), len(self.messages))
 
 	if len(self.Malice) > 0 {
 		log.Infof("Malice miners:")

@@ -93,7 +93,7 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 	if err != nil {
 		return err
 	}
-
+/*
 	for _,tx := range block.Transactions()[1:] {
 		for _, in := range tx.MsgTx().TxIn {
 			if in.IsSeparator() {
@@ -104,7 +104,7 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 				t.Utxo.FetchUtxosMain(db, map[wire.OutPoint]struct{}{in.PreviousOutPoint: {}})
 				entry = t.Utxo.LookupEntry(in.PreviousOutPoint)
 				if entry == nil {
-					return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))
+					continue	// it's OK to have a nil
 				}
 			}
 
@@ -112,12 +112,14 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 				t.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).reference(t)
 			}
 		}
+
 		for _, out := range tx.MsgTx().TxOut {
 			if out.TokenType == 3 {
 				t.Polygon.LookupEntry(out.Token.Value.(*token.HashToken).Hash).deReference(t)
 			}
 		}
 	}
+ */
 
 	return t.disconnectTransactions(db, block, stxos)
 }

@@ -41,7 +41,7 @@ func getNum(param []byte) (int64, int) {
 				num = num*10 + int64(c-0x30)
 			}
 
-		case 0x61, 0x62, 0x63, 0x64, 0x65, 0x66: // 0 - 9
+		case 0x61, 0x62, 0x63, 0x64, 0x65, 0x66: // a - f
 			hex = true
 			num = num*16 + int64(c-0x61) + 10
 		}
@@ -87,9 +87,9 @@ func opEval8Validator(param []byte) int {
 			top -= d
 		}
 		switch param[j] {
-		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
-			0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
-			0x78, 0x6e, 0x69, 0x67:	// 0 - 9, a-f, xngi
+		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+			'a', 'b', 'c', 'd', 'e', 'f',
+			'x', 'n', 'i', 'g':	// 0 - 9, a-f, xngi
 			if num, tl = getNum(param[j:]); tl < 0 {
 				return -0xfffffff
 			}
@@ -99,9 +99,9 @@ func opEval8Validator(param []byte) int {
 			j += tl - 1
 			top++
 
-		case 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
-			0x25, 0x23, 0x5b, 0x5d, 0x7c, 0x26, 0x5e, 0x7e,
-			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
+		case 'u', '+', '-', '*', '/',
+			'%', '#', '[', ']', '|', '&', '^', '~',
+			'>', '<', '=', '(', ')', '!', '?', '"', '\'':
 
 		default:
 			return -0xfffffff
@@ -151,7 +151,7 @@ func opEval64Validator(param []byte) int {
 
 		case 0x40, 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
 			0x25, 0x23, 0x5b, 0x5d, 0x7c, 0x26, 0x5e, 0x7e,
-			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
+			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f, '"', '\'':
 
 		default:
 			return -0xfffffff
@@ -193,7 +193,7 @@ func opEval256Validator(param []byte) int {
 
 		case 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
 			0x25, 0x23, 0x7c, 0x26, 0x5e, 0x7e,
-			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
+			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f, '"', '\'':
 
 		default:
 			return -0xfffffff
@@ -315,7 +315,7 @@ func opLoadValidator(param []byte) int {
 }
 
 var formatStore = []formatDesc{
-	{patOperand, 0}, {dataType, 0}, {patOperand, 0},
+	{patOperand, 0}, {regexp.MustCompile(`^[rRBWDQHhkK]|(L[0-9]+)`), 0}, {patOperand, 0},
 }
 
 func opStoreValidator(param []byte) int {
@@ -448,6 +448,22 @@ func opReturnValidator(param []byte) int {
 	return 1
 }
 
+var formatTxFee = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 3},
+}
+
+func opTxFeeValidator(param []byte) int {
+	return formatParser(formatTxFee, param)
+}
+
+var formatGetCoin = []formatDesc{
+	{addrOperand, 0xFFFFFFFF},
+}
+
+func opGetCoinValidator(param []byte) int {
+	return formatParser(formatGetCoin, param)
+}
+
 /*
 var formatTxIOCount = []formatDesc{
 	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
@@ -486,8 +502,12 @@ func opAddRightValidator(param []byte) int {
 	return formatParser(formatAddRight, param)
 }
 
+var formatAddTXO = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
+}
+
 func opAddTxOutValidator(param []byte) int {
-	return formatParser(formatAddRight, param)
+	return formatParser(formatAddTXO, param)
 }
 
 var formatGetDef = []formatDesc{

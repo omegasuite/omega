@@ -226,6 +226,13 @@ const (
 	// current chain tip. This is not a block validation rule, but is required
 	// for block proposals submitted via getblocktemplate RPC.
 	ErrPrevBlockNotBest
+
+	// ErrInsufficientCollateralt indicates that the block filed to provide
+	// sufficient collateral.
+	ErrInsufficientCollateralt
+
+	// ErrBlackList indicates that the miner is banned in a black list.
+	ErrBlackList
 )
 
 // Map of ErrorCode values back to their constant names for pretty printing.

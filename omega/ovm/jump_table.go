@@ -92,6 +92,7 @@ func NewOmegaInstructionSet() [256]operation {
 		},
 		LIBLOAD: operation{
 			execute:       opLibLoad,
+			jumps:		   true,
 			valid:         true,
 		},
 		MALLOC: operation{
@@ -118,6 +119,10 @@ func NewOmegaInstructionSet() [256]operation {
  */
 		RECEIVED: operation{
 			execute:       opReceived,
+			valid:         true,
+		},
+		TXFEE: operation{
+			execute:       opTxFee,
 			valid:         true,
 		},
 /*
@@ -151,12 +156,10 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opGetDefinition,
 			valid:         true,
 		},
-/*
 		GETCOIN: operation{
 			execute:       opGetCoin,
 			valid:         true,
 		},
- */
 		GETUTXO: operation{
 			execute:       opGetUtxo,
 			valid:         true,
@@ -198,6 +201,10 @@ func NewOmegaInstructionSet() [256]operation {
 		},
 		HEIGHT: {
 			execute:       opHeight,
+			valid:         true,
+		},
+		SIGNTEXT: operation{
+			execute:       opSignText,
 			valid:         true,
 		},
 	}

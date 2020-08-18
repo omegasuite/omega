@@ -765,7 +765,7 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 	// most common case.
 	parentHash := &block.MsgBlock().PrevBlock
 	parent := b.index.LookupNode(parentHash)
-	if parentHash.IsEqual(&b.BestChain.Tip().Hash) &&
+	if flags & blockchain.BFSideChain == 0 && parentHash.IsEqual(&b.BestChain.Tip().Hash) &&
 		b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) &&
 		b.blockChain.InBestChain(&block.MsgBlock().BestBlock) {
 		// Skip checks if node has already been fully validated.
@@ -806,6 +806,11 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 
 		return true, nil
 	}
+
+	if flags & blockchain.BFNoReorg != 0 {
+		return false, nil
+	}
+
 //	if fastAdd {
 //		log.Warnf("fastAdd set in the side chain case? %v\n",
 //			block.Hash())

@@ -280,8 +280,13 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 }
 
 func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
-	rotate := int32(b.BestSnapshot().LastRotation)
-	for p := b.BestChain.Tip(); p != nil && p.Hash != hash; p = p.Parent {
+	best := b.BestSnapshot()
+	rotate := int32(best.LastRotation)
+	p := b.NodeByHash(&best.Hash)
+	if p.Height > best.Height {
+		return -1
+	}
+	for ; p != nil && !p.Hash.IsEqual(&hash); p = p.Parent {
 		switch {
 		case p.Data.GetNonce() > 0:
 			rotate -= wire.POWRotate
@@ -289,6 +294,9 @@ func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
 		case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 			rotate = -(p.Data.GetNonce() + wire.MINER_RORATE_FREQ) - 1
 		}
+	}
+	if p == nil {
+		return -1
 	}
 	return int32(rotate)
 }

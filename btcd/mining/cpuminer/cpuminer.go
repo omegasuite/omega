@@ -384,11 +384,13 @@ out:
 		// Wait until there is a connection to at least one other peer
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
-		if m.cfg.ConnectedCount() == 0 {
-			log.Info("Sleep 5 sec because there is no connected peer.")
+		if ccnt := m.cfg.ConnectedCount(); ccnt == 0 {
+			log.Infof("Sleep 5 sec because there is no connected peer.")
 			m.Stale = true
 			time.Sleep(time.Second * 5)
 			continue
+		} else {
+			log.Infof("ConnectedCount = %d.", ccnt)
 		}
 
 		// No point in searching for a solution before the chain is
@@ -398,9 +400,11 @@ out:
 		// a block that is in the process of becoming stale.
 
 		isCurrent := m.cfg.IsCurrent()
+		log.Infof("isCurrent = %v.", isCurrent)
 
 		bs := m.g.BestSnapshot()
 		curHeight := bs.Height
+		log.Infof("curHeight = %d.", curHeight)
 
 		if curHeight != 0 && !isCurrent {
 			m.Stale = true
@@ -426,6 +430,8 @@ out:
 		var adr [20]byte
 		powMode := true
 
+		log.Infof("committee size = %d.", len(committee))
+
 		if m.cfg.SignAddress != nil {
 			copy(adr[:], m.cfg.SignAddress.ScriptAddress())
 			payToAddr = &m.cfg.SignAddress
@@ -442,6 +448,8 @@ out:
 		// include in the block.
 
 		payToAddress := []btcutil.Address{*payToAddr}
+
+		log.Infof("powMode = %v.", powMode)
 
 		nonce := pb
 		if !powMode {

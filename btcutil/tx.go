@@ -75,15 +75,15 @@ func (s *Tx) VerifyContractOut(t *Tx) bool {
 	return true
 }
 
-func (s *Tx) AddTxOut(t wire.TxOut) {
+func (s *Tx) AddTxOut(t wire.TxOut) int {
 	if !s.HasOuts {
 		// this servers as a separater. only TokenType is serialized
 		to := wire.TxOut{}
 		to.Token = token.Token{TokenType:token.DefTypeSeparator}
-		s.msgTx.AddTxOut(&to)
 		s.HasOuts = true
+		return s.msgTx.AddTxOut(&to)
 	}
-	s.msgTx.AddTxOut(&t)
+	return s.msgTx.AddTxOut(&t)
 }
 
 func (s *Tx) AddTxIn(t wire.OutPoint) {

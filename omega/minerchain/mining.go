@@ -15,6 +15,7 @@ import (
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/mining"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
@@ -202,13 +203,29 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 	return true
 }
 
-func (m *CPUMiner) factorPOW(baseh uint32) int64 {	// *big.Int {
-	h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
-	if h == 0 {
-		return 1 	// nil
+func (m *CPUMiner) factorPOW(hash chainhash.Hash) int64 {	// *big.Int {
+	chain := m.g.Chain.Miners.(*MinerChain)
+	best := chain.BestSnapshot()
+	baseh := best.Height
+	tip := chain.BestChain.NodeByHeight(baseh)
+
+	for ; tip != nil && !tip.Hash.IsEqual(&best.Hash); tip = tip.Parent {
+		baseh--
+	}
+
+	if tip == nil {
+		// the block is not in chain. would happen only when a reorg happened. since this is for mining, we do the max.
+		return int64(1) << wire.SCALEFACTORCAP
+	}
+
+	h := m.g.Chain.Rotation(tip.Data.(*blockchainNodeData).block.BestBlock)
+
+	if h < 0 {	// the best block is not in chain. since this is for mining, we do the max.
+		return int64(1) << wire.SCALEFACTORCAP
 	}
 
 	d := int32(baseh) - int32(h)
+
 	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP
 	} else if d <= wire.DESIRABLE_MINER_CANDIDATES {
@@ -216,14 +233,6 @@ func (m *CPUMiner) factorPOW(baseh uint32) int64 {	// *big.Int {
 	}
 
 	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
-//	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
-/*
-	factor := float64(1024.0)
-	if d > wire.DESIRABLE_MINER_CANDIDATES {
-		factor *= math.Pow(powScaleFactor, float64(d - wire.DESIRABLE_MINER_CANDIDATES))
-	}
-	return big.NewInt(int64(factor))
-*/
 }
 
 // solveBlock attempts to find some combination of a nonce, extra nonce, and
@@ -242,7 +251,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 	targetDifficulty := blockchain.CompactToBig(header.Bits)
 	header.Block.(*wire.MingingRightBlock).Bits = header.Bits
 
-	factorPOW := m.factorPOW(uint32(header.Height) - 1)
+	factorPOW := m.factorPOW(header.Block.(*wire.MingingRightBlock).PrevBlock)
 
 	// Initial state.
 	hashesCompleted := uint64(0)

@@ -122,7 +122,7 @@ func (s *Stack) toInt64(p * pointer) (int64, error) {
 func (s *Stack) toHash(p * pointer) (chainhash.Hash, error) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset + 255 < len(s.data[area].space) {
+	if area < len(s.data) && offset + 31 < len(s.data[area].space) {
 		h,_ := chainhash.NewHash(s.data[area].space[offset:offset + 32])
 		return *h, nil
 	}
@@ -191,7 +191,7 @@ func (s *Stack) saveInt64(p * pointer, b int64) error {
 func (s *Stack) saveHash(p * pointer, h chainhash.Hash) error {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset + 255 < len(s.data[area].space) {
+	if area < len(s.data) && offset + 31 < len(s.data[area].space) {
 		copy(s.data[area].space[offset:], h[:])
 		return nil
 	}

@@ -912,7 +912,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	// transaction does not exceeed 1000 less than the reserved space for
 	// high-priority transactions, don't require a fee for it.
 	serializedSize := blockchain.GetTransactionWeight(tx)
-	minFee := calcMinRequiredTxRelayFee(serializedSize,
+	minFee := CalcMinRequiredTxRelayFee(serializedSize,
 		mp.cfg.Policy.MinRelayTxFee)
 	if tx.ContainContract() && txFee < minFee {	// assume a contract will pay the minFee at least
 		txFee = minFee

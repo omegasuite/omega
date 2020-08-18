@@ -215,6 +215,8 @@ var validators = map[OpCode]codeValidator {
 	COPY: opCopyValidator,
 	COPYIMM:  opCopyImmValidator,
 	RECEIVED: opReceivedValidator,
+	TXFEE: opTxFeeValidator,
+	GETCOIN: opGetCoinValidator,
 //	TXIOCOUNT:  opTxIOCountValidator,
 //	GETTXIN: opGetTxInValidator,
 //	GETTXOUT: opGetTxOutValidator,
