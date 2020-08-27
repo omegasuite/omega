@@ -14,7 +14,12 @@ type frame struct {
 	inlib [20]byte
 	gbase int32
 	pc int
-	pure bool
+	pure byte		// access control:
+					// bit 0 - forbid store,
+					// bit 1 - forbid spend,
+					// bit 2 - forbid output,
+					// bit 3 - forbid load
+					// bit 4 - forbid mint
 }
 
 func newFrame() * frame {
@@ -71,6 +76,15 @@ func (s *Stack) toByte(p * pointer) (byte, error) {
 		return s.data[area].space[offset], nil
 	}
 	return 0, outofmemory
+}
+
+func (s *Stack) toBytesLen(p * pointer, n int) ([]byte, error) {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	if area < len(s.data) && offset + n < len(s.data[area].space) {
+		return s.data[area].space[offset:offset + n], nil
+	}
+	return nil, outofmemory
 }
 
 func (s *Stack) toBytes(p * pointer) ([]byte, error) {

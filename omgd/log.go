@@ -102,7 +102,7 @@ func init() {
 //	syncLog.SetLevel(btclog.LevelTrace)
 
 	mempool.UseLogger(btclog.Disabled)	// txmpLog)
-	ovm.UseLogger(btclog.Disabled)	// ovmLog)
+	ovm.UseLogger(ovmLog)
 	consensus.UseLogger(consensusLog)
 	minerchain.UseLogger(minerLog)
 	token.UseLogger(btclog.Disabled)	// tokenLog)
@@ -113,6 +113,8 @@ func init() {
 }
 
 func debugLevel() {
+	ovmLog.SetLevel(btclog.LevelDebug)	// ovmLog)
+
 /*
 	amgrLog.SetLevel(btclog.LevelDebug)
 	cmgrLog.SetLevel(btclog.LevelDebug)

@@ -124,6 +124,20 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 		return nil
 	}
 
+	nsig := 0
+	var zerohash chainhash.Hash
+
+	for _,tin := range tx.MsgTx().TxIn {
+		if tin.PreviousOutPoint.Hash.IsEqual(&zerohash) && tin.PreviousOutPoint.Index == 0 {
+			break
+		}
+		nsig++
+	}
+	
+	if nsig == 0 {
+		return nil
+	}
+
 	// set up for concurrent execution
 	verifiers := make(chan bool, param.SigVeriConcurrency)
 	queue := make(chan tbv, param.SigVeriConcurrency)

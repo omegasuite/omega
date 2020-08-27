@@ -170,6 +170,8 @@ type peerSyncState struct {
 }
 
 type pendginGetBlocks struct {
+	valid 		bool
+	heights		[2]int32
 	hash		chainhash.Hash
 	peer		* peerpkg.Peer
 	locator		chainhash.BlockLocator
@@ -262,7 +264,7 @@ func (sm *SyncManager) findNextHeaderCheckpoint(height int32) *chaincfg.Checkpoi
 	return nextCheckpoint
 }
 
-func (sm *SyncManager) AddSyncJob(peer *peerpkg.Peer, locator, mlocator chainhash.BlockLocator, stopHash, mstopHash *chainhash.Hash) {
+func (sm *SyncManager) AddSyncJob(peer *peerpkg.Peer, locator, mlocator chainhash.BlockLocator, stopHash, mstopHash *chainhash.Hash, best [2]int32) {
 	h := make([]byte, chainhash.HashSize * (len(locator) + len(mlocator) + 2))
 	p := 0
 	for i := 0; i < len(locator); i,p = i+1,p+chainhash.HashSize {
@@ -283,7 +285,16 @@ func (sm *SyncManager) AddSyncJob(peer *peerpkg.Peer, locator, mlocator chainhas
 			return
 		}
 	}
+
+	for _,j := range sm.syncjobs {
+		if best[0] >= j.heights[0] && best[1] >= j.heights[1] {
+			j.valid = false
+		}
+	}
+
 	sm.syncjobs = append(sm.syncjobs, &pendginGetBlocks{
+		valid: true,
+		heights: [2]int32{best[0], best[1]},
 		hash: hash,
 		peer: peer,
 		locator: locator,
@@ -320,6 +331,9 @@ func (sm *SyncManager) updateSyncPeer() {
 		j := sm.syncjobs[n - 1]
 		sm.syncjobs = sm.syncjobs[:n-1]
 		n--
+		if !j.valid {
+			continue
+		}
 		if j.peer.Connected() {
 			txmoot := false
 			if j.stopHash != nil && !zeroHash.IsEqual(j.stopHash) {
@@ -791,6 +805,9 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	log.Debugf("netsyc ProcessBlock %s at %d", bmsg.block.Hash().String(), bmsg.block.Height())
 	isMainchain, isOrphan, err, missing := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
+	b1 := sm.chain.BestSnapshot()
+	b2 := sm.chain.Miners.BestSnapshot()
+
 	if missing > 0 {
 		var h chainhash.BlockLocator
 		if missing <= sm.chain.Miners.BestSnapshot().Height {
@@ -799,10 +816,11 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		} else {
 			h = sm.chain.Miners.(*minerchain.MinerChain).BlockLocatorFromHash(&zeroHash)
 		}
+
 		sm.AddSyncJob(peer,
 			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
 			h,
-			&zeroHash, &zeroHash)
+			&zeroHash, &zeroHash, [2]int32{b1.Height, b2.Height})
 	}
 
 	if err != nil {
@@ -870,7 +888,9 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 			orphanRoot := sm.chain.Orphans.GetOrphanRoot(blockHash)
 			if *orphanRoot == *blockHash {
 				locator, _ := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
-				sm.AddSyncJob(peer, tlocator, locator, orphanRoot, &zeroHash)
+
+				sm.AddSyncJob(peer, tlocator, locator, orphanRoot, &zeroHash,
+					[2]int32{b1.Height, b2.Height})
 			}
 		}
 
@@ -1017,11 +1037,15 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	log.Tracef("sm.chain.Miners.ProcessBlock")
 	isMainchain, isOrphan, err, h := sm.chain.Miners.ProcessBlock(bmsg.block, behaviorFlags)
 
+	b1 := sm.chain.BestSnapshot()
+	b2 := sm.chain.Miners.BestSnapshot()
+
 	if h != nil {
 		sm.AddSyncJob(peer,
 			sm.chain.BlockLocatorFromHash(&zeroHash),
 			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
-			h, &zeroHash)
+			h, &zeroHash,
+			[2]int32{b1.Height, b2.Height})
 	}
 
 	if err != nil {
@@ -1077,7 +1101,8 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 					tlocator, _ := sm.chain.LatestBlockLocator()
 
 					log.Tracef("handleMinerBlockMsg: PushGetBlocksMsg from %s because received an miner orphan %s", peer.Addr(), orphanRoot.String())
-					sm.AddSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot)
+					sm.AddSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot,
+						[2]int32{b1.Height, b2.Height})
 					//			peer.PushGetBlocksMsg(tlocator, locator, &zerohash, orphanRoot)
 				}
 			}
@@ -1396,6 +1421,9 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	var lastMinerIgnored * wire.InvVect
 	var ignoreMinerrun int
 
+	b1 := sm.chain.BestSnapshot()
+	b2 := sm.chain.Miners.BestSnapshot()
+
 	// Request the advertised inventory if we don't already have it.  Also,
 	// request parent blocks of orphans if we receive one we already have.
 	// Finally, attempt to detect potential stalls due to long side chains
@@ -1480,7 +1508,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 								"%v", err)
 							continue
 						}
-						sm.AddSyncJob(peer, locator, mlocator, orphanRoot,&zeroHash)
+						sm.AddSyncJob(peer, locator, mlocator, orphanRoot,&zeroHash,
+							[2]int32{b1.Height, b2.Height})
 					} else {
 						sm.requestedOrphans[iv.Hash]++
 					}
@@ -1539,7 +1568,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 						}
 						log.Tracef("handleInvMsg: PushGetBlocksMsg from %s because encountered an miner orphan %s", peer.Addr(), iv.Hash.String())
 						tlocator, _ := sm.chain.LatestBlockLocator()
-						sm.AddSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot)
+						sm.AddSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot,
+							[2]int32{b1.Height, b2.Height})
 //						peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, orphanRoot)
 					} else {
 						sm.requestedOrphans[iv.Hash]++
@@ -1587,7 +1617,8 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			mlocator = nil
 		}
 		if mlocator != nil || tlocator != nil {
-			sm.AddSyncJob(peer, tlocator, mlocator, &zeroHash, &zeroHash)
+			sm.AddSyncJob(peer, tlocator, mlocator, &zeroHash, &zeroHash,
+				[2]int32{b1.Height, b2.Height})
 		}
 	}
 
@@ -1595,7 +1626,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 //		log.Infof("send back %s for %d run of ignores inv to %s", lastIgnored.Hash.String(), ignorerun, peer.Addr())
 		// send back this one so the peer knows where we are
 		sbmsg := &wire.MsgInv{InvList: []*wire.InvVect{lastIgnored} }
-		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding)
+		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding | wire.FullEncoding)
 
 		// check if it causes a reorg
 		sm.chain.ChainLock.Lock()

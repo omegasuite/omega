@@ -8,8 +8,8 @@ import (
 	"regexp"
 )
 
-var patOperand = regexp.MustCompile(`^@?n?(g?i+)?(([kK]?[xa-f][0-9a-f]+)|([0-9]+))(\"[0-9]+)?(\'[0-9]+)?,`)
-var addrOperand = regexp.MustCompile(`^n?g?i+(([xa-f][0-9a-f]+)|([0-9]+))(\"[0-9]+)?(\'[0-9]+)?,`)
+var patOperand = regexp.MustCompile(`^@?n?(g?i+)?(([kK]?[xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
+var addrOperand = regexp.MustCompile(`^n?g?i+(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
 var numOperand = regexp.MustCompile(`^n?(([kK]?[xa-f][0-9a-f]+)|([0-9]+)),`)
 var patNum = regexp.MustCompile(`[0-9a-f]+`)
 var patHex = regexp.MustCompile(`[xa-f]`)

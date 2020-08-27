@@ -822,7 +822,7 @@ mempoolLoop:
 
 		fees, err := blockchain.CheckTransactionFees(tx, nextBlockHeight, views, g.chainParams)
 		if err != nil {
-			// we should roll back result of last contract execution here
+			g.txSource.RemoveTransaction(tx, true)
 			log.Tracef("Skipping tx %s due to error in "+
 				"CheckTransactionFeess: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)

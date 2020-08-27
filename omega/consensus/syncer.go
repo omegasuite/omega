@@ -1285,6 +1285,8 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 				return
 			}
 			fees += eq
+		} else {
+			break
 		}
 	}
 

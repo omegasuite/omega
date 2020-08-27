@@ -509,6 +509,14 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	if ovm.StateDB[d].Exists(false) {
 		return nil, omega.ScriptError(omega.ErrInternal, "Contract already exists.")
 	}
+
+	tx := ovm.GetTx()
+	m := ovm.GetCurrentOutput()
+	coin := tx.MsgTx().TxOut[m.Index].Token
+	if coin.TokenType != 0 || coin.Value.(*token.NumToken).Val != 0 {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation does not take a value.")
+	}
+
 	ovm.StateDB[d].fresh = true
 
 	contract.Code = ByteCodeParser(data)
@@ -530,10 +538,7 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 //		return nil, nil
 //	}
 
-	m := ovm.GetCurrentOutput()
-
 //	loc,_ := block.TxLoc()
-	tx := ovm.GetTx()
 	n := m.Index
 	msg := tx.MsgTx()
 

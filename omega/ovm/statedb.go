@@ -297,6 +297,24 @@ func (d * OVM) SetAddres(contract [20]byte, code AccountRef) {
 	d.setMeta(contract, "address", code[:])
 }
 
+func (r *entry) dup() *entry {
+	e := entry{
+		olddata: make([]byte, len(r.olddata)),
+		data: make([]byte, len(r.data)),
+	}
+	if r.olddata == nil {
+		e.olddata = nil
+	} else {
+		copy(e.olddata, r.olddata)
+	}
+	if r.data == nil {
+		e.data = nil
+	} else {
+		copy(e.data, r.data)
+	}
+	return &e
+}
+
 func (d *stateDB) Copy() stateDB {
 	s := stateDB{ DB: d.DB }
 
@@ -308,11 +326,11 @@ func (d *stateDB) Copy() stateDB {
 	copy(s.contract[:], d.contract[:])
 	s.data = make(map[string]*entry)
 	for h,r := range d.data {
-		s.data[h] = r
+		s.data[h] = r.dup()
 	}
 	s.meta = make(map[string]*entry)
 	for h,r := range d.meta {
-		s.meta[h] = r
+		s.meta[h] = r.dup()
 	}
 
 	return s

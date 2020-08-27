@@ -88,7 +88,7 @@ type lib struct{
 	address int32		// code address
 	end int32			// code end
 	base int32			// lib global data
-	pure bool
+	pure byte
 }
 
 // Contract represents an contract in the state database. It contains
@@ -103,7 +103,7 @@ type Contract struct {
 	CodeAddr []byte				// precompiled code. 4-byte ABI func code. code 0-255 reserved for sys call
 	Input    []byte
 
-	pure bool
+	pure byte
 
 	value *token.Token
 	Args []byte

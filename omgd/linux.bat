@@ -1,4 +1,4 @@
 set GOARCH=amd64
 set GOOS=linux
-set GOPATH=c:\Gopath
+set GOPATH=F:\Gopath
 go build

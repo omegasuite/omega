@@ -97,8 +97,7 @@ func BuildMerkleTreeStore(transactions []*btcutil.Tx, witness bool) []*chainhash
 	for i, tx := range transactions {
 		switch {
 		case i == 0:
-//			var zeroHash chainhash.Hash
-			txHash := tx.MsgTx().TxFullHash()
+			txHash := tx.MsgTx().TxHash()
 			merkles[i] = &txHash	// &zeroHash
 		default:
 			if witness {

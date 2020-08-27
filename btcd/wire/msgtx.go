@@ -452,7 +452,7 @@ func (msg *MsgTx) TxHash() chainhash.Hash {
 }
 
 // TxFullHash generates the Hash for the transaction.
-// This hash is used in Merkle tree. This has does not include signature
+// This hash is used in Merkle tree. This hash does not include signature
 // but does include contract executions data.
 func (msg *MsgTx) TxFullHash() chainhash.Hash {
 	// Encode the transaction and calculate double sha256 on the result.
@@ -470,7 +470,7 @@ func (msg *MsgTx) TxFullHash() chainhash.Hash {
 // within a block
 func (msg *MsgTx) SignatureHash() chainhash.Hash {
 	buf := bytes.NewBuffer(make([]byte, 0, msg.SerializeSize()))
-	_ = msg.BtcEncode(buf, 0, SignatureEncoding | FullEncoding)
+	_ = msg.BtcEncode(buf, 0, SignatureEncoding)	// | FullEncoding)
 	return chainhash.DoubleHashH(buf.Bytes())
 }
 

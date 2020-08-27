@@ -391,8 +391,8 @@ func (s *server) phaseoutCommittee(r int32) {
 	s.peerState.cmutex.Lock()
 	for i, p := range s.peerState.committee {
 		if p.minerHeight != 0 && p.minerHeight < r {
-			close(s.peerState.committee[i].queue)
 			delete(s.peerState.committee, i)
+			close(p.queue)
 		}
 	}
 	s.peerState.cmutex.Unlock()
@@ -690,10 +690,10 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 			return
 		}
 	}
+	sp.queue <- m
 	s.peerState.cmutex.Unlock()
 
 	btcdLog.Debugf("Committee Msg %s queued for sending to %x", m.Command(), sp.member)
-	sp.queue <- m
 }
 
 func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {

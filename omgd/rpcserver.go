@@ -855,7 +855,8 @@ func createTxRawResult(chainParams *chaincfg.Params, mtx *wire.MsgTx,
 	txReply := &btcjson.TxRawResult{
 		Hex:      mtxHex,
 		Txid:     txHash,
-		Hash:     mtx.SignatureHash().String(),
+		Hash:     mtx.TxHash().String(),	// tx hash does not include signature
+//		Hash:     mtx.SignatureHash().String(),
 		Size:     int32(mtx.SerializeSize()),
 //		Vsize:    int32(blockchain.GetTransactionWeight(btcutil.NewTx(mtx))),
 		Vin:      createVinList(mtx),

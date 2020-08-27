@@ -154,12 +154,12 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 			return nil, err
 		}
 
-		if contract.pure && operation.writes {
+		if contract.pure & 1 != 0 && operation.writes {
 			return nil, fmt.Errorf("State modification is not allowed")
 		}
 
 		// execute the operation
-//		fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
+		fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
 
 		err = operation.execute(&pc, in.evm, contract, stack)
 		ln := binary.LittleEndian.Uint32(stack.data[0].space)
@@ -198,6 +198,8 @@ func (in *Interpreter) verifySig(txinidx int, pkScript, sigScript []byte) bool {
 //		CodeHash: chainhash.Hash{},
 		self: nil,
 		Args:make([]byte, 4),
+		pure: 0x1F,	// don't allow state access, spending, add output, mint.
+					// actually its impossible since the inst set is limited
 	}
 
 	binary.LittleEndian.PutUint32(contract.Args[:], uint32(txinidx))

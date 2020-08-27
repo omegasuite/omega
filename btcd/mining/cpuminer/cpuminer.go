@@ -432,7 +432,7 @@ out:
 
 		log.Infof("committee size = %d.", len(committee))
 
-		if m.cfg.SignAddress != nil {
+		if m.cfg.SignAddress != nil && len(committee) == wire.CommitteeSize {
 			copy(adr[:], m.cfg.SignAddress.ScriptAddress())
 			payToAddr = &m.cfg.SignAddress
 			if _, ok := committee[adr]; m.cfg.PrivKeys != nil && ok {
@@ -464,8 +464,16 @@ out:
 			}
 
 			if wire.CommitteeSize > 1 {
+				// check collateral. kick out those not qualified.
 				payToAddress = m.coinbaseByCommittee(*payToAddr)
-				if len(payToAddress) <= 1 {
+				if len(payToAddress) == 0 {
+					// My this address is not qualified. Use a random in POW mode.
+					powMode = true
+					payToAddr = &m.cfg.MiningAddrs[rand.Int() % len(m.cfg.MiningAddrs)]
+					payToAddress = []btcutil.Address{*payToAddr}
+					nonce = 1
+				} else if len(payToAddress) <= wire.CommitteeSize / 2 {
+					// impossible to form a qualified consensus
 					powMode = true
 					payToAddress = []btcutil.Address{*payToAddr}
 					nonce = 1

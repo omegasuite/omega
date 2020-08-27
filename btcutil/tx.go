@@ -81,7 +81,7 @@ func (s *Tx) AddTxOut(t wire.TxOut) int {
 		to := wire.TxOut{}
 		to.Token = token.Token{TokenType:token.DefTypeSeparator}
 		s.HasOuts = true
-		return s.msgTx.AddTxOut(&to)
+		s.msgTx.AddTxOut(&to)
 	}
 	return s.msgTx.AddTxOut(&t)
 }

@@ -1672,11 +1672,15 @@ func opSigCheck(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 			case 3:
 				tp = pointer(num)
-				sl,_ := stack.toByte(&tp)
-				sig = make([]byte, sl)
-				tp++
-				b,_ := stack.toBytes(&tp)
-				copy(sig, b)
+				tp2 := tp + 1
+				sl2,err := stack.toByte(&tp2)
+				if err != nil {
+					return err
+				}
+				sig,err = stack.toBytesLen(&tp, int(sl2 + 2))
+				if err != nil {
+					return err
+				}
 			}
 
 			top++
@@ -1731,6 +1735,7 @@ func opIf(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	if scratch[0] == 0 {
 		*pc++
+		log.Debugf("If false, pc=", *pc)
 	} else {
 		inlib := stack.data[len(stack.data) - 1].inlib
 		target := int32(*pc + int(scratch[1]))
@@ -1738,6 +1743,7 @@ func opIf(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			return fmt.Errorf("Out of range jump")
 		}
 		*pc = int(target)
+		log.Debugf("If %d, pc=", scratch[0], *pc)
 	}
 
 	return nil
@@ -1768,10 +1774,14 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	paramTypes := []byte{'L', 'D', 'Q', 0xFF }
 
 	isself := true
+	sign := 1
 
 	for j := 0; j < ln; j++ {
 		dataType := paramTypes[top]
 		switch param[j] {
+		case 'n':
+			sign = -1
+
 		case '@':
 			top++
 
@@ -1798,7 +1808,8 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				top++
 
 			case 1:
-				offset = int(num)			// entry point
+				offset = int(num) * sign			// entry point
+				sign = 1
 				if !isself {
 					var bn [4]byte
 					binary.LittleEndian.PutUint32(bn[:], uint32(offset))
@@ -1851,6 +1862,10 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+	if stack.data[len(stack.data) - 1].pure & 0x8 != 0 {
+		return fmt.Errorf("Load forbidden in lib %x", stack.data[len(stack.data) - 1].inlib)
+	}
+
 	param := contract.GetBytes(*pc)
 	ln := len(param)
 
@@ -1894,6 +1909,8 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		store++
 	}
 
+	log.Debugf("loading %x = %x (%d)", h[:4], d, n)
+
 	return nil
 }
 
@@ -1901,6 +1918,10 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 //	{patOperand, 0}, - key
 //	{dataType, 0}, - data type/length
 //	{patOperand, 0}, - data
+	if stack.data[len(stack.data) - 1].pure & 0x1 != 0 {
+		return fmt.Errorf("Store forbidden in lib %x", stack.data[len(stack.data) - 1].inlib)
+	}
+
 	param := contract.GetBytes(*pc)
 	ln := len(param)
 
@@ -1974,6 +1995,8 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	evm.SetState(contract.self.Address(), string(scratch[0]), scratch[1][:fdlen])
+
+	log.Debugf("storing %x = %x (%d)", scratch[0], scratch[1][:fdlen], fdlen)
 
 	return nil
 }
@@ -2168,7 +2191,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var bnum []byte
 	top := 0
 
-	pure := true
+	pure := byte(0)
 	var tl int
 	var err error
 
@@ -2190,9 +2213,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 			switch top {
 			case 0:
-				if num == 0 {
-					pure = false
-				}
+				pure = byte(num) | stack.data[len(stack.data)-1].pure
 
 			case 1:
 				var d [20]byte
@@ -2723,13 +2744,19 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 
 				adr := contract.self.Address()
-				if !isContract(pks[0]) || bytes.Compare(pks[1:21], adr[:]) != 0 {
+				lib := stack.data[len(stack.data) - 1].inlib
+				if !isContract(pks[0]) {
 					return fmt.Errorf("Contract try to spend what does not belong to it.")
 				}
-				var allzero [20]byte
-				if bytes.Compare(stack.data[len(stack.data) - 1].inlib[:], allzero[:]) != 0 &&
-					bytes.Compare(stack.data[len(stack.data) - 1].inlib[:], adr[:]) != 0 {
-					return fmt.Errorf("Spending allowed by owning contract exactly.")
+
+				usr := bytes.Compare(pks[1:21], adr[:]) == 0
+				libusr := bytes.Compare(pks[1:21], lib[:]) == 0
+				if !usr && !libusr {
+					return fmt.Errorf("Unauthorized spending.")
+				} else if libusr && bytes.Compare(stack.data[len(stack.data) - 1].inlib[:], lib[:]) != 0 {
+					return fmt.Errorf("Unauthorized spending.")
+				} else if usr && stack.data[len(stack.data) - 1].pure & 0x2 != 0 {
+					return fmt.Errorf("Unauthorized spending.")
 				}
 
 				if evm.Spend(p) {
@@ -2784,6 +2811,10 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+	if stack.data[len(stack.data) - 1].pure & 0x4 != 0 {
+		return fmt.Errorf("Load forbidden in lib %x", stack.data[len(stack.data) - 1].inlib)
+	}
+
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -2816,6 +2847,11 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					return err
 				}
 
+				var zeroaddr [20]byte
+				if bytes.Compare(tk.PkScript[1:21], zeroaddr[:]) == 0 {
+					return fmt.Errorf("Address is all zero.")
+				}
+
 				if isContract(tk.PkScript[0]) {
 					me := contract.self.Address()
 					allowed := bytes.Compare(tk.PkScript[1:21], me[:]) == 0
@@ -2832,12 +2868,14 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				seq := evm.AddTxOutput(tk)
 
 				if seq < 0 {
-					return nil
+					return fmt.Errorf("Malformed expression")
 				}
 
 				stack.saveInt32(&dest, int32(seq))
 
-				return fmt.Errorf("Malformed expression")
+				log.Debugf("Text out added as %d: value = %d to %x", seq, tk.Token.Value.(*token.NumToken).Val, tk.PkScript[1:21])
+
+				return nil
 			}
 
 		default:
@@ -3092,6 +3130,9 @@ func Exp(base, exponent *big.Int) *big.Int {
 }
 
 func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+	if stack.data[len(stack.data) - 1].pure & 0x10 != 0 {
+		return fmt.Errorf("Unauthorized spending.")
+	}
 //	{addrOperand, 0xFFFFFFFF}, - return data place holder
 //	{patOperand, 0}, - tokentype
 //	{patOperand, 0}, - amount / hash

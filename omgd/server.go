@@ -830,15 +830,15 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 		case common.InvTypeTx:
 			err = sp.server.pushTxMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 		case common.InvTypeWitnessBlock:
-			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
+			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding | wire.FullEncoding)
 		case common.InvTypeBlock:
 			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 		case common.InvTypeMinerBlock:
 			err = sp.server.pushMinerBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 		case common.InvTypeFilteredWitnessBlock:
-			err = sp.server.pushMerkleBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
+			err = sp.server.pushMerkleBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding | wire.FullEncoding)
 		case common.InvTypeFilteredBlock:
-			err = sp.server.pushMerkleBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
+			err = sp.server.pushMerkleBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding | wire.FullEncoding)
 		default:
 			peerLog.Warnf("Unknown type in inventory request %d",
 				iv.Type)
@@ -1007,7 +1007,11 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 				return
 			}
 
-			sp.server.syncManager.AddSyncJob(p, locator, mlocator, &zeroHash, &zeroHash)
+			b1 := sp.server.chain.BestSnapshot()
+			b2 := sp.server.chain.Miners.BestSnapshot()
+
+			sp.server.syncManager.AddSyncJob(p, locator, mlocator,
+				&zeroHash, &zeroHash, [2]int32{b1.Height, b2.Height})
 		}
 	}
 }
@@ -1585,7 +1589,11 @@ func (sp *serverPeer) PushGetBlock(p *peer.Peer) {
 		return
 	}
 
-	sp.server.syncManager.AddSyncJob(p, locator, mlocator, &zeroHash, &zeroHash)
+	b1 := sp.server.chain.BestSnapshot()
+	b2 := sp.server.chain.Miners.BestSnapshot()
+
+	sp.server.syncManager.AddSyncJob(p, locator, mlocator,
+		&zeroHash, &zeroHash, [2]int32{b1.Height, b2.Height})
 }
 
 // randomUint16Number returns a random uint16 in a specified input range.  Note
@@ -1775,7 +1783,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		}
 	} else {
 		// Deserialize the block.
-		err = msgBlock.BtcDecode(bytes.NewReader(blockBytes), 0, wire.SignatureEncoding)
+		err = msgBlock.BtcDecode(bytes.NewReader(blockBytes), 0, wire.SignatureEncoding | wire.FullEncoding)
 
 		if err != nil {
 			peerLog.Tracef("Unable to deserialize requested block hash "+
