@@ -3246,8 +3246,8 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 	ctx.AddTxOutput = func(t wire.TxOut) int { return -1 }
 	ctx.AddRight = func(t *token.RightDef) bool { return false }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
-//	ctx.GetHash = ovm.GetHash
 	ctx.BlockNumber = func() uint64 { return 0 }
+	ctx.BlockTime = func() uint32 { return 0 }
 	ctx.Block = func() *btcutil.Block { return nil }
 
 	svm := ovm.NewSigVM(w.chainParams)

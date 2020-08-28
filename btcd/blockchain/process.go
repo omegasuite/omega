@@ -42,6 +42,8 @@ const (
 
 	BFSideChain
 
+	BFWatingFactor
+
 	// BFNone is a convenience value to specifically indicate no flags.
 	BFNone BehaviorFlags = 0
 )
@@ -273,7 +275,9 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 			if attachNodes.Len() != 0 {
 				// Reorganize the chain.
-				err = b.ReorganizeChain(detachNodes, attachNodes)
+				if err = b.ReorganizeChain(detachNodes, attachNodes); err != nil {
+					return false, true, err, -1
+				}
 				if writeErr := b.index.FlushToDB(dbStoreBlockNode); writeErr != nil {
 					log.Warnf("Error flushing block index changes to disk: %v", writeErr)
 				}

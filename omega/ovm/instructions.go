@@ -2863,6 +2863,17 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					if !allowed {
 						return fmt.Errorf("Contract may not add a txout outside scope")
 					}
+				} else {
+					// check address is valid type & net
+					netID := tk.PkScript[0]
+					isP2PKH := evm.chainConfig.PubKeyHashAddrID == netID
+					isP2SH := evm.chainConfig.ScriptHashAddrID == netID
+
+					if isP2PKH && isP2SH {
+						return btcutil.ErrAddressCollision
+					} else if !isP2PKH && !isP2PKH {
+						return btcutil.ErrUnknownAddressType
+					}
 				}
 
 				seq := evm.AddTxOutput(tk)
@@ -3093,6 +3104,12 @@ func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 		}
 	}
+	return nil
+}
+
+func opNul(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+	// this instruction is for debugging purpose, so we can insert a nul op in contract
+	// and set a break point here
 	return nil
 }
 
@@ -3337,7 +3354,7 @@ func opTime(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	m := ovm.Block().MsgBlock().Header.Timestamp.Unix()
+	m := ovm.BlockTime()
 	return stack.saveInt32(&dest, int32(m))
 }
 
@@ -3365,6 +3382,7 @@ func opHeight(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveInt32(&dest, int32(m))
 }
 
+/*
 func opSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	param := contract.GetBytes(*pc)
 
@@ -3449,6 +3467,7 @@ parser:
 
 	return nil
 }
+ */
 
 func encodeText(it byte, wbuf io.Writer, t * wire.MsgTx, hash []byte, inidx uint32) error {
 	switch it { // text encoding

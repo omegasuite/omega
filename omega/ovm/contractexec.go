@@ -79,6 +79,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	ctx.Spend = func(t wire.OutPoint) bool { return false }
 	ctx.AddTxOutput = func(t wire.TxOut) int { return -1	}
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
+	ctx.BlockTime = func() uint32 { return 0 }
 	ctx.Block = func() *btcutil.Block { return nil }
 	ctx.AddRight = func(t *token.RightDef) bool { return false }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
@@ -171,6 +172,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 					ovm.Spend = func(t wire.OutPoint) bool { return false }
 					ovm.AddTxOutput = func(t wire.TxOut) int { return -1 }
 					ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
+					ovm.BlockTime = func() uint32 { return 0 }
 					ovm.Block = func() *btcutil.Block { return nil }
 					ovm.AddRight = func(t *token.RightDef) bool { return false }
 					ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}

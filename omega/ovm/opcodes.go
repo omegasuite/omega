@@ -50,7 +50,7 @@ const (
 	RECEIVED OpCode = 0x61 + iota	// "a". outpoint of the current call
 	TXFEE		// TXIOCOUNT. min tx fee for current tx
 	GETCOIN		// GETTXIN. coin received for the current call
-	NULOP3		// GETTXOUT
+	NULOP		// GETTXOUT
 	SPEND		// add tx in
 	ADDRIGHTDEF	// add def
 	ADDTXOUT	// add tx out
@@ -101,6 +101,7 @@ var opCodeToString = map[OpCode]string{
 	ADDTXOUT: "ADDTXOUT",
 	GETDEFINITION:    "GETDEFINITION",
 	GETCOIN:     "GETCOIN",
+	NULOP: "NULOP",
 	GETUTXO:    "GETUTXO",
 	SELFDESTRUCT:   "SELFDESTRUCT",
 	REVERT:    "REVERT",
@@ -154,6 +155,7 @@ var stringToOp = map[string]OpCode{
 	"ADDTXOUT": ADDTXOUT,
 	"GETDEFINITION": GETDEFINITION,
 	"GETCOIN": GETCOIN,
+	"NULOP": NULOP,
 	"GETUTXO": GETUTXO,
 	"SELFDESTRUCT":   SELFDESTRUCT,
 	"REVERT":         REVERT,

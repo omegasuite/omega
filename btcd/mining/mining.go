@@ -542,6 +542,10 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address) (*Bl
 		len(sourceTxns))
 	utxos := views.Utxo
 
+	// The timestamp is potentially adjusted to ensure it comes after
+	// the median time of the last several blocks per the Chain consensus rules.
+	ts := medianAdjustedTime(best, g.timeSource)
+
 mempoolLoop:
 	for _, txDesc := range sourceTxns {
 		// A block can't have more than one coinbase or contain
@@ -674,6 +678,9 @@ mempoolLoop:
 		})
 	Vm.BlockNumber = func() uint64 {
 		return uint64(nextBlockHeight)
+	}
+	Vm.BlockTime = func() uint32 {
+		return uint32(ts.Unix())
 	}
 	Vm.Block = func() *btcutil.Block { return nil }
 	Vm.GetCoinBase = func() *btcutil.Tx { return coinbaseTx }
@@ -907,11 +914,7 @@ mempoolLoop:
 
 	msg.SignatureScripts[0] = (*witnessMerkleRoot)[:]
 
-	// Calculate the required difficulty for the block.  The timestamp
-	// is potentially adjusted to ensure it comes after the median time of
-	// the last several blocks per the Chain consensus rules.
-	ts := medianAdjustedTime(best, g.timeSource)
-
+	// Calculate the required difficulty for the block.
 	reqDifficulty := g.Chain.BestSnapshot().Bits
 
 	// Create a new block ready to be solved.
@@ -1031,6 +1034,9 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 // consensus rules.  Finally, it will update the target difficulty if needed
 // based on the new time for the test networks since their target difficulty can
 // change based upon time.
+
+// can't just update it w/o re-do contracts because a contract may use block time
+/*
 func (g *BlkTmplGenerator) UpdateBlockTime(msgBlock *wire.MsgBlock) error {
 	// The new timestamp is potentially adjusted to ensure it comes after
 	// the median time of the last several blocks per the Chain consensus
@@ -1038,17 +1044,9 @@ func (g *BlkTmplGenerator) UpdateBlockTime(msgBlock *wire.MsgBlock) error {
 	newTime := medianAdjustedTime(g.Chain.BestSnapshot(), g.timeSource)
 	msgBlock.Header.Timestamp = newTime
 
-	// Recalculate the difficulty if running on a network that requires it.
-// tmp	if g.chainParams.ReduceMinDifficulty {
-//		difficulty, err := g.Chain.CalcNextRequiredDifficulty(newTime)
-//		if err != nil {
-//			return err
-//		}
-//		msgBlock.Header.Bits = difficulty
-//	}
-
 	return nil
 }
+ */
 
 func (g *BlkTmplGenerator) UpdateMinerBlockTime(msgBlock *wire.MingingRightBlock) error {
 	// The new timestamp is potentially adjusted to ensure it comes after
@@ -1057,54 +1055,8 @@ func (g *BlkTmplGenerator) UpdateMinerBlockTime(msgBlock *wire.MingingRightBlock
 	newTime := medianAdjustedTime(g.Chain.BestSnapshot(), g.timeSource)
 	msgBlock.Timestamp = newTime
 
-	// Recalculate the difficulty if running on a network that requires it.
-	// tmp	if g.chainParams.ReduceMinDifficulty {
-	//		difficulty, err := g.Chain.CalcNextRequiredDifficulty(newTime)
-	//		if err != nil {
-	//			return err
-	//		}
-	//		msgBlock.Header.Bits = difficulty
-	//	}
-
 	return nil
 }
-
-// UpdateExtraNonce updates the extra nonce in the coinbase script of the passed
-// block by regenerating the coinbase script with the passed value and block
-// height.  It also recalculates and updates the new merkle root that results
-// from changing the coinbase script.
-/*
-func (g *BlkTmplGenerator) UpdateExtraNonce(msgBlock *wire.MsgBlock, blockHeight int32, extraNonce uint64) error {
-	coinbaseScript, err := standardCoinbaseScript(blockHeight, extraNonce)
-	if err != nil {
-		return err
-	}
-	if len(coinbaseScript) > blockchain.MaxCoinbaseScriptLen {
-		return fmt.Errorf("coinbase transaction script length "+
-			"of %d is out of range (min: %d, max: %d)",
-			len(coinbaseScript), blockchain.MinCoinbaseScriptLen,
-			blockchain.MaxCoinbaseScriptLen)
-	}
-	if msgBlock.Height[0].SignatureScripts == nil || len(msgBlock.Height[0].SignatureScripts) == 0 {
-		msgBlock.Height[0].SignatureScripts = make([][]byte, 2)
-		// this is the place we use to stoare merkle root of signatures
-		msgBlock.Height[0].SignatureScripts[0] = make([]byte, 32)
-	}
-	msgBlock.Height[0].TxIn[0].SignatureIndex = 1
-	msgBlock.Height[0].SignatureScripts[1] = coinbaseScript
-//	msgBlock.Height[0].TxIn[0].SignatureScript = coinbaseScript
-
-	// TODO(davec): A btcutil.Block should use saved in the state to avoid
-	// recalculating all of the other transaction hashes.
-	// block.Height[0].InvalidateCache()
-
-	// Recalculate the merkle root with the updated extra nonce.
-	block := btcutil.NewBlock(msgBlock)
-	merkles := blockchain.BuildMerkleTreeStore(block.Height(), false)
-	msgBlock.Header.MerkleRoot = *merkles[len(merkles)-1]
-	return nil
-}
-*/
 
 // BestSnapshot returns information about the current best Chain block and
 // related state as of the current point in time using the Chain instance

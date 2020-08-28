@@ -926,16 +926,19 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 	var rot int32
 
 	var mblock * wire.MinerBlock
+	nonce := int32(-1)
 
 	if len(hashList) > 0 {
 		rot = chain.Rotation(hashList[0])
+		blk,err := chain.HeaderByHash(&hashList[0])
+		if err == nil && blk.Nonce < 0 {
+			nonce = blk.Nonce
+		}
 	}
 
 	if len(mhashList) > 0 {
 		mblock,_ = mchain.BlockByHash(&mhashList[0])
 	}
-
-	nonce := int32(-1)
 
 	for i, j := 0,0; i < len(hashList) || j < len(mhashList); m++ {
 		if m == wire.MaxBlocksPerMsg {

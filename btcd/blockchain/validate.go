@@ -374,7 +374,11 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			// The block hash must be less than the claimed target.
 			hash := header.BlockHash()
 			hashNum := HashToBig(&hash)
-			target = target.Mul(target, big.NewInt(wire.DifficultyRatio))
+			if block.Height() < 383300 {
+				target = target.Mul(target, big.NewInt(wire.DifficultyRatio))
+			} else {
+				hashNum = hashNum.Mul(hashNum, big.NewInt(wire.DifficultyRatio))
+			}
 			if hashNum.Cmp(target) > 0 {
 				str := fmt.Sprintf("block hash of %064x is higher than "+
 					"expected max of %064x", hashNum, target)
@@ -1211,8 +1215,14 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	Vm.BlockNumber = func() uint64 {
 		return uint64(block.Height())
 	}
+	Vm.BlockTime = func() uint32 {
+		return uint32(block.MsgBlock().Header.Timestamp.Unix())
+	}
 	Vm.Block = func() *btcutil.Block { return block }
 	Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
+	Vm.BlockTime = func() uint32 {
+		return uint32(block.MsgBlock().Header.Timestamp.Unix())
+	}
 
 	var totalFees int64
 	for i, tx := range transactions {

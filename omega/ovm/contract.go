@@ -217,6 +217,7 @@ var validators = map[OpCode]codeValidator {
 	RECEIVED: opReceivedValidator,
 	TXFEE: opTxFeeValidator,
 	GETCOIN: opGetCoinValidator,
+	NULOP: func ([]byte) int { return 1},
 //	TXIOCOUNT:  opTxIOCountValidator,
 //	GETTXIN: opGetTxInValidator,
 //	GETTXOUT: opGetTxOutValidator,
@@ -231,6 +232,8 @@ var validators = map[OpCode]codeValidator {
 	RETURN: opReturnValidator,
 	MINT: opMintValidator,
 	META: opMetaValidator,
+	TIME: opTimeValidator,
+	HEIGHT: opHeightValidator,
 }
 
 func ByteCodeValidator(code []inst) bool {

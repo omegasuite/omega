@@ -163,7 +163,10 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 		hash := header.BlockHash()
 		hashNum := HashToBig(&hash)
 
-		factor := m.factorPOW(m.index.LookupNode(&header.PrevBlock))
+		factor := int64(1)
+		if flags & blockchain.BFWatingFactor == blockchain.BFWatingFactor {
+			factor = m.factorPOW(m.index.LookupNode(&header.PrevBlock))
+		}
 		if factor < 0 {
 			return fmt.Errorf("Curable POW factor error.")
 		}
@@ -259,7 +262,12 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	// is set to generate 2 NewNodeBlock every MINER_RORATE_FREQ block time. Once number of miner candidates reaches
 	// MINER_RORATE_FREQ, the difficulty increases 20% for every one more candidate.
 
-	if err := b.checkProofOfWork(header, b.chainParams.PowLimit, flags); err != nil {
+	xf := blockchain.BFNone
+	if block.Height() > 3000 {
+		xf = blockchain.BFWatingFactor
+	}
+
+	if err := b.checkProofOfWork(header, b.chainParams.PowLimit, flags | xf); err != nil {
 		return err
 	}
 

@@ -1122,6 +1122,9 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
 		}
+		Vm.BlockTime = func() uint32 {
+			return uint32(block.MsgBlock().Header.Timestamp.Unix())
+		}
 		Vm.Block = func() *btcutil.Block { return block }
 
 		// Load all of the utxos referenced by the block that aren't
@@ -1146,6 +1149,9 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
+		}
+		Vm.BlockTime = func() uint32 {
+			return uint32(block.MsgBlock().Header.Timestamp.Unix())
 		}
 		Vm.Block = func() *btcutil.Block { return block }
 		Vm.Rollback()
@@ -1205,9 +1211,15 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
 		}
+		Vm.BlockTime = func() uint32 {
+			return uint32(block.MsgBlock().Header.Timestamp.Unix())
+		}
 		Vm.Block = func() *btcutil.Block { return block }
 		Vm.GasLimit = block.MsgBlock().Header.ContractExec
 		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
+		Vm.BlockTime = func() uint32 {
+			return uint32(block.MsgBlock().Header.Timestamp.Unix())
+		}
 
 		for i, tx := range block.Transactions() {
 			if i == 0 {
@@ -1215,6 +1227,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			}
 			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
 			newtx.SetIndex(tx.Index())
+
 			err := Vm.ExecContract(newtx, block.Height())
 			if err != nil {
 				Vm.AbortRollback()
@@ -1273,9 +1286,15 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
 		}
+		Vm.BlockTime = func() uint32 {
+			return uint32(block.MsgBlock().Header.Timestamp.Unix())
+		}
 		Vm.Block = func() *btcutil.Block { return block }
 		Vm.GasLimit = block.MsgBlock().Header.ContractExec
 		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
+		Vm.BlockTime = func() uint32 {
+			return uint32(block.MsgBlock().Header.Timestamp.Unix())
+		}
 
 		for i, tx := range block.Transactions() {
 			if i == 0 {
@@ -1370,6 +1389,9 @@ func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm
 	if block != nil {
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
+		}
+		Vm.BlockTime = func() uint32 {
+			return uint32(block.MsgBlock().Header.Timestamp.Unix())
 		}
 		Vm.Block = func() *btcutil.Block { return block }
 		Vm.SetCoinBaseOp(
@@ -1593,9 +1615,9 @@ func (b *BlockChain) isCurrent() bool {
 		//
 		// The chain appears to be current if none of the checks reported
 		// otherwise.
-		minus24Hours := b.timeSource.AdjustedTime().Add(-24 * time.Hour).Unix()
+		minus48Hours := b.timeSource.AdjustedTime().Add(-48 * time.Hour).Unix()
 
-		r := b.BestChain.Tip().Data.TimeStamp() >= minus24Hours
+		r := b.BestChain.Tip().Data.TimeStamp() >= minus48Hours
 /*
 		if !r {
 			log.Infof("Tx BestChain tip is %v", b.BestChain.Tip())

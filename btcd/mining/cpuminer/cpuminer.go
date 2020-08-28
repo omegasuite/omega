@@ -236,14 +236,17 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	header := &msgBlock.Header
 
 	targetDifficulty := blockchain.CompactToBig(template.Bits)
-	targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(wire.DifficultyRatio))
+
+	if template.Height < 383300 {
+		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(wire.DifficultyRatio))
+	}
 
 	// Initial state.
 	lastGenerated := time.Now()
 	lastTxUpdate := m.g.TxSource().LastUpdated()
 	hashesCompleted := uint64(0)
 
-	for true {
+//	for true {
 		// Search through the entire nonce range for a solution while
 		// periodically checking for early quit and stale block
 		// conditions along with updates to the speed monitor.
@@ -279,11 +282,6 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 					return false
 				}
 
-//				m.g.UpdateBlockTime(msgBlock) don't do this! it may cause inconsistent result on contract
-//				if m.cfg.ChainParams.ReduceMinDifficulty {
-//					targetDifficulty = blockchain.CompactToBig(template.Bits)
-//				}
-
 			default:
 				// Non-blocking select to fall through
 			}
@@ -299,14 +297,17 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 			// The block is solved when the new block hash is less
 			// than the target difficulty.  Yay!
 			hashNum := blockchain.HashToBig(&hash)
+			if template.Height >= 383300 {
+				hashNum = hashNum.Mul(hashNum, big.NewInt(wire.DifficultyRatio))
+			}
 			if hashNum.Cmp(targetDifficulty) <= 0 {
 				log.Info("Block solved ", hash, " vs ", targetDifficulty)
 				m.updateHashes <- hashesCompleted
 				return true
 			}
 		}
-		m.g.UpdateBlockTime(msgBlock)
-	}
+//		m.g.UpdateBlockTime(msgBlock)
+//	}
 
 	return false
 }

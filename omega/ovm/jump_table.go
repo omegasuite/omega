@@ -160,6 +160,10 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opGetCoin,
 			valid:         true,
 		},
+		NULOP: operation{
+			execute:       opNul,
+			valid:         true,
+		},
 		GETUTXO: operation{
 			execute:       opGetUtxo,
 			valid:         true,
@@ -203,10 +207,12 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opHeight,
 			valid:         true,
 		},
+/*
 		SIGNTEXT: operation{
 			execute:       opSignText,
 			valid:         true,
 		},
+ */
 	}
 }
 
