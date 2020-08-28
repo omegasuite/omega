@@ -507,6 +507,8 @@ type Peer struct {
 	MinerSent	  int32		// highest miner block we have sent
 }
 
+var stallCount = make(map[string]int)
+
 // String returns the peer's address and directionality as a human-readable
 // string.
 //
@@ -1273,6 +1275,12 @@ func (p *Peer) stallHandler() {
 	stallTicker := time.NewTicker(stallTickInterval)
 	defer stallTicker.Stop()
 
+	if !p.Inbound() {
+		if _,ok := stallCount[p.String()]; !ok {
+			stallCount[p.String()] = 1
+		}
+	}
+
 	// ioStopped is used to detect when both the input and output handler
 	// goroutines are done.
 	var ioStopped bool
@@ -1350,6 +1358,11 @@ out:
 			// the last tick.
 			now := time.Now()
 			offset := deadlineOffset
+
+			if _,ok := stallCount[p.String()]; ok && !p.Inbound() {
+				offset += time.Duration(stallCount[p.String()] * 1e10)
+			}
+
 			if handlerActive {
 				offset += now.Sub(handlersStartTime)
 			}
@@ -1366,9 +1379,16 @@ out:
 //					continue
 //				}
 
-				log.Infof("Peer %s appears to be stalled or "+
-					"misbehaving, %s timeout -- "+
-					"disconnecting", p, command)
+				if sc,ok := stallCount[p.String()]; ok {
+					log.Infof("Peer %s appears to be stalled or "+
+						"misbehaving, %s command %d seconds timeout. stallcount = %d -- "+
+						"disconnecting", p, command, sc * 10, sc)
+					stallCount[p.String()] = sc + 1
+				} else {
+					log.Infof("Peer %s appears to be stalled or "+
+						"misbehaving, %s command timeout. -- "+
+						"disconnecting", p, command)
+				}
 				p.Disconnect("stallHandler")
 				break
 			}

@@ -340,6 +340,7 @@ func spentTxOutSerializeSize(stxo *viewpoint.SpentTxOut) int {
 		// with right
 		size += chainhash.HashSize
 	}
+	size += bccompress.SerializeSizeVLQ(uint64(len(stxo.PkScript)))
 	size += len(stxo.PkScript)
 
 	return size
@@ -352,11 +353,11 @@ func spentTxOutSerializeSize(stxo *viewpoint.SpentTxOut) int {
 func putSpentTxOut(target []byte, stxo *viewpoint.SpentTxOut) int {
 	headerCode := spentTxOutHeaderCode(stxo)
 	offset := bccompress.PutVLQ(target, headerCode)
-	offset += bccompress.PutVLQ(target, stxo.TokenType)
+	offset += bccompress.PutVLQ(target[offset:], stxo.TokenType)
 
 	if (stxo.TokenType & 1) == 0 {
 		// regular token
-		offset += bccompress.PutVLQ(target, bccompress.CompressTxOutAmount(uint64(stxo.Amount.(*token.NumToken).Val)))
+		offset += bccompress.PutVLQ(target[offset:], bccompress.CompressTxOutAmount(uint64(stxo.Amount.(*token.NumToken).Val)))
 	} else {
 		copy(target[offset:], stxo.Amount.(*token.HashToken).Hash[:])
 		offset += chainhash.HashSize
@@ -367,6 +368,7 @@ func putSpentTxOut(target []byte, stxo *viewpoint.SpentTxOut) int {
 		copy(target[offset:], (*stxo.Rights)[:])
 		offset += chainhash.HashSize
 	}
+	offset += bccompress.PutVLQ(target[offset:], uint64(len(stxo.PkScript)))
 	copy(target[offset:], stxo.PkScript)
 	return offset + len(stxo.PkScript)
 }
@@ -421,8 +423,10 @@ func decodeSpentTxOut(serialized []byte, stxo *viewpoint.SpentTxOut) (int, error
 		stxo.Rights = nil
 	}
 
-	stxo.PkScript = serialized[offset:]
-	return offset, nil
+	pklen, bytesRead := bccompress.DeserializeVLQ(serialized[offset:])
+	offset += bytesRead
+	stxo.PkScript = serialized[offset:offset + int(pklen)]
+	return offset + int(pklen), nil
 }
 
 // deserializeSpendJournalEntry decodes the passed serialized byte slice into a

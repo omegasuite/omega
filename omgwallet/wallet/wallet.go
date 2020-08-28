@@ -3254,12 +3254,17 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 	svm.SetContext(ctx)
 	intp := svm.Interpreter()
 
+	signed := make(map[uint32]struct{})
+
 	var signErrors []SignatureError
 	err := walletdb.View(w.db, func(dbtx walletdb.ReadTx) error {
 		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
 		txmgrNs := dbtx.ReadBucket(wtxmgrNamespaceKey)
 
 		for i, txIn := range tx.TxIn {
+			if _,ok := signed[txIn.SignatureIndex]; ok {
+				continue
+			}
 			prevOutScript, ok := additionalPrevScripts[txIn.PreviousOutPoint]
 			if !ok {
 				prevHash := &txIn.PreviousOutPoint.Hash
@@ -3334,8 +3339,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 			// corresponding output. However this could be already signed,
 			// so we always verify the output.
 			if (hashType&txscript.SigHashSingle) != txscript.SigHashSingle {	//  || i < len(tx.TxOut)?
-
-				txIn.SignatureIndex = uint32(i)
+//				txIn.SignatureIndex = uint32(i)
 				if tx.SignatureScripts == nil {
 					tx.SignatureScripts = make([][]byte, 0)
 				}
@@ -3356,6 +3360,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 					continue
 				}
 				tx.SignatureScripts[i] = script
+				signed[txIn.SignatureIndex] = struct{}{}
 			}
 
 			pkScript := make([]byte, len(prevOutScript) - 1)

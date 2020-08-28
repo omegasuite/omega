@@ -2824,6 +2824,7 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var err error
 	top := 0
 	var dest pointer
+	var src pointer
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
@@ -2834,66 +2835,73 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				return err
 			}
 			j += tl
-			
-			if top == 0 {
-				dest = pointer(num)
-				top++
-			} else {
-				tk := wire.TxOut{}
-				var r bytes.Reader
 
-				r.Reset(stack.data[num>>32].space[num&0xFFFFFFFF : (num&0xFFFFFFFF)+100])
-				if err := tk.Read(&r, 0, 0, wire.SignatureEncoding); err != nil {
-					return err
-				}
-
-				var zeroaddr [20]byte
-				if bytes.Compare(tk.PkScript[1:21], zeroaddr[:]) == 0 {
-					return fmt.Errorf("Address is all zero.")
-				}
-
-				if isContract(tk.PkScript[0]) {
-					me := contract.self.Address()
-					allowed := bytes.Compare(tk.PkScript[1:21], me[:]) == 0
-					for lib,_ := range contract.libs {
-						if !allowed {
-							allowed = bytes.Compare(tk.PkScript[1:21], lib[:]) == 0
-						}
-					}
-					if !allowed {
-						return fmt.Errorf("Contract may not add a txout outside scope")
-					}
-				} else {
-					// check address is valid type & net
-					netID := tk.PkScript[0]
-					isP2PKH := evm.chainConfig.PubKeyHashAddrID == netID
-					isP2SH := evm.chainConfig.ScriptHashAddrID == netID
-
-					if isP2PKH && isP2SH {
-						return btcutil.ErrAddressCollision
-					} else if !isP2PKH && !isP2PKH {
-						return btcutil.ErrUnknownAddressType
-					}
-				}
-
-				seq := evm.AddTxOutput(tk)
-
-				if seq < 0 {
-					return fmt.Errorf("Malformed expression")
-				}
-
-				stack.saveInt32(&dest, int32(seq))
-
-				log.Debugf("Text out added as %d: value = %d to %x", seq, tk.Token.Value.(*token.NumToken).Val, tk.PkScript[1:21])
-
-				return nil
+			if top == 1 {
+				dest = src
+			} else if top > 1 {
+				return fmt.Errorf("Malformed expression")
 			}
+
+			src = pointer(num)
+			top++
 
 		default:
 			return fmt.Errorf("Malformed expression")
 		}
 	}
-	return fmt.Errorf("Malformed expression")
+
+	tk := wire.TxOut{}
+	num = int64(src)
+
+	var r bytes.Reader
+
+	r.Reset(stack.data[num>>32].space[num&0xFFFFFFFF : (num&0xFFFFFFFF)+100])
+	if err := tk.Read(&r, 0, 0, wire.SignatureEncoding); err != nil {
+		return err
+	}
+
+	var zeroaddr [20]byte
+	if bytes.Compare(tk.PkScript[1:21], zeroaddr[:]) == 0 {
+		return fmt.Errorf("Address is all zero.")
+	}
+
+	if isContract(tk.PkScript[0]) {
+		me := contract.self.Address()
+		allowed := bytes.Compare(tk.PkScript[1:21], me[:]) == 0
+		for lib, _ := range contract.libs {
+			if !allowed {
+				allowed = bytes.Compare(tk.PkScript[1:21], lib[:]) == 0
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("Contract may not add a txout outside scope")
+		}
+	} else {
+		// check address is valid type & net
+		netID := tk.PkScript[0]
+		isP2PKH := evm.chainConfig.PubKeyHashAddrID == netID
+		isP2SH := evm.chainConfig.ScriptHashAddrID == netID
+
+		if isP2PKH && isP2SH {
+			return btcutil.ErrAddressCollision
+		} else if !isP2PKH && !isP2PKH {
+			return btcutil.ErrUnknownAddressType
+		}
+	}
+
+	seq := evm.AddTxOutput(tk)
+
+	if seq < 0 {
+		return fmt.Errorf("Malformed expression")
+	}
+
+	if dest != 0 && top == 2 {
+		stack.saveInt32(&dest, int32(seq))
+	}
+
+	log.Debugf("Text out added as %d: value = %d to %x", seq, tk.Token.Value.(*token.NumToken).Val, tk.PkScript[1:21])
+
+	return nil
 }
 
 func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error {

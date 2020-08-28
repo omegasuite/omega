@@ -120,6 +120,9 @@ func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, er
 // the one in interpreter is intended for client side. here is for the miner. here, verification
 // is deeper in that it checks monitering status, a tx will be rejected if monitor checing fails
 // while it may pass interpreter verification because only signature verification is done there
+
+// sig verification includes all pk script type, e.g. multi sig, pkscripthash
+
 func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *viewpoint.ViewPointSet) error {
 	if tx.IsCoinBase() {
 		return nil
@@ -161,6 +164,9 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 			select {
 			case code, more := <-queue:
 				if !more {
+					if len(verifiers) == param.SigVeriConcurrency {
+						final <- true
+					}
 					return
 				}
 				<-verifiers
@@ -202,13 +208,14 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 	nsigs := uint32(len(tx.MsgTx().SignatureScripts))
 
 	// prepare and shoot the real work
+	contracts := false
 	for txinidx, txin := range tx.MsgTx().TxIn {
-		if txin.IsSeparator() || txin.SignatureIndex == 0xFFFFFFFF {
-			allrun = true
-			break
+		if txin.IsSeparator() {
+			contracts = true
+			continue
 		}
-		if txin.SignatureIndex >= nsigs || tx.MsgTx().SignatureScripts[txin.SignatureIndex] == nil {		// no signature
-			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
+		if txin.SignatureIndex == 0xFFFFFFFF {
+			continue
 		}
 
 		// get utxo
@@ -219,6 +226,17 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 		}
 
 		version, addr, method, excode := parsePkScript(utxo.PkScript())
+
+		if contracts {
+			if !isContract(version) {
+				return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+			}
+			continue
+		}
+
+		if txin.SignatureIndex >= nsigs || tx.MsgTx().SignatureScripts[txin.SignatureIndex] == nil {		// no signature
+			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
+		}
 
 		if addr == nil {
 			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
@@ -311,13 +329,10 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 
 		atomic.AddInt32(&toverify, 1)
 
-		if txinidx == len(tx.MsgTx().TxIn) - 1 {
-			allrun = true
-		}
-
 		queue <- tbv { txinidx, txin.PreviousOutPoint, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
 	}
 
+	allrun = true
 	close(queue)
 
 	res := <- final

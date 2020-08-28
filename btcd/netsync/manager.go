@@ -802,7 +802,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
-	log.Debugf("netsyc ProcessBlock %s at %d", bmsg.block.Hash().String(), bmsg.block.Height())
+	log.Infof("netsyc ProcessBlock %s at %d", bmsg.block.Hash().String(), bmsg.block.Height())
 	isMainchain, isOrphan, err, missing := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
 	b1 := sm.chain.BestSnapshot()

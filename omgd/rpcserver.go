@@ -553,14 +553,63 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 	// Add all transaction inputs to a new transaction after performing
 	// some validity checks.
 	mtx := wire.NewMsgTx(wire.TxVersion)
-	for i, input := range c.Inputs {
+	scripts := make(map[string]uint32)
+
+	var zerohash chainhash.Hash
+
+	for _, input := range c.Inputs {
 		txHash, err := chainhash.NewHashFromStr(input.Txid)
 		if err != nil {
 			return nil, rpcDecodeHexError(input.Txid)
 		}
-
 		prevOut := wire.NewOutPoint(txHash, input.Vout)
-		txIn := wire.NewTxIn(prevOut, uint32(i))
+		var sigIndex uint32
+
+		if input.Vout != 0 || !txHash.IsEqual(&zerohash) {
+			var pkScript string
+
+			if s.cfg.TxMemPool.HaveTransaction(txHash) {
+				tx, err := s.cfg.TxMemPool.FetchTransaction(txHash)
+				if err == nil {
+					mtx := tx.MsgTx()
+					if input.Vout > uint32(len(mtx.TxOut)-1) {
+						return nil, &btcjson.RPCError{
+							Code: btcjson.ErrRPCInvalidTxVout,
+							Message: "Output index number (vout) does not " +
+								"exist for transaction.",
+						}
+					}
+					txOut := mtx.TxOut[input.Vout]
+					pkScript = string(txOut.PkScript)
+				}
+			}
+
+			if len(pkScript) == 0 {
+				entry, err := s.cfg.Chain.FetchUtxoEntry(*prevOut)
+				if err != nil {
+					return nil, rpcNoTxInfoError(txHash)
+				}
+
+				// To match the behavior of the reference client, return nil
+				// (JSON null) if the transaction output is spent by another
+				// transaction already in the main chain.  Mined transactions
+				// that are spent by a mempool transaction are not affected by
+				// this.
+				if entry == nil || entry.IsSpent() {
+					return nil, nil
+				}
+				pkScript = string(entry.PkScript())
+			}
+
+			if ts, ok := scripts[pkScript]; ok {
+				sigIndex = ts
+			} else {
+				sigIndex = uint32(len(scripts))
+				scripts[pkScript] = sigIndex
+			}
+		}
+
+		txIn := wire.NewTxIn(prevOut, sigIndex)	// uint32(i))
 		if c.LockTime != nil && *c.LockTime != 0 {
 			txIn.Sequence = wire.MaxTxInSequenceNum - 1
 		}

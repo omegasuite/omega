@@ -507,7 +507,11 @@ var formatAddTXO = []formatDesc{
 }
 
 func opAddTxOutValidator(param []byte) int {
-	return formatParser(formatAddTXO, param)
+	r := formatParser(formatAddTXO, param)
+	if r < 0 {
+		r = formatParser(formatAddTXO[:1], param)
+	}
+	return r
 }
 
 var formatGetDef = []formatDesc{
