@@ -45,7 +45,7 @@ type (
 
 	// AddRight adds an right definition to the transaction template for currect transaction
 	// and is used by the ADDTXIN EVM op code.
-	AddRightFunc func(*token.RightDef) bool
+	AddRightFunc func(*token.RightDef) chainhash.Hash
 
 	// AddTxOutput adds an output to  the transaction template for currect transaction
 	// and is used by the ADDTXOUT EVM op code.
@@ -522,8 +522,8 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	ovm.StateDB[d].fresh = true
 
 	contract.Code = ByteCodeParser(data)
-	if !ByteCodeValidator(contract.Code) {
-		return nil, omega.ScriptError(omega.ErrInternal, "Illegal instruction in contract code.")
+	if err := ByteCodeValidator(contract.Code); err != nil {
+		return nil, err
 	}
 
 	ovm.SetAddres(d, contract.self.(AccountRef))

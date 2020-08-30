@@ -323,7 +323,7 @@ func opStoreValidator(param []byte) int {
 }
 
 var formatDel = []formatDesc{
-	{patOperand, 32},{patOperand, 0},
+	{patOperand, 0},
 }
 
 func opDelValidator(param []byte) int {
@@ -495,7 +495,7 @@ func opSpendValidator(param []byte) int {
 }
 
 var formatAddRight = []formatDesc{
-	{addrOperand, 0xFFFFFFFF},
+	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
 }
 
 func opAddRightValidator(param []byte) int {

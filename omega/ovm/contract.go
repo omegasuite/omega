@@ -236,17 +236,17 @@ var validators = map[OpCode]codeValidator {
 	HEIGHT: opHeightValidator,
 }
 
-func ByteCodeValidator(code []inst) bool {
+func ByteCodeValidator(code []inst) error {
 	for i, c := range code {
 		if v, ok := validators[c.op]; ok {
 			offset := v(c.param)
 			if i+offset < 0 || i+offset > len(code) {
-				return false
+				return fmt.Errorf("Illegal instruction %c %s in contract code.", c.op, string(c.param))
 			}
 		} else {
-			return false
+			return fmt.Errorf("Illegal instruction %c in contract code.", c.op)
 		}
 	}
 
-	return true
+	return nil
 }

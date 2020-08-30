@@ -98,13 +98,13 @@ func (s *Tx) AddTxIn(t wire.OutPoint) {
 	})
 }
 
-func (s *Tx) AddDef(t token.Definition) {
+func (s *Tx) AddDef(t token.Definition) chainhash.Hash {
 	if !s.HasDefs {
 		to := token.SeparatorDef{}
 		s.msgTx.AddDef(&to)
 		s.HasDefs = true
 	}
-	s.msgTx.AddDef(t)
+	return s.msgTx.AddDef(t)
 }
 
 func (s *Tx) Match(t *Tx) bool {

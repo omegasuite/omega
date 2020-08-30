@@ -3244,7 +3244,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 	ctx.GetCoinBase = func() *btcutil.Tx { return nil }
 	ctx.GetTx = func() *btcutil.Tx { return btcutil.NewTx(tx) }
 	ctx.AddTxOutput = func(t wire.TxOut) int { return -1 }
-	ctx.AddRight = func(t *token.RightDef) bool { return false }
+	ctx.AddRight = func(t *token.RightDef) chainhash.Hash { return chainhash.Hash{} }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
 	ctx.BlockNumber = func() uint64 { return 0 }
 	ctx.BlockTime = func() uint32 { return 0 }
@@ -3359,7 +3359,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 					})
 					continue
 				}
-				tx.SignatureScripts[i] = script
+				tx.SignatureScripts[txIn.SignatureIndex] = script
 				signed[txIn.SignatureIndex] = struct{}{}
 			}
 
@@ -3373,7 +3373,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 
 			// Either it was already signed or we just signed it.
 			// Find out if it is completely satisfied or still needs more.
-			if !intp.VerifySig(i, pkScript, tx.SignatureScripts[i]) {
+			if !intp.VerifySig(i, pkScript, tx.SignatureScripts[txIn.SignatureIndex]) {
 				signErrors = append(signErrors, SignatureError{
 					InputIndex: uint32(i),
 					Error:      fmt.Errorf("cannot validate transaction."),

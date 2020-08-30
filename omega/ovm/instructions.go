@@ -2003,34 +2003,28 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 func opDel(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	param := contract.GetBytes(*pc)
+
 	ln := len(param)
 
-	num := chainhash.Hash{}
-	top := 0
-	slen := int64(0)
 	var tl int
 
 	var err error
+	var d [4]byte
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
-			if top == 0 {
-				if slen, tl, err = stack.getNum(param[j:], 0x42); err != nil {
-					return err
-				}
-			} else {
-				if num, tl, err = stack.getHash(param[j:]); err != nil {
-					return err
-				}
+			num := int64(0)
+			if num, tl, err = stack.getNum(param[j:], 'D'); err != nil {
+				return err
 			}
+			binary.LittleEndian.PutUint32(d[:], uint32(num))
 			j += tl
-			top++
 		}
 	}
-	evm.DeleteState(contract.self.Address(), string(num[:slen]))
+	evm.DeleteState(contract.self.Address(), string(d[:]))
 
 	return nil
 }
@@ -2779,35 +2773,39 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	num := int64(0)
 	var tl int
 	var err error
+	dest := pointer(0)
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
+			dest = pointer(num)
 			if num, tl, err = stack.getNum(param[j:], 0xFF); err != nil {
 				return err
 			}
 			j += tl
 
-			tk := token.RightDef{}
-			var r bytes.Reader
-			r.Reset(stack.data[num >> 32].space[num & 0xFFFFFFFF:])
-			if err := tk.MemRead(&r, 0); err != nil {
-				return err
-			}
-
-			if evm.AddRight(&tk) {
-				return nil
-			}
-
-			return fmt.Errorf("Malformed expression")
-
 		default:
 			return fmt.Errorf("Malformed expression")
 		}
 	}
-	return fmt.Errorf("Malformed expression")
+
+	tk := token.RightDef{}
+	var r bytes.Reader
+
+	r.Reset(stack.data[num >> 32].space[num & 0xFFFFFFFF:])
+	if err := tk.MemRead(&r, 0); err != nil {
+		return err
+	}
+
+	hash := evm.AddRight(&tk)
+
+	if dest != pointer(0) {
+		stack.saveHash(&dest, hash)
+	}
+
+	return nil
 }
 
 func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {

@@ -417,9 +417,10 @@ func (msg *MsgTx) AddRight(to *token.RightDef) int {
 }
 
 // AddTxOut adds a definition to the message.
-func (msg *MsgTx) AddDef(to token.Definition) int {
+func (msg *MsgTx) AddDef(to token.Definition) chainhash.Hash {
 	msg.TxDef = append(msg.TxDef, to)
-	return len(msg.TxDef) - 1
+	d := len(msg.TxDef) - 1
+	return msg.TxDef[d].Hash()
 }
 
 func (msg *MsgTx) RemapTxout(to * TxOut) * TxOut {

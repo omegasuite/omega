@@ -91,7 +91,7 @@ func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 }
 
 func ServeBlock(h * chainhash.Hash) *btcutil.Block {
-	if miner.shutdown {
+	if miner == nil || miner.shutdown {
 		return nil
 	}
 	for _, s := range miner.Sync {
