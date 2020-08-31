@@ -155,10 +155,14 @@ func (c *Contract) Value() *token.Token {
 
 // SetCallCode sets the code of the contract and address of the backing data
 // object
-func (self *Contract) SetCallCode(addr []byte, code []byte) {
+func (self *Contract) SetCallCode(addr []byte, code []byte) error {
+	if code == nil {
+		return fmt.Errorf("code not found")
+	}
 	self.Code = ByteCodeParser(code)
 //	self.CodeHash = hash
 	self.CodeAddr = addr
+	return nil
 }
 
 func ByteCodeParser(code []byte) []inst {

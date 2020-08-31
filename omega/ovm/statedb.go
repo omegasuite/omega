@@ -197,7 +197,7 @@ func (d * OVM) GetCode(contract [20]byte) []byte {
 		g, err = dbFetchTxIndexEntry(dbTx, &h)
 		return err
 	})
-	if err != nil {
+	if err != nil || g == nil {
 		return nil
 	}
 

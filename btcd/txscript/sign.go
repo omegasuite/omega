@@ -84,9 +84,6 @@ func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.P
 func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 	addresses []btcutil.Address, nRequired int, kdb KeyDB,
 	chainParams *chaincfg.Params) ([]byte, bool) {
-	// We start with a single OP_FALSE to work around the (now standard)
-	// but in the reference implementation that causes a spurious pop at
-	// the end of OP_CHECKMULTISIG.
 	builder := ovm.NewScriptBuilder()
 	signed := 0
 	for _, addr := range addresses {

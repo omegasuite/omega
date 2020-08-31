@@ -378,9 +378,8 @@ func opCopyValidator(param []byte) int {
 	return formatParser(formatCopy, param)
 }
 
-var szdataType = regexp.MustCompile(`^B|W|D|Q|h`)
 var formatImm = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {szdataType, 0xFF}, {patOperand, 0},
+	{addrOperand, 0xFFFFFFFF}, {dataType, 0}, {patOperand, 0},
 }
 
 func opCopyImmValidator(param []byte) int {

@@ -462,7 +462,9 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 		return nil, fmt.Errorf("Contract does not exist")
 	}
 	if bytes.Compare(method, []byte{0,0,0,0}) != 0 {
-		contract.SetCallCode(method, evm.GetCode(d))
+		if err := contract.SetCallCode(method, evm.GetCode(d)); err != nil {
+			return nil, err
+		}
 	} else {
 		contract.CodeAddr = []byte{0,0,0,0}
 	}

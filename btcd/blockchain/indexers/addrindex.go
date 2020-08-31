@@ -640,7 +640,7 @@ func (idx *AddrIndex) Create(dbTx database.Tx) error {
 type writeIndexData map[[addrKeySize]byte][]int
 
 func IsContract(netid byte) bool {
-	return netid & 64 == 64
+	return netid == 0x88
 }
 
 // ExtractPkScriptAddrs returns the type of script, addresses and required
