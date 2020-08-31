@@ -146,7 +146,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 	// set up for concurrent execution
 	verifiers := make(chan bool, param.SigVeriConcurrency)
 	queue := make(chan tbv, param.SigVeriConcurrency)
-	final := make(chan bool, 1)
+	final := make(chan bool, 2)
 
 	defer func () {
 		close(verifiers)
@@ -221,16 +221,20 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 
 	nsigs := uint32(len(tx.MsgTx().SignatureScripts))
 
-	sharedSigs := make(map[uint32][]byte)
+	type shared struct {
+		sign []byte
+		skip byte
+	}
+	sharedSigs := make(map[uint32] * shared)
 
 	// prepare and shoot the real work
 	contracts := false
 	for txinidx, txin := range tx.MsgTx().TxIn {
-		if txin.IsSeparator() {
+		if txin.IsSeparator() {	// never
 			contracts = true
 			continue
 		}
-		if txin.SignatureIndex == 0xFFFFFFFF {
+		if txin.SignatureIndex == 0xFFFFFFFF {	// coinbase, never
 			continue
 		}
 
@@ -344,35 +348,47 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 		copy(code[4 + len(addr):], excode[4:])
 
 		if pks, ok := sharedSigs[txin.SignatureIndex]; ok {
-			if bytes.Compare(pks, utxo.PkScript()) == 0 {
-				// examine pks to see if we can skip it
-				sig := tx.MsgTx().SignatureScripts[txin.SignatureIndex]
-				skip := true
-				for idx := 0; idx < len(sig); idx++ {
-					switch OpCode(sig[idx]) {
-					case PUSH:
-						idx++
-						idx += int(sig[idx])
+			switch pks.skip {
+			case 2:
+				continue
+			case 0:
+				if bytes.Compare(pks.sign, utxo.PkScript()) == 0 {
+					// examine pks to see if we can skip it
+					sig := tx.MsgTx().SignatureScripts[txin.SignatureIndex]
+					pks.skip = 2
+					for idx := 0; idx < len(sig); idx++ {
+						switch OpCode(sig[idx]) {
+						case PUSH:
+							idx++
+							idx += int(sig[idx])
 
-					case SIGNTEXT:
-						idx++
-						if sig[idx] == 0 {
-							skip = false
+						case SIGNTEXT:
+							idx++
+							if sig[idx] == 0 {
+								pks.skip = 1
+								break
+							}
+							u := 1
+							if sig[idx] == 3 {
+								u += 1 + int(sig[idx+1])
+							}
+							idx += u
+
+						default: // never
+							pks.skip = 1
 							break
 						}
-						u := 1
-						if sig[idx] == 3 {
-							u += 1 + int(sig[idx + 1])
-						}
-						idx += u
 					}
-				}
-				if skip {
-					continue
+					if pks.skip == 2 {
+						continue
+					}
 				}
 			}
 		} else {
-			sharedSigs[txin.SignatureIndex] = utxo.PkScript()
+			sharedSigs[txin.SignatureIndex] = &shared{
+				sign: utxo.PkScript(),
+				skip: 0,
+			}
 		}
 
 		if finalized {
