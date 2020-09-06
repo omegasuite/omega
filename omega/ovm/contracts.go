@@ -12,9 +12,13 @@ import (
 //	"github.com/omegasuite/omega/token"
 )
 
+type vunit struct {
+	data, text []byte
+}
+
 // PrecompiledContract is the basic interface for native Go contracts.
 type PrecompiledContract interface {
-	Run(input []byte) ([]byte, error) // Run runs the precompiled contract
+	Run(input []byte, vunits []vunit) ([]byte, error) // Run runs the precompiled contract
 }
 
 // Create creates a new contract
@@ -52,117 +56,67 @@ var PrecompiledContracts = map[[4]byte]PrecompiledContract{
 	// pk script functions
 	([4]byte{OP_PAY2PKH, 0, 0, 0}): &pay2pkh{},			// pay to pubkey hash script
 	([4]byte{OP_PAY2SCRIPTH, 0, 0, 0}): &pay2scripth{},		// pay to script hash script
-	([4]byte{OP_PAY2MULTIPKH, 0, 0, 0}): &pay2pkhs{},			// pay to pubkey hash script, multi-sig
-	([4]byte{OP_PAY2MULTISCRIPTH, 0, 0, 0}): &pay2scripths{},		// pay to script hash script, multi-sig
+	([4]byte{OP_PAY2MULTIPKH, 0, 0, 0}): &pay2pkhs{},		// pay to pubkey hash script, multi-sig
+	([4]byte{OP_PAY2MULTISCRIPTH, 0, 0, 0}): &pay2scripths{},		// pay to no one and spend it
 	([4]byte{OP_PAY2NONE, 0, 0, 0}): &payreturn{},			// pay to no one and spend it
 	([4]byte{OP_PAY2ANY, 0, 0, 0}): &payanyone{},			// pay to anyone
 }
 
 type payanyone struct {}
 
-func (p *payanyone) Run(input []byte) ([]byte, error) {
+func (p *payanyone) Run(input []byte, vunits []vunit) ([]byte, error) {
 	return []byte{1}, nil
 }
 
 type payreturn struct {}
 
-func (p *payreturn) Run(input []byte) ([]byte, error) {
+func (p *payreturn) Run(input []byte, vunits []vunit) ([]byte, error) {
 	// spend it !!!
 	return []byte{0}, nil
 }
 
+type pay2pkhs struct {}
 type pay2scripths struct {}
 
-func (p *pay2scripths) Run(input []byte) ([]byte, error) {
-	// All input fields are 20-byte padded
-	// input: pkh - script hash (20-bytes)
+// single address multiple key
+func (p *pay2scripths) Run(input []byte, vunits []vunit) ([]byte, error) {
+	// input: pkh - public key hash (20-byte value)
 	//		  N:M - bytes 0-4 = M, bytes 4-8 = N (M >= N)
-	//		  (M - 1) script hash (20-bytes)
-	//		  upto M text
-	//	      text - script
+	// vunits: M vunit
+	//		  data: publick key-signature pairs
+	//	      text: text to be signed
 
-	pkh := make([][20]byte, 1)
-	copy(pkh[0][:], input[:20])
-
-	m := binary.LittleEndian.Uint32(input[20:])
+	pkh := make([]byte, 0)
+	
+	m := int(binary.LittleEndian.Uint32(input[20:]))
 	n := int(binary.LittleEndian.Uint32(input[24:]))
-
-	pos := 28
-	for i := uint32(1); i < m; i++ {
-		var k [20]byte
-		copy(k[:], input[pos:])
-		pkh = append(pkh, k)
-		pos += 20
+	
+	if len(vunits) != m {
+		return []byte{0}, nil
 	}
 
-	for pos < len(input) {
-		l := binary.LittleEndian.Uint32(input[pos:])
-		text := input[pos + 32:pos + 32 + int(l)]
-		pos = pos + 32 + int((l + 31) &^ 0x1F)
+	sigcnt := 0
 
-		hash := Hash160(text)
+	for _,v := range vunits {
+		inlen := len(v.data)
 
-		for i := uint32(0); i < m; i++ {
-			if bytes.Compare(hash[:], pkh[i][:]) == 0 {
-				pkh[i] = [20]byte{}
-				n--
-				if n == 0 {
-					return []byte{1}, nil
-				}
-			}
-		}
-	}
-	return []byte{0}, nil
-}
+		kpos := int(v.data[0]) + 1
+		pkBytes := v.data[1:kpos]
 
-type pay2pkhs struct {}
+		pkh = append(pkh, pkBytes...)
 
-func (p *pay2pkhs) Run(input []byte) ([]byte, error) {
-	// All input fields are 32-byte padded except for public key hashes, M, N
-	// input: pkh - public key hash (20-byte value, not padded)
-	//		  N:M - bytes 0-4 = M, bytes 4-8 = N (M >= N)
-	//		  (M - 1) public key hashws (each 30-byte value)
-	//	      text - text to be signed (in chucks of 0-padded 32-bytes units)
-	//		  upto M publick key-signature pairs
-	//		  publick key
-	//		  signature
+		siglen := input[kpos]
+		kpos++
 
-	pkh := make([][20]byte, 1)
-	copy(pkh[0][:], input[:20])
-
-	m := binary.LittleEndian.Uint32(input[20:])
-	n := int(binary.LittleEndian.Uint32(input[24:]))
-
-	pos := 28
-	for i := uint32(1); i < m; i++ {
-		var k [20]byte
-		copy(k[:], input[pos:])
-		pkh = append(pkh, k)
-		pos += 20
-	}
-
-	l := binary.LittleEndian.Uint32(input[pos:])
-	pos += 32
-	text := input[pos:pos + int(l)]
-	pos += int(((l + 31) &^ 0x1F))
-
-	hash := chainhash.DoubleHashB(text)
-
-	for pos < len(input) {
-		var pkBytes []byte
-
-		if input[pos] == 0x02 || input[pos] == 0x03 {
-			pkBytes = input[pos : pos+33]
-			pos += 64
-		} else if input[pos] == 0x04 {
-			pkBytes = input[pos : pos+65]
-			pos += 96
+		if siglen == 0 {
+			continue
 		}
 
-		siglen := binary.LittleEndian.Uint32(input[pos:])
-		sigBytes := input[pos+32 : pos+32+int(siglen)]
+		if inlen < kpos + int(siglen) {
+			return []byte{0}, nil
+		}
 
-		pos = (pos+32+int(siglen)+31) &^ 0x1F
+		sigBytes := input[kpos : kpos+int(siglen)]
 
 		pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
 		if err != nil {
@@ -177,28 +131,118 @@ func (p *pay2pkhs) Run(input []byte) ([]byte, error) {
 			return []byte{0}, nil
 		}
 
+		hash := chainhash.DoubleHashB(v.text)
 		valid := signature.Verify(hash, pubKey)
 
 		if valid {
-			ph := Hash160(pubKey.SerializeUncompressed())
-			for i := uint32(0); i < m; i++ {
-				if bytes.Compare(ph[:], pkh[i][:]) == 0 {
-					n--
-					if n == 0 {
-						return []byte{1}, nil
-					}
-					copy(pkh[i][:], (*(&chainhash.Hash{}))[:])
-				}
-			}
+			sigcnt++
 		}
 	}
 
-	return []byte{0}, nil
+	if sigcnt < n {
+		return []byte{0}, nil
+	}
+
+	ph := Hash160(pkh)
+	if bytes.Compare(ph[:], input[:20]) != 0 {
+		return []byte{0}, nil
+	}
+
+	return []byte{1}, nil
+}
+
+// multiple address multiple key
+func (p *pay2pkhs) Run(input []byte, vunits []vunit) ([]byte, error) {
+	// input: pkh - public key hash (20-byte value)
+	//		  N:M - bytes 0-4 = M, bytes 4-8 = N (M >= N)
+	//		  (M - 1) public key hashes (each 30-byte value)
+	// vunits: M vunit
+	//		  data: publick key-signature pairs
+	//	      text: text to be signed
+
+	pks := [][]byte{input[:20]}
+
+	m := int(binary.LittleEndian.Uint32(input[20:]))
+	n := int(binary.LittleEndian.Uint32(input[24:]))
+	
+	if len(input) < 8 + 20 * m {
+		return []byte{0}, nil
+	}
+
+	pos := 28
+	for i := 1; i < m; i++ {
+		var k [20]byte
+		copy(k[:], input[pos:])
+		pks = append(pks, k[:])
+		pos += 20
+	}
+
+	sigcnt := 0
+
+	for _,v := range vunits {
+		inlen := len(v.data)
+
+		kpos := int(v.data[0]) + 1
+		pkBytes := v.data[1:kpos]
+		
+		siglen := input[kpos]
+		kpos++
+
+		if siglen == 0 {
+			continue
+		}
+
+		if inlen < kpos + int(siglen) {
+			return []byte{0}, nil
+		}
+
+		sigBytes := input[kpos : kpos+int(siglen)]
+		
+		pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
+		if err != nil {
+			return []byte{0}, nil
+		}
+		
+		ph := Hash160(pkBytes)
+		matched := false
+		for i, k := range pks {
+			if bytes.Compare(ph[:], k) == 0 {
+				pks = append(pks[:i], pks[i+1:]...)
+				matched = true
+				break
+			}
+		}
+		
+		if !matched {
+			continue
+		}
+
+		var signature *btcec.Signature
+
+		signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
+
+		if err != nil {
+			return []byte{0}, nil
+		}
+		
+		hash := chainhash.DoubleHashB(v.text)
+		valid := signature.Verify(hash, pubKey)
+
+		if valid {
+			sigcnt++
+		}
+	}
+
+	if sigcnt < n {
+		return []byte{0}, nil
+	}
+
+	return []byte{1}, nil
 }
 
 type pay2scripth struct {}
 
-func (p *pay2scripth) Run(input []byte) ([]byte, error) {
+func (p *pay2scripth) Run(input []byte, _ []vunit) ([]byte, error) {
 	// All input fields are 32-byte padded
 	// input: pkh - script hash (32-bytes)
 	//	      text - script
@@ -226,29 +270,17 @@ func (p *pay2scripth) Run(input []byte) ([]byte, error) {
 
 type pay2pkh struct {}
 
-func reformatData(input[] byte) ([]byte, uint32) {
-	ln := binary.LittleEndian.Uint32(input[0:32])
-	r := make([]byte, ln)
-	p, q := int(((ln + 31) & 0xE0) - 32), uint32(0)
-	for ; p >= 0; p -= 32 {
-		copy(r[q:], input[p + 32:])
-		q += 32
-	}
-	return r, q + 32
-}
-
-func (p *pay2pkh) Run(input []byte) ([]byte, error) {
-	// All input fields are 32-byte padded
-	// input: pkh - public key hash (20-byte value)
+func (p *pay2pkh) Run(input []byte, vunits []vunit) ([]byte, error) {
+	// vunits: pkh - public key hash (20-byte value)
 	//		  publick key
 	//		  signature
 	//	      text - text to be signed (in chucks of 0-padded 32-bytes units)
 
 	pkh := input[:20]
 
-	pkBytes := input[21:21 + input[20]]
-	pos := 21 + input[20]
-	
+	pos := vunits[0].data[0] + 1
+	pkBytes := vunits[0].data[1:pos]
+
 	pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
 	if err != nil {
 		return []byte{0}, nil
@@ -260,22 +292,14 @@ func (p *pay2pkh) Run(input []byte) ([]byte, error) {
 		return []byte{0}, nil
 	}
 
-	siglen := input[pos]
+	siglen := vunits[0].data[pos]
 
-	sigBytes := input[pos + 1:pos + siglen + 1]
-
-//	binary.LittleEndian.Uint32(input[pos:])
-//	sigBytes := input[pos : pos + siglen]
+	sigBytes := vunits[0].data[pos + 1:pos + siglen + 1]
 
 	pos += siglen + 1
 
 	// Generate the signature hash based on the signature hash type.
-	var hash []byte
-
-	text := input[pos:]
-
-//	textlen := binary.LittleEndian.Uint32(input[pos:])
-	hash = chainhash.DoubleHashB(text)
+	hash := chainhash.DoubleHashB(vunits[0].text)
 
 	var signature *btcec.Signature
 
@@ -301,6 +325,8 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 		pc   = int(0) // program counter
 	)
 
+	vuints := make([]vunit, 0)	// verification unit, generated for each SIGNTEXT inst
+	
 	if len(contract.Code) != 0 {
 		// Reset the previous call's return data. It's unimportant to preserve the old buffer
 		// as every returning call will return new data anyway.
@@ -324,7 +350,38 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 			}
 
 			// execute the operation
+			v := vunit{}
+			if op == SIGNTEXT {
+				ln := binary.LittleEndian.Uint32(stack.data[0].space)
+
+				if ln > 0 {
+					v.data = make([]byte, ln)
+					copy(v.data, stack.data[0].space[4:ln + 4])
+				} else {
+					v.data = make([]byte, 0)
+				}
+
+				stack.data[0].space = stack.data[0].space[:4]
+				copy(stack.data[0].space, []byte{0,0,0,0})
+			}
+
 			err := operation.execute(&pc, in.evm, contract, stack)
+
+			if op == SIGNTEXT {
+				ln := binary.LittleEndian.Uint32(stack.data[0].space)
+
+				if ln > 0 {
+					v.text = make([]byte, ln)
+					copy(v.text, stack.data[0].space[4:ln + 4])
+				} else {
+					v.text = make([]byte, 0)
+				}
+
+				vuints = append(vuints, v)
+
+				stack.data[0].space = stack.data[0].space[:4]
+				copy(stack.data[0].space, []byte{0,0,0,0})
+			}
 
 			switch {
 			case err != nil:
@@ -346,13 +403,13 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 
 		input = append(input, res...)
 	}
-	return p.Run(input)
+	return p.Run(input, vuints)
 }
 
-func (c *create) Run(input []byte) ([]byte, error) {
+func (c *create) Run(input []byte, _ []vunit) ([]byte, error) {
 	return c.ovm.Create(input[4:], c.contract)
 }
 
-func (c *meta) Run(input []byte) ([]byte, error) {
+func (c *meta) Run(input []byte, _ []vunit) ([]byte, error) {
 	return c.ovm.getMeta(c.contract.self.Address(), string(input)), nil
 }

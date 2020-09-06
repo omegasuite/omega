@@ -106,8 +106,7 @@ const (
 	//
 	// TODO: This definition does not belong here.  It belongs in a policy
 	// package.
-	StandardVerifyFlags = ScriptBip16 |
-		ScriptVerifyDERSignatures |
+	StandardVerifyFlags = ScriptVerifyDERSignatures |
 		ScriptVerifyStrictEncoding |
 		ScriptVerifyMinimalData |
 		ScriptStrictMultiSig |
@@ -247,9 +246,11 @@ func ExpectedInputs(pops []byte, class ScriptClass) int {
 // GetScriptClass returns the class of the script passed.
 //
 // NonStandardTy will be returned when the script does not parse.
+/*
 func GetScriptClass(script []byte) ScriptClass {
 	return TypeOfScript(script)
 }
+ */
 
 // CalcMultiSigStats returns the number of public keys and signatures from
 // a multi-signature transaction script.  The passed script MUST already be

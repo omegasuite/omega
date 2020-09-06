@@ -50,7 +50,13 @@ func zeroaddr(addr []byte) bool {
 }
 
 func parsePkScript(script []byte) (byte, []byte, []byte, []byte) {
+	if len(script) < 21 {
+		return 0, nil, nil, nil
+	}
 	if len(script) < 25 {
+		if script[0] == 0x88 {
+			return script[0], script[1:21], script[21:], script[21:]
+		}
 		return 0, nil, nil, nil
 	}
 
@@ -111,9 +117,7 @@ func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, er
 	if err != nil {
 		return chainhash.Hash{}, err
 	}
-
-//	ret,_ = reformatData(ret)
-
+	
 	return chainhash.DoubleHashH(ret), nil
 }
 
@@ -364,15 +368,13 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 
 						case SIGNTEXT:
 							idx++
-							if sig[idx] == 0 {
+							si := SigHashType(sig[idx])
+							if (si & sigHashMask) == SigHashNone || (si & sigHashMask) == SigHashSingle || (si & SigHashAnyOneCanPay) != 0 {
+								// these sign text are not idx independent, can not assume
+								// these signatures would be the same
 								pks.skip = 1
 								break
 							}
-							u := 1
-							if sig[idx] == 3 {
-								u += 1 + int(sig[idx+1])
-							}
-							idx += u
 
 						default: // never
 							pks.skip = 1
@@ -447,10 +449,13 @@ func (ovm * OVM) ContractCall(addr Address, input []byte) ([]byte, error) {
 
 	ovm.GetCurrentOutput = func() wire.OutPoint { return wire.OutPoint{} }
 
+	ovm.contractStack = []Address{addr}
+	ovm.writeback = false
+
 	return ovm.Call(addr, input[:4], nil, input)
 }
 
-func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
+func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 	// no need to make a copy of tx, if exec fails, the tx (even a block) will be abandoned
 	if tx.IsCoinBase() {
 		return nil
@@ -481,10 +486,10 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 		}
 		return e.ToTxOut()
 	}
-	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 
 	ovm.NoLoop = false
 	ovm.interpreter.readOnly = false
+	ovm.writeback = false
 
 	anew := false
 
@@ -540,12 +545,132 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 
 		version, addr, method, param := parsePkScript(txOut.PkScript)
 
+		if !isContract(version) || len(method) < 4 {
+			continue
+		}
+
+		var d Address
+		copy(d[:], addr)
+
+		ovm.contractStack = []Address{d}
+
+		_, err := ovm.Call(d, method, &txOut.Token, param)
+
+		if err != nil {
+			// if fail, ovm.Call should have restored ovm.stateDB[d]
+			// we need to restore Tx
+			tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
+			*tx.MsgTx() = savedTx
+			return err
+		}
+	}
+
+	if !anew {
+		tx.Executed = true
+	}
+
+	return nil
+}
+
+func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
+	// no need to make a copy of tx, if exec fails, the tx (even a block) will be abandoned
+	if tx.IsCoinBase() {
+		return nil
+	}
+
+	ovm.GetTx = func () * btcutil.Tx { return tx }
+	ovm.AddTxOutput = func(t wire.TxOut) int {
+		return tx.AddTxOut(t)
+	}
+	ovm.Spend = func(t wire.OutPoint) bool {
+		// it has alreadty been verified that the coin belongs to the contract
+		tx.AddTxIn(t)
+		return true
+	}
+	ovm.AddRight = func(t *token.RightDef) chainhash.Hash {
+		return tx.AddDef(t)
+	}
+	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
+		op := make(map[wire.OutPoint]struct{})
+		p := wire.OutPoint{hash,uint32(seq)}
+		op[p] = struct{}{}
+		if ovm.views.Utxo.FetchUtxosMain(ovm.views.Db, op) != nil {
+			return nil
+		}
+		e := ovm.views.Utxo.LookupEntry(p)
+		if e == nil {
+			return nil
+		}
+		return e.ToTxOut()
+	}
+	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
+
+	ovm.NoLoop = false
+	ovm.interpreter.readOnly = false
+	ovm.writeback = true
+
+	anew := false
+
+	// do some validation w/o execution
+	for _, txOut := range tx.MsgTx().TxOut {
+		version, addr, method, _ := parsePkScript(txOut.PkScript)
+
+		if addr == nil {
+			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+		}
+		if zeroaddr(addr) {
+			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+		}
 		if !isContract(version) {
 			continue
 		}
 
 		var d Address
 		copy(d[:], addr)
+
+		creation := bytes.Compare(method, []byte{0,0,0,0}) == 0
+
+		anew = anew || creation
+
+		if _,ok := ovm.StateDB[d]; !ok {
+			t := NewStateDB(ovm.views.Db, d)
+
+			if !t.Exists(true) && !creation {
+				return omega.ScriptError(omega.ErrInternal, "Contract does not exist.")
+			}
+			if t.Exists(false) && creation {
+				return omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
+			}
+
+			ovm.StateDB[d] = t
+		} else if creation {
+			return omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
+		}
+	}
+
+	savedTx := *tx.MsgTx().Copy()
+	haves := []bool {tx.HasDefs, tx.HasIns, tx.HasOuts}
+	end := len(tx.MsgTx().TxOut)
+	hash := *tx.Hash()
+
+	for i, txOut := range tx.MsgTx().TxOut {
+		if i >= end {
+			continue
+		}
+		ovm.GetCurrentOutput = func() wire.OutPoint {
+			return wire.OutPoint{hash, uint32(i) }
+		}
+
+		version, addr, method, param := parsePkScript(txOut.PkScript)
+
+		if !isContract(version) || len(method) < 4 {
+			continue
+		}
+
+		var d Address
+		copy(d[:], addr)
+
+		ovm.contractStack = []Address{d}
 
 		_, err := ovm.Call(d, method, &txOut.Token, param)
 

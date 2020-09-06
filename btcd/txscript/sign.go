@@ -45,14 +45,14 @@ func RawTxInSignature(tx *wire.MsgTx, idx int, subScript []byte,
 // uncompressed format based on compress. This format must match the same format
 // used to generate the payment address, or the script validation will fail.
 func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.PrivateKey,
-	compress bool, chainParams *chaincfg.Params) ([]byte, error) {
+	compress bool, chainParams *chaincfg.Params, hashType SigHashType) ([]byte, error) {
 	script := ovm.NewScriptBuilder()
 
 	// generate header data for preparing signature hash
 	var payscript []byte
 	switch subscript[21] {
-	case ovm.OP_PAY2PKH, ovm.OP_PAY2MULTIPKH:
-		payscript = []byte{ byte(ovm.SIGNTEXT), 1 }
+	case ovm.OP_PAY2PKH, ovm.OP_PAY2MULTIPKH, ovm.OP_PAY2MULTISCRIPTH:
+		payscript = []byte{ byte(ovm.SIGNTEXT), byte(hashType) }
 	default:
 		return []byte{}, fmt.Errorf("Internal error: call SignatureScript while pkScript does not require signature")
 	}
@@ -72,7 +72,7 @@ func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.P
 
 	script.AddOp(ovm.PUSH, []byte{0}).AddByte(byte(len(pkData))).AddBytes(pkData)
 	script.AddOp(ovm.PUSH, []byte{0}).AddByte(byte(len(sig))).AddBytes(sig)
-	script.AddOp(ovm.SIGNTEXT, []byte{1, 0})
+	script.AddOp(ovm.SIGNTEXT, []byte{byte(hashType)})
 
 	return script.Script(), nil
 }
@@ -83,7 +83,23 @@ func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.P
 // legal to not be able to sign any of the outputs, no error is returned.
 func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 	addresses []btcutil.Address, nRequired int, kdb KeyDB,
-	chainParams *chaincfg.Params) ([]byte, bool) {
+	chainParams *chaincfg.Params, hashType SigHashType) ([]byte, bool) {
+
+	// generate header data for preparing signature hash
+	var payscript []byte
+	
+	switch subScript[21] {
+	case ovm.OP_PAY2PKH, ovm.OP_PAY2MULTIPKH, ovm.OP_PAY2MULTISCRIPTH:
+		payscript = []byte{ byte(ovm.SIGNTEXT), byte(hashType) }
+	default:
+		return []byte{}, false
+	}
+
+	pkhs := [][]byte{subScript[:20]}
+	for i := 28; i + 19 < len(subScript); i += 20 {
+		pkhs = append(pkhs, subScript[i:i + 20])
+	}
+
 	builder := ovm.NewScriptBuilder()
 	signed := 0
 	for _, addr := range addresses {
@@ -92,16 +108,33 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 			continue
 		}
 
-		sig, err := RawTxInSignature(tx, idx, subScript, key, chainParams)
+		pkh := addr.ScriptAddress()
+		mtch := false
+		for _,k := range pkhs {
+			if bytes.Compare(pkh[:], k) == 0 {
+				mtch = true
+				break
+			}
+		}
+		if !mtch {
+			continue
+		}
+
+		sig, err := RawTxInSignature(tx, idx, payscript, key, chainParams)
 		if err != nil {
 			continue
 		}
 
 		pk := (*btcec.PublicKey)(&key.PublicKey)
-		pkData := pk.SerializeUncompressed()
+		pkData := pk.SerializeCompressed()
+		hk := ovm.Hash160(pkData)
+		if bytes.Compare(pkh[:], hk[:]) != 0 {
+			pkData = pk.SerializeUncompressed()
+		}
 
-		builder.AddOp(ovm.PUSH, []byte{0}).AddBytes(pkData)
-		builder.AddOp(ovm.PUSH, []byte{0}).AddBytes(sig)
+		builder.AddOp(ovm.PUSH, []byte{0}).AddByte(byte(len(pkData))).AddBytes(pkData)
+		builder.AddOp(ovm.PUSH, []byte{0}).AddByte(byte(len(sig))).AddBytes(sig)
+		builder.AddOp(ovm.SIGNTEXT, []byte{byte(hashType)})
 
 		signed++
 		if signed == nRequired {
@@ -114,7 +147,7 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 }
 
 func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
-	subScript []byte, kdb KeyDB, sdb ScriptDB) ([]byte, txsparser.ScriptClass, []btcutil.Address, int, error) {
+	subScript []byte, kdb KeyDB, sdb ScriptDB, hashType SigHashType) ([]byte, txsparser.ScriptClass, []btcutil.Address, int, error) {
 
 	class, addresses, nrequired, err := ExtractPkScriptAddrs(subScript, chainParams)
 	if err != nil {
@@ -129,7 +162,7 @@ func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 			return nil, class, nil, 0, err
 		}
 
-		script, err := SignatureScript(tx, idx, subScript, key, compressed, chainParams)
+		script, err := SignatureScript(tx, idx, subScript, key, compressed, chainParams, hashType)
 		if err != nil {
 			return nil, class, nil, 0, err
 		}
@@ -146,7 +179,7 @@ func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 
 	case txsparser.MultiSigTy:
 		script, _ := signMultiSig(tx, idx, subScript,
-			addresses, nrequired, kdb, chainParams)
+			addresses, nrequired, kdb, chainParams, hashType)
 		return script, class, addresses, nrequired, nil
 
 	case txsparser.NullDataTy:
@@ -200,7 +233,7 @@ func SignTxOutput(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 	previousScript []byte) ([]byte, error) {
 
 	sigScript, class, _, _, err := sign(chainParams, tx,
-		idx, pkScript, kdb, sdb)
+		idx, pkScript, kdb, sdb, hashType)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +241,7 @@ func SignTxOutput(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 	if class == txsparser.ScriptHashTy {
 		// TODO keep the sub addressed and pass down to merge.
 		realSigScript, _, _, _, err := sign(chainParams, tx, idx,
-			sigScript, kdb, sdb)
+			sigScript, kdb, sdb, hashType)
 		if err != nil {
 			return nil, err
 		}
@@ -247,6 +280,8 @@ func mergeScripts(class txsparser.ScriptClass, sigScript, prevScript []byte) []b
 		return append(prevScript, builder...)
 
 	case txsparser.MultiSigTy:
+		return append(prevScript, sigScript...)
+/*		
 		p, h, err := ExtractSigHead(prevScript)
 		if err != nil {
 			return prevScript
@@ -260,6 +295,7 @@ func mergeScripts(class txsparser.ScriptClass, sigScript, prevScript []byte) []b
 		}
 
 		return append(append(h, prevScript[p:]...), sigScript[p2:]...)
+ */
 
 	default:
 		if len(sigScript) > len(prevScript) {

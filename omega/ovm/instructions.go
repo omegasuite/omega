@@ -11,7 +11,6 @@ import (
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/viewpoint"
-	"io"
 	"math"
 	"math/big"
 
@@ -21,6 +20,20 @@ import (
 	"github.com/omegasuite/btcd/wire"
 	//	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/omega/token"
+)
+
+type SigHashType byte
+
+// dup of what's in txscript because we can't import txacript here due to circular importation
+const (
+	SigHashAll          SigHashType = 0x1
+	SigHashNone         SigHashType = 0x2
+	SigHashSingle       SigHashType = 0x3
+	SigHashAnyOneCanPay SigHashType = 0x80
+
+	// sigHashMask defines the number of bits of the hash type which is used
+	// to identify which outputs are signed.
+	sigHashMask = 0x1f
 )
 
 // TBD: big endian math
@@ -1733,18 +1746,20 @@ func opIf(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
+	var target int
+
 	if scratch[0] == 0 {
-		*pc++
-		log.Debugf("If false, pc=", *pc)
+		target = *pc + 1
 	} else {
-		inlib := stack.data[len(stack.data) - 1].inlib
-		target := int32(*pc + int(scratch[1]))
-		if target < contract.libs[inlib].address || target >= contract.libs[inlib].end {
-			return fmt.Errorf("Out of range jump")
-		}
-		*pc = int(target)
-		log.Debugf("If %d, pc=", scratch[0], *pc)
+		target = *pc + int(scratch[1])
 	}
+
+	inlib := stack.data[len(stack.data) - 1].inlib
+	if target < int(contract.libs[inlib].address) || target >= int(contract.libs[inlib].end) {
+		return fmt.Errorf("Out of range jump")
+	}
+	*pc = target
+	log.Debugf("If %d, pc=", scratch[0], *pc)
 
 	return nil
 }
@@ -2139,7 +2154,16 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 				msg.AddTxOut(&wire.TxOut{PkScript:pks, Token:*value})
 
+				for _,d := range evm.contractStack {
+					if d == toAddr {
+						return fmt.Errorf("Circular contract calls.")
+					}
+				}
+				evm.contractStack = append(evm.contractStack, toAddr)
+
 				ret, err := evm.Call(toAddr, args[:4], value, args)		// nil=>value
+
+				evm.contractStack = evm.contractStack[:len(evm.contractStack) - 1]
 
 				if err != nil {
 					return err
@@ -2343,8 +2367,17 @@ func opCopy(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				src = pointer(num)
 
 			case 2:
-				num += int64(src) & 0xFFFFFFFF
-				copy(stack.data[dest >> 32].space[dest & 0xFFFFFFFF:], stack.data[src >> 32].space[src & 0xFFFFFFFF:num])
+				sb, err := stack.toBytesLen(&src, int(num))
+				if err != nil {
+					return err
+				}
+				err = stack.saveBytes(&dest, sb)
+				if err != nil {
+					return err
+				}
+
+//				num += int64(src) & 0xFFFFFFFF
+//				copy(stack.data[dest >> 32].space[dest & 0xFFFFFFFF:], stack.data[src >> 32].space[src & 0xFFFFFFFF:num])
 				return nil
 			}
 			top++
@@ -2573,9 +2606,13 @@ func opStop(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opReturn(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
-	*pc = stack.data[len(stack.data) - 1].pc
-	contract.pure = stack.data[len(stack.data) - 1].pure
-	stack.data = stack.data[:len(stack.data) - 1]
+	n := len(stack.data) - 1
+	if n <= 0 {
+		return fmt.Errorf("Return not from a Call.")
+	}
+	*pc = stack.data[n].pc
+	contract.pure = stack.data[n].pure
+	stack.data = stack.data[:n]
 	return nil
 }
 
@@ -3047,7 +3084,7 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	var w bytes.Buffer
-	t.Write(&w, 0, 0, wire.SignatureEncoding)
+	t.Write(&w, 0, 1, wire.SignatureEncoding)
 	buf := w.Bytes()
 
 	var p pointer
@@ -3475,44 +3512,6 @@ parser:
 }
  */
 
-func encodeText(it byte, wbuf io.Writer, t * wire.MsgTx, hash []byte, inidx uint32) error {
-	switch it { // text encoding
-	case 0:		// current outpoint
-		var buf [4]byte
-		wbuf.Write(t.TxIn[inidx].PreviousOutPoint.Hash[:])
-		binary.LittleEndian.PutUint32(buf[:], t.TxIn[inidx].PreviousOutPoint.Index)
-		wbuf.Write(buf[:4])
-
-	case 1: // transaction (BaseEncoding)
-		err := t.BtcEncode(wbuf, 0, wire.BaseEncoding)
-		if err != nil {
-			return err
-		}
-
-	case 2: // all output
-		for _, txo := range t.TxOut {
-			if txo.IsSeparator() {
-				break
-			}
-			err := txo.WriteTxOut(wbuf, 0, t.Version, wire.BaseEncoding)
-			if err != nil {
-				return err
-			}
-		}
-
-	case 3: // specific matching outputs
-		for i, txo := range t.TxOut {
-			if hash[i>>3]&(1<<(i&7)) != 0 && !txo.IsSeparator() {
-				err := txo.WriteTxOut(wbuf, 0, t.Version, wire.BaseEncoding)
-				if err != nil {
-					return err
-				}
-			}
-		}
-	}
-	return nil
-}
-
 // Below are signature VM engine insts. They are in binary formats.
 func opPush(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	param := contract.Code[0].param
@@ -3532,53 +3531,92 @@ func opPush(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	m += uint32(param[0])
 	binary.LittleEndian.PutUint32(stack.data[0].space, m)
 
+	nextop(contract, u)
+	*pc--
+	
+	return nil
+}
+
+func nextop(contract *Contract, u int) {
 	if len(contract.Code[0].param) <= u {
 		contract.Code[0] = inst{'z', nil}
 	} else {
 		contract.Code[0] = inst{OpCode(contract.Code[0].param[u]), contract.Code[0].param[u+1:]}
 	}
-	*pc--
-	return nil
 }
 
 func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	param := contract.Code[0].param
 
 	it := param[0]
-
-	t := ovm.GetTx()
+	tx := ovm.GetTx()
 	
-	u := 1
-
-	if t == nil {
-		dest, unsed := stack.malloc(4)
-		stack.saveInt32(&dest, 0)
-		unsed -= 4
-		stack.shrink(unsed)
-		return nil
+	if tx == nil {
+		return fmt.Errorf("Missing tx")
 	}
+
+	t := tx.MsgTx().Stripped()		// deep copy w/o contract added items
+
+	// no definition. all definition would be ultimately
+	// referenced by an output. if the output is in, definition
+	// can not be changed w/o affecting signature. if we don't
+	// care about an output, why do we care about definition it
+	// references? Thus no definition is required for sig.
+	t.TxDef = []token.Definition{}
+	u := 1
 
 	inidx := binary.LittleEndian.Uint32(contract.Args)
 
-	var wbuf bytes.Buffer
-
-	switch it {	// text encoding
-	case 0, 1, 2:		// current outpoint, transaction (BaseEncoding), all outputs
-		if err := encodeText(it, &wbuf, t.MsgTx(), nil, inidx); err != nil {
-			return err
+	switch SigHashType(it) & sigHashMask {
+	case SigHashNone:
+		t.TxOut = t.TxOut[0:0]
+		for i := range t.TxIn {
+			if uint32(i) != inidx {
+				t.TxIn[i].Sequence = 0
+			}
 		}
 
-	case 3:		// specific matching outputs
-		lb := int(param[1])
-		u += 1 + lb
-		hash := param[2:2+lb]
-		if err := encodeText(it, &wbuf, t.MsgTx(), hash, inidx); err != nil {
-			return err
+	case SigHashSingle:
+		// Resize output array to up to and including requested index.
+		if int(inidx) >= len(t.TxOut) {
+			t.TxOut = t.TxOut[:inidx+1]
+			t.TxOut[inidx].Token.Value = &token.NumToken{0}
+			t.TxOut[inidx].Token.TokenType = 0
+			t.TxOut[inidx].Token.Rights = nil
+			t.TxOut[inidx].PkScript = nil
+		} else {
+			t.TxOut = t.TxOut[:inidx+1]
+		}
+
+		// All but current output get zeroed out.
+		for i := 0; i < int(inidx); i++ {
+			t.TxOut[i].Token.Value = &token.NumToken{0}
+			t.TxOut[i].Token.TokenType = 0
+			t.TxOut[i].Token.Rights = nil
+			t.TxOut[i].PkScript = nil
+		}
+
+		// Sequence on all other inputs is 0, too.
+		for i := range t.TxIn {
+			if i != int(inidx) {
+				t.TxIn[i].Sequence = 0
+			}
 		}
 
 	default:
-		return fmt.Errorf("Unknown text coding")
+		// Consensus treats undefined hashtypes like normal SigHashAll
+		// for purposes of hash generation.
+		fallthrough
+	case SigHashAll:
+		// Nothing special here.
 	}
+	
+	if SigHashType(it) & SigHashAnyOneCanPay != 0 {
+		t.TxIn = t.TxIn[inidx : inidx+1]
+	}
+	
+	wbuf := bytes.NewBuffer(make([]byte, 0, t.SerializeSizeStripped()+4))
+	t.SerializeNoSignature(wbuf)
 
 	f := wbuf.Bytes()
 
@@ -3588,7 +3626,9 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	if err := stack.saveInt32(&dest, int32(len(f))); err != nil {
 		return err
 	}
-	err := stack.saveBytes(&p, f)
+	if err := stack.saveBytes(&p, f); err != nil {
+		return err
+	}
 	unused -= len(f) + 4
 
 	m := binary.LittleEndian.Uint32(stack.data[0].space)
@@ -3596,13 +3636,9 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	binary.LittleEndian.PutUint32(stack.data[0].space, m)
 
 	stack.shrink(unused)
-
-	if len(contract.Code[0].param) <= u {
-		contract.Code[0] = inst{'z', nil}
-	} else {
-		contract.Code[0] = inst{OpCode(contract.Code[0].param[u]), contract.Code[0].param[u+1:]}
-	}
+	nextop(contract, u)
+	
 	*pc--
 	
-	return err
+	return nil
 }

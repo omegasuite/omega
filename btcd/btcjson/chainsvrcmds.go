@@ -882,6 +882,22 @@ func NewSearchRawTransactionsCmd(address string, verbose, skip, count *int, vinE
 	}
 }
 
+// CreateRawTransactionCmd defines the createrawtransaction JSON-RPC command.
+type TryContractCmd struct {
+	HexTx         string
+}
+
+// NewTryContractCmd returns a new instance which can be used to issue a
+// TryContractCmd JSON-RPC command.
+//
+// The parameters which are pointers indicate they are optional.  Passing nil
+// for optional parameters will use the default value.
+func NewTryContractCmd(hexTx string) *TryContractCmd {
+	return &TryContractCmd{
+		HexTx:         hexTx,
+	}
+}
+
 // SendRawTransactionCmd defines the sendrawtransaction JSON-RPC command.
 type SendRawTransactionCmd struct {
 	HexTx         string
@@ -1036,6 +1052,7 @@ func init() {
 	MustRegisterCmd("getblocktxhashes", (*GetBlockTxHashesCmd)(nil), flags)
 	MustRegisterCmd("searchborder", (*SearchBorderCmd)(nil), flags)
 	MustRegisterCmd("contractcall", (*ContractCallCmd)(nil), flags)
+	MustRegisterCmd("trycontract", (*TryContractCmd)(nil), flags)
 	MustRegisterCmd("getminerblock", (*GetMinerBlockCmd)(nil), flags)
 	MustRegisterCmd("getblockchaininfo", (*GetBlockChainInfoCmd)(nil), flags)
 	MustRegisterCmd("getblockcount", (*GetBlockCountCmd)(nil), flags)

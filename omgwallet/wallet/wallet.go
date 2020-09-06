@@ -3255,6 +3255,31 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 	intp := svm.Interpreter()
 
 	signed := make(map[uint32]struct{})
+/*
+	var textmode []byte
+	if hashType == txscript.SigHashAll {
+		textmode = []byte{1}
+	} else if hashType == txscript.SigHashSingle {
+		textmode = []byte{0}
+	} else if hashType == txscript.SigHashAll  | txscript.SigHashAnyOneCanPay {
+		textmode = []byte{2}
+	} else if hashType == txscript.SigHashSingle  | txscript.SigHashAnyOneCanPay {
+		textmode = []byte{3}	// need to add index when met
+	}
+ */
+/*
+	switch hashType {
+	case "ALL":
+	case "NONE":
+		hashType = txscript.SigHashNone
+	case "SINGLE":
+	case "NONE|ANYONECANPAY":
+		hashType = txscript.SigHashNone | txscript.SigHashAnyOneCanPay
+	default:
+		e := errors.New("Invalid sighash parameter")
+		return nil, InvalidParameterError{e}
+	}
+ */
 
 	var signErrors []SignatureError
 	err := walletdb.View(w.db, func(dbtx walletdb.ReadTx) error {

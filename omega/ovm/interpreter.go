@@ -130,7 +130,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		binary.LittleEndian.PutUint32(stack.data[0].space, uint32(len(input)))
 		copy(stack.data[0].space[8:], input)
 	}
-
+	
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the
@@ -160,7 +160,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 
 		// execute the operation
 		fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
-
+		
 		err = operation.execute(&pc, in.evm, contract, stack)
 		ln := binary.LittleEndian.Uint32(stack.data[0].space)
 
@@ -178,7 +178,11 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		case operation.halts:
 			return stack.data[0].space[4:ln + 4], nil
 		case !operation.jumps:
-			pc++
+			if pc + 1 < int(contract.libs[stack.data[len(stack.data) - 1].inlib].end) {
+				pc++
+			} else {
+				return nil, fmt.Errorf("Instruction out of range.")
+			}
 		}
 	}
 	return nil, err

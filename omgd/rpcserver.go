@@ -152,6 +152,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getblocktxhashes":      handleGetBlockTxHases,	// New
 //	"searchborder":   		 handleSearchBorder,	// New
 	"contractcall":   		 handleContractCall,	// New
+	"trycontract":   		 handleTryContract,	// New
 
 //	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
@@ -529,12 +530,61 @@ func peerExists(connMgr rpcserverConnManager, addr string, nodeID int32) bool {
 // latest protocol version and returns a hex-encoded string of the result.
 func messageToHex(msg wire.Message) (string, error) {
 	var buf bytes.Buffer
-	if err := msg.BtcEncode(&buf, maxProtocolVersion, wire.SignatureEncoding); err != nil {
+	if err := msg.BtcEncode(&buf, maxProtocolVersion, wire.SignatureEncoding | wire.FullEncoding); err != nil {
 		context := fmt.Sprintf("Failed to encode msg of type %T", msg)
 		return "", internalRPCError(err.Error(), context)
 	}
 
 	return hex.EncodeToString(buf.Bytes()), nil
+}
+
+// handleTryContract-nsaction handles TryContract commands.
+func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.TryContractCmd)
+	// Deserialize and send off to tx relay
+	hexStr := c.HexTx
+	if len(hexStr)%2 != 0 {
+		hexStr = "0" + hexStr
+	}
+	serializedTx, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return nil, rpcDecodeHexError(hexStr)
+	}
+	var msgTx wire.MsgTx
+	err = msgTx.Deserialize(bytes.NewReader(serializedTx))
+	if err != nil {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCDeserialization,
+			Message: "TX decode failed: " + err.Error(),
+		}
+	}
+
+	vm := ovm.NewOVM(s.cfg.ChainParams)
+	views := s.cfg.Chain.NewViewPointSet()
+	vm.SetViewPoint(views)
+
+	best := s.cfg.Chain.BestSnapshot()
+	views.SetBestHash(&best.Hash)
+	vm.BlockNumber = func() uint64 { return uint64(best.Height + 1) }
+	nt := time.Now().Unix()
+	vm.BlockTime = func() uint32 { return uint32(nt) }
+
+	tx := btcutil.NewTx(&msgTx)
+
+	err = vm.TryContract(tx, best.Height)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return the serialized and hex-encoded transaction.  Note that this
+	// is intentionally not directly returning because the first return
+	// value is a string and it would result in returning an empty string to
+	// the client instead of nothing (nil) in the case of an error.
+	mtxHex, err := messageToHex(tx.MsgTx())
+	if err != nil {
+		return nil, err
+	}
+	return mtxHex, nil
 }
 
 // handleCreateRawTra-nsaction handles createrawtransaction commands.
@@ -959,6 +1009,10 @@ func handleDecodeRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 }
 
 func DisasmScript(script []byte) string {
+	if script[0] == 0x88 {
+		return "contractowned"
+	}
+
 	switch script[21] {
 	case ovm.OP_PAY2PKH:
 		return "pay2pkh(" + hex.EncodeToString(script[:21]) + ")"
@@ -1256,6 +1310,9 @@ func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	vm := ovm.NewOVM(s.cfg.ChainParams)
 	views := s.cfg.Chain.NewViewPointSet()
 	vm.SetViewPoint(views)
+
+	vm.BlockTime = func() uint32 { return 0	}
+	vm.BlockNumber = func() uint64 { return 0 }
 
 	contract, err := ovm.AddressFromString(c.Contract)
 	if err != nil {

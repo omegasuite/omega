@@ -10,6 +10,7 @@ import (
 	"crypto/subtle"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"runtime/debug"
 
@@ -111,6 +112,8 @@ type SecretKey struct {
 
 // deriveKey fills out the Key field.
 func (sk *SecretKey) deriveKey(password *[]byte) error {
+	fmt.Printf("SecretKey: N = %d R = %d", sk.Parameters.N,
+		sk.Parameters.R)
 	key, err := scrypt.Key(*password, sk.Parameters.Salt[:],
 		sk.Parameters.N,
 		sk.Parameters.R,

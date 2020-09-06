@@ -26,7 +26,6 @@ type SigHashType uint32
 
 // Hash type bits from the end of a signature.
 const (
-	SigHashOld          SigHashType = 0x0
 	SigHashAll          SigHashType = 0x1
 	SigHashNone         SigHashType = 0x2
 	SigHashSingle       SigHashType = 0x3
@@ -182,5 +181,5 @@ func GetPreciseSigOpCount(scriptSig, scriptPubKey []byte, bip16 bool) int {
 // guaranteed to fail at execution.  This allows inputs to be pruned instantly
 // when entering the UTXO set.
 func IsUnspendable(pkScript []byte) bool {
-	return pkScript[21] == ovm.OP_PAY2NONE
+	return len(pkScript) > 24 && bytes.Compare(pkScript[21:25], []byte{ovm.OP_PAY2NONE,0,0,0}) == 0
 }

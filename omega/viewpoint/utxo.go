@@ -277,6 +277,10 @@ func (view *ViewPointSet) AddTxOut(tx *btcutil.Tx, txOutIdx uint32, blockHeight 
 		}
 	}
 
+	if txOut.IsNopaying() {
+		return
+	}
+
 	e := view.Utxo.addTxOut(prevOut, txOut, coinbase, blockHeight)
 
 	// if it has a monitor right, add a monitor index

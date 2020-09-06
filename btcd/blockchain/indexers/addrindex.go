@@ -80,6 +80,16 @@ var (
 		"by the address index")
 )
 
+// copied from ovm to avoid circular importation
+const (
+	OP_PAY2PKH				= 0x41
+	OP_PAY2SCRIPTH			= 0x42
+	OP_PAY2MULTIPKH			= 0x43
+	OP_PAY2MULTISCRIPTH		= 0x44
+	OP_PAY2NONE				= 0x45
+	OP_PAY2ANY				= 0x46
+)
+
 // -----------------------------------------------------------------------------
 // The address index maps addresses referenced in the blockchain to a list of
 // all the transactions involving that address.  Height are stored
@@ -651,18 +661,17 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 	var addrs []btcutil.Address
 	var addr btcutil.Address
 
-	if len(pkScript) < 25 {
-		return nil, 0, fmt.Errorf("Malformed pkScript")
-	}
-
 	if IsContract(pkScript[0]) {
 		// no need to index contract as it is executed immediately
 		return nil, 0, nil
 	} else {
+		if len(pkScript) < 25 {
+			return nil, 0, fmt.Errorf("Malformed pkScript")
+		}
 		switch pkScript[21] {
-		case 0x41, 0x43:
+		case OP_PAY2PKH, OP_PAY2MULTIPKH, OP_PAY2MULTISCRIPTH:
 			addr, _ = btcutil.NewAddressPubKeyHash(pkScript[1:21], chainParams)
-		case 0x42, 0x44:
+		case OP_PAY2SCRIPTH:
 			addr, _ = btcutil.NewAddressScriptHash(pkScript[1:21], chainParams)
 		default:
 			return nil, 0, nil
@@ -671,15 +680,9 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 
 	addrs = append(addrs, addr)
 
-	switch pkScript[21] {
-	case 0x43, 0x44:
+	if pkScript[21] == OP_PAY2MULTIPKH {
 		for p := 25; p < len(pkScript); p += 20 {
-			switch pkScript[21] {
-			case 0x41, 0x43:
-				addr, _ = btcutil.NewAddressPubKeyHash(pkScript[p:p+20], chainParams)
-			case 0x42, 0x44:
-				addr, _ = btcutil.NewAddressScriptHash(pkScript[p:p+20], chainParams)
-			}
+			addr, _ = btcutil.NewAddressPubKeyHash(pkScript[p:p+20], chainParams)
 			addrs = append(addrs, addr)
 		}
 	}

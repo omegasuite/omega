@@ -43,6 +43,7 @@ type ScriptInfo struct {
 // pair.  It will error if the pair is in someway invalid such that they can not
 // be analysed, i.e. if they do not parse or the pkScript is not a push-only
 // script
+/*
 func CalcScriptInfo(sigScript, pkScript []byte) (*ScriptInfo, error) {
 	// Push only sigScript makes little sense.
 	si := new(ScriptInfo)
@@ -72,11 +73,11 @@ func CalcScriptInfo(sigScript, pkScript []byte) (*ScriptInfo, error) {
 	pks := false
 
 	switch pkScript[21] {
-	case ovm.OP_PAY2PKH, ovm.OP_PAY2MULTIPKH:
+	case ovm.OP_PAY2PKH, ovm.OP_PAY2MULTIPKH, ovm.OP_PAY2MULTISCRIPTH:
 		pks = true
-	case ovm.OP_PAY2SCRIPTH, ovm.OP_PAY2MULTISCRIPTH:
+	case ovm.OP_PAY2SCRIPTH:
 		pks = false
-	case ovm.OP_PAY2NONE, ovm.OP_PAY2ANY:
+	case ovm.OP_PAY2NONE, ovm.OP_PAY2ANY, ovm.OP_BYCONTRACT:
 		si.SigOps = 0
 		return si, nil
 	default:
@@ -84,42 +85,39 @@ func CalcScriptInfo(sigScript, pkScript []byte) (*ScriptInfo, error) {
 			"pkscript is not valid")
 	}
 
-	p, _, err := ExtractSigHead(sigScript)
-
-	if err != nil {
-		return nil, err
-	}
-
 	si.SigOps = 0
-	if p >= len(sigScript) || !pks {
+	if !pks {
 		return si, nil
 	}
 
-	code := ovm.ByteCodeParser(sigScript)
-
-	for _,c := range code {
-		switch c.Op() {
+	for i := 0; i < len(sigScript); {
+		c := ovm.OpCode(sigScript[i])
+		switch c {
 		case ovm.PUSH:
-			si.SigOps++
+			i += 2 + int(sigScript[i + 1])
+			
 		case ovm.SIGNTEXT:
+			si.SigOps++
+			i += 2
+			
 		default:
 			return nil, txsparser.ScriptError(txsparser.ErrNotPushOnly,
 				"sigscript is not valid")
 		}
 	}
 
-	si.SigOps /= 2
-
 	return si, nil
 }
+ */
 
+/*
 func ExtractSigHead(sigScript []byte) (int, []byte, error) {
 	textadded := false
 
-	code := ovm.ByteCodeParser(sigScript)
 	head := make([]byte, 0, 256)
-	for _,c := range code {
-		switch c.Op() {
+	for i := 0; i < len(sigScript); {
+		c := ovm.OpCode(sigScript[i])
+		switch ovm.OpCode(c) {
 		case ovm.PUSH:
 			if textadded {
 				return len(head), head, nil
@@ -137,6 +135,7 @@ func ExtractSigHead(sigScript []byte) (int, []byte, error) {
 
 	return len(sigScript), nil, nil
 }
+ */
 
 // payToPubKeyHashScript creates a new script to pay a transaction
 // output to a 20-byte pubkey hash. It is expected that the input is a valid

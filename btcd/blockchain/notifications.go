@@ -65,10 +65,19 @@ type Notification struct {
 // Subscribe to block chain notifications. Registers a callback to be executed
 // when various events take place. See the documentation on Notification and
 // NotificationType for details on the types and contents of notifications.
-func (b *BlockChain) Subscribe(callback NotificationCallback) {
+func (b *BlockChain) Subscribe(callback NotificationCallback) int {
 	b.notificationsLock.Lock()
+	for i, f := range b.notifications {
+		if f == nil {
+			b.notifications[i] = callback
+			return i
+		}
+	}
+	ind := len(b.notifications)
 	b.notifications = append(b.notifications, callback)
 	b.notificationsLock.Unlock()
+
+	return ind
 }
 
 // sendNotification sends a notification with the passed type and data if the
@@ -79,7 +88,27 @@ func (b *BlockChain) SendNotification(typ NotificationType, data interface{}) {
 	n := Notification{Type: typ, Data: data}
 	b.notificationsLock.RLock()
 	for _, callback := range b.notifications {
-		callback(&n)
+		if callback != nil {
+			callback(&n)
+		}
+	}
+	b.notificationsLock.RUnlock()
+}
+
+// CancelNotification cancels a notification.
+func (b *BlockChain) CancelNotification(index int) {
+	// Generate and send the notification.
+	b.notificationsLock.RLock()
+	if index == len(b.notifications) - 1 {
+		for {
+			b.notifications = b.notifications[:index]
+			index--
+			if b.notifications[index] != nil || index <= 0 {
+				return
+			}
+		}
+	} else if index < len(b.notifications) - 1 {
+		b.notifications[index] = nil
 	}
 	b.notificationsLock.RUnlock()
 }

@@ -104,11 +104,7 @@ func (s * ScriptBuilder) Script() []byte {
 		if c.op == PUSH {
 			s.script[i].param[0] = byte(len(s.script[i].param) - 1)
 		} else if c.op == SIGNTEXT {
-			if len(s.script[i].param) > 2 {
-				s.script[i].param[1] = byte(len(s.script[i].param) - 2)
-			} else {
-				s.script[i].param = s.script[i].param[:1]
-			}
+			s.script[i].param = s.script[i].param[:1]
 		}
 		n += len(s.script[i].param) + 1
 	}
@@ -131,11 +127,7 @@ func PushedData(s []byte) [][]byte {
 			p += 2 + int(s[p+1])
 
 		case SIGNTEXT:
-			if s[p+1] != 3 {
-				p += 2
-			} else {
-				p += 3 + int(s[p+2])
-			}
+			p += 2
 		}
 	}
 	return res

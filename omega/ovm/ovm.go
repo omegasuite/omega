@@ -143,10 +143,14 @@ type OVM struct {
 	NoLoop bool
 	NoRecursion bool
 
+	contractStack []Address
+
 	// global (to this context) ethereum virtual machine
 	// used throughout the execution of the tx.
 
 	interpreter *Interpreter
+
+	writeback bool
 	// abort is used to abort the EVM calling operations
 	// NOTE: must be set atomically
 	abort int32
@@ -474,7 +478,7 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	// When an error was returned by the EVM or when setting the creation code
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in homestead this also counts for code storage gas errors.
-	if err != nil {
+	if err != nil || !evm.writeback {
 		evm.StateDB[d] = snapshot
 	}
 	return ret, err

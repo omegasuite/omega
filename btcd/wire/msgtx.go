@@ -291,10 +291,13 @@ func (t *TxOut) SerializeSize() int {
 const OP_PAY2NONE = 0x45	// from ovm.contracts. redeclare here to avoid circular importation
 
 func (t *TxOut) IsNopaying() bool {
-	if len(t.PkScript) >= 25 && bytes.Compare(t.PkScript[21:25], []byte{OP_PAY2NONE,0,0,0}) == 0 {
+	if t.TokenType & 1 == 0 && t.Token.Value.(*token.NumToken).Val == 0 {
 		return true
 	}
-	return t.TokenType & 1 == 0 && t.Token.Value.(*token.NumToken).Val == 0
+	if t.PkScript[0] != 0x88 && bytes.Compare(t.PkScript[21:25], []byte{OP_PAY2NONE,0,0,0}) == 0 {
+		return true
+	}
+	return false
 }
 
 func (t *TxOut) HasRight () bool {

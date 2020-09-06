@@ -35,6 +35,7 @@ type Stack struct {
 }
 
 var outofmemory = fmt.Errorf("Out of memory")
+var outofstack = fmt.Errorf("Out of stack")
 
 func (s *Stack) malloc(n int) (pointer, int) {
 	p := pointer(uint64(len(s.data[0].space)))
@@ -72,7 +73,13 @@ func (s *Stack) toPointer(p * pointer) (pointer, error) {
 func (s *Stack) toByte(p * pointer) (byte, error) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset < len(s.data[area].space) {
+
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return 0, outofstack
+	}
+
+	if offset < len(s.data[area].space) {
 		return s.data[area].space[offset], nil
 	}
 	return 0, outofmemory
@@ -81,6 +88,10 @@ func (s *Stack) toByte(p * pointer) (byte, error) {
 func (s *Stack) toBytesLen(p * pointer, n int) ([]byte, error) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return nil, outofstack
+	}
 	if area < len(s.data) && offset + n < len(s.data[area].space) {
 		return s.data[area].space[offset:offset + n], nil
 	}
@@ -90,7 +101,11 @@ func (s *Stack) toBytesLen(p * pointer, n int) ([]byte, error) {
 func (s *Stack) toBytes(p * pointer) ([]byte, error) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset < len(s.data[area].space) {
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return nil, outofstack
+	}
+	if offset < len(s.data[area].space) {
 		return s.data[area].space[offset:], nil
 	}
 	return nil, outofmemory
@@ -99,7 +114,11 @@ func (s *Stack) toBytes(p * pointer) ([]byte, error) {
 func (s *Stack) toInt16(p * pointer) (int16, error) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset + 1 < len(s.data[area].space) {
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return 0, outofstack
+	}
+	if offset + 1 < len(s.data[area].space) {
 		return (int16(s.data[area].space[offset])) | ((int16(s.data[area].space[offset + 1])) << 8), nil
 	}
 	return 0, outofmemory
@@ -108,7 +127,11 @@ func (s *Stack) toInt16(p * pointer) (int16, error) {
 func (s *Stack) toInt32(p * pointer) (int32, error) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset + 3 < len(s.data[area].space) {
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return 0, outofstack
+	}
+	if offset + 3 < len(s.data[area].space) {
 		return (int32(s.data[area].space[offset])) |
 			((int32(s.data[area].space[offset + 1])) << 8) |
 			((int32(s.data[area].space[offset + 2])) << 16) |
@@ -120,7 +143,11 @@ func (s *Stack) toInt32(p * pointer) (int32, error) {
 func (s *Stack) toInt64(p * pointer) (int64, error) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset + 7 < len(s.data[area].space) {
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return 0, outofstack
+	}
+	if offset + 7 < len(s.data[area].space) {
 		return (int64(s.data[area].space[offset])) |
 			((int64(s.data[area].space[offset + 1])) << 8) |
 			((int64(s.data[area].space[offset + 2])) << 16) |
@@ -136,7 +163,11 @@ func (s *Stack) toInt64(p * pointer) (int64, error) {
 func (s *Stack) toHash(p * pointer) (chainhash.Hash, error) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset + 31 < len(s.data[area].space) {
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return chainhash.Hash{}, outofstack
+	}
+	if offset + 31 < len(s.data[area].space) {
 		h,_ := chainhash.NewHash(s.data[area].space[offset:offset + 32])
 		return *h, nil
 	}
@@ -150,7 +181,11 @@ func (s *Stack) savePointer(p * pointer, d pointer) error {
 func (s *Stack) saveByte(p * pointer, b byte) error {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset < len(s.data[area].space) {
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return outofstack
+	}
+	if offset < len(s.data[area].space) {
 		s.data[area].space[offset] = b
 		return nil
 	}
@@ -160,7 +195,11 @@ func (s *Stack) saveByte(p * pointer, b byte) error {
 func (s *Stack) saveBytes(p * pointer, b []byte) error {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset < len(s.data[area].space) {
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return outofstack
+	}
+	if offset < len(s.data[area].space) {
 		copy(s.data[area].space[offset:], b)
 		return nil
 	}
@@ -170,6 +209,10 @@ func (s *Stack) saveBytes(p * pointer, b []byte) error {
 func (s *Stack) saveInt16(p * pointer, b int16) error {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return outofstack
+	}
 	if area < len(s.data) && offset + 1 < len(s.data[area].space) {
 		s.data[area].space[offset] = byte(b)
 		s.data[area].space[offset + 1] = byte(b >> 8)
@@ -181,7 +224,11 @@ func (s *Stack) saveInt16(p * pointer, b int16) error {
 func (s *Stack) saveInt32(p * pointer, b int32) error {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset + 3 < len(s.data[area].space) {
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return outofstack
+	}
+	if offset + 3 < len(s.data[area].space) {
 		for i := 0; i < 4; i++ {
 			s.data[area].space[offset + i] = byte(b >> (8 * i))
 		}
@@ -193,7 +240,11 @@ func (s *Stack) saveInt32(p * pointer, b int32) error {
 func (s *Stack) saveInt64(p * pointer, b int64) error {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset + 7 < len(s.data[area].space) {
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return outofstack
+	}
+	if offset + 7 < len(s.data[area].space) {
 		for i := 0; i < 8; i++ {
 			s.data[area].space[offset + i] = byte(b >> (8 * i))
 		}
@@ -205,7 +256,11 @@ func (s *Stack) saveInt64(p * pointer, b int64) error {
 func (s *Stack) saveHash(p * pointer, h chainhash.Hash) error {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int(*p >> 32)
-	if area < len(s.data) && offset + 31 < len(s.data[area].space) {
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return outofstack
+	}
+	if offset + 31 < len(s.data[area].space) {
 		copy(s.data[area].space[offset:], h[:])
 		return nil
 	}

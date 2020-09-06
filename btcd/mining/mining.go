@@ -304,7 +304,7 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 			copy(pkScript[1:], addr.ScriptAddress())
 			pkScript[21] = ovm.OP_PAY2PKH
 		} else {
-			pkScript[0] = 0x6F
+			pkScript[0] = params.PubKeyHashAddrID
 			pkScript[1] = 1			// anything but 0
 			pkScript[21] = ovm.OP_PAY2NONE
 		}
