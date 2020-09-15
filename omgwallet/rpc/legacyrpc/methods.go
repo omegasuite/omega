@@ -1730,12 +1730,24 @@ func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.R
 			hashType = txscript.SigHashNone
 		case "SINGLE":
 			hashType = txscript.SigHashSingle
+		case "DOUBLE":
+			hashType = txscript.SigHashDouble
+		case "TRIPLE":
+			hashType = txscript.SigHashTriple
+		case "QUARDRUPLE":
+			hashType = txscript.SigHashQuardruple
 		case "ALL|ANYONECANPAY":
 			hashType = txscript.SigHashAll | txscript.SigHashAnyOneCanPay
 		case "NONE|ANYONECANPAY":
 			hashType = txscript.SigHashNone | txscript.SigHashAnyOneCanPay
 		case "SINGLE|ANYONECANPAY":
 			hashType = txscript.SigHashSingle | txscript.SigHashAnyOneCanPay
+		case "DOUBLE|ANYONECANPAY":
+			hashType = txscript.SigHashDouble | txscript.SigHashAnyOneCanPay
+		case "TRIPLE|ANYONECANPAY":
+			hashType = txscript.SigHashTriple | txscript.SigHashAnyOneCanPay
+		case "QUARDRUPLE|ANYONECANPAY":
+			hashType = txscript.SigHashQuardruple | txscript.SigHashAnyOneCanPay
 		default:
 			e := errors.New("Invalid sighash parameter")
 			return nil, InvalidParameterError{e}

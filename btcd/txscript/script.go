@@ -29,11 +29,14 @@ const (
 	SigHashAll          SigHashType = 0x1
 	SigHashNone         SigHashType = 0x2
 	SigHashSingle       SigHashType = 0x3
+	SigHashDouble       SigHashType = 0x4
+	SigHashTriple       SigHashType = 0x5
+	SigHashQuardruple   SigHashType = 0x6
 	SigHashAnyOneCanPay SigHashType = 0x80
 
 	// sigHashMask defines the number of bits of the hash type which is used
 	// to identify which outputs are signed.
-	sigHashMask = 0x1f
+	SigHashMask = 0x1f
 )
 
 // These are the constants specified for maximums in individual scripts.

@@ -2,18 +2,21 @@
 // This file is part of the omega library.
 //
 
-package ovm
+package main
 
 import (
 	"regexp"
 )
 
-var patOperand = regexp.MustCompile(`^@?n?(g?i+)?(([kK]?[xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
-var addrOperand = regexp.MustCompile(`^n?g?i+(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
-var numOperand = regexp.MustCompile(`^n?(([kK]?[xa-f][0-9a-f]+)|([0-9]+)),`)
+var patOperand = regexp.MustCompile(`^n?(g?i+)?(([xa-f][0-9a-f]+)|([0-9]+))(\"[0-9]+)?(\'[0-9]+)?,`)
+var addrOperand = regexp.MustCompile(`^n?g?i+(([xa-f][0-9a-f]+)|([0-9]+))(\"[0-9]+)?(\'[0-9]+)?,`)
+var numOperand = regexp.MustCompile(`^n?(([xa-f][0-9a-f]+)|([0-9]+)),`)
 var patNum = regexp.MustCompile(`[0-9a-f]+`)
 var patHex = regexp.MustCompile(`[xa-f]`)
-var dataType = regexp.MustCompile(`^[rRBWDQHhkK]`)
+var dataType = regexp.MustCompile(`^\x75|\x67|\x42|\x57|\x44|\x51|\x48|\x68|\x41`)
+
+var checkTop = map[uint8]int{0x2b:1, 0x2d:1, 0x2a:1, 0x2f:1, 0x25:1, 0x23:1,
+	0x5b:1, 0x5d:1, 0x7c:1,	0x5e:1, 0x3e:1, 0x3c:1, 0x3d:1, 242:1, 243:1, 216:1, 0x3f:2}
 
 func getNum(param []byte) (int64, int) {
 	s := patOperand.Find(param)
@@ -41,7 +44,7 @@ func getNum(param []byte) (int64, int) {
 				num = num*10 + int64(c-0x30)
 			}
 
-		case 0x61, 0x62, 0x63, 0x64, 0x65, 0x66: // a - f
+		case 0x61, 0x62, 0x63, 0x64, 0x65, 0x66: // 0 - 9
 			hex = true
 			num = num*16 + int64(c-0x61) + 10
 		}
@@ -87,9 +90,9 @@ func opEval8Validator(param []byte) int {
 			top -= d
 		}
 		switch param[j] {
-		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-			'a', 'b', 'c', 'd', 'e', 'f',
-			'x', 'n', 'i', 'g':	// 0 - 9, a-f, xngi
+		case 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+			0x38, 0x39, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
+			0x78, 0x6e, 0x69, 0x67:	// 0 - 9, a-f, xngi
 			if num, tl = getNum(param[j:]); tl < 0 {
 				return -0xfffffff
 			}
@@ -99,9 +102,9 @@ func opEval8Validator(param []byte) int {
 			j += tl - 1
 			top++
 
-		case 'u', '+', '-', '*', '/',
-			'%', '#', '[', ']', '|', '&', '^', '~',
-			'>', '<', '=', '(', ')', '!', '?', '"', '\'':
+		case 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
+			0x25, 0x23, 0x5b, 0x5d, 0x7c, 0x26, 0x5e, 0x7e,
+			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
 
 		default:
 			return -0xfffffff
@@ -151,7 +154,7 @@ func opEval64Validator(param []byte) int {
 
 		case 0x40, 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
 			0x25, 0x23, 0x5b, 0x5d, 0x7c, 0x26, 0x5e, 0x7e,
-			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f, '"', '\'':
+			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
 
 		default:
 			return -0xfffffff
@@ -193,7 +196,7 @@ func opEval256Validator(param []byte) int {
 
 		case 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
 			0x25, 0x23, 0x7c, 0x26, 0x5e, 0x7e,
-			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f, '"', '\'':
+			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f:
 
 		default:
 			return -0xfffffff
@@ -268,7 +271,8 @@ func opHash160Validator(param []byte) int {
 
 var formatSigCheck = []formatDesc{
 	{addrOperand, 0xffffffff}, {patOperand, 0},
-	{patOperand, 0}, {addrOperand, 0xFFFFFFFF},
+	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
+	{patOperand, 0xFFFFFFFF},
 }
 
 func opSigCheckValidator(param []byte) int {
@@ -306,8 +310,8 @@ func opCallValidator(param []byte) int {
 }
 
 var formatLoad = []formatDesc{
-	{addrOperand, 0xffffffff},
-	{patOperand, 0},
+	{addrOperand, 0xffffffff}, {patOperand, 0xff}, {patOperand, 0},
+	{dataType, 0},
 }
 
 func opLoadValidator(param []byte) int {
@@ -315,7 +319,7 @@ func opLoadValidator(param []byte) int {
 }
 
 var formatStore = []formatDesc{
-	{patOperand, 0}, {regexp.MustCompile(`^[rRBWDQHhkK]|(L[0-9]+)`), 0}, {patOperand, 0},
+	{patOperand, 32}, {patOperand, 0}, {dataType, 0}, {patOperand, 0},
 }
 
 func opStoreValidator(param []byte) int {
@@ -323,7 +327,7 @@ func opStoreValidator(param []byte) int {
 }
 
 var formatDel = []formatDesc{
-	{patOperand, 0},
+	{patOperand, 32},{patOperand, 0},
 }
 
 func opDelValidator(param []byte) int {
@@ -355,25 +359,11 @@ var formatLibload = []formatDesc{
 }
 
 func opLibLoadValidator(param []byte) int {
-	n := 0
-	for i := 0; i < len(param); i++ {
-		if param[i] == 0x2c {
-			n++
-		}
-	}
-	if n > 2 {
-		fmt := make([]formatDesc, n)
-		copy(fmt, formatLibload)
-		for i := 2; i < n; i++ {
-			fmt[i] = formatDesc{patOperand, 0}
-		}
-		return formatParser(fmt, param)
-	}
 	return formatParser(formatLibload, param)
 }
 
 var formatMalloc = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
+	{patOperand, 0}, {patOperand, 0xFFFFFFFF},
 }
 
 func opMallocValidator(param []byte) int {
@@ -393,7 +383,7 @@ func opCopyValidator(param []byte) int {
 }
 
 var formatImm = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {dataType, 0}, {patOperand, 0},
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0xFF},
 }
 
 func opCopyImmValidator(param []byte) int {
@@ -403,31 +393,25 @@ func opCopyImmValidator(param []byte) int {
 			n++
 		}
 	}
-	if n < 2 {
-		return -0xfffffff
-	}
 	if n > 2 {
-		fmt := make([]formatDesc, 2 * n - 1)
+		fmt := make([]formatDesc, n)
 		copy(fmt, formatImm)
-		for i := 3; i < 2 * n - 1; i += 2 {
-			fmt[i] = formatImm[1]
-			fmt[i + 1] = formatImm[2]
+		for i := 2; i < n; i++ {
+			fmt[i] = formatDesc{patOperand, 0xFF}
 		}
 		return formatParser(fmt, param)
 	}
 	return formatParser(formatImm, param)
 }
 
-/*
 var formatCopyCode = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
+	{patOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
 	{patOperand, 0xFFFFFFFF},
 }
 
 func opCodeCopyValidator(param []byte) int {
 	return formatParser(formatCopyCode, param)
 }
- */
 
 var formatSuicide = []formatDesc{
 	{patOperand, 0},
@@ -461,23 +445,6 @@ func opReturnValidator(param []byte) int {
 	return 1
 }
 
-var formatTxFee = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {patOperand, 3},
-}
-
-func opTxFeeValidator(param []byte) int {
-	return formatParser(formatTxFee, param)
-}
-
-var formatGetCoin = []formatDesc{
-	{addrOperand, 0xFFFFFFFF},
-}
-
-func opGetCoinValidator(param []byte) int {
-	return formatParser(formatGetCoin, param)
-}
-
-/*
 var formatTxIOCount = []formatDesc{
 	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
 }
@@ -497,10 +464,9 @@ func opGetTxInValidator(param []byte) int {
 func opGetTxOutValidator(param []byte) int {
 	return formatParser(formatTxIO, param)
 }
- */
 
 var formatSpend = []formatDesc{
-	{patOperand, 0}, {patOperand, 0xFFFFFFFF},
+	{patOperand, 0xFFFFFFFF},
 }
 
 func opSpendValidator(param []byte) int {
@@ -508,23 +474,15 @@ func opSpendValidator(param []byte) int {
 }
 
 var formatAddRight = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
+	{addrOperand, 0xFFFFFFFF},
 }
 
 func opAddRightValidator(param []byte) int {
 	return formatParser(formatAddRight, param)
 }
 
-var formatAddTXO = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
-}
-
 func opAddTxOutValidator(param []byte) int {
-	r := formatParser(formatAddTXO, param)
-	if r < 0 {
-		r = formatParser(formatAddTXO[:1], param)
-	}
-	return r
+	return formatParser(formatAddRight, param)
 }
 
 var formatGetDef = []formatDesc{
@@ -535,7 +493,6 @@ func opGetDefinitionValidator(param []byte) int {
 	return formatParser(formatGetDef, param)
 }
 
-/*
 var formatGetCoin = []formatDesc{
 	{addrOperand, 0xFFFFFFFF},
 }
@@ -543,8 +500,6 @@ var formatGetCoin = []formatDesc{
 func opGetCoinValidator(param []byte) int {
 	return formatParser(formatGetCoin, param)
 }
-
- */
 
 var formatGetUTXO = []formatDesc{
 	{addrOperand, 0xFFFFFFFF}, {patOperand, 0}, {patOperand, 0xffffffff},
@@ -554,40 +509,30 @@ func opGetUtxoValidator(param []byte) int {
 	return formatParser(formatGetUTXO, param)
 }
 
+var formatAddSign = []formatDesc{
+	{patOperand, 4}, {patOperand, 0},
+}
+
+func opAddSignTextValidator(param []byte) int {
+	n :=  formatParser(formatAddSign[:1], param)
+	if n > 0 {
+		return n
+	}
+	return formatParser(formatAddSign, param)
+}
+
 var formatMint = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {patOperand, 0},
-	{patOperand, 0}, {patOperand, 0},
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0}, {patOperand, 0}, {patOperand, 0},
 }
 
 func opMintValidator(param []byte) int {
-	d := formatParser(formatMint, param)
-	if d < 0 {
-		return formatParser(formatMint[:3], param)
-	}
-	return d
+	return formatParser(formatMint, param)
 }
-
 
 var formatMeta = []formatDesc{
 	{addrOperand, 0xFFFFFFFF}, {patOperand, 32}, {patOperand, 0},
 }
 
 func opMetaValidator(param []byte) int {
-	return formatParser(formatMeta, param)
-}
-
-var formatTime = []formatDesc{
-	{addrOperand, 0xFFFFFFFF},
-}
-
-func opTimeValidator(param []byte) int {
-	return formatParser(formatTime, param)
-}
-
-var formatHeight = []formatDesc{
-	{addrOperand, 0xFFFFFFFF},
-}
-
-func opHeightValidator(param []byte) int {
-	return formatParser(formatHeight, param)
+	return formatParser(formatMint, param)
 }

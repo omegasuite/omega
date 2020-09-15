@@ -104,7 +104,7 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 	signed := 0
 	for _, addr := range addresses {
 		key, _, err := kdb.GetKey(addr)
-		if err != nil {
+		if err != nil || key == nil {
 			continue
 		}
 
@@ -158,7 +158,7 @@ func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 	case txsparser.PubKeyHashTy:
 		// look up key for address
 		key, compressed, err := kdb.GetKey(addresses[0])
-		if err != nil {
+		if err != nil || key == nil {
 			return nil, class, nil, 0, err
 		}
 

@@ -28,7 +28,9 @@ var (
 	// maxMedianTimeEntries is the maximum number of entries allowed in the
 	// median time data.  This is a variable as opposed to a constant so the
 	// test code can modify it.
-	maxMedianTimeEntries = 200
+	maxMedianTimeEntries = 201		// use an odd number to fix a bug in bitcoin core
+									// will it break the chain?
+//	maxMedianTimeEntries = 200
 )
 
 // MedianTimeSource provides a mechanism to add several time samples which are

@@ -3312,15 +3312,16 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 				if len(additionalKeysByAddress) != 0 {
 					addrStr := addr.EncodeAddress()
 					wif, ok := additionalKeysByAddress[addrStr]
-					if !ok {
-						return nil, false,
-							errors.New("no key for address")
+					if ok {
+						return wif.PrivKey, wif.CompressPubKey, nil
 					}
-					return wif.PrivKey, wif.CompressPubKey, nil
+					// if additional key fails, try managed keys
 				}
 				address, err := w.Manager.Address(addrmgrNs, addr)
 				if err != nil {
-					return nil, false, err
+					// allow signing partial tx
+					return nil, false, nil
+//					return nil, false, err
 				}
 
 				pka, ok := address.(waddrmgr.ManagedPubKeyAddress)
@@ -3363,7 +3364,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 			// SigHashSingle inputs can only be signed if there's a
 			// corresponding output. However this could be already signed,
 			// so we always verify the output.
-			if (hashType&txscript.SigHashSingle) != txscript.SigHashSingle {	//  || i < len(tx.TxOut)?
+			if (hashType&txscript.SigHashMask) < txscript.SigHashSingle || i < len(tx.TxOut) {
 //				txIn.SignatureIndex = uint32(i)
 				if tx.SignatureScripts == nil {
 					tx.SignatureScripts = make([][]byte, 0)
@@ -3398,7 +3399,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 
 			// Either it was already signed or we just signed it.
 			// Find out if it is completely satisfied or still needs more.
-			if !intp.VerifySig(i, pkScript, tx.SignatureScripts[txIn.SignatureIndex]) {
+			if tx.SignatureScripts[txIn.SignatureIndex] != nil && !intp.VerifySig(i, pkScript, tx.SignatureScripts[txIn.SignatureIndex]) {
 				signErrors = append(signErrors, SignatureError{
 					InputIndex: uint32(i),
 					Error:      fmt.Errorf("cannot validate transaction."),

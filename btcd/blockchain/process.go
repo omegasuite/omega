@@ -292,7 +292,13 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return false, true, ruleError(ErrDuplicateBlock, str), -1
 	}
 
-	// Perform preliminary sanity checks on the block and its transactions.
+	// contract execution must not exceed block limit
+	if block.MsgBlock().Header.ContractExec > b.ChainParams.ContractExecLimit {
+		str := fmt.Sprintf("Eontract execution steps exceeds block limit in %v", blockHash)
+		return false, true, ruleError(ErrExcessContractExec, str), -1
+	}
+
+		// Perform preliminary sanity checks on the block and its transactions.
 	err = checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return false, false, err, -1

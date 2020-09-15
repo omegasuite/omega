@@ -307,6 +307,7 @@ type ScriptPubKeyResult struct {
 type GetTxOutResult struct {
 	BestBlock     string             `json:"bestblock"`
 	Confirmations int64              `json:"confirmations"`
+	Height        int32              `json:"height"`
 	TokenType     uint64      `json:"tokentype"`		// a wire.TokenType
 	Value         interface{}      `json:"value"`		// a wire.TokenValue
 	Rights        string      `json:"rights"`
@@ -552,6 +553,16 @@ type TxRawResult struct {
 	Confirmations uint64 `json:"confirmations,omitempty"`
 	Time          int64  `json:"time,omitempty"`
 	Blocktime     int64  `json:"blocktime,omitempty"`
+}
+
+// MiningPolicy, miner specific policy
+type MiningPolicy struct {
+	RelayFee      int64 `json:"relayfee"`			// Min Relay Fee per KB for priority Tx
+	BorderFee     int64 `json:"borderfee"`			// Fee per top border
+	SubBorderFee  int64 `json:"borderfee"`			// Fee per sub border
+	MaxExecSteps  int32 `json:"maxexecsteps"`		// max allowed contract exec steps
+	ContractExecFee   int64 `json:"contractexecfee"`	// Contract Exec Fee per K steps
+	MinContractFee     int64 `json:"mincontractfee"`	// minimal contract exec fee
 }
 
 // SearchRawTransactionsResult models the data from the searchrawtransaction

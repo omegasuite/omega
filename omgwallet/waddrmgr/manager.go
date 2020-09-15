@@ -1440,9 +1440,6 @@ func loadManager(ns walletdb.ReadBucket, pubPassphrase []byte,
 		str := "failed to unmarshal master public key"
 		return nil, managerError(ErrCrypto, str, err)
 	}
-
-	fmt.Printf("loadManager: masterKeyPub.DeriveKey(%s)", string(pubPassphrase))
-
 	if err := masterKeyPub.DeriveKey(&pubPassphrase); err != nil {
 		str := "invalid passphrase for master public key"
 		return nil, managerError(ErrWrongPassphrase, str, nil)

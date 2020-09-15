@@ -902,6 +902,7 @@ func NewTryContractCmd(hexTx string) *TryContractCmd {
 type SendRawTransactionCmd struct {
 	HexTx         string
 	AllowHighFees *bool `jsonrpcdefault:"false"`
+	WaitConfirm   *int `jsonrpcdefault:"0"`
 }
 
 // NewSendRawTransactionCmd returns a new instance which can be used to issue a

@@ -29,11 +29,14 @@ const (
 	SigHashAll          SigHashType = 0x1
 	SigHashNone         SigHashType = 0x2
 	SigHashSingle       SigHashType = 0x3
+	SigHashDouble       SigHashType = 0x4
+	SigHashTriple       SigHashType = 0x5
+	SigHashQuardruple   SigHashType = 0x6
 	SigHashAnyOneCanPay SigHashType = 0x80
 
 	// sigHashMask defines the number of bits of the hash type which is used
 	// to identify which outputs are signed.
-	sigHashMask = 0x1f
+	SigHashMask = 0x1f
 )
 
 // TBD: big endian math
@@ -1885,10 +1888,10 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	ln := len(param)
 
 	num := int64(0)
-	dataType := []byte{0xFF, 'D'}
+	dataType := []byte{0xFF, 'Q'}
 	var err error
 	var tl int
-	var h [4]byte
+	var h []byte
 	var store pointer
 	top := 0
 
@@ -1900,8 +1903,14 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			if num, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
 				return err
 			}
-			if dataType[top] == 'D' {
-				binary.LittleEndian.PutUint32(h[:], uint32(num))
+			if dataType[top] == 'Q' {
+				if num >= 0 && num < (1 << 32) {
+					h = make([]byte, 4)
+					binary.LittleEndian.PutUint32(h, uint32(num))
+				} else {
+					h = make([]byte, 8)
+					binary.LittleEndian.PutUint64(h, uint64(num))
+				}
 			} else {
 				store = pointer(num)
 			}
@@ -1910,7 +1919,7 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	d := evm.GetState(contract.self.Address(), string(h[:4]))
+	d := evm.GetState(contract.self.Address(), string(h))
 
 	var n uint32
 	n = uint32(len(d))
@@ -1924,7 +1933,7 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		store++
 	}
 
-	log.Debugf("loading %x = %x (%d)", h[:4], d, n)
+	log.Debugf("loading %x = %x (%d)", h, d, n)
 
 	return nil
 }
@@ -1947,8 +1956,8 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	top := 0
 	idx := 0
 
-	dataType := []byte{'D', 'L', 'B'}
-	dt := byte('D')
+	dataType := []byte{'Q', 'L', 'B'}
+	dt := byte('Q')
 	var dlen uint32
 	dlen = sizeOfType[dt]
 	fdlen := dlen
@@ -1983,7 +1992,11 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 				var d [8]byte
 				binary.LittleEndian.PutUint64(d[:], uint64(num))
-				scratch[top] = d[:sizeOfType[dt]]
+				if top == 0 && num >= 0 && num < (1 << 32) {
+					scratch[top] = d[:4]
+				} else {
+					scratch[top] = d[:sizeOfType[dt]]
+				}
 			}
 			fdlen = dlen
 			top++
@@ -2024,7 +2037,8 @@ func opDel(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var tl int
 
 	var err error
-	var d [4]byte
+	var d [8]byte
+	var k []byte
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
@@ -2035,11 +2049,16 @@ func opDel(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			if num, tl, err = stack.getNum(param[j:], 'D'); err != nil {
 				return err
 			}
-			binary.LittleEndian.PutUint32(d[:], uint32(num))
+			binary.LittleEndian.PutUint64(d[:], uint64(num))
+			if num >= 0 && num < (1 << 32) {
+				k = d[:4]
+			} else {
+				k = d[:]
+			}
 			j += tl
 		}
 	}
-	evm.DeleteState(contract.self.Address(), string(d[:]))
+	evm.DeleteState(contract.self.Address(), string(k))
 
 	return nil
 }
@@ -2213,7 +2232,8 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var tl int
 	var err error
 
-	paramTypes := []byte{'B', 'L'}
+	paramTypes := []byte{'B', 'L', 'Q'}
+	f := newFrame()
 
 	for j := 0; j < ln; j++ {
 		dataType := paramTypes[top]
@@ -2232,6 +2252,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			switch top {
 			case 0:
 				pure = byte(num) | stack.data[len(stack.data)-1].pure
+				top++
 
 			case 1:
 				var d [20]byte
@@ -2261,7 +2282,6 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				contract.Code = append(contract.Code, ccode...)
 
 				// execute init call
-				f := newFrame()
 				f.space = append(f.space, []byte{4,0,0,0,0,0,0,0}...)
 				binary.LittleEndian.PutUint32(f.space[4:], uint32(len(stack.data)))
 
@@ -2276,11 +2296,21 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 				*pc = int(contract.libs[d].address)
 				stack.data = append(stack.data, f)
-				
-				return nil
+				top++
+
+			case 2:
+				ln := binary.LittleEndian.Uint32(f.space[:4])
+				ln += 8
+				binary.LittleEndian.PutUint32(f.space[:4], ln)
+
+				var bn [8]byte
+				binary.LittleEndian.PutUint64(bn[:], uint64(num))
+				f.space = append(f.space[ln:], bn[:]...)
 			}
-			top++
 		}
+	}
+	if top == 2 {
+		return nil
 	}
 	return fmt.Errorf("Malformed parameters")
 }
@@ -3566,8 +3596,9 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	u := 1
 
 	inidx := binary.LittleEndian.Uint32(contract.Args)
+	start := inidx
 
-	switch SigHashType(it) & sigHashMask {
+	switch SigHashType(it) & SigHashMask {
 	case SigHashNone:
 		t.TxOut = t.TxOut[0:0]
 		for i := range t.TxIn {
@@ -3576,9 +3607,16 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 			}
 		}
 
-	case SigHashSingle:
+	case SigHashSingle, SigHashDouble, SigHashTriple, SigHashQuardruple:
+		if inidx < uint32(SigHashType(it) & SigHashMask) - uint32(SigHashSingle) {
+			start = 0
+		} else {
+			start = inidx + uint32(SigHashSingle) - uint32(SigHashType(it)&SigHashMask)
+		}
+		zo := int(start)
 		// Resize output array to up to and including requested index.
 		if int(inidx) >= len(t.TxOut) {
+			zo = len(t.TxOut)
 			t.TxOut = t.TxOut[:inidx+1]
 			t.TxOut[inidx].Token.Value = &token.NumToken{0}
 			t.TxOut[inidx].Token.TokenType = 0
@@ -3589,7 +3627,7 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		}
 
 		// All but current output get zeroed out.
-		for i := 0; i < int(inidx); i++ {
+		for i := 0; i < zo; i++ {
 			t.TxOut[i].Token.Value = &token.NumToken{0}
 			t.TxOut[i].Token.TokenType = 0
 			t.TxOut[i].Token.Rights = nil
@@ -3598,7 +3636,7 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 
 		// Sequence on all other inputs is 0, too.
 		for i := range t.TxIn {
-			if i != int(inidx) {
+			if i < int(start) || i > int(inidx) {
 				t.TxIn[i].Sequence = 0
 			}
 		}
@@ -3612,7 +3650,7 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	}
 	
 	if SigHashType(it) & SigHashAnyOneCanPay != 0 {
-		t.TxIn = t.TxIn[inidx : inidx+1]
+		t.TxIn = t.TxIn[start : inidx+1]
 	}
 	
 	wbuf := bytes.NewBuffer(make([]byte, 0, t.SerializeSizeStripped()+4))

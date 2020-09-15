@@ -406,6 +406,11 @@ func Shutdown() {
 		close(Quit)
 	}
 	miner.wg.Wait()
+
+	if POWStopper != nil {
+		close(POWStopper)
+	}
+
 	log.Infof("Consensus Shutdown completed")
 }
 

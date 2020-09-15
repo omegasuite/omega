@@ -369,7 +369,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 						case SIGNTEXT:
 							idx++
 							si := SigHashType(sig[idx])
-							if (si & sigHashMask) == SigHashNone || (si & sigHashMask) == SigHashSingle || (si & SigHashAnyOneCanPay) != 0 {
+							if (si & SigHashMask) != SigHashAll || (si & SigHashAnyOneCanPay) != 0 {
 								// these sign text are not idx independent, can not assume
 								// these signatures would be the same
 								pks.skip = 1

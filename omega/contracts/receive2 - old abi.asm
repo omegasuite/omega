@@ -1,0 +1,366 @@
+; this is a lib for public use. it assumes the caller uses following params to store coins (type 0) received:
+; utxotid, utxotseq, lastid, lastseq, balance
+
+MALLOC gi0,8,		; alloc mem len for the result (code start)
+EVAL32 gi0,4,		; length of result
+EVAL32 gi4,BODY,	; result = the first instruction of contract body code.
+STOP
+
+; contract body
+; input parameters
+define INABI i8		; function ABI
+
+define BODY .
+ALLOC ii0"8,360,	
+EVAL32 ii0"8,INABI,1,!		; if it is a lib init call, return
+IF ii0"8,2,
+RETURN
+
+EVAL64 BALANCEDATA,0,		; clear memory in case entry does not exist
+EVAL32 LASTSEQDATA,0,		; outpoint for last token sent to us
+EVAL256 LASTIDDATA,x0,
+EVAL32 UTXOTSEQDATA,0,		; outpoint for acculated value we have (not incl. last token)
+EVAL256 UTXOTIDDATA,x0,
+LOAD BALANCE,abi("balance"),	; load balance & outpoints
+LOAD LASTSEQ,abi("lastseq"),
+LOAD LASTID,abi("lastid"),
+LOAD UTXOTSEQ,abi("utxotseq"),
+LOAD UTXOTID,abi("utxotid"),
+
+EVAL32 ii0"8,INABI,abi("disburse(pointer,pointer)"),=	; if it is a disburse (on suicide) call, do disbursement
+IF ii0"8,.disburse,					; otherwise, regular balancement mgmt
+
+; refular interface _(*address for result, flag for pay tx fee, extra amount)
+define RESULT i12	; address for result
+define txflag i20	; flag to pay min tax
+define TX i28		; extra amount to pay
+
+define UTXOTID ii0"8
+define UTXOTIDDATA ii0"12
+define UTXOTSEQ ii0"44
+define UTXOTSEQDATA ii0"48
+
+define LASTID ii0"52
+define LASTIDDATA ii0"56
+define LASTSEQ ii0"88
+define LASTSEQDATA ii0"92
+
+define tokentype ii0"108
+define tokenval ii0"116
+define scriptlen ii0"124
+define scriptver ii0"128
+define scriptstr ii0"129
+define scriptfunc ii0"149
+
+define OUTPOINT ii0'160
+
+define ctr ii0"200
+define contract ii0"204
+
+define BALANCE ii0"232
+define BALANCEDATA ii0"236
+
+define txfees ii0"244
+define outval ii0"252
+
+define tmp ii0"288
+
+GETCOIN tokentype,		; coin sent to this contract
+META ctr,7,"address",		; address of this contract
+
+EVAL64 tmp,tokentype,0,!	; if coin type is not 0, return with fail
+IF tmp,.fail,
+
+EVAL64 tmp,TX,0,!
+IF tmp,.txfeeckd,
+IF txflag,.txfeeckd,
+
+	EVAL64 tmp,tokenval,0,=		; if coin value is 0 & no fee & nothing to pay, nothing to do.
+	IF tmp,.success,		; return with success
+
+; because it is a lib call, we are using the caller's storage
+
+define txfeeckd .
+	RECEIVED OUTPOINT,		; outpoint for current script
+
+	EVAL256 tmp,UTXOTIDDATA,x0,=			; first time received coin. make utxo the current one
+	IF tmp,.first,
+	EVAL256 tmp,LASTIDDATA,x0,=			; second time received coin. make last the current one
+	IF tmp,2,
+	SPEND LASTIDDATA,LASTSEQDATA,
+	EVAL64 tmp,tokenval,0,=
+	IF tmp,.zero,
+		STORE abi("lastid"),HOUTPOINT,
+		STORE abi("lastseq"),DOUTPOINT"32,
+		IF 1,.txamount,
+
+define zero .
+	STORE abi("lastid"),Hx0,
+	STORE abi("lastseq"),D0,
+
+define txamount .
+	EVAL64 outval,BALANCEDATA,
+	EVAL64 BALANCEDATA,BALANCEDATA,tokenval,+
+	SPEND UTXOTIDDATA,UTXOTSEQDATA,
+	EVAL64 txfees,0,
+	IF txflag,2,
+	IF 1,2,
+	TXFEE txfees,2,				; min tax
+	EVAL64 txfees,txfees,TX,+		; plus extra amount
+
+	EVAL64 outval,outval,txfees,-
+	EVAL64 tmp,outval,0,>
+	IF tmp,.normal,
+
+	; balance is not enough, use the entire balance as txfee
+	STORE abi("balance"),Qtokenval,
+	LOAD UTXOTSEQ,abi("lastseq"),		; shift outpoints up
+	LOAD UTXOTID,abi("lastid"),		; read it instaed of using OUTPOINT because it could be 0
+	STORE abi("lastid"),Hx0,
+	STORE abi("lastseq"),D0,
+	STORE abi("utxotid"),HUTXOTIDDATA,
+	STORE abi("utxotseq"),DUTXOTSEQDATA,
+	IF 1,.insufficient,
+
+define normal .
+	EVAL64 BALANCEDATA,BALANCEDATA,txfees,-
+	STORE abi("balance"),QBALANCEDATA,
+	STORE abi("utxotid"),HOUTPOINT,
+	EVAL64 tokenval,outval,
+	EVAL32 scriptlen,21,
+	EVAL8 scriptver,x88,
+	COPY scriptstr,contract,20,
+	ADDTXOUT i232,tokentype,
+	STORE abi("utxotseq"),Di232,		; seq of added txo
+	IF 1,.success,
+
+define first .
+	EVAL64 tmp,tokenval,0,=
+	IF tmp,.success,
+	STORE abi("utxotid"),HOUTPOINT,
+	STORE abi("utxotseq"),DOUTPOINT"32,
+	STORE abi("balance"),Qtokenval,
+	IF txflag,.insufficient,
+	IF 1,.success,
+
+define second .
+	EVAL64 tmp,tokenval,0,=
+	IF tmp,.success,
+	STORE abi("lastid"),HOUTPOINT,
+	STORE abi("lastseq"),DOUTPOINT"32,
+	IF txflag,.txamount,
+	EVAL64 BALANCEDATA,tokenval,BALANCEDATA,+
+	STORE abi("balance"),QBALANCEDATA,
+	IF 1,.success,
+
+define fail .
+	EVAL64 tmp,RESULT,0,=
+	IF tmp,2,
+	EVAL8 iRESULT,1,
+	RETURN
+
+define success .
+	EVAL64 tmp,RESULT,0,=
+	IF tmp,2,
+	EVAL8 iRESULT,0,
+	RETURN
+
+define insufficient .
+	EVAL64 tmp,RESULT,0,=
+	IF tmp,2,
+	EVAL8 iRESULT,2,
+	RETURN
+
+define disburse .		; this is called when caller suicides. not when this lib suicides. lib can not suicide.
+	GETCOIN tokentype,		; for suicide, must take no value in
+	EVAL64 tmp,tokentype,0,!
+	IF tmp,.fail,
+	EVAL64 tmp,tokenval,0,!
+	IF tmp,.fail,
+
+	EVAL64 tmp,BALANCEDATA,0,=		; no balance, go die directly
+	IF tmp,.kill,
+
+	EVAL64 tmp,UTXOTIDDATA,0,=		; spend all
+	IF tmp,2,
+	SPEND UTXOTIDDATA,UTXOTSEQDATA,
+	EVAL64 tmp,LASTIDDATA,0,=
+	IF tmp,2,
+	SPEND LASTIDDATA,LASTSEQDATA,
+
+	TXFEE txfees,2,				; pay fees
+	EVAL64 outval,BALANCEDATA,txfees,-
+	EVAL64 tmp,outval,0,(
+	IF tmp,.kill,
+
+	EVAL64 tokenval,outval,
+	EVAL32 scriptlen,25,
+	COPY scriptver,ii20,21,			; this func takes 1 address param
+	EVAL32 scriptfunc,x41,			; pkhpubkey
+	ADDTXOUT i232,tokentype,
+
+define kill .				; die. delete storage
+	DEL abi("balance"),
+	DEL abi("utxotid"),
+	DEL abi("utxotseq"),
+	DEL abi("lastid"),
+	DEL abi("lastseq"),
+	DEL abi("sequence"),
+	IF 1,.success,			; return, not destruct, destruct is caller's job
+
+
+
+
+Rgi0,8,
+Cgi0,4,
+Cgi4,4,
+z
+Sii0"8,360,
+Cii0"8,i8,1,!
+Kii0"8,2,
+Y
+Dii0"236,0,
+Cii0"92,0,
+Eii0"56,x0,
+Cii0"48,0,
+Eii0"12,x0,
+Nii0"232,x01050705,
+Nii0"88,x00070000,
+Nii0"52,x02000205,
+Nii0"44,x00060000,
+Nii0"8,x06030000,
+Cii0"8,i8,x03010509,=
+Kii0"8,79,
+cii0"108,
+kii0"200,7,x61646472657373,
+Dii0"288,ii0"108,0,!
+Kii0"288,63,
+Dii0"288,i28,0,!
+Kii0"288,4,
+Ki20,3,
+Dii0"288,ii0"116,0,=
+Kii0"288,62,
+aii0'160,
+Eii0"288,ii0"12,x0,=
+Kii0"288,40,
+Eii0"288,ii0"56,x0,=
+Kii0"288,2,
+eii0"56,ii0"92,
+Dii0"288,ii0"116,0,=
+Kii0"288,4,
+Ox02000205,Hii0'160,
+Ox00070000,Dii0'160"32,
+K1,3,
+Ox02000205,Hx0,
+Ox00070000,D0,
+Dii0"252,ii0"236,
+Dii0"236,ii0"236,ii0"116,+
+eii0"12,ii0"48,
+Dii0"244,0,
+Ki20,2,
+K1,2,
+bii0"244,2,
+Dii0"244,ii0"244,i28,+
+Dii0"252,ii0"252,ii0"244,-
+Dii0"288,ii0"252,0,>
+Kii0"288,9,
+Ox01050705,Qii0"116,
+Nii0"44,x00070000,
+Nii0"8,x02000205,
+Ox02000205,Hx0,
+Ox00070000,D0,
+Ox06030000,Hii0"12,
+Ox00060000,Dii0"48,
+K1,34,
+Dii0"236,ii0"236,ii0"244,-
+Ox01050705,Qii0"236,
+Ox06030000,Hii0'160,
+Dii0"116,ii0"252,
+Cii0"124,21,
+Aii0"128,x88,
+Tii0"129,ii0"204,20,
+gi232,ii0"108,
+Ox00060000,Di232,
+K1,20,
+Dii0"288,ii0"116,0,=
+Kii0"288,18,
+Ox06030000,Hii0'160,
+Ox00060000,Dii0'160"32,
+Ox01050705,Qii0"116,
+Ki20,18,
+K1,13,
+Dii0"288,ii0"116,0,=
+Kii0"288,11,
+Ox02000205,Hii0'160,
+Ox00070000,Dii0'160"32,
+Ki20,n40,
+Dii0"236,ii0"116,ii0"236,+
+Ox01050705,Qii0"236,
+K1,5,
+Dii0"288,i12,0,=
+Kii0"288,2,
+Aii12,1,
+Y
+Dii0"288,i12,0,=
+Kii0"288,2,
+Aii12,0,
+Y
+Dii0"288,i12,0,=
+Kii0"288,2,
+Aii12,2,
+Y
+cii0"108,
+Dii0"288,ii0"108,0,!
+Kii0"288,n14,
+Dii0"288,ii0"116,0,!
+Kii0"288,n16,
+Dii0"288,ii0"236,0,=
+Kii0"288,16,
+Dii0"288,ii0"12,0,=
+Kii0"288,2,
+eii0"12,ii0"48,
+Dii0"288,ii0"56,0,=
+Kii0"288,2,
+eii0"56,ii0"92,
+bii0"244,2,
+Dii0"252,ii0"236,ii0"244,-
+Dii0"288,ii0"252,0,(
+Kii0"288,6,
+Dii0"116,ii0"252,
+Cii0"124,25,
+Tii0"128,ii20,21,
+Cii0"149,x41,
+gi232,ii0"108,
+Px01050705,
+Px06030000,
+Px00060000,
+Px02000205,
+Px00070000,
+Px07030000,
+K1,n36,
+
+
+
+
+
+df4d6ff5eb3031e16deff2ce62c64bef6a5680fd
+526769302c382c0a436769302c342c0a436769342c342c0a7a0a5369693022382c3336302c0a4369693022382c69382c312c210a4b69693022382c322c0a590a44696930223233362c302c0a436969302239322c302c0a456969302235362c78302c0a436969302234382c302c0a456969302231322c78302c0a4e696930223233322c7830313035303730352c0a4e6969302238382c7830303037303030302c0a4e6969302235322c7830323030303230352c0a4e6969302234342c7830303036303030302c0a4e69693022382c7830363033303030302c0a4369693022382c69382c7830333031303530392c3d0a4b69693022382c37392c0a63696930223130382c0a6b696930223230302c372c7836313634363437323635373337332c0a44696930223238382c696930223130382c302c210a4b696930223238382c36332c0a44696930223238382c6932382c302c210a4b696930223238382c342c0a4b6932302c332c0a44696930223238382c696930223131362c302c3d0a4b696930223238382c36322c0a61696930273136302c0a45696930223238382c6969302231322c78302c3d0a4b696930223238382c34302c0a45696930223238382c6969302235362c78302c3d0a4b696930223238382c322c0a656969302235362c6969302239322c0a44696930223238382c696930223131362c302c3d0a4b696930223238382c342c0a4f7830323030303230352c48696930273136302c0a4f7830303037303030302c44696930273136302233322c0a4b312c332c0a4f7830323030303230352c4878302c0a4f7830303037303030302c44302c0a44696930223235322c696930223233362c0a44696930223233362c696930223233362c696930223131362c2b0a656969302231322c6969302234382c0a44696930223234342c302c0a4b6932302c322c0a4b312c322c0a62696930223234342c322c0a44696930223234342c696930223234342c6932382c2b0a44696930223235322c696930223235322c696930223234342c2d0a44696930223238382c696930223235322c302c3e0a4b696930223238382c392c0a4f7830313035303730352c51696930223131362c0a4e6969302234342c7830303037303030302c0a4e69693022382c7830323030303230352c0a4f7830323030303230352c4878302c0a4f7830303037303030302c44302c0a4f7830363033303030302c486969302231322c0a4f7830303036303030302c446969302234382c0a4b312c33342c0a44696930223233362c696930223233362c696930223234342c2d0a4f7830313035303730352c51696930223233362c0a4f7830363033303030302c48696930273136302c0a44696930223131362c696930223235322c0a43696930223132342c32312c0a41696930223132382c7838382c0a54696930223132392c696930223230342c32302c0a67693233322c696930223130382c0a4f7830303036303030302c44693233322c0a4b312c32302c0a44696930223238382c696930223131362c302c3d0a4b696930223238382c31382c0a4f7830363033303030302c48696930273136302c0a4f7830303036303030302c44696930273136302233322c0a4f7830313035303730352c51696930223131362c0a4b6932302c31382c0a4b312c31332c0a44696930223238382c696930223131362c302c3d0a4b696930223238382c31312c0a4f7830323030303230352c48696930273136302c0a4f7830303037303030302c44696930273136302233322c0a4b6932302c6e34302c0a44696930223233362c696930223131362c696930223233362c2b0a4f7830313035303730352c51696930223233362c0a4b312c352c0a44696930223238382c6931322c302c3d0a4b696930223238382c322c0a41696931322c312c0a590a44696930223238382c6931322c302c3d0a4b696930223238382c322c0a41696931322c302c0a590a44696930223238382c6931322c302c3d0a4b696930223238382c322c0a41696931322c322c0a590a63696930223130382c0a44696930223238382c696930223130382c302c210a4b696930223238382c6e31342c0a44696930223238382c696930223131362c302c210a4b696930223238382c6e31362c0a44696930223238382c696930223233362c302c3d0a4b696930223238382c31362c0a44696930223238382c6969302231322c302c3d0a4b696930223238382c322c0a656969302231322c6969302234382c0a44696930223238382c6969302235362c302c3d0a4b696930223238382c322c0a656969302235362c6969302239322c0a62696930223234342c322c0a44696930223235322c696930223233362c696930223234342c2d0a44696930223238382c696930223235322c302c280a4b696930223238382c362c0a44696930223131362c696930223235322c0a43696930223132342c32352c0a54696930223132382c696932302c32312c0a43696930223134392c7834312c0a67693233322c696930223130382c0a507830313035303730352c0a507830363033303030302c0a507830303036303030302c0a507830323030303230352c0a507830303037303030302c0a507830373033303030302c0a4b312c6e33362c0a0a
+
+
+
+
+
+
+
+
+
+
+Depolyment:
+payment: 0a43d55f05086530adcc7ba14474f3211e055d70ff0d6b2e6a572c0cac8029ce : 0 =>
+	 (mz8JyMrJNGnGd7Jyz3s7BQabpKu89VHHoQ) 182b0489f86c75134d58fb54ccc3a3549d81f059d6cd9778ca9969c51305990a : 0 / 599
+	 
+
+Main net: Money holder: 1KcMgJmKZFM1qzqNGUtjMVNGxLJREo9uZh
+Depolyment: 054407a62d22f60396ad0c7ae58b76c64ba09d38ffe6bc14a4ded2c71b3252a8 : 0 =>
+	019bcb9372bf64f15fa221785cbb69b3554352670ca65e2bd6da8cf0ed46059b : 0 => // 352579.0
+

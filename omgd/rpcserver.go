@@ -153,6 +153,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 //	"searchborder":   		 handleSearchBorder,	// New
 	"contractcall":   		 handleContractCall,	// New
 	"trycontract":   		 handleTryContract,	// New
+	"miningpolicy":   		 handleMiningPolicy,	// New. miner specific policy
 
 //	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
@@ -186,7 +187,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"verifychain":           handleVerifyChain,
 	"verifymessage":         handleVerifyMessage,
 	"version":               handleVersion,
-	"shutdownserver":       handleShutdown,
+	"shutdownserver":        handleShutdown,
 }
 
 // list of commands that we recognize, but for which btcd has no support because
@@ -538,7 +539,7 @@ func messageToHex(msg wire.Message) (string, error) {
 	return hex.EncodeToString(buf.Bytes()), nil
 }
 
-// handleTryContract-nsaction handles TryContract commands.
+// handleTryContract handles TryContract commands.
 func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.TryContractCmd)
 	// Deserialize and send off to tx relay
@@ -585,6 +586,20 @@ func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 		return nil, err
 	}
 	return mtxHex, nil
+}
+
+// handleMiningPolicy handles MiningPolicy commands.
+func handleMiningPolicy(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	txReply := &btcjson.MiningPolicy {
+		RelayFee:			s.cfg.ChainParams.MinRelayTxFee,
+		BorderFee:			int64(s.cfg.ChainParams.MinBorderFee),
+		SubBorderFee:		0,
+		MaxExecSteps:		int32(s.cfg.ChainParams.ContractExecLimit),
+		ContractExecFee:	0,
+		MinContractFee:		0,
+	}
+
+	return txReply, nil
 }
 
 // handleCreateRawTra-nsaction handles createrawtransaction commands.
@@ -687,6 +702,12 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 			// Decode the provided address.
 			var pkScript []byte
 			if encodedAddr == "contract" {
+				if amount.Script == nil {
+					return nil, &btcjson.RPCError{
+						Code:    btcjson.ErrRPCInvalidParameter,
+						Message: "Invalid contract script.",
+					}
+				}
 				pkScript, _ = hex.DecodeString(*amount.Script)
 			} else {
 				addr, err := btcutil.DecodeAddress(encodedAddr, params)
@@ -785,25 +806,6 @@ func handleDebugLevel(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 
 	return "Done.", nil
 }
-
-/*
-// witnessToHex formats the passed witness stack as a slice of hex-encoded
-// strings to be used in a JSON response.
-func witnessToHex(witness wire.TxWitness) []string {
-	// Ensure nil is returned when there are no entries versus an empty
-	// slice so it can properly be omitted as necessary.
-	if len(witness) == 0 {
-		return nil
-	}
-
-	result := make([]string, 0, len(witness))
-	for _, wit := range witness {
-		result = append(result, hex.EncodeToString(wit))
-	}
-
-	return result
-}
-*/
 
 // createVinList returns a slice of JSON objects for the inputs of the passed
 // transaction.
@@ -3112,6 +3114,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	// from there, otherwise attempt to fetch from the block database.
 	var bestBlockHash string
 	var confirmations int32
+	var height int32
 	var value token.TokenValue
 	var pkScript []byte
 	var rights string
@@ -3148,6 +3151,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		best := s.cfg.Chain.BestSnapshot()
 		bestBlockHash = best.Hash.String()
 		confirmations = 0
+		height = -1
 		value = txOut.Value
 		tokentype = txOut.TokenType
 
@@ -3175,6 +3179,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 
 		best := s.cfg.Chain.BestSnapshot()
 		bestBlockHash = best.Hash.String()
+		height = entry.BlockHeight()
 		confirmations = 1 + best.Height - entry.BlockHeight()
 		value = entry.RawAmount()
 		tokentype = entry.TokenType
@@ -3213,6 +3218,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	txOutReply := &btcjson.GetTxOutResult{
 		BestBlock:     bestBlockHash,
 		Confirmations: int64(confirmations),
+		Height:		   height,
 		TokenType:     tokentype,
 		Value:         ivalue,
 		Rights:		   rights,
@@ -4005,6 +4011,13 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		return nil, internalRPCError(errStr, "")
 	}
 
+	ch := make(chan *wire.MsgTx, 1)
+	if *c.WaitConfirm != 0 {
+		s.statusLock.Lock()
+		s.sendcmdconfirmation[*tx.Hash()] = ch
+		s.statusLock.Unlock()
+	}
+
 	// Generate and relay inventory vectors for all newly accepted
 	// transactions into the memory pool due to the original being
 	// accepted.
@@ -4020,7 +4033,30 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	iv := wire.NewInvVect(common.InvTypeTx, txD.Tx.Hash())
 	s.cfg.ConnMgr.AddRebroadcastInventory(iv, txD)
 
-	return tx.Hash().String(), nil
+	msg := tx.Hash().String()
+
+	if *c.WaitConfirm != 0 {
+		cf := time.AfterFunc(time.Duration(*c.WaitConfirm) * time.Second, func() {
+			s.statusLock.Lock()
+			delete(s.sendcmdconfirmation, *tx.Hash())
+			s.statusLock.Unlock()
+			ch <- nil
+		})
+
+		t := <- ch
+
+		if t != nil {
+			cf.Stop()
+
+			w := bytes.NewBuffer(make([]byte, t.SerializeSizeFull()))
+			t.SerializeFull(w)
+			msg += "TxHex" + hex.EncodeToString(w.Bytes())
+		} else {
+			msg += fmt.Sprintf("No confirmation after %d seconds.", *c.WaitConfirm)
+		}
+	}
+
+	return msg, nil
 }
 
 // handleSetGenerate implements the setgenerate command.
@@ -4348,6 +4384,7 @@ type rpcServer struct {
 	gbtWorkState           *gbtWorkState
 	helpCacher             *helpCacher
 	requestProcessShutdown chan struct{}
+	sendcmdconfirmation	   map[chainhash.Hash]chan *wire.MsgTx
 	quit                   chan int
 }
 
@@ -5052,7 +5089,17 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 		switch notification.Data.(type) {
 		case *btcutil.Block:
 			// Notify registered websocket clients of incoming block.
-			s.ntfnMgr.NotifyBlockConnected(notification.Data.(*btcutil.Block))
+			blk := notification.Data.(*btcutil.Block)
+			s.ntfnMgr.NotifyBlockConnected(blk)
+			s.statusLock.Lock()
+			for _,tx := range blk.Transactions() {
+				if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
+					ch <- tx.MsgTx()
+					delete(s.sendcmdconfirmation, *tx.Hash())
+				}
+			}
+			s.statusLock.Unlock()
+
 		case *wire.MinerBlock:
 			// Notify registered websocket clients of incoming block.
 			s.ntfnMgr.NotifyMinerBlockConnected(notification.Data.(*wire.MinerBlock))

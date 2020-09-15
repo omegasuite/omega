@@ -2,7 +2,7 @@
 // This file is part of the omega library.
 //
 
-package ovm
+package main
 
 import (
 	"fmt"
@@ -23,7 +23,7 @@ const (
 	HASH	// Hash
 	HASH160	// Hash160
 	SIGCHECK	// verify sig
-	SIGNTEXT	// K. prepare tx text for signature
+	SIGNTEXT	// prepare tx text for signature
 
 	IF		// "K"
 	CALL	// call function
@@ -38,30 +38,28 @@ const (
 
 	COPY	// data copy
 	COPYIMM	// immediate data copy
-//	CODECOPY	// copy code
-	PUSH	// V
+	CODECOPY	// copy code
 
 	SELFDESTRUCT
 	REVERT
 	RETURN
+
+	STOP	 OpCode = 0x5A	//  "Z"
 )
 
 const (
-	RECEIVED OpCode = 0x61 + iota	// "a". outpoint of the current call
-	TXFEE		// TXIOCOUNT. min tx fee for current tx
-	GETCOIN		// GETTXIN. coin received for the current call
-	NULOP		// GETTXOUT
-	SPEND		// add tx in
-	ADDRIGHTDEF	// add def
-	ADDTXOUT	// add tx out
-	GETDEFINITION	// get def
-	GETUTXO			// get any utxo
-	MINT		// mint a coin
+	RECEIVED OpCode = 0x61 + iota	// "a"
+	TXIOCOUNT
+	GETTXIN
+	GETTXOUT
+	SPEND
+	ADDRIGHTDEF
+	ADDTXOUT
+	GETDEFINITION
+	GETCOIN
+	GETUTXO
+	MINT
 	META		// get contract meta data
-	TIME		// timestamp in block
-	HEIGHT		// block height
-	
-	STOP	 OpCode = 0x7A	//  "z"
 )
 
 // Since the opcodes aren't all in order we can't use a regular slice
@@ -89,26 +87,21 @@ var opCodeToString = map[OpCode]string{
 	ALLOC:       "ALLOC",
 	COPY:       "COPY",
 	COPYIMM:       "COPYIMM",
-	PUSH:       "PUSH",
-//	CODECOPY:       "CODECOPY",
+	CODECOPY:       "CODECOPY",
 	RECEIVED:        "RECEIVED",
-	TXFEE: "TXFEE",
-//	TXIOCOUNT:        "TXIOCOUNT",
-//	GETTXIN:        "GETTXIN",
-//	GETTXOUT:        "GETTXOUT",
+	TXIOCOUNT:        "TXIOCOUNT",
+	GETTXIN:        "GETTXIN",
+	GETTXOUT:        "GETTXOUT",
 	SPEND:         "SPEND",
 	ADDRIGHTDEF:     "ADDRIGHTDEF",
 	ADDTXOUT: "ADDTXOUT",
 	GETDEFINITION:    "GETDEFINITION",
 	GETCOIN:     "GETCOIN",
-	NULOP: "NULOP",
 	GETUTXO:    "GETUTXO",
 	SELFDESTRUCT:   "SELFDESTRUCT",
 	REVERT:    "REVERT",
 	RETURN:    "RETURN",
 	MINT:    "MINT",
-	TIME:    "TIME",
-	HEIGHT:    "HEIGHT",
 	META:    "META",
 }
 
@@ -143,27 +136,22 @@ var stringToOp = map[string]OpCode{
 	"ALLOC":           ALLOC,
 	"COPY":           COPY,
 	"COPYIMM":           COPYIMM,
-	"PUSH":           PUSH,
-//	"CODECOPY":           CODECOPY,
+	"CODECOPY":           CODECOPY,
 	"RECEIVED": RECEIVED,
-	"TXFEE": TXFEE,
-//	"TXIOCOUNT": TXIOCOUNT,
-//	"GETTXIN": GETTXIN,
-//	"GETTXOUT": GETTXOUT,
+	"TXIOCOUNT": TXIOCOUNT,
+	"GETTXIN": GETTXIN,
+	"GETTXOUT": GETTXOUT,
 	"SPEND": SPEND,
 	"ADDRIGHTDEF": ADDRIGHTDEF,
 	"ADDTXOUT": ADDTXOUT,
 	"GETDEFINITION": GETDEFINITION,
 	"GETCOIN": GETCOIN,
-	"NULOP": NULOP,
 	"GETUTXO": GETUTXO,
 	"SELFDESTRUCT":   SELFDESTRUCT,
 	"REVERT":         REVERT,
 	"RETURN":         RETURN,
 	"MINT": MINT,
 	"META": META,
-	"TIME": TIME,
-	"HEIGHT": HEIGHT,
 }
 
 func StringToOp(str string) OpCode {

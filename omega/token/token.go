@@ -14,12 +14,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-//	"strconv"
+	"sort"
+	//	"strconv"
 	"regexp"
-//	"math"
+	//	"math"
 
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"encoding/binary"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/wire/common"
 )
 
@@ -595,6 +596,26 @@ func (t * RightDef) MemWrite(w io.Writer, pver uint32) error {
 type RightSetDef struct {
 	hash * chainhash.Hash
 	Rights []chainhash.Hash
+	sorted int
+}
+
+func (s * RightSetDef) less(i, j int) bool {
+	for k := 0; k < chainhash.HashSize; k++ {
+		if s.Rights[i][k] < s.Rights[j][k] {
+			return true
+		}
+		if s.Rights[i][k] > s.Rights[j][k] {
+			return false
+		}
+	}
+	return i < j
+}
+
+func (s * RightSetDef) sort() {
+	if s.sorted == len(s.Rights) {
+		return
+	}
+	sort.Slice(s.Rights, s.less)
 }
 
 func (s * RightSetDef) Match(p Definition) bool {
@@ -624,6 +645,10 @@ func (t * RightSetDef) IsSeparator() bool {
 }
 
 func (t * RightSetDef) Hash() chainhash.Hash {
+	if t.sorted != len(t.Rights) {
+		t.hash = nil
+	}
+	t.sort()
 	if t.hash == nil {
 		b := make([]byte, 32 * len(t.Rights))
 		for i, r := range t.Rights {
@@ -680,6 +705,7 @@ func (t * RightSetDef) MemRead(r io.Reader, pver uint32) error {
 }
 
 func (t * RightSetDef) Write(w io.Writer, pver uint32) error {
+	t.sort()
 	err := common.WriteVarInt(w, pver, uint64(len(t.Rights)))
 	if err != nil {
 		return err
@@ -693,6 +719,7 @@ func (t * RightSetDef) Write(w io.Writer, pver uint32) error {
 }
 
 func (t * RightSetDef) MemWrite(w io.Writer, pver uint32) error {
+	t.sort()
 	err :=  common.BinarySerializer.PutUint32(w, common.LittleEndian, uint32(len(t.Rights)))
 	if err != nil {
 		return err

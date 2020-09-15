@@ -329,7 +329,6 @@ func (m *CPUMiner) notice (notification *blockchain.Notification) {
 	}
 }
 
-
 func (m *CPUMiner) CurrentBlock(h * chainhash.Hash) * btcutil.Block {
 	if m.minedBlock != nil {
 		bh := m.minedBlock.Hash()
@@ -547,7 +546,10 @@ out:
 						break connected
 					}
 					
-				case <-consensus.POWStopper:
+				case _,ok := <-consensus.POWStopper:
+					if !ok {
+						break connected
+					}
 
 				case <-m.quit:
 					m.minedBlock = nil
@@ -712,9 +714,9 @@ func (m *CPUMiner) Stop() {
 
 	close(m.connch)
 
-	t := consensus.POWStopper
-	consensus.POWStopper = nil
-	close(t)
+//	t := consensus.POWStopper
+//	consensus.POWStopper = nil
+//	close(t)
 
 	close(m.quit)
 	m.started = false

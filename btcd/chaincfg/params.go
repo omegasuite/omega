@@ -234,7 +234,7 @@ type Params struct {
 	HDCoinType uint32
 
 	// ContractExecLimit is a policy by each node to limit step a contract may execute
-	ContractExecLimit uint32
+	ContractExecLimit uint64
 
 	// SigVeriConcurrency is the number of concurrent verifiers for signature veridfication
 	SigVeriConcurrency int
@@ -306,7 +306,7 @@ var MainNetParams = Params{
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 0,
-	ContractExecLimit: 10000,
+	ContractExecLimit: 10000000,		// hard limit of total contract execution steps in a block
 	SigVeriConcurrency: 1,
 }
 
@@ -373,7 +373,7 @@ var RegressionNetParams = Params{
 	// address generation.
 	HDCoinType: 1,
 
-	ContractExecLimit: 1000000,
+	ContractExecLimit: 10000000,
 	SigVeriConcurrency: 4,
 }
 
@@ -443,7 +443,7 @@ var TestNet3Params = Params{
 	// address generation.
 	HDCoinType: 1,
 
-	ContractExecLimit: 1000000,
+	ContractExecLimit: 10000000,
 	SigVeriConcurrency: 4,
 }
 
@@ -514,7 +514,7 @@ var SimNetParams = Params{
 	// address generation.
 	HDCoinType: 115, // ASCII for s
 
-	ContractExecLimit: 1000000,
+	ContractExecLimit: 10000000,
 	SigVeriConcurrency: 4,
 }
 
