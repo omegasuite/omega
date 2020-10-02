@@ -829,7 +829,9 @@ func opEval64(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			unsigned = true
 
 		case 'P':	// deference
-			if scratch[top-1],err = stack.toPointer(&scratch[top-1]); err != nil {
+			tp := pointer(scratch[top-1]);
+			if tp, err = stack.toPointer(&tp); err != nil {
+				scratch[top-1] = int64(tp);
 				return err;
 			}
 
