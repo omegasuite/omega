@@ -8,7 +8,7 @@ import (
 	"regexp"
 )
 
-var patOperand = regexp.MustCompile(`^@?n?(g?i+)?(([kK]?[xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
+var patOperand = regexp.MustCompile(`^[BWDQ@]?n?(g?i+)?(([kK]?[xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
 var addrOperand = regexp.MustCompile(`^n?g?i+(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
 var numOperand = regexp.MustCompile(`^n?(([kK]?[xa-f][0-9a-f]+)|([0-9]+)),`)
 var patNum = regexp.MustCompile(`[0-9a-f]+`)
@@ -149,7 +149,7 @@ func opEval64Validator(param []byte) int {
 			j += tl  - 1
 			top++
 
-		case 0x40, 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
+		case 0x40, 0x75, 0x2b, 0x2d, 0x2a, 0x2f, 'P',
 			0x25, 0x23, 0x5b, 0x5d, 0x7c, 0x26, 0x5e, 0x7e,
 			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f, '"', '\'':
 
@@ -191,7 +191,7 @@ func opEval256Validator(param []byte) int {
 			j += tl - 1
 			top++
 
-		case 0x75, 0x2b, 0x2d, 0x2a, 0x2f,
+		case 0x75, 0x2b, 0x2d, 0x2a, 0x2f, 'P', 'Z',
 			0x25, 0x23, 0x7c, 0x26, 0x5e, 0x7e,
 			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f, '"', '\'':
 

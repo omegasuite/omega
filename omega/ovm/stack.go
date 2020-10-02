@@ -7,6 +7,7 @@ package ovm
 import (
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"math/big"
 )
 
 type frame struct {
@@ -63,6 +64,23 @@ func (s *Stack) shrink(n int) {
 		return
 	}
 	s.data[0].space = s.data[0].space[:len(s.data[0].space) - n]
+}
+
+func (s *Stack) toBig(p * pointer) (* big.Int, error) {
+	offset := int(*p & 0xFFFFFFFF)
+	area := int(*p >> 32)
+	top := len(s.data) - 1
+	if area < 0 || area > top {
+		return nil, outofstack
+	}
+
+	num := *bigZero
+	for j := int(31); j >= 0; j-- {
+		tmp := uint8(s.data[area].space[offset + j])
+		num = *num.Add(num.Mul(&num, big.NewInt(256)), big.NewInt(int64(tmp)))
+	}
+
+	return &num, nil
 }
 
 func (s *Stack) toPointer(p * pointer) (pointer, error) {

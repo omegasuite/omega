@@ -430,6 +430,9 @@ func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 			dataType = 0x57
 
+		case 'B':
+			dataType = param[j]
+
 		case 'u':	// u
 			unsigned = true
 
@@ -624,6 +627,9 @@ func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 			}
 			dataType = 0x44
+
+		case 'B', 'W':
+			dataType = param[j]
 
 		case 'u':	// u
 			unsigned = true
@@ -825,13 +831,15 @@ func opEval64(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		case '@':	// @
 			dataType = 0xFF
 
+		case 'B', 'W', 'D':
+			dataType = param[j]
+
 		case 'u':	// u
 			unsigned = true
 
 		case 'P':	// deference
 			tp := pointer(scratch[top-1]);
-			if tp, err = stack.toPointer(&tp); err != nil {
-				scratch[top-1] = int64(tp);
+			if scratch[top-1], err = stack.toInt64(&tp); err != nil {
 				return err;
 			}
 
@@ -1338,7 +1346,7 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					store = pointer(p)
 					j += tl
 				}
-			} else {
+			} else if (dataType == 0x48) {
 				if num, tl, err = stack.getBig(param[j:]); err != nil {
 					return err
 				}
@@ -1349,8 +1357,37 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					scratch = append(scratch, nil)
 					lim++
 				}
+			} else {
+				var qnum int64
+				if qnum, tl, err = stack.getNum(param[j:], dataType); err != nil {
+					return err
+				}
+				j += tl
+
+				scratch[top] = big.NewInt(qnum)
+				top++
+				if top == lim {
+					scratch = append(scratch, nil)
+					lim++
+				}
 			}
 			dataType = 0x48
+
+		case 'B', 'W', 'D', 'Q':
+			dataType = param[j]
+
+		case 'P':	// deference as address
+			tp := pointer(scratch[top-1].Int64());
+			if tp, err = stack.toPointer(&tp); err != nil {
+				scratch[top-1].SetInt64(int64(tp))
+				return err;
+			}
+
+		case 'Z':	// deference as big
+			tp := pointer(scratch[top-1].Int64());
+			if scratch[top-1], err = stack.toBig(&tp); err != nil {
+				return err;
+			}
 
 		case '+':	// +
 			scratch[top-1] = scratch[top-1].Add(scratch[top-1], scratch[top])
@@ -2587,66 +2624,6 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return fmt.Errorf("Malformed parameters")
 }
 
-/*
-func opCodeCopy(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
-//	{patOperand, 0xFFFFFFFF},
-//	{addrOperand, 0xFFFFFFFF},
-//	{patOperand, 0xFFFFFFFF},
-	param := contract.GetBytes(*pc)
-
-	ln := len(param)
-
-	num := int64(0)
-	top := 0
-
-	var dest pointer
-	var offset int32
-	var tl int
-	var err error
-	dataType := []byte{0xFF, 0x44, 0x44}
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case '0', '1', '2', '3', '4', '5',
-			'6', '7', '8', '9', 'a', 'b', 'c',
-			'd', 'e', 'f', 'x', 'i', 'g':
-			if num, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
-				return err
-			}
-			j += tl
-
-			switch top {
-			case 0:
-				dest = pointer(num)
-
-			case 1:
-				offset = int32(num) + int32(*pc)
-
-			case 2:
-				d0 := (dest & 0xFFFFFFFF)
-				d := d0 + 4
-				s := dest >> 32
-				ln := uint32(0)
-				for ; num > 0; num-- {
-					stack.data[s].space[d] = byte(contract.Code[offset].op)
-					d++
-					copy(stack.data[s].space[d:], contract.Code[offset].param)
-					d += pointer(int32(len(contract.Code[offset].param)))
-					stack.data[s].space[d] = 10
-					d++
-					ln += 2 + uint32(len(contract.Code[offset].param))
-					offset++
-				}
-				binary.LittleEndian.PutUint32(stack.data[s].space[d0:], ln)
-				return nil
-			}
-			top++
-		}
-	}
-	return fmt.Errorf("Malformed parameters")
-}
- */
-
 func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	evm.StateDB[contract.Address()].Suicide()
 	return nil
@@ -2670,115 +2647,6 @@ func opReturn(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	stack.data = stack.data[:n]
 	return nil
 }
-
-/*
-func opTxIOCount(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
-	param := contract.GetBytes(*pc)
-
-	var scratch [3]pointer
-
-	ln := len(param)
-
-	top := 0
-	num := int64(0)
-	var tl int
-	var err error
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case '0', '1', '2', '3', '4', '5',
-			'6', '7', '8', '9', 'a', 'b', 'c',
-			'd', 'e', 'f', 'x', 'i', 'g':
-			if num, tl, err = stack.getNum(param[j:], 0xFF); err != nil {
-				return err
-			}
-			j += tl
-
-			scratch[top] = pointer(num)
-			num = 0
-			top++
-
-		default:
-			return fmt.Errorf("Malformed expression")
-		}
-	}
-
-	tx := evm.GetTx()
-	if err := stack.saveInt32(&scratch[0], int32(len(tx.MsgTx().TxIn))); err != nil {
-		return err
-	}
-	if err := stack.saveInt32(&scratch[1], int32(len(tx.MsgTx().TxOut))); err != nil {
-		return err
-	}
-	return stack.saveInt32(&scratch[2], int32(len(tx.MsgTx().TxDef)))
-}
-
-func opGetTxIn(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
-	return opGetTxIO(pc, evm, contract, stack, true)
-}
-
-func opGetTxIO(pc *int, evm *OVM, contract *Contract, stack *Stack, in bool) error {
-	param := contract.GetBytes(*pc)
-
-	ln := len(param)
-
-	top := 0
-	num := int64(0)
-	inid := int32(0)
-	var dest pointer
-	var tl int
-	var err error
-	dataType := byte(0xFF)
-
-	var op wire.OutPoint
-
-	tx := evm.GetTx()
-
-	for j := 0; j < ln; j++ {
-		switch param[j] {
-		case '0', '1', '2', '3', '4', '5',
-			'6', '7', '8', '9', 'a', 'b', 'c',
-			'd', 'e', 'f', 'x', 'i', 'g':
-			if num, tl, err = stack.getNum(param[j:], dataType); err != nil {
-				return err
-			}
-			dataType = 0x44
-			j += tl
-
-			switch top {
-			case 0:
-				dest = pointer(num)
-
-			case 1:
-				inid = int32(num)
-			}
-			top++
-
-		default:
-			return fmt.Errorf("Malformed expression")
-		}
-	}
-
-	var tue * wire.TxOut
-
-	if in {
-		op = tx.MsgTx().TxIn[inid].PreviousOutPoint
-		evm.views.Utxo.FetchUtxosMain(evm.views.Db, map[wire.OutPoint]struct{}{op: {}})
-		ue := evm.views.Utxo.LookupEntry(op)
-		tue = ue.ToTxOut()
-	} else {
-		tue = tx.MsgTx().TxOut[inid]
-	}
-
-	var w bytes.Buffer
-	tue.Write(&w, 0, 0, wire.SignatureEncoding)
-	return stack.saveBytes(&dest, w.Bytes())
-}
-
-func opGetTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
-	return opGetTxIO(pc, evm, contract, stack, false)
-}
- */
 
 var negHash = chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
