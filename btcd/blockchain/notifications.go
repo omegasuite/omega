@@ -67,6 +67,8 @@ type Notification struct {
 // NotificationType for details on the types and contents of notifications.
 func (b *BlockChain) Subscribe(callback NotificationCallback) int {
 	b.notificationsLock.Lock()
+	defer b.notificationsLock.Unlock()
+
 	for i, f := range b.notifications {
 		if f == nil {
 			b.notifications[i] = callback
@@ -75,7 +77,6 @@ func (b *BlockChain) Subscribe(callback NotificationCallback) int {
 	}
 	ind := len(b.notifications)
 	b.notifications = append(b.notifications, callback)
-	b.notificationsLock.Unlock()
 
 	return ind
 }
@@ -99,6 +100,8 @@ func (b *BlockChain) SendNotification(typ NotificationType, data interface{}) {
 func (b *BlockChain) CancelNotification(index int) {
 	// Generate and send the notification.
 	b.notificationsLock.RLock()
+	defer b.notificationsLock.RUnlock()
+
 	if index == len(b.notifications) - 1 {
 		for {
 			b.notifications = b.notifications[:index]
@@ -110,5 +113,4 @@ func (b *BlockChain) CancelNotification(index int) {
 	} else if index < len(b.notifications) - 1 {
 		b.notifications[index] = nil
 	}
-	b.notificationsLock.RUnlock()
 }

@@ -45,7 +45,7 @@ type (
 
 	// AddRight adds an right definition to the transaction template for currect transaction
 	// and is used by the ADDTXIN EVM op code.
-	AddRightFunc func(*token.RightDef) chainhash.Hash
+	AddRightFunc func(token.Definition) chainhash.Hash
 
 	// AddTxOutput adds an output to  the transaction template for currect transaction
 	// and is used by the ADDTXOUT EVM op code.

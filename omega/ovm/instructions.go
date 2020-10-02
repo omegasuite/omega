@@ -828,6 +828,11 @@ func opEval64(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		case 'u':	// u
 			unsigned = true
 
+		case 'P':	// deference
+			if scratch[top-1],err = stack.toPointer(&scratch[top-1]); err != nil {
+				return err;
+			}
+
 		case '+':	// +
 			if unsigned {
 				scratch[top-1] = int64(uint64(scratch[top-1]) + uint64(scratch[top]))
@@ -2428,6 +2433,7 @@ func opCopyImm(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var err error
 	var h []byte
 	var hash chainhash.Hash
+	var dlen int64;
 
 	dataType := byte(0xFF)
 
@@ -2435,6 +2441,13 @@ func opCopyImm(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		switch param[j] {
 		case 'R', 'r', 'B', 'W', 'D', 'Q', 'H', 'h', 'k', 'K':	// b
 			dataType = param[j]
+
+		case 'L':
+			dataType = 'L';
+			if dlen, tl, err = stack.getNum(param[j+1:], dataType); err != nil {
+				return err
+			}
+			j += tl + 1
 
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
@@ -2450,6 +2463,10 @@ func opCopyImm(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 			case 'h', 'H':
 				if hash, tl, err = stack.getHash(param[j:]); err != nil {
+					return err
+				}
+			case 'L':
+				if h, tl, err = stack.getBytes(param[j:], dataType, uint32(dlen)); err != nil {
 					return err
 				}
 			}
@@ -2494,6 +2511,12 @@ func opCopyImm(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 						return err
 					}
 					dest += 32
+
+				case 'L':
+					if err := stack.saveBytes(&dest, h[:dlen]); err != nil {
+						return err
+					}
+					dest += pointer(dlen)
 			}
 		}
 	}
@@ -2840,6 +2863,7 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	num := int64(0)
 	var tl int
 	var err error
+	var defType byte
 	dest := pointer(0)
 
 	for j := 0; j < ln; j++ {
@@ -2858,15 +2882,29 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	tk := token.RightDef{}
+	defType = stack.data[num >> 32].space[num & 0xFFFFFFFF]
+	var tk token.Definition
+
+	switch defType {
+	case token.DefTypeRight:
+		tk = &token.RightDef{}
+
+	case token.DefTypeRightSet:
+		tk = &token.RightSetDef{}
+
+	default:
+		return fmt.Errorf("Unknown definition type")
+	}
+
 	var r bytes.Reader
 
+	num++
 	r.Reset(stack.data[num >> 32].space[num & 0xFFFFFFFF:])
 	if err := tk.MemRead(&r, 0); err != nil {
 		return err
 	}
 
-	hash := evm.AddRight(&tk)
+	hash := evm.AddRight(tk)
 
 	if dest != pointer(0) {
 		stack.saveHash(&dest, hash)
@@ -3109,24 +3147,56 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	t := evm.GetUtxo(tx, uint64(seq))
 
 	if t == nil {
-		stack.saveInt64(&dest, 0)
 		return nil
 	}
 
-	var w bytes.Buffer
-	t.Write(&w, 0, 1, wire.SignatureEncoding)
-	buf := w.Bytes()
+	coin := t.Token
+	var olddest = dest
+
+	if err := stack.saveInt64(&dest, int64(coin.TokenType)); err != nil {
+		return err
+	}
+
+	dest += 8
+	if coin.TokenType & 1 == 0 {
+		if err := stack.saveInt64(&dest, coin.Value.(*token.NumToken).Val); err != nil {
+			return err
+		}
+		dest += 8
+	} else {
+		if err := stack.saveHash(&dest, coin.Value.(*token.HashToken).Hash); err != nil {
+			return err
+		}
+		dest += 32
+	}
+	if coin.TokenType & 2 == 2 {
+		if coin.Rights != nil {
+			if err := stack.saveHash(&dest, *coin.Rights); err != nil {
+				return err
+			}
+		} else {
+			if err := stack.saveHash(&dest, chainhash.Hash{}); err != nil {
+				return err
+			}
+		}
+	}
+	dest = olddest + 8 + 32 + 32
+
+	var pkl = int32(len(t.PkScript))
+	if err := stack.saveInt32(&dest, pkl); err != nil {
+		return err
+	}
+	dest += 4
 
 	var p pointer
 	if int64(dest >> 32) == int64(len(stack.data) - 1) {
-		p,_ = stack.alloc(len(buf))
+		p,_ = stack.alloc(len(t.PkScript))
 	} else {
-		p,_ = stack.malloc(len(buf))
+		p,_ = stack.malloc(len(t.PkScript))
 	}
-	if err := stack.saveInt64(&dest, int64(p)); err != nil {
-		return err
-	}
-	return stack.saveBytes(&p, buf)
+	stack.saveBytes(&p, t.PkScript)
+
+	return stack.saveInt64(&dest, int64(p))
 }
 
 func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) error {

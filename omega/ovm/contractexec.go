@@ -88,7 +88,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ctx.BlockTime = func() uint32 { return 0 }
 	ctx.Block = func() *btcutil.Block { return nil }
-	ctx.AddRight = func(t *token.RightDef) chainhash.Hash { return chainhash.Hash{} }
+	ctx.AddRight = func(t token.Definition) chainhash.Hash { return chainhash.Hash{} }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
 
 	ovm := NewSigVM(chainParams)
@@ -190,7 +190,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 					ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 					ovm.BlockTime = func() uint32 { return 0 }
 					ovm.Block = func() *btcutil.Block { return nil }
-					ovm.AddRight = func(t *token.RightDef) chainhash.Hash { return chainhash.Hash{} }
+					ovm.AddRight = func(t token.Definition) chainhash.Hash { return chainhash.Hash{} }
 					ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
 					ovm.NoLoop = true
 					ovm.interpreter.readOnly = true
@@ -397,9 +397,17 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 			break
 		}
 
-		atomic.AddInt32(&toverify, 1)
+		sig := tx.MsgTx().SignatureScripts[txin.SignatureIndex]
+		if len(sig) > 0 {
+			atomic.AddInt32(&toverify, 1)
+			queue <- tbv{txinidx, txin.PreviousOutPoint, sig, code}
+		} else {
+			allrun = true
+			close(queue)
+			<- final
 
-		queue <- tbv { txinidx, txin.PreviousOutPoint, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
+			return omega.ScriptError(omega.ErrInternal, "Missing signature.")
+		}
 	}
 
 	allrun = true
@@ -431,7 +439,7 @@ func (ovm * OVM) ContractCall(addr Address, input []byte) ([]byte, error) {
 	ovm.GetTx = func () * btcutil.Tx { return nil }
 	ovm.AddTxOutput = func(t wire.TxOut) int {	return -1 }
 	ovm.Spend = func(t wire.OutPoint) bool { return false }
-	ovm.AddRight = func(t *token.RightDef) chainhash.Hash { return chainhash.Hash{} }
+	ovm.AddRight = func(t token.Definition) chainhash.Hash { return chainhash.Hash{} }
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
 
 	ovm.NoLoop = false
@@ -470,7 +478,7 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 		tx.AddTxIn(t)
 		return true
 	}
-	ovm.AddRight = func(t *token.RightDef) chainhash.Hash {
+	ovm.AddRight = func(t token.Definition) chainhash.Hash {
 		return tx.AddDef(t)
 	}
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
@@ -587,7 +595,7 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 		tx.AddTxIn(t)
 		return true
 	}
-	ovm.AddRight = func(t *token.RightDef) chainhash.Hash {
+	ovm.AddRight = func(t token.Definition) chainhash.Hash {
 		return tx.AddDef(t)
 	}
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {

@@ -4790,6 +4790,8 @@ func (s *rpcServer) Start() {
 		return
 	}
 
+	s.sendcmdconfirmation = make(map[chainhash.Hash]chan *wire.MsgTx)
+
 	rpcsLog.Trace("Starting RPC server")
 	rpcServeMux := http.NewServeMux()
 	httpServer := &http.Server{
