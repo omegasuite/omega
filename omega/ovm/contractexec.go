@@ -399,22 +399,19 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 
 		atomic.AddInt32(&toverify, 1)
 		queue <- tbv { txinidx, txin.PreviousOutPoint, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
-
 /*
 		sig := tx.MsgTx().SignatureScripts[txin.SignatureIndex]
 		if len(sig) > 0 {
 			atomic.AddInt32(&toverify, 1)
 			queue <- tbv{txinidx, txin.PreviousOutPoint, sig, code}
 		} else {
-			break;
-
 			allrun = true
 			close(queue)
-			<- final
+//			<- final
 
 			return omega.ScriptError(omega.ErrInternal, "Missing signature.")
 		}
-*/
+ */
 	}
 
 	allrun = true

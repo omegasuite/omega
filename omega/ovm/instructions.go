@@ -240,6 +240,9 @@ func opEval8(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		case 'u':	// u
 			unsigned = true
 
+		case 'B', 'W', 'D', 'Q', 'H':
+			dataType = 0x42
+
 		case '+':	// +
 			if unsigned {
 				scratch[top-1] = int8(uint8(scratch[top-1]) + uint8(scratch[top]))
@@ -432,6 +435,9 @@ func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case 'B':
 			dataType = param[j]
+
+		case 'W', 'D', 'Q', 'H':
+			dataType = 0x57
 
 		case 'u':	// u
 			unsigned = true
@@ -630,6 +636,9 @@ func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case 'B', 'W':
 			dataType = param[j]
+
+		case 'D', 'Q', 'H':
+			dataType = 0x44
 
 		case 'u':	// u
 			unsigned = true
@@ -833,6 +842,9 @@ func opEval64(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case 'B', 'W', 'D':
 			dataType = param[j]
+
+		case 'Q', 'H':
+			dataType = 0x51
 
 		case 'u':	// u
 			unsigned = true
@@ -1373,7 +1385,7 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 			dataType = 0x48
 
-		case 'B', 'W', 'D', 'Q':
+		case 'B', 'W', 'D', 'Q', 'H':
 			dataType = param[j]
 
 		case 'P':	// deference as address
