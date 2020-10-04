@@ -54,6 +54,9 @@ type stateDB struct {
 
 	// fresh flag
 	fresh bool
+
+	// only used in destruct, indicate whether to transfer mint
+	transferrable bool
 }
 
 func NewStateDB(db database.DB, addr [20]byte) *stateDB {

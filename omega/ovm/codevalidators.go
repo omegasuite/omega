@@ -13,7 +13,7 @@ var addrOperand = regexp.MustCompile(`^n?g?i+(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9
 var numOperand = regexp.MustCompile(`^n?(([kK]?[xa-f][0-9a-f]+)|([0-9]+)),`)
 var patNum = regexp.MustCompile(`[0-9a-f]+`)
 var patHex = regexp.MustCompile(`[xa-f]`)
-var dataType = regexp.MustCompile(`^[rRBWDQHhkK]`)
+var dataType = regexp.MustCompile(`^[rRBWDQHhkK]|(L[0-9]+,)`)
 
 func getNum(param []byte) (int64, int) {
 	s := patOperand.Find(param)
@@ -393,7 +393,7 @@ func opCopyValidator(param []byte) int {
 }
 
 var formatImm = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {dataType, 0}, {patOperand, 0},
+	{addrOperand, 0xFFFFFFFF}, {dataType, 0}, {numOperand, 0},
 }
 
 func opCopyImmValidator(param []byte) int {
@@ -430,7 +430,7 @@ func opCodeCopyValidator(param []byte) int {
  */
 
 var formatSuicide = []formatDesc{
-	{patOperand, 0},
+	{patOperand, 0}, {patOperand, 0},
 }
 
 func opSuicideValidator(param []byte) int {

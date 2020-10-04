@@ -447,11 +447,11 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	}
 
 	var (
-		snapshot *stateDB
+		snapshot map[Address]*stateDB
 	)
-	if _,ok := evm.StateDB[d]; ok {
-		t := evm.StateDB[d].Copy()
-		snapshot = &t
+	for adr, db := range evm.StateDB {
+		t := db.Copy()
+		snapshot[adr] = &t
 	}
 
 	if method[0] > 0 && bytes.Compare(method[1:], []byte{0, 0, 0}) == 0 {
@@ -479,7 +479,7 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in homestead this also counts for code storage gas errors.
 	if err != nil || !evm.writeback {
-		evm.StateDB[d] = snapshot
+		evm.StateDB = snapshot
 	}
 	return ret, err
 }

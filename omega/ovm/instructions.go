@@ -10,6 +10,7 @@ import (
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/omega"
 	"github.com/omegasuite/omega/viewpoint"
 	"math"
 	"math/big"
@@ -2237,7 +2238,6 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				evm.contractStack = append(evm.contractStack, toAddr)
 
 				ret, err := evm.Call(toAddr, args[:4], value, args)		// nil=>value
-
 				evm.contractStack = evm.contractStack[:len(evm.contractStack) - 1]
 
 				if err != nil {
@@ -2637,6 +2637,103 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+	param := contract.GetBytes(*pc)
+
+	ln := len(param)
+
+	var tl int
+	var err error
+	var h []byte
+	var dlen int64;
+	top := 0
+
+	dataType := []byte{'D', 'L'}
+
+	for j := 0; j < ln; j++ {
+		switch param[j] {
+		case '0', '1', '2', '3', '4', '5',
+			'6', '7', '8', '9', 'a', 'b', 'c',
+			'd', 'e', 'f', 'x', 'i', 'g':
+			switch dataType[top] {
+			case 'D':
+				if dlen, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
+					return err
+				}
+
+			case 'L':
+				if h, tl, err = stack.getBytes(param[j:], dataType[top], uint32(dlen)); err != nil {
+					return err
+				}
+			}
+			j += tl
+			top++
+		}
+	}
+
+	mtype, _ := evm.StateDB[contract.Address()].GetMint()
+	if (dlen != 0 && len(h) > 20 && mtype != 0) {
+		// exec contract
+		version, addr, method, cparam := parsePkScript(h)
+
+		if addr == nil {
+			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+		}
+		if zeroaddr(addr) {
+			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+		}
+		if !isContract(version) {
+			return omega.ScriptError(omega.ErrInternal, "Script is not a contract exec.")
+		}
+
+		var d Address
+		copy(d[:], addr)
+
+		if d == contract.Address() {
+			return omega.ScriptError(omega.ErrInternal, "Trying to trans mint to itself.")
+		}
+
+		if _,ok := evm.StateDB[d]; !ok {
+			t := NewStateDB(evm.views.Db, d)
+
+			if !t.Exists(true) {
+				return omega.ScriptError(omega.ErrInternal, "Contract does not exist.")
+			}
+
+			evm.StateDB[d] = t
+		}
+
+		for _,toAddr := range evm.contractStack {
+			if d == toAddr {
+				return fmt.Errorf("Circular contract calls.")
+			}
+		}
+
+		tx := evm.GetTx()
+		msg := tx.MsgTx()
+		if !tx.HasOuts {
+			// this servers as a separater. only TokenType is serialized
+			to := wire.TxOut{}
+			to.Token = token.Token{TokenType:token.DefTypeSeparator}
+			msg.AddTxOut(&to)
+			tx.HasOuts = true
+		}
+		msg.AddTxOut(&wire.TxOut{PkScript:h, Token:token.Token{}})
+
+		evm.contractStack = append(evm.contractStack, d)
+		evm.TokenTypes[mtype] = contract.Address()
+
+		evm.StateDB[contract.Address()].transferrable = true;
+		_, err := evm.Call(d, method, nil, cparam)
+
+		if evm.StateDB[contract.Address()].transferrable {
+			err = omega.ScriptError(omega.ErrInternal, "Mint not transferred.")
+		}
+		if err != nil {
+			evm.TokenTypes[mtype] = contract.Address()
+			return err
+		}
+	}
+
 	evm.StateDB[contract.Address()].Suicide()
 	return nil
 }
@@ -3239,6 +3336,20 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	if mtype == 0 {
 		if adr,ok := ovm.TokenTypes[tokentype]; ok {
 			if adr != address {
+				if ovm.StateDB[address].transferrable {
+					mtype, issue := ovm.StateDB[adr].GetMint()
+					if mtype == tokentype {
+						ovm.TokenTypes[tokentype] = address
+						ovm.StateDB[address].transferrable = false
+						c := make([]byte, 16)
+
+						binary.LittleEndian.PutUint64(c, tokentype)
+						binary.LittleEndian.PutUint64(c[8:], issue)
+
+						ovm.setMeta(address, "mint", c[:])
+						return nil
+					}
+				}
 				return fmt.Errorf("The tokentype %d has already been used by another smart contract.")
 			}
 		} else {
