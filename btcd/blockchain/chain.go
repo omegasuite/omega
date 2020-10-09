@@ -541,14 +541,13 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 
 	// Generate a new best state snapshot that will be used to update the
 	// database and later memory if all database updates are successful.
-	b.StateLock.RLock()
-	curTotalTxns := b.stateSnapshot.TotalTxns
-	b.StateLock.RUnlock()
+	bst := b.BestSnapshot()
+//	b.StateLock.RLock()
+	curTotalTxns := bst.TotalTxns
+//	b.StateLock.RUnlock()
 	numTxns := uint64(len(block.MsgBlock().Transactions))
 	blockSize := uint64(block.MsgBlock().SerializeSize())
 //	blockLimit := uint64(b.GetBlockLimit(block))
-
-	bst := b.BestSnapshot()
 
 	state := newBestState(node, blockSize, numTxns,
 		curTotalTxns+numTxns, node.CalcPastMedianTime(), bst.Bits,
@@ -616,11 +615,13 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	view.Commit()
 	vm.Commit()
 
+	// update blocklist
+	b.Blacklist.Update(uint32(node.Height))
+
 	// This node is now the end of the best chain.
 	b.BestChain.SetTip(node)
 
-	// update blocklist
-	b.Blacklist.Update(uint32(node.Height))
+	fmt.Printf("connectBlock: tip updated to %d\n", node.Height)
 
 	// Update the state for the best block.  Notice how this replaces the
 	// entire struct instead of updating the existing one.  This effectively
@@ -630,6 +631,8 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	b.StateLock.Lock()
 	b.stateSnapshot = state
 	b.StateLock.Unlock()
+
+	fmt.Printf("connectBlock: stateSnapshot updated to %d\n", state.Height)
 
 	// Notify the caller that the block was connected to the main chain.
 	// The caller would typically want to react with actions such as
@@ -782,7 +785,8 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	}
 
 	// This node's parent is now the end of the best chain.
-	b.BestChain.SetTip(node.Parent)
+	b.BestChain.SetTip(prevNode)
+	fmt.Printf("disconnectBlock: tip updated to %d\n", node.Height)
 
 	// Update the state for the best block.  Notice how this replaces the
 	// entire struct instead of updating the existing one.  This effectively
@@ -792,6 +796,8 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	b.StateLock.Lock()
 	b.stateSnapshot = state
 	b.StateLock.Unlock()
+
+	fmt.Printf("disconnectBlock: stateSnapshot updated to %d\n", state.Height)
 
 	// Notify the caller that the block was disconnected from the main
 	// chain.  The caller would typically want to react with actions such as

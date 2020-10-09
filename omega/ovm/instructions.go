@@ -1356,7 +1356,8 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				if p, tl, err := stack.getNum(param[j:], 0xFF); err != nil {
 					return err
 				} else {
-					store = pointer(p)
+					scratch[top] = big.NewInt(p)
+					top++
 					j += tl
 				}
 			} else if (dataType == 0x48) {
@@ -1508,8 +1509,14 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
+	if top < 2 {
+		return nil
+	}
+
 	var h chainhash.Hash
-	copy(h[:], scratch[0].Bytes())
+	copy(h[:], scratch[top-1].Bytes())
+	store = pointer(scratch[0].Int64())
+
 	return stack.saveHash(&store, h)
 }
 
@@ -1846,7 +1853,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	binary.LittleEndian.PutUint32(f.space[4:], uint32(len(stack.data)))
 	inlen := 0
 
-	paramTypes := []byte{'L', 'D', 'Q', 0xFF }
+	paramTypes := []byte{'L', 'D', 'Q' }
 
 	isself := true
 	sign := 1
@@ -1858,7 +1865,19 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			sign = -1
 
 		case '@':
-			top++
+			if top == 2 {
+				paramTypes[top] = 0xFF
+			}
+
+		case 'B', 'W', 'D', 'Q':
+			if top == 2 {
+				paramTypes[top] = param[j]
+			}
+
+		case 'H':
+			if top == 2 {
+				paramTypes[top] = 'Q'
+			}
 
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
@@ -1879,7 +1898,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				if _, ok := contract.libs[libAddr]; !ok {
 					return fmt.Errorf("Lib not loaded")
 				}
-				isself = allZero(libAddr[:])
+				isself = allZero(libAddr[:]) || bytes.Compare(libAddr[:], stack.data[len(stack.data) - 1].inlib[:]) == 0
 				top++
 
 			case 1:
@@ -1894,7 +1913,6 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				top++
 
 			case 3:
-				top--
 				fallthrough
 
 			case 2:
@@ -2170,6 +2188,7 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var datalen int32
 	var tl int
 	var err error
+	var args []byte
 
 	paramTypes := []byte{0xFF, 0x48, 0xFF, 0xFF, 0x44}
 
@@ -2212,67 +2231,64 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			case 4:
 				datalen = int32(num)
 
-				args := stack.data[data >> 32].space[data & 0xFFFFFFFF:int32(int64(data) & 0xFFFFFFFF) + datalen]
+				args = stack.data[data >> 32].space[data & 0xFFFFFFFF:int32(int64(data) & 0xFFFFFFFF) + datalen]
 
-				pks := make([]byte, 25 + len(args))
-				pks[0] = 1
-				copy(pks[1:], toAddr[:])
-				copy(pks[21:], args)
-
-				tx := evm.GetTx()
-				msg := tx.MsgTx()
-				if !tx.HasOuts {
-					// this servers as a separater. only TokenType is serialized
-					to := wire.TxOut{}
-					to.Token = token.Token{TokenType:token.DefTypeSeparator}
-					msg.AddTxOut(&to)
-					tx.HasOuts = true
-				}
-				msg.AddTxOut(&wire.TxOut{PkScript:pks, Token:*value})
-
-				for _,d := range evm.contractStack {
-					if d == toAddr {
-						return fmt.Errorf("Circular contract calls.")
-					}
-				}
-				evm.contractStack = append(evm.contractStack, toAddr)
-
-				ret, err := evm.Call(toAddr, args[:4], value, args)		// nil=>value
-				evm.contractStack = evm.contractStack[:len(evm.contractStack) - 1]
-
-				if err != nil {
-					return err
-				}
-
-				m := len(ret)
-				if retspace != 0 && m > 0 {
-					var p pointer
-					if int64(retspace) >> 32 == int64(len(stack.data)) - 1 {
-						p,_ = stack.alloc(m)
-					} else {
-						p,_ = stack.malloc(m)
-					}
-					copy(stack.data[p >> 32].space[p & 0xFFFFFFFF:], ret)
-					if err := stack.saveInt64(&retspace, int64(p)); err != nil {
-						return err
-					}
-					retspace += 8
-					if err := stack.saveInt32(&retspace, int32(m)); err != nil {
-						return err
-					}
-				}
-
-//				if err == nil && value != nil {
-//					outp,_ := evm.GetCurrentOutput()
-//					evm.StateDB[toAddr].credit(outp, *value)
-//				}
-
-				return err
+			default:
+				return fmt.Errorf("Malformed parameters")
 			}
 			top++
 		}
 	}
-	return fmt.Errorf("Malformed parameters")
+
+	pks := make([]byte, 25 + len(args))
+	pks[0] = 1
+	copy(pks[1:], toAddr[:])
+	copy(pks[21:], args)
+
+	tx := evm.GetTx()
+	msg := tx.MsgTx()
+	if !tx.HasOuts {
+		// this servers as a separater. only TokenType is serialized
+		to := wire.TxOut{}
+		to.Token = token.Token{TokenType:token.DefTypeSeparator}
+		msg.AddTxOut(&to)
+		tx.HasOuts = true
+	}
+	msg.AddTxOut(&wire.TxOut{PkScript:pks, Token:*value})
+
+	for _,d := range evm.contractStack {
+		if d == toAddr {
+			return fmt.Errorf("Circular contract calls.")
+		}
+	}
+	evm.contractStack = append(evm.contractStack, toAddr)
+
+	ret, err := evm.Call(toAddr, args[:4], value, args)		// nil=>value
+	evm.contractStack = evm.contractStack[:len(evm.contractStack) - 1]
+
+	if err != nil {
+		return err
+	}
+
+	m := len(ret)
+	if retspace != 0 && m > 0 {
+		var p pointer
+		if int64(retspace) >> 32 == int64(len(stack.data)) - 1 {
+			p,_ = stack.alloc(m)
+		} else {
+			p,_ = stack.malloc(m)
+		}
+		copy(stack.data[p >> 32].space[p & 0xFFFFFFFF:], ret)
+		if err := stack.saveInt64(&retspace, int64(p)); err != nil {
+			return err
+		}
+		retspace += 8
+		if err := stack.saveInt32(&retspace, int32(m)); err != nil {
+			return err
+		}
+	}
+
+	return err
 }
 
 func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
@@ -2294,6 +2310,21 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	for j := 0; j < ln; j++ {
 		dataType := paramTypes[top]
 		switch param[j] {
+		case '@':
+			if top == 2 {
+				paramTypes[top] = 0xFF
+			}
+
+		case 'B', 'W', 'D', 'Q':
+			if top == 2 {
+				paramTypes[top] = param[j]
+			}
+
+		case 'H':
+			if top == 2 {
+				paramTypes[top] = 'Q'
+			}
+
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
@@ -2389,6 +2420,16 @@ func opMAalloc(pc *int, evm *OVM, contract *Contract, stack *Stack, glob bool) e
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
+		case 'B', 'W', 'D', 'Q':
+			if top == 1 {
+				paramType[top] = param[j]
+			}
+
+		case 'H':
+			if top == 1 {
+				paramType[top] = 'Q'
+			}
+
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
@@ -2437,6 +2478,16 @@ func opCopy(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
+		case 'B', 'W', 'D', 'Q':
+			if top == 2 {
+				dtype[top] = param[j]
+			}
+
+		case 'H':
+			if top == 2 {
+				dtype[top] = 'Q'
+			}
+
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
@@ -2651,11 +2702,17 @@ func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
+		case 'B', 'W', 'D':
+			dataType[0] = param[j]
+
+		case 'H', 'Q':
+			dataType[0] = 'D'
+
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
 			switch dataType[top] {
-			case 'D':
+			case 'B', 'W', 'D':
 				if dlen, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
 					return err
 				}
@@ -2749,7 +2806,7 @@ func opStop(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 func opReturn(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	n := len(stack.data) - 1
 	if n <= 0 {
-		return fmt.Errorf("Return not from a Call.")
+		return nil
 	}
 	*pc = stack.data[n].pc
 	contract.pure = stack.data[n].pure
@@ -2773,6 +2830,12 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
+		case 'B', 'W', 'D':
+			dtype[1] = param[j]
+
+		case 'H', 'Q':
+			dtype[1] = 'D'
+
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
@@ -2784,8 +2847,8 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					p.Hash = hash
 				}
 				top++
-			} else if dtype[top] == 0x44 {
-				if num, _, err := stack.getNum(param[j:], 0x44); err != nil {
+			} else {
+				if num, _, err := stack.getNum(param[j:], dtype[top]); err != nil {
 					return err
 				} else {
 					p.Index = uint32(num)
@@ -3098,6 +3161,12 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
+		case 'B', 'W', 'D':
+			dataType[2] = param[j]
+
+		case 'H', 'Q':
+			dataType[2] = 'D'
+
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':

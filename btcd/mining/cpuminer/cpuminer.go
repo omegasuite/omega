@@ -556,9 +556,10 @@ out:
 					break out
 
 				case <-time.After(time.Second * 5):
-					if m.g.Chain.BestSnapshot().Height >= block.Height() {
+					if m.g.Chain.BestSnapshot().Height >= block.Height() || time.Now().Unix() - lastblkgen > 600 {
 						break connected
 					}
+
 					log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
 					consensus.DebugInfo()
 				}

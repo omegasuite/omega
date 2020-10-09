@@ -298,6 +298,8 @@ func (self *Syncer) run() {
 
 	self.repeating = make(chan struct{}, 10)
 
+	begin := time.Now().Unix()
+
 	for going {
 		select {
 		case tree := <- self.newtree:
@@ -489,7 +491,12 @@ func (self *Syncer) run() {
 			}
 
 		case <-ticker.C:
-			self.repeating <- struct{}{}
+			if 	time.Now().Unix() - begin > 600 {
+				log.Infof("sync %d exceeded time limit", self.Height)
+				going = false
+			} else {
+				self.repeating <- struct{}{}
+			}
 		}
 	}
 

@@ -7,6 +7,7 @@ package main
 import (
 	"os"
 	"os/signal"
+	"time"
 )
 
 // shutdownRequestChannel is used to initiate shutdown from one of the
@@ -78,6 +79,10 @@ func interruptListener() <-chan struct{} {
 			}
 		}
  */
+		time.AfterFunc(5 * time.Minute, func() {
+			// forced exit if not shutdown 5 mnin after receiving signal to shutdown
+			os.Exit(9)
+		})
 	}()
 
 	return c

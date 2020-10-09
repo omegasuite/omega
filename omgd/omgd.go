@@ -15,7 +15,9 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
-//	"time"
+	"time"
+
+	//	"time"
 
 	"github.com/omegasuite/btcd/blockchain/indexers"
 	"github.com/omegasuite/btcd/database"
@@ -39,12 +41,17 @@ var (
 // as a service and reacts accordingly.
 var winServiceMain func() (bool, error)
 
+// Set by the linker.
+var CompileTime string
+// go build -ldflags "-X main.CompileTime='$(date)'"
+
 // btcdMain is the real main function for btcd.  It is necessary to work around
 // the fact that deferred functions do not run when os.Exit() is called.  The
 // optional serverChan parameter is mainly used by the service code to be
 // notified with the server once it is setup so it can gracefully stop it when
 // requested from the service control manager.
 func btcdMain(serverChan chan<- *server) error {
+	fmt.Printf("OMGD built at %s\n", CompileTime)
 	// Load configuration and parse command line.  This function also
 	// initializes logging and configures it accordingly.
 	tcfg, _, err := loadConfig()
@@ -219,6 +226,23 @@ func btcdMain(serverChan chan<- *server) error {
 	server.Start()
 	if serverChan != nil {
 		serverChan <- server
+	}
+
+	if !cfg.TestNet && !cfg.SimNet {
+		go func() {
+			state := server.chain.BestSnapshot()
+			h := state.Height
+			for {
+				time.Sleep(30 * time.Minute)
+
+				if (h == state.Height) {
+					break
+				}
+
+				h = state.Height
+			}
+			shutdownRequestChannel <- struct{}{}
+		}()
 	}
 
 	// Wait until the interrupt signal is received from an OS signal or

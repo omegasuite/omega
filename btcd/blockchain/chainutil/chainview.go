@@ -11,7 +11,7 @@ import (
 
 // approxNodesPerWeek is an approximation of the number of new blocks there are
 // in a week on average.
-const approxNodesPerWeek = 6 * 24 * 7
+const approxNodesPerWeek = 6 * 24 * 7 * 200
 
 // log2FloorMasks defines the masks to use when quickly calculating
 // floor(log2(x)) in a constant log2(32) = 5 steps, where x is a uint32, using
