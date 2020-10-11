@@ -298,7 +298,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return false, true, ruleError(ErrExcessContractExec, str), -1
 	}
 
-		// Perform preliminary sanity checks on the block and its transactions.
+	// Perform preliminary sanity checks on the block and its transactions.
 	err = checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return false, false, err, -1

@@ -228,12 +228,13 @@ func btcdMain(serverChan chan<- *server) error {
 		serverChan <- server
 	}
 
-	if !cfg.TestNet && !cfg.SimNet {
+	if cfg.ExitOnStall && !cfg.TestNet && !cfg.SimNet {
 		go func() {
 			state := server.chain.BestSnapshot()
 			h := state.Height
 			for {
 				time.Sleep(30 * time.Minute)
+				state = server.chain.BestSnapshot()
 
 				if (h == state.Height) {
 					break

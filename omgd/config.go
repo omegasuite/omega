@@ -162,6 +162,7 @@ type config struct {
 	whitelists    []*net.IPNet
 	Collateral    []string `long:"Collateral" description:"Mining collateral"`
 	collateral    []wire.OutPoint
+	ExitOnStall   bool          `long:"exitonstall" description:"Exit program when no activity in 30 minutes."`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on

@@ -2123,7 +2123,7 @@ func (sm *SyncManager) Stop() error {
 
 	sm.bshutdown = true
 
-	log.Tracef("Sync manager shutting down. Last message was:\n%s", sm.lastBlockOp)
+//	log.Tracef("Sync manager shutting down. Last message was:\n%s", sm.lastBlockOp)
 
 	close(sm.quit)
 	sm.wg.Wait()

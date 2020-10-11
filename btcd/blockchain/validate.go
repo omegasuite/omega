@@ -386,43 +386,42 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			}
 		}
 	} else {
-		if parent != nil {
-			// examine nonce
-			if parent.Data.GetNonce() > 0 {
-				// if previous block was a POW block, this block must be either a POW block, or a rotate
-				// block that phase out all the previous committee members
-				if header.Nonce != -1 { // - int32(rotate + wire.MINER_RORATE_FREQ + 1) {
-					//				str := fmt.Sprintf("The previous block was a POW block, this block must be either a POW block, or a rotate block that phase out all the previous committee members.")
-					return fmt.Errorf("The previous block was a POW block, this block must be either a POW block, or a rotate block that phase out all the previous committee members."), true
-					// ruleError(ErrHighHash, str)
-				}
-			} else {
-				switch {
-				case parent.Data.GetNonce() == -wire.MINER_RORATE_FREQ+1:
-					// this is a rotation block, nonce must be -(height of next Miner block)
-					if header.Nonce != - int32(rotate+1+wire.MINER_RORATE_FREQ) {
+		if parent == nil {		// never
+			return nil, true
+		}
+
+		pnonce := parent.Data.GetNonce()
+
+		// examine nonce
+		if pnonce > 0 {
+			// if previous block was a POW block, this block must be either a POW block, or a rotate block
+			if header.Nonce != -1 {
+				return fmt.Errorf("The previous block was a POW block, this block must be either a POW block, or a rotate block."), true
+			}
+		} else {
+			switch {
+			case pnonce == -wire.MINER_RORATE_FREQ+1:
+				// this is a rotation block, nonce must be -(height of next Miner block)
+				if header.Nonce != - int32(rotate+1+wire.MINER_RORATE_FREQ) {
 						//					str := fmt.Sprintf("The this is a rotation block, nonce %d must be height of next Miner block %d.", -header.Nonce, rotate + 1 + wire.MINER_RORATE_FREQ)
 						return fmt.Errorf("The this is a rotation block, nonce %d must be height of next Miner block %d.", -header.Nonce, rotate+1+wire.MINER_RORATE_FREQ), true
 						// ruleError(ErrHighHash, str)
 					}
 
-				case parent.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
-					// previous block is a rotation block, this block none must be -1
-					if header.Nonce != -1 {
+			case pnonce <= -wire.MINER_RORATE_FREQ:
+				// previous block is a rotation block, this block none must be -1
+				if header.Nonce != -1 {
 						//					str := fmt.Sprintf("Previous block is a rotation block, this block nonce must be -1.")
 						return fmt.Errorf("Previous block is a rotation block, this block nonce must be -1."), true
 					}
 
-				default:
-					if header.Nonce != parent.Data.GetNonce()-1 {
+			default:
+				if header.Nonce != pnonce-1 {
 						// if parent.Nonce < 0 && header.Nonce != -((-parent.Nonce + 1) % ROT) { error }
 						//					str := fmt.Sprintf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce)
 						return fmt.Errorf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.Data.GetNonce()), true
 					}
-				}
 			}
-		} else {
-			return nil, true
 		}
 
 		if wire.CommitteeSize > 1 && flags&(BFNoConnect|BFSubmission) != 0 {
@@ -452,7 +451,18 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		// examine signatures
 		hash := MakeMinerSigHash(block.Height(), *block.Hash())
 
-		usigns := make(map[[20]byte]struct{})
+		committee := make(map[[20]byte]struct{})
+
+		var imin = false
+		var me [20]byte
+		copy(me[:], b.Miner.ScriptAddress())
+		nsigned := 0
+
+		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
+			mb, _ := b.Miners.BlockByHeight(int32(i))
+			committee[mb.MsgBlock().Miner] = struct{}{}
+			imin = imin || bytes.Compare(me[:], mb.MsgBlock().Miner[:]) == 0
+		}
 
 		for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 			signer, err := btcutil.VerifySigScript(sign, hash, b.ChainParams)
@@ -461,14 +471,37 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			}
 
 			pkh := signer.Hash160()
-			if _, ok := usigns[*pkh]; ok {
-				return fmt.Errorf("Duplicated Miner signature"), false
+			if _,ok := committee[*pkh]; !ok {
+				return fmt.Errorf("Signature does not belongs to miner."), false
 			}
+			delete(committee, *pkh)
 
-			usigns[*pkh] = struct{}{}
+			imin = imin && bytes.Compare(me[:], (*pkh)[:]) != 0
+
+			nsigned++
 		}
-		if len(usigns) < wire.CommitteeSigs {
+		if nsigned < wire.CommitteeSigs {
 			return fmt.Errorf("Insufficient number of Miner signatures."), false
+		}
+		if imin {
+			// add my signature to the block
+			if b.PrivKey == nil {
+				return nil, false
+			}
+			sig, _ := b.PrivKey.Sign(hash)
+			sgs := sig.Serialize()
+
+			fmt.Printf("\t\t\t\tAdding signature")
+
+			Signature := make([]byte, btcec.PubKeyBytesLenCompressed+len(sgs))
+
+			copy(Signature[:], b.PrivKey.PubKey().SerializeCompressed())
+			copy(Signature[btcec.PubKeyBytesLenCompressed:], sgs)
+
+			// add my signature to block
+			block.MsgBlock().Transactions[0].SignatureScripts = append(
+				block.MsgBlock().Transactions[0].SignatureScripts,
+				Signature)
 		}
 	}
 

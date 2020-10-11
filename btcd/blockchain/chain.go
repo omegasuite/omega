@@ -194,6 +194,7 @@ type BlockChain struct {
 	Blacklist BlackList
 
 	Miner btcutil.Address
+	PrivKey *btcec.PrivateKey
 
 	// block size calculator
 	blockSizer sizeCalculator
@@ -621,7 +622,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	// This node is now the end of the best chain.
 	b.BestChain.SetTip(node)
 
-	fmt.Printf("connectBlock: tip updated to %d\n", node.Height)
+//	fmt.Printf("connectBlock: tip updated to %d\n", node.Height)
 
 	// Update the state for the best block.  Notice how this replaces the
 	// entire struct instead of updating the existing one.  This effectively
@@ -632,7 +633,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	b.stateSnapshot = state
 	b.StateLock.Unlock()
 
-	fmt.Printf("connectBlock: stateSnapshot updated to %d\n", state.Height)
+//	fmt.Printf("connectBlock: stateSnapshot updated to %d\n", state.Height)
 
 	// Notify the caller that the block was connected to the main chain.
 	// The caller would typically want to react with actions such as
@@ -786,7 +787,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 
 	// This node's parent is now the end of the best chain.
 	b.BestChain.SetTip(prevNode)
-	fmt.Printf("disconnectBlock: tip updated to %d\n", node.Height)
+//	fmt.Printf("disconnectBlock: tip updated to %d\n", node.Height)
 
 	// Update the state for the best block.  Notice how this replaces the
 	// entire struct instead of updating the existing one.  This effectively
@@ -797,7 +798,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	b.stateSnapshot = state
 	b.StateLock.Unlock()
 
-	fmt.Printf("disconnectBlock: stateSnapshot updated to %d\n", state.Height)
+//	fmt.Printf("disconnectBlock: stateSnapshot updated to %d\n", state.Height)
 
 	// Notify the caller that the block was disconnected from the main
 	// chain.  The caller would typically want to react with actions such as
@@ -2144,6 +2145,7 @@ type Config struct {
 	IndexManager IndexManager
 
 	Miner	btcutil.Address
+	PrivKey *btcec.PrivateKey
 
 	// HashCache defines a transaction hash mid-state cache to use when
 	// validating transactions. This cache has the potential to greatly
@@ -2205,6 +2207,7 @@ func New(config *Config) (*BlockChain, error) {
 		BestChain:           chainutil.NewChainView(nil),
 		Orphans:             chainutil.NewOrphanMgr(),
 		Miner:               config.Miner,
+		PrivKey:			 config.PrivKey,
 	}
 
 	// Initialize the chain state from the passed database.  When the db

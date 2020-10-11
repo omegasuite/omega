@@ -447,7 +447,7 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	}
 
 	var (
-		snapshot map[Address]*stateDB
+		snapshot = make(map[Address]*stateDB)
 	)
 	for adr, db := range evm.StateDB {
 		t := db.Copy()
