@@ -80,7 +80,7 @@ type Syncer struct {
 
 	Height int32
 
-	pending map[string][]Message
+//	pending map[string][]Message
 	pulling map[int32]int
 
 	messages chan Message
@@ -1084,7 +1084,7 @@ func CreateSyncer(h int32) *Syncer {
 
 	p.quit = make(chan struct{})
 	p.Height = h
-	p.pending = make(map[string][]Message, 0)
+//	p.pending = make(map[string][]Message, 0)
 	p.newtree = make(chan tree, wire.CommitteeSize * 3)	// will hold trees before runnable
 	p.messages = make(chan Message, wire.CommitteeSize * 10)
 	p.pulling = make(map[int32]int)
@@ -1121,7 +1121,7 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 	if !self.Runnable || self.Done {
 		log.Infof("validate failed. I'm not runnable")
 //		time.Sleep(time.Second)
-		self.pending[wire.CmdBlock] = append(self.pending[wire.CmdBlock], msg)
+//		self.pending[wire.CmdBlock] = append(self.pending[wire.CmdBlock], msg)
 		return false
 	}
 
@@ -1422,7 +1422,7 @@ func (self *Syncer) DebugInfo() {
 			log.Infof("%x", m)
 		}
 	}
-
+/*
 	if len(self.pending) > 0 {
 		log.Infof("Pending messages:")
 		for _,q := range self.pending {
@@ -1431,6 +1431,7 @@ func (self *Syncer) DebugInfo() {
 			}
 		}
 	}
+ */
 
 	log.Infof("Forrest (%d):", len(self.forest))
 	for w,t := range self.forest {

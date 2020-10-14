@@ -468,12 +468,14 @@ out:
 				payToAddress = m.coinbaseByCommittee(*payToAddr)
 				if len(payToAddress) == 0 {
 					// My this address is not qualified. Use a random in POW mode.
+					log.Infof("Change to POW mining because my address is not qualified.")
 					powMode = true
 					payToAddr = &m.cfg.MiningAddrs[rand.Int() % len(m.cfg.MiningAddrs)]
 					payToAddress = []btcutil.Address{*payToAddr}
 					nonce = 1
 				} else if len(payToAddress) <= wire.CommitteeSize / 2 {
 					// impossible to form a qualified consensus
+					log.Infof("Change to POW mining because insufficient committee members.")
 					powMode = true
 					payToAddress = []btcutil.Address{*payToAddr}
 					nonce = 1
@@ -521,10 +523,14 @@ out:
 
 			// if block is too small, wait upto wire.TimeGap
 			nt := wire.TimeGap - (time.Now().Unix() - lastblkgen)
+			log.Infof("sz = %d blockMaxSize = %d nt = %d", sz, blockMaxSize, nt)
+
 			if sz < int(blockMaxSize) / 2 && nt > 4 {
+				log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 4", sz, blockMaxSize, nt)
 				time.Sleep(time.Duration(nt) / 4 * time.Second)
 				continue
 			} else if sz < int(blockMaxSize) / 2 && nt > 0 {
+				log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 0", sz, blockMaxSize, nt)
 				time.Sleep(time.Duration(nt) * time.Second)
 				continue
 			}
@@ -584,6 +590,7 @@ out:
 
 			case <-time.After(time.Second * wire.TimeGap):
 			}
+			log.Infof("Retry because POW Mining disabled.")
 			continue
 		}
 
@@ -652,6 +659,7 @@ func (m *CPUMiner) coinbaseByCommittee(me btcutil.Address) []btcutil.Address {
 	for i := -int32(wire.CommitteeSize - 1); i <= 0; i++ {
 		if mb, _ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
 			if m.g.Chain.CheckCollateral(mb, blockchain.BFNone) != nil {
+				log.Infof("CheckCollateral failed")
 				continue
 			}
 			adr, _ := btcutil.NewAddressPubKeyHash(mb.MsgBlock().Miner[:], m.cfg.ChainParams)

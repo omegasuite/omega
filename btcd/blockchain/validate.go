@@ -455,7 +455,9 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 
 		var imin = false
 		var me [20]byte
-		copy(me[:], b.Miner.ScriptAddress())
+		if b.Miner != nil {
+			copy(me[:], b.Miner.ScriptAddress())
+		}
 		nsigned := 0
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {

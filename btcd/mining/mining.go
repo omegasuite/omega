@@ -1097,11 +1097,11 @@ func (g *BlkTmplGenerator) ActiveMiner(address btcutil.Address) bool {
 func (g *BlkTmplGenerator) Committee() map[[20]byte]struct{} {
 	h := g.BestSnapshot().LastRotation		// .Chain.LastRotation(g.BestSnapshot().Hash)
 
-//	log.Infof("Get committee at last rotation = %d", h)
+	log.Infof("Get committee at last rotation = %d", h)
 
 	adrs := make(map[[20]byte]struct{})
 
-	for n := h - wire.CommitteeSize; n < h; n++ {
+	for n := h - wire.CommitteeSize + 1; n <= h; n++ {
 		if m,_ := g.Chain.Miners.BlockByHeight(int32(n)); m != nil {
 			adrs[m.MsgBlock().Miner] = struct{}{}
 		}

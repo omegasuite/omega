@@ -325,7 +325,7 @@ func (b *MinerChain) InitThresholdCaches() error {
 			return err
 		}
 	}
-	for id := 0; id < len(b.chainParams.Deployments); id++ {
+	for id := 1; id < len(b.chainParams.Deployments); id++ {
 		deployment := &b.chainParams.Deployments[id]
 		cache := &b.deploymentCaches[id]
 		checker := deploymentChecker{deployment: deployment, chain: b}
