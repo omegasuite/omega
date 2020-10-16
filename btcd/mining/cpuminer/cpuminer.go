@@ -10,6 +10,7 @@ import (
 	"github.com/omegasuite/omega/consensus"
 	"math/big"
 	"math/rand"
+	"github.com/omegasuite/btcd/wire/common"
 	//	"runtime"
 	"sync"
 	"time"
@@ -440,8 +441,9 @@ out:
 			}
 		} else {
 			// pick one from address list
-			payToAddr = &m.cfg.MiningAddrs[rand.Int() % len(m.cfg.MiningAddrs)]
+			payToAddr = &m.cfg.MiningAddrs[rand.Int()%len(m.cfg.MiningAddrs)]
 		}
+
 
 		// Create a new block template using the available transactions
 		// in the memory pool as a source of transactions to potentially
@@ -521,18 +523,20 @@ out:
 			sz := len(block.MsgBlock().Transactions)
 			block.ClearSize()
 
-			// if block is too small, wait upto wire.TimeGap
-			nt := wire.TimeGap - (time.Now().Unix() - lastblkgen)
-			log.Infof("sz = %d blockMaxSize = %d nt = %d", sz, blockMaxSize, nt)
+			if m.g.Chain.ChainParams.Net == common.MainNet {
+				// if block is too small, wait upto wire.TimeGap
+				nt := wire.TimeGap - (time.Now().Unix() - lastblkgen)
+				log.Infof("sz = %d blockMaxSize = %d nt = %d", sz, blockMaxSize, nt)
 
-			if sz < int(blockMaxSize) / 2 && nt > 4 {
-				log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 4", sz, blockMaxSize, nt)
-				time.Sleep(time.Duration(nt) / 4 * time.Second)
-				continue
-			} else if sz < int(blockMaxSize) / 2 && nt > 0 {
-				log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 0", sz, blockMaxSize, nt)
-				time.Sleep(time.Duration(nt) * time.Second)
-				continue
+				if sz < int(blockMaxSize)/2 && nt > 4 {
+					log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 4", sz, blockMaxSize, nt)
+					time.Sleep(time.Duration(nt) / 4 * time.Second)
+					continue
+				} else if sz < int(blockMaxSize)/2 && nt > 0 {
+					log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 0", sz, blockMaxSize, nt)
+					time.Sleep(time.Duration(nt) * time.Second)
+					continue
+				}
 			}
 
 			lastblkgen = time.Now().Unix()
