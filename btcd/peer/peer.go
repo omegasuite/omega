@@ -2405,7 +2405,10 @@ func newPeerBase(origCfg *Config, inbound bool) *Peer {
 		cfg:             cfg, // Copy so caller can't mutate.
 		services:        cfg.Services,
 		protocolVersion: cfg.ProtocolVersion,
+		lastBlock: 0,
+		lastMinerBlock: 0,
 	}
+
 	return &p
 }
 

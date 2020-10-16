@@ -1091,6 +1091,10 @@ func (b *BlockChain) initChainState() error {
 		return nil
 	})
 
+	if err != nil {
+		return err
+	}
+
 	b.blockSizer.knownLimits = b.stateSnapshot.sizeLimits
 
 	log.Debugf("BlockSizer: %v", b.blockSizer)

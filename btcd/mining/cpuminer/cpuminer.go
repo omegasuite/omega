@@ -380,7 +380,7 @@ out:
 				// Non-blocking select to fall through
 		}
 
-		log.Infof("generate Block go!")
+//		log.Infof("generate Block go!")
 
 		// Wait until there is a connection to at least one other peer
 		// since there is no way to relay a found block or receive
@@ -390,8 +390,8 @@ out:
 			m.Stale = true
 			time.Sleep(time.Second * 5)
 			continue
-		} else {
-			log.Infof("ConnectedCount = %d.", ccnt)
+//		} else {
+//			log.Infof("ConnectedCount = %d.", ccnt)
 		}
 
 		// No point in searching for a solution before the chain is
@@ -401,11 +401,11 @@ out:
 		// a block that is in the process of becoming stale.
 
 		isCurrent := m.cfg.IsCurrent()
-		log.Infof("isCurrent = %v.", isCurrent)
+//		log.Infof("isCurrent = %v.", isCurrent)
 
 		bs := m.g.BestSnapshot()
 		curHeight := bs.Height
-		log.Infof("curHeight = %d.", curHeight)
+//		log.Infof("curHeight = %d.", curHeight)
 
 		if curHeight != 0 && !isCurrent {
 			m.Stale = true
@@ -431,7 +431,7 @@ out:
 		var adr [20]byte
 		powMode := true
 
-		log.Infof("committee size = %d.", len(committee))
+//		log.Infof("committee size = %d.", len(committee))
 
 		if m.cfg.SignAddress != nil && len(committee) == wire.CommitteeSize {
 			copy(adr[:], m.cfg.SignAddress.ScriptAddress())
@@ -451,11 +451,11 @@ out:
 
 		payToAddress := []btcutil.Address{*payToAddr}
 
-		log.Infof("powMode = %v.", powMode)
+//		log.Infof("powMode = %v.", powMode)
 
 		nonce := pb
 		if !powMode {
-			log.Infof("Non-POW mode")
+//			log.Infof("Non-POW mode")
 
 			if nonce >= 0 || nonce <= -wire.MINER_RORATE_FREQ {
 				nonce = -1
@@ -470,21 +470,21 @@ out:
 				payToAddress = m.coinbaseByCommittee(*payToAddr)
 				if len(payToAddress) == 0 {
 					// My this address is not qualified. Use a random in POW mode.
-					log.Infof("Change to POW mining because my address is not qualified.")
+//					log.Infof("Change to POW mining because my address is not qualified.")
 					powMode = true
 					payToAddr = &m.cfg.MiningAddrs[rand.Int() % len(m.cfg.MiningAddrs)]
 					payToAddress = []btcutil.Address{*payToAddr}
 					nonce = 1
 				} else if len(payToAddress) <= wire.CommitteeSize / 2 {
 					// impossible to form a qualified consensus
-					log.Infof("Change to POW mining because insufficient committee members.")
+//					log.Infof("Change to POW mining because insufficient committee members.")
 					powMode = true
 					payToAddress = []btcutil.Address{*payToAddr}
 					nonce = 1
 				}
 			}
 		} else {
-			log.Infof("POW mode")
+//			log.Infof("POW mode")
 			nonce = 1
 		}
 
@@ -505,14 +505,14 @@ out:
 			continue
 		}
 
+		wb.Header.Nonce = nonce
+
 		if !powMode && wire.CommitteeSize == 1 {
 			// solo miner, add signature to coinbase, otherwise will add after committee decides
 			mining.AddSignature(block, m.cfg.PrivKeys)
 		}
 
-		wb.Header.Nonce = nonce
-
-		log.Infof("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
+//		log.Infof("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
 
 		if !powMode {
 			block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
@@ -526,7 +526,7 @@ out:
 			if m.g.Chain.ChainParams.Net == common.MainNet {
 				// if block is too small, wait upto wire.TimeGap
 				nt := wire.TimeGap - (time.Now().Unix() - lastblkgen)
-				log.Infof("sz = %d blockMaxSize = %d nt = %d", sz, blockMaxSize, nt)
+//				log.Infof("sz = %d blockMaxSize = %d nt = %d", sz, blockMaxSize, nt)
 
 				if sz < int(blockMaxSize)/2 && nt > 4 {
 					log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 4", sz, blockMaxSize, nt)
@@ -541,17 +541,17 @@ out:
 
 			lastblkgen = time.Now().Unix()
 
-			log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
+//			log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
 			if !m.submitBlock(block) {
 				continue
 			}
-			log.Infof("Waiting for block connected at %d", block.Height())
+//			log.Infof("Waiting for block connected at %d", block.Height())
 
 		connected:
 			for true {
 				select {
 				case blk,ok := <-m.connch:
-					log.Infof("Noticed of new connected block %d", blk)
+//					log.Infof("Noticed of new connected block %d", blk)
 					if !ok || blk >= block.Height() {
 						break connected
 					}
@@ -570,14 +570,14 @@ out:
 						break connected
 					}
 
-					log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
+//					log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
 					consensus.DebugInfo()
 				}
 			}
 
 			m.minedBlock = nil
 
-			log.Infof("Proceed to generate next block")
+//			log.Infof("Proceed to generate next block")
 
 			continue
 		}
@@ -594,7 +594,7 @@ out:
 
 			case <-time.After(time.Second * wire.TimeGap):
 			}
-			log.Infof("Retry because POW Mining disabled.")
+//			log.Infof("Retry because POW Mining disabled.")
 			continue
 		}
 
@@ -618,6 +618,7 @@ out:
 		case <-time.After(time.Second * time.Duration(2*wire.TimeGap+(1<<pows))):
 		}
 
+		
 		fmt.Printf("Try to solve block ")
 
 		// Attempt to solve the block.  The function will exit early

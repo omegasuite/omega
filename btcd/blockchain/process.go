@@ -353,11 +353,11 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	isMainChain, err, missing := b.maybeAcceptBlock(block, flags)
 	if missing > 0 {
-			return false, false, err, missing
+		return false, false, err, missing
 	}
 	if err != nil {
-			return false, false, err, -1
-		}
+		return false, false, err, -1
+	}
 
 	if isMainChain {
 		b.Miners.ProcessOrphans(&b.Miners.BestSnapshot().Hash, BFNone)

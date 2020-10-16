@@ -462,6 +462,9 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
 			mb, _ := b.Miners.BlockByHeight(int32(i))
+			if mb == nil {
+				return nil, true
+			}
 			committee[mb.MsgBlock().Miner] = struct{}{}
 			imin = imin || bytes.Compare(me[:], mb.MsgBlock().Miner[:]) == 0
 		}

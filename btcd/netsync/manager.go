@@ -2211,6 +2211,7 @@ func New(config *Config) (*SyncManager, error) {
 		quit:            make(chan struct{}),
 		feeEstimator:    config.FeeEstimator,
 		syncjobs:		 make([]*pendginGetBlocks, 0),
+		syncPeer: nil,
 	}
 
 	best := sm.chain.BestSnapshot()
