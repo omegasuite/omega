@@ -181,7 +181,7 @@ func btcdMain(serverChan chan<- *server) error {
 		return err
 	}
 	defer func() {
-		if cfg.privateKeys != nil && cfg.Generate {
+		if len(cfg.privateKeys) != 0 && cfg.Generate {
 			btcdLog.Infof("Gracefully shutting down consensus server...")
 			consensus.Shutdown()
 			btcdLog.Infof("consensus Server shutdown complete")
@@ -195,7 +195,7 @@ func btcdMain(serverChan chan<- *server) error {
 		btcdLog.Infof("Server shutdown complete")
 	}()
 
-	if cfg.Generate && cfg.privateKeys == nil {
+	if cfg.Generate && len(cfg.privateKeys) == 0 {
 		// read from stdin. for security.
 		// expect user to do something like: echo privkey | btcd
 		fmt.Printf("Private Key in GIF ... ")
@@ -210,17 +210,19 @@ func btcdMain(serverChan chan<- *server) error {
 					addr := pkaddr.AddressPubKeyHash()
 					if addr.IsForNet(activeNetParams.Params) {
 						cfg.miningAddrs = append(cfg.miningAddrs, addr)
-						cfg.signAddress = addr
-						cfg.privateKeys = privKey
+						cfg.signAddress = append(cfg.signAddress, addr)
+						cfg.privateKeys = append(cfg.privateKeys, privKey)
 					}
 				}
 			}
 		}
 	}
 
-	if cfg.privateKeys != nil && cfg.Generate {
+	if len(cfg.privateKeys) != 0 && cfg.Generate {
 		go consensus.Consensus(server, cfg.signAddress, activeNetParams.Params)
-		btcdLog.Infof("Address of miner %x", cfg.signAddress.ScriptAddress())
+		for _,sa := range cfg.signAddress {
+			btcdLog.Infof("Address of miner %s", sa.String())
+		}
 	}
 
 	server.Start()
@@ -242,6 +244,9 @@ func btcdMain(serverChan chan<- *server) error {
 
 				h = state.Height
 			}
+
+			btcdLog.Infof("Voluntary shutdown after no new block for 30 min.")
+
 			shutdownRequestChannel <- struct{}{}
 		}()
 	}

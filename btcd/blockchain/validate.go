@@ -454,11 +454,10 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		committee := make(map[[20]byte]struct{})
 
 		var imin = false
-		var me [20]byte
-		if b.Miner != nil {
-			copy(me[:], b.Miner.ScriptAddress())
-		}
+		var inkey *btcec.PrivateKey
+
 		nsigned := 0
+		inkey = nil
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
 			mb, _ := b.Miners.BlockByHeight(int32(i))
@@ -466,7 +465,14 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 				return nil, true
 			}
 			committee[mb.MsgBlock().Miner] = struct{}{}
-			imin = imin || bytes.Compare(me[:], mb.MsgBlock().Miner[:]) == 0
+			for j,me := range b.Miner {
+				if !imin {
+					imin = bytes.Compare(me.ScriptAddress(), mb.MsgBlock().Miner[:]) == 0
+					if imin {
+						inkey = b.PrivKey[j]
+					}
+				}
+			}
 		}
 
 		for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
@@ -481,26 +487,25 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			}
 			delete(committee, *pkh)
 
-			imin = imin && bytes.Compare(me[:], (*pkh)[:]) != 0
+			for _,me := range b.Miner {
+				imin = imin && bytes.Compare(me.ScriptAddress(), (*pkh)[:]) != 0
+			}
 
 			nsigned++
 		}
 		if nsigned < wire.CommitteeSigs {
 			return fmt.Errorf("Insufficient number of Miner signatures."), false
 		}
-		if imin {
+		if imin && inkey != nil {
 			// add my signature to the block
-			if b.PrivKey == nil {
-				return nil, false
-			}
-			sig, _ := b.PrivKey.Sign(hash)
+			sig, _ := inkey.Sign(hash)
 			sgs := sig.Serialize()
 
 			fmt.Printf("\t\t\t\tAdding signature")
 
 			Signature := make([]byte, btcec.PubKeyBytesLenCompressed+len(sgs))
 
-			copy(Signature[:], b.PrivKey.PubKey().SerializeCompressed())
+			copy(Signature[:], inkey.PubKey().SerializeCompressed())
 			copy(Signature[btcec.PubKeyBytesLenCompressed:], sgs)
 
 			// add my signature to block

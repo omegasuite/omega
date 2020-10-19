@@ -20,6 +20,7 @@ import (
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
 	"math/big"
+	"math/rand"
 	//	"runtime"
 	"sync"
 	"time"
@@ -71,8 +72,6 @@ type Config struct {
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
 	MiningAddrs []btcutil.Address
-
-	SignAddress btcutil.Address
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -388,18 +387,23 @@ out:
 		
 		// Choose a payment address at random.
 
-		good := true
+		mtch := false
 		for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
 			p, _ := m.g.Chain.Miners.BlockByHeight(curHeight - int32(i))
 			if p == nil {
 				log.Infof("miner.generateBlocks incorrect height %d out of ", curHeight - int32(i), curHeight)
 				continue
 			}
-			if bytes.Compare(p.MsgBlock().Miner[:], m.cfg.SignAddress.ScriptAddress()) == 0 {
-				log.Infof("miner.generateBlocks won't mine because I am block %d before the best block %d", curHeight - int32(i), curHeight)
-				good = false
-				break
+			for _,s := range m.cfg.MiningAddrs {
+				if bytes.Compare(p.MsgBlock().Miner[:], s.ScriptAddress()) == 0 {
+					mtch = true
+				}
 			}
+		}
+
+		if mtch {
+			log.Infof("miner.generateBlocks won't mine because I am in GAP before the best block %d", curHeight)
+			continue
 		}
 
 		// Create a new block template using the available transactions
@@ -408,12 +412,12 @@ out:
 		var template *mining.BlockTemplate
 		var err error
 
-		if good {
-			template, err = m.g.NewMinerBlockTemplate(m.cfg.SignAddress)
+		signAddr := m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
 
-			if err != nil {
-				log.Infof("miner.NewMinerBlockTemplate error: %s", err.Error())
-			}
+		template, err = m.g.NewMinerBlockTemplate(signAddr)
+
+		if err != nil {
+			log.Infof("miner.NewMinerBlockTemplate error: %s", err.Error())
 		}
 		m.submitBlockLock.Unlock()
 		
@@ -439,7 +443,7 @@ out:
 
 		log.Infof("miner Trying to solve block at %d with difficulty %d", template.Height, template.Bits)
 		if m.solveBlock(template, curHeight+1, ticker, quit) {
-			log.Infof("New miner block produced by %x at %d", m.cfg.SignAddress.ScriptAddress(), template.Height)
+			log.Infof("New miner block produced by %x at %d", signAddr.ScriptAddress(), template.Height)
 			m.submitBlock(block)
 		} else {
 			log.Info("miner.solveBlock: No New block produced")

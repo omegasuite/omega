@@ -899,6 +899,18 @@ func NewTryContractCmd(hexTx string) *TryContractCmd {
 }
 
 // SendRawTransactionCmd defines the sendrawtransaction JSON-RPC command.
+type RecastRawTransactionCmd struct {
+}
+
+// NewRecastRawTransactionCmd returns a new instance which can be used to issue a
+// recastrawtransactionCmd JSON-RPC command.
+//
+
+func NewRecastRawTransactionCmd() *RecastRawTransactionCmd {
+	return &RecastRawTransactionCmd{ }
+}
+
+// SendRawTransactionCmd defines the sendrawtransaction JSON-RPC command.
 type SendRawTransactionCmd struct {
 	HexTx         string
 	AllowHighFees *bool `jsonrpcdefault:"false"`
@@ -1091,6 +1103,7 @@ func init() {
 	MustRegisterCmd("reconsiderblock", (*ReconsiderBlockCmd)(nil), flags)
 	MustRegisterCmd("searchrawtransactions", (*SearchRawTransactionsCmd)(nil), flags)
 	MustRegisterCmd("sendrawtransaction", (*SendRawTransactionCmd)(nil), flags)
+	MustRegisterCmd("recastrawtransaction", (*RecastRawTransactionCmd)(nil), flags)
 	MustRegisterCmd("setgenerate", (*SetGenerateCmd)(nil), flags)
 	MustRegisterCmd("stop", (*StopCmd)(nil), flags)
 	MustRegisterCmd("submitblock", (*SubmitBlockCmd)(nil), flags)

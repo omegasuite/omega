@@ -56,7 +56,7 @@ type Miner struct {
 	Sync         map[int32]*Syncer
 	server		 PeerNotifier
 	updateheight chan int32
-	name [20]byte
+	name [][20]byte
 
 	cfg *chaincfg.Params
 
@@ -164,7 +164,7 @@ func CommitteePolling() {
 	DebugInfo()
 }
 
-func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
+func Consensus(s PeerNotifier, addr []btcutil.Address, cfg *chaincfg.Params) {
 	miner = &Miner{}
 	miner.server = s
 	miner.cfg = cfg
@@ -175,9 +175,10 @@ func Consensus(s PeerNotifier, addr btcutil.Address, cfg *chaincfg.Params) {
 	miner.Sync = make(map[int32]*Syncer, 0)
 	miner.syncMutex = sync.Mutex{}
 
-	var name [20]byte
-	copy(name[:], addr.ScriptAddress())
-	miner.name = name
+	miner.name = make([][20]byte, len(addr))
+	for i,name := range addr {
+		copy(miner.name[i][:], name.ScriptAddress())
+	}
 
 	newblockch = make(chan newblock, 2 * wire.CommitteeSize)
 	errMootBlock = fmt.Errorf("Moot block.")
@@ -434,7 +435,7 @@ func DebugInfo() {
 			top = h
 		}
 	}
-	log.Infof("\nI am %x. Miner has %d Syncers\n\nThe top syncer is %d:", miner.name, len(miner.Sync), top)
+	log.Infof("\nMiner has %d Syncers\n\nThe top syncer is %d:", len(miner.Sync), top)
 	for h,s := range miner.Sync {
 		if h < top - 2 {
 			delete(miner.Sync, h)

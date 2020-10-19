@@ -67,8 +67,8 @@ type Config struct {
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
 	MiningAddrs []btcutil.Address
-	SignAddress btcutil.Address
-	PrivKeys    *btcec.PrivateKey
+	SignAddress []btcutil.Address
+	PrivKeys    []*btcec.PrivateKey
 	EnablePOWMining bool
 
 	// ProcessBlock defines the function to call with any solved blocks.
@@ -430,20 +430,26 @@ out:
 
 		var adr [20]byte
 		powMode := true
+		var sigaddr *btcec.PrivateKey
 
 //		log.Infof("committee size = %d.", len(committee))
 
-		if m.cfg.SignAddress != nil && len(committee) == wire.CommitteeSize {
-			copy(adr[:], m.cfg.SignAddress.ScriptAddress())
-			payToAddr = &m.cfg.SignAddress
-			if _, ok := committee[adr]; m.cfg.PrivKeys != nil && ok {
-				powMode = false
+		if len(m.cfg.SignAddress) != 0 && len(committee) == wire.CommitteeSize {
+			for j,pt := range m.cfg.SignAddress {
+				copy(adr[:], pt.ScriptAddress())
+				if _, ok := committee[adr]; ok {
+					payToAddr = &pt
+					sigaddr = m.cfg.PrivKeys[j]
+					powMode = false
+					break
+				}
 			}
-		} else {
+		}
+
+		if powMode {
 			// pick one from address list
 			payToAddr = &m.cfg.MiningAddrs[rand.Int()%len(m.cfg.MiningAddrs)]
 		}
-
 
 		// Create a new block template using the available transactions
 		// in the memory pool as a source of transactions to potentially
@@ -488,7 +494,7 @@ out:
 			nonce = 1
 		}
 
-		template, err := m.g.NewBlockTemplate(payToAddress)
+		template, err := m.g.NewBlockTemplate(payToAddress, nonce)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to create new block template: %v", err)
 			log.Info(errStr)
@@ -505,17 +511,16 @@ out:
 			continue
 		}
 
-		wb.Header.Nonce = nonce
-
-		if !powMode && wire.CommitteeSize == 1 {
-			// solo miner, add signature to coinbase, otherwise will add after committee decides
-			mining.AddSignature(block, m.cfg.PrivKeys)
-		}
-
 //		log.Infof("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
 
 		if !powMode {
-			block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
+			if wire.CommitteeSize == 1 {
+				// solo miner, add signature to coinbase, otherwise will add after committee decides
+				mining.AddSignature(block, sigaddr)
+			} else {
+				block.ClearSize()
+				block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
+			}
 			m.minedBlock = block
 
 			blockMaxSize := m.g.Chain.GetBlockLimit(template.Height)
@@ -523,9 +528,10 @@ out:
 			sz := len(block.MsgBlock().Transactions)
 			block.ClearSize()
 
+			// if block is too small, wait upto wire.TimeGap
+			nt := wire.TimeGap - (time.Now().Unix() - lastblkgen)
+
 			if m.g.Chain.ChainParams.Net == common.MainNet {
-				// if block is too small, wait upto wire.TimeGap
-				nt := wire.TimeGap - (time.Now().Unix() - lastblkgen)
 //				log.Infof("sz = %d blockMaxSize = %d nt = %d", sz, blockMaxSize, nt)
 
 				if sz < int(blockMaxSize)/2 && nt > 4 {
@@ -537,6 +543,10 @@ out:
 					time.Sleep(time.Duration(nt) * time.Second)
 					continue
 				}
+			} else if sz <= 1 && nt > 1 {
+				log.Infof("Re-try be cause %d <= 1 && %d > 1", sz, nt)
+				time.Sleep(time.Duration(nt) * time.Second)
+				continue
 			}
 
 			lastblkgen = time.Now().Unix()

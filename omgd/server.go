@@ -348,8 +348,8 @@ type server struct {
 	// messages for each filter type.
 	cfCheckptCaches    map[wire.FilterType][]cfHeaderKV
 	cfCheckptCachesMtx sync.RWMutex
-	signAddress  	   btcutil.Address
-	privKeys 		   *btcec.PrivateKey
+	signAddress  	   []btcutil.Address
+	privKeys 		   []*btcec.PrivateKey
 	rsaPrivateKey	   *rsa.PrivateKey
 	peerState 		   * peerState
 
@@ -3425,12 +3425,11 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		rsa, _ = json.Marshal(s.rsaPrivateKey.Public())
 	}
 
-	if cfg.privateKeys != nil {
+	if len(cfg.privateKeys) != 0 {
 		s.minerMiner = minerchain.NewMiner(&minerchain.Config{
 			ChainParams:            chainParams,
 			BlockTemplateGenerator: blockTemplateGenerator,
-			MiningAddrs:            cfg.miningAddrs,
-			SignAddress:            cfg.signAddress,
+			MiningAddrs:            cfg.signAddress,
 			ProcessBlock:           s.syncManager.ProcessMinerBlock,
 			ConnectedCount:         s.ConnectedCount,
 			IsCurrent:              s.syncManager.IsCurrent,

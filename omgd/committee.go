@@ -414,8 +414,10 @@ func (s *server) MyPlaceInCommittee(r int32) int32 {
 
 		mb, _ := s.chain.Miners.BlockByHeight(i)
 		miner := mb.MsgBlock().Miner
-		if bytes.Compare(miner[:], s.signAddress.ScriptAddress()) == 0 {
-			return i
+		for _,sa := range s.signAddress {
+			if bytes.Compare(miner[:], sa.ScriptAddress()) == 0 {
+				return i
+			}
 		}
 	}
 	return 0
@@ -433,22 +435,26 @@ func (s * server) makeInvitation(me int32, miner []byte) (* wire.Invitation, * b
 		Height: me,
 	}
 
-	if bytes.Compare(miner, s.signAddress.ScriptAddress()) != 0 {
-		return nil, nil
+	for j,sa := range s.signAddress {
+
+		if bytes.Compare(miner, sa.ScriptAddress()) != 0 {
+			continue
+		}
+
+		pk := s.privKeys[j].PubKey()
+
+		copy(inv.Pubkey[:], pk.SerializeCompressed())
+		//	copy(inv.Pubkey[:], s.privKeys.PubKey().SerializeUncompressed())
+		inv.IP = []byte(cfg.ExternalIPs[0])
+		return &inv, &s.signAddress[j]
 	}
-
-	pk := s.privKeys.PubKey()
-
-	copy(inv.Pubkey[:], pk.SerializeCompressed())
-//	copy(inv.Pubkey[:], s.privKeys.PubKey().SerializeUncompressed())
-	inv.IP = []byte(cfg.ExternalIPs[0])
-	return &inv, &s.signAddress
+	return nil, nil
 }
 
 func (s * server) makeInvitationMsg(me int32, miner []byte, conn []byte) * wire.MsgInvitation {
 	s.peerState.print()
 
-	inv,_ := s.makeInvitation(me, miner)
+	inv,sa := s.makeInvitation(me, miner)
 	if inv == nil {
 		return nil
 	}
@@ -464,8 +470,12 @@ func (s * server) makeInvitationMsg(me int32, miner []byte, conn []byte) * wire.
 		inv.Serialize(&w)
 		hash := chainhash.DoubleHashH(w.Bytes())
 
-		if sig, err := s.privKeys.Sign(hash[:]); err == nil {
-			m.Sig = sig.Serialize()
+		for i, key := range s.privKeys {
+			if sa == &s.signAddress[i] {
+				if sig, err := key.Sign(hash[:]); err == nil {
+					m.Sig = sig.Serialize()
+				}
+			}
 		}
 	}
 	if m.Sig == nil {
@@ -638,7 +648,13 @@ func (s *server) handleCommitteRotation(r int32) {
 		if _, ok := s.peerState.committee[mb.MsgBlock().Miner]; ok {
 			continue
 		}
-		if bytes.Compare(mb.MsgBlock().Miner[:], s.signAddress.ScriptAddress()) == 0 {
+		mtch := false
+		for _,sa := range s.signAddress {
+			if bytes.Compare(mb.MsgBlock().Miner[:], sa.ScriptAddress()) == 0 {
+				mtch = true
+			}
+		}
+		if mtch {
 			continue
 		}
 
@@ -800,8 +816,8 @@ func (s *server) CommitteePolling() {
 	})
 
 //	my := s.MyPlaceInCommittee(int32(best.LastRotation))
-	var name [20]byte
-	copy(name[:], s.signAddress.ScriptAddress())
+//	var name [20]byte
+//	copy(name[:], s.signAddress.ScriptAddress())
 
 	consensusLog.Infof("My heights %d %d rotation at %d", ht, mht, best.LastRotation)
 
@@ -819,7 +835,17 @@ func (s *server) CommitteePolling() {
 	s.peerState.cmutex.Lock()
 	for pname,sp := range s.peerState.committee {
 		consensusLog.Infof("Peer %x", pname)
-		if _, ok := cmt[pname]; !ok || name == pname {
+		if _, ok := cmt[pname]; !ok {
+			continue
+		}
+		mtch := false
+		for _,sa := range s.signAddress {
+			if bytes.Compare(sa.ScriptAddress(), pname[:]) == 0 {
+				mtch = true
+				break
+			}
+		}
+		if mtch {
 			continue
 		}
 
@@ -956,7 +982,12 @@ func (s *server) CommitteeCastMG(sender [20]byte, msg wire.Message, h int32) {
  */
 
 func (s *server) GetPrivKey(who [20]byte) * btcec.PrivateKey {
-	return cfg.privateKeys
+	for i,k := range s.signAddress {
+		if bytes.Compare(who[:], k.ScriptAddress()) == 0 {
+			return cfg.privateKeys[i]
+		}
+	}
+	return nil
 }
 
 func (s *peerState) peerByName(name []byte) * serverPeer {

@@ -133,7 +133,7 @@ type config struct {
 	GenerateMiner        bool          `long:"generateminer" description:"Generate (mine) miner blocks using the CPU"`
 	EnablePOWMining		 bool          `long:"enablepowmining" description:"Enable generation of POW blocks"`
 	MiningAddrs          []string      `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
-	PrivKeys  	         string        `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
+	PrivKeys  	         []string      `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
 	RsaPrivateKey		 string		   `long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
 	BlockPrioritySize    uint32        `long:"blockprioritysize" description:"Size in bytes for high-priority/low-fee transactions when creating a block"`
 	UserAgentComments    []string      `long:"uacomment" description:"Comment to add to the user agent -- See BIP 14 for more information."`
@@ -155,8 +155,8 @@ type config struct {
 	miningAddrs    []btcutil.Address
 
 	// signAddress is the address for privateKeys
-	signAddress    btcutil.Address
-	privateKeys    *btcec.PrivateKey
+	signAddress    []btcutil.Address
+	privateKeys    []*btcec.PrivateKey
 
 	minRelayTxFee btcutil.Amount
 	whitelists    []*net.IPNet
@@ -833,32 +833,36 @@ func loadConfig() (*config, []string, error) {
 		cfg.miningAddrs = append(cfg.miningAddrs, addr)
 	}
 
+	cfg.privateKeys = make([]*btcec.PrivateKey, 0, len(cfg.PrivKeys))
+	cfg.signAddress = make([]btcutil.Address, 0, len(cfg.PrivKeys))
 	if len(cfg.PrivKeys) > 0 {
-		dwif,err := btcutil.DecodeWIF(cfg.PrivKeys)
-		if err == nil {
-			privKey := dwif.PrivKey
-//			pkaddr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
-			pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
+		for _, pk := range cfg.PrivKeys {
+			dwif, err := btcutil.DecodeWIF(pk)
+			if err == nil {
+				privKey := dwif.PrivKey
+				//			pkaddr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
+				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
 
-			if err != nil {
-				str := "%s: mining address '%s' failed to decode: %v"
-				err := fmt.Errorf(str, funcName, cfg.PrivKeys, err)
-				fmt.Fprintln(os.Stderr, err)
-				fmt.Fprintln(os.Stderr, usageMessage)
-				return nil, nil, err
-			}
+				if err != nil {
+					str := "%s: mining address '%s' failed to decode: %v"
+					err := fmt.Errorf(str, funcName, cfg.PrivKeys, err)
+					fmt.Fprintln(os.Stderr, err)
+					fmt.Fprintln(os.Stderr, usageMessage)
+					return nil, nil, err
+				}
 
-			addr := pkaddr.AddressPubKeyHash()
-			if !addr.IsForNet(activeNetParams.Params) {
-				str := "%s: mining address '%s' is on the wrong network"
-				err := fmt.Errorf(str, funcName, cfg.PrivKeys)
-				fmt.Fprintln(os.Stderr, err)
-				fmt.Fprintln(os.Stderr, usageMessage)
-				return nil, nil, err
+				addr := pkaddr.AddressPubKeyHash()
+				if !addr.IsForNet(activeNetParams.Params) {
+					str := "%s: mining address '%s' is on the wrong network"
+					err := fmt.Errorf(str, funcName, cfg.PrivKeys)
+					fmt.Fprintln(os.Stderr, err)
+					fmt.Fprintln(os.Stderr, usageMessage)
+					return nil, nil, err
+				}
+				cfg.miningAddrs = append(cfg.miningAddrs, addr)
+				cfg.signAddress = append(cfg.signAddress, addr)
+				cfg.privateKeys = append(cfg.privateKeys, privKey)
 			}
-			cfg.miningAddrs = append(cfg.miningAddrs, addr)
-			cfg.signAddress = addr
-			cfg.privateKeys = privKey
 		}
 	}
 

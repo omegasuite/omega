@@ -179,6 +179,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"ping":                  handlePing,
 	"searchrawtransactions": handleSearchRawTransactions,
 	"sendrawtransaction":    handleSendRawTransaction,
+	"recastrawtransaction":  handleRecastRawTransaction,
 	"setgenerate":           handleSetGenerate,
 	"stop":                  handleStop,
 	"submitblock":           handleSubmitBlock,
@@ -3950,6 +3951,12 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	}
 
 	return srtList, nil
+}
+
+// handleSendRawTransaction implements the sendrawtransaction command.
+func handleRecastRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	s.cfg.ConnMgr.RelayTransactions(s.cfg.TxMemPool.TxDescs())
+	return "Done", nil
 }
 
 // handleSendRawTransaction implements the sendrawtransaction command.

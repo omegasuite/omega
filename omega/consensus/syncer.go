@@ -1220,8 +1220,6 @@ func (self *Syncer) SetCommittee() {
 	self.Committee = c
 	self.Base = c - wire.CommitteeSize + 1
 
-	copy(self.Me[:], miner.name[:])
-
 	in := false
 
 	for i := c - wire.CommitteeSize + 1; i <= c; i++ {
@@ -1231,6 +1229,11 @@ func (self *Syncer) SetCommittee() {
 //			self.Runnable = false
 //			self.mutex.Unlock()
 //			return
+		}
+		for _,n := range miner.name {
+			if bytes.Compare(n[:], blk.MsgBlock().Miner[:]) == 0 {
+				copy(self.Me[:], n[:])
+			}
 		}
 
 		who := i - (c - wire.CommitteeSize + 1)

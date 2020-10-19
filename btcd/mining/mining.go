@@ -483,7 +483,7 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 //  |  transactions (while block size   |   |
 //  |  <= policy.BlockMinSize)          |   |
 //   -----------------------------------  --
-func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address) (*BlockTemplate, error) {
+func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonce int32) (*BlockTemplate, error) {
 	// Extend the most recently known best block.
 	best := g.Chain.BestSnapshot()
 	nextBlockHeight := best.Height + 1
@@ -926,6 +926,7 @@ mempoolLoop:
 		MerkleRoot: *merkles[len(merkles)-1],
 		Timestamp:  ts,
 		ContractExec: contractExec,
+		Nonce: nonce,
 	}
 
 	for _, tx := range blockTxns {

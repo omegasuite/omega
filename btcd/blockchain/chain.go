@@ -193,8 +193,8 @@ type BlockChain struct {
 //	SigVm     * ovm.OVM
 	Blacklist BlackList
 
-	Miner btcutil.Address
-	PrivKey *btcec.PrivateKey
+	Miner []btcutil.Address
+	PrivKey []*btcec.PrivateKey
 
 	// block size calculator
 	blockSizer sizeCalculator
@@ -2144,8 +2144,8 @@ type Config struct {
 	// index manager.
 	IndexManager IndexManager
 
-	Miner	btcutil.Address
-	PrivKey *btcec.PrivateKey
+	Miner	[]btcutil.Address
+	PrivKey []*btcec.PrivateKey
 
 	// HashCache defines a transaction hash mid-state cache to use when
 	// validating transactions. This cache has the potential to greatly
