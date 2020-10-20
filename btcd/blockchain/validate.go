@@ -458,6 +458,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 
 		nsigned := 0
 		inkey = nil
+		var meme * btcutil.Address
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
 			mb, _ := b.Miners.BlockByHeight(int32(i))
@@ -465,11 +466,13 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 				return nil, true
 			}
 			committee[mb.MsgBlock().Miner] = struct{}{}
-			for j,me := range b.Miner {
-				if !imin {
+			if !imin {
+				for j,me := range b.Miner {
 					imin = bytes.Compare(me.ScriptAddress(), mb.MsgBlock().Miner[:]) == 0
 					if imin {
 						inkey = b.PrivKey[j]
+						meme = &b.Miner[j]
+						break
 					}
 				}
 			}
@@ -487,9 +490,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			}
 			delete(committee, *pkh)
 
-			for _,me := range b.Miner {
-				imin = imin && bytes.Compare(me.ScriptAddress(), (*pkh)[:]) != 0
-			}
+			imin = imin && bytes.Compare(meme.ScriptAddress(), (*pkh)[:]) != 0
 
 			nsigned++
 		}

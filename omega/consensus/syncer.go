@@ -1230,21 +1230,19 @@ func (self *Syncer) SetCommittee() {
 //			self.mutex.Unlock()
 //			return
 		}
-		for _,n := range miner.name {
-			if bytes.Compare(n[:], blk.MsgBlock().Miner[:]) == 0 {
-				copy(self.Me[:], n[:])
-			}
-		}
 
 		who := i - (c - wire.CommitteeSize + 1)
 
+		for _,n := range miner.name {
+			if bytes.Compare(n[:], blk.MsgBlock().Miner[:]) == 0 {
+				copy(self.Me[:], n[:])
+				self.Myself = who
+				in = true
+			}
+		}
+
 		self.Members[blk.MsgBlock().Miner] = who
 		self.Names[who] = blk.MsgBlock().Miner
-
-		if bytes.Compare(self.Me[:], blk.MsgBlock().Miner[:]) == 0 {
-			self.Myself = who
-			in = true
-		}
 	}
 
 	self.knowledges = CreateKnowledge(self)
