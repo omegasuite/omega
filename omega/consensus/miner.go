@@ -352,15 +352,16 @@ func HandleMessage(m Message) (bool, * chainhash.Hash) {
 		}
 
 		if len(s.messages) > (wire.CommitteeSize - 1) * 10 {
-			log.Infof("too many messages are queued. Discard.")
-			return false, nil
+			log.Infof("too many messages are queued. Discard oldest one.")
+			<- s.messages
 		}
 	}
 
 	if len(s.messages) > (wire.CommitteeSize - 1) * 10 {
-		log.Infof("Runnable syner %d has too many (%d) messages queued. Discard.", s.Height, len(s.messages))
+		log.Infof("Runnable syner %d has too many (%d) messages queued. Discard oldest one.", s.Height, len(s.messages))
+		<- s.messages
 		s.DebugInfo()
-		return false, nil
+//		return false, nil
 	}
 
 	s.messages <- m

@@ -103,15 +103,15 @@ type CPUMiner struct {
 	sync.Mutex
 	g                 *mining.BlkTmplGenerator
 	cfg               Config
-	numWorkers        uint32
+//	numWorkers        uint32
 	started           bool
 	discreteMining    bool
 //	connLock          sync.Mutex
 	wg                sync.WaitGroup
-	updateNumWorkers  chan struct{}
-	queryHashesPerSec chan float64
-	updateHashes      chan uint64
-	speedMonitorQuit  chan struct{}
+//	updateNumWorkers  chan struct{}
+//	queryHashesPerSec chan float64
+//	updateHashes      chan uint64
+//	speedMonitorQuit  chan struct{}
 	quit              chan struct{}
 	connch            chan int32
 
@@ -122,6 +122,7 @@ type CPUMiner struct {
 
 // speedMonitor handles tracking the number of hashes per second the mining
 // process is performing.  It must be run as a goroutine.
+/*
 func (m *CPUMiner) speedMonitor() {
 	log.Tracef("CPU miner speed monitor started")
 
@@ -166,6 +167,7 @@ out:
 	m.wg.Done()
 	log.Tracef("CPU miner speed monitor done")
 }
+ */
 
 // submitBlock submits the passed block to network after ensuring it passes all
 // of the consensus validation rules.
@@ -245,7 +247,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	// Initial state.
 	lastGenerated := time.Now()
 	lastTxUpdate := m.g.TxSource().LastUpdated()
-	hashesCompleted := uint64(0)
+//	hashesCompleted := uint64(0)
 
 //	for true {
 		// Search through the entire nonce range for a solution while
@@ -263,8 +265,8 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 				return false
 
 			case <-ticker.C:
-				m.updateHashes <- hashesCompleted
-				hashesCompleted = 0
+//				m.updateHashes <- hashesCompleted
+//				hashesCompleted = 0
 
 				// The current block is stale if the best block
 				// has changed.
@@ -293,7 +295,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 			// attempt accordingly.
 			header.Nonce = int32(i)
 			hash := header.BlockHash()
-			hashesCompleted += 2
+//			hashesCompleted += 2
 
 			// The block is solved when the new block hash is less
 			// than the target difficulty.  Yay!
@@ -303,7 +305,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 			}
 			if hashNum.Cmp(targetDifficulty) <= 0 {
 				log.Info("Block solved ", hash, " vs ", targetDifficulty)
-				m.updateHashes <- hashesCompleted
+//				m.updateHashes <- hashesCompleted
 				return true
 			}
 		}
@@ -653,7 +655,7 @@ out:
 		}
 	}
 
-	close(m.speedMonitorQuit)
+//	close(m.speedMonitorQuit)
 	m.wg.Done()
 
 	log.Tracef("Generate blocks worker done")
@@ -715,9 +717,9 @@ func (m *CPUMiner) Start() {
 	}
 
 	m.quit = make(chan struct{})
-	m.speedMonitorQuit = make(chan struct{})
-	m.wg.Add(2)
-	go m.speedMonitor()
+//	m.speedMonitorQuit = make(chan struct{})
+	m.wg.Add(1)
+//	go m.speedMonitor()
 	go m.generateBlocks()
 
 	consensus.POWStopper = make(chan struct{}, 3 * wire.MINER_RORATE_FREQ)
@@ -770,6 +772,7 @@ func (m *CPUMiner) IsMining() bool {
 // is performing.  -1 is returned if the miner is not currently running.
 //
 // This function is safe for concurrent access.
+/*
 func (m *CPUMiner) HashesPerSecond() float64 {
 	m.Lock()
 	defer m.Unlock()
@@ -781,6 +784,7 @@ func (m *CPUMiner) HashesPerSecond() float64 {
 
 	return <-m.queryHashesPerSec
 }
+ */
 
 // SetNumWorkers sets the number of workers to create which solve blocks.  Any
 // negative values will cause a default number of workers to be used which is
@@ -788,6 +792,7 @@ func (m *CPUMiner) HashesPerSecond() float64 {
 // cause all CPU mining to be stopped.
 //
 // This function is safe for concurrent access.
+/*
 func (m *CPUMiner) SetNumWorkers(numWorkers int32) {
 	if numWorkers == 0 {
 		m.Stop()
@@ -811,16 +816,19 @@ func (m *CPUMiner) SetNumWorkers(numWorkers int32) {
 		m.updateNumWorkers <- struct{}{}
 	}
 }
+ */
 
 // NumWorkers returns the number of workers which are running to solve blocks.
 //
 // This function is safe for concurrent access.
+/*
 func (m *CPUMiner) NumWorkers() int32 {
 	m.Lock()
 	defer m.Unlock()
 
 	return int32(m.numWorkers)
 }
+ */
 
 // GenerateNBlocks generates the requested number of blocks. It is self
 // contained in that it creates block templates and attempts to solve them while
@@ -921,10 +929,10 @@ func New(cfg *Config) *CPUMiner {
 	m := &CPUMiner{
 		g:                 cfg.BlockTemplateGenerator,
 		cfg:               *cfg,
-		numWorkers:        defaultNumWorkers,
-		updateNumWorkers:  make(chan struct{}),
-		queryHashesPerSec: make(chan float64),
-		updateHashes:      make(chan uint64),
+//		numWorkers:        defaultNumWorkers,
+//		updateNumWorkers:  make(chan struct{}),
+//		queryHashesPerSec: make(chan float64),
+//		updateHashes:      make(chan uint64),
 		connch: 		   make(chan int32, 100),
 	}
 

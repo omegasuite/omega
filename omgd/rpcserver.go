@@ -2694,9 +2694,11 @@ func handleGetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 // handleGetHashesPerSec implements the gethashespersec command.
 func handleGetHashesPerSec(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	hp := int64(0)
+/*
 	if s.cfg.CPUMiner != nil {
 		hp += int64(s.cfg.CPUMiner.HashesPerSecond())
 	}
+ */
 	if s.cfg.MinerMiner != nil {
 		hp += int64(s.cfg.MinerMiner.HashesPerSecond())
 	}
@@ -2807,8 +2809,8 @@ func handleGetMiningInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		CurrentBlockTx:     best.NumTxns,
 		Difficulty:         getDifficultyRatio(best.Bits, s.cfg.ChainParams),
 		Generate:           s.cfg.CPUMiner.IsMining(),
-		GenProcLimit:       s.cfg.CPUMiner.NumWorkers(),
-		HashesPerSec:       int64(s.cfg.CPUMiner.HashesPerSecond()),
+		GenProcLimit:       1,	//s.cfg.CPUMiner.NumWorkers(),
+		HashesPerSec:       0,	// int64(s.cfg.CPUMiner.HashesPerSecond()),
 		NetworkHashPS:      networkHashesPerSec,
 		PooledTx:           uint64(s.cfg.TxMemPool.Count()),
 		TestNet:            cfg.TestNet,
@@ -4104,7 +4106,7 @@ func handleSetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 		}
 
 		// It's safe to call start even if it's already started.
-		s.cfg.CPUMiner.SetNumWorkers(int32(genProcLimit))
+//		s.cfg.CPUMiner.SetNumWorkers(int32(genProcLimit))
 		s.cfg.CPUMiner.Start()
 
 		s.cfg.MinerMiner.SetNumWorkers(int32(genProcLimit))

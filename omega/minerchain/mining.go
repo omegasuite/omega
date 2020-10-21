@@ -404,6 +404,7 @@ out:
 		if mtch {
 			m.submitBlockLock.Unlock()
 			log.Infof("miner.generateBlocks won't mine because I am in GAP before the best block %d", curHeight)
+			time.Sleep(5 * time.Second)
 			continue
 		}
 
@@ -447,7 +448,7 @@ out:
 			log.Infof("New miner block produced by %x at %d", signAddr.ScriptAddress(), template.Height)
 			m.submitBlock(block)
 		} else {
-			log.Info("miner.solveBlock: No New block produced")
+			log.Infof("miner.solveBlock: No New block produced")
 		}
 	}
 
