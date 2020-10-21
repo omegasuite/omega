@@ -2693,7 +2693,14 @@ func handleGetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 // handleGetHashesPerSec implements the gethashespersec command.
 func handleGetHashesPerSec(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	return int64(s.cfg.CPUMiner.HashesPerSecond()) + int64(s.cfg.MinerMiner.HashesPerSecond()), nil
+	hp := int64(0)
+	if s.cfg.CPUMiner != nil {
+		hp += int64(s.cfg.CPUMiner.HashesPerSecond())
+	}
+	if s.cfg.MinerMiner != nil {
+		hp += int64(s.cfg.MinerMiner.HashesPerSecond())
+	}
+	return hp, nil
 }
 
 // handleGetHeaders implements the getheaders command.
@@ -3460,7 +3467,7 @@ func handlePing(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (inter
 		return nil, internalRPCError("Not sending ping - failed to "+
 			"generate nonce: "+err.Error(), "")
 	}
-	s.cfg.ConnMgr.BroadcastMessage(wire.NewMsgPing(nonce))
+	s.cfg.ConnMgr.BroadcastMessage(wire.NewMsgPing(nonce, s.cfg.Chain.BestSnapshot().Height))
 
 	return nil, nil
 }

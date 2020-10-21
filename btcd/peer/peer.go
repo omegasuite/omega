@@ -1054,11 +1054,8 @@ func (p *Peer) PushRejectMsg(command string, code common.RejectCode, reason stri
 // message.  For older clients, it does nothing and anything other than failure
 // is considered a successful ping.
 func (p *Peer) handlePingMsg(msg *wire.MsgPing) {
-	// Only reply with pong if the message is from a new enough client.
-	if p.ProtocolVersion() > wire.BIP0031Version {
-		// Include nonce from ping so pong can be identified.
-		p.QueueMessage(wire.NewMsgPong(msg.Nonce), nil)
-	}
+	// Include nonce from ping so pong can be identified.
+	p.QueueMessage(wire.NewMsgPong(msg.Nonce), nil)
 }
 
 // handlePongMsg is invoked when a peer receives a pong bitcoin message.  It
@@ -1929,6 +1926,7 @@ out:
 			case *wire.MsgPing:
 				p.statsMtx.Lock()
 				p.lastPingNonce = m.Nonce
+				p.lastBlock = m.Height
 				p.lastPingTime = time.Now()
 				p.statsMtx.Unlock()
 			}
@@ -2006,7 +2004,8 @@ out:
 				log.Errorf("Not sending ping to %s: %v", p, err)
 				continue
 			}
-			p.QueueMessage(wire.NewMsgPing(nonce), nil)
+			_,latest,_ := p.cfg.NewestBlock()
+			p.QueueMessage(wire.NewMsgPing(nonce, latest), nil)
 
 		case <-p.quit:
 			break out

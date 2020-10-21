@@ -458,7 +458,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 
 		nsigned := 0
 		inkey = nil
-		var meme * btcutil.Address
+		var meme btcutil.Address
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
 			mb, _ := b.Miners.BlockByHeight(int32(i))
@@ -471,7 +471,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 					imin = bytes.Compare(me.ScriptAddress(), mb.MsgBlock().Miner[:]) == 0
 					if imin {
 						inkey = b.PrivKey[j]
-						meme = &b.Miner[j]
+						meme = b.Miner[j]
 						break
 					}
 				}

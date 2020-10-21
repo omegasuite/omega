@@ -3437,6 +3437,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 			RSAPubKey:              string(rsa),
 		})
 	} else {
+		s.minerMiner = nil
 		cfg.GenerateMiner = false
 	}
 

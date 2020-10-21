@@ -391,7 +391,7 @@ out:
 		for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
 			p, _ := m.g.Chain.Miners.BlockByHeight(curHeight - int32(i))
 			if p == nil {
-				log.Infof("miner.generateBlocks incorrect height %d out of ", curHeight - int32(i), curHeight)
+				log.Infof("miner.generateBlocks incorrect height %d out of %d", curHeight - int32(i), curHeight)
 				continue
 			}
 			for _,s := range m.cfg.MiningAddrs {
@@ -402,6 +402,7 @@ out:
 		}
 
 		if mtch {
+			m.submitBlockLock.Unlock()
 			log.Infof("miner.generateBlocks won't mine because I am in GAP before the best block %d", curHeight)
 			continue
 		}

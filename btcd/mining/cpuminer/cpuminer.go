@@ -313,19 +313,24 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	return false
 }
 
-func (m *CPUMiner) notice (notification *blockchain.Notification) {
+func (m *CPUMiner) Notice (notification *blockchain.Notification) {
 	switch notification.Type {
 	case blockchain.NTBlockConnected, blockchain.NTBlockRejected:
 		if !m.started {
 			return
 		}
+
+		if len(m.connch) > 50 {
+			<- m.connch
+		}
+
 		switch notification.Data.(type) {
 		case *btcutil.Block:
-			if len(m.connch) > 50 {
-				<- m.connch
-			}
 			m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
 			log.Infof("cpuminer notice: sending %d", notification.Data.(*btcutil.Block).Height())
+
+		case *wire.MinerBlock:
+			m.connch <- 0	// this will only affect POW mining
 		}
 	}
 }
@@ -924,7 +929,8 @@ func New(cfg *Config) *CPUMiner {
 	}
 
 	consensus.POWStopper = make(chan struct{}, 3 * wire.MINER_RORATE_FREQ)
-	
-	m.g.Chain.Subscribe(m.notice)	// Miners.(*minerchain.MinerChain).
+
+	m.g.Chain.Subscribe(m.Notice)	// Miners.(*minerchain.MinerChain).
+	m.g.Chain.Miners.Subscribe(m.Notice)	// Miners.(*minerchain.MinerChain).
 	return m
 }

@@ -932,7 +932,7 @@ func (b *MinerChain) IsCurrent() bool {
 		//
 		// The chain appears to be current if none of the checks reported
 		// otherwise.
-		minus48Hours := b.timeSource.AdjustedTime().Add(-24 * time.Hour).Unix()
+		minus48Hours := b.timeSource.AdjustedTime().Add(-48 * time.Hour).Unix()
 
 		return b.BestChain.Tip().Data.TimeStamp() >= minus48Hours
 	}

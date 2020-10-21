@@ -408,6 +408,18 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) bool {
 		if !state.syncCandidate || !peer.Connected() || state.syncTime > tm {
 			continue
 		}
+		if bestPeer != nil {
+			// peer priority: select by committe first, length of chain
+			cd := int32(best.LastRotation) - bestPeer.Committee
+			cp := int32(best.LastRotation) - peer.Committee
+			if cd >= 0 && cd < wire.CommitteeSize && (cp < 0 || cp >= wire.CommitteeSize) {
+				continue
+			}
+			if !(cp >= 0 && cp < wire.CommitteeSize && (cd < 0 || cd >= wire.CommitteeSize)) &&
+				peer.LastBlock() < bestPeer.LastBlock() {
+					continue
+			}
+		}
 		tm = state.syncTime
 		bestPeer = peer
 	}
