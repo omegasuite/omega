@@ -386,6 +386,8 @@ out:
 		}
 		
 		// Choose a payment address at random.
+		rand.Seed(time.Now().Unix())
+		rnd := rand.Intn(len(m.cfg.MiningAddrs))
 
 		mtch := false
 		for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
@@ -414,7 +416,7 @@ out:
 		var template *mining.BlockTemplate
 		var err error
 
-		signAddr := m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
+		signAddr := m.cfg.MiningAddrs[rnd]
 
 		template, err = m.g.NewMinerBlockTemplate(signAddr)
 

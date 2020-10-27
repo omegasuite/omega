@@ -96,6 +96,7 @@ type Syncer struct {
 	// wait for end of task
 //	wg          sync.WaitGroup
 	idles		int
+	handeling   string
 }
 
 func (self *Syncer) CommitteeMsgMG(p [20]byte, m wire.Message) {
@@ -323,6 +324,8 @@ func (self *Syncer) run() {
 				log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
 			}
 
+			self.handeling = "New tree"
+
 			if _, ok := self.forest[tree.creator]; !ok || self.forest[tree.creator].block == nil {
 				// each creator may submit only one tree
 				self.forest[tree.creator] = &tree
@@ -349,6 +352,7 @@ func (self *Syncer) run() {
 			self.print()
 
 		case m := <- self.messages:
+			self.handeling = m.Command()
 			log.Infof("processing %s message at %d", m.Command(), m.Block())
 			switch m.(type) {
 			case *wire.MsgKnowledge:		// passing knowledge
@@ -498,6 +502,7 @@ func (self *Syncer) run() {
 				self.repeating <- struct{}{}
 			}
 		}
+		self.handeling = ""
 	}
 
 	ticker.Stop()
@@ -1098,6 +1103,8 @@ func CreateSyncer(h int32) *Syncer {
 
 	p.agreed = -1
 	p.sigGiven = -1
+
+	p.handeling = ""
 //	p.mutex = sync.Mutex{}
 
 //	p.consents = make(map[[20]byte]int32, wire.CommitteeSize)
@@ -1320,6 +1327,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 }
 
 func (self *Syncer) pull(hash chainhash.Hash, from int32) {
+	self.handeling = "pull"
 	if _,ok := self.pulling[from]; !ok || self.pulling[from] == 0 {
 		// pull block
 		msg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, hash}}}
@@ -1400,8 +1408,8 @@ func (self *Syncer) DebugInfo() {
 			log.Infof("Unmatched Members & Names: %d, %x", m, n)
 		}
 	}
-	log.Infof("Queues: repeating = %d, newtrees = %d messages = %d",
-		len(self.repeating), len(self.newtree), len(self.messages))
+	log.Infof("Queues: repeating = %d, newtrees = %d messages = %d handeling = %s",
+		len(self.repeating), len(self.newtree), len(self.messages), self.handeling)
 
 	if len(self.Malice) > 0 {
 		log.Infof("Malice miners:")

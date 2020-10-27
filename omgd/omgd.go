@@ -7,14 +7,17 @@ package main
 import (
 	"fmt"
 	"github.com/omegasuite/omega/consensus"
+//	"log"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"syscall"
 	"time"
 
 	//	"time"
@@ -45,6 +48,8 @@ var winServiceMain func() (bool, error)
 var CompileTime string
 // go build -ldflags "-X main.CompileTime='$(date)'"
 
+var rerun bool
+
 // btcdMain is the real main function for btcd.  It is necessary to work around
 // the fact that deferred functions do not run when os.Exit() is called.  The
 // optional serverChan parameter is mainly used by the service code to be
@@ -60,6 +65,7 @@ func btcdMain(serverChan chan<- *server) error {
 	}
 
 	debugLevel()
+	rerun = false
 
 	cfg = tcfg
 	defer func() {
@@ -72,7 +78,26 @@ func btcdMain(serverChan chan<- *server) error {
 	// triggered either from an OS signal such as SIGINT (Ctrl+C) or from
 	// another subsystem such as the RPC server.
 	interrupt := interruptListener()
-	defer btcdLog.Info("Shutdown complete")
+	defer func() {
+		// re-run
+		if rerun {
+			env := os.Environ()
+			if runtime.GOOS == "windows" {
+				binary, lookErr := exec.LookPath("omgd.exe")
+				if lookErr == nil {
+					args := []string{"omgd.exe", "/configfile", cfg.ConfigFile}
+					syscall.Exec(binary, args, env)
+				}
+			} else {
+				binary, lookErr := exec.LookPath("omgd")
+				if lookErr == nil {
+					args := []string{"omgd", "--configfile=" + cfg.ConfigFile}
+					syscall.Exec(binary, args, env)
+				}
+			}
+		}
+		btcdLog.Info("Shutdown complete")
+	} ()
 
 	// Show version at startup.
 	btcdLog.Infof("Version %s", version())
@@ -246,7 +271,7 @@ func btcdMain(serverChan chan<- *server) error {
 			}
 
 			btcdLog.Infof("Voluntary shutdown after no new block for 30 min.")
-
+			rerun = true
 			shutdownRequestChannel <- struct{}{}
 		}()
 	}

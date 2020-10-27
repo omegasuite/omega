@@ -191,6 +191,10 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		contract = contract || to.PkScript[0] == 0x88 // IsContract(to.PkScript[0])
 	}
 
+	if contract && msgTx.LockTime != 0 {
+		return ruleError(ErrBadTxInput, "transaction has contract call and LockTime is not 0")
+	}
+
 	if len(msgTx.TxIn) == 0 && !contract {
 		// coin base Tx has len = 1
 		return ruleError(ErrNoTxInputs, "transaction has no inputs")
@@ -262,6 +266,9 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		if _, exists := existingTxOut[txIn.PreviousOutPoint]; exists {
 			return ruleError(ErrDuplicateTxInputs, "transaction "+
 				"contains duplicate inputs")
+		}
+		if contract && txIn.Sequence != 0xFFFFFFFF {
+			return ruleError(ErrBadTxInput, "transaction with contract call and unfinalized input")
 		}
 		existingTxOut[txIn.PreviousOutPoint] = struct{}{}
 	}

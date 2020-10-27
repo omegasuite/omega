@@ -27,10 +27,11 @@ func (b *BlockChain) BlockSizeUpdater() {
 
 	log.Infof("BlockSizeUpdater: initial state: %v", b.blockSizer)
 
+main:
 	for {
 		select {
 		case <-BlockSizerQuit:
-			return
+			break main
 
 		case act := <-queue:
 			if act.result != nil {
@@ -148,8 +149,8 @@ func (b *BlockChain) BlockSizeUpdater() {
 
 	// drain the queue
 	for {
-		select {
-		case <-queue:
+		if _,ok := <-queue; !ok {
+			return
 		}
 	}
 }

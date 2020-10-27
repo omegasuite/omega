@@ -6,8 +6,10 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"os/signal"
 	"runtime/pprof"
+	"syscall"
 	"time"
 )
 
@@ -83,7 +85,16 @@ func interruptListener() <-chan struct{} {
 		time.AfterFunc(5 * time.Minute, func() {
 			btcdLog.Infof("Forced exit 5 min. after shutdown notice.")
 
-			pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+			pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
+
+			if rerun {
+				binary, lookErr := exec.LookPath("omgd")
+				if lookErr == nil {
+					args := []string{"omgd", "--configfile=" + cfg.ConfigFile}
+					env := os.Environ()
+					syscall.Exec(binary, args, env)
+				}
+			}
 
 			// forced exit if not shutdown 5 mnin after receiving signal to shutdown
 			os.Exit(9)
