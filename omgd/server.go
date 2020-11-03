@@ -2135,6 +2135,36 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		}
 	}
 
+	if sp.relayTxDisabled() {
+		return true
+	}
+
+	// send all tx in mempool to the new peer
+	txns := s.txMemPool.TxDescs()
+	for _, txD := range txns {
+		iv := wire.NewInvVect(common.InvTypeTx, txD.Tx.Hash())
+
+		// Don't relay the transaction if the transaction fee-per-kb
+		// is less than the peer's feefilter.
+		feeFilter := atomic.LoadInt64(&sp.feeFilter)
+		if feeFilter > 0 && txD.FeePerKB < feeFilter {
+			continue
+		}
+
+		// Don't relay the transaction if there is a bloom
+		// filter loaded and the transaction doesn't match it.
+		if sp.filter.IsLoaded() {
+			if !sp.filter.MatchTxAndUpdate(txD.Tx) {
+				continue
+			}
+		}
+
+		// Queue the inventory to be relayed with the next batch.
+		// It will be ignored if the peer is already known to
+		// have the inventory.
+		sp.QueueInventory(iv)
+	}
+
 	return true
 }
 

@@ -10,7 +10,6 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/json"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/connmgr"
@@ -514,11 +513,12 @@ func (s *server) MinerBlockByHeight(n int32) (* wire.MinerBlock,error) {
 
 func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me int32) {
 	found := false
-	s.peerState.cmutex.Lock()
 
-	if _, ok := s.peerState.committee[miner]; ok {
-		np := make([]*serverPeer, 0, len(s.peerState.committee[miner].peers))
-		for _,r := range s.peerState.committee[miner].peers {
+	s.peerState.cmutex.Lock()
+	m, ok := s.peerState.committee[miner]
+	if ok {
+		np := make([]*serverPeer, 0, len(m.peers))
+		for _,r := range m.peers {
 			// do they exist?
 			exist := false
 
@@ -532,12 +532,13 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 				np = append(np, r)
 			}
 		}
-		s.peerState.committee[miner].peers = np
-		if len(s.peerState.committee[miner].peers) > 0 {
+		m.peers = np
+		if len(m.peers) > 0 {
+			s.peerState.cmutex.Unlock()
 			return
 		}
-		if s.peerState.committee[miner].minerHeight < j {
-			s.peerState.committee[miner].minerHeight = j
+		if m.minerHeight < j {
+			m.minerHeight = j
 		}
 	} else {
 		mb, _ := s.chain.Miners.BlockByHeight(j)
@@ -545,10 +546,9 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 			btcdLog.Infof("Error: inconsistent miner %x & height %d in makeConnection", miner, j)
 		}
 
-		s.peerState.committee[miner] =
-		 	s.peerState.NewCommitteeState(miner,j, string(mb.MsgBlock().Connection))
+		m = s.peerState.NewCommitteeState(miner,j, string(mb.MsgBlock().Connection))
+		s.peerState.committee[miner] = m
 	}
-	m := s.peerState.committee[miner]
 
 	s.peerState.forAllPeers(func(ob *serverPeer) {
 		if !found && bytes.Compare(ob.Peer.Miner[:], miner[:]) == 0 && ob.Connected() {
@@ -557,6 +557,7 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 			found = true
 		}
 	})
+	s.peerState.cmutex.Unlock()
 
 	if found {
 		return
@@ -575,7 +576,7 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 		addr := tcp.String()
 //		s.peerState.committee[miner].address = addr
 
-		s.peerState.forAllPeers(func(ob *serverPeer) {
+		s.peerState.ForAllPeers(func(ob *serverPeer) {
 			if !isin && (ob.Addr() == addr || ob.Peer.LocalAddr().String() == addr) && ob.Connected() {
 				m.peers = append(m.peers, ob)
 				ob.Peer.Committee = j
@@ -584,7 +585,6 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 				isin = true
 			}
 		})
-		s.peerState.cmutex.Unlock()
 
 		if !isin {
 			btcdLog.Debugf("makeConnection: new %s", addr)
@@ -599,8 +599,6 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 				},
 			})
 		}
-	} else {
-		s.peerState.cmutex.Unlock()
 	}
 }
 
@@ -648,8 +646,9 @@ func (s *server) handleCommitteRotation(r int32) {
 		}
 
 		s.peerState.cmutex.Lock()
-		if _, ok := s.peerState.committee[mb.MsgBlock().Miner]; ok {
-			s.peerState.cmutex.Unlock()
+		_, ok := s.peerState.committee[mb.MsgBlock().Miner]
+		s.peerState.cmutex.Unlock()
+		if ok {
 			continue
 		}
 		mtch := false
@@ -659,15 +658,14 @@ func (s *server) handleCommitteRotation(r int32) {
 			}
 		}
 		if mtch {
-			s.peerState.cmutex.Unlock()
 			continue
 		}
 
 		if s.chain.CheckCollateral(mb, blockchain.BFNone) != nil {
-			s.peerState.cmutex.Unlock()
 			continue
 		}
 
+		s.peerState.cmutex.Lock()
 		s.peerState.committee[mb.MsgBlock().Miner] =
 		 	s.peerState.NewCommitteeState(mb.MsgBlock().Miner, j, string(mb.MsgBlock().Connection))
 		p := s.peerState.peerByName(mb.MsgBlock().Miner[:])
@@ -678,13 +676,13 @@ func (s *server) handleCommitteRotation(r int32) {
 			s.peerState.cmutex.Unlock()
 			continue
 		}
+		s.peerState.cmutex.Unlock()
 
 		// establish connection
 		// check its connection info.
 		// if it is an IP address, connect directly,
 		// otherwise, broadcast q request for connection msg.
 		conn := mb.MsgBlock().Connection
-		s.peerState.cmutex.Unlock()
 
 		s.makeConnection(conn, mb.MsgBlock().Miner, j)
 //		if na, _ := s.addrManager.DeserializeNetAddress(string(mb.MsgBlock().Connection)); na != nil {
@@ -807,7 +805,7 @@ func (s *server) CommitteePolling() {
 	}
 	s.peerState.cmutex.Unlock()
 	return
-
+/*
 	best := s.chain.BestSnapshot()
 	ht := best.Height
 	mht := s.chain.Miners.BestSnapshot().Height
@@ -907,7 +905,7 @@ func (s *server) CommitteePolling() {
 			total += 100
 		}
 	}
- */
+ * /
 	s.peerState.cmutex.Unlock()
 
 	for _, r := range reconns {
@@ -922,6 +920,7 @@ func (s *server) CommitteePolling() {
 	}
 
 	time.Sleep(time.Second * time.Duration(total / 100))
+ */
 }
 
 func (s *server) SubscribeChain(fn func (*blockchain.Notification)) {

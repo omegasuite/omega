@@ -171,6 +171,6 @@ type ValidateAddressWalletResult struct {
 type GetBestBlockResult struct {
 	Hash   string `json:"hash"`
 	Height int32  `json:"height"`
-	MinerHash   string `json:"hash"`
-	MinerHeight int32  `json:"height"`
+	MinerHash   string `json:"minerhash"`
+	MinerHeight int32  `json:"minerheight"`
 }

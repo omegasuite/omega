@@ -279,7 +279,7 @@ var rpcLimited = map[string]struct{}{
 	"getblockcount":         {},
 	"getblockhash":          {},
 	"getblocktxhashes":      {},
-	"searchborder":		 {},
+	"searchborder":			 {},
 	"getblockheader":        {},
 	"getminerblockcount":    {},
 	"getminerblockhash":     {},
@@ -4706,67 +4706,70 @@ func (s *rpcServer) jsonRPCRead(w http.ResponseWriter, r *http.Request, isAdmin 
 	var jsonErr error
 	var result interface{}
 	var request btcjson.Request
-	if err := json.Unmarshal(body, &request); err != nil {
-		jsonErr = &btcjson.RPCError{
-			Code:    btcjson.ErrRPCParse.Code,
-			Message: "Failed to parse request: " + err.Error(),
-		}
-	}
-	if jsonErr == nil {
-		// The JSON-RPC 1.0 spec defines that notifications must have their "id"
-		// set to null and states that notifications do not have a response.
-		//
-		// A JSON-RPC 2.0 notification is a request with "json-rpc":"2.0", and
-		// without an "id" member. The specification states that notifications
-		// must not be responded to. JSON-RPC 2.0 permits the null value as a
-		// valid request id, therefore such requests are not notifications.
-		//
-		// Bitcoin Core serves requests with "id":null or even an absent "id",
-		// and responds to such requests with "id":null in the response.
-		//
-		// Btcd does not respond to any request without and "id" or "id":null,
-		// regardless the indicated JSON-RPC protocol version unless RPC quirks
-		// are enabled. With RPC quirks enabled, such requests will be responded
-		// to if the reqeust does not indicate JSON-RPC version.
-		//
-		// RPC quirks can be enabled by the user to avoid compatibility issues
-		// with software relying on Core's behavior.
-		if request.ID == nil && !(cfg.RPCQuirks && request.Jsonrpc == "") {
-			return
-		}
-
-		// The parse was at least successful enough to have an ID so
-		// set it for the response.
-		responseID = request.ID
-
-		// Setup a close notifier.  Since the connection is hijacked,
-		// the CloseNotifer on the ResponseWriter is not available.
-		closeChan := make(chan struct{}, 1)
-		go func() {
-			_, err := conn.Read(make([]byte, 1))
-			if err != nil {
-				close(closeChan)
-			}
-		}()
-
-		// Check if the user is limited and set error if method unauthorized
-		if !isAdmin {
-			if _, ok := rpcLimited[request.Method]; !ok {
-				jsonErr = &btcjson.RPCError{
-					Code:    btcjson.ErrRPCInvalidParams.Code,
-					Message: "limited user not authorized for this method",
-				}
+	if r.Method != "OPTIONS" {
+		if err := json.Unmarshal(body, &request); err != nil {
+			jsonErr = &btcjson.RPCError{
+				Code:    btcjson.ErrRPCParse.Code,
+				Message: "Failed to parse request: " + err.Error(),
 			}
 		}
 
 		if jsonErr == nil {
-			// Attempt to parse the JSON-RPC request into a known concrete
-			// command.
-			parsedCmd := parseCmd(&request)
-			if parsedCmd.err != nil {
-				jsonErr = parsedCmd.err
-			} else {
-				result, jsonErr = s.standardCmdResult(parsedCmd, closeChan)
+			// The JSON-RPC 1.0 spec defines that notifications must have their "id"
+			// set to null and states that notifications do not have a response.
+			//
+			// A JSON-RPC 2.0 notification is a request with "json-rpc":"2.0", and
+			// without an "id" member. The specification states that notifications
+			// must not be responded to. JSON-RPC 2.0 permits the null value as a
+			// valid request id, therefore such requests are not notifications.
+			//
+			// Bitcoin Core serves requests with "id":null or even an absent "id",
+			// and responds to such requests with "id":null in the response.
+			//
+			// Btcd does not respond to any request without and "id" or "id":null,
+			// regardless the indicated JSON-RPC protocol version unless RPC quirks
+			// are enabled. With RPC quirks enabled, such requests will be responded
+			// to if the reqeust does not indicate JSON-RPC version.
+			//
+			// RPC quirks can be enabled by the user to avoid compatibility issues
+			// with software relying on Core's behavior.
+			if request.ID == nil && !(cfg.RPCQuirks && request.Jsonrpc == "") {
+				return
+			}
+
+			// The parse was at least successful enough to have an ID so
+			// set it for the response.
+			responseID = request.ID
+
+			// Setup a close notifier.  Since the connection is hijacked,
+			// the CloseNotifer on the ResponseWriter is not available.
+			closeChan := make(chan struct{}, 1)
+			go func() {
+				_, err := conn.Read(make([]byte, 1))
+				if err != nil {
+					close(closeChan)
+				}
+			}()
+
+			// Check if the user is limited and set error if method unauthorized
+			if !isAdmin {
+				if _, ok := rpcLimited[request.Method]; !ok {
+					jsonErr = &btcjson.RPCError{
+						Code:    btcjson.ErrRPCInvalidParams.Code,
+						Message: "limited user not authorized for this method",
+					}
+				}
+			}
+
+			if jsonErr == nil {
+				// Attempt to parse the JSON-RPC request into a known concrete
+				// command.
+				parsedCmd := parseCmd(&request)
+				if parsedCmd.err != nil {
+					jsonErr = parsedCmd.err
+				} else {
+					result, jsonErr = s.standardCmdResult(parsedCmd, closeChan)
+				}
 			}
 		}
 	}
@@ -4818,9 +4821,19 @@ func (s *rpcServer) Start() {
 		ReadTimeout: time.Second * rpcAuthTimeoutSeconds,
 	}
 	rpcServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Connection", "close")
-		w.Header().Set("Content-Type", "application/json")
-		r.Close = true
+		if r.Method == "OPTIONS" {
+			w.Header().Set("Connection", "keep-alive")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization")
+			r.Close = false
+		} else {
+			w.Header().Set("Connection", "close")
+			w.Header().Set("Content-Type", "application/json")
+			r.Close = true
+		}
+
+		if strings.Index(r.RemoteAddr, "127.0.0.1:") == 0 || strings.Index(r.RemoteAddr, "localhost:") == 0 {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
 
 		// Limit the number of connections to max allowed.
 		if s.limitConnections(w, r.RemoteAddr) {
@@ -4830,10 +4843,15 @@ func (s *rpcServer) Start() {
 		// Keep track of the number of connected clients.
 		s.incrementClients()
 		defer s.decrementClients()
-		_, isAdmin, err := s.checkAuth(r, true)
-		if err != nil {
-			jsonAuthFail(w)
-			return
+
+		var isAdmin bool
+		if r.Method != "OPTIONS" {
+			_, admin, err := s.checkAuth(r, true)
+			if err != nil {
+				jsonAuthFail(w)
+				return
+			}
+			isAdmin = admin
 		}
 
 		// Read and respond to the request.

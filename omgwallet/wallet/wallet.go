@@ -349,16 +349,18 @@ func (w *Wallet) syncWithChain(birthdayStamp *waddrmgr.BlockStamp) error {
 	// If we've yet to find our birthday block, we'll do so now.
 	if birthdayStamp == nil {
 		var err error
-/*
+
 		birthdayStamp, err = locateBirthdayBlock(
 			chainClient, w.Manager.Birthday(),
 		)
-fmt.Printf("locateBirthdayBlock birthdayStamp = %V", birthdayStamp)
+
+		fmt.Printf("locateBirthdayBlock birthdayStamp = %V", birthdayStamp)
+
 		if err != nil {
 			return fmt.Errorf("unable to locate birthday block: %v",
 				err)
 		}
-*/
+
 		// start from genesis
 		birthdayStamp = &waddrmgr.BlockStamp {
 			Height: 0,
@@ -371,25 +373,25 @@ fmt.Printf("locateBirthdayBlock birthdayStamp = %V", birthdayStamp)
 		// arbitrary height, rather than all the blocks from genesis, so
 		// we persist this height to ensure we don't store any blocks
 		// before it.
-//		startHeight := birthdayStamp.Height
+		startHeight := birthdayStamp.Height
 
 		// With the starting height obtained, get the remaining block
 		// details required by the wallet.
-//		startHash, err := chainClient.GetBlockHash(int64(startHeight))
-//		if err != nil {
-//			return err
-//		}
-//		startHeader, err := chainClient.GetBlockHeader(startHash)
-//		if err != nil {
-//			return err
-//		}
+		startHash, err := chainClient.GetBlockHash(int64(startHeight))
+		if err != nil {
+			return err
+		}
+		startHeader, err := chainClient.GetBlockHeader(startHash)
+		if err != nil {
+			return err
+		}
 
 		err = walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
 			ns := tx.ReadWriteBucket(waddrmgrNamespaceKey)
 			err := w.Manager.SetSyncedTo(ns, &waddrmgr.BlockStamp{
-				Hash:      chainhash.Hash{},	// *startHash,
-				Height:    -1,	// startHeight,
-				Timestamp: time.Unix(0, 0), // startHeader.Timestamp,
+				Hash:      *startHash,	// chainhash.Hash{},	// *startHash,
+				Height:    startHeight, // -1,	// startHeight,
+				Timestamp: startHeader.Timestamp,	// time.Unix(0, 0), // startHeader.Timestamp,
 			})
 			if err != nil {
 				return err

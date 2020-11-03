@@ -260,7 +260,7 @@ func btcdMain(serverChan chan<- *server) error {
 			state := server.chain.BestSnapshot()
 			h := state.Height
 			for {
-				time.Sleep(30 * time.Minute)
+				time.Sleep(10 * time.Minute)
 				state = server.chain.BestSnapshot()
 
 				if (h == state.Height) {
@@ -270,7 +270,11 @@ func btcdMain(serverChan chan<- *server) error {
 				h = state.Height
 			}
 
-			btcdLog.Infof("Voluntary shutdown after no new block for 30 min.")
+			btcdLog.Infof("Voluntary shutdown after no new block for 10 min.")
+
+			pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
+			pprof.Lookup("mutex").WriteTo(os.Stderr, 1)
+
 			rerun = true
 			shutdownRequestChannel <- struct{}{}
 		}()
