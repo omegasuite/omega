@@ -7,6 +7,7 @@ package mining
 import (
 	"bytes"
 	"container/heap"
+	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/omega/ovm"
 	"time"
@@ -546,6 +547,11 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	// the median time of the last several blocks per the Chain consensus rules.
 	ts := medianAdjustedTime(best, g.timeSource)
 
+	prev := g.Chain.NodeByHeight(best.Height)
+	if ts.Unix() < prev.Data.TimeStamp() {
+		ts = time.Unix(prev.Data.TimeStamp(), 0)
+	}
+
 mempoolLoop:
 	for _, txDesc := range sourceTxns {
 		// A block can't have more than one coinbase or contain
@@ -915,7 +921,15 @@ mempoolLoop:
 	msg.SignatureScripts[0] = (*witnessMerkleRoot)[:]
 
 	// Calculate the required difficulty for the block.
-	reqDifficulty := g.Chain.BestSnapshot().Bits
+	rotate := best.LastRotation
+
+	s, err := g.Chain.Miners.BlockByHeight(int32(rotate))
+	if err != nil || s == nil {
+		return nil, fmt.Errorf("Miner chain not ready.")
+	}
+	reqDifficulty := s.MsgBlock().Bits
+
+//	reqDifficulty := g.Chain.BestSnapshot().Bits
 
 	// Create a new block ready to be solved.
 	merkles := blockchain.BuildMerkleTreeStore(blockTxns, false)

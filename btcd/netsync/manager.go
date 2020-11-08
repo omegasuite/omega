@@ -322,7 +322,6 @@ func (sm *SyncManager) updateSyncPeer() {
 		}
 	}
 
-
 	n := len(sm.syncjobs)
 
 	log.Debugf("updateSyncPeer: %d outstanding jobs", n)
@@ -337,18 +336,27 @@ func (sm *SyncManager) updateSyncPeer() {
 		if j.peer.Connected() {
 			txmoot := false
 			if j.stopHash != nil && !zeroHash.IsEqual(j.stopHash) {
-				txmoot,_ = sm.chain.HaveBlock(j.stopHash)
+				txmoot = sm.chain.NodeByHash(j.stopHash) != nil
+//				txmoot,_ = sm.chain.HaveBlock(j.stopHash)
 			} else if len(j.locator) > 0 {	// && *j.locator[0] != sm.chain.BestSnapshot().Hash {
-				txmoot,_ = sm.chain.HaveBlock(j.locator[0])
-//				txmoot = true
+				blk := sm.chain.NodeByHash(j.locator[0])
+				if blk != nil && blk.Height < sm.chain.BestChain.Height() {
+					txmoot = true
+				}
+//				txmoot,_ = sm.chain.HaveBlock(j.locator[0])
 			} else {
 				txmoot = true
 			}
 			mnmoot := false
 			if j.mstopHash != nil && !zeroHash.IsEqual(j.mstopHash) {
-				mnmoot,_ = sm.chain.HaveBlock(j.stopHash)
+				mnmoot = sm.chain.Miners.NodeByHash(j.mstopHash) != nil
+//				mnmoot,_ = sm.chain.Miners.HaveBlock(j.mstopHash)
 			} else if len(j.mlocator) > 0 {	// && *j.mlocator[0] != sm.chain.Miners.BestSnapshot().Hash {
-				mnmoot,_ = sm.chain.HaveBlock(j.mlocator[0])
+				blk,_ := sm.chain.Miners.BlockByHash(j.mlocator[0])
+				if blk != nil && blk.Height() < sm.chain.Miners.BestSnapshot().Height {
+					mnmoot = true
+				}
+//				mnmoot,_ = sm.chain.Miners.HaveBlock(j.mlocator[0])
 //				mnmoot = true
 			} else {
 				mnmoot = true
@@ -356,11 +364,11 @@ func (sm *SyncManager) updateSyncPeer() {
 			if txmoot && mnmoot {
 				continue
 			}
-			if mnmoot {
+			if txmoot  {
 				j.stopHash = &zeroHash
 				j.locator = make([]*chainhash.Hash, 0)
 			}
-			if txmoot {
+			if mnmoot {
 				j.mstopHash = &zeroHash
 				j.mlocator = make([]*chainhash.Hash, 0)
 			}
@@ -386,7 +394,7 @@ func (sm *SyncManager) StartSync() bool {
 // download/sync the blockchain from.  When syncing is already running, it
 // simply returns.  It also examines the candidates for any which are no longer
 // candidates and removes them as needed.
-func (sm *SyncManager) startSync(p *peerpkg.Peer) bool {
+func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 	if sm.bshutdown {
 		return true
 	}
@@ -408,16 +416,22 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) bool {
 		if !state.syncCandidate || !peer.Connected() || state.syncTime > tm {
 			continue
 		}
-		if bestPeer != nil {
-			// peer priority: select by committe first, length of chain
-			cd := int32(best.LastRotation) - bestPeer.Committee
-			cp := int32(best.LastRotation) - peer.Committee
-			if cd >= 0 && cd < wire.CommitteeSize && (cp < 0 || cp >= wire.CommitteeSize) {
-				continue
-			}
-			if !(cp >= 0 && cp < wire.CommitteeSize && (cd < 0 || cd >= wire.CommitteeSize)) &&
-				peer.LastBlock() < bestPeer.LastBlock() {
+		if bestPeer != nil && peer != avoid {
+			if sm.chain.IsCurrent() {
+				// peer priority: select by committe first, length of chain
+				cd := int32(best.LastRotation) - bestPeer.Committee
+				cp := int32(best.LastRotation) - peer.Committee
+				if cd >= 0 && cd < wire.CommitteeSize && (cp < 0 || cp >= wire.CommitteeSize) {
 					continue
+				}
+				if !(cp >= 0 && cp < wire.CommitteeSize && (cd < 0 || cd >= wire.CommitteeSize)) &&
+					peer.LastBlock() < bestPeer.LastBlock() {
+					continue
+				}
+			} else {
+				if peer.LastBlock() < bestPeer.LastBlock() {
+					continue
+				}
 			}
 		}
 		tm = state.syncTime
@@ -429,7 +443,7 @@ func (sm *SyncManager) startSync(p *peerpkg.Peer) bool {
 		return false
 	}
 
-	if bestPeer == p {
+	if bestPeer == avoid {
 		sm.syncPeer = bestPeer
 	}
 
@@ -1068,6 +1082,11 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 		if _, ok := err.(blockchain.RuleError); ok {
 			log.Tracef("Rejected miner block %s from %s: %s", blockHash.String(),
 				peer.String(), err.Error())
+			if err.(blockchain.RuleError).ErrorCode == blockchain.ErrDuplicateBlock {
+				// still need to update height
+				peer.UpdateLastMinerBlockHeight(bmsg.block.Height())
+				return
+			}
 		} else {
 			log.Errorf("Failed to process miner block %s: %s",
 				blockHash.String(), err.Error())
@@ -1942,8 +1961,11 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 	// A block has been connected to the main block chain.
 	case blockchain.NTBlockConnected:
 		if block, ok := notification.Data.(*wire.MinerBlock); ok {
+			if !sm.current(1) {
+				return
+			}
 			for peer, _ := range sm.peerStates {
-				if peer.LastMinerBlock() < block.Height() {
+				if peer.LastMinerBlock() < block.Height() && block.Height() < peer.LastMinerBlock() + 50 {
 					// should send an inv msg
 					invVect := &wire.InvVect {
 						Type: common.InvTypeMinerBlock,
@@ -1956,11 +1978,15 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 			break
 		}
 
+		if !sm.current(0) {
+			return
+		}
+
 		block, ok := notification.Data.(*btcutil.Block)
 		if ok {
 			// notify peers of new height if our height is greater than we know the peer has
 			for peer, _ := range sm.peerStates {
-				if peer.LastBlock() < block.Height() {
+				if peer.LastBlock() < block.Height() && block.Height() <  peer.LastBlock() + 500 {
 					invVect := &wire.InvVect{
 						Type: common.InvTypeWitnessBlock,
 						Hash: *block.Hash(),

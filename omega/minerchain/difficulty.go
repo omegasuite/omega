@@ -247,8 +247,18 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	pb := firstNode
 	bb := b.blockChain.BestChain.Tip()
 	for i := b.blocksPerRetarget - 2; i >= 0; i-- {
+		// to cause loading of missing nodes
+		b.blockChain.HeaderByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
 //		factor := uint32(0)
 		for bb != nil && bb.Hash != pb.Data.(*blockchainNodeData).block.BestBlock {
+			if bb.Parent == nil && bb.Height != 0 {
+				// this should not happen. but we keep code here in case something is wrong
+				h := bb.Height - 100
+				if h < 0 {
+					h = 0
+				}
+				b.blockChain.FetchMissingNodes(&bb.Hash, h)
+			}
 			bb = bb.Parent
 		}
 		if bb == nil {
@@ -257,6 +267,15 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		}
 		mb := bb
 		for mb != nil && (mb.Data.GetNonce() > -wire.MINER_RORATE_FREQ) {
+			if mb.Parent == nil && mb.Height != 0 {
+				// this should not happen. but we keep code here in case something is wrong
+				h := mb.Height - wire.MINER_RORATE_FREQ
+				if h < 0 {
+					h = 0
+				}
+				b.blockChain.FetchMissingNodes(&mb.Hash, h)
+			}
+
 			mb = mb.Parent
 		}
 		var h int32

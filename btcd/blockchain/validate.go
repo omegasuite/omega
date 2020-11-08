@@ -299,7 +299,7 @@ func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
 	if p.Height > best.Height {
 		return -1
 	}
-	for ; p != nil && !p.Hash.IsEqual(&hash); p = p.Parent {
+	for ; p != nil && !p.Hash.IsEqual(&hash); p = b.ParentNode(p) {
 		switch {
 		case p.Data.GetNonce() > 0:
 			rotate -= wire.POWRotate
@@ -326,20 +326,28 @@ func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
 // but can not be connected. if err,_, it is a bad block and should be discarded
 func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.BlockNode, powLimit *big.Int, flags BehaviorFlags) (error, bool) {
 	best := b.BestSnapshot()
-	bits := best.Bits
+//	bits := best.Bits
 	rotate := best.LastRotation
+
+	s, err := b.Miners.BlockByHeight(int32(rotate))
+	if err != nil || s == nil {
+		// will make the block orphan, because miner chain is not ready
+		return nil, true
+	}
+	bits := s.MsgBlock().Bits
+
 	header := &block.MsgBlock().Header
 
 	if parent.Hash != best.Hash {
-		pn := b.index.LookupNode(&parent.Hash)
-		fork := b.BestChain.FindFork(pn)
+		pn := b.NodeByHash(&parent.Hash)
+		fork := b.FindFork(pn)
 
 		if fork == nil {
 			return nil, true
 		}
 
 		// parent is not the tip, go back to find correct rotation
-		for p := b.BestChain.Tip(); p != nil && p != fork; p = p.Parent {
+		for p := b.BestChain.Tip(); p != nil && p != fork; p = b.ParentNode(p) {
 			switch {
 			case p.Data.GetNonce() > 0:
 				rotate -= wire.POWRotate
@@ -348,7 +356,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 				rotate--
 			}
 		}
-		for p := pn; p != nil && p != fork; p = p.Parent {
+		for p := pn; p != nil && p != fork; p = b.ParentNode(p) {
 			switch {
 			case p.Data.GetNonce() > 0:
 				rotate += wire.POWRotate
@@ -424,10 +432,10 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 
 			default:
 				if header.Nonce != pnonce-1 {
-						// if parent.Nonce < 0 && header.Nonce != -((-parent.Nonce + 1) % ROT) { error }
-						//					str := fmt.Sprintf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce)
-						return fmt.Errorf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.Data.GetNonce()), true
-					}
+					// if parent.Nonce < 0 && header.Nonce != -((-parent.Nonce + 1) % ROT) { error }
+					//					str := fmt.Sprintf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.nonce)
+					return fmt.Errorf("The previous block is a block in a series, this block must be the next in the series (%d vs. %d).", header.Nonce, parent.Data.GetNonce()), true
+				}
 			}
 		}
 
@@ -459,11 +467,10 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		hash := MakeMinerSigHash(block.Height(), *block.Hash())
 
 		committee := make(map[[20]byte]struct{})
+		nsigned := 0
 
 		var imin = false
 		var inkey *btcec.PrivateKey
-
-		nsigned := 0
 		inkey = nil
 		var meme btcutil.Address
 
@@ -473,6 +480,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 				return nil, true
 			}
 			committee[mb.MsgBlock().Miner] = struct{}{}
+
 			if !imin {
 				for j,me := range b.Miner {
 					imin = bytes.Compare(me.ScriptAddress(), mb.MsgBlock().Miner[:]) == 0
@@ -485,7 +493,9 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			}
 		}
 
-		for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+		tbr := make([]int, 0, 3)
+
+		for k, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 			signer, err := btcutil.VerifySigScript(sign, hash, b.ChainParams)
 			if err != nil {
 				return err, false
@@ -493,7 +503,8 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 
 			pkh := signer.Hash160()
 			if _,ok := committee[*pkh]; !ok {
-				return fmt.Errorf("Signature does not belongs to miner."), false
+				tbr = append(tbr, k + 1)
+				continue
 			}
 			delete(committee, *pkh)
 
@@ -501,10 +512,13 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 
 			nsigned++
 		}
-		if nsigned < wire.CommitteeSigs {
-			return fmt.Errorf("Insufficient number of Miner signatures."), false
+
+		for k := len(tbr) - 1; k >= 0; k-- {
+			block.MsgBlock().Transactions[0].SignatureScripts =
+			append(block.MsgBlock().Transactions[0].SignatureScripts[:tbr[k]], block.MsgBlock().Transactions[0].SignatureScripts[tbr[k]+1:]...)
 		}
-		if imin && inkey != nil {
+
+		if imin && inkey != nil && nsigned < wire.CommitteeSigs {
 			// add my signature to the block
 			sig, _ := inkey.Sign(hash)
 			sgs := sig.Serialize()
@@ -520,6 +534,11 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			block.MsgBlock().Transactions[0].SignatureScripts = append(
 				block.MsgBlock().Transactions[0].SignatureScripts,
 				Signature)
+			nsigned++
+		}
+
+		if nsigned < wire.CommitteeSigs {
+			return fmt.Errorf("Insufficient number of Miner signatures."), false
 		}
 	}
 
@@ -1394,7 +1413,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 
 	prevPows := uint(0)
 	if node.Data.GetNonce() > 0 {
-		for pw := node.Parent; pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
+		for pw := node.Parent; pw != nil && pw.Data.GetNonce() > 0; pw = b.ParentNode(pw) {
 			prevPows++
 		}
 	}

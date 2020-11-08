@@ -716,6 +716,9 @@ func (sp *serverPeer) OnBlock(_ *peer.Peer, msg *wire.MsgBlock, buf []byte) {
 //	btcdLog.Infof("Blocks %s received", block.Hash().String())
 
 	sp.server.syncManager.QueueBlock(block, sp.Peer, sp.blockProcessed)
+	
+	// TBD. Take a return indicating whether the block has been added (orphan incld.)
+	// if not, remove from known inventory
 	<-sp.blockProcessed
 }
 
@@ -742,6 +745,9 @@ func (sp *serverPeer) OnMinerBlock(_ *peer.Peer, msg *wire.MingingRightBlock, bu
 	// thread and therefore blocks further messages until
 	// the bitcoin block has been fully processed.
 	sp.server.syncManager.QueueMinerBlock(block, sp.Peer, sp.blockProcessed)
+
+	// TBD. Take a return indicating whether the block has been added (orphan incld.)
+	// if not, remove from known inventory
 	<-sp.blockProcessed
 }
 
@@ -876,7 +882,17 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 // OnGetBlocks is invoked when a peer receives a getblocks bitcoin
 // message.
 func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
-  	invMsg := wire.NewMsgInv()
+	if len(msg.TxBlockLocatorHashes) == 0 {
+		btcdLog.Infof("OnGetBlocks from %s (%s)\ntx: %s", sp.Addr(), sp.LocalAddr().String(),
+			msg.MinerBlockLocatorHashes[0].String())
+	} else if len(msg.MinerBlockLocatorHashes) == 0 {
+		btcdLog.Infof("OnGetBlocks from %s (%s)\nminer: %s", sp.Addr(), sp.LocalAddr().String(),
+			msg.TxBlockLocatorHashes[0].String())
+	} else {
+		btcdLog.Infof("OnGetBlocks from %s (%s)\ntx: %s\nminer: %s", sp.Addr(), sp.LocalAddr().String(),
+			msg.TxBlockLocatorHashes[0].String(), msg.MinerBlockLocatorHashes[0].String())
+	}
+ 	invMsg := wire.NewMsgInv()
 
 	chain := sp.server.chain
 	mchain := sp.server.chain.Miners.(*minerchain.MinerChain)
@@ -1579,6 +1595,9 @@ func (sp *serverPeer) OnWrite(_ *peer.Peer, bytesWritten int, msg wire.Message, 
 	sp.server.AddBytesSent(uint64(bytesWritten))
 }
 
+func (sp *serverPeer) OnReject(p *peer.Peer, msg *wire.MsgReject) {
+}
+
 // PushGetBlock is invoked when consensus handler receives a moot consensus message
 // which indicates a consensus peer is behind us.
 func (sp *serverPeer) PushGetBlock(p *peer.Peer) {
@@ -2233,6 +2252,27 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 			return
 		}
 
+		if msg.invVect.Type & common.InvTypeBlock == common.InvTypeBlock {
+			h, err := s.chain.BlockHeightByHash(&msg.invVect.Hash)
+			if err != nil {
+				return
+			}
+			if h > sp.LastBlock() + 500 {
+				// don't relay if the peer is too far behind. let the peer pull, perhaps it is
+				// what the peer is doing. don't disrupt
+				return
+			}
+		}
+
+		if msg.invVect.Type & common.InvTypeMinerBlock == common.InvTypeMinerBlock {
+			n := s.chain.Miners.NodeByHash(&msg.invVect.Hash)
+			if n == nil || n.Height > sp.LastMinerBlock() + 50 {
+				// don't relay if the peer is too far behind. let the peer pull, perhaps it is
+				// what the peer is doing. don't disrupt
+				return
+			}
+		}
+
 		// If the inventory is a block and the peer prefers headers,
 		// generate and send a headers message instead of an inventory
 		// message.
@@ -2528,6 +2568,7 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 			OnRead:         sp.OnRead,
 			OnWrite:        sp.OnWrite,
 			PushGetBlock:	sp.PushGetBlock,
+			OnReject:		sp.OnReject,
 
 			// Note: The reference client currently bans peers that send alerts
 			// not signed with its key.  We could verify against their key, but
@@ -3195,7 +3236,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		services &^= common.SFNodeCF
 	}
 
-	amgr := addrmgr.New(cfg.DataDir, btcdLookup)
+	amgr := addrmgr.New(cfg.DataDir, btcdLookup, cfg.ExternalIPs)
 
 	var listeners []net.Listener
 	var nat NAT

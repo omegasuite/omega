@@ -98,7 +98,7 @@ func (b *BlockChain) findPreviousCheckpoint() (*chainutil.BlockNode, error) {
 		// Loop backwards through the available checkpoints to find one
 		// that is already available.
 		for i := numCheckpoints - 1; i >= 0; i-- {
-			node := b.index.LookupNode(checkpoints[i].Hash)
+			node := b.NodeByHash(checkpoints[i].Hash)
 			if node == nil || !b.BestChain.Contains(node) {
 				continue
 			}
@@ -143,7 +143,7 @@ func (b *BlockChain) findPreviousCheckpoint() (*chainutil.BlockNode, error) {
 	// this lookup fails something is very wrong since the chain has already
 	// passed the checkpoint which was verified as accurate before inserting
 	// it.
-	checkpointNode := b.index.LookupNode(b.nextCheckpoint.Hash)
+	checkpointNode := b.NodeByHash(b.nextCheckpoint.Hash)
 	if checkpointNode == nil {
 		return nil, AssertError(fmt.Sprintf("findPreviousCheckpoint "+
 			"failed lookup of known good block node %s",
@@ -211,7 +211,7 @@ func (b *BlockChain) IsCheckpointCandidate(block *btcutil.Block) (bool, error) {
 */
 
 	// A checkpoint must be in the main chain.
-	node := b.index.LookupNode(block.Hash())
+	node := b.NodeByHash(block.Hash())
 	if node == nil || !b.BestChain.Contains(node) {
 		return false, nil
 	}

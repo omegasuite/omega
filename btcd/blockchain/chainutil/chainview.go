@@ -58,6 +58,10 @@ func NewChainView(tip *BlockNode) *ChainView {
 	return &c
 }
 
+func (c *ChainView) SetNode(h int32, node *BlockNode) {
+	c.nodes[h] = node
+}
+
 // genesis returns the genesis block for the chain view.  This only differs from
 // the exported Version in that it is up to the caller to ensure the lock is
 // held.
@@ -145,9 +149,16 @@ func (c *ChainView) setTip(node *BlockNode) {
 		}
 	}
 
-	for node != nil && c.nodes[node.Height] != node {
-		c.nodes[node.Height] = node
+	h := node.Height
+	for node != nil && c.nodes[h] != node {
+		c.nodes[h] = node
 		node = node.Parent
+		h--
+	}
+	if h > 0 && node == nil && c.nodes[h] != nil {
+		for ; h > 0 && c.nodes[h] != nil; h-- {
+			c.nodes[h] = nil
+		}
 	}
 }
 
@@ -184,6 +195,10 @@ func (c *ChainView) Height() int32 {
 	height := c.height()
 	c.mtx.Unlock()
 	return height
+}
+
+func (c *ChainView) HeightUL() int32 {
+	return c.height()
 }
 
 // NodeByHeightUL returns the block node at the specified Height.  Nil will be
@@ -229,7 +244,7 @@ func (c *ChainView) Equals(other *ChainView) bool {
 //
 // This function MUST be called with the view mutex locked (for reads).
 func (c *ChainView) ContainsUL(node *BlockNode) bool {
-	return c.NodeByHeightUL(node.Height) == node
+	return node != nil && c.NodeByHeightUL(node.Height) == node
 }
 
 // Contains returns whether or not the chain view ContainsUL the passed block
@@ -386,19 +401,14 @@ func (c *ChainView) blockLocator(node *BlockNode) chainhash.BlockLocator {
 	locator := make(chainhash.BlockLocator, 0, maxEntries)
 
 	step := int32(1)
-	for node != nil {
+	height := node.Height
+
+	for height > 0 {
 		locator = append(locator, &node.Hash)
 
-		// Nothing more to add once the genesis block has been added.
-		if node.Height == 0 {
+		height -= step
+		if height <= 0 {
 			break
-		}
-
-		// Calculate Height of previous node to include ensuring the
-		// final node is the genesis block.
-		height := node.Height - step
-		if height < 0 {
-			height = 0
 		}
 
 		// When the node is in the current chain view, all of its
@@ -411,6 +421,10 @@ func (c *ChainView) blockLocator(node *BlockNode) chainhash.BlockLocator {
 			node = node.Ancestor(height)
 		}
 
+		if node == nil {
+			break
+		}
+
 		// Once 11 entries have been included, start doubling the
 		// distance between included hashes.
 		if len(locator) > 10 {
@@ -418,7 +432,22 @@ func (c *ChainView) blockLocator(node *BlockNode) chainhash.BlockLocator {
 		}
 	}
 
+	locator = append(locator, &c.nodes[0].Hash)
+
 	return locator
+}
+
+func (c *ChainView) LastNil(begin, end int32) int32 {
+	// find the first non-nil (ex. genesis) node following nil nodes
+	for begin < end {
+		h := (begin + end) >> 1
+		if c.nodes[h] == nil {
+			begin = h + 1
+		} else {
+			end = h
+		}
+	}
+	return end
 }
 
 // BlockLocator returns a block locator for the passed block node.  The passed

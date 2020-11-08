@@ -26,7 +26,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	// The height of this block is one more than the referenced previous
 	// block.
 	prevHash := &block.MsgBlock().Header.PrevBlock
-	prevNode := b.index.LookupNode(prevHash)
+	prevNode := b.NodeByHash(prevHash)
 
 	// The block must pass all of the validation rules which depend on the
 	// position of the block within the block chain.

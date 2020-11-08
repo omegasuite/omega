@@ -1628,14 +1628,14 @@ func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan str
 	chainInfo := &btcjson.GetBlockChainInfoResult{
 		Chain:         params.Name,
 		Blocks:        chainSnapshot.Height,
-		Headers:       chainSnapshot.Height,
+//		Headers:       chainSnapshot.Height,
 		Rotate:		   int32(chainSnapshot.LastRotation),
 		BestBlockHash: chainSnapshot.Hash.String(),
-		Difficulty:    getDifficultyRatio(chainSnapshot.Bits, params),
+//		Difficulty:    getDifficultyRatio(chainSnapshot.Bits, params),
 		MedianTime:    chainSnapshot.MedianTime.Unix(),
-		Pruned:        false,
+//		Pruned:        false,
 		MinerBlocks:        minerchainSnapshot.Height,
-		MinerHeaders:       minerchainSnapshot.Height,
+//		MinerHeaders:       minerchainSnapshot.Height,
 		MinerBestBlockHash: minerchainSnapshot.Hash.String(),
 		MinerDifficulty:    getDifficultyRatio(minerchainSnapshot.Bits, params),
 		MinerMedianTime:    minerchainSnapshot.MedianTime.Unix(),
@@ -4402,6 +4402,8 @@ type rpcServer struct {
 	requestProcessShutdown chan struct{}
 	sendcmdconfirmation	   map[chainhash.Hash]chan *wire.MsgTx
 	quit                   chan int
+
+	Rpcactivity 		   chan struct{}
 }
 
 // httpStatusLine returns a response Status-Line (RFC 2616 Section 6.1)
@@ -4821,6 +4823,9 @@ func (s *rpcServer) Start() {
 		ReadTimeout: time.Second * rpcAuthTimeoutSeconds,
 	}
 	rpcServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if s.Rpcactivity != nil {
+			s.Rpcactivity <- struct{}{}
+		}
 		if r.Method == "OPTIONS" {
 			w.Header().Set("Connection", "keep-alive")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization")
@@ -4860,6 +4865,9 @@ func (s *rpcServer) Start() {
 
 	// Websocket endpoint.
 	rpcServeMux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		if s.Rpcactivity != nil {
+			s.Rpcactivity <- struct{}{}
+		}
 		authenticated, isAdmin, err := s.checkAuth(r, false)
 		if err != nil {
 			jsonAuthFail(w)

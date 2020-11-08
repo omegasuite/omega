@@ -501,3 +501,11 @@ func (b *MinerChain) BlockByHash(hash *chainhash.Hash) (*wire.MinerBlock, error)
 	})
 	return block, err
 }
+
+func (b *MinerChain) NodeByHash(hash *chainhash.Hash) *chainutil.BlockNode {
+	node := b.index.LookupNode(hash)
+	if node == nil || !b.BestChain.Contains(node) {
+		return nil
+	}
+	return node
+}

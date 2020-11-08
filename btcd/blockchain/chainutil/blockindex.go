@@ -123,6 +123,7 @@ func (node *BlockNode) Ancestor(height int32) *BlockNode {
 //
 // This function is safe for concurrent access.
 func (node *BlockNode) RelativeAncestor(distance int32) *BlockNode {
+	// this func is only used by miner chain. so we don't worry about nil return
 	return node.Ancestor(node.Height - distance)
 }
 
@@ -170,6 +171,11 @@ func (node *BlockNode) CalcPastMedianTime() time.Time {
 // blocks, it is actually a tree-shaped structure where any node can have
 // multiple children.  However, there can only be one active branch which does
 // indeed form a chain from the tip all the way back to the genesis block.
+
+// To reduce memory footprint, at initialization, we only load latest 300K nodes.
+// That should be sufficient for normal ops. Older nodes will be loaded dynamically.
+// The only real performance problem is when a new client request full chain data.
+// But it does not happen often and performance degradation should be acceptable.
 type BlockIndex struct {
 	// The following fields are set when the instance is created and can't
 	// be changed afterwards, so there is no need to protect them with a
@@ -180,6 +186,8 @@ type BlockIndex struct {
 	sync.RWMutex
 	index map[chainhash.Hash]*BlockNode
 	dirty map[*BlockNode]bool
+
+	Unloaded map[chainhash.Hash]int32
 
 	// Tips of side chains
 	Tips map[chainhash.Hash]*BlockNode
@@ -195,6 +203,7 @@ func NewBlockIndex(db database.DB, chainParams *chaincfg.Params) *BlockIndex {
 		index:       make(map[chainhash.Hash]*BlockNode),
 		dirty:       make(map[*BlockNode]bool),
 		Tips:        make(map[chainhash.Hash]*BlockNode),
+		Unloaded:	 make(map[chainhash.Hash]int32),
 	}
 }
 
@@ -215,6 +224,9 @@ func (bi *BlockIndex) Highest() *BlockNode {
 func (bi *BlockIndex) HaveBlock(hash *chainhash.Hash) bool {
 	bi.RLock()
 	_, hasBlock := bi.index[*hash]
+	if !hasBlock {
+		_, hasBlock = bi.Unloaded[*hash]
+	}
 	bi.RUnlock()
 	return hasBlock
 }
@@ -230,6 +242,10 @@ func (bi *BlockIndex) LookupNode(hash *chainhash.Hash) *BlockNode {
 	return node
 }
 
+func (bi *BlockIndex) LookupNodeUL(hash *chainhash.Hash) *BlockNode {
+	return bi.index[*hash]
+}
+
 // AddNode adds the provided node to the block index and marks it as dirty.
 // Duplicate entries are not checked so it is up to caller to avoid adding them.
 //
@@ -239,6 +255,13 @@ func (bi *BlockIndex) AddNode(node *BlockNode) {
 	bi.AddNodeUL(node)
 	bi.dirty[node] = true
 	bi.Unlock()
+}
+
+func (bi *BlockIndex) AddNodeDirect(node *BlockNode) {
+	if node.Parent != nil {
+		delete(bi.Tips, node.Parent.Hash)
+	}
+	bi.index[node.Hash] = node
 }
 
 /*
@@ -257,8 +280,12 @@ func (bi *BlockIndex) AddNodeUL(node *BlockNode) {
 	if node.Parent != nil {
 		delete(bi.Tips, node.Parent.Hash)
 	}
-	bi.Tips[node.Hash] = node
 	bi.index[node.Hash] = node
+	bi.Tips[node.Hash] = node
+}
+
+func (bi *BlockIndex) Untip(hash chainhash.Hash) {
+	delete(bi.Tips, hash)
 }
 
 // NodeStatus provides concurrent-safe access to the Status field of a node.

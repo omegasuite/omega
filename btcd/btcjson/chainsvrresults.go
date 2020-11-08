@@ -112,19 +112,19 @@ type SoftForkDescription struct {
 type GetBlockChainInfoResult struct {
 	Chain                string                              `json:"chain"`
 	Blocks               int32                               `json:"blocks"`
-	Headers              int32                               `json:"headers"`
+//	Headers              int32                               `json:"headers"`
 	Rotate				 int32                               `json:"rotate"`
 	BestBlockHash        string                              `json:"bestblockhash"`
-	Difficulty           float64                             `json:"difficulty"`
+//	Difficulty           float64                             `json:"difficulty"`
 	MedianTime           int64                               `json:"mediantime"`
 	VerificationProgress float64                             `json:"verificationprogress,omitempty"`
-	Pruned               bool                                `json:"pruned"`
-	PruneHeight          int32                               `json:"pruneheight,omitempty"`
+//	Pruned               bool                                `json:"pruned"`
+//	PruneHeight          int32                               `json:"pruneheight,omitempty"`
 	ChainWork            string                              `json:"chainwork,omitempty"`
-	SoftForks            []*SoftForkDescription              `json:"softforks"`
+//	SoftForks            []*SoftForkDescription              `json:"softforks"`
 
 	MinerBlocks               int32                          `json:"minerblocks"`
-	MinerHeaders              int32                          `json:"minerheaders"`
+//	MinerHeaders              int32                          `json:"minerheaders"`
 	MinerBestBlockHash        string                         `json:"minerbestblockhash"`
 	MinerDifficulty           float64                        `json:"minerdifficulty"`
 	MinerMedianTime           int64                          `json:"minermediantime"`

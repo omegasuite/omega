@@ -47,6 +47,7 @@ type AddrManager struct {
 	nNew           int
 	lamtx          sync.Mutex
 	localAddresses map[string]*localAddress
+	externalips	   map[string]struct{}
 }
 
 type serializedKnownAddress struct {
@@ -173,6 +174,10 @@ func (a *AddrManager) updateAddress(netAddr, srcAddr *wire.NetAddress) {
 	}
 
 	addr := NetAddressKey(netAddr)
+	if _,ok := a.externalips[addr]; ok {
+		return
+	}
+
 	ka := a.find(netAddr)
 	if ka != nil {
 		// TODO: only update addresses periodically.
@@ -745,7 +750,9 @@ func (a *AddrManager) isMyself(na *wire.NetAddress) bool {
 			return true
 		}
 	}
-	return false
+	s := NetAddressKey(na)
+	_,ok := a.externalips[s]
+	return ok
 }
 
 // GetAddress returns a single address that should be routable.  It picks a
@@ -813,6 +820,9 @@ func (a *AddrManager) GetAddress() *KnownAddress {
 					ka = value
 				}
 				nth--
+			}
+			if a.isMyself(ka.na) {
+				continue
 			}
 			randval := a.rand.Intn(large)
 			if float64(randval) < (factor * ka.chance() * float64(large)) {
@@ -1148,13 +1158,24 @@ func (a *AddrManager) GetBestLocalAddress(remoteAddr *wire.NetAddress) *wire.Net
 
 // New returns a new bitcoin address manager.
 // Use Start to begin processing asynchronous address updates.
-func New(dataDir string, lookupFunc func(string) ([]net.IP, error)) *AddrManager {
+func New(dataDir string, lookupFunc func(string) ([]net.IP, error), extip []string) *AddrManager {
 	am := AddrManager{
 		peersFile:      filepath.Join(dataDir, "peers.json"),
 		lookupFunc:     lookupFunc,
 		rand:           rand.New(rand.NewSource(time.Now().UnixNano())),
 		quit:           make(chan struct{}),
 		localAddresses: make(map[string]*localAddress),
+		externalips:    make(map[string]struct{}),
+	}
+	for _,s := range extip {
+		n, err := am.DeserializeNetAddress(s)
+		if err != nil {
+			continue
+		}
+
+		addr := NetAddressKey(n)
+
+		am.externalips[addr] = struct{}{}
 	}
 	am.reset()
 	return &am

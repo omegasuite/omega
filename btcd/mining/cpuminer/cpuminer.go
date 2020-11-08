@@ -503,8 +503,8 @@ out:
 
 		template, err := m.g.NewBlockTemplate(payToAddress, nonce)
 		if err != nil {
-			errStr := fmt.Sprintf("Failed to create new block template: %v", err)
-			log.Info(errStr)
+//			errStr := fmt.Sprintf("Failed to create new block template: %v", err)
+			log.Info(err.Error())
 //			log.Error(errStr)
 			continue
 		}

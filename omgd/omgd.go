@@ -259,12 +259,17 @@ func btcdMain(serverChan chan<- *server) error {
 		go func() {
 			state := server.chain.BestSnapshot()
 			h := state.Height
+			server.rpcServer.Rpcactivity = make(chan struct{})
 			for {
-				time.Sleep(10 * time.Minute)
-				state = server.chain.BestSnapshot()
+				select {
+				case <- server.rpcServer.Rpcactivity:
 
-				if (h == state.Height) {
-					break
+				case <-time.After(10 * time.Minute):
+					state = server.chain.BestSnapshot()
+
+					if h == state.Height {
+						break
+					}
 				}
 
 				h = state.Height

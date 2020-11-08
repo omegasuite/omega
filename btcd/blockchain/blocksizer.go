@@ -114,7 +114,7 @@ main:
 
 			log.Infof("blockSizer accounting %d - %d by act @ %d", b.blockSizer.lastNode.Height, runto, act.action)
 
-			p := b.blockSizer.lastNode.Parent
+			p := b.ParentNode(b.blockSizer.lastNode)
 			for i := b.blockSizer.lastNode.Height - 1; i >= runto && p != nil; i-- {
 				if p.Data.GetNonce() < 0 {
 					q, _ := b.BlockByHash(&p.Hash)
@@ -128,7 +128,7 @@ main:
 					b.blockSizer.timeSum += b.blockSizer.lastNode.Data.TimeStamp() - p.Data.TimeStamp()
 				}
 				b.blockSizer.lastNode = p
-				p = p.Parent
+				p = b.ParentNode(p)
 			}
 			if runto == 0 || runto == h-chaincfg.BlockSizeEvalPeriod-chaincfg.SkipBlocks {
 				log.Infof("blockSizer stats: blockCount = %d, sizeSum = %d timeSum = %d",

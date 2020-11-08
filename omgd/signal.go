@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"runtime/pprof"
 	"syscall"
 	"time"
 )
@@ -44,7 +45,7 @@ func interruptListener() <-chan struct{} {
 //				}
 //				last = t
 
-//				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 //				consensus.CommitteePolling()
 
 			case <-shutdownRequestChannel:
