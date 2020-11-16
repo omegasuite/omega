@@ -233,6 +233,9 @@ const (
 
 	// ErrBlackList indicates that the miner is banned in a black list.
 	ErrBlackList
+
+	// ErrRotationViolation indicates that the miner is violating rotation rule.
+	ErrRotationViolation
 )
 
 // Map of ErrorCode values back to their constant names for pretty printing.

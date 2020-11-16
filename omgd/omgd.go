@@ -7,7 +7,8 @@ package main
 import (
 	"fmt"
 	"github.com/omegasuite/omega/consensus"
-//	"log"
+	"github.com/omegasuite/btcutil"
+	//	"log"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -25,7 +26,6 @@ import (
 	"github.com/omegasuite/btcd/blockchain/indexers"
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/limits"
-	"github.com/omegasuite/btcutil"
 )
 
 const (
@@ -196,6 +196,29 @@ func btcdMain(serverChan chan<- *server) error {
 
 	activeNetParams.Params.MinRelayTxFee = int64(cfg.minRelayTxFee)
 
+	if cfg.Generate && len(cfg.privateKeys) == 0 {
+		// read from stdin. for security.
+		// expect user to do something like: echo privkey | btcd
+		fmt.Printf("Private Key in GIF ... ")
+		var pvk [80]byte
+		n, err := os.Stdin.Read(pvk[:])
+		if err == nil {
+			dwif, err := btcutil.DecodeWIF(string(pvk[:n]))
+			if err == nil {
+				privKey := dwif.PrivKey
+				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
+				if err == nil {
+					addr := pkaddr.AddressPubKeyHash()
+					if addr.IsForNet(activeNetParams.Params) {
+						cfg.miningAddrs = append(cfg.miningAddrs, addr)
+						cfg.signAddress = append(cfg.signAddress, addr)
+						cfg.privateKeys = append(cfg.privateKeys, privKey)
+					}
+				}
+			}
+		}
+	}
+
 	// Create server and start it.
 	server, err := newServer(cfg.Listeners, db, minerdb, activeNetParams.Params,
 		interrupt)
@@ -219,29 +242,6 @@ func btcdMain(serverChan chan<- *server) error {
 		server.WaitForShutdown()
 		btcdLog.Infof("Server shutdown complete")
 	}()
-
-	if cfg.Generate && len(cfg.privateKeys) == 0 {
-		// read from stdin. for security.
-		// expect user to do something like: echo privkey | btcd
-		fmt.Printf("Private Key in GIF ... ")
-		var pvk [80]byte
-		n, err := os.Stdin.Read(pvk[:])
-		if err == nil {
-			dwif, err := btcutil.DecodeWIF(string(pvk[:n]))
-			if err == nil {
-				privKey := dwif.PrivKey
-				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
-				if err == nil {
-					addr := pkaddr.AddressPubKeyHash()
-					if addr.IsForNet(activeNetParams.Params) {
-						cfg.miningAddrs = append(cfg.miningAddrs, addr)
-						cfg.signAddress = append(cfg.signAddress, addr)
-						cfg.privateKeys = append(cfg.privateKeys, privKey)
-					}
-				}
-			}
-		}
-	}
 
 	if len(cfg.privateKeys) != 0 && cfg.Generate {
 		go consensus.Consensus(server, cfg.signAddress, activeNetParams.Params)

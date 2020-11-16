@@ -1914,10 +1914,11 @@ func (b *BlockChain) HeightRange(startHeight, endHeight int32) ([]chainhash.Hash
 		endHeight = latestHeight + 1
 	}
 
-
-
-
-	b.NodeByHeight(endHeight - 1)
+	if startHeight > 0 {
+		b.NodeByHeight(startHeight - 1)
+	} else {
+		b.NodeByHeight(1)
+	}
 
 	// Grab a lock on the chain view to prevent it from changing due to a
 	// reorg while building the hashes.
@@ -1928,6 +1929,13 @@ func (b *BlockChain) HeightRange(startHeight, endHeight int32) ([]chainhash.Hash
 	hashes := make([]chainhash.Hash, 0, endHeight-startHeight)
 	for i := startHeight; i < endHeight; i++ {
 		node := b.BestChain.NodeByHeightUL(i)
+
+		if node == nil {
+			b.BestChain.Unlock()
+			node = b.NodeByHeight(i)
+			b.BestChain.Lock()
+		}
+
 		hashes = append(hashes, node.Hash)
 	}
 	return hashes, nil

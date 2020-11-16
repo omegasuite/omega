@@ -131,6 +131,7 @@ var rpcHandlers map[string]commandHandler
 var rpcHandlersBeforeInit = map[string]commandHandler{
 	"addnode":               handleAddNode,
 	"createrawtransaction":  handleCreateRawTransaction,
+	"parserawtransaction":	 handleParseRawTransaction,
 	"debuglevel":            handleDebugLevel,
 	"decoderawtransaction":  handleDecodeRawTransaction,
 	"decodescript":          handleDecodeScript,
@@ -142,6 +143,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getbestminerblockhash": handleGetBestMinerBlockHash,	// New
 	"getblock":              handleGetBlock,
 	"getblockchaininfo":     handleGetBlockChainInfo,		// Changed: get info. for both chains
+	"addminingkey":			 handleAddMiningKey,
 	"getblockcount":         handleGetBlockCount,
 	"getblockhash":          handleGetBlockHash,
 	"getblockheader":        handleGetBlockHeader,
@@ -601,6 +603,25 @@ func handleMiningPolicy(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	}
 
 	return txReply, nil
+}
+
+func handleParseRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.ParseRawTransactionCmd)
+	if len(c.RawTx)%2 != 0 {
+		c.RawTx = "0" + c.RawTx
+	}
+	decoded, err := hex.DecodeString(c.RawTx)
+	if err != nil {
+		return nil, err
+	}
+	var tx wire.MsgTx
+	err = tx.Deserialize(bytes.NewBuffer(decoded))
+	if err != nil {
+		e := errors.New("TX decode failed")
+		return nil, e
+	}
+
+	return tx, nil
 }
 
 // handleCreateRawTra-nsaction handles createrawtransaction commands.
@@ -1616,6 +1637,42 @@ func softForkStatus(state minerchain.ThresholdState) (string, error) {
 	}
 }
 
+// handleAddMiningKey implements the addminingkey command.
+func handleAddMiningKey(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.AddMiningKeyCmd)
+	result := &btcjson.AddMiningKeyResult { Status: -1 }
+
+	if c.KeyType { // true for private, false for public key
+		if !s.cfg.ShareMining {
+			return result, nil
+		}
+		if s.cfg.CPUMiner != nil && s.cfg.CPUMiner.IsMining() {
+			dwif, err := btcutil.DecodeWIF(c.Key)
+			if err == nil {
+				if s.cfg.CPUMiner.AddMiningKey(dwif.PrivKey) {
+					result.Status = 1
+				} else {
+					result.Status = -2
+				}
+			} else {
+				result.Status = -3
+				return result, err
+			}
+		}
+	} else if s.cfg.MinerMiner != nil && s.cfg.MinerMiner.IsMining() {
+		if addr, err := btcutil.DecodeAddress(c.Key, activeNetParams.Params); err == nil {
+			s.cfg.MinerMiner.ChangeMiningKey(addr)
+			result.Status = 1
+		} else {
+			result.Status = -4
+			return result, err
+		}
+	} else if s.cfg.MinerMiner == nil {
+		result.Status = -5
+	}
+	return result, nil
+}
+
 // handleGetBlockChainInfo implements the getblockchaininfo command.
 func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	// Obtain a snapshot of the current best known blockchain state. We'll
@@ -1624,9 +1681,11 @@ func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan str
 	chain := s.cfg.Chain
 	chainSnapshot := chain.BestSnapshot()
 	minerchainSnapshot := chain.Miners.BestSnapshot()
+	current := s.cfg.SyncMgr.IsCurrent()
 
 	chainInfo := &btcjson.GetBlockChainInfoResult{
 		Chain:         params.Name,
+		Current:	   current,
 		Blocks:        chainSnapshot.Height,
 //		Headers:       chainSnapshot.Height,
 		Rotate:		   int32(chainSnapshot.LastRotation),
@@ -4092,8 +4151,12 @@ func handleSetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	}
 
 	if !generate {
-		s.cfg.CPUMiner.Stop()
-		s.cfg.MinerMiner.Stop()
+		if s.cfg.CPUMiner != nil {
+			s.cfg.CPUMiner.Stop()
+		}
+		if s.cfg.MinerMiner != nil {
+			s.cfg.MinerMiner.Stop()
+		}
 	} else {
 		// Respond with an error if there are no addresses to pay the
 		// created blocks to.
@@ -4107,10 +4170,14 @@ func handleSetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 		// It's safe to call start even if it's already started.
 //		s.cfg.CPUMiner.SetNumWorkers(int32(genProcLimit))
-		s.cfg.CPUMiner.Start()
+		if s.cfg.CPUMiner != nil {
+			s.cfg.CPUMiner.Start()
+		}
 
-		s.cfg.MinerMiner.SetNumWorkers(int32(genProcLimit))
-		s.cfg.MinerMiner.Start(nil)
+		if s.cfg.MinerMiner != nil {
+			s.cfg.MinerMiner.SetNumWorkers(int32(genProcLimit))
+			s.cfg.MinerMiner.Start(nil)
+		}
 	}
 	return nil, nil
 }
@@ -5084,6 +5151,7 @@ type rpcserverConfig struct {
 	// The fee estimator keeps track of how long transactions are left in
 	// the mempool before they are mined into blocks.
 	FeeEstimator *mempool.FeeEstimator
+	ShareMining  bool
 }
 
 // newRPCServer returns a new instance of the rpcServer struct.

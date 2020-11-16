@@ -3488,6 +3488,24 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		ProcessBlock:           s.syncManager.ProcessBlock,
 		ConnectedCount:         s.ConnectedCount,
 		IsCurrent:              s.syncManager.IsCurrent,
+		AppendPrivKey:		func (key *btcec.PrivateKey) bool {
+			fp, err := os.OpenFile(cfg.ConfigFile,  os.O_APPEND|os.O_WRONLY, 0666)
+
+			if err != nil {
+				return false
+			}
+			w, err := btcutil.NewWIF(key, chainParams, true)
+			if err != nil {
+				return false
+			}
+
+			_,err = fp.WriteString("\nprivkeys=" + w.String() + "\n")
+			if err != nil {
+				return false
+			}
+			fp.Close()
+			return true
+		},
 	})
 
 	// This is the miner for miner chain
@@ -3496,17 +3514,22 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		rsa, _ = json.Marshal(s.rsaPrivateKey.Public())
 	}
 
-	if len(cfg.privateKeys) != 0 {
-		s.minerMiner = minerchain.NewMiner(&minerchain.Config{
+	if cfg.GenerateMiner {
+		mcfg := &minerchain.Config{
 			ChainParams:            chainParams,
 			BlockTemplateGenerator: blockTemplateGenerator,
-			MiningAddrs:            cfg.signAddress,
 			ProcessBlock:           s.syncManager.ProcessMinerBlock,
 			ConnectedCount:         s.ConnectedCount,
 			IsCurrent:              s.syncManager.IsCurrent,
 			ExternalIPs:            cfg.ExternalIPs,
 			RSAPubKey:              string(rsa),
-		})
+		}
+		if cfg.ShareMining {
+			mcfg.MiningAddrs = cfg.miningAddrs
+		} else {
+			mcfg.MiningAddrs = cfg.signAddress
+		}
+		s.minerMiner = minerchain.NewMiner(mcfg)
 	} else {
 		s.minerMiner = nil
 		cfg.GenerateMiner = false
@@ -3623,6 +3646,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 			AddrIndex:    s.addrIndex,
 			CfIndex:      s.cfIndex,
 			FeeEstimator: s.feeEstimator,
+			ShareMining:  cfg.ShareMining,
 		})
 		if err != nil {
 			return nil, err

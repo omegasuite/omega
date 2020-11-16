@@ -91,6 +91,9 @@ type Config struct {
 	// not current since any solved blocks would be on a side chain and and
 	// up orphaned anyways.
 	IsCurrent func() bool
+
+	// call back to add priv key to .conf
+	AppendPrivKey	  func (*btcec.PrivateKey) bool
 }
 
 // CPUMiner provides facilities for solving blocks (mining) using the CPU in
@@ -114,6 +117,8 @@ type CPUMiner struct {
 //	speedMonitorQuit  chan struct{}
 	quit              chan struct{}
 	connch            chan int32
+	miningkeys		  chan *btcec.PrivateKey
+	addkeyresult	  chan bool
 
 	// the block being mined by committee
 	minedBlock		  * btcutil.Block
@@ -316,12 +321,11 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 }
 
 func (m *CPUMiner) Notice (notification *blockchain.Notification) {
+	if !m.started {
+		return
+	}
 	switch notification.Type {
 	case blockchain.NTBlockConnected, blockchain.NTBlockRejected:
-		if !m.started {
-			return
-		}
-
 		if len(m.connch) > 50 {
 			<- m.connch
 		}
@@ -345,6 +349,11 @@ func (m *CPUMiner) CurrentBlock(h * chainhash.Hash) * btcutil.Block {
 		}
 	}
 	return consensus.ServeBlock(h)
+}
+
+func (m *CPUMiner) AddMiningKey(miningAddr *btcec.PrivateKey) bool {
+	m.miningkeys <- miningAddr
+	return <- m.addkeyresult
 }
 
 // generateBlocks is a worker that is controlled by the miningWorkerController.
@@ -383,6 +392,33 @@ out:
 				
 			case <-consensus.POWStopper:
 
+			case k := <- m.miningkeys:
+				pkaddr, err := btcutil.NewAddressPubKey(k.PubKey().SerializeCompressed(), m.cfg.ChainParams)
+				if err == nil {
+					addr := pkaddr.AddressPubKeyHash()
+					mtch := false
+					s := addr.String()
+
+					for _, t := range m.cfg.SignAddress {
+						if s == t.String() {
+							mtch = true
+						}
+					}
+					if mtch {
+						m.addkeyresult <- true
+					} else {
+						if m.cfg.AppendPrivKey(k) {
+							m.cfg.PrivKeys = append(m.cfg.PrivKeys, k)
+							m.cfg.SignAddress = append(m.cfg.SignAddress, addr)
+							m.addkeyresult <- true
+						} else {
+							m.addkeyresult <- false
+						}
+					}
+				} else {
+					m.addkeyresult <- false
+				}
+
 			default:
 				// Non-blocking select to fall through
 		}
@@ -399,6 +435,11 @@ out:
 			continue
 //		} else {
 //			log.Infof("ConnectedCount = %d.", ccnt)
+		}
+
+		if len(m.cfg.MiningAddrs) == 0 {
+			time.Sleep(time.Second * 5)
+			continue
 		}
 
 		// No point in searching for a solution before the chain is
@@ -742,15 +783,15 @@ func (m *CPUMiner) Stop() {
 	if !m.started || m.discreteMining {
 		return
 	}
+	m.started = false
 
-	close(m.connch)
+//	close(m.connch)
 
 //	t := consensus.POWStopper
 //	consensus.POWStopper = nil
 //	close(t)
 
 	close(m.quit)
-	m.started = false
 
 	m.wg.Wait()
 
@@ -934,6 +975,8 @@ func New(cfg *Config) *CPUMiner {
 //		queryHashesPerSec: make(chan float64),
 //		updateHashes:      make(chan uint64),
 		connch: 		   make(chan int32, 100),
+		miningkeys:		   make(chan *btcec.PrivateKey),
+		addkeyresult:	   make(chan bool),
 	}
 
 	consensus.POWStopper = make(chan struct{}, 3 * wire.MINER_RORATE_FREQ)

@@ -476,6 +476,10 @@ out:
 			}
 
 			switch req.Method {
+			case "shutdownserver":
+				fallthrough
+			case "shutdown":
+				fallthrough
 			case "stop":
 				resp := makeResponse(req.ID,
 					"btcwallet stopping.", nil)
@@ -622,6 +626,10 @@ func (s *Server) postClientRPC(w http.ResponseWriter, r *http.Request) {
 		case "authenticate":
 			// Drop it.
 			return
+		case "shutdownserver":
+			fallthrough
+		case "shutdown":
+			fallthrough
 		case "stop":
 			stop = true
 			res = "btcwallet stopping"

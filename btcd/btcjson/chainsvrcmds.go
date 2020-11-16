@@ -205,6 +205,21 @@ func (t * Token) ConvertTo(mtx * wire.MsgTx) * wire.TxOut {
 }
 
 // CreateRawTransactionCmd defines the createrawtransaction JSON-RPC command.
+type ParseRawTransactionCmd struct {
+	RawTx   string
+}
+
+// NewParseRawTransactionCmd returns a new instance which can be used to issue
+// a createrawtransaction JSON-RPC command.
+//
+// Amounts are in BTC.
+func NewParseRawTransactionCmd(s string) *ParseRawTransactionCmd {
+	return &ParseRawTransactionCmd {
+		RawTx:   s,
+	}
+}
+
+// CreateRawTransactionCmd defines the createrawtransaction JSON-RPC command.
 type CreateRawTransactionCmd struct {
 	Inputs   []TransactionInput
 	Definitions   []Definition
@@ -308,6 +323,18 @@ type ContractCallCmd struct {
 
 type GetBlockTxHashesCmd struct {
 	Hash      string
+}
+
+type AddMiningKeyCmd struct {
+	KeyType  bool
+	Key      string
+}
+
+func NewAddMiningKeyCmd(k string, ktype bool) *AddMiningKeyCmd {
+	return &AddMiningKeyCmd{
+		KeyType:      ktype,
+		Key:		  k,
+	}
 }
 
 type GetMinerBlockCmd struct {
@@ -1056,6 +1083,7 @@ func init() {
 
 	MustRegisterCmd("addnode", (*AddNodeCmd)(nil), flags)
 	MustRegisterCmd("createrawtransaction", (*CreateRawTransactionCmd)(nil), flags)
+	MustRegisterCmd("parserawtransaction", (*ParseRawTransactionCmd)(nil), flags)
 	MustRegisterCmd("decoderawtransaction", (*DecodeRawTransactionCmd)(nil), flags)
 	MustRegisterCmd("decodescript", (*DecodeScriptCmd)(nil), flags)
 	MustRegisterCmd("getaddednodeinfo", (*GetAddedNodeInfoCmd)(nil), flags)
@@ -1068,6 +1096,7 @@ func init() {
 	MustRegisterCmd("trycontract", (*TryContractCmd)(nil), flags)
 	MustRegisterCmd("getminerblock", (*GetMinerBlockCmd)(nil), flags)
 	MustRegisterCmd("getblockchaininfo", (*GetBlockChainInfoCmd)(nil), flags)
+	MustRegisterCmd("addminingkey", (*AddMiningKeyCmd)(nil), flags)
 	MustRegisterCmd("getblockcount", (*GetBlockCountCmd)(nil), flags)
 	MustRegisterCmd("getminerblockcount", (*GetMinerBlockCountCmd)(nil), flags)
 	MustRegisterCmd("getblockhash", (*GetBlockHashCmd)(nil), flags)

@@ -107,10 +107,15 @@ type SoftForkDescription struct {
 	} `json:"reject"`
 }
 
+type AddMiningKeyResult struct {
+	Status 				int32                                `json:"status"`
+}
+
 // GetBlockChainInfoResult models the data returned from the getblockchaininfo
 // command.
 type GetBlockChainInfoResult struct {
 	Chain                string                              `json:"chain"`
+	Current				 bool                                `json:"current"`
 	Blocks               int32                               `json:"blocks"`
 //	Headers              int32                               `json:"headers"`
 	Rotate				 int32                               `json:"rotate"`

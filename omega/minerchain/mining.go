@@ -116,6 +116,7 @@ type CPUMiner struct {
 	updateHashes      chan uint64
 	speedMonitorQuit  chan struct{}
 	quit              chan struct{}
+	miningkeys		  chan btcutil.Address
 	Stale			  bool
 }
 
@@ -324,6 +325,10 @@ func (g * MinerChain) QualifiedMier(privKeys map[btcutil.Address]*btcec.PrivateK
 	return nil
 }
 
+func (m *CPUMiner) ChangeMiningKey(miningAddr btcutil.Address) {
+	m.miningkeys <- miningAddr
+}
+
 // generateBlocks is a worker that is controlled by the miningWorkerController.
 // It is self contained in that it creates block templates and attempts to solve
 // them while detecting when it is performing stale work and reacting
@@ -342,6 +347,15 @@ out:
 		select {
 		case <-quit:
 			break out
+
+		case k := <-m.miningkeys:
+			if len(m.cfg.MiningAddrs) == 0 {
+				m.cfg.MiningAddrs = make([]btcutil.Address, 1)
+			} else {
+				m.cfg.MiningAddrs = m.cfg.MiningAddrs[:1]
+			}
+			m.cfg.MiningAddrs[0] = k
+
 		default:
 			// Non-blocking select to fall through
 		}
@@ -386,6 +400,11 @@ out:
 		}
 		
 		// Choose a payment address at random.
+		if len(m.cfg.MiningAddrs) == 0 {
+			m.submitBlockLock.Unlock()
+			time.Sleep(time.Second * 5)
+			continue
+		}
 		rand.Seed(time.Now().Unix())
 		rnd := rand.Intn(len(m.cfg.MiningAddrs))
 
@@ -395,6 +414,11 @@ out:
 			if p == nil {
 				log.Infof("miner.generateBlocks incorrect height %d out of %d", curHeight - int32(i), curHeight)
 				continue
+			}
+			for _,s := range m.cfg.ExternalIPs {
+				if bytes.Compare(p.MsgBlock().Connection, []byte(s)) == 0 {
+					mtch = true
+				}
 			}
 			for _,s := range m.cfg.MiningAddrs {
 				if bytes.Compare(p.MsgBlock().Miner[:], s.ScriptAddress()) == 0 {
@@ -575,9 +599,6 @@ func (m *CPUMiner) Stop() {
 //
 // This function is safe for concurrent access.
 func (m *CPUMiner) IsMining() bool {
-	m.Lock()
-	defer m.Unlock()
-
 	return m.started
 }
 
@@ -648,5 +669,6 @@ func NewMiner(cfg *Config) *CPUMiner {
 		updateNumWorkers:  make(chan struct{}),
 		queryHashesPerSec: make(chan float64),
 		updateHashes:      make(chan uint64),
+		miningkeys:		   make(chan btcutil.Address, 10),
 	}
 }

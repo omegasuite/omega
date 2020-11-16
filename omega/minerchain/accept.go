@@ -225,10 +225,15 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 
 	for p, i := prevNode, 0; p != nil && i < wire.MinerGap; i++ {
 		h := NodetoHeader(p)
+		if bytes.Compare(h.Connection, block.MsgBlock().Connection) == 0 {
+			str := "Miner's IP/port has appeared in the past %d blocks"
+			str = fmt.Sprintf(str, wire.MinerGap)
+			return ruleError(ErrRotationViolation, str)
+		}
 		if bytes.Compare(h.Miner[:], block.MsgBlock().Miner[:]) == 0 {
 			str := "Miner has appeared in the past %d blocks"
 			str = fmt.Sprintf(str, wire.MinerGap)
-			return ruleError(ErrUnexpectedDifficulty, str)
+			return ruleError(ErrRotationViolation, str)
 		}
 		p = p.Parent
 	}
