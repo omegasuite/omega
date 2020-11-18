@@ -263,10 +263,14 @@ func (self *Syncer) repeater() {
 			if k == self.Myself {
 				continue
 			}
-			if self.forest[self.Names[k]].block != nil {
+			n := self.Names[k]
+			if self.forest[n] == nil {
 				continue
 			}
-			self.pull(self.forest[self.Names[k]].hash, k)
+			if self.forest[n].block != nil {
+				continue
+			}
+			self.pull(self.forest[n].hash, k)
 		}
 	}
 }
@@ -1126,7 +1130,11 @@ func CreateSyncer(h int32) *Syncer {
 
 func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message) bool {
 	if !self.Runnable || self.Done {
-		log.Infof("validate failed. I'm not runnable")
+		if !self.Runnable {
+			log.Infof("validate failed. I'm not runnable")
+		} else {
+			log.Infof("validate failed. I'm done at this height")
+		}
 //		time.Sleep(time.Second)
 //		self.pending[wire.CmdBlock] = append(self.pending[wire.CmdBlock], msg)
 		return false
