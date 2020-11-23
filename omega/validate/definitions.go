@@ -249,6 +249,9 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 			continue
 		}
 		utxo := views.Utxo.LookupEntry(d.PreviousOutPoint)
+		if utxo == nil {
+			return fmt.Errorf("PreviousOutPoint does not exist: %s", d.PreviousOutPoint.String())
+		}
 		if utxo.TokenType != 3 {
 			continue
 		}

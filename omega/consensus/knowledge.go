@@ -109,11 +109,7 @@ func (self *Knowledgebase) Qualified(who int32) bool {
 		}
 	}
 
-	if qualified >= wire.CommitteeSigs {
-			return true
-		}
-
-	return false
+	return qualified >= wire.CommitteeSigs
 }
 
 func (self *Knowledgebase) ProcFlatKnowledge(mp int32, k []int64) bool {

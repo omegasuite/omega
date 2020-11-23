@@ -223,6 +223,10 @@ func (state * peerState) RemovePeer(sp *serverPeer) {
 	}
 }
 
+func (p * peerState) ConCount() int {
+	return len(p.inboundPeers) + len(p.outboundPeers) + len(p.persistentPeers)
+}
+
 func (p * peerState) IsConnected(c *connmgr.ConnReq) bool {
 	iscontd := false
 	p.ForAllOutboundPeers(func(sp *serverPeer) {
@@ -3523,6 +3527,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 			IsCurrent:              s.syncManager.IsCurrent,
 			ExternalIPs:            cfg.ExternalIPs,
 			RSAPubKey:              string(rsa),
+			ShareMining:			cfg.ShareMining,
 		}
 		if cfg.ShareMining {
 			mcfg.MiningAddrs = cfg.miningAddrs

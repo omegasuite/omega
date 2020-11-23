@@ -746,6 +746,22 @@ func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {
 	}
 }
 
+func (s *server) Connected(p [20]byte) bool {
+	s.peerState.cmutex.Lock()
+	sp,ok := s.peerState.committee[p]
+	s.peerState.cmutex.Unlock()
+
+	if ok {
+		for _,r := range sp.peers {
+			if r.Connected() {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func (s *server) CommitteeMsg(p [20]byte, h int32, m wire.Message) bool {
 	done := make(chan bool)
 

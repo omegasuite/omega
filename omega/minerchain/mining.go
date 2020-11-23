@@ -65,6 +65,9 @@ type Config struct {
 	// RSAPubKey for people to connect to us
 	RSAPubKey   string
 
+	// whether in ShareMining mode
+	ShareMining bool
+
 	// BlockTemplateGenerator identifies the instance to use in order to
 	// generate block templates that the miner will attempt to solve.
 	BlockTemplateGenerator *mining.BlkTmplGenerator
@@ -407,6 +410,9 @@ out:
 		}
 		rand.Seed(time.Now().Unix())
 		rnd := rand.Intn(len(m.cfg.MiningAddrs))
+		if m.cfg.ShareMining && rnd > 1 {
+			rnd = 1		// all addresses except for the first are external
+		}
 
 		mtch := false
 		for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
@@ -467,6 +473,11 @@ out:
 			block.MsgBlock().Connection = []byte(m.cfg.ExternalIPs[0])
 		} else if len(m.cfg.RSAPubKey) > 0 {
 			block.MsgBlock().Connection = []byte(m.cfg.RSAPubKey)
+		} else {
+			m.Stale = true
+			log.Infof("miner.generateBlocks: sleep because no connection info is set = %d", curHeight)
+			time.Sleep(time.Second * 5)
+			continue
 		}
 
 		log.Infof("miner Trying to solve block at %d with difficulty %d", template.Height, template.Bits)

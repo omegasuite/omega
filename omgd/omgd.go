@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/omegasuite/omega/consensus"
 	"github.com/omegasuite/btcutil"
@@ -268,6 +269,11 @@ func btcdMain(serverChan chan<- *server) error {
 					state = server.chain.BestSnapshot()
 
 					if h == state.Height {
+						var wbuf bytes.Buffer
+						pprof.Lookup("mutex").WriteTo(&wbuf, 1)
+						pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
+						btcdLog.Infof("pprof Info: \n%s", wbuf.String())
+
 						break
 					}
 				}
@@ -276,9 +282,6 @@ func btcdMain(serverChan chan<- *server) error {
 			}
 
 			btcdLog.Infof("Voluntary shutdown after no new block for 10 min.")
-
-			pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
-			pprof.Lookup("mutex").WriteTo(os.Stderr, 1)
 
 			rerun = true
 			shutdownRequestChannel <- struct{}{}

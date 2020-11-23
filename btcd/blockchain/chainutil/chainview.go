@@ -230,6 +230,9 @@ func (c *ChainView) NodeByHeight(height int32) *BlockNode {
 //
 // This function is safe for concurrent access.
 func (c *ChainView) Equals(other *ChainView) bool {
+	if c == other {
+		return true
+	}
 	c.mtx.Lock()
 	other.mtx.Lock()
 	equals := len(c.nodes) == len(other.nodes) && c.tip() == other.tip()

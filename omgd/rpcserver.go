@@ -4023,8 +4023,10 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 
 // handleSendRawTransaction implements the sendrawtransaction command.
 func handleRecastRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	s.cfg.ConnMgr.RelayTransactions(s.cfg.TxMemPool.TxDescs())
-	return "Done", nil
+	txs := s.cfg.TxMemPool.TxDescs()
+	s.cfg.ConnMgr.RelayTransactions(txs)
+
+	return fmt.Sprintf("Done with %d txs", len(txs)), nil
 }
 
 // handleSendRawTransaction implements the sendrawtransaction command.
@@ -4151,15 +4153,16 @@ func handleSetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	}
 
 	if !generate {
-		if s.cfg.CPUMiner != nil {
+		if s.cfg.CPUMiner != nil && !c.IsMiner {
 			s.cfg.CPUMiner.Stop()
 		}
-		if s.cfg.MinerMiner != nil {
+		if s.cfg.MinerMiner != nil && c.IsMiner {
 			s.cfg.MinerMiner.Stop()
 		}
 	} else {
 		// Respond with an error if there are no addresses to pay the
 		// created blocks to.
+/*
 		if len(cfg.miningAddrs) == 0 {
 			return nil, &btcjson.RPCError{
 				Code: btcjson.ErrRPCInternal.Code,
@@ -4167,14 +4170,15 @@ func handleSetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 					"via --miningaddr",
 			}
 		}
+*/
 
 		// It's safe to call start even if it's already started.
 //		s.cfg.CPUMiner.SetNumWorkers(int32(genProcLimit))
-		if s.cfg.CPUMiner != nil {
+		if s.cfg.CPUMiner != nil && !c.IsMiner {
 			s.cfg.CPUMiner.Start()
 		}
 
-		if s.cfg.MinerMiner != nil {
+		if s.cfg.MinerMiner != nil && c.IsMiner {
 			s.cfg.MinerMiner.SetNumWorkers(int32(genProcLimit))
 			s.cfg.MinerMiner.Start(nil)
 		}

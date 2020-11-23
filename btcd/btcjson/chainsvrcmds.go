@@ -959,6 +959,7 @@ func NewSendRawTransactionCmd(hexTx string, allowHighFees *bool) *SendRawTransac
 // SetGenerateCmd defines the setgenerate JSON-RPC command.
 type SetGenerateCmd struct {
 	Generate     bool
+	IsMiner	     bool
 	GenProcLimit *int `jsonrpcdefault:"-1"`
 }
 

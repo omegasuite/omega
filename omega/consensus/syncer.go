@@ -20,7 +20,7 @@ import (
 	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/token"
-	"net/http"
+//	"net/http"
 	"sync"
 	"time"
 )
@@ -62,7 +62,7 @@ type Syncer struct {
 	// a node collected more than 1/2 agrees may annouce the fact by broadcasting the agreements it
 	// collected.
 
-	asked    map[int32]struct{}		// those who have asked to be a candidate, and not released
+	asked    [wire.CommitteeSize]bool					// those who have asked to be a candidate, and not released
 	agrees   map[int32]struct{}		// those who I have agree to be a candidate
 	agreed   int32			// the one who I have agreed. can not back out until released by
 	sigGiven int32			// who I have given my signature. can never change once given.
@@ -85,6 +85,7 @@ type Syncer struct {
 
 	messages chan Message
 	repeating chan struct{}
+	debug chan struct{}
 
 	mutex sync.Mutex
 
@@ -129,26 +130,37 @@ func (self *Syncer) findBlock(h * chainhash.Hash) * btcutil.Block {
 }
 
 func (self *Syncer) repeater() {
-	log.Infof("Repeater: %d enter", self.Height)
+	log.Infof("\nRepeater: %d enter", self.Height)
+
 	defer func() {
-		log.Infof("Repeater: exit")
+		log.Infof("Repeater: exit\n")
 	}()
 
 	miner.server.CommitteePolling()
 
 	// enough sigs to conclude?
 	if self.agreed != -1 && len(self.signed) >= wire.CommitteeSigs {
-		self.mutex.Lock()
-		select {
-		case <-self.quit:
-		default:
-			self.quit <- struct{}{}
+		if _, ok := <-self.quit; ok {
+			close(self.quit)
 		}
-		self.mutex.Unlock()
 		return
 	}
 
-	self.mutex.Lock()
+	for m,i := range self.Members {
+		if !miner.server.Connected(m) {
+			if self.sigGiven != i && self.agreed == i {
+				self.agreed = -1
+			}
+			for j := 0; j < wire.CommitteeSize; j++ {
+				self.knowledges.Knowledge[i][j] = 0
+				self.knowledges.Knowledge[j][i] = 0
+				for k := 0; k < wire.CommitteeSize; k++ {
+					self.knowledges.Knowledge[j][k] ^= 0x1 << i
+				}
+			}
+		}
+	}
+
 	for _,kp := range self.knows {
 		repeated := make(map[int32]struct{})
 		for j := len(kp) - 1; j >= 0; j-- {
@@ -174,6 +186,7 @@ func (self *Syncer) repeater() {
 			self.CommitteeMsg(to, &pp)
 		}
 	}
+
 	if tree,ok := self.forest[self.Me]; ok {
 		k := wire.NewMsgKnowledge()
 		k.From = self.Me
@@ -192,7 +205,17 @@ func (self *Syncer) repeater() {
 			self.CommitteeMsg(p, k)
 		}
 	}
-	self.mutex.Unlock()
+
+	if self.agreed == -1 {
+		// check if we should agree with someone else
+		best := self.best()
+
+		if best >= 0 && best != self.Myself && self.asked[best] && self.knowledges.Qualified(best) && miner.server.Connected(self.Names[best]) {
+			self.agreed = best
+		} else {
+			self.candidacy()
+		}
+	}
 
 	if self.agreed != self.Myself && self.agreed != -1 {
 		// resend an agree message
@@ -259,24 +282,24 @@ func (self *Syncer) repeater() {
 			self.CommitteeCastMG(&sigmsg)
 		}
 
-		for k, _ := range self.asked {
-			if k == self.Myself {
+		for k, ok := range self.asked {
+			if int32(k) == self.Myself || !ok {
 				continue
 			}
-			n := self.Names[k]
+			n := self.Names[int32(k)]
 			if self.forest[n] == nil {
 				continue
 			}
 			if self.forest[n].block != nil {
 				continue
 			}
-			self.pull(self.forest[n].hash, k)
+			self.pull(self.forest[n].hash, int32(k))
 		}
 	}
 }
 
 func (self *Syncer) Release(msg * wire.MsgRelease) {
-	delete(self.asked, self.Members[msg.From])
+	self.asked[self.Members[msg.From]] = false
 
 	if self.agreed == self.Members[msg.From] {
 		//		self.knowledges.ProcFlatKnowledge(msg.Better, msg.K)
@@ -302,12 +325,23 @@ func (self *Syncer) run() {
 	ticker := time.NewTicker(time.Second * 4)
 
 	self.repeating = make(chan struct{}, 10)
+	self.debug = make(chan struct{}, 2)
 
 	begin := time.Now().Unix()
 
+//	self.mutex.Lock()
 	for going {
+//		self.mutex.Unlock()
 		select {
+		case <-self.quit:
+//			self.mutex.Lock()
+			going = false
+
+		case <-self.debug:
+			self.debugging()
+
 		case tree := <- self.newtree:
+//			self.mutex.Lock()
 			if self.sigGiven >= 0 {
 				continue
 			}
@@ -316,6 +350,7 @@ func (self *Syncer) run() {
 			} else {
 				log.Infof("newtree %s at %d", tree.hash.String(), self.Height)
 			}
+
 			if !self.validateMsg(tree.creator, nil, nil) {
 				log.Infof("tree creator %x is not a member of committee", tree.creator)
 				continue
@@ -336,7 +371,7 @@ func (self *Syncer) run() {
 			} else if (self.forest[tree.creator].hash != chainhash.Hash{}) && tree.hash != self.forest[tree.creator].hash {
 				if self.Me == tree.creator {
 					log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
-					break
+					continue
 				}
 				self.Malice[tree.creator] = struct {}{}
 				delete(self.forest, tree.creator)
@@ -356,6 +391,7 @@ func (self *Syncer) run() {
 			self.print()
 
 		case m := <- self.messages:
+//			self.mutex.Lock()
 			self.handeling = m.Command()
 			log.Infof("processing %s message at %d", m.Command(), m.Block())
 			switch m.(type) {
@@ -382,12 +418,10 @@ func (self *Syncer) run() {
 				if self.knowledges.ProcKnowledge(k) {
 					self.candidacy()
 
-					self.mutex.Lock()
 					if self.knows[k.Finder] == nil {
 						self.knows[k.Finder] = make([]*wire.MsgKnowledge, 0)
 					}
 					self.knows[k.Finder] = append(self.knows[k.Finder], k)
-					self.mutex.Unlock()
 				}
 				log.Infof("MsgKnowledge processed")
 
@@ -489,16 +523,15 @@ func (self *Syncer) run() {
 			}
 //			self.print()
 
-		case <-self.quit:
-			going = false
-
 		case <-self.repeating:
+//			self.mutex.Lock()
 			self.repeater()
 			for len(self.repeating) > 0 {
 				<-self.repeating
 			}
 
 		case <-ticker.C:
+//			self.mutex.Lock()
 			if 	time.Now().Unix() - begin > 600 {
 				log.Infof("sync %d exceeded time limit", self.Height)
 				going = false
@@ -509,12 +542,13 @@ func (self *Syncer) run() {
 		self.handeling = ""
 	}
 
+//	defer self.mutex.Unlock()
+
 	ticker.Stop()
 
 	for true {
 		select {
 		case <-self.newtree:
-//		case <- self.messages:
 		case m := <- self.messages:
 			switch m.(type) {
 			case *wire.MsgSignature:
@@ -829,9 +863,6 @@ func (self *Syncer) dupKnowledge(fmp int32) {
 
 	ns := make([]*wire.MsgKnowledge, 0)
 
-	self.mutex.Lock()
-	defer self.mutex.Unlock()
-
 	for _, ks := range self.knows[agreed] {
 		if ks.K[len(ks.K)-1] != fmp {
 			m := int64((1 << fmp) | (1 << self.Myself))
@@ -856,7 +887,7 @@ func (self *Syncer) dupKnowledge(fmp int32) {
 
 func (self *Syncer) yield(better int32) bool {
 	if self.better(better, self.agreed) {
-		delete(self.asked, self.Myself)
+		self.asked[self.Myself] = false
 		rls := self.makeRelease(better)
 		for r, _ := range self.agrees {
 			if r != self.Myself {
@@ -866,7 +897,7 @@ func (self *Syncer) yield(better int32) bool {
 		}
 		self.agrees = make(map[int32]struct{})
 		self.agreed = -1
-		if _, ok := self.asked[better]; ok && better != self.Myself {
+		if self.asked[better] && better != self.Myself {
 			// give a consent to Better
 			d := wire.MsgCandidateResp{Height: self.Height, K: []int64{}, From: self.Me}
 			d.Reply = "cnst"
@@ -972,7 +1003,7 @@ func (self *Syncer) candidacy() {
 	better := self.Myself
 
 	for i := 0; i < wire.CommitteeSize; i++ {
-		if _,ok := self.asked[int32(i)]; ok && self.better(int32(i), better) && self.knowledges.Qualified(int32(i)) {
+		if self.asked[int32(i)] && self.better(int32(i), better) && self.knowledges.Qualified(int32(i)) {
 			// there is a better candidate
 			// someone else is the best, send him knowledge about him that he does not know
 			better = int32(i)
@@ -997,7 +1028,7 @@ func (self *Syncer) candidacy() {
 
 	msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
 
-	self.asked[self.Myself] = struct{}{}
+	self.asked[self.Myself] = true
 
 	msg.Sign(miner.server.GetPrivKey(self.Me))
 
@@ -1031,7 +1062,7 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 		return
 	}
 
-	self.asked[fmp] = struct{}{}
+	self.asked[fmp] = true
 
 	if _,ok := self.forest[from]; !ok || self.forest[from].block == nil {
 		self.pull(msg.M, fmp)
@@ -1052,8 +1083,10 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 		return
 	}
 
-	if self.agreed != -1 && self.better(fmp, self.agreed) && self.yield(fmp) {
-		return
+	if self.agreed == self.Myself && self.better(fmp, self.agreed) {
+		if self.yield(fmp) {
+			return
+		}
 	}
 
 	if self.agreed == -1 || self.agreed == fmp {
@@ -1098,7 +1131,7 @@ func CreateSyncer(h int32) *Syncer {
 	p.messages = make(chan Message, wire.CommitteeSize * 10)
 	p.pulling = make(map[int32]int)
 	p.agrees = make(map[int32]struct{})
-	p.asked = make(map[int32]struct{})
+//	p.asked = make(map[int32]struct{})
 	p.signed = make(map[[20]byte]struct{})
 	p.Members = make(map[[20]byte]int32)
 	p.Names = make(map[int32][20]byte)
@@ -1216,9 +1249,9 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 
 func (self *Syncer) SetCommittee() {
 	self.mutex.Lock()
+	defer self.mutex.Unlock()
 
-	if self.Runnable {
-		self.mutex.Unlock()
+	if self.Runnable || self.Done {
 		return
 	}
 
@@ -1226,7 +1259,6 @@ func (self *Syncer) SetCommittee() {
 	self.Runnable = self.Height == best.Height + 1
 
 	if !self.Runnable {
-		self.mutex.Unlock()
 		return
 	}
 
@@ -1241,9 +1273,6 @@ func (self *Syncer) SetCommittee() {
 		blk,_ := miner.server.MinerBlockByHeight(i)
 		if blk == nil {
 			continue
-//			self.Runnable = false
-//			self.mutex.Unlock()
-//			return
 		}
 
 		who := i - (c - wire.CommitteeSize + 1)
@@ -1263,14 +1292,10 @@ func (self *Syncer) SetCommittee() {
 	self.knowledges = CreateKnowledge(self)
 
 	if in {
-		self.mutex.Unlock()
 		go self.run()
 	} else {
 		self.Runnable = false
-		self.mutex.Unlock()
 	}
-
-//	miner.updateheight <- self.Height
 }
 
 func (self *Syncer) UpdateChainHeight(h int32) {
@@ -1287,6 +1312,10 @@ func (self *Syncer) UpdateChainHeight(h int32) {
 
 func (self *Syncer) BlockInit(block *btcutil.Block) {
 	var adr [20]byte
+
+	if self.Done {
+		return
+	}
 	if len(block.MsgBlock().Transactions[0].SignatureScripts) < 2 {
 		log.Errorf("block does not contain enough signatures. %d", len(block.MsgBlock().Transactions[0].SignatureScripts))
 		return
@@ -1321,12 +1350,14 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 
 	log.Infof("syner initialized block %s, sending to newtree", block.Hash().String())
 
-	self.newtree <- tree {
-		creator: adr,
-		fees: uint64(fees),
-		hash: * block.Hash(),
-		header: &block.MsgBlock().Header,
-		block: block,
+	if r,ok := self.forest[adr]; !ok || r.block == nil {
+		self.newtree <- tree{
+			creator: adr,
+			fees:    uint64(fees),
+			hash:    * block.Hash(),
+			header:  &block.MsgBlock().Header,
+			block:   block,
+		}
 	}
 
 	if miner.server.BestSnapshot().Hash != block.MsgBlock().Header.PrevBlock {
@@ -1353,26 +1384,12 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 }
 
 func (self *Syncer) Quit() {
-	log.Info("sync %d quit", self.Height)
-	if !self.Runnable {
-		return
+	self.Done = true
+	select {
+	case <-self.quit:
+	default:
+		close(self.quit)
 	}
-
-	for true {
-		select {
-		case <-self.messages:
-		case <-self.newtree:
-//		case <-self.quit:
-		default:
-			self.mutex.Lock()
-			close(self.quit)
-			self.mutex.Unlock()
-			return
-		}
-	}
-}
-
-func (self *Syncer) Debug(w http.ResponseWriter, r *http.Request) {
 }
 
 func (self *Syncer) print() {
@@ -1402,7 +1419,14 @@ func (self *Syncer) print() {
 }
 
 func (self *Syncer) DebugInfo() {
-	log.Infof("I am %x, %d", self.Me, self.Myself)
+	if self.debug == nil || len(self.debug) > 0 {
+		return
+	}
+	self.debug <- struct{}{}
+}
+
+func (self *Syncer) debugging() {
+	log.Infof("\ndebugging\nI am %x, %d", self.Me, self.Myself)
 	self.print()
 	log.Infof("Members & Names (%d):", len(self.Members))
 	for m,n := range self.Members {
@@ -1432,6 +1456,13 @@ func (self *Syncer) DebugInfo() {
 			log.Infof("%x", m)
 		}
 	}
+	log.Infof("Who has asked to agree candicacy:")
+	for m,ok := range self.asked {
+		if ok {
+			log.Infof("%d ", m)
+		}
+	}
+	log.Info("\n")
 
 	if len(self.signed) > 0 {
 		log.Infof("Who has signed for this block (%d):", len(self.signed))
@@ -1460,6 +1491,7 @@ func (self *Syncer) DebugInfo() {
 			log.Infof("Tree is naked")
 		}
 	}
+	log.Infof("\n")
 }
 
 func (self *Syncer) better(left, right int32) bool {
@@ -1478,11 +1510,13 @@ func (self *Syncer) best() int32 {
 	var seld *[20]byte
 	for left,l := range self.forest {
 		if seld == nil {
-			seld = new([20]byte)
-			copy(seld[:], left[:])
+			if l.block != nil {
+				seld = new([20]byte)
+				copy(seld[:], left[:])
+			}
 		} else {
-			if l.fees > self.forest[*seld].fees ||
-				(l.fees == self.forest[*seld].fees && self.Members[left] > self.Members[*seld]) {
+			if l.block != nil && (l.fees > self.forest[*seld].fees ||
+				(l.fees == self.forest[*seld].fees && self.Members[left] > self.Members[*seld])) {
 				copy(seld[:], left[:])
 			}
 		}

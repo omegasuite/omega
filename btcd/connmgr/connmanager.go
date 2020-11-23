@@ -31,7 +31,7 @@ var (
 
 	// defaultRetryDuration is the default duration of time for retrying
 	// persistent connections.
-	defaultRetryDuration = time.Second * 5
+	defaultRetryDuration = time.Second * 15
 
 	// defaultTargetOutbound is the default number of outbound connections to
 	// maintain.
@@ -180,6 +180,7 @@ type handleFailed struct {
 
 type ConnectChecker interface {
 	IsConnected(*ConnReq) bool
+	ConCount() int
 }
 
 // ConnManager provides a manager to handle network connections.
@@ -350,6 +351,9 @@ out:
 					connReq.Permanent || connReq.Committee >= cm.Committee - wire.CommitteeSize {
 					connReq.updateState(ConnPending)
 					log.Debugf("Reconnecting to %v", connReq)
+
+//					time.Sleep(30 * time.Second)
+
 					pending[msg.id] = connReq
 					cm.handleFailedConn(connReq)
 				}
@@ -385,6 +389,11 @@ func (cm *ConnManager) NewConnReq(result chan struct{}) {
 			result <- struct{}{}
 		}
 	}()
+
+	// make it 80% of max conn
+	if cm.dupChecker != nil && cm.dupChecker.ConCount() > 100 {
+		return
+	}
 
 	if atomic.LoadInt32(&cm.stop) != 0 {
 		return
@@ -494,6 +503,7 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 		case cm.requests <- handleFailed{c, err}:
 		case <-cm.quit:
 		}
+		time.Sleep(2 * time.Second)
 		return
 	} else {
 		log.Debugf(". Succeed to connect to %s\n", c.Addr.String())
@@ -624,7 +634,7 @@ func New(cfg *Config) (*ConnManager, error) {
 	}
 	cm := ConnManager{
 		cfg:      *cfg, // Copy so caller can't mutate
-		requests: make(chan interface{}),
+		requests: make(chan interface{}, 125),
 		quit:     make(chan struct{}),
 	}
 	return &cm, nil

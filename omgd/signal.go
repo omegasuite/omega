@@ -5,6 +5,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -84,6 +85,11 @@ func interruptListener() <-chan struct{} {
  */
 		time.AfterFunc(5 * time.Minute, func() {
 			btcdLog.Infof("Forced exit 5 min. after shutdown notice.")
+
+			var wbuf bytes.Buffer
+			pprof.Lookup("mutex").WriteTo(&wbuf, 1)
+			pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
+			btcdLog.Infof("pprof Info: \n%s", wbuf.String())
 
 			if rerun {
 				binary, lookErr := exec.LookPath("omgd")

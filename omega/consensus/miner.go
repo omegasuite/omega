@@ -18,7 +18,7 @@ import (
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
-	"net/http"
+//	"net/http"
 	"sync"
 //	"time"
 )
@@ -41,6 +41,7 @@ var Debug        int // hash of last block
 type PeerNotifier interface {
 	MyPlaceInCommittee(r int32) int32
 	CommitteeMsg([20]byte, int32, wire.Message) bool
+	Connected(p [20]byte) bool
 	CommitteeMsgMG([20]byte, int32, wire.Message)
 	NewConsusBlock(block *btcutil.Block)
 	GetPrivKey([20]byte) *btcec.PrivateKey
@@ -85,7 +86,9 @@ func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 	log.Infof("newblockch.len = %d", len(newblockch))
 
 	block.ClearSize()
-	newblockch <- newblock { block, flags }
+	if newblockch != nil {
+		newblockch <- newblock{block, flags}
+	}
 
 	log.Infof("newblockch.len queued")
 }
@@ -109,55 +112,67 @@ var Quit chan struct{}
 var POWStopper chan struct{}
 var errMootBlock error
 var errInvalidBlock error
+var connNotice chan interface{}
 
 func (m *Miner) notice (notification *blockchain.Notification) {
-	switch notification.Type {
-	case blockchain.NTBlockConnected:
-		switch notification.Data.(type) {
-		case *wire.MinerBlock:
-			b := notification.Data.(*wire.MinerBlock)
-			h := b.Height()
-
-			log.Infof("new miner block at %d connected", h)
-
-			miner.syncMutex.Lock()
-			for _,s := range miner.Sync {
-				if s.Base > h - wire.CommitteeSize && s.Base <= h && !s.Runnable {
-					s.SetCommittee()
-				}
-			}
-			miner.syncMutex.Unlock()
-
-		case *btcutil.Block:
-			b := notification.Data.(*btcutil.Block)
-			h := b.Height()
-
-			log.Infof("new tx block at %d connected", h)
-			var sny * Syncer
-
-			miner.syncMutex.Lock()
-			next := int32(0x7FFFFFFF)
-			for n,s := range miner.Sync {
-				if n > h && n < next {
-					next = n
-				} else if n <= h {
-					delete(miner.Sync, n)
-					go s.Quit()
-				}
-			}
-			if next != 0x7FFFFFFF && !miner.Sync[next].Runnable {
-				sny = miner.Sync[next]
-			}
-			miner.syncMutex.Unlock()
-			if sny != nil {
-				log.Infof("SetCommittee for next syner %d", sny.Height)
-				sny.SetCommittee()
-			} else {
-				log.Infof("No pending syners")
-			}
+	if connNotice != nil && !miner.shutdown {
+		switch notification.Type {
+		case blockchain.NTBlockConnected:
+			connNotice <- notification.Data
 		}
 	}
 }
+
+func handleConnNotice(c interface{}) {
+	switch c.(type) {
+	case *wire.MinerBlock:
+		b := c.(*wire.MinerBlock)
+
+		h := b.Height()
+
+		log.Infof("new miner block at %d connected", h)
+
+		miner.syncMutex.Lock()
+		for _, s := range miner.Sync {
+			if s.Base > h-wire.CommitteeSize && s.Base <= h && !s.Runnable {
+				s.SetCommittee()
+			}
+		}
+		miner.syncMutex.Unlock()
+
+	case *btcutil.Block:
+		b := c.(*btcutil.Block)
+
+		h := b.Height()
+
+		UpdateChainHeight(h)
+
+		log.Infof("new tx block at %d connected", h)
+		var sny *Syncer
+
+		miner.syncMutex.Lock()
+		next := int32(0x7FFFFFFF)
+		for n, s := range miner.Sync {
+			if n > h && n < next {
+				next = n
+			} else if n <= h {
+				delete(miner.Sync, n)
+				s.Quit()
+			}
+		}
+		if next != 0x7FFFFFFF && !miner.Sync[next].Runnable {
+			sny = miner.Sync[next]
+		}
+		miner.syncMutex.Unlock()
+		if sny != nil {
+			log.Infof("SetCommittee for next syner %d", sny.Height)
+			sny.SetCommittee()
+		} else {
+			log.Infof("No pending syners")
+		}
+	}
+}
+
 
 func CommitteePolling() {
 	miner.server.CommitteePolling()
@@ -168,9 +183,11 @@ func Consensus(s PeerNotifier, addr []btcutil.Address, cfg *chaincfg.Params) {
 	miner = &Miner{}
 	miner.server = s
 	miner.cfg = cfg
-	miner.updateheight = make(chan int32)
+	miner.updateheight = make(chan int32, 20)
 
 	s.SubscribeChain(miner.notice)
+
+	connNotice = make(chan interface{}, 10)
 
 	miner.Sync = make(map[int32]*Syncer, 0)
 	miner.syncMutex = sync.Mutex{}
@@ -219,13 +236,17 @@ func Consensus(s PeerNotifier, addr []btcutil.Address, cfg *chaincfg.Params) {
 
 		case height := <-miner.updateheight:
 			log.Infof("updateheight %d", height)
-			cleaner(height)
 			miner.syncMutex.Lock()
+			cleaner(height)
 			for _, t := range miner.Sync {
 				t.UpdateChainHeight(height)
 			}
 			miner.syncMutex.Unlock()
 			log.Infof("updateheight done")
+
+		case c := <- connNotice:
+			log.Info("Consensus connNotice")
+			handleConnNotice(c)
 
 		case blk := <-newblockch:
 			top := miner.server.BestSnapshot().Height
@@ -271,6 +292,7 @@ func Consensus(s PeerNotifier, addr []btcutil.Address, cfg *chaincfg.Params) {
 			break out
 		}
 	}
+	log.Info("Consensus quitting")
 
 	miner.syncMutex.Lock()
 	for i, t := range miner.Sync {
@@ -284,6 +306,7 @@ func Consensus(s PeerNotifier, addr []btcutil.Address, cfg *chaincfg.Params) {
 		select {
 		case <-miner.updateheight:
 		case <-newblockch:
+		case <-connNotice:
 
 		default:
 			log.Info("consensus quits")
@@ -382,14 +405,12 @@ func cleaner(top int32) {
 	if miner.shutdown {
 		return
 	}
-	miner.syncMutex.Lock()
 	for i, t := range miner.Sync {
 		if i < top {
 			delete(miner.Sync, i)
-			go t.Quit()
+			t.Quit()
 		}
 	}
-	miner.syncMutex.Unlock()
 }
 
 func Shutdown() {
@@ -398,6 +419,7 @@ func Shutdown() {
 	log.Infof("Syners:")
 	for h,s := range miner.Sync {
 		log.Infof("%d Runnable = %v", h, s.Runnable)
+		s.Quit()
 	}
 
 	DebugInfo()
@@ -425,9 +447,6 @@ func VerifyMsg(msg wire.OmegaMessage, pubkey * btcec.PublicKey) bool {
 	return valid
 }
 
-func (self *Miner) Debug(w http.ResponseWriter, r *http.Request) {
-}
-
 func DebugInfo() {
 	top := int32(0)
 	miner.syncMutex.Lock()
@@ -441,7 +460,7 @@ func DebugInfo() {
 		if h < top - 2 {
 			delete(miner.Sync, h)
 			log.Infof("\nStopping %d", h)
-			go s.Quit()
+			s.Quit()
 		}
 	}
 	log.Infof("\nDone examing syner heights")
