@@ -13,7 +13,7 @@ package minerchain
 import (
 	"fmt"
 	"math/big"
-	"net"
+//	"net"
 	"time"
 
 	"encoding/hex"
@@ -172,6 +172,9 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	if err != nil {
 		return false, false, err, nil
 	}
+	if len(block.MsgBlock().Connection) == 0 {
+		return false, false, fmt.Errorf("Empty Connection"), nil
+	}
 
 	if b.blockChain.Blacklist.IsGrey(block.MsgBlock().Miner) {
 		return false, false, fmt.Errorf("Blacklised Miner"), nil
@@ -275,12 +278,7 @@ func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource cha
 		return ruleError(ErrTimeTooNew, str)
 	}
 
-	if len(header.MsgBlock().Connection) < 128 {
-		_, err := net.ResolveTCPAddr("", string(header.MsgBlock().Connection))
-		if err != nil {
-			return err
-		}
-	} else if len(header.MsgBlock().Connection) != 128 {
+	if len(header.MsgBlock().Connection) > 128 {
 		return fmt.Errorf("The connect information is neither a RSA key nor an IP address",
 			hex.EncodeToString(header.MsgBlock().Connection))
 	}

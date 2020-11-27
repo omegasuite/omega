@@ -3530,7 +3530,11 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 			ShareMining:			cfg.ShareMining,
 		}
 		if cfg.ShareMining {
-			mcfg.MiningAddrs = cfg.miningAddrs
+			if len(cfg.miningAddrs) > 1 {
+				mcfg.MiningAddrs = cfg.miningAddrs[:1]
+			} else {
+				mcfg.MiningAddrs = cfg.miningAddrs
+			}
 		} else {
 			mcfg.MiningAddrs = cfg.signAddress
 		}

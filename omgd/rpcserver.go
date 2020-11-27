@@ -4335,6 +4335,10 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 			return err.Error(), err
 		}
 
+		if len(block.MsgBlock().Connection) == 0 {
+			return "Empty Connection", fmt.Errorf("Empty Connection")
+		}
+
 		if chain.Blacklist.IsGrey(block.MsgBlock().Miner) {
 			rpcsLog.Errorf("Blacklised Miner %x", block.MsgBlock().Miner[:])
 			t := fmt.Sprintf("Blacklised Miner %x", block.MsgBlock().Miner[:])

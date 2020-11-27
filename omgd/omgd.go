@@ -260,15 +260,20 @@ func btcdMain(serverChan chan<- *server) error {
 		go func() {
 			state := server.chain.BestSnapshot()
 			h := state.Height
+			before := h
 			server.rpcServer.Rpcactivity = make(chan struct{})
 			for {
 				select {
 				case <- server.rpcServer.Rpcactivity:
 
-				case <-time.After(10 * time.Minute):
-					state = server.chain.BestSnapshot()
+				case <-time.After(1 * time.Minute):
+					go func() {
+						state = server.chain.BestSnapshot()
+						h = state.Height
+					} ()
 
-					if h == state.Height {
+				case <-time.After(10 * time.Minute):
+					if h == before {
 						var wbuf bytes.Buffer
 						pprof.Lookup("mutex").WriteTo(&wbuf, 1)
 						pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
@@ -276,9 +281,8 @@ func btcdMain(serverChan chan<- *server) error {
 
 						break
 					}
+					before = h
 				}
-
-				h = state.Height
 			}
 
 			btcdLog.Infof("Voluntary shutdown after no new block for 10 min.")

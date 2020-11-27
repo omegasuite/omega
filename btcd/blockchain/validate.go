@@ -451,6 +451,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		}
 
 		_,awd := block.MsgBlock().Transactions[0].TxOut[0].Value.Value()
+		awardto := make(map[[20]byte]struct{})
 		for _, txo := range block.MsgBlock().Transactions[0].TxOut {
 			if txo.IsSeparator() {
 				break
@@ -461,6 +462,12 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			if txo.Value.(*token.NumToken).Val != awd {
 				return fmt.Errorf("Award is not evenly distributed among quanlified miners."), false
 			}
+			var tw [20]byte
+			copy(tw[:], txo.PkScript[1:21])
+			awardto[tw] = struct{}{}
+		}
+		if len(awardto) != wire.CommitteeSize {
+			return fmt.Errorf("Coinbase award error."), false
 		}
 
 		// examine signatures
@@ -470,8 +477,8 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		nsigned := 0
 
 		var imin = false
-		var inkey *btcec.PrivateKey
-		inkey = nil
+//		var inkey *btcec.PrivateKey
+//		inkey = nil
 		var meme btcutil.Address
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
@@ -480,17 +487,21 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 				return nil, true
 			}
 			committee[mb.MsgBlock().Miner] = struct{}{}
+			delete(awardto, mb.MsgBlock().Miner)
 
 			if !imin {
 				for j,me := range b.Miner {
 					imin = bytes.Compare(me.ScriptAddress(), mb.MsgBlock().Miner[:]) == 0
 					if imin {
-						inkey = b.PrivKey[j]
+//						inkey = b.PrivKey[j]
 						meme = b.Miner[j]
 						break
 					}
 				}
 			}
+		}
+		if len(awardto) != 0 {
+			return fmt.Errorf("Coinbase award error."), false
 		}
 
 		tbr := make([]int, 0, 3)
@@ -517,7 +528,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			block.MsgBlock().Transactions[0].SignatureScripts =
 			append(block.MsgBlock().Transactions[0].SignatureScripts[:tbr[k]], block.MsgBlock().Transactions[0].SignatureScripts[tbr[k]+1:]...)
 		}
-
+/*
 		if imin && inkey != nil && nsigned < wire.CommitteeSigs {
 			// add my signature to the block
 			sig, _ := inkey.Sign(hash)
@@ -536,6 +547,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 				Signature)
 			nsigned++
 		}
+*/
 
 		if nsigned < wire.CommitteeSigs {
 			return fmt.Errorf("Insufficient number of Miner signatures."), false
