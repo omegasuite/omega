@@ -103,6 +103,8 @@ type Syncer struct {
 func (self *Syncer) CommitteeMsgMG(p [20]byte, m wire.Message) {
 	if h, ok := self.Members[p]; ok {
 		miner.server.CommitteeMsgMG(p, h + self.Base, m)
+	} else {
+		log.Infof("Msg not sent because %s is not a memnber", p)
 	}
 }
 
@@ -147,7 +149,7 @@ func (self *Syncer) repeater() {
 	}
 
 	for m,i := range self.Members {
-		if !miner.server.Connected(m) {
+		if i != self.Myself && !miner.server.Connected(m) {
 			if self.sigGiven != i && self.agreed == i {
 				self.agreed = -1
 			}
@@ -155,7 +157,7 @@ func (self *Syncer) repeater() {
 				self.knowledges.Knowledge[i][j] = 0
 				self.knowledges.Knowledge[j][i] = 0
 				for k := 0; k < wire.CommitteeSize; k++ {
-					self.knowledges.Knowledge[j][k] ^= 0x1 << i
+					self.knowledges.Knowledge[j][k] &= ^(0x1 << i)
 				}
 			}
 		}
@@ -214,6 +216,24 @@ func (self *Syncer) repeater() {
 			self.agreed = best
 		} else {
 			self.candidacy()
+		}
+	}
+
+	if self.agreed == self.Myself && len(self.agrees) < wire.CommitteeSigs - 1 {
+		for i,b := range self.asked {
+			if !b || int32(i) == self.Myself || !self.better(int32(i), self.Myself) {
+				continue
+			}
+			if self.better(int32(i), self.agreed) {
+				self.agreed = int32(i)
+			}
+		}
+		if self.agreed != self.Myself {
+			r := self.makeRelease(self.agreed)
+			for i,_ := range self.agrees {
+				self.CommitteeMsgMG(self.Names[i], r)
+			}
+			self.agrees = nil
 		}
 	}
 
@@ -836,6 +856,7 @@ func (self *Syncer) ckconsensus() {
 			self.forest[self.Me].block.MsgBlock().Transactions[0].SignatureScripts,
 			msg.Signature[:])
 		self.signed[self.Me] = struct{}{}
+		self.agrees[self.Myself] = struct{}{}
 
 		log.Infof("ckconsensus: cast Consensus")
 
