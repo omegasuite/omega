@@ -2908,6 +2908,8 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var defType byte
 	dest := pointer(0)
 
+	var coinbase = false
+
 	for j := 0; j < ln; j++ {
 		switch param[j] {
 		case '0', '1', '2', '3', '4', '5',
@@ -2918,6 +2920,9 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				return err
 			}
 			j += tl
+
+		case 'C':
+			coinbase = true
 
 		default:
 			return fmt.Errorf("Malformed expression")
@@ -2946,7 +2951,7 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		return err
 	}
 
-	hash := evm.AddRight(tk)
+	hash := evm.AddRight(tk, coinbase)
 
 	if dest != pointer(0) {
 		stack.saveHash(&dest, hash)
@@ -3012,13 +3017,16 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	if isContract(tk.PkScript[0]) {
 		me := contract.self.Address()
+/*
 		allowed := bytes.Compare(tk.PkScript[1:21], me[:]) == 0
+
 		for lib, _ := range contract.libs {
 			if !allowed {
 				allowed = bytes.Compare(tk.PkScript[1:21], lib[:]) == 0
 			}
 		}
-		if !allowed {
+ */
+		if bytes.Compare(tk.PkScript[1:21], me[:]) != 0 {
 			return fmt.Errorf("Contract may not add a txout outside scope")
 		}
 	} else {
@@ -3027,9 +3035,7 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		isP2PKH := evm.chainConfig.PubKeyHashAddrID == netID
 		isP2SH := evm.chainConfig.ScriptHashAddrID == netID
 
-		if isP2PKH && isP2SH {
-			return btcutil.ErrAddressCollision
-		} else if !isP2PKH && !isP2PKH {
+		if !isP2PKH && !isP2SH {
 			return btcutil.ErrUnknownAddressType
 		}
 	}

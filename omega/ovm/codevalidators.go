@@ -512,6 +512,9 @@ var formatAddRight = []formatDesc{
 }
 
 func opAddRightValidator(param []byte) int {
+	if param[len(param) - 1] == 'C' {
+		return formatParser(formatAddRight, param[:len(param) - 1])
+	}
 	return formatParser(formatAddRight, param)
 }
 

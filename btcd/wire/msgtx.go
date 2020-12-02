@@ -1226,10 +1226,6 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 		return false
 	}
 
-	if len(msgTx.TxDef) != 0 {
-		return false
-	}
-
 	for _,to := range msgTx.TxOut {
 		if to.IsSeparator() {
 			return true
