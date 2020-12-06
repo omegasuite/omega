@@ -219,6 +219,7 @@ type Params struct {
 
 	// Address encoding magics
 	PubKeyHashAddrID        byte // First byte of a P2PKH address
+	MultiSigAddrID          byte // First byte of a multisig address
 	ScriptHashAddrID        byte // First byte of a P2SH address
 	ContractAddrID	        byte // First byte of a P2C address
 	PrivateKeyID            byte // First byte of a WIF private key
@@ -296,6 +297,8 @@ var MainNetParams = Params{
 
 	// Address encoding magics
 	PubKeyHashAddrID:        0x00, // starts with 1
+	MultiSigAddrID:			 0x67,
+
 	ScriptHashAddrID:        0x05, // starts with 3
 	ContractAddrID:			 0x88, // start with 8
 	PrivateKeyID:            0x80, // starts with 5 (uncompressed) or K (compressed)
@@ -362,6 +365,7 @@ var RegressionNetParams = Params{
 
 	// Address encoding magics
 	PubKeyHashAddrID: 0x6f, // starts with m or n
+	MultiSigAddrID:	  0x67,
 	ScriptHashAddrID: 0xc4, // starts with 2
 	ContractAddrID:	  0x88, // start with 8
 	PrivateKeyID:     0xef, // starts with 9 (uncompressed) or c (compressed)
@@ -432,6 +436,7 @@ var TestNet3Params = Params{
 
 	// Address encoding magics
 	PubKeyHashAddrID:        0x6f, // starts with m or n
+	MultiSigAddrID:			 0x67,
 	ScriptHashAddrID:        0xc4, // starts with 2
 	ContractAddrID:	 		 0x88, // start with 8
 	PrivateKeyID:            0xef, // starts with 9 (uncompressed) or c (compressed)
@@ -503,6 +508,7 @@ var SimNetParams = Params{
 
 	// Address encoding magics
 	PubKeyHashAddrID:        0x3f, // starts with S
+	MultiSigAddrID:			 0x67,
 	ScriptHashAddrID:        0x7b, // starts with s
 	ContractAddrID:			 0x88, // start with 8
 	PrivateKeyID:            0x64, // starts with 4 (uncompressed) or F (compressed)
@@ -533,6 +539,7 @@ var (
 var (
 	registeredNets       = make(map[common.OmegaNet]struct{})
 	pubKeyHashAddrIDs    = make(map[byte]struct{})
+	multisigAddrIDs      = make(map[byte]struct{})
 	contractAddrIDs      = make(map[byte]struct{})
 	scriptHashAddrIDs    = make(map[byte]struct{})
 	bech32SegwitPrefixes = make(map[string]struct{})
@@ -559,6 +566,7 @@ func Register(params *Params) error {
 	}
 	registeredNets[params.Net] = struct{}{}
 	pubKeyHashAddrIDs[params.PubKeyHashAddrID] = struct{}{}
+	multisigAddrIDs[params.MultiSigAddrID] = struct{}{}
 	contractAddrIDs[params.ContractAddrID] = struct{}{}
 	scriptHashAddrIDs[params.ScriptHashAddrID] = struct{}{}
 	hdPrivToPubKeyIDs[params.HDPrivateKeyID] = params.HDPublicKeyID[:]
@@ -596,6 +604,11 @@ func IsPubKeyHashAddrID(id byte) bool {
 // undeterminable (if both return true).
 func IsScriptHashAddrID(id byte) bool {
 	_, ok := scriptHashAddrIDs[id]
+	return ok
+}
+
+func IsMultiSigAddrID(id byte) bool {
+	_, ok := multisigAddrIDs[id]
 	return ok
 }
 

@@ -20,10 +20,18 @@ import (
 )
 
 func CheckDefinitions(msgTx *wire.MsgTx) error {
+	e, _, _ := ScanDefinitions(msgTx)
+	return e
+}
+
+func ScanDefinitions(msgTx *wire.MsgTx) (error, map[chainhash.Hash]*token.RightDef, map[chainhash.Hash]*token.RightSetDef) {
 	// for every definition, if it is a new vertex, it must be referenced by a border definition
 	// in the same tx. for every top border (father=nil) definition, it must be referenced by a polygon definition
 	// in the same tx. for every polygon definition, it must be referenced by a txout in the same tx.
 	// for every right definition, it must be referenced by a txout in the same tx.
+	var newrights = make(map[chainhash.Hash]*token.RightDef)
+	var newrightsets = make(map[chainhash.Hash]*token.RightSetDef)
+
 	for i, def := range msgTx.TxDef {
 		switch def.(type) {
 		case *token.BorderDef:
@@ -49,7 +57,7 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 			}
 			if !refd {
 				str := fmt.Sprintf("Border %s is defined but not referenced.", h.String())
-				return ruleError(1, str)
+				return ruleError(1, str), nil, nil
 			}
 
 		case *token.PolygonDef:
@@ -84,13 +92,18 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 			}
 			if !refd {
 				str := fmt.Sprintf("Polygon %s is defined but not referenced.", h.String())
-				return ruleError(1, str)
+				return ruleError(1, str), nil, nil
 			}
 
 		case *token.RightDef:
 			v := def.(*token.RightDef)
 			refd := false
 			h := v.Hash()
+			if _,ok := newrights[h]; ok {
+				str := fmt.Sprintf("Duplicated right definition.", h.String())
+				return ruleError(1, str), nil, nil
+			}
+			newrights[h] = v
 			for _, b := range msgTx.TxDef {
 				switch b.(type) {
 				case *token.RightSetDef:
@@ -113,13 +126,18 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 			}
 			if !refd {
 				str := fmt.Sprintf("Right %s is defined but not referenced.", h.String())
-				return ruleError(1, str)
+				return ruleError(1, str), nil, nil
 			}
 			break
 		case *token.RightSetDef:
 			v := def.(*token.RightSetDef)
 			refd := false
 			h := v.Hash()
+			newrightsets[h] = v
+			if _,ok := newrightsets[h]; ok {
+				str := fmt.Sprintf("Duplicated right set definition.", h.String())
+				return ruleError(1, str), nil, nil
+			}
 			for _,to := range msgTx.TxOut {
 				if to.IsSeparator() || !to.HasRight() {
 					continue
@@ -130,12 +148,13 @@ func CheckDefinitions(msgTx *wire.MsgTx) error {
 			}
 			if !refd {
 				str := fmt.Sprintf("Right %s is defined but not referenced.", h.String())
-				return ruleError(1, str)
+				return ruleError(1, str), nil, nil
 			}
 			break
 		}
 	}
-	return nil
+
+	return nil, newrights, newrightsets
 }
 
 // CheckTransactionInputs performs a series of checks on the inputs to a

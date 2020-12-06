@@ -879,16 +879,14 @@ func pubKeyTypes(script []byte) string {
 	if script[21] == 0x45 {
 		return "nulldata"
 	}
+
+	if chaincfg.IsMultiSigAddrID(script[0]) {
+		return "multisig"
+	}
 	if chaincfg.IsScriptHashAddrID(script[0]) {
-		if script[21] == 0x44 {
-			return "multiscriptsig"
-		}
 		return "scripthash"
 	}
 	if chaincfg.IsPubKeyHashAddrID(script[0]) {
-		if script[21] == 0x43 {
-			return "multipubkeysig"
-		}
 		return "pubkeyhash"
 	}
 	return "unknown"
@@ -1037,28 +1035,21 @@ func DisasmScript(script []byte) string {
 		return "contractowned"
 	}
 
+	if script[0] == 0x67 {
+		return "multisig(" + hex.EncodeToString(script) + ")"
+	}
+
 	switch script[21] {
 	case ovm.OP_PAY2PKH:
 		return "pay2pkh(" + hex.EncodeToString(script[:21]) + ")"
 	case ovm.OP_PAY2SCRIPTH:
 		return "pay2pkh(" + hex.EncodeToString(script[:21]) + ")"
-	case ovm.OP_PAY2MULTIPKH:
-		s := "pay2pkhs" + hex.EncodeToString(script[:21])
-		for p := 25; p < len(script); p += 20 {
-			s += "," + hex.EncodeToString(script[p:p + 20])
-		}
-		return s + ")"
-	case ovm.OP_PAY2MULTISCRIPTH:
-		s := "pay2scripths" + hex.EncodeToString(script[:21])
-		for p := 25; p < len(script); p += 20 {
-			s += "," + hex.EncodeToString(script[p:p + 20])
-		}
-		return s + ")"
 	case ovm.OP_PAY2NONE:
 		return "payreturn"
 	case ovm.OP_PAY2ANY:
 		return "payanyone"
 	}
+
 	return ""
 }
 

@@ -2,14 +2,17 @@ package ovm
 
 import (
 	"fmt"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/btcutil"
 	"sync/atomic"
 
 	"bytes"
 	"encoding/binary"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-//	"github.com/omegasuite/btcd/database"
-//	"github.com/omegasuite/omega/token"
+	//	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/omega/token"
 )
 
 type vunit struct {
@@ -42,24 +45,39 @@ const (
 
 	OP_PAY2PKH				= 0x41
 	OP_PAY2SCRIPTH			= 0x42
-	OP_PAY2MULTIPKH			= 0x43
-	OP_PAY2MULTISCRIPTH		= 0x44
+	OP_PAYMULTISIG			= 0x43
+//	OP_PAY2MULTIPKH			= 0x43
+//	OP_PAY2MULTISCRIPTH		= 0x44
 	OP_PAY2NONE				= 0x45
 	OP_PAY2ANY				= 0x46
 )
 
 // PrecompiledContracts contains the default set of pre-compiled contracts
-var PrecompiledContracts = map[[4]byte]PrecompiledContract{
-	([4]byte{OP_CREATE, 0, 0, 0}): &create{},			// create a contract
-	([4]byte{OP_META, 0, 0, 0}): &meta{},			// create a contract
-
+var PrecompiledContracts = map[[4]byte]func(evm * OVM, contract *Contract) PrecompiledContract {
+	([4]byte{OP_CREATE, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
+		return &create{evm, contract}
+	},			// create a contract
+	([4]byte{OP_META, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
+		return &meta{evm, contract}
+	},			// meta
 	// pk script functions
-	([4]byte{OP_PAY2PKH, 0, 0, 0}): &pay2pkh{},			// pay to pubkey hash script
-	([4]byte{OP_PAY2SCRIPTH, 0, 0, 0}): &pay2scripth{},		// pay to script hash script
-	([4]byte{OP_PAY2MULTIPKH, 0, 0, 0}): &pay2pkhs{},		// pay to pubkey hash script, multi-sig
-	([4]byte{OP_PAY2MULTISCRIPTH, 0, 0, 0}): &pay2scripths{},		// pay to no one and spend it
-	([4]byte{OP_PAY2NONE, 0, 0, 0}): &payreturn{},			// pay to no one and spend it
-	([4]byte{OP_PAY2ANY, 0, 0, 0}): &payanyone{},			// pay to anyone
+	([4]byte{OP_PAY2PKH, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
+		return &pay2pkh{}
+	}, 			// pay to pubkey hash script
+	([4]byte{OP_PAY2SCRIPTH, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
+		return &pay2scripth{}
+	},			// pay to script hash script
+	([4]byte{OP_PAYMULTISIG, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
+		return &pay2multisig{evm, contract}
+	},			// pay to script hash script
+//	([4]byte{OP_PAY2MULTIPKH, 0, 0, 0}): &pay2pkhs{},		// pay to pubkey hash script, multi-sig
+//	([4]byte{OP_PAY2MULTISCRIPTH, 0, 0, 0}): &pay2scripths{},		// pay to no one and spend it
+	([4]byte{OP_PAY2NONE, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
+		return &payreturn{}
+	},			// pay to no one and burn it
+	([4]byte{OP_PAY2ANY, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
+		return &payanyone{}
+	},			// pay to anyone
 }
 
 type payanyone struct {}
@@ -75,6 +93,169 @@ func (p *payreturn) Run(input []byte, vunits []vunit) ([]byte, error) {
 	return []byte{0}, nil
 }
 
+type pay2multisig struct {
+	ovm * OVM
+	contract *Contract
+}
+
+// multiple address multiple key
+func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
+	// input: pkh - multi-sig descriptor (2 + 4M-byte value)
+	//		     byte 0 - M - 1 (max 18)
+	//			 byte 1 - N - 1 (N <= M)
+	//			 bytes 2 - 2+4M: 32-bit ints for length of a script
+	//		  M public key hash address (each 25-byte value) or contract calls (var length)
+	// vunits: vunit from sig script
+	//		  data: public key-signature pairs
+	//	      text: text to be signed
+
+	pks := make([][]byte, 0)
+	contracts := make([][]byte, 0)
+
+	m := int(input[0])
+	n := int(input[1])
+	if m > 18 || len(input) < 21 * m + 2 + 4 * m {
+		return []byte{0}, nil	// never. should have been verified in tx validity
+	}
+
+	scriptlens := make([]uint32, m)
+	for i := 0; i < m; i++ {
+		scriptlens[i] = common.LittleEndian.Uint32(input[2 + 4 * i:])
+	}
+
+	sigcnt := 0
+
+	pos := 2 + 4 * m
+	for i := 1; i < m; i++ {
+		if input[pos] == p.ovm.chainConfig.PubKeyHashAddrID {
+			if scriptlens[i] != 21 {
+				return []byte{0}, nil	// never. should have been verified in tx validity
+			}
+			var k [20]byte
+			copy(k[:], input[pos + 1:])
+			pks = append(pks, k[:])
+			pos += 21
+		} else if input[pos] == p.ovm.chainConfig.ContractAddrID {
+			contracts = append(contracts, input[pos:pos + int(scriptlens[i])])
+			pos += int(scriptlens[i])
+		} else if input[pos] == p.ovm.chainConfig.MultiSigAddrID {
+			k := pos + 1
+			mm := int(input[k])
+			for j := 0; j < mm; j++ {
+				k += int(common.LittleEndian.Uint32(input[k + 2 + 4*j:]))
+			}
+			r,_ := p.Run(input[pos + 1:k], vunits)
+			if r[0] == 1 {
+				sigcnt++
+			}
+			pos = k
+		}
+	}
+
+	for _,v := range vunits {
+		inlen := len(v.data)
+
+		kpos := int(v.data[0]) + 1
+		pkBytes := v.data[1:kpos]
+
+		siglen := v.data[kpos]
+		kpos++
+
+		if siglen == 0 {
+			continue
+		}
+
+		if inlen < kpos + int(siglen) {
+			return []byte{0}, nil
+		}
+
+		sigBytes := v.data[kpos : kpos+int(siglen)]
+
+		pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
+		if err != nil {
+			return []byte{0}, nil
+		}
+
+		ph := Hash160(pkBytes)
+		matched := false
+		for i, k := range pks {
+			if bytes.Compare(ph[:], k) == 0 {
+				pks = append(pks[:i], pks[i+1:]...)
+				matched = true
+				break
+			}
+		}
+
+		if !matched {
+			continue
+		}
+
+		var signature *btcec.Signature
+
+		signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
+
+		if err != nil {
+			return []byte{0}, nil
+		}
+
+		hash := chainhash.DoubleHashB(v.text)
+		valid := signature.Verify(hash, pubKey)
+
+		if valid {
+			sigcnt++
+		}
+	}
+
+	if sigcnt >= n {
+		return []byte{1}, nil
+	}
+
+	if len(contracts) < n - sigcnt {
+		return []byte{0}, nil
+	}
+
+	// run smart contracts
+	vm := NewOVM(p.ovm.chainConfig)
+	vm.writeback = false
+
+	vm.GetCoinBase = func () * btcutil.Tx { return nil }
+	vm.GetTx = func () * btcutil.Tx { return nil }
+	vm.AddTxOutput = func(t wire.TxOut) int { return -1 }
+	vm.Spend = func(t wire.OutPoint) bool {	return false }
+	vm.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash {
+		return chainhash.Hash{}
+	}
+	vm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil	}
+	vm.BlockNumber = func() uint64 { return 0 }
+	vm.BlockTime = func() uint32 { return 0 }
+	vm.GetCurrentOutput = func() wire.OutPoint { return wire.OutPoint{} }
+	vm.AddCoinBase = func(wire.TxOut) wire.OutPoint { return wire.OutPoint{} }
+	vm.GasLimit    = 100000
+	vm.Block 	= func() * btcutil.Block { return nil }
+
+	vm.NoLoop = false
+	vm.interpreter.readOnly = false
+
+	for _,c := range contracts {
+		t := token.Token{}
+		var a Address
+		copy(a[:], c[1:21])
+		t.TokenType = 0
+		t.Value = &token.NumToken{Val: -1}
+		r, err := vm.Call(a, c[21:25], &t, c[25:])
+		if err != nil || r == nil || r[0] == 0 {
+			continue
+		}
+		sigcnt++
+		if sigcnt >= n {
+			return []byte{1}, nil
+		}
+	}
+
+	return []byte{0}, nil
+}
+
+/*
 type pay2pkhs struct {}
 type pay2scripths struct {}
 
@@ -239,6 +420,7 @@ func (p *pay2pkhs) Run(input []byte, vunits []vunit) ([]byte, error) {
 
 	return []byte{1}, nil
 }
+ */
 
 type pay2scripth struct {}
 
@@ -296,7 +478,7 @@ func (p *pay2pkh) Run(input []byte, vunits []vunit) ([]byte, error) {
 
 	sigBytes := vunits[0].data[pos + 1:pos + siglen + 1]
 
-	pos += siglen + 1
+//	pos += siglen + 1
 
 	// Generate the signature hash based on the signature hash type.
 	hash := chainhash.DoubleHashB(vunits[0].text)

@@ -201,7 +201,7 @@ func (in *Interpreter) verifySig(txinidx int, pkScript, sigScript []byte) bool {
 		Code: []inst{inst{OpCode(sigScript[0]), sigScript[1:]}},
 //		CodeHash: chainhash.Hash{},
 		self: nil,
-		Args:make([]byte, 4),
+		Args: make([]byte, 4),
 		pure: 0x1F,	// don't allow state access, spending, add output, mint.
 					// actually its impossible since the inst set is limited
 	}

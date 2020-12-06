@@ -1039,6 +1039,103 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 		}
 	}
 
+	// check definitions in TxOuts
+	// recheck CheckDefinitions
+
+	err, newrights, newrightsets := validate.ScanDefinitions(tx.MsgTx())
+	if err != nil {
+		return err
+	}
+
+	var righttrees = make(map[chainhash.Hash]chainhash.Hash)
+
+	for i,to := range tx.MsgTx().TxOut {
+		if to.IsSeparator() || !to.HasRight() {
+			continue
+		}
+
+		var rights = make(map[chainhash.Hash]*token.RightDef)
+
+		if _, ok := newrightsets[*to.Rights]; ok {
+			for _, r := range newrightsets[*to.Rights].Rights {
+				e := views.Rights.GetRight(views.Db, r).(*viewpoint.RightEntry)
+				if e == nil {
+					str := fmt.Sprintf("Right undefined in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+					return ruleError(1, str)
+				} else if rights[r] != nil {
+					str := fmt.Sprintf("Right duplicated in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+					return ruleError(1, str)
+				} else {
+					rights[r] = e.ToToken()
+				}
+			}
+		} else if _, ok = newrights[*to.Rights]; ok {
+			if rights[*to.Rights] != nil {
+				str := fmt.Sprintf("Right duplicated in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+				return ruleError(1, str)
+			}
+			rights[*to.Rights] = newrights[*to.Rights]
+		} else {
+			e := views.Rights.GetRight(views.Db, *to.Rights)
+			if e != nil {
+				switch e.(type) {
+				case *viewpoint.RightSetEntry:
+					for _, r := range e.(*viewpoint.RightSetEntry).Rights {
+						e := views.Rights.GetRight(views.Db, r).(*viewpoint.RightEntry)
+						if e == nil {
+							str := fmt.Sprintf("Right undefined in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+							return ruleError(1, str)
+						} else if rights[r] != nil {
+							str := fmt.Sprintf("Right duplicated in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+							return ruleError(1, str)
+						} else {
+							rights[r] = e.ToToken()
+						}
+					}
+				case *viewpoint.RightEntry:
+					if rights[*to.Rights] != nil {
+						str := fmt.Sprintf("Right duplicated in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+						return ruleError(1, str)
+					} else {
+						rights[*to.Rights] = e.(*viewpoint.RightEntry).ToToken()
+					}
+				}
+			}
+		}
+		zh := chainhash.Hash{}
+		for h,p := range rights {
+			if _,ok := righttrees[h]; ok {
+				continue
+			}
+			for p != nil {
+				righttrees[h] = p.Father
+				h = p.Father
+				if _,ok := righttrees[h]; ok || h.IsEqual(&zh) {
+					break
+				}
+				q := views.Rights.GetRight(views.Db, h).(*viewpoint.RightEntry)
+				if q == nil {
+					break
+				}
+				p = q.ToToken()
+			}
+		}
+		for h,_ := range rights {
+			p := righttrees[h]
+			var ok bool
+			for _, ok = rights[p]; !ok; _, ok = rights[p] {
+				var k bool
+				if p, k = righttrees[p]; !k {
+					break
+				}
+			}
+			if ok {
+				str := fmt.Sprintf("Rights having ancestor/decendant relationship in %d : %d", tx.MsgTx().TxHash().String(), i)
+				return ruleError(1, str)
+			}
+		}
+	}
+
 	return nil
 }
 

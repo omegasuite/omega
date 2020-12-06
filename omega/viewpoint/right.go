@@ -509,22 +509,31 @@ func (view * RightViewpoint) fetchRightMain(db database.DB, b map[chainhash.Hash
 	return db.View(func(dbTx database.Tx) error {
 		for vtx,_ := range b {
 			e, err := DbFetchRight(dbTx, &vtx)
-			if err != nil {
+			if e == nil || err != nil {
 				return err
 			}
 
-			view.entries[vtx] = &RightEntry{
-				Father: e.(*RightEntry).Father,
-				Desc:e.(*RightEntry).Desc,
-				Attrib: e.(*RightEntry).Attrib,
-				Root: e.(*RightEntry).Root,
-				Depth: e.(*RightEntry).Depth,
-				PackedFlags: 0,
+			switch e.(type) {
+			case *RightEntry:
+				e.(*RightEntry).PackedFlags = 0
+				view.entries[vtx] = e.(*RightEntry)
+			case *RightSetEntry:
+				e.(*RightSetEntry).PackedFlags = 0
+				view.entries[vtx] = e.(*RightSetEntry)
 			}
 		}
 
 		return nil
 	})
+}
+
+func (view * RightViewpoint) GetRight(db database.DB, hash chainhash.Hash) interface{} {
+	e := view.LookupRightEntry(hash)
+	if e != nil {
+		return e
+	}
+	view.FetchRight(db, map[chainhash.Hash]struct{}{hash: {}})
+	return view.LookupRightEntry(hash)
 }
 
 // fetchVertex loads the vertices for the provided set into the view

@@ -63,15 +63,14 @@ type (
 func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
 	if contract.CodeAddr != nil {
 		var abi [4]byte
-		copy(abi[:], contract.CodeAddr)
-		p := PrecompiledContracts[abi]
-
-		if abi == [4]byte{0,0,0,0} {
-			p = &create{evm, contract }
+		if input[0] == evm.chainConfig.MultiSigAddrID {
+			abi[0] = OP_PAYMULTISIG
+		} else {
+			copy(abi[:], contract.CodeAddr)
 		}
-
+		p := PrecompiledContracts[abi]
 		if p != nil {
-			return evm.interpreter.RunPrecompiledContract(p, input, contract)
+			return evm.interpreter.RunPrecompiledContract(p(evm, contract), input, contract)
 		}
 	}
 	return evm.interpreter.Run(contract, input)

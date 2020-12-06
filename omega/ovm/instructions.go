@@ -3034,8 +3034,9 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		netID := tk.PkScript[0]
 		isP2PKH := evm.chainConfig.PubKeyHashAddrID == netID
 		isP2SH := evm.chainConfig.ScriptHashAddrID == netID
+		isMSig := evm.chainConfig.MultiSigAddrID == netID
 
-		if !isP2PKH && !isP2SH {
+		if !isP2PKH && !isP2SH && !isMSig {
 			return btcutil.ErrUnknownAddressType
 		}
 	}

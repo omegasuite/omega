@@ -21,6 +21,7 @@ import (
 	"golang.org/x/crypto/ripemd160"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // hash160 returns the RIPEMD160 hash of the SHA-256 HASH of the given data.
@@ -477,6 +478,12 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 	ovm.AddTxOutput = func(t wire.TxOut) int {
 		return tx.AddTxOut(t)
 	}
+	ovm.BlockNumber = func() uint64 {
+		return uint64(txHeight)
+	}
+	ovm.BlockTime = func() uint32 {
+		return uint32(time.Now().Unix())
+	}
 	ovm.Spend = func(t wire.OutPoint) bool {
 		// it has alreadty been verified that the coin belongs to the contract
 		tx.AddTxIn(t)
@@ -489,13 +496,23 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 		return tx.AddDef(t)
 	}
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
+		if hash.IsEqual(tx.Hash()) {
+			if int(seq) >= len(tx.MsgTx().TxOut) {
+				return nil
+			}
+			return tx.MsgTx().TxOut[seq]
+		}
 		op := make(map[wire.OutPoint]struct{})
 		p := wire.OutPoint{hash,uint32(seq)}
+		e := ovm.views.Utxo.LookupEntry(p)
+		if e != nil {
+			return e.ToTxOut()
+		}
 		op[p] = struct{}{}
 		if ovm.views.Utxo.FetchUtxosMain(ovm.views.Db, op) != nil {
 			return nil
 		}
-		e := ovm.views.Utxo.LookupEntry(p)
+		e = ovm.views.Utxo.LookupEntry(p)
 		if e == nil {
 			return nil
 		}
@@ -609,13 +626,23 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 		return tx.AddDef(t)
 	}
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
+		if hash.IsEqual(tx.Hash()) {
+			if int(seq) >= len(tx.MsgTx().TxOut) {
+				return nil
+			}
+			return tx.MsgTx().TxOut[seq]
+		}
 		op := make(map[wire.OutPoint]struct{})
 		p := wire.OutPoint{hash,uint32(seq)}
+		e := ovm.views.Utxo.LookupEntry(p)
+		if e != nil {
+			return e.ToTxOut()
+		}
 		op[p] = struct{}{}
 		if ovm.views.Utxo.FetchUtxosMain(ovm.views.Db, op) != nil {
 			return nil
 		}
-		e := ovm.views.Utxo.LookupEntry(p)
+		e = ovm.views.Utxo.LookupEntry(p)
 		if e == nil {
 			return nil
 		}
