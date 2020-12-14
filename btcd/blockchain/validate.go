@@ -78,6 +78,9 @@ func IsCoinBaseTx(msgTx *wire.MsgTx) bool {
 	}
 
 	for _,to := range msgTx.TxOut {
+		if to.IsSeparator() {
+			continue
+		}
 		if to.TokenType != 0 {
 			return false
 		}
@@ -188,6 +191,9 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 
 	contract := false
 	for _,to := range msgTx.TxOut {
+		if to.IsSeparator() {
+			continue
+		}
 		contract = contract || to.PkScript[0] == 0x88 // IsContract(to.PkScript[0])
 	}
 

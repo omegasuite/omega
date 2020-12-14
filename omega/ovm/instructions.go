@@ -120,8 +120,8 @@ func (stack * Stack) getNum(param []byte, dataType byte) (int64, int, error) {
 		case 'g':	// g
 			global = 1
 
-		case 'l':	// l
-			global = 2
+//		case 'l':	// l
+//			global = 2
 
 		case '\'':	// " - head offset
 			hasoffset |= 1
@@ -138,8 +138,8 @@ func (stack * Stack) getNum(param []byte, dataType byte) (int64, int, error) {
 			num := int64(0)
 			if global == 0 {
 				t = int64(len(stack.data) - 1)
-			} else if global == 2 {
-				nums[0] += int64(stack.data[len(stack.data) - 1].gbase)
+//			} else if global == 2 {
+//				nums[0] += int64(stack.data[len(stack.data) - 1].gbase)
 			}
 
 			if indirect > 0 {	// || dataType == 0xFF {
@@ -1022,8 +1022,8 @@ func (stack * Stack) addressing(indirect int, global byte, hasoffset int, offset
 
 	if global == 0 {
 		t = int64(len(stack.data) - 1)
-	} else if global == 2 {
-		offsets[0] += int64(stack.data[len(stack.data) - 1].gbase)
+//	} else if global == 2 {
+//		offsets[0] += int64(stack.data[len(stack.data) - 1].gbase)
 	}
 
 	p := pointer((t << 32) | offsets[0])
@@ -1100,8 +1100,8 @@ func (stack * Stack) getBig(param []byte) (*big.Int, int, error) {
 		case 'g':	// g
 			global = 1
 
-		case 'l':	// l
-			global = 2
+//		case 'l':	// l
+//			global = 2
 
 		case '\'':	// ' - head offset
 			hasoffset |= 1
@@ -1187,8 +1187,8 @@ func (stack * Stack) getHash(param []byte) (chainhash.Hash, int, error) {
 		case 'g':	// g
 			global = 1
 
-		case 'l':	// l
-			global = 2
+//		case 'l':	// l
+//			global = 2
 
 		case '\'':	// " - head offset
 			hasoffset |= 1
@@ -1289,8 +1289,8 @@ func (stack * Stack) getBytesLen(param []byte, dlen uint32) ([]byte, int, error)
 		case 'g':	// g
 			global = 1
 
-		case 'l':	// l
-			global = 2
+//		case 'l':	// l
+//			global = 2
 
 		case '\'':	// " - head offset
 			hasoffset |= 1
@@ -1934,7 +1934,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			libAddr = stack.data[len(stack.data)-1].inlib
 		}
 		f.inlib = libAddr
-		f.gbase = contract.libs[libAddr].base
+//		f.gbase = contract.libs[libAddr].base
 		contract.pure = contract.libs[libAddr].pure
 
 		var target int32
@@ -2378,7 +2378,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				f.pc = *pc
 				f.pure = pure
 				f.inlib = d
-				f.gbase = contract.libs[d].base
+//				f.gbase = contract.libs[d].base
 				contract.pure = pure
 
 				*pc = int(contract.libs[d].address)

@@ -1351,6 +1351,9 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	fees := int64(0)
 	eq := int64(-1)
 	for _, txo := range block.MsgBlock().Transactions[0].TxOut {
+		if txo.IsSeparator() {
+			continue
+		}
 		if txo.TokenType == 0 {
 			if eq < 0 {
 				eq = txo.Value.(*token.NumToken).Val

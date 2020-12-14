@@ -247,6 +247,8 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 		utxo := views.Utxo.LookupEntry(txin.PreviousOutPoint)
 
 		if utxo == nil {
+			allrun = true
+			close(queue)
 			return omega.ScriptError(omega.ErrInternal, "UTXO does not exist.")
 		}
 
@@ -254,6 +256,8 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 
 		if contracts {
 			if !isContract(version) {
+				allrun = true
+				close(queue)
 				return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 			}
 			continue
@@ -264,10 +268,14 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 		}
 
 		if addr == nil {
+			allrun = true
+			close(queue)
 			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 
 		if zeroaddr(addr) || isContract(version) { // zero address, sys call
+			allrun = true
+			close(queue)
 			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 
@@ -518,6 +526,24 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 		}
 		return e.ToTxOut()
 	}
+
+	cb := wire.MsgTx{}
+	coinBase := btcutil.NewTx(&cb)
+	coinBaseHash := * coinBase.Hash()
+	ovm.AddCoinBase =
+		func(txo wire.TxOut) wire.OutPoint {
+			if !coinBase.HasOuts {
+				// this servers as a separater. only TokenType is serialized
+				to := wire.TxOut{}
+				to.Token = token.Token{TokenType: token.DefTypeSeparator}
+				coinBase.MsgTx().AddTxOut(&to)
+				coinBase.HasOuts = true
+			}
+			coinBase.MsgTx().AddTxOut(&txo)
+			op := wire.OutPoint { coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
+			return op
+		}
+	ovm.GetCoinBase = func() *btcutil.Tx { return coinBase }
 
 	ovm.NoLoop = false
 	ovm.interpreter.readOnly = false

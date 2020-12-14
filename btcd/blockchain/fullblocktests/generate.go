@@ -677,10 +677,16 @@ func countBlockSigOps(block *wire.MsgBlock) int {
 	totalSigOps := 0
 	for _, tx := range block.Transactions {
 		for _, txIn := range tx.TxIn {
+			if txIn.IsSeparator() {
+				continue
+			}
 			numSigOps := txscript.GetSigOpCount(txIn.SignatureScript)
 			totalSigOps += numSigOps
 		}
 		for _, txOut := range tx.TxOut {
+			if txOut.IsSeparator() {
+				continue
+			}
 			numSigOps := txscript.GetSigOpCount(txOut.PkScript)
 			totalSigOps += numSigOps
 		}

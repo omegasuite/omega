@@ -492,6 +492,13 @@ func (msg *MsgTx) Copy() *MsgTx {
 
 	// Deep copy the old TxOut data.
 	for _, oldTxOut := range msg.TxOut {
+		if oldTxOut.IsSeparator() {
+			newTxOut := TxOut{}
+			newTxOut = *oldTxOut
+			newTx.TxOut = append(newTx.TxOut, &newTxOut)
+			continue
+		}
+
 		var newScript []byte
 		oldScriptLen := len(oldTxOut.PkScript)
 		if oldScriptLen > 0 {

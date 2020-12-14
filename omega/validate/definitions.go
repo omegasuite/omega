@@ -65,7 +65,7 @@ func ScanDefinitions(msgTx *wire.MsgTx) (error, map[chainhash.Hash]*token.RightD
 			refd := false
 			h := v.Hash()
 			for _,to := range msgTx.TxOut {
-				if to.TokenType != 3 && to.TokenType != 1 {
+				if to.IsSeparator() || (to.TokenType != 3 && to.TokenType != 1) {
 					continue
 				}
 				n := to.Value.(*token.HashToken).Hash
@@ -326,6 +326,9 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 			ccw := false
 			th := p.Hash()
 			for _,out := range tx.MsgTx().TxOut {
+				if out.IsSeparator() {
+					continue
+				}
 				if out.TokenType == 3 && out.Value.(*token.HashToken).Hash.IsEqual(&th) {
 					ccw = true
 					break

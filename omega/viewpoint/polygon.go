@@ -798,6 +798,9 @@ func (view * ViewPointSet) AddPolygon(tx *btcutil.Tx) bool {
 				ccw := false
 				th := txVtx.Hash()
 				for _,out := range tx.MsgTx().TxOut {
+					if out.IsSeparator() {
+						continue
+					}
 					if out.TokenType == 3 && out.Value.(*token.HashToken).Hash.IsEqual(&th) {
 						ccw = true
 						break

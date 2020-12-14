@@ -249,6 +249,9 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 			}
 		}
 		for _, out := range tx.MsgTx().TxOut {
+			if out.IsSeparator() {
+				continue
+			}
 			if out.TokenType == 3 {
 				view.Polygon.LookupEntry(out.Token.Value.(*token.HashToken).Hash).reference(view)
 			}

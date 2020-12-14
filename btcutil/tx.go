@@ -42,6 +42,9 @@ func (t *Tx) MsgTx() *wire.MsgTx {
 
 func (t *Tx) ContainContract() bool {
 	for _, p := range t.msgTx.TxOut {
+		if p.IsSeparator() {
+			continue
+		}
 		if chaincfg.IsContractAddrID(p.PkScript[0]) {
 			return true
 		}
@@ -61,6 +64,9 @@ func (s *Tx) VerifyContractOut(t *Tx) bool {
 
 	start := false
 	for i, p := range s.msgTx.TxOut {
+		if p.IsSeparator() {
+			continue
+		}
 		if start {
 			if p.Diff(t.msgTx.TxOut[i]) {
 				return false

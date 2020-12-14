@@ -301,6 +301,9 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (bool, error
 	if checkPolygon {
 		// is there more than one polygon?
 		for _, txOut := range tx.MsgTx().TxOut {
+			if txOut.IsSeparator() {
+				continue
+			}
 			if txOut.TokenType == 3 && checkPolygon {
 				if polyhash.IsEqual(&zerohash) {
 					polyhash = txOut.Token.Value.(*token.HashToken).Hash

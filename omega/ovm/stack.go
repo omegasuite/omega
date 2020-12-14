@@ -13,7 +13,7 @@ import (
 type frame struct {
 	space []byte
 	inlib [20]byte
-	gbase int32
+//	gbase int32
 	pc int
 	pure byte		// access control:
 					// bit 0 - forbid store,
