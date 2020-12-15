@@ -181,6 +181,10 @@ func (c deploymentChecker) Condition(node *chainutil.BlockNode) (bool, error) {
 	return (version & conditionMask != 0), nil
 }
 
+func (b *MinerChain) NextBlockVersion(prevNode *chainutil.BlockNode) (uint32, error) {
+	return b.calcNextBlockVersion(prevNode)
+}
+
 // calcNextBlockVersion calculates the expected version of the block after the
 // passed previous block node based on the state of started and locked in
 // rule change deployments.

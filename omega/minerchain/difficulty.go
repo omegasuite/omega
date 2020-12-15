@@ -184,6 +184,10 @@ func (b *MinerChain) findPrevTestNetDifficulty(startNode *chainutil.BlockNode) u
 	return lastBits
 }
 
+func (b *MinerChain) NextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, error) {
+	return b.calcNextRequiredDifficulty(lastNode, newBlockTime)
+}
+
 // calcNextRequiredDifficulty calculates the required difficulty for the block
 // after the passed previous block node based on the difficulty retarget rules.
 // This function differs from the exported CalcNextRequiredDifficulty in that
@@ -230,26 +234,17 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		return 0, AssertError("unable to obtain previous retarget block")
 	}
 
-	// scan the main chain backward until the first rotation was rotated in
-//	h0 := firstNode.Header().BestBlock
-//	mb,_ := b.blockChain.HeaderByHash(&h0)
-//	baseh := uint32(firstNode.height)
-//	for mb.Nonce < 0 {
-//		mb,_ = b.blockChain.HeaderByHash(&mb.PrevBlock)
-//	}
-// tmp	if mb.Nonce == 1 {
-//		baseh = mb.Bits
-//	}
 	d := 0 // uint32(firstNode.height) - baseh
 
 	// normalize time span. account for difficulty adjust factor due to # of exceeding blocks in history
 	normalizedTimespan := int64(0)
 	pb := firstNode
-	bb := b.blockChain.BestChain.Tip()
+//	bb := b.blockChain.BestChain.Tip()
 	for i := b.blocksPerRetarget - 2; i >= 0; i-- {
 		// to cause loading of missing nodes
-		b.blockChain.HeaderByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
-//		factor := uint32(0)
+//		b.blockChain.HeaderByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
+		bb := b.blockChain.NodeByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
+/*
 		for bb != nil && bb.Hash != pb.Data.(*blockchainNodeData).block.BestBlock {
 			if bb.Parent == nil && bb.Height != 0 {
 				// this should not happen. but we keep code here in case something is wrong
@@ -261,6 +256,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			}
 			bb = bb.Parent
 		}
+ */
 		if bb == nil {
 			// error. abort recalculation
 			return lastNode.Data.(*blockchainNodeData).block.Bits, fmt.Errorf("unexpected BestBlock for %s", pb.Hash)
@@ -281,8 +277,6 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		var h int32
 		if mb != nil {
 			h = - mb.Data.GetNonce() - wire.MINER_RORATE_FREQ
-			// error. abort recalculation
-//			return lastNode.Data.(*blockchainNodeData).block.Bits, fmt.Errorf("unexpected BestBlock for %s", pb.Hash)
 		}
 		d = int(pb.Height - h)
 		nb := pb.Parent
@@ -302,8 +296,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 
 	// Limit the amount of adjustment that can occur to the previous
 	// difficulty.
-//	actualTimespan := lastNode.timestamp - firstNode.timestamp
-//	adjustedTimespan := actualTimespan
+
 	actualTimespan := normalizedTimespan
 	adjustedTimespan := normalizedTimespan
 	if actualTimespan < b.minRetargetTimespan {

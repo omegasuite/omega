@@ -974,26 +974,40 @@ mempoolLoop:
 	}, nil
 }
 
-func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (*BlockTemplate, error) {
+func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payToAddress btcutil.Address) (*BlockTemplate, error) {
 	// Extend the most recently known best block
-	best := g.Chain.Miners.BestSnapshot()
-	nextBlockHeight := best.Height + 1
+	// instead of extending the longest MR chain, we will try to entend
+	// a best chain that will allow us to refer the tip of TX chain as
+	// best block. In most time, it would be the longest MR chain. But if
+	// the longest MR chain refers to a stalled TX side chain, we should
+	// switch to a side chain.
 
-	last := g.Chain.Miners.Tip()
+	//	best := g.Chain.Miners.BestSnapshot()
+	nextBlockHeight := last.Height + 1
+	lastBlk := g.Chain.Miners.NodetoHeader(last)
 
 	// Calculate the required difficulty for the block.  The timestamp
 	// is potentially adjusted to ensure it comes after the median time of
 	// the last several blocks per the Chain consensus rules.
-	ts := medianAdjustedTime(best, g.timeSource)
+//	ts := medianAdjustedTime(best, g.timeSource)
 
-	reqDifficulty, err := g.Chain.Miners.CalcNextRequiredDifficulty(ts)
+	ts := g.timeSource.AdjustedTime()
+	ts2 := last.CalcPastMedianTime().Add(time.Second)
+	if ts.Before(ts2) {
+		ts = ts2
+	}
+
+//	reqDifficulty, err := g.Chain.Miners.CalcNextRequiredDifficulty(ts)
+
+	reqDifficulty, err := g.Chain.Miners.NextRequiredDifficulty(last, ts)
+
 	if err != nil {
 		return nil, err
 	}
 
 	// Calculate the next expected block version based on the state of the
 	// rule change deployments.
-	nextBlockVersion, err := g.Chain.Miners.CalcNextBlockVersion()
+	nextBlockVersion, err := g.Chain.Miners.NextBlockVersion(last)
 	if err != nil {
 		return nil, err
 	}
@@ -1001,7 +1015,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 	cbest := g.Chain.BestSnapshot()
 	bh := cbest.Height
 
-	h0,_ := g.Chain.BlockHeightByHash(&last.MsgBlock().BestBlock)
+	h0,_ := g.Chain.BlockHeightByHash(&lastBlk.BestBlock)
 	if bh < h0  {
 		return nil, nil
 	}
@@ -1014,7 +1028,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(payToAddress btcutil.Address) (
 	// Create a new block ready to be solved.
 	msgBlock := wire.MingingRightBlock{
 		Version:       nextBlockVersion,
-		PrevBlock:     best.Hash,
+		PrevBlock:     last.Hash,
 		Timestamp:     ts,
 		Bits:          reqDifficulty,
 		BestBlock:     cbest.Hash,

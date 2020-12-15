@@ -96,6 +96,9 @@ type MinerChain interface {
 	CalcNextBlockVersion() (uint32, error)
 	IsDeploymentActive(uint32) (bool, error)
 	HaveBlock(hash *chainhash.Hash) (bool, error)
+	NextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, error)
+	NextBlockVersion(prevNode *chainutil.BlockNode) (uint32, error)
+	NodetoHeader(node *chainutil.BlockNode) wire.MingingRightBlock
 }
 
 type BlackList interface {
@@ -443,11 +446,11 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	forkNode := b.FindFork(node)
 
 	// fork node can not be before the last block reference by tip of miner chain
-	bh := b.Miners.Tip().MsgBlock().BestBlock
-	ht,_ := b.BlockHeightByHash(&bh)
-	if forkNode.Height < ht {
-		return detachNodes, attachNodes
-	}
+//	bh := b.Miners.Tip().MsgBlock().BestBlock
+//	ht,_ := b.BlockHeightByHash(&bh)
+//	if forkNode.Height < ht {
+//		return detachNodes, attachNodes
+//	}
 
 	for p := node; p != nil && p != forkNode; p = b.ParentNode(p) {
 		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
@@ -478,7 +481,6 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 		for e := attachNodes.Front(); e != nil; e = next {
 			next = e.Next()
 			attachNodes.Remove(e)
-
 
 //			n := attachNodes.Remove(e).(*chainutil.BlockNode)
 //			b.index.SetStatusFlags(n, chainutil.StatusInvalidAncestor)
@@ -554,12 +556,10 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	// Generate a new best state snapshot that will be used to update the
 	// database and later memory if all database updates are successful.
 	bst := b.BestSnapshot()
-//	b.StateLock.RLock()
 	curTotalTxns := bst.TotalTxns
-//	b.StateLock.RUnlock()
+
 	numTxns := uint64(len(block.MsgBlock().Transactions))
 	blockSize := uint64(block.MsgBlock().SerializeSize())
-//	blockLimit := uint64(b.GetBlockLimit(block))
 
 	state := newBestState(node, blockSize, numTxns,
 		curTotalTxns+numTxns, node.CalcPastMedianTime(), // bst.Bits,
@@ -572,8 +572,6 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	} else if node.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 		state.LastRotation = uint32(-node.Data.GetNonce() - wire.MINER_RORATE_FREQ)
 		log.Infof("Update LastRotation to %d", state.LastRotation)
-//		s, _ := b.Miners.BlockByHeight(int32(state.LastRotation))
-//		state.Bits = s.MsgBlock().Bits
 	}
 
 	// Atomically insert info into the database.
@@ -690,12 +688,10 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	b.StateLock.RLock()
 	curTotalTxns := b.stateSnapshot.TotalTxns
 	rotation := b.stateSnapshot.LastRotation
-//	bits := b.stateSnapshot.Bits
 	b.StateLock.RUnlock()
 
 	numTxns := uint64(len(prevBlock.MsgBlock().Transactions))
 	blockSize := uint64(prevBlock.MsgBlock().SerializeSize())
-//	blockLimit := uint64(b.GetBlockLimit(prevBlock))
 	newTotalTxns := curTotalTxns - uint64(len(block.MsgBlock().Transactions))
 /*
 	if node.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
@@ -1447,7 +1443,6 @@ func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm
 	return views, Vm
 }
 
-
 // connectBestChain handles connecting the passed block to the chain while
 // respecting proper chain selection according to the chain with the most
 // proof of work.  In the typical case, the new block simply extends the main
@@ -1752,12 +1747,6 @@ func (b *BlockChain) IsCurrent() bool {
 //	log.Infof("IsCurrent: ChainLock.RLock")
 	b.ChainLock.RLock()
 	defer b.ChainLock.RUnlock()
-/*
-	func () {
-		b.ChainLock.RUnlock()
-		log.Infof("IsCurrent: ChainLock.RUnlock")
-	} ()
-*/
 
 	return b.isCurrent()	// && b.Miners.IsCurrent()
 }

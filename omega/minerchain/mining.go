@@ -13,6 +13,7 @@ package minerchain
 import (
 	"bytes"
 	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -373,6 +374,11 @@ out:
 			continue
 		}
 
+		if len(m.cfg.MiningAddrs) == 0 {
+			time.Sleep(time.Second * 5)
+			continue
+		}
+
 		// No point in searching for a solution before the chain is
 		// synced.  Also, grab the same lock as used for block
 		// submission, since the current block will be changing and
@@ -389,9 +395,18 @@ out:
 			continue
 		}
 
-		h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
-		d := curHeight - int32(h)
-		if d > wire.DESIRABLE_MINER_CANDIDATES + 3 {
+		// choice of chain
+		// instead of extending the longest MR chain, we will try to entend
+		// a best chain that will allow us to refer the tip of TX chain as
+		// best block. In most time, it would be the longest MR chain. But if
+		// the longest MR chain refers to a stalled TX side chain, we should
+		// switch to a side chain.
+
+		chainChoice, d := m.g.Chain.Miners.(*MinerChain).choiceOfChain()
+
+//		h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
+//		d := curHeight - int32(h)
+		if d > wire.DESIRABLE_MINER_CANDIDATES + 8 {
 			m.submitBlockLock.Unlock()
 			m.Stale = true
 			log.Infof("miner.generateBlocks: sleep because of too many candidates %d", d)
@@ -403,11 +418,6 @@ out:
 		}
 		
 		// Choose a payment address at random.
-		if len(m.cfg.MiningAddrs) == 0 {
-			m.submitBlockLock.Unlock()
-			time.Sleep(time.Second * 5)
-			continue
-		}
 		rand.Seed(time.Now().Unix())
 		rnd := rand.Intn(len(m.cfg.MiningAddrs))
 		if m.cfg.ShareMining && rnd > 1 {
@@ -415,19 +425,17 @@ out:
 		}
 
 		mtch := false
-		for i := 0; i < wire.MinerGap && int32(i) <= curHeight; i++ {
-			p, _ := m.g.Chain.Miners.BlockByHeight(curHeight - int32(i))
-			if p == nil {
-				log.Infof("miner.generateBlocks incorrect height %d out of %d", curHeight - int32(i), curHeight)
-				continue
-			}
+		qc := chainChoice
+		for i := 0; i < wire.MinerGap && qc != nil; i++ {
+			p := NodetoHeader(qc)
+			qc = qc.Parent
 			for _,s := range m.cfg.ExternalIPs {
-				if bytes.Compare(p.MsgBlock().Connection, []byte(s)) == 0 {
+				if bytes.Compare(p.Connection, []byte(s)) == 0 {
 					mtch = true
 				}
 			}
 			for _,s := range m.cfg.MiningAddrs {
-				if bytes.Compare(p.MsgBlock().Miner[:], s.ScriptAddress()) == 0 {
+				if bytes.Compare(p.Miner[:], s.ScriptAddress()) == 0 {
 					mtch = true
 				}
 			}
@@ -448,7 +456,7 @@ out:
 
 		signAddr := m.cfg.MiningAddrs[rnd]
 
-		template, err = m.g.NewMinerBlockTemplate(signAddr)
+		template, err = m.g.NewMinerBlockTemplate(chainChoice, signAddr)
 
 		if err != nil {
 			log.Infof("miner.NewMinerBlockTemplate error: %s", err.Error())
@@ -682,4 +690,37 @@ func NewMiner(cfg *Config) *CPUMiner {
 		updateHashes:      make(chan uint64),
 		miningkeys:		   make(chan btcutil.Address, 10),
 	}
+}
+
+func (b *MinerChain) choiceOfChain() (*chainutil.BlockNode, int32) {
+	n := b.BestChain.Tip()
+
+	h := NodetoHeader(n)
+	bestBlk := b.blockChain.BestChain.Tip()
+	if b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
+		h := b.blockChain.BestSnapshot().LastRotation
+		d := n.Height - int32(h)
+		return n, d
+	}
+
+	for !b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
+		n = n.Parent
+		h = NodetoHeader(n)
+	}
+
+	for _,t := range b.index.Tips {
+		if t.Height <= n.Height {
+			continue
+		}
+		h = NodetoHeader(t)
+		if !b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
+			continue
+		}
+		n = t
+	}
+
+	// waiting list length of the choice
+	d := n.Height - int32(b.blockChain.BestSnapshot().LastRotation)
+
+	return n, d
 }

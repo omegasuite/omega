@@ -1302,6 +1302,9 @@ func (c *BitcoindClient) filterTx(tx *wire.MsgTx,
 	// any of the currently watched addresses. If an output matches, we'll
 	// add it to our watch list.
 	for i, txOut := range tx.TxOut {
+		if txOut.IsSeparator() {
+			continue
+		}
 		addrs, _, err := indexers.ExtractPkScriptAddrs(
 			txOut.PkScript, c.chainParams,
 		)

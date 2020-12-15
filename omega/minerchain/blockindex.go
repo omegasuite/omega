@@ -11,10 +11,9 @@
 package minerchain
 
 import (
-	"math/big"
-
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/wire"
+	"math/big"
 )
 
 type blockchainNodeData struct {
@@ -52,6 +51,10 @@ func (d * blockchainNodeData) WorkSum() *big.Int {
 //
 // This function is safe for concurrent access.
 func NodetoHeader(node *chainutil.BlockNode) wire.MingingRightBlock {
+	return *node.Data.(*blockchainNodeData).block
+}
+
+func (b *MinerChain) NodetoHeader(node *chainutil.BlockNode) wire.MingingRightBlock {
 	return *node.Data.(*blockchainNodeData).block
 }
 
