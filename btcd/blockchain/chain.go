@@ -1691,17 +1691,11 @@ func (b *BlockChain) isCurrent() bool {
 		//
 		// The chain appears to be current if none of the checks reported
 		// otherwise.
-		minus24Hours := b.timeSource.AdjustedTime().Add(-24 * time.Hour).Unix()
+
+		minus24Hours := b.timeSource.AdjustedTime().Add(-1 * b.ChainParams.ChainCurrentStd).Unix()
 
 		r := b.BestChain.Tip().Data.TimeStamp() >= minus24Hours
-/*
-		if !r {
-			log.Infof("Tx BestChain tip is %v", b.BestChain.Tip())
-			blk,_ := b.BlockByHash(&b.BestChain.Tip().Hash)
-			log.Infof("Tx BestChain tip block is %v", blk.MsgBlock().Header)
-			log.Infof("Tx chain is more than 24 old %d < $d", b.BestChain.Tip().Data.TimeStamp(), minus24Hours)
-		}
- */
+
 		return r
 	}
 	return true

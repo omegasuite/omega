@@ -220,6 +220,8 @@ func btcdMain(serverChan chan<- *server) error {
 		}
 	}
 
+	activeNetParams.Params.ChainCurrentStd = tcfg.ChainCurrentStd
+
 	// Create server and start it.
 	server, err := newServer(cfg.Listeners, db, minerdb, activeNetParams.Params,
 		interrupt)

@@ -170,6 +170,10 @@ type Params struct {
 	// block.
 	TargetTimePerBlock time.Duration
 
+	// ChainCurrentStd is the latest best block time for chain to be
+	// considered corrent. Default is 24 hours
+	ChainCurrentStd time.Duration
+
 	// RetargetAdjustmentFactor is the adjustment factor used to limit
 	// the minimum and maximum amount of adjustment that can occur between
 	// difficulty retargets.
@@ -264,6 +268,7 @@ var MainNetParams = Params{
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
+	ChainCurrentStd:		  time.Hour * 24,
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 	MinBorderFee:			  100000,
 	ReduceMinDifficulty:      false,
@@ -333,6 +338,7 @@ var RegressionNetParams = Params{
 	SubsidyReductionInterval: 150 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
+	ChainCurrentStd:		  time.Hour * 24000,
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 	MinBorderFee:			  100000,
 	ReduceMinDifficulty:      true,
@@ -403,6 +409,7 @@ var TestNet3Params = Params{
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 4,    // 10 minutes
+	ChainCurrentStd:		  time.Hour * 24000,
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 	MinBorderFee:			  100000,
 	ReduceMinDifficulty:      true,
@@ -476,6 +483,7 @@ var SimNetParams = Params{
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
+	ChainCurrentStd:		  time.Hour * 24000,
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 	MinBorderFee:			  100000,
 	ReduceMinDifficulty:      true,

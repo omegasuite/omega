@@ -125,16 +125,30 @@ func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
 	h := make([]byte, 0, 21 * (m - 1))
 
 	for _,v := range vunits[1:] {
-		if len(v.data) == 21 && v.data[0] == p.ovm.chainConfig.PubKeyHashAddrID {
-			h = append(h, v.data...)
+		if len(v.data) == 25 && v.data[0] == p.ovm.chainConfig.PubKeyHashAddrID {
+			// a PubKeyHashAddrID not signed. but, if it is pay anyone scripts, it is counted as signed
+			h = append(h, v.data[:21]...)
+			if v.data[21] == OP_PAY2ANY {
+				sigcnt++
+			}
 			continue
 		} else if v.data[0] == p.ovm.chainConfig.ContractAddrID {
 			h = append(h, v.data...)
 			contracts = append(contracts, v.data[:21])
 			params = append(params, v.data[21:])
 			continue
+		} else if len(v.data) >= 25 && v.data[0] == p.ovm.chainConfig.ScriptHashAddrID {
+			h = append(h, v.data[:21]...)
+			if len(v.data) > 25 {
+				hash := chainhash.HashB(v.data[25:])
+				if bytes.Compare(v.data[1:21], hash) == 0 {
+					sigcnt++
+				}
+			}
+			continue
 		}
 
+		// it must be a signature script
 		inlen := len(v.data)
 
 		kpos := int(v.data[0]) + 1
