@@ -164,6 +164,7 @@ type config struct {
 	Collateral    []string `long:"Collateral" description:"Mining collateral"`
 	collateral    []wire.OutPoint
 	ExitOnStall   bool          `long:"exitonstall" description:"Exit program when no activity in 30 minutes."`
+	ChainCurrentStd time.Duration
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -421,6 +422,7 @@ func loadConfig() (*config, []string, error) {
 		EnablePOWMining:	  true,
 		TxIndex:              defaultTxIndex,
 		AddrIndex:            defaultAddrIndex,
+		ChainCurrentStd:	  time.Hour * 24,
 	}
 
 	// Service options which are only added on Windows.

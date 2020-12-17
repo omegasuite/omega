@@ -435,7 +435,7 @@ func createMultiSigScript(scripts [][]byte, n uint16, chainParams *chaincfg.Para
 	builder.AddBytes(buf[:2])
 	builder.AddOp(ovm.SIGNTEXT, []byte{byte(ovm.SigHashNone)})
 
-	h := make([]byte, 0, 21 * len(scripts))
+	h := make([]byte, 0, 25 * len(scripts))
 	for _,pkh := range scripts {
 		k := len(pkh)
 		h = append(h, pkh...)
@@ -444,7 +444,7 @@ func createMultiSigScript(scripts [][]byte, n uint16, chainParams *chaincfg.Para
 		} else {
 			// long contract call scripts
 			for i := 0; i < k; {
-				if k - i > 255 + 21 {
+				if k - i > 255 + 25 {
 					builder.AddOp(ovm.PUSH, []byte{255}).AddBytes(pkh[i : i + 255])
 					i += 255
 				} else if k - i < 255 {
@@ -452,7 +452,7 @@ func createMultiSigScript(scripts [][]byte, n uint16, chainParams *chaincfg.Para
 					i = k
 				} else {
 					j := (k - i) >> 1
-					if j == 21 {
+					if j == 25 {
 						j++
 					}
 					builder.AddOp(ovm.PUSH, []byte{byte(j)}).AddBytes(pkh[i : i + j])
@@ -484,11 +484,15 @@ func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struc
 		switch script[0] {
 		case s.cfg.ChainParams.ContractAddrID:
 			scripts = append(scripts, script)
-		case s.cfg.ChainParams.PubKeyHashAddrID:
+		case s.cfg.ChainParams.PubKeyHashAddrID, s.cfg.ChainParams.ScriptHashAddrID:
 			if len(script) == 21 {
-				scripts = append(scripts, script)
+				if script[0] == s.cfg.ChainParams.PubKeyHashAddrID {
+					scripts = append(scripts, append(script, []byte{ovm.OP_PAY2PKH, 0, 0, 0}...))
+				} else {
+					scripts = append(scripts, append(script, []byte{ovm.OP_PAY2SCRIPTH, 0, 0, 0}...))
+				}
 			} else {
-				return nil, rpcDecodeHexError(addr)
+				scripts = append(scripts, script)
 			}
 		default:
 			adr, err := btcutil.DecodeAddress(addr, s.cfg.ChainParams)
@@ -498,7 +502,17 @@ func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struc
 					Message: "Invalid address or key: " + err.Error(),
 				}
 			}
-			scripts = append(scripts, adr.ScriptNetAddress())
+			switch adr.Version() {
+			case s.cfg.ChainParams.PubKeyHashAddrID:
+				scripts = append(scripts, append(script, []byte{ovm.OP_PAY2PKH, 0, 0, 0}...))
+			case s.cfg.ChainParams.ScriptHashAddrID:
+				scripts = append(scripts, append(script, []byte{ovm.OP_PAY2SCRIPTH, 0, 0, 0}...))
+			default:
+				return nil, &btcjson.RPCError{
+					Code:    btcjson.ErrRPCInvalidAddressOrKey,
+					Message: "Invalid address net ID: " + addr,
+				}
+			}
 		}
 	}
 
@@ -1131,10 +1145,6 @@ func DisasmScript(script []byte) string {
 		return "contractowned"
 	}
 
-	if script[0] == 0x67 {
-		return "multisig(" + hex.EncodeToString(script) + ")"
-	}
-
 	switch script[21] {
 	case ovm.OP_PAY2PKH:
 		return "pay2pkh(" + hex.EncodeToString(script[:21]) + ")"
@@ -1144,6 +1154,8 @@ func DisasmScript(script []byte) string {
 		return "payreturn"
 	case ovm.OP_PAY2ANY:
 		return "payanyone"
+	case ovm.OP_PAYMULTISIG:
+		return "multisig(" + hex.EncodeToString(script[:21]) + ")"
 	}
 
 	return ""
