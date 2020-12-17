@@ -262,45 +262,11 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) (txspar
 			addrs = append(addrs, addr)
 		}
 
-	case txsparser.MultiScriptTy:
-		// A multi-signature script is of the form:
-		//  <numsigs> <pubkey> <pubkey> <pubkey>... <numpubkeys> OP_CHECKMULTISIG
-		// Therefore the number of required signatures is the 1st item
-		// on the stack and the number of public keys is the 2nd to last
-		// item on the stack.
-		requiredSigs = int(binary.LittleEndian.Uint32(pkScript[29:33]))
-		numPubKeys := int(binary.LittleEndian.Uint32(pkScript[25:29]))
-
-		// Extract the public keys while skipping any that are invalid.
-		addrs = make([]btcutil.Address, 1, numPubKeys)
-		addrs[0], _ = btcutil.NewAddressScriptHashFromHash(pkScript[1:21], chainParams)
-
-		for i := 1; i < numPubKeys; i++ {
-			addr, err := btcutil.NewAddressScriptHashFromHash(pkScript[33 + (i-1) * 20:33 + i * 20], chainParams)
-			if err == nil {
-				addrs = append(addrs, addr)
-			}
-		}
-
 	case txsparser.MultiSigTy:
-		// A multi-signature script is of the form:
-		//  <numsigs> <pubkey> <pubkey> <pubkey>... <numpubkeys> OP_CHECKMULTISIG
-		// Therefore the number of required signatures is the 1st item
-		// on the stack and the number of public keys is the 2nd to last
-		// item on the stack.
-		requiredSigs = int(binary.LittleEndian.Uint32(pkScript[29:33]))
-		numPubKeys := int(binary.LittleEndian.Uint32(pkScript[25:29]))
-
-		// Extract the public keys while skipping any that are invalid.
-		addrs = make([]btcutil.Address, 1, numPubKeys)
-
-		addrs[0], _ = btcutil.NewAddressPubKey(pkScript[1:21], chainParams)
-
-		for i := 1; i < numPubKeys; i++ {
-			addr, err := btcutil.NewAddressPubKey(pkScript[33 + (i-1) * 20:33 + i * 20], chainParams)
-			if err == nil {
-				addrs = append(addrs, addr)
-			}
+		requiredSigs = 1
+		addr, err := btcutil.NewAddressMultiSig(pkScript[1:21], chainParams)
+		if err == nil {
+			addrs = append(addrs, addr)
 		}
 
 	case txsparser.NullDataTy:

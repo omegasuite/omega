@@ -12,6 +12,7 @@ import (
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/txscript/txsparser"
 	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/ovm"
 )
@@ -51,8 +52,10 @@ func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.P
 	// generate header data for preparing signature hash
 	var payscript []byte
 	switch subscript[21] {
-	case ovm.OP_PAY2PKH, ovm.OP_PAY2MULTIPKH, ovm.OP_PAY2MULTISCRIPTH:
+	case ovm.OP_PAY2PKH:
 		payscript = []byte{ byte(ovm.SIGNTEXT), byte(hashType) }
+	case ovm.OP_PAYMULTISIG:
+		return []byte{}, fmt.Errorf("Internal error: SignatureScript does not support multi signature yet")
 	default:
 		return []byte{}, fmt.Errorf("Internal error: call SignatureScript while pkScript does not require signature")
 	}
@@ -82,68 +85,93 @@ func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.P
 // the contract (i.e. nrequired signatures are provided).  Since it is arguably
 // legal to not be able to sign any of the outputs, no error is returned.
 func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
-	addresses []btcutil.Address, nRequired int, kdb KeyDB,
-	chainParams *chaincfg.Params, hashType SigHashType) ([]byte, bool) {
-
+	addresses []btcutil.Address, kdb KeyDB,
+	chainParams *chaincfg.Params, hashType SigHashType) ([]byte, int, bool) {
 	// generate header data for preparing signature hash
 	var payscript []byte
-	
-	switch subScript[21] {
-	case ovm.OP_PAY2PKH, ovm.OP_PAY2MULTIPKH, ovm.OP_PAY2MULTISCRIPTH:
-		payscript = []byte{ byte(ovm.SIGNTEXT), byte(hashType) }
-	default:
-		return []byte{}, false
-	}
-
-	pkhs := [][]byte{subScript[:20]}
-	for i := 28; i + 19 < len(subScript); i += 20 {
-		pkhs = append(pkhs, subScript[i:i + 20])
-	}
-
 	builder := ovm.NewScriptBuilder()
-	signed := 0
-	for _, addr := range addresses {
-		key, _, err := kdb.GetKey(addr)
-		if err != nil || key == nil {
-			continue
-		}
 
-		pkh := addr.ScriptAddress()
-		mtch := false
-		for _,k := range pkhs {
-			if bytes.Compare(pkh[:], k) == 0 {
-				mtch = true
+	if subScript[0] != chainParams.MultiSigAddrID {
+		return nil, 0, false
+	}
+
+	builder.AddBytes(subScript[:8])
+
+	signed := 0
+	nRequired := int(common.LittleEndian.Uint16(subScript[4:6]))
+	payscript = []byte{ byte(ovm.SIGNTEXT), byte(hashType) }
+
+	for i := 8; i < len(subScript); {
+		switch ovm.OpCode(subScript[i]) {
+		case ovm.PUSH:
+			pushed := subScript[i+1]
+			if subScript[i+2] != chainParams.PubKeyHashAddrID || pushed != 21 {
+				// it is a contract call or it is not lock script. copy data
+				builder.AddOp(ovm.PUSH, []byte{subScript[i+1]}).
+					AddBytes(subScript[i+2:i+2+int(pushed)])
+				i = i + 2 + int(pushed)
+				if subScript[i+2] != chainParams.ContractAddrID && pushed > btcec.PubKeyBytesLenUncompressed {
+					// it is a signature by others.
+					signed++
+				}
+				continue
+			}
+
+			pkscript := subScript[i + 3 : i + 23]
+			bsigned := false
+			for _, addr := range addresses {
+				key, _, err := kdb.GetKey(addr)
+				if err != nil || key == nil {
+					continue
+				}
+
+				pkh := addr.ScriptAddress()
+				if bytes.Compare(pkscript, pkh) != 0 {
+					continue
+				}
+
+				sig, err := RawTxInSignature(tx, idx, payscript, key, chainParams)
+				if err != nil {
+					continue
+				}
+
+				pk := (*btcec.PublicKey)(&key.PublicKey)
+				pkData := pk.SerializeCompressed()
+				hk := ovm.Hash160(pkData)
+				if bytes.Compare(pkh[:], hk[:]) != 0 {
+					pkData = pk.SerializeUncompressed()
+				}
+
+				builder.AddOp(ovm.PUSH, []byte{0}).AddByte(byte(len(pkData))).AddBytes(pkData)
+				builder.AddOp(ovm.PUSH, []byte{0}).AddByte(byte(len(sig))).AddBytes(sig)
+				builder.AddOp(ovm.SIGNTEXT, []byte{byte(hashType)})
+				signed++
+				bsigned = true
 				break
 			}
-		}
-		if !mtch {
-			continue
-		}
+			if bsigned {
+				i += 23
+				if ovm.OpCode(subScript[i]) == ovm.SIGNTEXT {
+					// always
+					i += 2
+				}
+				if signed >= nRequired {
+					break
+				}
+			} else {
+				builder.AddOp(ovm.PUSH, []byte{subScript[i+1]}).
+					AddBytes(subScript[i+2:i+23])
+				i += 23
+			}
 
-		sig, err := RawTxInSignature(tx, idx, payscript, key, chainParams)
-		if err != nil {
-			continue
-		}
-
-		pk := (*btcec.PublicKey)(&key.PublicKey)
-		pkData := pk.SerializeCompressed()
-		hk := ovm.Hash160(pkData)
-		if bytes.Compare(pkh[:], hk[:]) != 0 {
-			pkData = pk.SerializeUncompressed()
-		}
-
-		builder.AddOp(ovm.PUSH, []byte{0}).AddByte(byte(len(pkData))).AddBytes(pkData)
-		builder.AddOp(ovm.PUSH, []byte{0}).AddByte(byte(len(sig))).AddBytes(sig)
-		builder.AddOp(ovm.SIGNTEXT, []byte{byte(hashType)})
-
-		signed++
-		if signed == nRequired {
-			break
+		case ovm.SIGNTEXT:
+			builder.AddOp(ovm.SIGNTEXT, []byte{subScript[i + 1]})
+			i += 2
 		}
 	}
 
 	script := builder.Script()
-	return script, signed == nRequired
+	return script, nRequired, signed == nRequired
 }
 
 func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
@@ -178,8 +206,8 @@ func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 		return script, class, addresses, nrequired, nil
 
 	case txsparser.MultiSigTy:
-		script, _ := signMultiSig(tx, idx, subScript,
-			addresses, nrequired, kdb, chainParams, hashType)
+		script, nrequired, _ := signMultiSig(tx, idx, subScript,
+			addresses, kdb, chainParams, hashType)
 		return script, class, addresses, nrequired, nil
 
 	case txsparser.NullDataTy:
@@ -253,10 +281,12 @@ func SignTxOutput(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 		// TODO keep a copy of the script for merging.
 	}
 
+	return sigScript, nil
+
 	// Merge scripts. with any previous data, if any.
 //	mergedScript := mergeScripts(chainParams, tx, idx, pkScript, class,	addresses, nrequired, sigScript, previousScript)
-	mergedScript := mergeScripts(class, sigScript, previousScript)
-	return mergedScript, nil
+//	mergedScript := mergeScripts(class, sigScript, previousScript)
+//	return mergedScript, nil
 }
 
 // mergeScripts merges sigScript and prevScript assuming they are both
@@ -265,6 +295,7 @@ func SignTxOutput(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 // The return value is the best effort merging of the two scripts. Calling this
 // function with addresses, class and nrequired that do not match pkScript is
 // an error and results in undefined behaviour.
+/*
 func mergeScripts(class txsparser.ScriptClass, sigScript, prevScript []byte) []byte {
 	if len(prevScript) == 0 {
 		return sigScript
@@ -274,11 +305,6 @@ func mergeScripts(class txsparser.ScriptClass, sigScript, prevScript []byte) []b
 	}
 
 	switch class {
-	case txsparser.MultiScriptTy:
-		// Reappend the script and return the result.
-		builder := ovm.NewScriptBuilder().AddOp(ovm.PUSH, []byte{0}).AddBytes(sigScript).Script()
-		return append(prevScript, builder...)
-
 	case txsparser.MultiSigTy:
 		return append(prevScript, sigScript...)
 /*		
@@ -295,7 +321,7 @@ func mergeScripts(class txsparser.ScriptClass, sigScript, prevScript []byte) []b
 		}
 
 		return append(append(h, prevScript[p:]...), sigScript[p2:]...)
- */
+ * /
 
 	default:
 		if len(sigScript) > len(prevScript) {
@@ -304,3 +330,4 @@ func mergeScripts(class txsparser.ScriptClass, sigScript, prevScript []byte) []b
 		return prevScript
 	}
 }
+ */

@@ -5,8 +5,6 @@
 package txsparser
 
 import (
-	"fmt"
-	"encoding/binary"
 	"github.com/omegasuite/omega/ovm"
 )
 
@@ -137,7 +135,7 @@ func (t ScriptClass) String() string {
 }
 
 func IsContractHash(netid byte) bool {
-	return netid & 0x88 == 0x88
+	return netid == 0x88
 }
 
 // isPubkey returns true if the script passed is a pay-to-pubkey transaction,
@@ -149,13 +147,13 @@ func IsPubkey(script []byte) bool {
 // isPubkeyHash returns true if the script passed is a pay-to-pubkey-hash
 // transaction, false otherwise.
 func IsPubkeyHash(script []byte) bool {
-	return script[21] == ovm.OP_PAY2PKH || script[21] == ovm.OP_PAY2MULTIPKH
+	return script[21] == ovm.OP_PAY2PKH
 }
 
 // isMultiSig returns true if the passed script is a multisig transaction, false
 // otherwise.
 func IsMultiSig(script []byte) bool {
-	return script[21] == ovm.OP_PAY2MULTISCRIPTH || script[21] == ovm.OP_PAY2MULTIPKH
+	return script[21] == ovm.OP_PAYMULTISIG
 }
 
 // isNullData returns true if the passed script is a null data transaction,
@@ -164,22 +162,10 @@ func IsNullData(script []byte) bool {
 	return script[21] == ovm.OP_PAY2NONE
 }
 
-// isWitnessPubKeyHash returns true if the passed script is a
-// pay-to-witness-pubkey-hash, and false otherwise.
-func IsWitnessPubKeyHash(script []byte) bool {
-	return false
-}
-
 // isScriptHash returns true if the script passed is a pay-to-script-hash
 // transaction, false otherwise.
 func IsScriptHash(script []byte) bool {
-	return script[21] == ovm.OP_PAY2MULTISCRIPTH || script[21] == ovm.OP_PAY2SCRIPTH
-}
-
-// isWitnessScriptHash returns true if the passed script is a
-// pay-to-witness-script-hash transaction, false otherwise.
-func IsWitnessScriptHash(script []byte) bool {
-	return false
+	return script[21] == ovm.OP_PAY2SCRIPTH
 }
 
 // scriptType returns the type of the script being inspected from the known
@@ -194,14 +180,12 @@ func TypeOfScript(pops []byte) ScriptClass {
 		return PubKeyHashTy
 	case ovm.OP_PAY2SCRIPTH:
 		return ScriptHashTy
-	case ovm.OP_PAY2MULTIPKH:
-		return MultiSigTy
-	case ovm.OP_PAY2MULTISCRIPTH:
-		return MultiScriptTy
 	case ovm.OP_PAY2NONE:
 		return NullDataTy
 	case ovm.OP_PAY2ANY:
 		return PaytoAnyoneTy
+	case ovm.OP_PAYMULTISIG:
+		return MultiSigTy
 	}
 
 	return NonStandardTy
@@ -225,7 +209,7 @@ func ExpectedInputs(pops []byte, class ScriptClass) int {
 		return 1
 
 	case MultiSigTy:
-	case MultiScriptTy:
+//	case MultiScriptTy:
 		// Standard multisig has a push a small number for the number
 		// of sigs and number of keys.  Check the first push instruction
 		// to see how many arguments are expected. typeOfScript already
@@ -251,34 +235,3 @@ func GetScriptClass(script []byte) ScriptClass {
 	return TypeOfScript(script)
 }
  */
-
-// CalcMultiSigStats returns the number of public keys and signatures from
-// a multi-signature transaction script.  The passed script MUST already be
-// known to be a multi-signature script.
-func CalcMultiSigStats(script []byte) (int, int, error) {
-	switch script[21] {
-	case ovm.OP_PAY2MULTISCRIPTH, ovm.OP_PAY2MULTIPKH:
-		numSigs := int(binary.LittleEndian.Uint32(script[29:33]))
-		numPubKeys := int(binary.LittleEndian.Uint32(script[25:29]))
-		return numPubKeys, numSigs, nil
-
-	default:
-		str := fmt.Sprintf("script %x is not a multisig script", script)
-		return 0, 0, ScriptError(ErrNotMultisigScript, str)
-	}
-}
-
-// ExtractContractAddrs returns the addresses and associated with the passed PkScript.
-//  Note that it only works for 'standard' transaction script types.  Any data such as
-// public keys which are invalid are omitted from the results.
-func ExtractContractAddrs(pkScript []byte) ([]byte, error) {
-	// No valid addresses or required signatures if the script doesn't
-	// parse.
-	scriptClass := TypeOfScript(pkScript)
-	switch scriptClass {
-	case ContractHashTy:
-		return pkScript[1:21], nil
-	}
-
-	return nil, ScriptError(ErrUnsupportedAddress, "Need a contract address.")
-}

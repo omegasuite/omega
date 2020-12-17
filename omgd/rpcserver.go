@@ -147,6 +147,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getblockcount":         handleGetBlockCount,
 	"getblockhash":          handleGetBlockHash,
 	"getblockheader":        handleGetBlockHeader,
+	"genmultisigaddr":		 handleGenMultiSigAddr,
 
 	"getminerblock":         handleGetMinerBlock,	// New
 	"getminerblockcount":    handleGetMinerBlockCount,	// New
@@ -422,6 +423,101 @@ func handleAddNode(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 
 	// no data returned unless an error.
 	return nil, nil
+}
+
+func createMultiSigScript(scripts [][]byte, n uint16, chainParams *chaincfg.Params) ([]byte, []byte) {
+	builder := ovm.NewScriptBuilder()
+	var buf [4]byte
+
+	common.LittleEndian.PutUint16(buf[:], uint16(len(scripts)))
+	builder.AddOp(ovm.PUSH, []byte{5}).AddBytes(buf[:2])
+	common.LittleEndian.PutUint16(buf[:], n)
+	builder.AddBytes(buf[:2])
+	builder.AddOp(ovm.SIGNTEXT, []byte{byte(ovm.SigHashNone)})
+
+	h := make([]byte, 0, 21 * len(scripts))
+	for _,pkh := range scripts {
+		k := len(pkh)
+		h = append(h, pkh...)
+		if k <= 255 {	// 21 for pkh, or a contract call less than 256 bytes
+			builder.AddOp(ovm.PUSH, []byte{byte(k)}).AddBytes(pkh)
+		} else {
+			// long contract call scripts
+			for i := 0; i < k; {
+				if k - i > 255 + 21 {
+					builder.AddOp(ovm.PUSH, []byte{255}).AddBytes(pkh[i : i + 255])
+					i += 255
+				} else if k - i < 255 {
+					builder.AddOp(ovm.PUSH, []byte{byte(k - i)}).AddBytes(pkh[i : k])
+					i = k
+				} else {
+					j := (k - i) >> 1
+					if j == 21 {
+						j++
+					}
+					builder.AddOp(ovm.PUSH, []byte{byte(j)}).AddBytes(pkh[i : i + j])
+					builder.AddOp(ovm.PUSH, []byte{byte(k - (i + j))}).AddBytes(pkh[i + j : k])
+					i = k
+				}
+			}
+		}
+	}
+
+	builder.AddOp(ovm.SIGNTEXT, []byte{byte(ovm.SigHashNone)})
+	return btcutil.Hash160(h), builder.Script()
+}
+
+// handleAddNode handles addnode commands.
+func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GenMultiSigAddr)
+
+	scripts := make([][]byte, 0, len(c.Addresses))
+
+	for _,addr := range c.Addresses {
+		if len(addr)%2 != 0 {
+			addr = "0" + addr
+		}
+		script, err := hex.DecodeString(addr)
+		if err != nil {
+			return nil, rpcDecodeHexError(addr)
+		}
+		switch script[0] {
+		case s.cfg.ChainParams.ContractAddrID:
+			scripts = append(scripts, script)
+		case s.cfg.ChainParams.PubKeyHashAddrID:
+			if len(script) == 21 {
+				scripts = append(scripts, script)
+			} else {
+				return nil, rpcDecodeHexError(addr)
+			}
+		default:
+			adr, err := btcutil.DecodeAddress(addr, s.cfg.ChainParams)
+			if err != nil {
+				return nil, &btcjson.RPCError{
+					Code:    btcjson.ErrRPCInvalidAddressOrKey,
+					Message: "Invalid address or key: " + err.Error(),
+				}
+			}
+			scripts = append(scripts, adr.ScriptNetAddress())
+		}
+	}
+
+	hash, script := createMultiSigScript(scripts, uint16(c.RequireSig), s.cfg.ChainParams)
+	if script == nil {
+		return nil, fmt.Errorf("Unable to create MultiSig address")
+	}
+
+	a, err := btcutil.NewAddressMultiSig(hash, s.cfg.ChainParams)
+	if err != nil {
+		return nil, err
+	}
+
+	reply := &btcjson.MultiSigAddr {
+		Address: a.EncodeAddress(),
+		Script: hex.EncodeToString(script),
+	}
+
+	return reply, nil
 }
 
 // handleNode handles node commands.

@@ -154,32 +154,6 @@ func shallowCopyTx(tx *wire.MsgTx) wire.MsgTx {
 	return txCopy
 }
 
-// GetSigOpCount provides a quick count of the number of signature operations
-// in a script. a CHECKSIG operations counts for 1, and a CHECK_MULTISIG for 20.
-// If the script fails to parse, then the count up to the point of failure is
-// returned.
-func GetSigOpCount(script []byte) int {
-	// Don't check error since parseScript returns the parsed-up-to-error
-	// list of pops.
-	return 0
-}
-
-// GetPreciseSigOpCount returns the number of signature operations in
-// scriptPubKey.  If bip16 is true then scriptSig may be searched for the
-// Pay-To-Script-Hash script in order to find the precise number of signature
-// operations in the transaction.  If the script fails to parse, then the count
-// up to the point of failure is returned.
-func GetPreciseSigOpCount(scriptSig, scriptPubKey []byte, bip16 bool) int {
-	if scriptPubKey[21] == ovm.OP_PAY2PKH {
-		return 1
-	}
-	if scriptPubKey[21] == ovm.OP_PAY2MULTIPKH {
-		return int(binary.LittleEndian.Uint32(scriptPubKey[29:33]))
-	}
-
-	return 0
-}
-
 // IsUnspendable returns whether the passed public key script is unspendable, or
 // guaranteed to fail at execution.  This allows inputs to be pruned instantly
 // when entering the UTXO set.

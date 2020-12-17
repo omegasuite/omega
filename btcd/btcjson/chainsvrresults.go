@@ -570,6 +570,12 @@ type MiningPolicy struct {
 	MinContractFee     int64 `json:"mincontractfee"`	// minimal contract exec fee
 }
 
+// MultiSigAddr
+type MultiSigAddr struct {
+	Address      string `json:"address"`
+	Script     	 string `json:"script"`			// Fee per top border
+}
+
 // SearchRawTransactionsResult models the data from the searchrawtransaction
 // command.
 type SearchRawTransactionsResult struct {

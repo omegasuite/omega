@@ -513,3 +513,75 @@ func (a *AddressPubKey) AddressPubKeyHash() *AddressPubKeyHash {
 func (a *AddressPubKey) PubKey() *btcec.PublicKey {
 	return a.pubKey
 }
+
+// AddressPubKeyHash is an Address for a pay-to-pubkey-hash (P2PKH)
+// transaction.
+type AddressMultiSig struct {
+	hash  [ripemd160.Size]byte
+	netID byte
+}
+
+// NewAddressPubKeyHash returns a new AddressPubKeyHash.  pkHash mustbe 20
+// bytes.
+func NewAddressMultiSig(pkHash []byte, net *chaincfg.Params) (*AddressMultiSig, error) {
+	if net == nil {
+		return nil, errors.New("Missing chaincfg.Params")
+	}
+	return newAddressMultiSig(pkHash, net.MultiSigAddrID)
+}
+
+// newAddressPubKeyHash is the internal API to create a pubkey hash address
+// with a known leading identifier byte for a network, rather than looking
+// it up through its parameters.  This is useful when creating a new address
+// structure from a string encoding where the identifer byte is already
+// known.
+func newAddressMultiSig(pkHash []byte, netID byte) (*AddressMultiSig, error) {
+	// Check for a valid pubkey hash length.
+	if len(pkHash) != ripemd160.Size {
+		return nil, errors.New("pkHash must be 20 bytes")
+	}
+
+	addr := &AddressMultiSig{netID: netID}
+	copy(addr.hash[:], pkHash)
+	return addr, nil
+}
+
+// EncodeAddress returns the string encoding of a pay-to-pubkey-hash
+// address.  Part of the Address interface.
+func (a *AddressMultiSig) EncodeAddress() string {
+	return encodeAddress(a.hash[:], a.netID)
+}
+
+// ScriptAddress returns the bytes to be included in a txout script to pay
+// to a pubkey hash.  Part of the Address interface.
+func (a *AddressMultiSig) ScriptAddress() []byte {
+	return a.hash[:]
+}
+
+func (a *AddressMultiSig) ScriptNetAddress() []byte {
+	return append([]byte{a.netID}, a.hash[:]...)
+}
+
+func (a *AddressMultiSig) Version() byte {
+	return a.netID
+}
+
+// IsForNet returns whether or not the pay-to-pubkey-hash address is associated
+// with the passed bitcoin network.
+func (a *AddressMultiSig) IsForNet(net *chaincfg.Params) bool {
+	return a.netID == net.MultiSigAddrID
+}
+
+// String returns a human-readable string for the pay-to-pubkey-hash address.
+// This is equivalent to calling EncodeAddress, but is provided so the type can
+// be used as a fmt.Stringer.
+func (a *AddressMultiSig) String() string {
+	return a.EncodeAddress()
+}
+
+// Hash160 returns the underlying array of the pubkey hash.  This can be useful
+// when an array is more appropiate than a slice (for example, when used as map
+// keys).
+func (a *AddressMultiSig) Hash160() *[ripemd160.Size]byte {
+	return &a.hash
+}

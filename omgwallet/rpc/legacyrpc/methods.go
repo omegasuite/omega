@@ -934,6 +934,9 @@ func getTransaction(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	if len(details.Debits) == len(details.MsgTx.TxIn) {
 		var outputTotal btcutil.Amount
 		for _, output := range details.MsgTx.TxOut {
+			if output.IsSeparator() {
+				continue
+			}
 			if output.TokenType == 0 {
 				outputTotal += btcutil.Amount(output.Value.(*token.NumToken).Val)
 			}
@@ -1962,7 +1965,7 @@ func validateAddress(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 		// imported.  However, if it fails for any reason, there is no
 		// further information available, so just set the script type
 		// a non-standard and break out now.
-		class, addrs, reqSigs, err := txscript.ExtractPkScriptAddrs(
+		class, addrs, _, err := txscript.ExtractPkScriptAddrs(
 			script, w.ChainParams())
 		if err != nil {
 			result.Script = txsparser.NonStandardTy.String()
@@ -1978,9 +1981,9 @@ func validateAddress(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 		// Multi-signature scripts also provide the number of required
 		// signatures.
 		result.Script = class.String()
-		if class == txsparser.MultiSigTy {
-			result.SigsRequired = int32(reqSigs)
-		}
+//		if class == txsparser.MultiSigTy {
+//			result.SigsRequired = int32(reqSigs)
+//		}
 	}
 
 	return result, nil

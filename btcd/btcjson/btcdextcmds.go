@@ -24,6 +24,24 @@ const (
 	NDisconnect NodeSubCmd = "disconnect"
 )
 
+// GenMultiSigAddr defines the GenMultiSigAddr JSON-RPC command.
+type GenMultiSigAddr struct {
+	Addresses []string
+	RequireSig int
+}
+
+// NewNodeCmd returns a new instance which can be used to issue a `node`
+// JSON-RPC command.
+//
+// The parameters which are pointers indicate they are optional.  Passing nil
+// for optional parameters will use the default value.
+func NewGenMultiSigAddrCmd(addresses []string, req int) *GenMultiSigAddr {
+	return &GenMultiSigAddr{
+		Addresses: addresses,
+		RequireSig: req,
+	}
+}
+
 // NodeCmd defines the dropnode JSON-RPC command.
 type NodeCmd struct {
 	SubCmd        NodeSubCmd `jsonrpcusage:"\"connect|remove|disconnect\""`
@@ -143,6 +161,7 @@ func init() {
 
 	MustRegisterCmd("debuglevel", (*DebugLevelCmd)(nil), flags)
 	MustRegisterCmd("node", (*NodeCmd)(nil), flags)
+	MustRegisterCmd("genmultisigaddr", (*GenMultiSigAddr)(nil), flags)
 	MustRegisterCmd("generate", (*GenerateCmd)(nil), flags)
 	MustRegisterCmd("getbestblock", (*GetBestBlockCmd)(nil), flags)
 	MustRegisterCmd("getcurrentnet", (*GetCurrentNetCmd)(nil), flags)

@@ -23,14 +23,14 @@ const (
 	HASH	// Hash
 	HASH160	// Hash160
 	SIGCHECK	// verify sig
-	SIGNTEXT	// K. prepare tx text for signature
+	SIGNTEXT	// 0x4a K. prepare tx text for signature
 
 	IF		// "K"
 	CALL	// call function
 	EXEC	// execute other contract
 	LOAD	// load state data
 	STORE	// store state data
-	DEL		// delete state data
+	DEL		// 0x50 delete state data
 	LIBLOAD	// load lib
 
 	MALLOC	// global mem alloc "R"
@@ -39,7 +39,7 @@ const (
 	COPY	// data copy
 	COPYIMM	// immediate data copy
 //	CODECOPY	// copy code
-	PUSH	// V
+	PUSH	// 0x56 V
 
 	SELFDESTRUCT
 	REVERT

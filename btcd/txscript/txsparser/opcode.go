@@ -10,7 +10,7 @@ const (
 	PubKeyHashTy                             // Pay pubkey hash.
 	ScriptHashTy                             // Pay to script hash.
 	MultiSigTy                               // Multi signature.
-	MultiScriptTy								// multi script
+//	MultiScriptTy								// multi script
 	ContractHashTy                            // ContractHash.
 	PaytoAnyoneTy            	                // pay to anyone.
 	NullDataTy                               // Empty data-only (provably prunable).
@@ -23,7 +23,7 @@ var ScriptClassToName = []string{
 	PubKeyHashTy:          "pubkeyhash",
 	ScriptHashTy:          "scripthash",
 	MultiSigTy:            "multisig",
-	MultiScriptTy:        "multiscript",
+//	MultiScriptTy:        "multiscript",
 	ContractHashTy:		"contracthash",
 	PaytoAnyoneTy:	"anyone",            	                // pay to anyone.
 	NullDataTy:            "nulldata",
