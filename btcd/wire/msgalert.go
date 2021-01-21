@@ -96,7 +96,7 @@ const maxCountSetCancel = (maxAlertSize - fixedAlertSize - common.MaxVarIntPaylo
 // for caculating maximum number of subversions, set all other var sizes to 0
 // maxAlertSize = fixedAlertSize + (MaxVarIntPayload-1) + x*sizeOf(string)
 // x = (maxAlertSize - fixedAlertSize - MaxVarIntPayload + 1) / sizeOf(string)
-// subversion would typically be something like "/Satoshi:0.7.2/" (15 bytes)
+// subversion would typically be something like "/Hao:0.7.2/" (15 bytes)
 // so assuming < 255 bytes, sizeOf(string) = sizeOf(uint8) + 255 = 256
 const maxCountSetSubVer = (maxAlertSize - fixedAlertSize - common.MaxVarIntPayload + 1) / 256
 

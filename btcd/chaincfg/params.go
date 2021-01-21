@@ -253,7 +253,7 @@ type Params struct {
 
 	MinBorderFee int
 	MinRelayTxFee int64
-	ContractExecFee		int64			// contract execution cost as Satoshis per 10K steps
+	ContractExecFee		int64			// contract execution cost as Haos per 10K steps
 }
 
 // MainNetParams defines the network parameters for the main Omega network.

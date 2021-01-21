@@ -42,11 +42,11 @@ const (
 	// (1 + 15*74 + 3) + (15*34 + 3) + 23 = 1650
 	maxStandardSigScriptSize = 1650
 
-	// DefaultMinRelayTxFee is the minimum fee in satoshi that is required
+	// DefaultMinRelayTxFee is the minimum fee in hao that is required
 	// for a transaction to be treated as free for relay and mining
 	// purposes.  It is also used to help determine if a transaction is
 	// considered dust and as a base for calculating minimum required fees
-	// for larger transactions.  This value is in Satoshi/1000 bytes.
+	// for larger transactions.  This value is in Hao/1000 bytes.
 	DefaultMinRelayTxFee = btcutil.Amount(1000)
 
 	// maxStandardMultiSigKeys is the maximum number of public keys allowed
@@ -61,9 +61,9 @@ const (
 func CalcMinRequiredTxRelayFee(serializedSize int64, minRelayTxFee btcutil.Amount) int64 {
 	// Calculate the minimum fee for a transaction to be allowed into the
 	// mempool and relayed by scaling the base fee (which is the minimum
-	// free transaction relay fee).  minTxRelayFee is in Satoshi/kB so
+	// free transaction relay fee).  minTxRelayFee is in Hao/kB so
 	// multiply by serializedSize (which is in bytes) and divide by 1000 to
-	// get minimum Satoshis.
+	// get minimum Haos.
 	minFee := (serializedSize * int64(minRelayTxFee)) / 1000
 
 	if minFee == 0 && minRelayTxFee > 0 {
@@ -72,8 +72,8 @@ func CalcMinRequiredTxRelayFee(serializedSize int64, minRelayTxFee btcutil.Amoun
 
 	// Set the minimum fee to the maximum possible value if the calculated
 	// fee is not in the valid range for monetary amounts.
-	if minFee < 0 || minFee > btcutil.MaxSatoshi {
-		minFee = btcutil.MaxSatoshi
+	if minFee < 0 || minFee > btcutil.MaxHao {
+		minFee = btcutil.MaxHao
 	}
 
 	return minFee

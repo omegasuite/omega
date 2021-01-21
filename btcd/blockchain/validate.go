@@ -36,7 +36,7 @@ const (
 
 	// baseSubsidy is the starting subsidy amount for mined blocks.  This
 	// value is halved every SubsidyHalvingInterval blocks.
-	baseSubsidy = 6 * btcutil.SatoshiPerBitcoin
+	baseSubsidy = 6 * btcutil.HaoPerBitcoin
 )
 
 var (
@@ -231,16 +231,16 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 			continue
 		}
 		v := txOut.Value.(*token.NumToken)
-		satoshi := v.Val
-		if satoshi < 0 {
+		hao := v.Val
+		if hao < 0 {
 			str := fmt.Sprintf("transaction output has negative "+
-				"value of %v", satoshi)
+				"value of %v", hao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if satoshi > btcutil.MaxSatoshi {
+		if hao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
-				"higher than max allowed value of %v", satoshi,
-				btcutil.MaxSatoshi)
+				"higher than max allowed value of %v", hao,
+				btcutil.MaxHao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
 
@@ -248,22 +248,22 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		// is detected and reported.  This is impossible for Bitcoin, but
 		// perhaps possible if an alt increases the total money supply.
 		if _,ok := totals[txOut.TokenType]; ok {
-			totals[txOut.TokenType] += satoshi
+			totals[txOut.TokenType] += hao
 		} else {
-			totals[txOut.TokenType] = satoshi
+			totals[txOut.TokenType] = hao
 		}
 
 		if totals[txOut.TokenType] < 0 {
 			str := fmt.Sprintf("total value of all transaction "+
 				"outputs exceeds max allowed value of %v",
-				btcutil.MaxSatoshi)
+				btcutil.MaxHao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if totals[txOut.TokenType] > btcutil.MaxSatoshi {
+		if totals[txOut.TokenType] > btcutil.MaxHao {
 			str := fmt.Sprintf("total value of all transaction "+
 				"outputs is %v which is higher than max "+
 				"allowed value of %v", totals[txOut.TokenType],
-				btcutil.MaxSatoshi)
+				btcutil.MaxHao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
 	}
@@ -1215,38 +1215,38 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 		// Ensure the transaction amounts are in range.  Each of the
 		// output values of the input transactions must not be negative
 		// or more than the max allowed per transaction.  All amounts in
-		// a transaction are in a unit value known as a satoshi.  One
-		// bitcoin is a quantity of satoshi as defined by the
-		// SatoshiPerBitcoin constant.
+		// a transaction are in a unit value known as a hao.  One
+		// bitcoin is a quantity of hao as defined by the
+		// HaoPerBitcoin constant.
 		if utxo.TokenType & 3 != 0 {
 			continue
 		}
 
-		originTxSatoshi := utxo.Amount.(*token.NumToken).Val
-		if originTxSatoshi < 0 {
+		originTxHao := utxo.Amount.(*token.NumToken).Val
+		if originTxHao < 0 {
 			str := fmt.Sprintf("transaction output has negative "+
-				"value of %v", btcutil.Amount(originTxSatoshi))
+				"value of %v", btcutil.Amount(originTxHao))
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if originTxSatoshi > btcutil.MaxSatoshi {
+		if originTxHao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v",
-				btcutil.Amount(originTxSatoshi),
-				btcutil.MaxSatoshi)
+				btcutil.Amount(originTxHao),
+				btcutil.MaxHao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
 
 		// The total of all outputs must not be more than the max
 		// allowed per transaction.  Also, we could potentially overflow
 		// the accumulator so check for overflow.
-		lastSatoshiIn := totalIns[utxo.TokenType]
-		totalIns[utxo.TokenType] += originTxSatoshi
-		if totalIns[utxo.TokenType] < lastSatoshiIn ||
-			totalIns[utxo.TokenType] > btcutil.MaxSatoshi {
+		lastHaoIn := totalIns[utxo.TokenType]
+		totalIns[utxo.TokenType] += originTxHao
+		if totalIns[utxo.TokenType] < lastHaoIn ||
+			totalIns[utxo.TokenType] > btcutil.MaxHao {
 			str := fmt.Sprintf("total value of all transaction "+
 				"inputs is %v which is higher than max "+
 				"allowed value of %v", totalIns[utxo.TokenType],
-				btcutil.MaxSatoshi)
+				btcutil.MaxHao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
 	}
@@ -1307,38 +1307,38 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 		// Ensure the transaction amounts are in range.  Each of the
 		// output values of the input transactions must not be negative
 		// or more than the max allowed per transaction.  All amounts in
-		// a transaction are in a unit value known as a satoshi.  One
-		// bitcoin is a quantity of satoshi as defined by the
-		// SatoshiPerBitcoin constant.
+		// a transaction are in a unit value known as a hao.  One
+		// bitcoin is a quantity of hao as defined by the
+		// HaoPerBitcoin constant.
 		if utxo.TokenType & 3 != 0 {
 			continue
 		}
 
-		originTxSatoshi := utxo.Amount.(*token.NumToken).Val
-		if originTxSatoshi < 0 {
+		originTxHao := utxo.Amount.(*token.NumToken).Val
+		if originTxHao < 0 {
 			str := fmt.Sprintf("transaction output has negative "+
-				"value of %v", btcutil.Amount(originTxSatoshi))
+				"value of %v", btcutil.Amount(originTxHao))
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if originTxSatoshi > btcutil.MaxSatoshi {
+		if originTxHao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v",
-				btcutil.Amount(originTxSatoshi),
-				btcutil.MaxSatoshi)
+				btcutil.Amount(originTxHao),
+				btcutil.MaxHao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
 
 		// The total of all outputs must not be more than the max
 		// allowed per transaction.  Also, we could potentially overflow
 		// the accumulator so check for overflow.
-		lastSatoshiIn := totalIns[utxo.TokenType]
-		totalIns[utxo.TokenType] += originTxSatoshi
-		if totalIns[utxo.TokenType] < lastSatoshiIn ||
-			totalIns[utxo.TokenType] > btcutil.MaxSatoshi {
+		lastHaoIn := totalIns[utxo.TokenType]
+		totalIns[utxo.TokenType] += originTxHao
+		if totalIns[utxo.TokenType] < lastHaoIn ||
+			totalIns[utxo.TokenType] > btcutil.MaxHao {
 			str := fmt.Sprintf("total value of all transaction "+
 				"inputs is %v which is higher than max "+
 				"allowed value of %v", totalIns[utxo.TokenType],
-				btcutil.MaxSatoshi)
+				btcutil.MaxHao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
 	}
@@ -1502,26 +1502,26 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, storage int64, views *
 		// Ensure the transaction amounts are in range.  Each of the
 		// output values of the input transactions must not be negative
 		// or more than the max allowed per transaction.  All amounts in
-		// a transaction are in a unit value known as a satoshi.  One
-		// bitcoin is a quantity of satoshi as defined by the
-		// SatoshiPerBitcoin constant.
+		// a transaction are in a unit value known as a hao.  One
+		// bitcoin is a quantity of hao as defined by the
+		// HaoPerBitcoin constant.
 		if utxo.TokenType & 3 != 0 {
 			continue
 		}
 
-		originTxSatoshi := utxo.Token.Value.(*token.NumToken).Val
+		originTxHao := utxo.Token.Value.(*token.NumToken).Val
 
 		// The total of all outputs must not be more than the max
 		// allowed per transaction.  Also, we could potentially overflow
 		// the accumulator so check for overflow.
-		lastSatoshiIn := totalIns[utxo.TokenType]
-		totalIns[utxo.TokenType] += originTxSatoshi
-		if totalIns[utxo.TokenType] < lastSatoshiIn ||
-			totalIns[utxo.TokenType] > btcutil.MaxSatoshi {
+		lastHaoIn := totalIns[utxo.TokenType]
+		totalIns[utxo.TokenType] += originTxHao
+		if totalIns[utxo.TokenType] < lastHaoIn ||
+			totalIns[utxo.TokenType] > btcutil.MaxHao {
 			str := fmt.Sprintf("total value of all transaction "+
 				"inputs is %v which is higher than max "+
 				"allowed value of %v", totalIns[utxo.TokenType],
-				btcutil.MaxSatoshi)
+				btcutil.MaxHao)
 			return 0, ruleError(ErrBadTxOutValue, str)
 		}
 	}
@@ -1529,7 +1529,7 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, storage int64, views *
 	// Calculate the total output amount for this transaction.  It is safe
 	// to ignore overflow and out of range errors here because those error
 	// conditions would have already been caught by checkTransactionSanity.
-	totalSatoshiOut := make(map[uint64]int64)
+	totalHaoOut := make(map[uint64]int64)
 
 	for _, txOut := range tx.MsgTx().TxOut {
 		if txOut.IsSeparator() {
@@ -1540,16 +1540,16 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, storage int64, views *
 			if txOut.Value == nil {
 				continue
 			}
-			if _, ok := totalSatoshiOut[txOut.TokenType]; ok {
-				totalSatoshiOut[txOut.TokenType] += txOut.Value.(*token.NumToken).Val
+			if _, ok := totalHaoOut[txOut.TokenType]; ok {
+				totalHaoOut[txOut.TokenType] += txOut.Value.(*token.NumToken).Val
 			} else {
-				totalSatoshiOut[txOut.TokenType] = txOut.Value.(*token.NumToken).Val
+				totalHaoOut[txOut.TokenType] = txOut.Value.(*token.NumToken).Val
 			}
 		}
 	}
 
 	// Ensure the transaction does not spend more than its inputs.
-	for in,out := range totalSatoshiOut {
+	for in,out := range totalHaoOut {
 		if v,ok := totalIns[in]; !ok || v < out {
 			str := fmt.Sprintf("total value of all transaction inputs for "+
 				"transaction %v is %v which is less than the amount "+
@@ -1566,7 +1566,7 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, storage int64, views *
 	// NOTE: bitcoind checks if the transaction fees are < 0 here, but that
 	// is an impossible condition because of the check above that ensures
 	// the inputs are >= the outputs.
-	txFeeInSatoshi := totalIns[0] - totalSatoshiOut[0]
+	txFeeInHao := totalIns[0] - totalHaoOut[0]
 
 	n := 0
 	for _,d := range tx.MsgTx().TxDef {
@@ -1576,11 +1576,11 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, storage int64, views *
 	}
 
 	// must pay more than border fee + tx storage fee + contract storage fee
-	if txFeeInSatoshi < int64(n * chainParams.MinBorderFee) + chainParams.MinRelayTxFee * (storage + int64(tx.MsgTx().SerializeSizeFull())) / 1000 {
+	if txFeeInHao < int64(n * chainParams.MinBorderFee) + chainParams.MinRelayTxFee * (storage + int64(tx.MsgTx().SerializeSizeFull())) / 1000 {
 		return 0, fmt.Errorf("Transaction fee is less than the mandatory storage fee.")
 	}
 
-	return txFeeInSatoshi, nil
+	return txFeeInHao, nil
 }
 
 func ContractNewStorage(tx *btcutil.Tx, vm * ovm.OVM, paidstoragefees map[[20]byte]int64) int64 {
@@ -1851,14 +1851,14 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// mining the block.  It is safe to ignore overflow and out of range
 	// errors here because those error conditions would have already been
 	// caught by checkTransactionSanity.
-	var totalSatoshiOut int64
+	var totalHaoOut int64
 
 	for _, txOut := range transactions[0].MsgTx().TxOut {
 		if txOut.IsSeparator() {
 			break
 		}
 		if txOut.TokenType == 0 {
-			totalSatoshiOut += txOut.Value.(*token.NumToken).Val
+			totalHaoOut += txOut.Value.(*token.NumToken).Val
 		}
 	}
 
@@ -1881,11 +1881,11 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		award = b.ChainParams.MinimalAward
 	}
 
-	expectedSatoshiOut := award + adj + totalFees
-	if totalSatoshiOut > expectedSatoshiOut {
+	expectedHaoOut := award + adj + totalFees
+	if totalHaoOut > expectedHaoOut {
 		str := fmt.Sprintf("coinbase transaction for block pays %v "+
 			"which is more than expected value of %v",
-			totalSatoshiOut, expectedSatoshiOut)
+			totalHaoOut, expectedHaoOut)
 		return ruleError(ErrBadCoinbaseValue, str)
 	}
 

@@ -27,7 +27,7 @@ import (
 const (
 	// MinHighPriority is the minimum priority value that allows a
 	// transaction to be considered high priority.
-	MinHighPriority = btcutil.SatoshiPerBitcoin * 144.0 / 250
+	MinHighPriority = btcutil.HaoPerBitcoin * 144.0 / 250
 
 	// blockHeaderOverhead is the max number of bytes it takes to serialize
 	// a block header and max possible transaction count.
@@ -55,7 +55,7 @@ type TxDesc struct {
 	// Fee is the total fee the transaction associated with the entry pays.
 	Fee int64
 
-	// FeePerKB is the fee the transaction pays in Satoshi per 1000 bytes.
+	// FeePerKB is the fee the transaction pays in Hao per 1000 bytes.
 	FeePerKB int64
 }
 
@@ -634,7 +634,7 @@ mempoolLoop:
 		prioItem.priority = CalcPriority(tx.MsgTx(), utxos,
 			nextBlockHeight)
 
-		// Calculate the fee in Satoshi/kB.
+		// Calculate the fee in Hao/kB.
 		prioItem.feePerKB = txDesc.FeePerKB
 		prioItem.fee = txDesc.Fee
 

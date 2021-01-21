@@ -428,7 +428,7 @@ func decompressScript(compressedPkScript []byte) []byte {
 // While this is simply exchanging one uint64 for another, the resulting value
 // for typical amounts has a much smaller magnitude which results in fewer bytes
 // when encoded as variable length quantity.  For example, consider the amount
-// of 0.1 BTC which is 10000000 satoshi.  Encoding 10000000 as a VLQ would take
+// of 0.1 OMC which is 10000000 hao.  Encoding 10000000 as a VLQ would take
 // 4 bytes while encoding the compressed value of 8 as a VLQ only takes 1 byte.
 //
 // Essentially the compression is achieved by splitting the value into an

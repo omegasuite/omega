@@ -26,7 +26,7 @@ type Policy struct {
 	// transactions to be used when generating a block template.
 	BlockPrioritySize uint32
 
-	// TxMinFreeFee is the minimum fee in Satoshi/1000 bytes that is
+	// TxMinFreeFee is the minimum fee in Hao/1000 bytes that is
 	// required for a transaction to be treated as free for mining purposes
 	// (block template generation).
 	TxMinFreeFee btcutil.Amount

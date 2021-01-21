@@ -376,7 +376,7 @@ func (m *memWallet) NewAddress() (btcutil.Address, error) {
 // fundTx attempts to fund a transaction sending amt bitcoin. The coins are
 // selected such that the final amount spent pays enough fees as dictated by the
 // passed fee rate. The passed fee rate should be expressed in
-// satoshis-per-byte. The transaction being funded can optionally include a
+// haos-per-byte. The transaction being funded can optionally include a
 // change output indicated by the change boolean.
 //
 // NOTE: The memWallet's mutex must be held when this function is called.
@@ -448,7 +448,7 @@ func (m *memWallet) fundTx(tx *wire.MsgTx, amt btcutil.Amount,
 
 // SendOutputs creates, then sends a transaction paying to the specified output
 // while observing the passed fee rate. The passed fee rate should be expressed
-// in satoshis-per-byte.
+// in haos-per-byte.
 func (m *memWallet) SendOutputs(outputs []*wire.TxOut,
 	feeRate btcutil.Amount) (*chainhash.Hash, error) {
 
@@ -476,7 +476,7 @@ func (m *memWallet) SendOutputsWithoutChange(outputs []*wire.TxOut,
 
 // CreateTransaction returns a fully signed transaction paying to the specified
 // outputs while observing the desired fee rate. The passed fee rate should be
-// expressed in satoshis-per-byte. The transaction being created can optionally
+// expressed in haos-per-byte. The transaction being created can optionally
 // include a change output indicated by the change boolean.
 //
 // This function is safe for concurrent access.

@@ -236,7 +236,7 @@ func main() {
 				fmt.Sscanf(t, "%f", &f)
 				out[a] = btcjson.Token {
 					TokenType:0,
-					Value:map[string]interface{}{"value":uint64(f * btcutil.SatoshiPerBitcoin)},
+					Value:map[string]interface{}{"value":uint64(f * btcutil.HaoPerBitcoin)},
 //					Rights: nil,
 				}
 			}
