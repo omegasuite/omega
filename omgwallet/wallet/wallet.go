@@ -1923,7 +1923,7 @@ func listTransactions(tx walletdb.ReadTx, details *wtxmgr.TxDetails, addrMgr *wa
 		// Note: The actual fee is debitTotal - outputTotal.  However,
 		// this RPC reports negative numbers for fees, so the inverse
 		// is calculated.
-		feeF64 = (outputTotal - debitTotal).ToBTC()
+		feeF64 = (outputTotal - debitTotal).ToOMC()
 	}
 
 outputs:
@@ -1967,7 +1967,7 @@ outputs:
 		hash := ""
 
 		if output.Value.IsNumeric() {
-			amountF64 = btcutil.Amount(output.Value.(*token.NumToken).Val).ToBTC()
+			amountF64 = btcutil.Amount(output.Value.(*token.NumToken).Val).ToOMC()
 		} else {
 			hash = output.Value.(*token.HashToken).Hash.String()
 		}

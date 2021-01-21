@@ -1424,7 +1424,7 @@ func (sp *serverPeer) enforceNodeBloomFlag(cmd string) bool {
 // disconnected if an invalid fee filter value is provided.
 func (sp *serverPeer) OnFeeFilter(_ *peer.Peer, msg *wire.MsgFeeFilter) {
 	// Check that the passed minimum fee is a valid amount.
-	if msg.MinFee < 0 || msg.MinFee > btcutil.MaxSatoshi {
+	if msg.MinFee < 0 || msg.MinFee > btcutil.MaxHao {
 		peerLog.Debugf("Peer %v sent an invalid feefilter '%v' -- "+
 			"disconnecting", sp, btcutil.Amount(msg.MinFee))
 		sp.Disconnect("OnFeeFilter")
@@ -1801,7 +1801,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		}
 	} else {
 		// Deserialize the block.
-		err = msgBlock.BtcDecode(bytes.NewReader(blockBytes), 0, wire.SignatureEncoding | wire.FullEncoding)
+		err = msgBlock.OmcDecode(bytes.NewReader(blockBytes), 0, wire.SignatureEncoding | wire.FullEncoding)
 
 		if err != nil {
 			peerLog.Tracef("Unable to deserialize requested block hash "+

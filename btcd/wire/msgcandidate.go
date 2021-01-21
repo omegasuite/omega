@@ -35,9 +35,9 @@ func (msg * MsgCandidate) Block() int32 {
 	return msg.Height
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidate) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg * MsgCandidate) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	err := readElement(r, &msg.Height)
 	if err != nil {
 		return err
@@ -65,9 +65,9 @@ func (msg * MsgCandidate) BtcDecode(r io.Reader, pver uint32, enc MessageEncodin
 	return nil
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidate) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg * MsgCandidate) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	err := writeElement(w, msg.Height)
 	if err != nil {
 		return err
@@ -112,7 +112,7 @@ func (msg * MsgCandidate) MaxPayloadLength(pver uint32) uint32 {
 // receiver. This is part of the Message interface implementation.
 func (msg * MsgCandidate) DoubleHashB() []byte {
 	var w bytes.Buffer
-	msg.BtcEncode(&w, 0, BaseEncoding)
+	msg.OmcEncode(&w, 0, BaseEncoding)
 	return chainhash.DoubleHashB(w.Bytes())
 }
 
@@ -160,9 +160,9 @@ func (msg * MsgCandidateResp) Block() int32 {
 	return msg.Height
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg * MsgCandidateResp) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	err := readElement(r, &msg.Height)
 	if err != nil {
 		return err
@@ -213,9 +213,9 @@ func (msg * MsgCandidateResp) BtcDecode(r io.Reader, pver uint32, enc MessageEnc
 	return nil
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidateResp) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg * MsgCandidateResp) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {
@@ -281,7 +281,7 @@ func (msg * MsgCandidateResp) MaxPayloadLength(pver uint32) uint32 {
 // receiver. This is part of the Message interface implementation.
 func (msg * MsgCandidateResp) DoubleHashB() []byte {
 	var w bytes.Buffer
-	msg.BtcEncode(&w, 0, BaseEncoding)
+	msg.OmcEncode(&w, 0, BaseEncoding)
 	return chainhash.DoubleHashB(w.Bytes())
 }
 

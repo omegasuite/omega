@@ -2773,8 +2773,8 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					minFee = int64(evm.chainConfig.MinRelayTxFee)
 				}
 
-				if minFee < 0 || minFee > btcutil.MaxSatoshi {
-					minFee = btcutil.MaxSatoshi
+				if minFee < 0 || minFee > btcutil.MaxHao {
+					minFee = btcutil.MaxHao
 				}
 
 				if err := stack.saveInt64(&dest, minFee); err != nil {

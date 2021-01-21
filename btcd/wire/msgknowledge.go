@@ -26,11 +26,11 @@ type MsgKnowledgeDone MsgKnowledge
 func (msg * MsgKnowledgeDone) MaxPayloadLength(pver uint32) uint32 {
 	return (*MsgKnowledge)(msg).MaxPayloadLength(pver)
 }
-func (msg * MsgKnowledgeDone) BtcEncode(w io.Writer, pver uint32, t MessageEncoding) error {
-	return (*MsgKnowledge)(msg).BtcEncode(w, pver, t)
+func (msg * MsgKnowledgeDone) OmcEncode(w io.Writer, pver uint32, t MessageEncoding) error {
+	return (*MsgKnowledge)(msg).OmcEncode(w, pver, t)
 }
-func (msg * MsgKnowledgeDone) BtcDecode(r io.Reader, pver uint32, t MessageEncoding) error {
-	return (*MsgKnowledge)(msg).BtcDecode(r, pver, t)
+func (msg * MsgKnowledgeDone) OmcDecode(r io.Reader, pver uint32, t MessageEncoding) error {
+	return (*MsgKnowledge)(msg).OmcDecode(r, pver, t)
 }
 func (msg * MsgKnowledgeDone) Block() int32 {
 	return (*MsgKnowledge)(msg).Block()
@@ -68,9 +68,9 @@ func (msg * MsgKnowledge) AddK(k int32, key *btcec.PrivateKey) {
 	msg.K = append(msg.K, k)
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
+func (msg * MsgKnowledge) OmcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	// Read filter type
 	err := common.ReadElement(r, &msg.Height)
 	if err != nil {
@@ -126,9 +126,9 @@ func (msg * MsgKnowledge) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding)
 	return nil
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgKnowledge) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
+func (msg * MsgKnowledge) OmcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {
@@ -189,7 +189,7 @@ func (msg * MsgKnowledge) MaxPayloadLength(pver uint32) uint32 {
 
 func (msg * MsgKnowledge) DoubleHashB() []byte {
 	var w bytes.Buffer
-	msg.BtcEncode(&w, 0, BaseEncoding)
+	msg.OmcEncode(&w, 0, BaseEncoding)
 	return chainhash.DoubleHashB(w.Bytes())
 }
 

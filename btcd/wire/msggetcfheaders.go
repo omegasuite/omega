@@ -20,9 +20,9 @@ type MsgGetCFHeaders struct {
 	StopHash    chainhash.Hash
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg *MsgGetCFHeaders) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
+func (msg *MsgGetCFHeaders) OmcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	err := common.ReadElement(r, &msg.FilterType)
 	if err != nil {
 		return err
@@ -36,9 +36,9 @@ func (msg *MsgGetCFHeaders) BtcDecode(r io.Reader, pver uint32, _ MessageEncodin
 	return common.ReadElement(r, &msg.StopHash)
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg *MsgGetCFHeaders) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
+func (msg *MsgGetCFHeaders) OmcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
 	err := common.WriteElement(w, msg.FilterType)
 	if err != nil {
 		return err

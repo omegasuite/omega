@@ -60,18 +60,18 @@ var (
 // HaoPerByte is number with units of haos per byte.
 type HaoPerByte float64
 
-// BtcPerKilobyte is number with units of bitcoins per kilobyte.
-type BtcPerKilobyte float64
+// OmcPerKilobyte is number with units of bitcoins per kilobyte.
+type OmcPerKilobyte float64
 
-// ToBtcPerKb returns a float value that represents the given
+// ToOmcPerKb returns a float value that represents the given
 // HaoPerByte converted to haos per kb.
-func (rate HaoPerByte) ToBtcPerKb() BtcPerKilobyte {
+func (rate HaoPerByte) ToOmcPerKb() OmcPerKilobyte {
 	// If our rate is the error value, return that.
 	if rate == HaoPerByte(-1.0) {
 		return -1.0
 	}
 
-	return BtcPerKilobyte(float64(rate) * bytePerKb * btcPerHao)
+	return OmcPerKilobyte(float64(rate) * bytePerKb * btcPerHao)
 }
 
 // Fee returns the fee for a transaction of a given size for
@@ -547,7 +547,7 @@ func (ef *FeeEstimator) estimates() []HaoPerByte {
 
 // EstimateFee estimates the fee per byte to have a tx confirmed a given
 // number of blocks from now.
-func (ef *FeeEstimator) EstimateFee(numBlocks uint32) (BtcPerKilobyte, error) {
+func (ef *FeeEstimator) EstimateFee(numBlocks uint32) (OmcPerKilobyte, error) {
 	ef.mtx.Lock()
 	defer ef.mtx.Unlock()
 
@@ -572,7 +572,7 @@ func (ef *FeeEstimator) EstimateFee(numBlocks uint32) (BtcPerKilobyte, error) {
 		ef.cached = ef.estimates()
 	}
 
-	return ef.cached[int(numBlocks)-1].ToBtcPerKb(), nil
+	return ef.cached[int(numBlocks)-1].ToOmcPerKb(), nil
 }
 
 // In case the format for the serialized version of the FeeEstimator changes,

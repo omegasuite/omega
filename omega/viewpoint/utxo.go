@@ -1093,7 +1093,7 @@ func serializeUtxoEntry(entry *UtxoEntry) ([]byte, error) {
 //
 //  - header code: 0x03 (coinbase, height 1)
 //  - compressed txout:
-//    - 0x32: VLQ-encoded compressed amount for 5000000000 (50 BTC)
+//    - 0x32: VLQ-encoded compressed amount for 5000000000 (50 OMC)
 //    - 0x04: special script type pay-to-pubkey
 //    - 0x96...52: x-coordinate of the pubkey
 //
@@ -1108,7 +1108,7 @@ func serializeUtxoEntry(entry *UtxoEntry) ([]byte, error) {
 //
 //  - header code: 0x8cf316 (not coinbase, height 113931)
 //  - compressed txout:
-//    - 0x8009: VLQ-encoded compressed amount for 15000000 (0.15 BTC)
+//    - 0x8009: VLQ-encoded compressed amount for 15000000 (0.15 OMC)
 //    - 0x00: special script type pay-to-pubkey-hash
 //    - 0xb8...58: pubkey hash
 //
@@ -1123,7 +1123,7 @@ func serializeUtxoEntry(entry *UtxoEntry) ([]byte, error) {
 //
 //  - header code: 0xa8a258 (not coinbase, height 338156)
 //  - compressed txout:
-//    - 0x8ba5b9e763: VLQ-encoded compressed amount for 366875659 (3.66875659 BTC)
+//    - 0x8ba5b9e763: VLQ-encoded compressed amount for 366875659 (3.66875659 OMC)
 //    - 0x01: special script type pay-to-script-hash
 //    - 0x1d...e6: script hash
 // -----------------------------------------------------------------------------

@@ -484,7 +484,7 @@ func (msg *MsgTx) TxFullHash() chainhash.Hash {
 // within a block
 func (msg *MsgTx) SignatureHash() chainhash.Hash {
 	buf := bytes.NewBuffer(make([]byte, 0, msg.SerializeSize()))
-	_ = msg.BtcEncode(buf, 0, SignatureEncoding)	// | FullEncoding)
+	_ = msg.OmcEncode(buf, 0, SignatureEncoding)	// | FullEncoding)
 	return chainhash.DoubleHashH(buf.Bytes())
 }
 
@@ -692,11 +692,11 @@ func (msg *MsgTx) Stripped() *MsgTx {
 	return &newTx
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 // See Deserialize for decoding transactions stored to disk, such as in a
 // database, as opposed to decoding transactions from the wire.
-func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgTx) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	version, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
 	if err != nil {
 		return err
@@ -716,7 +716,7 @@ func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 		str := fmt.Sprintf("too many definitions to fit into "+
 			"max message size [count %d, max %d]", count,
 			token.MaxDefinitionPerMessage)
-		return messageError("MsgTx.BtcDecode", str)
+		return messageError("MsgTx.OmcDecode", str)
 	}
 
 	msg.TxDef = make([]token.Definition, 0, count)
@@ -741,7 +741,7 @@ func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 		str := fmt.Sprintf("too many input transactions to fit into "+
 			"max message size [count %d, max %d]", count,
 			maxTxInPerMessage)
-		return messageError("MsgTx.BtcDecode", str)
+		return messageError("MsgTx.OmcDecode", str)
 	}
 
 	// Deserialize the inputs.
@@ -770,7 +770,7 @@ func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 		str := fmt.Sprintf("too many output transactions to fit into "+
 			"max message size [count %d, max %d]", count,
 			maxTxOutPerMessage)
-		return messageError("MsgTx.BtcDecode", str)
+		return messageError("MsgTx.OmcDecode", str)
 	}
 
 	// Deserialize the outputs.
@@ -797,8 +797,8 @@ func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 
 // Deserialize decodes a transaction from r into the receiver using a format
 // that is suitable for long-term storage such as a database while respecting
-// the Version field in the transaction.  This function differs from BtcDecode
-// in that BtcDecode decodes from the bitcoin wire protocol as it was sent
+// the Version field in the transaction.  This function differs from OmcDecode
+// in that OmcDecode decodes from the bitcoin wire protocol as it was sent
 // across the network.  The wire encoding can technically differ depending on
 // the protocol version and doesn't even really need to match the format of a
 // stored transaction at all.  As of the time this comment was written, the
@@ -808,8 +808,8 @@ func (msg *MsgTx) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 func (msg *MsgTx) Deserialize(r io.Reader) error {
 	// At the current time, there is no difference between the wire encoding
 	// at protocol version 0 and the stable long-term storage format.  As
-	// a result, make use of BtcDecode.
-	return msg.BtcDecode(r, 0, SignatureEncoding)
+	// a result, make use of OmcDecode.
+	return msg.OmcDecode(r, 0, SignatureEncoding)
 }
 
 // DeserializeNoWitness decodes a transaction from r into the receiver, where
@@ -817,14 +817,14 @@ func (msg *MsgTx) Deserialize(r io.Reader) error {
 // serialization format created to encode transaction bearing witness data
 // within inputs.
 func (msg *MsgTx) DeserializeNoWitness(r io.Reader) error {
-	return msg.BtcDecode(r, 0, BaseEncoding)
+	return msg.OmcDecode(r, 0, BaseEncoding)
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 // See Serialize for encoding transactions to be stored to disk, such as in a
 // database, as opposed to encoding transactions for the wire.
-func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgTx) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	full := false
 	if enc & FullEncoding != 0 {
 		full = true
@@ -926,24 +926,24 @@ func (msg *MsgTx) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 
 // Serialize encodes the transaction to w using a format that suitable for
 // long-term storage such as a database while respecting the Version field in
-// the transaction.  This function differs from BtcEncode in that BtcEncode
+// the transaction.  This function differs from OmcEncode in that OmcEncode
 // encodes the transaction to the bitcoin wire protocol in order to be sent
 // across the network.  The wire encoding can technically differ depending on
 // the protocol version and doesn't even really need to match the format of a
 // stored transaction at all.
 func (msg *MsgTx) Serialize(w io.Writer) error {
-	return msg.BtcEncode(w, 0, SignatureEncoding | FullEncoding)	// SignatureEncoding
+	return msg.OmcEncode(w, 0, SignatureEncoding | FullEncoding)	// SignatureEncoding
 }
 
 // SerializeNoWitness encodes the transaction to w in an identical manner to
 // Serialize, however even if the source transaction has inputs with witness
 // data, the old serialization format will still be used.
 func (msg *MsgTx) SerializeNoSignature(w io.Writer) error {
-	return msg.BtcEncode(w, 0, BaseEncoding)
+	return msg.OmcEncode(w, 0, BaseEncoding)
 }
 
 func (msg *MsgTx) SerializeFull(w io.Writer) error {
-	return msg.BtcEncode(w, 0, BaseEncoding | FullEncoding)
+	return msg.OmcEncode(w, 0, BaseEncoding | FullEncoding)
 }
 
 // baseSize returns the serialized size of the transaction without accounting
@@ -1203,10 +1203,10 @@ func (tx * MsgTx) ReadSignature(r io.Reader, pver uint32) error {
 	if tx.IsCoinBase() {
 		// allow one for signature because coin base Tx includes signature merkle root
 		if int(count) > CommitteeSize+1 {
-			return messageError("MsgTx.BtcDecode", str)
+			return messageError("MsgTx.OmcDecode", str)
 		}
 	} else if int(count) > len(tx.TxIn) {
-		return messageError("MsgTx.BtcDecode", str)
+		return messageError("MsgTx.OmcDecode", str)
 	}
 
 	// signature data.

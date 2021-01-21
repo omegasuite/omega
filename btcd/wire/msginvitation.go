@@ -63,14 +63,14 @@ type MsgInvitation struct {
 
 func (msg *MsgInvitation) Hash() chainhash.Hash {
 	var w bytes.Buffer
-	msg.BtcEncode(&w, 0, 0)
+	msg.OmcEncode(&w, 0, 0)
 
 	return chainhash.DoubleHashH(w.Bytes())
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg *MsgInvitation) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgInvitation) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	x, err := common.ReadVarInt(r, pver)
 	if err != nil {
 		return err
@@ -110,9 +110,9 @@ func (msg *MsgInvitation) BtcDecode(r io.Reader, pver uint32, enc MessageEncodin
 	return nil
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg *MsgInvitation) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgInvitation) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	err := common.WriteVarInt(w, pver, uint64(msg.Expire))
 	if err != nil {
 		return err
@@ -166,9 +166,9 @@ type MsgAckInvitation struct {
 	Sig []byte	// my signature (w/o pubkey) on invitation to prove I am the one
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg *MsgAckInvitation) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgAckInvitation) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	msg.Invitation.Deserialize(r)
 
 	t, err := common.ReadVarBytes(r, 0, 1024, "Sig")
@@ -181,9 +181,9 @@ func (msg *MsgAckInvitation) BtcDecode(r io.Reader, pver uint32, enc MessageEnco
 	return nil
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg *MsgAckInvitation) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgAckInvitation) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	msg.Invitation.Serialize(w)
 
 	return common.WriteVarBytes(w, 0, msg.Sig[:])

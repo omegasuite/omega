@@ -37,7 +37,7 @@ func RawTxInSignature(tx *wire.MsgTx, idx int, subScript []byte,
 	return signature.Serialize(), nil
 }
 
-// SignatureScript creates an input signature script for tx to spend BTC sent
+// SignatureScript creates an input signature script for tx to spend OMC sent
 // from a previous output to the owner of privKey. tx must include all
 // transaction inputs and outputs, however txin scripts are allowed to be filled
 // or empty. The returned script is calculated to be used as the idx'th txin

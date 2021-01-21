@@ -26,9 +26,9 @@ type MsgPing struct {
 	Height int32
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg *MsgPing) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgPing) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	err := readElement(r, &msg.Nonce)
 	if err != nil {
 		return err
@@ -42,9 +42,9 @@ func (msg *MsgPing) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) err
 	return nil
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg *MsgPing) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgPing) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	err := writeElement(w, msg.Nonce)
 	if err != nil {
 			return err

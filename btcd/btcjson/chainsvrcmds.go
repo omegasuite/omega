@@ -212,7 +212,7 @@ type ParseRawTransactionCmd struct {
 // NewParseRawTransactionCmd returns a new instance which can be used to issue
 // a createrawtransaction JSON-RPC command.
 //
-// Amounts are in BTC.
+// Amounts are in OMC.
 func NewParseRawTransactionCmd(s string) *ParseRawTransactionCmd {
 	return &ParseRawTransactionCmd {
 		RawTx:   s,
@@ -230,7 +230,7 @@ type CreateRawTransactionCmd struct {
 // NewCreateRawTransactionCmd returns a new instance which can be used to issue
 // a createrawtransaction JSON-RPC command.
 //
-// Amounts are in BTC.
+// Amounts are in OMC.
 func NewCreateRawTransactionCmd(inputs []TransactionInput, defs []Definition, amounts []map[string]Token,
 	lockTime *int64) *CreateRawTransactionCmd {
 

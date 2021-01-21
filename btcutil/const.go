@@ -5,12 +5,12 @@
 package btcutil
 
 const (
-	// SatoshiPerBitcent is the number of satoshi in one bitcoin cent.
-	SatoshiPerBitcent = 1e6
+	// HaoPerBitcent is the number of hao in one bitcoin cent.
+	HaoPerBitcent = 1e6
 
-	// SatoshiPerBitcoin is the number of satoshi in one bitcoin (1 BTC).
-	SatoshiPerBitcoin = 1e8
+	// HaoPerBitcoin is the number of hao in one bitcoin (1 OMC).
+	HaoPerBitcoin = 1e8
 
-	// MaxSatoshi is the maximum transaction amount allowed in satoshi.
-	MaxSatoshi = 21e6 * SatoshiPerBitcoin
+	// MaxHao is the maximum transaction amount allowed in hao.
+	MaxHao = 21e6 * HaoPerBitcoin
 )

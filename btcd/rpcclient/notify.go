@@ -179,12 +179,12 @@ type NotificationHandlers struct {
 	// made to register for the notification and the function is non-nil.
 	OnTxAcceptedVerbose func(txDetails *btcjson.TxRawResult)
 
-	// OnBtcdConnected is invoked when a wallet connects or disconnects from
+	// OnOmcdConnected is invoked when a wallet connects or disconnects from
 	// btcd.
 	//
 	// This will only be available when client is connected to a wallet
 	// server such as btcwallet.
-	OnBtcdConnected func(connected bool)
+	OnOmcdConnected func(connected bool)
 
 	// OnAccountBalance is invoked with account balance updates.
 	//
@@ -409,22 +409,22 @@ func (c *Client) handleNotification(ntfn *rawNotification) {
 
 		c.ntfnHandlers.OnTxAcceptedVerbose(rawTx)
 
-	// OnBtcdConnected
-	case btcjson.BtcdConnectedNtfnMethod:
+	// OnOmcdConnected
+	case btcjson.OmcdConnectedNtfnMethod:
 		// Ignore the notification if the client is not interested in
 		// it.
-		if c.ntfnHandlers.OnBtcdConnected == nil {
+		if c.ntfnHandlers.OnOmcdConnected == nil {
 			return
 		}
 
-		connected, err := parseBtcdConnectedNtfnParams(ntfn.Params)
+		connected, err := parseOmcdConnectedNtfnParams(ntfn.Params)
 		if err != nil {
 			log.Warnf("Received invalid btcd connected "+
 				"notification: %v", err)
 			return
 		}
 
-		c.ntfnHandlers.OnBtcdConnected(connected)
+		c.ntfnHandlers.OnOmcdConnected(connected)
 
 	// OnAccountBalance
 	case btcjson.AccountBalanceNtfnMethod:
@@ -775,9 +775,9 @@ func parseTxAcceptedVerboseNtfnParams(params []json.RawMessage) (*btcjson.TxRawR
 	return &rawTx, nil
 }
 
-// parseBtcdConnectedNtfnParams parses out the connection status of btcd
+// parseOmcdConnectedNtfnParams parses out the connection status of btcd
 // and btcwallet from the parameters of a btcdconnected notification.
-func parseBtcdConnectedNtfnParams(params []json.RawMessage) (bool, error) {
+func parseOmcdConnectedNtfnParams(params []json.RawMessage) (bool, error) {
 	if len(params) != 1 {
 		return false, wrongNumParams(len(params))
 	}

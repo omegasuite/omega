@@ -56,9 +56,9 @@ func (msg *MsgAddr) ClearAddresses() {
 	msg.AddrList = []*NetAddress{}
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg *MsgAddr) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgAddr) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	count, err := common.ReadVarInt(r, pver)
 	if err != nil {
 		return err
@@ -68,7 +68,7 @@ func (msg *MsgAddr) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) err
 	if count > MaxAddrPerMsg {
 		str := fmt.Sprintf("too many addresses for message "+
 			"[count %v, max %v]", count, MaxAddrPerMsg)
-		return messageError("MsgAddr.BtcDecode", str)
+		return messageError("MsgAddr.OmcDecode", str)
 	}
 
 	addrList := make([]NetAddress, count)
@@ -84,22 +84,22 @@ func (msg *MsgAddr) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) err
 	return nil
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg *MsgAddr) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgAddr) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	// Protocol versions before MultipleAddressVersion only allowed 1 address
 	// per message.
 	count := len(msg.AddrList)
 	if pver < MultipleAddressVersion && count > 1 {
 		str := fmt.Sprintf("too many addresses for message of "+
 			"protocol version %v [count %v, max 1]", pver, count)
-		return messageError("MsgAddr.BtcEncode", str)
+		return messageError("MsgAddr.OmcEncode", str)
 
 	}
 	if count > MaxAddrPerMsg {
 		str := fmt.Sprintf("too many addresses for message "+
 			"[count %v, max %v]", count, MaxAddrPerMsg)
-		return messageError("MsgAddr.BtcEncode", str)
+		return messageError("MsgAddr.OmcEncode", str)
 	}
 
 	err := common.WriteVarInt(w, pver, uint64(count))

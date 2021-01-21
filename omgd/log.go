@@ -61,7 +61,7 @@ var (
 	amgrLog = backendLog.Logger("AMGR", 0xFFFF)
 	cmgrLog = backendLog.Logger("CMGR", 0xFFFF)
 	bcdbLog = backendLog.Logger("BCDB", 0xFFFF)
-	btcdLog = backendLog.Logger("BTCD", 0xFFFF)
+	btcdLog = backendLog.Logger("OMCD", 0xFFFF)
 	chanLog = backendLog.Logger("CHAN", 0xFFFF)
 	discLog = backendLog.Logger("DISC", 0xFFFF)
 	indxLog = backendLog.Logger("INDX", 0xFFFF)
@@ -132,7 +132,7 @@ var subsystemLoggers = map[string]btclog.Logger{
 	"AMGR": amgrLog,
 	"CMGR": cmgrLog,
 	"BCDB": bcdbLog,
-	"BTCD": btcdLog,
+	"OMCD": btcdLog,
 	"CHAN": chanLog,
 	"DISC": discLog,
 	"INDX": indxLog,

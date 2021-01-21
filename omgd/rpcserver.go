@@ -644,7 +644,7 @@ func peerExists(connMgr rpcserverConnManager, addr string, nodeID int32) bool {
 // latest protocol version and returns a hex-encoded string of the result.
 func messageToHex(msg wire.Message) (string, error) {
 	var buf bytes.Buffer
-	if err := msg.BtcEncode(&buf, maxProtocolVersion, wire.SignatureEncoding | wire.FullEncoding); err != nil {
+	if err := msg.OmcEncode(&buf, maxProtocolVersion, wire.SignatureEncoding | wire.FullEncoding); err != nil {
 		context := fmt.Sprintf("Failed to encode msg of type %T", msg)
 		return "", internalRPCError(err.Error(), context)
 	}
@@ -1046,7 +1046,7 @@ func createVoutList(mtx *wire.MsgTx, chainParams *chaincfg.Params, filterAddrMap
 		vout.N = uint32(i)
 		if v.Value.IsNumeric() {
 			vout.Value = map[string]interface{}{
-				"Val":btcutil.Amount(v.Value.(*token.NumToken).Val).ToBTC(),
+				"Val":btcutil.Amount(v.Value.(*token.NumToken).Val).ToOMC(),
 			}
 		} else {
 			vout.Value = map[string]interface{}{
@@ -2300,7 +2300,7 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 
 		// Serialize the transaction for later conversion to hex.
 		txBuf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
-		if err := tx.BtcEncode(txBuf, 0, wire.SignatureEncoding); err != nil {
+		if err := tx.OmcEncode(txBuf, 0, wire.SignatureEncoding); err != nil {
 //		if err := tx.Serialize(txBuf); err != nil {
 			context := "Failed to serialize transaction"
 			return nil, internalRPCError(err.Error(), context)
@@ -2368,7 +2368,7 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		// Serialize the transaction for conversion to hex.
 		tx := msgBlock.Transactions[0]
 		txBuf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
-		if err := tx.BtcEncode(txBuf, 0, wire.SignatureEncoding); err != nil {
+		if err := tx.OmcEncode(txBuf, 0, wire.SignatureEncoding); err != nil {
 //		if err := tx.Serialize(txBuf); err != nil {
 			context := "Failed to serialize transaction"
 			return nil, internalRPCError(err.Error(), context)
@@ -2705,7 +2705,7 @@ func handleGetBlockTemplateProposal(s *rpcServer, request *btcjson.TemplateReque
 		}
 	}
 	var msgBlock wire.MsgBlock
-	if err := msgBlock.BtcDecode(bytes.NewReader(dataBytes), 0, wire.SignatureEncoding); err != nil {
+	if err := msgBlock.OmcDecode(bytes.NewReader(dataBytes), 0, wire.SignatureEncoding); err != nil {
 //	if err := msgBlock.Deserialize(bytes.NewReader(dataBytes)); err != nil {
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCDeserialization,
@@ -2916,7 +2916,7 @@ func handleGetInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 		Proxy:           cfg.Proxy,
 		Difficulty:      getDifficultyRatio(best.Bits, s.cfg.ChainParams),
 		TestNet:         cfg.TestNet,
-		RelayFee:        cfg.minRelayTxFee.ToBTC(),
+		RelayFee:        cfg.minRelayTxFee.ToOMC(),
 	}
 
 	return ret, nil
@@ -3826,7 +3826,7 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 			vinListEntry := &vinList[len(vinList)-1]
 			vinListEntry.PrevOut = &btcjson.PrevOut{
 				Addresses: encodedAddrs,
-				Value:     btcutil.Amount(originTxOut.Value.(*token.NumToken).Val).ToBTC(),
+				Value:     btcutil.Amount(originTxOut.Value.(*token.NumToken).Val).ToOMC(),
 			}
 		}
 	}
@@ -4901,7 +4901,7 @@ func (s *rpcServer) jsonRPCRead(w http.ResponseWriter, r *http.Request, isAdmin 
 			// Bitcoin Core serves requests with "id":null or even an absent "id",
 			// and responds to such requests with "id":null in the response.
 			//
-			// Btcd does not respond to any request without and "id" or "id":null,
+			// Omcd does not respond to any request without and "id" or "id":null,
 			// regardless the indicated JSON-RPC protocol version unless RPC quirks
 			// are enabled. With RPC quirks enabled, such requests will be responded
 			// to if the reqeust does not indicate JSON-RPC version.

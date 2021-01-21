@@ -28,7 +28,7 @@ const (
 	DESIRABLE_MINER_CANDIDATES = 40		// the desirable number of miner candidate we want to have
 	SCALEFACTORCAP             = 48
 	DifficultyRatio            = 4         // ratio of difficulty for tx chain and miner chain
-	CollateralBase             = 100	 // base is 100 BTC
+	CollateralBase             = 100	 // base is 100 OMC
 )
 
 // current code version
@@ -201,19 +201,19 @@ func (h *BlockHeader) BlockHash() chainhash.Hash {
 	return chainhash.DoubleHashH(buf.Bytes())
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 // See Deserialize for decoding block headers stored to disk, such as in a
 // database, as opposed to decoding block headers from the wire.
-func (h *BlockHeader) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (h *BlockHeader) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	return readBlockHeader(r, pver, h)
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 // See Serialize for encoding block headers to be stored to disk, such as in a
 // database, as opposed to encoding block headers for the wire.
-func (h *BlockHeader) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (h *BlockHeader) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	return writeBlockHeader(w, pver, h)
 }
 
@@ -284,19 +284,19 @@ func (h *MingingRightBlock) BlockHash() chainhash.Hash {
 	return chainhash.DoubleHashH(buf.Bytes())
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 // See Deserialize for decoding block headers stored to disk, such as in a
 // database, as opposed to decoding block headers from the wire.
-func (h *MingingRightBlock) BtcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
+func (h *MingingRightBlock) OmcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	return readMinerBlock(r, pver, h)
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 // See Serialize for encoding block headers to be stored to disk, such as in a
 // database, as opposed to encoding block headers for the wire.
-func (h *MingingRightBlock) BtcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
+func (h *MingingRightBlock) OmcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
 	return writeMinerBlock(w, pver, h)
 }
 

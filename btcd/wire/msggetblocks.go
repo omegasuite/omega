@@ -62,9 +62,9 @@ func (msg *MsgGetBlocks) AddMinerBlockLocatorHash(hash *chainhash.Hash) error {
 	return nil
 }
 
-// BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+// OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg *MsgGetBlocks) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgGetBlocks) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	err := common.ReadElement(r, &msg.ProtocolVersion)
 	if err != nil {
 		return err
@@ -78,7 +78,7 @@ func (msg *MsgGetBlocks) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding
 	if count + 2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count, MaxBlockLocatorsPerMsg)
-		return messageError("MsgGetBlocks.BtcDecode", str)
+		return messageError("MsgGetBlocks.OmcDecode", str)
 	}
 
 	// Create a contiguous slice of hashes to deserialize into in order to
@@ -106,7 +106,7 @@ func (msg *MsgGetBlocks) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding
 	if count + count2 + 2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count, MaxBlockLocatorsPerMsg)
-		return messageError("MsgGetBlocks.BtcDecode", str)
+		return messageError("MsgGetBlocks.OmcDecode", str)
 	}
 
 	// Create a contiguous slice of hashes to deserialize into in order to
@@ -129,14 +129,14 @@ func (msg *MsgGetBlocks) BtcDecode(r io.Reader, pver uint32, enc MessageEncoding
 	return nil
 }
 
-// BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+// OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg *MsgGetBlocks) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgGetBlocks) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	count := len(msg.TxBlockLocatorHashes)
 	if count + 2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count, MaxBlockLocatorsPerMsg)
-		return messageError("MsgGetBlocks.BtcEncode", str)
+		return messageError("MsgGetBlocks.OmcEncode", str)
 	}
 
 	err := common.WriteElement(w, msg.ProtocolVersion)
@@ -164,7 +164,7 @@ func (msg *MsgGetBlocks) BtcEncode(w io.Writer, pver uint32, enc MessageEncoding
 	if count + count2 + 2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count2, MaxBlockLocatorsPerMsg)
-		return messageError("MsgGetBlocks.BtcEncode", str)
+		return messageError("MsgGetBlocks.OmcEncode", str)
 	}
 
 	err = common.WriteVarInt(w, pver, uint64(count2))

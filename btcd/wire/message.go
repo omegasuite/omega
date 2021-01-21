@@ -99,8 +99,8 @@ var LatestEncoding = SignatureEncoding
 // and may therefore contain additional or fewer fields than those which
 // are used directly in the protocol encoded message.
 type Message interface {
-	BtcDecode(io.Reader, uint32, MessageEncoding) error
-	BtcEncode(io.Writer, uint32, MessageEncoding) error
+	OmcDecode(io.Reader, uint32, MessageEncoding) error
+	OmcEncode(io.Writer, uint32, MessageEncoding) error
 	Command() string
 	MaxPayloadLength(uint32) uint32
 }
@@ -333,7 +333,7 @@ func WriteMessageWithEncodingN(w io.Writer, msg Message, pver uint32,
 
 	// Encode the message payload.
 	var bw bytes.Buffer
-	err := msg.BtcEncode(&bw, pver, encoding)
+	err := msg.OmcEncode(&bw, pver, encoding)
 	if err != nil {
 		return totalBytes, err
 	}
@@ -461,9 +461,9 @@ func ReadMessageWithEncodingN(r io.Reader, pver uint32, btcnet common.OmegaNet,
 	}
 
 	// Unmarshal message.  NOTE: This must be a *bytes.Buffer since the
-	// MsgVersion BtcDecode function requires it.
+	// MsgVersion OmcDecode function requires it.
 	pr := bytes.NewBuffer(payload)
-	err = msg.BtcDecode(pr, pver, enc)
+	err = msg.OmcDecode(pr, pver, enc)
 	if err != nil {
 		return totalBytes, nil, nil, err
 	}

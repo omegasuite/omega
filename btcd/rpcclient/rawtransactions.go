@@ -247,7 +247,7 @@ func (c *Client) CreateRawTransactionAsync(inputs []btcjson.TransactionInput, de
 		if amount.TokenType & 1 == 0 {
 			t := amount
 			mt := btcutil.Amount(amount.Value["value"].(uint64))
-			t.Value["value"] = mt.ToBTC()
+			t.Value["value"] = mt.ToOMC()
 			m[addr.String()] = t
 			convertedAmts = append(convertedAmts, m)
 		} else {
@@ -301,7 +301,7 @@ func (c *Client) SendRawTransactionAsync(tx *wire.MsgTx, allowHighFees bool) Fut
 		// Serialize the transaction and convert to hex string.
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 
-		if err := tx.BtcEncode(buf, 0, wire.SignatureEncoding); err != nil {
+		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
 //		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}
@@ -363,7 +363,7 @@ func (c *Client) SignRawTransactionAsync(tx *wire.MsgTx, privkeys []string) Futu
 	if tx != nil {
 		// Serialize the transaction and convert to hex string.
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
-		if err := tx.BtcEncode(buf, 0, wire.SignatureEncoding); err != nil {
+		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
 //		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}
@@ -438,7 +438,7 @@ func (c *Client) SignRawTransaction2Async(tx *wire.MsgTx, inputs []btcjson.RawTx
 	if tx != nil {
 		// Serialize the transaction and convert to hex string.
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
-		if err := tx.BtcEncode(buf, 0, wire.SignatureEncoding); err != nil {
+		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
 //		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}
@@ -476,7 +476,7 @@ func (c *Client) SignRawTransaction3Async(tx *wire.MsgTx,
 	if tx != nil {
 		// Serialize the transaction and convert to hex string.
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
-		if err := tx.BtcEncode(buf, 0, wire.SignatureEncoding); err != nil {
+		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
 //		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}
@@ -525,7 +525,7 @@ func (c *Client) SignRawTransaction4Async(tx *wire.MsgTx,
 	if tx != nil {
 		// Serialize the transaction and convert to hex string.
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
-		if err := tx.BtcEncode(buf, 0, wire.SignatureEncoding); err != nil {
+		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
 //		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}
