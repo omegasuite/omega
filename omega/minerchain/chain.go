@@ -14,6 +14,7 @@ import (
 	"container/list"
 	"fmt"
 	"math/big"
+	"sort"
 	"sync"
 	"time"
 
@@ -154,6 +155,12 @@ type MinerChain struct {
 	// certain blockchain events.
 	notificationsLock sync.RWMutex
 	notifications     []blockchain.NotificationCallback
+
+	// max/min TPH scores in the previous adjustment cycle. It will be used to
+	// determine each block's difficulty target.
+	cycleBegin	int32	// begin block height. if negative, the score data is not set
+	minTPH		uint32
+	maxTPH		uint32
 }
 
 // HaveBlock returns whether or not the chain instance has the block represented
@@ -407,8 +414,10 @@ func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBl
 			common.LittleEndian.PutUint32(height[:], uint32(node.Height))
 			ser := make([]byte, len(NodetoHeader(node).BlackList) * 20)
 			for i, p := range NodetoHeader(node).BlackList {
-				copy(ser[20 * i:], p.Address[:])
-				b.blockChain.Blacklist.Add(uint32(node.Height), p.Address)
+				mb,_ := b.BlockByHash(&p.MRBlock)
+				miner := mb.MsgBlock().Miner
+				copy(ser[20 * i:], miner[:])
+				b.blockChain.Blacklist.Add(uint32(node.Height), miner)
 			}
 			if err := bkt.Put(height[:], ser); err != nil {
 				return err
@@ -767,7 +776,7 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 	parent := b.index.LookupNode(parentHash)
 	if flags & blockchain.BFSideChain == 0 && parentHash.IsEqual(&b.BestChain.Tip().Hash) &&
 		b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) &&
-		b.blockChain.InBestChain(&block.MsgBlock().BestBlock) {
+		b.blockChain.MainChainHasBlock(&block.MsgBlock().BestBlock) {
 		// Skip checks if node has already been fully validated.
 		fastAdd = fastAdd || b.index.NodeStatus(node).KnownValid()
 
@@ -1395,6 +1404,9 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		chainLock:			 &s.ChainLock,
 		warningCaches:       NewThresholdCaches(vbNumBits),
 		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
+		cycleBegin:			 -1,
+		minTPH:				 1,
+		maxTPH:				 1,
 	}
 
 	// Initialize the chain state from the passed database.  When the db
@@ -1403,6 +1415,8 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	if err := b.initChainState(); err != nil {
 		return nil, err
 	}
+
+	b.Subscribe(b.reportNotice)
 
 	b.blockChain = s
 	s.Miners = b
@@ -1555,4 +1569,220 @@ func checkProofOfWork(header *wire.MingingRightBlock, powLimit *big.Int, flags b
 	}
 
 	return nil
+}
+
+type rv struct {
+	reporter [20]byte
+	height uint32
+	val uint32
+}
+
+func (g *MinerChain) reportRctRng(last *chainutil.BlockNode) (uint32, uint32) {
+	if last.Data.GetVersion() < 0x20000 {
+		return 1, 1
+	}
+	if g.cycleBegin / g.blocksPerRetarget == last.Height / g.blocksPerRetarget {
+		return g.minTPH, g.maxTPH
+	}
+
+	maxscore := uint32(1)
+	minscore := uint32(0x7FFFFFFF)
+
+	node := last.RelativeAncestor(last.Height % g.blocksPerRetarget)
+	g.cycleBegin = node.Height
+
+	for n := int32(0); n < g.blocksPerRetarget; n++ {
+		for _,v := range node.Data.(*blockchainNodeData).block.TphReports {
+			if v < minscore {
+				minscore = v
+			}
+			if v > maxscore {
+				maxscore = v
+			}
+			node = node.Parent
+		}
+	}
+	if minscore > maxscore  {
+		g.minTPH, g.maxTPH = 1,1
+		return 1,1
+	}
+	g.minTPH, g.maxTPH = minscore, maxscore
+	return minscore, maxscore
+}
+
+func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte) []uint32 {
+	rpt := make([]uint32, 0, rpts)
+	miners := make(map[[20]byte]struct{})
+
+	rptme := g.reportFromDB(me)		// those who has reported me
+	rptmemap := make(map[[20]byte]rv)
+	for _,r := range rptme {
+		rptmemap[r.reporter] = r
+	}
+	q := g.blockChain.GetMinerTPS(me)
+	myscore := uint32(0)
+	if q != nil {
+		myscore = q.TPHscore
+	}
+
+	// min score is the min in most recent 100 blocks
+	minscore,_ := g.reportRctRng(last)
+
+	for n,m := 0,0; n < rpts && m < 100 * rpts; m++ {
+		w := last.Data.(*blockchainNodeData).block.Miner
+		last = last.Parent
+		if _,ok := miners[w]; ok {
+			continue
+		}
+		miners[w] = struct{}{}
+		q = g.blockChain.GetMinerTPS(w)
+		if q == nil {
+			if n < rpts {
+				rpt = append(rpt, minscore)
+				n++
+				continue
+			} else {
+				// we could just give him a minscore, but if we do, we might face
+				// retaliation from him in the future. so we choose to stop
+				return rpt
+			}
+		}
+		score := int32(q.TPHscore)
+		if p,ok := rptmemap[w]; myscore > 0 && ok {
+			// 80% reciprocol policy
+			if p.val > myscore {
+				score += int32(p.val - myscore) * 80 / 100
+			} else {
+				score -= int32(myscore - p.val) * 80 / 100
+				if score < int32(minscore) {
+					score = int32(minscore)
+				}
+			}
+		}
+		rpt = append(rpt, uint32(score))
+		n++
+
+/*
+		g.db.View(func(tx database.Tx) error {
+			rootBucket := tx.Metadata().Bucket(TphReportsName)
+			if rootBucket == nil {
+				return nil
+			}
+			bucket := rootBucket.Bucket(last.Data.(*blockchainNodeData).block.Miner[:])
+			cursor := bucket.Cursor()
+
+			values := make([]rv, 0, 100)
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				r := rv {}
+				copy(r.reporter[:], cursor.Key())
+				s := cursor.Value()
+				r.height = byteOrder.Uint32(s)
+				r.val = byteOrder.Uint32(s[4:])
+				values = append(values, r)
+			}
+			sort.Slice(values, func(i, j int) bool {
+				return values[i].height > values[j].height
+			})
+			if len(values) > 100 {
+				deletes = values[100:]
+				values = values[:100]
+			}
+			sort.Slice(values, func(i, j int) bool {
+				return values[i].val < values[j].val
+			})
+			sum := uint32(0)
+			if len(values) > 75 {
+				values = values[:75]
+			}
+			if len(values) > 50 {
+				values = values[len(values)-50:]
+			} else {
+				sum = uint32(50 - len(values)) * minscore
+			}
+			for k := 0; k < len(values); k++ {
+				sum += values[k].val
+			}
+			rpt = append(rpt, sum / 50)
+			n++
+			return nil
+		})
+ */
+	}
+	return rpt
+}
+
+func (g *MinerChain) reportFromDB(miner [20]byte) []rv {
+	values := make([]rv, 0, 100)
+
+	g.db.Update(func(tx database.Tx) error {
+		rootBucket := tx.Metadata().Bucket(TphReportsName)
+		if rootBucket == nil {
+			return nil
+		}
+		bucket := rootBucket.Bucket(miner[:])
+		cursor := bucket.Cursor()
+
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			r := rv {}
+			r.height = byteOrder.Uint32(cursor.Key())
+			s := cursor.Value()
+			copy(r.reporter[:], s)
+			r.val = byteOrder.Uint32(s[20:])
+			values = append(values, r)
+		}
+		if len(values) > 100 {
+			sort.Slice(values, func(i, j int) bool {
+				return values[i].height > values[j].height
+			})
+			if len(values) > 150 {
+				// we don't have worry about side chain more than 50 in length
+				// so trim it to save storage
+				for _, r := range values[150:] {
+					var h [4]byte
+					byteOrder.PutUint32(h[:], r.height)
+					bucket.Delete(h[:])
+				}
+			}
+			values = values[:100]
+		}
+		return nil
+	})
+	return values
+}
+
+func (g *MinerChain) reportNotice(n *blockchain.Notification) {
+	if block, ok := n.Data.(*wire.MinerBlock); ok {
+		checked := make(map[[20]byte]struct{})
+		node := g.NodeByHash(&block.MsgBlock().PrevBlock)
+		for _, r := range block.MsgBlock().TphReports {
+			w := node.Data.(*blockchainNodeData).block.Miner
+			for _, ok := checked[w]; ok; {
+				node = node.Parent
+				w = node.Data.(*blockchainNodeData).block.Miner
+			}
+			checked[w] = struct{}{}
+			g.db.Update(func(tx database.Tx) error {
+				rootBucket := tx.Metadata().Bucket(TphReportsName)
+				if rootBucket == nil {
+					return nil
+				}
+				bucket := rootBucket.Bucket(w[:])
+				switch n.Type {
+				case blockchain.NTBlockConnected:
+					var s [24]byte
+					var k [4]byte
+					byteOrder.PutUint32(k[:], uint32(block.Height()))
+					copy(s[:], block.MsgBlock().Miner[:])
+					byteOrder.PutUint32(s[20:], r)
+					bucket.Put(k[:], s[:])
+
+				case blockchain.NTBlockDisconnected:
+					var k [4]byte
+					byteOrder.PutUint32(k[:], uint32(block.Height()))
+					bucket.Delete(k[:])
+				}
+				return nil
+			})
+		}
+	}
 }

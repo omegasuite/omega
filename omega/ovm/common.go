@@ -31,7 +31,7 @@ func calcMemSize(off, l *big.Int) *big.Int {
 	return new(big.Int).Add(off, l)
 }
 
-// getData returns a slice from the data based on the start and size and pads
+// getData returns a slice from the Data based on the start and size and pads
 // up to size with zero's. This function is overflow safe.
 func getData(data []byte, start uint64, size uint64) []byte {
 	length := uint64(len(data))
@@ -52,7 +52,7 @@ func BigMin(x, y *big.Int) *big.Int {
 	return x
 }
 
-// getDataBig returns a slice from the data based on the start and size and pads
+// getDataBig returns a slice from the Data based on the start and size and pads
 // up to size with zero's. This function is overflow safe.
 func getDataBig(data []byte, start *big.Int, size *big.Int) []byte {
 	dlen := big.NewInt(int64(len(data)))

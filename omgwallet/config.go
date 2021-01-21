@@ -21,7 +21,7 @@ import (
 	"github.com/omegasuite/omgwallet/netparams"
 	"github.com/omegasuite/omgwallet/wallet"
 	flags "github.com/jessevdk/go-flags"
-	"github.com/lightninglabs/neutrino"
+	"github.com/omegasuite/neutrino"
 )
 
 const (

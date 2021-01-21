@@ -100,7 +100,7 @@ func main() {
 				log.Fatal(err)
 			}
 			break
-		// 一般性的命令
+
 		case "stop":
 			// Shutdown shuts down the client by disconnecting any connections associated
 			// with the client
@@ -194,8 +194,6 @@ func main() {
 		// Tx、Block、Ming
 		case "createrawtransaction":	//  [{"txid":"id","vout":n},...] {"address":amount,...}
 			fmt.Println("Input (utxo hash & seq) -> ")
-			// 90039e47190579daf219d0ec2348d117126c73c812bdd06c3b2ccf62026ea5d7 (polygon)
-			// 3392c719652d306c0887ec503ea87b16269428a020c81dbbfe715700ae5c5620 (coin)
 			s, _ := reader.ReadString('\n')
 			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
 			var i int
@@ -212,18 +210,6 @@ func main() {
 			out := make(map[btcutil.Address]btcjson.Token, 0)
 			fmt.Println("Output to -> ")
 
-			// mainnet addresses:
-			// 1EnJHhq8Jq8vDuZA5ahVh6H4t6jh1mB4rq
-			// 1HB5XMLmzFVj8ALj6mfBsbifRoD4miY36v
-			// 33wvNiUkXJAJ85e4yXJxJVWtsKqWDsDFK4
-
-			// testnet addresses:
-			// ms6HYbv1YGKbxgQEEHa7TZBQvKRTcSQmtZ
-			// 2MuVt8ZtHw1mTawgbru2SA5mH1Ubriyv97Q
-			// 2N1CFREjXRetQXPcwk3zN5se7mZuUAJRVqb
-
-			// mvRwyVFjTeVqRjAywZk9sfpPewwaBpvpR5	genesis?
-
 			s = ""
 			for len(s) == 0 {
 				s, _ = reader.ReadString('\n')
@@ -234,7 +220,6 @@ func main() {
 			t, _ := reader.ReadString('\n')
 			t = strings.Replace(strings.Replace(t, "\r", "", -1), "\n", "", -1)
 
-			// 3cdb999564d87eafaa2952c814418a891e3c9ae3dab6e1a0e9c724ba58a19e27
 //			a,_ := btcutil.DecodeAddress(s, &chaincfg.MainNetParams)
 			a,_ := btcutil.DecodeAddress(s, &chaincfg.TestNet3Params)
 //			a,_ := btcutil.DecodeAddress(s, &chaincfg.RegressionNetParams)
@@ -263,18 +248,7 @@ func main() {
 			gtx = tx
 			log.Printf("createrawtransaction: %s", tx)
 			break
-//createrawtransaction
-// 3392c719652d306c0887ec503ea87b16269428a020c81dbbfe715700ae5c5620
-// 0
-// 2MuVt8ZtHw1mTawgbru2SA5mH1Ubriyv97Q
-// 49.5
 
-// createrawtransaction
-// 90039e47190579daf219d0ec2348d117126c73c812bdd06c3b2ccf62026ea5d7
-// 0
-// 2MuVt8ZtHw1mTawgbru2SA5mH1Ubriyv97Q
-// a9e984676a31c48ef9bfd97ca3eea1df4d76ef934d149f22eec4a373308f27cb
-// Right: 59e6ecc2d08f9aee602bcae38a95bd1a5041923a16323c8ca2ba2b9cb6887626
 		case "signrawtransaction":	//  "hexstring" ( [{"txid":"id","vout":n,"scriptPubKey":"hex","redeemScript":"hex"},...] ["privatekey1",...] sighashtype )
 			keys := make([]string, 1)
 			keys[0] = string("cQdPVU5KSzLkD1rhvLJztvpWBu9TrVAE2iPxfgEQrzWuS5xLNRX6")
@@ -307,8 +281,6 @@ func main() {
 			break
 		case "gettxout":	//  "txid" n ( includemempool )
 			fmt.Println("UTXO(!) tx hash -> ")
-			// 90039e47190579daf219d0ec2348d117126c73c812bdd06c3b2ccf62026ea5d7 (polygon)
-			// 3392c719652d306c0887ec503ea87b16269428a020c81dbbfe715700ae5c5620 (coin)
 			s, _ := reader.ReadString('\n')
 			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
 
@@ -329,8 +301,6 @@ func main() {
 			break
 		case "getrawtransaction":	//  "txid" ( verbose )
 			fmt.Println("Tx (any) hash -> ")
-			// 90039e47190579daf219d0ec2348d117126c73c812bdd06c3b2ccf62026ea5d7 (polygon)
-			// 3392c719652d306c0887ec503ea87b16269428a020c81dbbfe715700ae5c5620 (coin)
 			s, _ := reader.ReadString('\n')
 			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
 
@@ -363,13 +333,10 @@ func main() {
 			} else {
 				log.Printf("Chain: %s", res.Chain)
 				log.Printf("Blocks: %d", res.Blocks)
-				log.Printf("Headers: %d", res.Headers)
 				log.Printf("Rotate: %d", res.Rotate)
 				log.Printf("BestBlockHash: %s", res.BestBlockHash)
-				log.Printf("Difficulty: %f", res.Difficulty)
 				log.Printf("MedianTime: %d", res.MedianTime)
 				log.Printf("MinerBlocks: %d", res.MinerBlocks)
-				log.Printf("MinerHeaders: %d", res.MinerHeaders)
 				log.Printf("MinerBestBlockHash: %s", res.MinerBestBlockHash)
 				log.Printf("MinerDifficulty: %f", res.MinerDifficulty)
 				log.Printf("MinerMedianTime: %d", res.MinerMedianTime)
@@ -478,8 +445,7 @@ func main() {
 			break
 		case "getminerblock":	//  "hash" ( verbose )
 			fmt.Println("Block hash -> ")
-			s := "00002c7307e3905a38ca29a862cc2e018202de40619c88765124d37a771cae49"	// block 0 hash
-			s, _ = reader.ReadString('\n')
+			s, _ := reader.ReadString('\n')
 			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
 			h,_ := chainhash.NewHashFromStr(s)
 			res, err := client.GetMinerBlock(h)
@@ -669,9 +635,6 @@ func main() {
 			fmt.Println("hello, Yourself")
 			break
 		case "searchrawtransactions":	//  "hexdata" ( "jsonparametersobject" )
-			// ms6HYbv1YGKbxgQEEHa7TZBQvKRTcSQmtZ
-			// 2MuVt8ZtHw1mTawgbru2SA5mH1Ubriyv97Q
-			// 2N1CFREjXRetQXPcwk3zN5se7mZuUAJRVqb
 			address,_ := btcutil.DecodeAddress("2MuVt8ZtHw1mTawgbru2SA5mH1Ubriyv97Q", &chaincfg.TestNet3Params)
 //			address,_ := btcutil.DecodeAddress("1FuzgSAked4aechNDzmn3kc4nxLsFfLadq", &chaincfg.RegressionNetParams)
 //			address,_ := btcutil.DecodeAddress("1FuzgSAked4aechNDzmn3kc4nxLsFfLadq", &chaincfg.MainNetParams)
@@ -722,7 +685,6 @@ func main() {
 			break
 		case "gettransaction":	// "txid"
 			fmt.Println("Input tx hash-> ")
-			// 30917d0cf74d82f1b8ad1f5686a2b4c478d34bfadafe064fe75883baa63a0a07
 			s, _ := reader.ReadString('\n')
 			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
 
@@ -814,10 +776,6 @@ func main() {
 			break
 */
 		case "getaccount":	// "bitcoinaddress"
-			// ms6HYbv1YGKbxgQEEHa7TZBQvKRTcSQmtZ
-			// 2MuVt8ZtHw1mTawgbru2SA5mH1Ubriyv97Q
-			// 2N1CFREjXRetQXPcwk3zN5se7mZuUAJRVqb
-
 			fmt.Println("Address-> ")
 			s := ""
 			for len(s) == 0 {
@@ -825,8 +783,6 @@ func main() {
 				s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
 			}
 
-			// 3cdb999564d87eafaa2952c814418a891e3c9ae3dab6e1a0e9c724ba58a19e27
-			//			a,_ := btcutil.DecodeAddress(s, &chaincfg.MainNetParams)
 			a,_ := btcutil.DecodeAddress(s, &chaincfg.TestNet3Params)
 			res, err := client.GetAccount(a)
 			if err != nil {
@@ -838,9 +794,6 @@ func main() {
 			fmt.Println("hello, Yourself")
 			break
 		case "dumpprivkey":	// "bitcoinaddress"
-			// mjt7WtJzcrG8rcNdn8WC1UveLRpqP69cmp
-			// mrKn4LYmDvRzB9Tkt6geUrBevokzBt9rnr
-
 			a,_ := btcutil.DecodeAddress("mjt7WtJzcrG8rcNdn8WC1UveLRpqP69cmp", &chaincfg.TestNet3Params)
 
 			res, err := client.DumpPrivKey(a)
@@ -861,11 +814,6 @@ func main() {
 			break
 /*
 		case "setaccount":	// "bitcoinaddress" "account"
-			// ms6HYbv1YGKbxgQEEHa7TZBQvKRTcSQmtZ
-			// 2MuVt8ZtHw1mTawgbru2SA5mH1Ubriyv97Q
-			// 2N1CFREjXRetQXPcwk3zN5se7mZuUAJRVqb
-			// mrKn4LYmDvRzB9Tkt6geUrBevokzBt9rnr
-
 			fmt.Println("Address-> ")
 			s := ""
 			for len(s) == 0 {
@@ -873,7 +821,6 @@ func main() {
 				s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
 			}
 
-			// 3cdb999564d87eafaa2952c814418a891e3c9ae3dab6e1a0e9c724ba58a19e27
 			//			a,_ := btcutil.DecodeAddress(s, &chaincfg.MainNetParams)
 			a,_ := btcutil.DecodeAddress(s, &chaincfg.TestNet3Params)
 

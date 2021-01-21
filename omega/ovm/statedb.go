@@ -28,15 +28,13 @@ import (
 
 type status uint8
 
-// state data entry. contract managed
+// state Data entry. contract managed
 type entry struct {
 	olddata []byte
 	data []byte
 }
 
 type dataMap map[string]*entry
-
-type rollback map[string][]byte
 
 type stateDB struct {
 	// stateDB gives access to the underlying state (storage) of current account
@@ -45,14 +43,14 @@ type stateDB struct {
 	// contract address of current account
 	contract [20]byte
 
-	// contract state data cache
+	// contract state Data cache
 	data dataMap
 	meta dataMap
 
 	// Suicide flag
 	suicided bool
 
-	// fresh flag
+	// fresh flag. indicating this is a newly created contract
 	fresh bool
 
 	// only used in destruct, indicate whether to transfer mint
@@ -63,6 +61,7 @@ func NewStateDB(db database.DB, addr [20]byte) *stateDB {
 	return &stateDB{
 		DB:       db,
 		contract: addr,
+		fresh: false,
 		data:     make(map[string]*entry),
 		meta:     make(map[string]*entry),
 	}
@@ -121,6 +120,30 @@ func (v * OVM) getMeta(contract [20]byte, key string) []byte {
 	return t
 }
 
+func (v * OVM) NewUage(contract [20]byte) uint32 {
+	d := v.StateDB[contract]
+
+	if d.suicided {
+		return 0
+	}
+
+	return d.NewUage()
+}
+
+func (d *stateDB) NewUage() uint32 {
+	key := "quota"
+	if k,ok := d.meta[key]; !ok {
+		return 0
+	} else {
+		q := binary.LittleEndian.Uint32(k.data)
+		if k.olddata == nil {
+			return q
+		}
+		p := binary.LittleEndian.Uint32(k.olddata)
+		return q - p
+	}
+}
+
 func (d *stateDB) getMeta(key string) []byte {
 	if d.suicided || d.fresh {
 		return nil
@@ -129,6 +152,9 @@ func (d *stateDB) getMeta(key string) []byte {
 	var code []byte
 	d.DB.View(func (dbTx  database.Tx) error {
 		bucket := dbTx.Metadata().Bucket([]byte("contract" + string(d.contract[:])))
+		if bucket == nil {
+			return nil
+		}
 		code = bucket.Get([]byte(key))
 		return nil
 	})
@@ -160,7 +186,7 @@ func dbFetchTxIndexEntry(dbTx database.Tx, txHash *chainhash.Hash) (*database.Bl
 		return nil, nil
 	}
 
-	// Ensure the serialized data has enough bytes to properly deserialize.
+	// Ensure the serialized Data has enough bytes to properly deserialize.
 	if len(serializedData) < 12 {
 		return nil, database.Error{
 			ErrorCode: database.ErrCorruption,
@@ -250,17 +276,17 @@ func (d * OVM) SetCodeHash(contract [20]byte, code chainhash.Hash) {
 }
  */
 
-func (d *stateDB) GetMint() (uint64, uint64) {
+func (d *stateDB) GetMint() (int64, uint64) {
 	c := d.getMeta("mint")
 
 	if c == nil {
-		return 0, 0
+		return -1, 0
 	}
 
 	tokenType := binary.LittleEndian.Uint64(c)
 	issue := binary.LittleEndian.Uint64(c[8:])
 
-	return tokenType, issue
+	return int64(tokenType), issue
 }
 
 func (v * OVM) SetMint(contract [20]byte, tokenType uint64, qty uint64) bool {
@@ -271,7 +297,7 @@ func (v * OVM) SetMint(contract [20]byte, tokenType uint64, qty uint64) bool {
 
 	t, issue := d.GetMint()
 
-	if tokenType == 0 || (t != 0 && tokenType != t) {
+	if t != -1 && tokenType != uint64(t) {
 		return false
 	}
 
@@ -282,6 +308,106 @@ func (v * OVM) SetMint(contract [20]byte, tokenType uint64, qty uint64) bool {
 
 	v.setMeta(contract, "mint", c[:])
 	return true
+}
+
+func (v * OVM) GetQuota(contract [20]byte) int32 {
+	c := v.getMeta(contract, "quota")
+
+	if c == nil {
+		return 0
+	}
+
+	q := binary.LittleEndian.Uint32(c)
+
+	return int32(q)
+}
+
+func (v * OVM) SetQuota(contract [20]byte, q uint32) {
+	var c [4]byte
+	binary.LittleEndian.PutUint32(c[:], q)
+
+	v.setMeta(contract, "quota", c[:])
+}
+
+func (v * OVM) GetUsage(contract [20]byte) int32 {
+	c := v.getMeta(contract, "usage")
+
+	if c == nil {
+		return 0
+	}
+
+	q := binary.LittleEndian.Uint32(c)
+
+	return int32(q)
+}
+
+func (v * OVM) SetUsage(contract [20]byte, q uint32) {
+	var c [4]byte
+	binary.LittleEndian.PutUint32(c[:], q)
+
+	v.setMeta(contract, "usage", c[:])
+}
+
+func (d *stateDB) setQuota(q uint32) {
+	var c [4]byte
+	binary.LittleEndian.PutUint32(c[:], q)
+	if d.suicided {
+		return
+	}
+
+	key := "quota"
+	if _, ok := d.meta[key]; !ok {
+		m := d.getMeta(key)
+		d.meta[key] = &entry {m,  c[:]}
+	} else {
+		d.meta[key].data = c[:]
+	}
+}
+
+func (d *stateDB) getQuota() uint32 {
+	c := d.getMeta("quota")
+
+	if c == nil {
+		return 0
+	}
+
+	q := binary.LittleEndian.Uint32(c)
+
+	return q
+}
+
+func (d *stateDB) setUsage(q uint32) {
+	var c [4]byte
+	binary.LittleEndian.PutUint32(c[:], q)
+	if d.suicided {
+		return
+	}
+
+	key := "usage"
+	if _, ok := d.meta[key]; !ok {
+		m := d.getMeta(key)
+		d.meta[key] = &entry {m,  c[:]}
+	} else {
+		d.meta[key].data = c[:]
+	}
+}
+
+func (d *stateDB) getUsage() uint32 {
+	key := "usage"
+	var m []byte
+	if _, ok := d.meta[key]; !ok {
+		m = d.getMeta(key)
+		if m == nil {
+			return 0
+		}
+		d.meta[key] = &entry {m,  m[:]}
+	} else {
+		m = d.meta[key].data
+	}
+
+	q := binary.LittleEndian.Uint32(m)
+
+	return q
 }
 
 func (d *stateDB) GetAddres() AccountRef {
@@ -319,7 +445,7 @@ func (r *entry) dup() *entry {
 }
 
 func (d *stateDB) Copy() stateDB {
-	s := stateDB{ DB: d.DB }
+	s := stateDB{ DB: d.DB, }
 
 	if d.suicided {
 		s.suicided = true
@@ -355,6 +481,9 @@ func (v * OVM) GetState(contract [20]byte, loc string) []byte {
 	var e []byte
 	v.DB.View(func (dbTx  database.Tx) error {
 		bucket := dbTx.Metadata().Bucket([]byte("storage" + string(d.contract[:])))
+		if bucket == nil {
+			return nil
+		}
 		e = bucket.Get([]byte(loc))
 		return nil
 	})
@@ -375,22 +504,31 @@ func (v * OVM) SetState(contract [20]byte, key string, val []byte) {
 	if d.suicided {
 		return
 	}
+	q := d.getUsage()
 	if _, ok := d.data[key]; !ok {
 		m := v.GetState(contract, key)
 		t := make([]byte, len(val))
+		q += uint32(len(val))
 		copy(t, val)
 		d.data[key] = &entry {m,  t}
 	} else {
+		q = q + uint32(len(val)) - uint32(len(d.data[key].data))
+
 		if d.data[key].data == nil {
 			d.data[key].data = make([]byte, len(val))
 		}
 		copy(d.data[key].data, val)
+
 		if len(d.data[key].data) < len(val) {
 			d.data[key].data = append(d.data[key].data, val[len(d.data[key].data):]...)
 		} else if len(d.data[key].data) > len(val) {
 			d.data[key].data = d.data[key].data[:len(val)]
 		}
 	}
+	if q > d.getQuota() {
+		d.setQuota(q)
+	}
+	d.setUsage(q)
 }
 
 func (v * OVM) DeleteState(contract [20]byte, key string) {
@@ -398,12 +536,26 @@ func (v * OVM) DeleteState(contract [20]byte, key string) {
 	if d.suicided {
 		return
 	}
-	if _, ok := d.data[key]; ok {
+	if s, ok := d.data[key]; ok {
+		q := d.getUsage()
+		u := d.getQuota()
+		q -= uint32(len(s.data))
+		d.setUsage(q)
+		if q < u {
+			d.setQuota(q)
+		}
 		d.data[key].data = nil
 		return
 	}
 
 	if v.GetState(contract, key) != nil {
+		q := d.getUsage()
+		u := d.getQuota()
+		q -= uint32(len(d.data[key].data))
+		d.setUsage(q)
+		if q < u {
+			d.setQuota(q)
+		}
 		d.data[key].data = nil
 	}
 }
@@ -431,9 +583,10 @@ func (d *stateDB) Exists(really bool) bool {
 	return err == nil
 }
 
-func (d *stateDB) commit(blockHeight uint64) [2]rollback {
-	rollBack := [2]rollback{
-		make(map[string][]byte), make(map[string][]byte),
+func (d *stateDB) commit(blockHeight uint64) *PrevInfo {
+	rollBack := &PrevInfo{
+		NewContract: d.fresh,
+		Data:        [2][]Rollback{make([]Rollback, 0), make([]Rollback,0)},
 	}
 
 	if d.suicided {
@@ -445,7 +598,7 @@ func (d *stateDB) commit(blockHeight uint64) [2]rollback {
 			}
 
 			if bucket.Get([]byte("suicided")) == nil {
-				rollBack[1]["suicided"] = []byte{}
+				rollBack.Data[1] = []Rollback{{[]byte("suicided"), []byte{}}}
 			}
 
 			return bucket.Put([]byte("suicided"), []byte{1})
@@ -461,6 +614,7 @@ func (d *stateDB) commit(blockHeight uint64) [2]rollback {
 			d.data[k].olddata = []byte{}
 		}
 	}
+
 	for k,t := range d.meta {
 		if bytes.Compare(t.data, t.olddata) == 0 {
 			delete(d.data, k)
@@ -497,7 +651,7 @@ func (d *stateDB) commit(blockHeight uint64) [2]rollback {
 		bucket := dbTx.Metadata().Bucket([]byte("storage" + string(d.contract[:])))
 
 		for k,t := range d.data {
-			rollBack[0][k] = t.olddata
+			rollBack.Data[0] = append(rollBack.Data[0], Rollback{[]byte(k), t.olddata})
 			if len(t.data) == 0 {
 				bucket.Delete([]byte(k))
 				delete(d.data, k)
@@ -512,7 +666,7 @@ func (d *stateDB) commit(blockHeight uint64) [2]rollback {
 		bucket = dbTx.Metadata().Bucket([]byte("contract" + string(d.contract[:])))
 
 		for k, t := range d.meta {
-			rollBack[1][k] = t.olddata
+			rollBack.Data[1] = append(rollBack.Data[1], Rollback{[]byte(k), t.olddata})
 			if len(t.data) == 0 {
 				bucket.Delete([]byte(k))
 				delete(d.meta, k)

@@ -7,160 +7,20 @@ package blockchain
 import (
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcutil"
+	"time"
 )
 
-var BlockSizerQuit chan struct {}
-type sizerAct struct{
-	action int32
-	result chan uint32
+type blockData struct {
+	action int32	// positive: height of signed block; negative: height of POW block; 0 = nil
+	txs    int		// txs in the blocks
+	timestamp time.Time	// block timestamp
 }
-var queue chan sizerAct
 
-// BlockSizeUpdater must run as a go routine
-func (b *BlockChain) BlockSizeUpdater() {
-	BlockSizerQuit = make(chan struct{})
-	queue = make(chan sizerAct, 1000)
-
-	if len(b.blockSizer.knownLimits) == 0 {
-		b.blockSizer.knownLimits[0] = chaincfg.BlockBaseSize
-	}
-
-	log.Infof("BlockSizeUpdater: initial state: %v", b.blockSizer)
-
-main:
-	for {
-		select {
-		case <-BlockSizerQuit:
-			break main
-
-		case act := <-queue:
-			if act.result != nil {
-				if z, ok := b.blockSizer.knownLimits[act.action]; ok {
-					act.result <- z
-					continue
-				}
-			}
-
-			log.Debugf("BlockSizeUpdater action = %d", act.action)
-
-			if act.action < 0 {
-				h := -act.action - (-act.action)%chaincfg.BlockSizeEvalPeriod
-				h += chaincfg.BlockSizeEvalPeriod
-
-				b.blockSizer.mtx.Lock()
-				_, ok := b.blockSizer.knownLimits[h]
-				if ok && -act.action <= h-chaincfg.SkipBlocks {
-					delete(b.blockSizer.knownLimits, h)
-					b.blockSizer.reset(0)
-				}
-				b.blockSizer.mtx.Unlock()
-				continue
-			}
-
-			h := act.action - act.action%chaincfg.BlockSizeEvalPeriod
-
-			var runto int32
-			if act.result != nil {
-				runto = h - chaincfg.BlockSizeEvalPeriod - chaincfg.SkipBlocks
-				if runto < 0 {
-					runto = 0
-				}
-			} else {
-				b.blockSizer.mtx.Lock()
-				_, ok := b.blockSizer.knownLimits[h]
-				if ok {
-					h += chaincfg.BlockSizeEvalPeriod
-					_, ok = b.blockSizer.knownLimits[h]
-					if ok {
-						b.blockSizer.mtx.Unlock()
-						continue
-					}
-
-					// forward going
-					if act.action < h-chaincfg.StartEvalBlocks {
-						b.blockSizer.mtx.Unlock()
-						continue
-					}
-
-					if b.blockSizer.target != h || b.blockSizer.lastNode == nil {
-						runto = h - chaincfg.SkipBlocks
-					} else {
-						t := h - act.action
-						g := b.blockSizer.lastNode.Height - h + chaincfg.BlockSizeEvalPeriod + chaincfg.SkipBlocks
-						s := (g / t) + 1
-						if s < 20 {
-							s = 20
-						}
-						runto = b.blockSizer.lastNode.Height - s
-						if runto < h-chaincfg.BlockSizeEvalPeriod-chaincfg.SkipBlocks {
-							runto = h - chaincfg.BlockSizeEvalPeriod - chaincfg.SkipBlocks
-						}
-					}
-				} else {
-					runto = h - chaincfg.BlockSizeEvalPeriod - chaincfg.SkipBlocks
-					if runto < 0 {
-						runto = 0
-					}
-				}
-				b.blockSizer.mtx.Unlock()
-			}
-
-			if b.blockSizer.target != h {
-				b.blockSizer.reset(h)
-			}
-			if b.blockSizer.lastNode == nil {
-				b.blockSizer.lastNode = b.BestChain.NodeByHeight(h - chaincfg.SkipBlocks)
-			}
-
-			log.Infof("blockSizer accounting %d - %d by act @ %d", b.blockSizer.lastNode.Height, runto, act.action)
-
-			p := b.ParentNode(b.blockSizer.lastNode)
-			for i := b.blockSizer.lastNode.Height - 1; i >= runto && p != nil; i-- {
-				if p.Data.GetNonce() < 0 {
-					q, _ := b.BlockByHash(&p.Hash)
-					if q == nil {
-						// this may happen during shutdown
-						runto = -1
-						break
-					}
-					b.blockSizer.blockCount++
-					b.blockSizer.sizeSum += int64(len(q.MsgBlock().Transactions))
-					b.blockSizer.timeSum += b.blockSizer.lastNode.Data.TimeStamp() - p.Data.TimeStamp()
-				}
-				b.blockSizer.lastNode = p
-				p = b.ParentNode(p)
-			}
-			if runto == 0 || runto == h-chaincfg.BlockSizeEvalPeriod-chaincfg.SkipBlocks {
-				log.Infof("blockSizer stats: blockCount = %d, sizeSum = %d timeSum = %d",
-					b.blockSizer.blockCount, b.blockSizer.sizeSum, b.blockSizer.timeSum)
-
-				b.conclude()
-				b.blockSizer.reset(0)
-
-				if len(b.blockSizer.knownLimits) >= 5 {
-					delete(b.blockSizer.knownLimits, h-4*chaincfg.BlockSizeEvalPeriod)
-				}
-				if act.result != nil {
-					act.result <- b.blockSizer.knownLimits[h]
-				}
-			}
-		}
-	}
-
-	// drain the queue
-	for {
-		if _,ok := <-queue; !ok {
-			return
-		}
-	}
-}
+var blockwindow [2 * chaincfg.BlockSizeEvalWindow]blockData		// circular window of blocks
 
 func (b *BlockChain) GetBlockLimit(ht int32) uint32 {
 	// block limit in number of tx
-	if ht < 0 {
-		return 0
-	}
-	if ht < chaincfg.BlockSizeEvalPeriod {
+	if ht < chaincfg.BlockSizeEvalWindow {
 		return chaincfg.BlockBaseSize
 	}
 
@@ -171,68 +31,54 @@ func (b *BlockChain) GetBlockLimit(ht int32) uint32 {
 	b.blockSizer.mtx.Unlock()
 
 	if ok {
-		if _, ok := b.blockSizer.knownLimits[h + chaincfg.BlockSizeEvalPeriod];	!ok && ht >= h + chaincfg.BlockSizeEvalPeriod - chaincfg.StartEvalBlocks {
-			queue <- sizerAct{ht, nil}
-		}
 		return z
 	}
 
-	reply := make(chan uint32)
-	queue <- sizerAct {h, reply }
-	return <-reply
-}
+	s := h - chaincfg.BlockSizeEvalWindow
+	e := h - chaincfg.SkipBlocks
 
-func (b *sizeCalculator) RollBackTo(h int32) {
-	b.mtx.Lock()
-	defer b.mtx.Unlock()
+	blockCount := 0
+	sizeSum := int(0)
+	timeSum := int64(0)
+	k := timeSum
 
-	for i,_ := range b.knownLimits {
-		if h <= i - chaincfg.SkipBlocks {
-			// most likely it would never happend, because it require roll back of 2000 blks
-			delete(b.knownLimits, i)
-		}
-	}
-}
+	for t := s; t < e; t++ {
+		n := t % (2*chaincfg.BlockSizeEvalWindow)
+		if blockwindow[n].action == 0 || (blockwindow[n].action > 0 && blockwindow[n].action != t) ||
+			(blockwindow[n].action < 0 && blockwindow[n].action != -t) {
+			// load block
+			blk, _ := b.BlockByHeight(t)
+			blockwindow[n].txs = len(blk.MsgBlock().Transactions)
+			blockwindow[n].timestamp = blk.MsgBlock().Header.Timestamp
 
-func (b *sizeCalculator) reset(h int32) {
-	b.lastNode = nil
-	b.blockCount = 0
-	b.sizeSum = 0
-	b.timeSum = 0
-	b.target = h
-}
-
-func (c *BlockChain) conclude() {
-	b := c.blockSizer
-	h := b.target
-/*
-	defer func() {
-		c.db.Update(func(dbTx database.Tx) error {
-			state = *(c.BestSnapshot())
-			state.sizeLimits = b.knownLimits
-			err := dbPutBestState(dbTx, state)
-			if err != nil {
-				return err
+			if blk.MsgBlock().Header.Nonce > 0 {
+				blockwindow[n].action = -t
+			} else {
+				blockwindow[n].action = t
 			}
-			return nil
-		})
-	}()
-*/
+		}
 
-	if b.blockCount == 0 {
-		b.knownLimits[h] = chaincfg.BlockBaseSize
-		return
+		if k > 0 && blockwindow[n].action > 0 {
+			blockCount++
+			sizeSum += blockwindow[n].txs
+			timeSum += blockwindow[n].timestamp.Unix() - k
+		}
+		k = blockwindow[n].timestamp.Unix()
+	}
+
+	if blockCount == 0 {
+		b.blockSizer.knownLimits[h] = chaincfg.BlockBaseSize
+		return chaincfg.BlockBaseSize
 	}
 
 	// conclude calculation for a batch
-	avgSize := b.sizeSum / int64(b.blockCount)
+	avgSize := int64(sizeSum / blockCount)
 	if avgSize <= chaincfg.BlockBaseSize {
-		b.knownLimits[h] = chaincfg.BlockBaseSize
-		b.reset(0)
-		return
+		b.blockSizer.knownLimits[h] = chaincfg.BlockBaseSize
+		return chaincfg.BlockBaseSize
 	}
 
-	avgTime := b.timeSum / int64(b.blockCount)
+	avgTime := timeSum / int64(blockCount)
 
 	csz := int64(chaincfg.BlockBaseSize)
 	if avgTime >= chaincfg.TargetBlockRate {
@@ -243,25 +89,47 @@ func (c *BlockChain) conclude() {
 		csz <<= 1
 	}
 
-	b.reset(0)
-
 	if avgSize * 10 > csz * 6 {		// 60% full. increase size
 		csz <<= 1
 	}
-	b.knownLimits[h] = uint32(csz)
+	b.blockSizer.knownLimits[h] = uint32(csz)
+	return uint32(csz)
 }
 
 func (b *BlockChain) BlockSizerNotice(notification *Notification) {
 	switch notification.Data.(type) {
 	case *btcutil.Block:
-		block := notification.Data.(*btcutil.Block).Height()
+		block := notification.Data.(*btcutil.Block)
+		height := block.Height()
 
 		switch notification.Type {
 		case NTBlockConnected:
-			queue <- sizerAct {block, nil }
+			n := height % (2 * chaincfg.BlockSizeEvalWindow)
+			if block.MsgBlock().Header.Nonce > 0 {
+				height = - height
+			}
+			blockwindow[n].action = height
+			blockwindow[n].timestamp = block.MsgBlock().Header.Timestamp
+			blockwindow[n].txs = len(block.MsgBlock().Transactions)
 
 		case NTBlockDisconnected:
-			queue <- sizerAct {-block, nil }
+			blockwindow[height % (2 * chaincfg.BlockSizeEvalWindow)].action = 0
+
+			if height % chaincfg.BlockSizeEvalPeriod == 0 {
+				delete(b.blockSizer.knownLimits, height + chaincfg.SkipBlocks)
+			}
+		}
+	}
+}
+
+func (b *sizeCalculator) RollBackTo(h int32) {
+	b.mtx.Lock()
+	defer b.mtx.Unlock()
+
+	for i,_ := range b.knownLimits {
+		if h <= i - chaincfg.SkipBlocks {
+			// most likely it would never happend, because it require roll back of 2000 blks
+			delete(b.knownLimits, i)
 		}
 	}
 }

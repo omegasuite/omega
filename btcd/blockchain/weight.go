@@ -46,39 +46,4 @@ func GetTransactionWeight(tx *btcutil.Tx) int64 {
 // unscaled sig op count for any inputs spending witness programs.
 func GetSigOpCost(tx *btcutil.Tx, isCoinBaseTx bool, utxoView *viewpoint.UtxoViewpoint, bip16, segWit bool) (int, error) {
 	return CountSigOps(tx), nil
-/*
-	numSigOps := CountSigOps(tx) * chaincfg.WitnessScaleFactor
-	if bip16 {
-		numP2SHSigOps, err := CountP2SHSigOps(tx, isCoinBaseTx, utxoView)
-		if err != nil {
-			return 0, nil
-		}
-		numSigOps += (numP2SHSigOps * chaincfg.WitnessScaleFactor)
-	}
-
-	if segWit && !isCoinBaseTx {
-		msgTx := tx.MsgTx()
-		for txInIndex, txIn := range msgTx.TxIn {
-			// Ensure the referenced output is available and hasn't
-			// already been spent.
-			utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
-			if utxo == nil || utxo.IsSpent() {
-				str := fmt.Sprintf("output %v referenced from "+
-					"transaction %s:%d either does not "+
-					"exist or has already been spent",
-					txIn.PreviousOutPoint, tx.Hash(),
-					txInIndex)
-				return 0, ruleError(ErrMissingTxOut, str)
-			}
-
-			witness := txIn.Witness
-			sigScript := txIn.SignatureScript
-			pkScript := utxo.PkScript()
-			numSigOps += GetWitnessSigOpCount(sigScript, pkScript, witness)
-		}
-
-	}
-
-	return numSigOps, nil
-*/
 }

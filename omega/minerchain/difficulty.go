@@ -184,7 +184,7 @@ func (b *MinerChain) findPrevTestNetDifficulty(startNode *chainutil.BlockNode) u
 	return lastBits
 }
 
-func (b *MinerChain) NextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, error) {
+func (b *MinerChain) NextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, uint32, error) {
 	return b.calcNextRequiredDifficulty(lastNode, newBlockTime)
 }
 
@@ -193,10 +193,14 @@ func (b *MinerChain) NextRequiredDifficulty(lastNode *chainutil.BlockNode, newBl
 // This function differs from the exported CalcNextRequiredDifficulty in that
 // the exported version uses the current best chain as the previous block node
 // while this function accepts any block node.
-func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, error) {
-	// Genesis block.
+func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, uint32, error) {
 	if lastNode == nil || lastNode.Height < b.blocksPerRetarget + 10 {
-		return b.chainParams.PowLimitBits, nil
+		return b.chainParams.PowLimitBits, wire.CollateralBase, nil
+	}
+
+	coll := lastNode.Data.(*blockchainNodeData).block.Collateral
+	if coll < wire.CollateralBase {
+		coll = wire.CollateralBase
 	}
 
 //	b.blocksPerRetarget = 10		// temp, to be removed in final release
@@ -206,6 +210,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		// For networks that support it, allow special reduction of the
 		// required difficulty once too much time has elapsed without
 		// mining a block.
+/*
 		if b.chainParams.ReduceMinDifficulty {
 			// Return minimum difficulty when more than the desired
 			// amount of time has elapsed without mining a block.
@@ -213,37 +218,46 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 				time.Second)
 			allowMinTime := lastNode.Data.(*blockchainNodeData).block.Timestamp.Unix() + reductionTime
 			if newBlockTime.Unix() > allowMinTime {
-				return b.chainParams.PowLimitBits, nil
+				return b.chainParams.PowLimitBits, coll, nil
 			}
 
 			// The block was mined within the desired timeframe, so
 			// return the difficulty for the last block which did
 			// not have the special minimum difficulty rule applied.
-			return b.findPrevTestNetDifficulty(lastNode), nil
+			return b.findPrevTestNetDifficulty(lastNode), coll, nil
 		}
+ */
 
 		// For the main network (or any unrecognized networks), simply
 		// return the previous block's difficulty requirements.
-		return lastNode.Data.(*blockchainNodeData).block.Bits, nil
+		return lastNode.Data.(*blockchainNodeData).block.Bits, coll, nil
 	}
 
 	// Get the block node at the previous retarget (targetTimespan days
 	// worth of blocks).
 	firstNode := lastNode.RelativeAncestor(b.blocksPerRetarget - 1)
 	if firstNode == nil {
-		return 0, AssertError("unable to obtain previous retarget block")
+		return 0, 0, AssertError("unable to obtain previous retarget block")
 	}
 
 	d := 0 // uint32(firstNode.height) - baseh
 
 	// normalize time span. account for difficulty adjust factor due to # of exceeding blocks in history
+	// collateral, TPS score
 	normalizedTimespan := int64(0)
 	pb := firstNode
+
+	coll = 0x7FFFFFFF	// max. min coll for next period is the min coll of all in the last period
+
 //	bb := b.blockChain.BestChain.Tip()
 	for i := b.blocksPerRetarget - 2; i >= 0; i-- {
 		// to cause loading of missing nodes
 //		b.blockChain.HeaderByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
-		bb := b.blockChain.NodeByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
+		block := pb.Data.(*blockchainNodeData).block
+		bb := b.blockChain.NodeByHash(&block.BestBlock)
+		if block.Collateral < coll {
+			coll = block.Collateral
+		}
 /*
 		for bb != nil && bb.Hash != pb.Data.(*blockchainNodeData).block.BestBlock {
 			if bb.Parent == nil && bb.Height != 0 {
@@ -259,9 +273,10 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
  */
 		if bb == nil {
 			// error. abort recalculation
-			return lastNode.Data.(*blockchainNodeData).block.Bits, fmt.Errorf("unexpected BestBlock for %s", pb.Hash)
+			return lastNode.Data.(*blockchainNodeData).block.Bits, coll, fmt.Errorf("unexpected BestBlock for %s", pb.Hash)
 		}
 		mb := bb
+		// find out length of waiting list. this is a simplified, ignores POW tx blocks
 		for mb != nil && (mb.Data.GetNonce() > -wire.MINER_RORATE_FREQ) {
 			if mb.Parent == nil && mb.Height != 0 {
 				// this should not happen. but we keep code here in case something is wrong
@@ -281,13 +296,21 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		d = int(pb.Height - h)
 		nb := pb.Parent
 
-		dt := int64(float64(pb.Data.(*blockchainNodeData).block.Timestamp.Unix() - nb.Data.(*blockchainNodeData).block.Timestamp.Unix()))
-
+		// Time between the 2 nodes
+		dt := int64(float64(block.Timestamp.Unix() - nb.Data.(*blockchainNodeData).block.Timestamp.Unix()))
+		// if there is an difficulty adjustment (increase) due to waiting list control
+		// adjusting dt as it the block is generated faster, this will cause increase
+		// in difficulty target, so we will less likely run into long waiting list
 		if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 			dt = dt >> wire.SCALEFACTORCAP
 		} else if d > wire.DESIRABLE_MINER_CANDIDATES {
 			dt = dt >> (d - wire.DESIRABLE_MINER_CANDIDATES)
 		}
+
+		// do we need to cancel adjustments for collateral & TPS scores? no.
+		// because these adjustment is given on competition basis, so when we
+		// calculate average block time, winners and losers will cancel out
+		// each other.
 
 		normalizedTimespan += dt
 
@@ -333,8 +356,10 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	// newTarget since conversion to the compact representation loses
 	// precision.
 	newTargetBits := BigToCompact(newTarget)
-
-	return newTargetBits, nil
+	if coll < wire.CollateralBase {
+		coll = wire.CollateralBase
+	}
+	return newTargetBits, coll, nil
 }
 
 // CalcNextRequiredDifficulty calculates the required difficulty for the block
@@ -342,12 +367,12 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 // rules.
 //
 // This function is safe for concurrent access.
-func (b *MinerChain) CalcNextRequiredDifficulty(timestamp time.Time) (uint32, error) {
+func (b *MinerChain) CalcNextRequiredDifficulty(timestamp time.Time) (uint32, uint32, error) {
 //	log.Infof("MinerChain.CalcNextRequiredDifficulty: ChainLock.RLock")
 	b.chainLock.Lock()
-	difficulty, err := b.calcNextRequiredDifficulty(b.BestChain.Tip(), timestamp)
+	difficulty, col, err := b.calcNextRequiredDifficulty(b.BestChain.Tip(), timestamp)
 	b.chainLock.Unlock()
 //	log.Infof("MinerChain.CalcNextRequiredDifficulty: ChainLock.Unlock")
 
-	return difficulty, err
+	return difficulty, col, err
 }

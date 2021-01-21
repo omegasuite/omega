@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
@@ -18,7 +19,6 @@ import (
 	"github.com/omegasuite/omega"
 	"github.com/omegasuite/omega/token"
 	"github.com/omegasuite/omega/viewpoint"
-	"sort"
 	"sync/atomic"
 )
 
@@ -54,7 +54,7 @@ type (
 	// GetBlockNumberFunc returns the block numer of the block of current execution environment
 	GetBlockNumberFunc func() uint64
 	GetBlockTimeFunc func() uint32
-	GetBlockFunc func() * btcutil.Block
+//	GetBlockFunc func() * btcutil.Block
 
 	AddCoinBaseFunc func(wire.TxOut) wire.OutPoint
 )
@@ -92,13 +92,70 @@ type Context struct {
 	GasLimit    uint64 			      // GASLIMIT policy
 	BlockNumber GetBlockNumberFunc    // Provides information for NUMBER
 	BlockTime GetBlockTimeFunc
-	Block 		GetBlockFunc
+//	Block 		GetBlockFunc
 }
 
-type blockRollBack struct {
-	prevBlock uint64
-	rollBacks map[Address][2]rollback
-	tokentypes map[uint64]Address
+func (ovm * Context) Init(tx *btcutil.Tx, views * viewpoint.ViewPointSet) {
+	ovm.GetTx = func() *btcutil.Tx { return tx }
+	ovm.AddTxOutput = func(t wire.TxOut) int {
+		if tx == nil {
+			return -1
+		}
+		return tx.AddTxOut(t)
+	}
+	ovm.Spend = func(t wire.OutPoint) bool {
+		if tx == nil {
+			return false
+		}
+		// it has alreadty been verified that the coin belongs to the contract
+		tx.AddTxIn(t)
+		return true
+	}
+	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
+		if tx != nil && hash.IsEqual(tx.Hash()) {
+			if int(seq) >= len(tx.MsgTx().TxOut) {
+				return nil
+			}
+			return tx.MsgTx().TxOut[seq]
+		}
+		op := make(map[wire.OutPoint]struct{})
+		p := wire.OutPoint{hash, uint32(seq)}
+		e := views.Utxo.LookupEntry(p)
+		if e != nil {
+			return e.ToTxOut()
+		}
+		op[p] = struct{}{}
+		if views.Utxo.FetchUtxosMain(views.Db, op) != nil {
+			return nil
+		}
+		e = views.Utxo.LookupEntry(p)
+		if e == nil {
+			return nil
+		}
+		return e.ToTxOut()
+	}
+}
+
+type Rollback struct {
+	Key 	[]byte
+	Value 	[]byte
+}
+
+type PrevInfo struct {
+	NewContract bool
+	Addr		Address
+	Data        [2][]Rollback
+}
+
+type RBTokenTypes struct {
+	ID uint64
+	Addr []byte
+}
+
+type BlockRollBack struct {
+	PrevBlock  uint64
+	RollBacks  []*PrevInfo
+	Tokentypes []RBTokenTypes
 }
 
 type fstate struct {
@@ -127,11 +184,12 @@ type OVM struct {
 	// stateDB gives access to the underlying state
 	StateDB map[Address]*stateDB
 	TokenTypes map[uint64]Address
+	ExistingTokenTypes map[uint64]Address
 
 	// roll back mgmt
 	lastBlock uint64
-	rollbacks map[uint64]*blockRollBack
-	final map[Address] * fstate
+//	rollbacks map[uint64]*BlockRollBack
+//	final map[Address] * fstate
 
 	// Depth of the current call stack
 	depth int
@@ -155,6 +213,9 @@ type OVM struct {
 	abort int32
 
 	DB database.DB
+
+	CheckExecCost	bool	// whether we will check execution cost. This will be true only when packing blocks, not wen validating
+	Paidfees int64
 }
 
 // NewOVM returns a new OVM. The returned OVM is not thread safe and should
@@ -163,10 +224,12 @@ func NewOVM(chainConfig *chaincfg.Params) *OVM {
 	evm := &OVM{
 		StateDB:     make(map[Address]*stateDB),
 		TokenTypes:  make(map[uint64]Address),
-		rollbacks: make(map[uint64]*blockRollBack),
-		final: make(map[Address] * fstate),
+		ExistingTokenTypes:  make(map[uint64]Address),
+//		rollbacks: make(map[uint64]*BlockRollBack),
+//		final: make(map[Address] * fstate),
 		chainConfig: chainConfig,
 		lastBlock: 0,
+		CheckExecCost: false,
 	}
 	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
 
@@ -177,8 +240,9 @@ func NewOVM(chainConfig *chaincfg.Params) *OVM {
 func (v * OVM) Reset() {
 	v.StateDB =  make(map[Address]*stateDB)
 	v.TokenTypes = make(map[uint64]Address)
-	v.rollbacks = make(map[uint64]*blockRollBack)
-	v.final = make(map[Address] * fstate)
+	v.ExistingTokenTypes = make(map[uint64]Address)
+//	v.rollbacks = make(map[uint64]*BlockRollBack)
+//	v.final = make(map[Address] * fstate)
 	v.lastBlock = 0
 	v.GasLimit = uint64(v.chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
 }
@@ -188,7 +252,7 @@ func NewSigVM(chainConfig *chaincfg.Params) *OVM {
 		StateDB:     make(map[Address]*stateDB),
 //		TokenTypes:  make(map[uint64]Address),
 //		TokenCheckSupression: make(map[uint64]struct{}),
-//		rollbacks: make(map[uint64]*blockRollBack),
+//		rollbacks: make(map[uint64]*BlockRollBack),
 		chainConfig: chainConfig,
 	}
 	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
@@ -202,6 +266,7 @@ func (v * OVM) SetContext(ctx Context) {
 }
 
 func (v * OVM) Commit() {
+	// commit contract Data to Db. also roll back info.
 	if len(v.StateDB) == 0 {
 		return
 	}
@@ -217,24 +282,35 @@ func (v * OVM) Commit() {
 		return
 	}
 
-	rollBacks := blockRollBack{ lastBlock, make(map[Address][2]rollback),
-		v.TokenTypes,
+	rollBacks := BlockRollBack{lastBlock, make([]*PrevInfo, 0, len(v.StateDB)),
+		make([]RBTokenTypes, 0, len(v.TokenTypes)),
+	}
+	for t,a := range v.TokenTypes {
+		if _,ok := v.ExistingTokenTypes[t]; ok && a == v.ExistingTokenTypes[t] {
+			continue
+		} else if !ok {
+			rollBacks.Tokentypes = append(rollBacks.Tokentypes, RBTokenTypes{t, nil})
+		} else {
+			tmp := v.ExistingTokenTypes[t]
+			rollBacks.Tokentypes = append(rollBacks.Tokentypes, RBTokenTypes{t, tmp[:]})
+		}
 	}
 
 	for k,d := range v.StateDB {
 		t := d.commit(v.BlockNumber())
-		if len(t[0]) != 0 || len(t[1]) != 0 {
-			rollBacks.rollBacks[k] = t
+		t.Addr = k
+		if len(t.Data[0]) != 0 || len(t.Data[1]) != 0 {
+			rollBacks.RollBacks = append(rollBacks.RollBacks, t)
 		}
 	}
 
 	s,err := json.Marshal(rollBacks)
 	if err != nil {
-		return
+		panic("Unable to Marshal rollBacks")
 	}
 
 	var rbkey [16]byte
-	copy(rbkey[:], []byte("rollback"))
+	copy(rbkey[:], []byte("Rollback"))
 	binary.LittleEndian.PutUint64(rbkey[8:], v.BlockNumber())
 
 	v.DB.Update(func (dbTx  database.Tx) error {
@@ -247,14 +323,19 @@ func (v * OVM) Commit() {
 		DbPutVersion(dbTx, []byte("lastCommitBlock"), v.BlockNumber())
 		return dbTx.Metadata().Put(rbkey[:], s)
 	})
+
+	fmt.Printf("OVM.Commit rollback lastCommitBlock=%d:\n%s\n", v.BlockNumber(), spew.Sdump(rollBacks))
+
 	v.StateDB = make(map[Address]*stateDB)
 	v.TokenTypes = make(map[uint64]Address)
-	v.rollbacks = make(map[uint64]*blockRollBack)
-	v.final = make(map[Address] * fstate)
+	v.ExistingTokenTypes = make(map[uint64]Address)
+//	v.rollbacks = make(map[uint64]*BlockRollBack)
+//	v.final = make(map[Address] * fstate)
 	v.lastBlock = v.BlockNumber()
 	v.GasLimit = uint64(v.chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
 }
 
+/*
 func (v * OVM) AbortRollback() {
 	rbbs := make([]uint64, len(v.rollbacks))
 	j := 0
@@ -267,7 +348,7 @@ func (v * OVM) AbortRollback() {
 	})
 
 	var rbkey [16]byte
-	copy(rbkey[:], []byte("rollback"))
+	copy(rbkey[:], []byte("Rollback"))
 
 	v.DB.Update(func (dbTx  database.Tx) error {
 		for _,i := range rbbs {
@@ -304,112 +385,139 @@ func (v * OVM) AbortRollback() {
 		return DbPutVersion(dbTx, []byte("lastCommitBlock"), v.lastBlock)
 	})
 }
+ */
 
-func (d *OVM) Rollback() {
+func (d *OVM) Rollback() error {
+	// perform roll back op. roll back is performed on block basis
 	if d.BlockNumber() != d.lastBlock {
-		return
+		return nil
 	}
 
 	var rbkey [16]byte
-	copy(rbkey[:], []byte("rollback"))
+	copy(rbkey[:], []byte("Rollback"))
 
 	binary.LittleEndian.PutUint64(rbkey[8:], d.lastBlock)
 
-	d.DB.Update(func (dbTx  database.Tx) error {
+	return d.DB.Update(func (dbTx  database.Tx) error {
 		data := dbTx.Metadata().Get(rbkey[:])
 
-		rollBacks := blockRollBack{ }
+		rollBacks := BlockRollBack{ }
 		err := json.Unmarshal(data, &rollBacks)
 		if err != nil {
 			return err
 		}
 
-		d.rollbacks[d.lastBlock] = &rollBacks
-		d.lastBlock = rollBacks.prevBlock
-		DbPutVersion(dbTx, []byte("lastCommitBlock"), rollBacks.prevBlock)
+		fmt.Printf("OVM.Rollback lastCommitBlock=%d:\n%s\n", d.lastBlock, spew.Sdump(rollBacks))
+
+//		d.rollbacks[d.lastBlock] = &rollBacks
+		d.lastBlock = rollBacks.PrevBlock
+		DbPutVersion(dbTx, []byte("lastCommitBlock"), rollBacks.PrevBlock)
 		dbTx.Metadata().Delete(rbkey[:])
 
 		bucket := dbTx.Metadata().Bucket(IssuedTokenTypes)
-		for t,_ := range rollBacks.tokentypes {
+		for _,rb := range rollBacks.Tokentypes {
+			// Rollback all new token types created here
 			var mtk [8]byte
+			t := rb.ID
 			binary.LittleEndian.PutUint64(mtk[:], t)
-			ct := bucket.Get(mtk[:])
-			var adr Address
-			copy(adr[:], ct)
-			if _,ok := d.final[adr]; !ok {
-				suicided := false
-				if scd := dbTx.Metadata().Bucket([]byte("contract" + string(adr[:]))).Get([]byte("suicided")); scd != nil {
-					suicided = true
-				}
-
-				d.final[adr] = &fstate {
+			if len(rb.Addr) == 0 {		// rb.Addr is prev contract that owns this token type
+				err = bucket.Delete(mtk[:])	// if none, then it is a new token type
+			} else {				// this will happen only if contract rb.Addr transfers token right
+				err = bucket.Put(mtk[:], rb.Addr[:])
+			}
+			if err != nil {
+				return err
+			}
+/*
+			if _,ok := d.final[addr]; !ok {
+				d.final[addr] = &fstate {
 					t,
 					suicided,
 					make(map[string]*entry),
 					make(map[string]*entry),
 				}
 			} else {
-				d.final[adr].issuedToken = t
+				d.final[addr].issuedToken = t
 			}
-			bucket.Delete(mtk[:])
+ */
 		}
 
-		for contract,dd := range rollBacks.rollBacks {
-			bucket = dbTx.Metadata().Bucket([]byte("contract" + string(contract[:])))
-			if _,ok := d.final[contract]; !ok {
-				suicided := false
-				if scd := bucket.Get([]byte("suicided")); scd != nil {
-					suicided = true
-				}
+		for _,dd := range rollBacks.RollBacks {
+			if dd.NewContract {
+				// remove contract
+				mta := dbTx.Metadata()
+				mta.DeleteBucket([]byte("contract" + string(dd.Addr[:])))
+				mta.DeleteBucket([]byte("storage" + string(dd.Addr[:])))
+			} else {
+				// undo Data updates
+				bucket = dbTx.Metadata().Bucket([]byte("contract" + string(dd.Addr[:])))
+/*
+				if _, ok := d.final[dd.Addr]; !ok {
+					suicided := false
+					if scd := bucket.Get([]byte("suicided")); scd != nil {
+						suicided = true
+					}
 
-				d.final[contract] = &fstate {
-					0,
-					suicided,
-					make(map[string]*entry),
-					make(map[string]*entry),
-				}
-			}
-
-			for k,v := range dd[0] {
-				if _, ok := d.final[contract].meta[k]; !ok {
-					fv := bucket.Get([]byte(k))
-					if fv == nil {
-						d.final[contract].meta[k] = &entry{
-							olddata: v,
-						}
-					} else {
-						d.final[contract].meta[k] = &entry{
-							olddata: v,
-							data: fv,
-						}
+					d.final[dd.Addr] = &fstate{
+						0,
+						suicided,
+						make(map[string]*entry),
+						make(map[string]*entry),
 					}
 				}
-				if len(v) == 0 {
-					bucket.Delete([]byte(k))
-				} else if err := bucket.Put([]byte(k), v); err != nil {
-					return err
-				}
-			}
+ */
 
-			bucket := dbTx.Metadata().Bucket([]byte("storage" + string(contract[:])))
-			for k,v := range dd[1] {
-				if _, ok := d.final[contract].data[k]; !ok {
-					fv := bucket.Get([]byte(k))
-					if fv == nil {
-						d.final[contract].data[k] = &entry{
-							olddata: v,
-						}
-					} else {
-						d.final[contract].data[k] = &entry{
-							olddata: v,
-							data: fv,
+				for _, v := range dd.Data[1] {		// meta
+/*
+					if _, ok := d.final[dd.Addr].meta[k]; !ok {
+						fv := bucket.Get([]byte(k))
+						if fv == nil {
+							d.final[dd.Addr].meta[k] = &entry{
+								olddata: v.Value,
+							}
+						} else {
+							d.final[dd.Addr].meta[k] = &entry{
+								olddata: v.Value,
+								data:    fv,
+							}
 						}
 					}
+ */
+					if len(v.Value) == 0 {
+						err = bucket.Delete(v.Key)
+					} else {
+						err = bucket.Put(v.Key, v.Value)
+					}
+					if err != nil {
+						return err
+					}
 				}
-				if len(v) == 0 {
-					bucket.Delete([]byte(k))
-				} else if err := bucket.Put([]byte(k), v); err != nil {
-					return err
+
+				bucket = dbTx.Metadata().Bucket([]byte("storage" + string(dd.Addr[:])))
+				for _, v := range dd.Data[0] {		// data
+/*
+					if _, ok := d.final[dd.Addr].data[k]; !ok {
+						fv := bucket.Get([]byte(k))
+						if fv == nil {
+							d.final[dd.Addr].data[k] = &entry{
+								olddata: v.Value,
+							}
+						} else {
+							d.final[dd.Addr].data[k] = &entry{
+								olddata: v.Value,
+								data:    fv,
+							}
+						}
+					}
+ */
+					if len(v.Value) == 0 {
+						err = bucket.Delete(v.Key)
+					} else {
+						err = bucket.Put(v.Key, v.Value)
+					}
+					if err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -440,7 +548,7 @@ func (evm *OVM) Cancel() {
 // Call executes the contract associated with the addr with the given input as
 // parameters. It also takes the necessary steps to reverse the state in case of an
 // execution error.
-func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte) (ret []byte, err error) {
+func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte, pure byte) (ret []byte, err error) {
 	if evm.NoRecursion && evm.depth > 0 {
 		return nil, nil
 	}
@@ -453,7 +561,7 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 		snapshot[adr] = &t
 	}
 
-	if method[0] > 0 && bytes.Compare(method[1:], []byte{0, 0, 0}) == 0 {
+	if method[0] > OP_PUBLIC && bytes.Compare(method[1:], []byte{0, 0, 0}) == 0 {
 		return nil, omega.ScriptError(omega.ErrInternal, "May not call system method directly.")
 	}
 
@@ -471,6 +579,7 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	} else {
 		contract.CodeAddr = []byte{0,0,0,0}
 	}
+	contract.pure = pure
 
 	ret, err = run(evm, contract, params)
 

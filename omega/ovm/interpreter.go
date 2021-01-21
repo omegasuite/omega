@@ -22,7 +22,7 @@ type Interpreter struct {
 	JumpTable [256]operation
 
 	readOnly   bool   // Whether to throw on stateful modifications
-	returnData []byte // Last CALL's return data for subsequent reuse
+	returnData []byte // Last CALL's return Data for subsequent reuse
 }
 
 // NewInterpreter returns a new instance of the Interpreter.
@@ -93,7 +93,7 @@ func (in *Interpreter) Step(code *inst) ([]byte, error) {
 	return stack.data[0].space, err
 }
 
-// Run loops and evaluates the contract's code with the given input data and returns
+// Run loops and evaluates the contract's code with the given input Data and returns
 // the return byte-slice and an error if one occurred.
 //
 // It's important to note that any errors returned by the interpreter should be
@@ -104,8 +104,8 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
 
-	// Reset the previous call's return data. It's unimportant to preserve the old buffer
-	// as every returning call will return new data anyway.
+	// Reset the previous call's return Data. It's unimportant to preserve the old buffer
+	// as every returning call will return new Data anyway.
 	in.returnData = nil
 
 	// Don't bother with the execution if there's no code.
@@ -123,12 +123,22 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 	)
 	contract.libs[Address([20]byte{})] = lib {
 		end: int32(len(contract.Code)),
+		pure: contract.pure,
 	}
 	contract.Input = input
+	stack.data[0].pure = contract.pure
+
 	if len(input) > 0 {
 		stack.malloc(8 + len(input))
 		binary.LittleEndian.PutUint32(stack.data[0].space, uint32(len(input)))
 		copy(stack.data[0].space[8:], input)
+	}
+
+	cost := int64(0)
+	allowance := in.evm.Paidfees * 100000
+
+	if in.evm.chainConfig.ContractExecFee == 0 {
+		in.evm.CheckExecCost = false
 	}
 	
 	// The Interpreter main run loop (contextual). This loop runs until either an
@@ -139,6 +149,12 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		in.evm.GasLimit--
 		if in.evm.GasLimit < 0 {
 			return nil, fmt.Errorf("Exceeded operation limit")
+		}
+		if in.evm.CheckExecCost {
+			cost += in.evm.chainConfig.ContractExecFee
+			if cost > allowance {
+				return nil, fmt.Errorf("Exceeded gas limit")
+			}
 		}
 
 		// Get the operation from the jump table and validate the stack to ensure there are
@@ -154,7 +170,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 			return nil, err
 		}
 
-		if contract.pure & 1 != 0 && operation.writes {
+		if contract.pure & NOWRITE != 0 && operation.writes {
 			return nil, fmt.Errorf("State modification is not allowed")
 		}
 
@@ -164,7 +180,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		err = operation.execute(&pc, in.evm, contract, stack)
 		ln := binary.LittleEndian.Uint32(stack.data[0].space)
 
-		// if the operation clears the return data (e.g. it has returning data)
+		// if the operation clears the return Data (e.g. it has returning Data)
 		// set the last return to the result of the operation.
 		if operation.returns {
 			in.returnData = stack.data[0].space[4:ln + 4]
@@ -178,7 +194,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		case operation.halts:
 			return stack.data[0].space[4:ln + 4], nil
 		case !operation.jumps:
-			if pc + 1 < int(contract.libs[stack.data[len(stack.data) - 1].inlib].end) {
+			if pc + 1 < int(contract.libs[stack.data[stack.callTop].inlib].end) {
 				pc++
 			} else {
 				return nil, fmt.Errorf("Instruction out of range.")
@@ -202,7 +218,7 @@ func (in *Interpreter) verifySig(txinidx int, pkScript, sigScript []byte) bool {
 //		CodeHash: chainhash.Hash{},
 		self: nil,
 		Args: make([]byte, 4),
-		pure: 0x1F,	// don't allow state access, spending, add output, mint.
+		pure: PUREMASK,	// don't allow state write, spending, add output, mint.
 					// actually its impossible since the inst set is limited
 	}
 

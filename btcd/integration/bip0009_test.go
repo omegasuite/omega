@@ -196,7 +196,7 @@ func testBIP0009(t *testing.T, forkKey string, deploymentID uint32) {
 	}
 	deployment := &r.ActiveNet.Deployments[deploymentID]
 	activationThreshold := r.ActiveNet.RuleChangeActivationThreshold
-	signalForkVersion := int32(1<<deployment.BitNumber) | vbTopBits
+	signalForkVersion := int32(1<<deployment.FeatureMask) | vbTopBits
 	for i := uint32(0); i < activationThreshold-1; i++ {
 		_, err := r.GenerateAndSubmitBlock(nil, signalForkVersion,
 			time.Time{})
@@ -338,7 +338,7 @@ func TestBIP0009Mining(t *testing.T) {
 	// the test dummy bit set in the version since the first window is
 	// in the defined threshold state.
 	deployment := &r.ActiveNet.Deployments[chaincfg.DeploymentTestDummy]
-	testDummyBitNum := deployment.BitNumber
+	testDummyBitNum := deployment.FeatureMask
 	hashes, err := r.Node.Generate(1)
 	if err != nil {
 		t.Fatalf("unable to generate blocks: %v", err)

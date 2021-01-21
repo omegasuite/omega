@@ -207,28 +207,31 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 	return true
 }
 
-func (m *CPUMiner) factorPOW(hash chainhash.Hash) int64 {	// *big.Int {
-	chain := m.g.Chain.Miners.(*MinerChain)
-	best := chain.BestSnapshot()
-	baseh := best.Height
-	tip := chain.BestChain.NodeByHeight(baseh)
+func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 {	// *big.Int {
+//	chain := m.g.Chain.Miners.(*MinerChain)
+//	best := chain.BestSnapshot()
+//	baseh := best.Height
+//	tip := chain.BestChain.NodeByHeight(baseh)
 
-	for ; tip != nil && !tip.Hash.IsEqual(&best.Hash); tip = tip.Parent {
-		baseh--
-	}
+//	for ; tip != nil && !tip.Hash.IsEqual(&best.Hash); tip = tip.Parent {
+//		baseh--
+//	}
 
-	if tip == nil {
+//	if tip == nil {
 		// the block is not in chain. would happen only when a reorg happened. since this is for mining, we do the max.
-		return int64(1) << wire.SCALEFACTORCAP
-	}
+//		return int64(1) << wire.SCALEFACTORCAP
+//	}
+// func (m *CPUMiner) factorPOW(hash chainhash.Hash) int64 {	// *big.Int {
 
-	h := m.g.Chain.Rotation(tip.Data.(*blockchainNodeData).block.BestBlock)
+//	h := m.g.Chain.Rotation(tip.Data.(*blockchainNodeData).block.BestBlock)
+	h := m.g.Chain.Rotation(best)
 
 	if h < 0 {	// the best block is not in chain. since this is for mining, we do the max.
 		return int64(1) << wire.SCALEFACTORCAP
 	}
 
-	d := int32(baseh) - int32(h)
+//	d := int32(baseh) - int32(h)
+	d := prevh - h
 
 	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP
@@ -255,7 +258,8 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 	targetDifficulty := blockchain.CompactToBig(header.Bits)
 	header.Block.(*wire.MingingRightBlock).Bits = header.Bits
 
-	factorPOW := m.factorPOW(header.Block.(*wire.MingingRightBlock).PrevBlock)
+//	factorPOW := m.factorPOW(header.Block.(*wire.MingingRightBlock).PrevBlock)
+	factorPOW := m.factorPOW(header.Height - 1, header.Block.(*wire.MingingRightBlock).BestBlock)
 
 	// Initial state.
 	hashesCompleted := uint64(0)
@@ -461,9 +465,9 @@ out:
 		if err != nil {
 			log.Infof("miner.NewMinerBlockTemplate error: %s", err.Error())
 		}
-		m.submitBlockLock.Unlock()
-		
+
 		if err != nil || template == nil {
+			m.submitBlockLock.Unlock()
 			m.Stale = true
 			log.Infof("miner.generateBlocks: sleep on err != nil || template == nil, curHeight = %d", curHeight)
 			time.Sleep(time.Second * 5)
@@ -482,11 +486,30 @@ out:
 		} else if len(m.cfg.RSAPubKey) > 0 {
 			block.MsgBlock().Connection = []byte(m.cfg.RSAPubKey)
 		} else {
+			m.submitBlockLock.Unlock()
 			m.Stale = true
 			log.Infof("miner.generateBlocks: sleep because no connection info is set = %d", curHeight)
 			time.Sleep(time.Second * 5)
 			continue
 		}
+
+		bm := len(m.g.Chain.BlackedList)
+		if bm > 0 {
+			bl := make([]wire.BlackList, 0, bm)
+			for j := 0; j < bm; j++ {
+				n := m.g.Chain.BlackedList[j]
+				mb, _ := m.g.Chain.Miners.BlockByHash(&n.MRBlock)
+				if mb.Height() < template.Height-99 {
+					continue
+				}
+				bl = append(bl, *n)
+			}
+			m.g.Chain.BlackedList = m.g.Chain.BlackedList[bm:]
+			if len(bl) > 0 {
+				block.MsgBlock().BlackList = bl
+			}
+		}
+		m.submitBlockLock.Unlock()
 
 		log.Infof("miner Trying to solve block at %d with difficulty %d", template.Height, template.Bits)
 		if m.solveBlock(template, curHeight+1, ticker, quit) {
@@ -567,7 +590,7 @@ out:
 // already been started will have no effect.
 //
 // This function is safe for concurrent access.
-func (m *CPUMiner) Start(collateral []wire.OutPoint) {
+func (m *CPUMiner) Start(collateral *wire.OutPoint) {
 	m.Lock()
 	defer m.Unlock()
 
@@ -583,6 +606,7 @@ func (m *CPUMiner) Start(collateral []wire.OutPoint) {
 
 	m.quit = make(chan struct{})
 	m.speedMonitorQuit = make(chan struct{})
+
 	m.wg.Add(2)
 	go m.speedMonitor()
 	go m.miningWorkerController()
@@ -608,7 +632,6 @@ func (m *CPUMiner) Stop() {
 
 		close(m.quit)
 		m.started = false
-
 		m.wg.Wait()
 	}
 }

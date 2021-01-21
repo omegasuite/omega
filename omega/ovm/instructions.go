@@ -73,7 +73,7 @@ var IssuedTokenTypes = []byte("issuedTokens")
 
 // first operand is a pointer
 
-var checkTop = map[uint8]int{'+':1, '-':1, '*':1, '/':1, '%':1, '#':1,
+var checkTop = map[uint8]int{'+':1, '-':1, '*':1, '/':1, '%':1, '#':1, '&':1,
 	'[':1, ']':1, '|':1, '^':1, '>':1, '<':1, '=':1, ')':1, '(':1, '!':1, '?':2}
 var sizeOfType = map[byte]uint32 {'R':21, 'r':20,
 	'B':1, 'W':2, 'D':4, 'Q':8, 'H':32, 'h': 32,
@@ -137,9 +137,9 @@ func (stack * Stack) getNum(param []byte, dataType byte) (int64, int, error) {
 			t := int64(0)
 			num := int64(0)
 			if global == 0 {
-				t = int64(len(stack.data) - 1)
-//			} else if global == 2 {
-//				nums[0] += int64(stack.data[len(stack.data) - 1].gbase)
+				t = int64(stack.callTop)
+			} else {
+				t = int64(stack.data[stack.callTop].gbase)
 			}
 
 			if indirect > 0 {	// || dataType == 0xFF {
@@ -240,6 +240,11 @@ func opEval8(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case 'u':	// u
 			unsigned = true
+
+		case '@':
+			if top != 0 {
+				return fmt.Errorf("Malformed expression.")
+			}
 
 		case 'B', 'W', 'D', 'Q', 'H':
 			dataType = 0x42
@@ -433,6 +438,11 @@ func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 			}
 			dataType = 0x57
+
+		case '@':
+			if top != 0 {
+				return fmt.Errorf("Malformed expression.")
+			}
 
 		case 'B':
 			dataType = param[j]
@@ -634,6 +644,11 @@ func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 			}
 			dataType = 0x44
+
+		case '@':
+			if top != 0 {
+				return fmt.Errorf("Malformed expression.")
+			}
 
 		case 'B', 'W':
 			dataType = param[j]
@@ -1021,9 +1036,9 @@ func (stack * Stack) addressing(indirect int, global byte, hasoffset int, offset
 	t := int64(0)
 
 	if global == 0 {
-		t = int64(len(stack.data) - 1)
-//	} else if global == 2 {
-//		offsets[0] += int64(stack.data[len(stack.data) - 1].gbase)
+		t = int64(stack.callTop)
+	} else {
+		t = int64(stack.data[stack.callTop].gbase)
 	}
 
 	p := pointer((t << 32) | offsets[0])
@@ -1040,7 +1055,11 @@ func (stack * Stack) addressing(indirect int, global byte, hasoffset int, offset
 		p = pointer((p &^ 0xFFFFFFFF) | ((p + pointer(offsets[2])) & 0xFFFFFFFF))
 	}
 
-	if notaddr && int(p & 0xFFFFFFFF) >= len(stack.data[(p &^ 0xFFFFFFFF) >> 32].space) {
+	if _,ok := stack.data[int32(p >> 32)]; !ok {
+		return 0, fmt.Errorf("Memory address fault")
+	}
+
+	if notaddr && int(p & 0xFFFFFFFF) >= len(stack.data[int32(p >> 32)].space) {
 		return 0, fmt.Errorf("Memory address fault")
 	}
 
@@ -1311,7 +1330,10 @@ func (stack * Stack) getBytesLen(param []byte, dlen uint32) ([]byte, int, error)
 					return nil, 0, err
 				}
 				s := uint32(p & 0xFFFFFFFF)
-				tmp = stack.data[p >> 32].space[s : s + dlen]
+				if _,ok := stack.data[int32(p >> 32)]; !ok {
+					return nil, j - 1, fmt.Errorf("Memory address fault")
+				}
+				tmp = stack.data[int32(p >> 32)].space[s : s + dlen]
 			}
 			return tmp, j, nil
 
@@ -1389,6 +1411,9 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case 'B', 'W', 'D', 'Q', 'H':
 			dataType = param[j]
+
+		case '@':	// @
+			dataType = 0xFF
 
 		case 'P':	// deference as address
 			tp := pointer(scratch[top-1].Int64());
@@ -1583,37 +1608,47 @@ func opConv(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	if srcType == 0x48 && destType == 0x42 {
 		destType = 0x48
 	}
+
+	p0 := int32(scratch[0].p >> 32)
+	p1 := int32(scratch[1].p >> 32)
+	if _,ok := stack.data[p0]; !ok {
+		return fmt.Errorf("Memory address fault")
+	}
+	if _,ok := stack.data[p1]; !ok {
+		return fmt.Errorf("Memory address fault")
+	}
+
 	if srcType == destType {
 		n := sizeOfType[destType]
-		copy(stack.data[scratch[1].p >> 32].space[uint32(scratch[1].p):],
-			stack.data[scratch[0].p >> 32].space[uint32(scratch[0].p):uint32(scratch[0].p) + n])
+		copy(stack.data[p1].space[uint32(scratch[1].p):],
+			stack.data[p0].space[uint32(scratch[0].p):uint32(scratch[0].p) + n])
 	} else if m > n {
-		copy(stack.data[scratch[1].p >> 32].space[uint32(scratch[1].p):],
-			stack.data[scratch[0].p >> 32].space[uint32(scratch[0].p):uint32(scratch[0].p) + n])
-		if unsigned || stack.data[scratch[0].p >> 32].space[uint32(scratch[0].p) + n - 1] & 0x80 == 0 {
-			copy(stack.data[scratch[1].p >> 32].space[uint32(scratch[1].p) + n:],
+		copy(stack.data[p1].space[uint32(scratch[1].p):],
+			stack.data[p0].space[uint32(scratch[0].p):uint32(scratch[0].p) + n])
+		if unsigned || stack.data[p0].space[uint32(scratch[0].p) + n - 1] & 0x80 == 0 {
+			copy(stack.data[p1].space[uint32(scratch[1].p) + n:],
 				make([]byte, m-n))
 		} else {
 			for ; n < m; n++ {
-				stack.data[scratch[1].p >> 32].space[uint32(scratch[1].p) + n] = 0xFF
+				stack.data[p1].space[uint32(scratch[1].p) + n] = 0xFF
 			}
 		}
 	} else {
-		if unsigned || stack.data[scratch[0].p >> 32].space[uint32(scratch[0].p) + m - 1] & 0x80 == 0 {
+		if unsigned || stack.data[p0].space[uint32(scratch[0].p) + m - 1] & 0x80 == 0 {
 			for i := m; i < n; i++ {
-				if stack.data[scratch[0].p >> 32].space[uint32(scratch[0].p) + i] != 0 {
+				if stack.data[p0].space[uint32(scratch[0].p) + i] != 0 {
 					return fmt.Errorf("Numeric overflow in conversion.")
 				}
 			}
 		} else {
 			for i := m; i < n; i++ {
-				if stack.data[scratch[0].p>>32].space[uint32(scratch[0].p)+i] != 0xFF {
+				if stack.data[p0].space[uint32(scratch[0].p)+i] != 0xFF {
 					return fmt.Errorf("Numeric overflow in conversion.")
 				}
 			}
 		}
-		copy(stack.data[scratch[1].p >> 32].space[uint32(scratch[1].p):],
-			stack.data[scratch[0].p >> 32].space[uint32(scratch[0].p):uint32(scratch[0].p) + m])
+		copy(stack.data[p1].space[uint32(scratch[1].p):],
+			stack.data[p0].space[uint32(scratch[0].p):uint32(scratch[0].p) + m])
 	}
 
 	return nil
@@ -1651,8 +1686,10 @@ func opHash(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	t := scratch[1]
 	a := t & 0xFFFFFFFF
 	b := a + (scratch[2] & 0xFFFFFFFF)
-
-	hash := chainhash.HashB(stack.data[t >> 32].space[a:b])
+	if _,ok := stack.data[int32(t>>32)]; !ok {
+		return fmt.Errorf("Memory address fault")
+	}
+	hash := chainhash.HashB(stack.data[int32(t >> 32)].space[a:b])
 
 	return stack.saveBytes(&scratch[0], hash)
 }
@@ -1689,8 +1726,11 @@ func opHash160(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	t := scratch[1]
 	a := t & 0xFFFFFFFF
 	b := a + (scratch[2] & 0xFFFFFFFF)
-
-	hash := hash160(stack.data[t >> 32].space[a:b])
+	if _,ok := stack.data[int32(t>>32)]; !ok {
+		return fmt.Errorf("Memory address fault")
+	}
+	hash := btcutil.Hash160(stack.data[int32(t >> 32)].space[a:b])
+//	hash := hash160(stack.Data[t >> 32].space[a:b])
 
 	return stack.saveBytes(&scratch[0], hash)
 }
@@ -1745,9 +1785,10 @@ func opSigCheck(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 			case 2:
 				format := pubKey[0]
-				if format != btcec.PubKeyBytesLenCompressed  && format != btcec.PubKeyBytesLenHybrid {
+				if format != btcec.PubKeyBytesLenCompressed && format != btcec.PubKeyBytesLenHybrid {
 					return fmt.Errorf("invalid magic in pubkey str: %d", format)
 				}
+
 				pubKey = pubKey[1:format + 1]
 
 			case 3:
@@ -1821,7 +1862,7 @@ func opIf(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		target = *pc + int(scratch[1])
 	}
 
-	inlib := stack.data[len(stack.data) - 1].inlib
+	inlib := stack.data[stack.callTop].inlib
 	if target < int(contract.libs[inlib].address) || target >= int(contract.libs[inlib].end) {
 		return fmt.Errorf("Out of range jump")
 	}
@@ -1850,8 +1891,8 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	f := newFrame()
 	f.space = append(f.space, []byte{0,0,0,0,0,0,0,0}...)
-	binary.LittleEndian.PutUint32(f.space[4:], uint32(len(stack.data)))
-	inlen := 0
+	binary.LittleEndian.PutUint32(f.space[4:], uint32(stack.callTop + 1))
+	inlen := 8
 
 	paramTypes := []byte{'L', 'D', 'Q' }
 
@@ -1898,7 +1939,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				if _, ok := contract.libs[libAddr]; !ok {
 					return fmt.Errorf("Lib not loaded")
 				}
-				isself = allZero(libAddr[:]) || bytes.Compare(libAddr[:], stack.data[len(stack.data) - 1].inlib[:]) == 0
+				isself = allZero(libAddr[:]) || bytes.Compare(libAddr[:], stack.data[stack.callTop].inlib[:]) == 0
 				top++
 
 			case 1:
@@ -1917,9 +1958,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 			case 2:
 				var bn [8]byte
-				for i := 0; i < 8; i++ {
-					bn[i] = byte((num >> (i * 8)) & 0xFF)
-				}
+				binary.LittleEndian.PutUint64(bn[:], uint64(num))
 				f.space = append(f.space, bn[:]...)
 				inlen += 8
 			}
@@ -1929,13 +1968,12 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	if top >= 2 {
 		f.pc = *pc
-		f.pure = contract.pure
+		f.pure = stack.data[stack.callTop].pure | contract.libs[libAddr].pure
 		if isself {
-			libAddr = stack.data[len(stack.data)-1].inlib
+			libAddr = stack.data[stack.callTop].inlib
 		}
 		f.inlib = libAddr
-//		f.gbase = contract.libs[libAddr].base
-		contract.pure = contract.libs[libAddr].pure
+		f.gbase = contract.libs[libAddr].base
 
 		var target int32
 		if isself {
@@ -1947,7 +1985,11 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			target = contract.libs[libAddr].address
 		}
 		*pc = int(target)
-		stack.data = append(stack.data, f)
+		stack.callTop++
+		stack.data[stack.callTop] = f
+		if stack.callTop > 1024 {
+			return fmt.Errorf("Call stack depth exceeds the max 1024 limit")
+		}
 		return nil
 	}
 
@@ -1955,9 +1997,9 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
-	if stack.data[len(stack.data) - 1].pure & 0x8 != 0 {
-		return fmt.Errorf("Load forbidden in lib %x", stack.data[len(stack.data) - 1].inlib)
-	}
+//	if stack.Data[stack.callTop].pure & 0x8 != 0 {
+//		return fmt.Errorf("Load forbidden in lib %x", stack.Data[stack.callTop].inlib)
+//	}
 
 	param := contract.GetBytes(*pc)
 	ln := len(param)
@@ -2001,11 +2043,15 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	stack.saveInt32(&store, int32(n))
 	store += 4
+	p,err := stack.toPointer(&store)
+	if err != nil {
+		return err
+	}
 	for i := uint32(0); i < n; i++ {
-		if err := stack.saveByte(&store, d[i]); err != nil {
+		if err := stack.saveByte(&p, d[i]); err != nil {
 			return err
 		}
-		store++
+		p++
 	}
 
 	log.Debugf("loading %x = %x (%d)", h, d, n)
@@ -2015,10 +2061,10 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 //	{patOperand, 0}, - key
-//	{dataType, 0}, - data type/length
-//	{patOperand, 0}, - data
-	if stack.data[len(stack.data) - 1].pure & 0x1 != 0 {
-		return fmt.Errorf("Store forbidden in lib %x", stack.data[len(stack.data) - 1].inlib)
+//	{dataType, 0}, - Data type/length
+//	{patOperand, 0}, - Data
+	if stack.data[stack.callTop].pure & NOWRITE != 0 {
+		return fmt.Errorf("Store forbidden in lib %x", stack.data[stack.callTop].inlib)
 	}
 
 	param := contract.GetBytes(*pc)
@@ -2027,39 +2073,44 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	num := chainhash.Hash{}
 	var tl int
 	var err error
-	var scratch [2][]byte
+	var scratch [3][]byte
 	top := 0
 	idx := 0
 
-	dataType := []byte{'Q', 'L', 'B'}
+	dataType := []byte{'Q', 'L', 'B', 'B'}
 	dt := byte('Q')
 	var dlen uint32
 	dlen = sizeOfType[dt]
 	fdlen := dlen
+	dts := []byte{'D', 'D', 'L'}
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
+		case 'i', 'g':
+			dt = dts[top]
+			fallthrough
+
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
-			'd', 'e', 'f', 'x', 'i', 'g':
+			'd', 'e', 'f', 'x':
 			switch dt {
 			case 'k', 'K', 'r', 'R':
 				var num []byte
 				if num, tl, err = stack.getBytes(param[j:], dt, 0); err != nil {
 						return err
 					}
-				scratch[top] = num
+				scratch[idx] = num
 			case 'H', 'h':
 				if num, tl, err = stack.getHash(param[j:]); err != nil {
 					return err
 				}
-				scratch[top] = num[:]
+				scratch[idx] = num[:]
 			case 'L':
 				var num []byte
 				if num, tl, err = stack.getBytesLen(param[j:], dlen); err != nil {
 					return err
 				}
-				scratch[top] = num
+				scratch[idx] = num
 			default:
 				num := int64(0)
 				if num, tl, err = stack.getNum(param[j:], dt); err != nil {
@@ -2068,9 +2119,15 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				var d [8]byte
 				binary.LittleEndian.PutUint64(d[:], uint64(num))
 				if top == 0 && num >= 0 && num < (1 << 32) {
-					scratch[top] = d[:4]
+					scratch[idx] = d[:4]
+				} else if top == 1 {
+					dt = 'L'
+					dlen = uint32(num)
+					j += tl
+					top++
+					continue
 				} else {
-					scratch[top] = d[:sizeOfType[dt]]
+					scratch[idx] = d[:sizeOfType[dt]]
 				}
 			}
 			fdlen = dlen
@@ -2085,7 +2142,7 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			dt = param[j]
 			dlen = sizeOfType[dt]
 
-		case 'L':	// long data
+		case 'L':	// long Data
 			dt = 'L'
 			j++
 			num := int64(0)
@@ -2174,11 +2231,12 @@ func opReceived(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+	// format: exec contract_addr,pure,return_receiver,coin,param_len,params
 	param := contract.GetBytes(*pc)
 	ln := len(param)
 
 	num := int64(0)
-	var bnum *big.Int
+//	var bnum *big.Int
 	top := 0
 
 	var toAddr Address
@@ -2189,8 +2247,11 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var tl int
 	var err error
 	var args []byte
+	var bl []byte
 
-	paramTypes := []byte{0xFF, 0x48, 0xFF, 0xFF, 0x44}
+	pure := byte(0)
+
+	paramTypes := []byte{'r', 'B', 0xFF, 0xFF, 0x44, 0xFF}
 
 	for j := 0; j < ln; j++ {
 		dataType := paramTypes[top]
@@ -2198,8 +2259,10 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
-			if dataType == 0x48 {
-				bnum, tl, err = stack.getBig(param[j:])
+			if dataType == 'r' {
+				bl, tl, err = stack.getBytes(param[j:], 'r', 20)
+//			} else if dataType == 0x48 {
+//				bnum, tl, err = stack.getBig(param[j:])
 			} else {
 				num, tl, err = stack.getNum(param[j:], dataType)
 			}
@@ -2207,17 +2270,24 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			j += tl
 
 			switch top {
-			case 0:
-				retspace = pointer(num)
+			case 0:	// contract address
+				copy(toAddr[:], bl)
 
-			case 1:	// address
-				toAddr = BigToAddress(bnum)
+			case 1:
+				pure = byte(num)
 
 			case 2:
+				// mem. location to accept result
+				retspace = pointer(num)
+
+			case 3:
 				if num != 0 {
 					value = &token.Token{}
 					var r bytes.Reader
-					r.Reset(stack.data[num>>32].space[num&0xFFFFFFFF:])
+					if _,ok := stack.data[int32(num>>32)]; !ok {
+						return fmt.Errorf("Memory address fault")
+					}
+					r.Reset(stack.data[int32(num>>32)].space[num&0xFFFFFFFF:])
 					value.Read(&r, 0, 0)
 
 					if value.TokenType & 1 == 0 && value.Value.(*token.NumToken).Val == 0 {
@@ -2225,13 +2295,18 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					}
 				}
 
-			case 3:
-				data = pointer(num)
-
 			case 4:
 				datalen = int32(num)
 
-				args = stack.data[data >> 32].space[data & 0xFFFFFFFF:int32(int64(data) & 0xFFFFFFFF) + datalen]
+			case 5:
+				data = pointer(num)
+				if _,ok := stack.data[int32(data>>32)]; !ok {
+					return fmt.Errorf("Memory address fault")
+				}
+				if int(int64(data) & 0xFFFFFFFF) + int(datalen) > len(stack.data[int32(data >> 32)].space) {
+					return fmt.Errorf("Memory address fault")
+				}
+				args = stack.data[int32(data >> 32)].space[data & 0xFFFFFFFF:int32(int64(data) & 0xFFFFFFFF) + datalen]
 
 			default:
 				return fmt.Errorf("Malformed parameters")
@@ -2245,16 +2320,25 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	copy(pks[1:], toAddr[:])
 	copy(pks[21:], args)
 
-	tx := evm.GetTx()
-	msg := tx.MsgTx()
-	if !tx.HasOuts {
-		// this servers as a separater. only TokenType is serialized
-		to := wire.TxOut{}
-		to.Token = token.Token{TokenType:token.DefTypeSeparator}
-		msg.AddTxOut(&to)
-		tx.HasOuts = true
+	pure |= stack.data[stack.callTop].pure
+
+	if pure != 0x1F || (value != nil && (value.TokenType & 1 != 0 ||
+		(value.TokenType & 1 == 0 && value.Value.(*token.NumToken).Val != 0))) {
+		// if allowed to write something, will add a txout. note: can't decide
+		// whther to add txout based on value given to the contract only, because
+		// we determine Rollback Data based on presence of contract in txout
+		tx := evm.GetTx()
+		msg := tx.MsgTx()
+		if !tx.HasOuts {
+			// this servers as a separater. only TokenType is serialized
+			to := wire.TxOut{}
+			to.Token = token.Token{TokenType:token.DefTypeSeparator}
+			msg.AddTxOut(&to)
+			tx.HasOuts = true
+		}
+
+		msg.AddTxOut(&wire.TxOut{PkScript: pks, Token: *value})
 	}
-	msg.AddTxOut(&wire.TxOut{PkScript:pks, Token:*value})
 
 	for _,d := range evm.contractStack {
 		if d == toAddr {
@@ -2263,7 +2347,7 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 	evm.contractStack = append(evm.contractStack, toAddr)
 
-	ret, err := evm.Call(toAddr, args[:4], value, args)		// nil=>value
+	ret, err := evm.Call(toAddr, args[:4], value, args, pure)		// nil=>value
 	evm.contractStack = evm.contractStack[:len(evm.contractStack) - 1]
 
 	if err != nil {
@@ -2273,12 +2357,15 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	m := len(ret)
 	if retspace != 0 && m > 0 {
 		var p pointer
-		if int64(retspace) >> 32 == int64(len(stack.data)) - 1 {
+		if int32(retspace >> 32) == stack.callTop {
 			p,_ = stack.alloc(m)
 		} else {
 			p,_ = stack.malloc(m)
 		}
-		copy(stack.data[p >> 32].space[p & 0xFFFFFFFF:], ret)
+		if _,ok := stack.data[int32(p>>32)]; !ok {
+			return fmt.Errorf("Memory address fault")
+		}
+		copy(stack.data[int32(p >> 32)].space[p & 0xFFFFFFFF:], ret)
 		if err := stack.saveInt64(&retspace, int64(p)); err != nil {
 			return err
 		}
@@ -2338,7 +2425,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 			switch top {
 			case 0:
-				pure = byte(num) | stack.data[len(stack.data)-1].pure
+				pure = byte(num)
 				top++
 
 			case 1:
@@ -2360,29 +2447,39 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				evm.StateDB[d] = sd
 
 				ccode := ByteCodeParser(evm.GetCode(d))
+				stack.libTop--
+
+				if stack.libTop < -1024 {
+					return fmt.Errorf("Lib loaded exceeds the max 1024 limit")
+				}
+
 				contract.libs[d] = lib{
 					address: int32(len(contract.Code)),
 					end: int32(len(contract.Code) + len(ccode)),
-					base: int32(len(stack.data[0].space)),
+					base: stack.libTop,
 					pure: pure,
 				}
+				g := newFrame()
+				g.inlib, g.gbase, g.pure = d, stack.libTop, pure
+				stack.data[stack.libTop] = g
+
 				contract.Code = append(contract.Code, ccode...)
 
 				// execute init call
 				f.space = append(f.space, []byte{4,0,0,0,0,0,0,0}...)
-				binary.LittleEndian.PutUint32(f.space[4:], uint32(len(stack.data)))
+				binary.LittleEndian.PutUint32(f.space[4:], uint32(contract.libs[d].base))
 
 				var bn [4]byte
 				binary.LittleEndian.PutUint32(bn[:], uint32(1))	// entry point for init()
 				f.space = append(f.space, bn[:]...)
 				f.pc = *pc
-				f.pure = pure
+				f.pure = pure | stack.data[stack.callTop].pure
 				f.inlib = d
-//				f.gbase = contract.libs[d].base
-				contract.pure = pure
+				f.gbase = contract.libs[d].base
 
 				*pc = int(contract.libs[d].address)
-				stack.data = append(stack.data, f)
+				stack.callTop++
+				stack.data[stack.callTop] = f
 				top++
 
 			case 2:
@@ -2443,7 +2540,12 @@ func opMAalloc(pc *int, evm *OVM, contract *Contract, stack *Stack, glob bool) e
 				retspace = pointer(num)
 
 			case 1:
-				p,_ := stack.alloc(int(num))
+				var p pointer
+				if glob {
+					p, _ = stack.malloc(int(num))
+				} else {
+					p, _ = stack.alloc(int(num))
+				}
 
 				if retspace != 0 {
 					return stack.saveInt64(&retspace, int64(p))
@@ -2514,7 +2616,7 @@ func opCopy(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 
 //				num += int64(src) & 0xFFFFFFFF
-//				copy(stack.data[dest >> 32].space[dest & 0xFFFFFFFF:], stack.data[src >> 32].space[src & 0xFFFFFFFF:num])
+//				copy(stack.Data[dest >> 32].space[dest & 0xFFFFFFFF:], stack.Data[src >> 32].space[src & 0xFFFFFFFF:num])
 				return nil
 			}
 			top++
@@ -2688,6 +2790,10 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+	if contract.pure != 0 {
+		return fmt.Errorf("Suicide instruction restricted by contract right")
+	}
+
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -2698,27 +2804,17 @@ func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var dlen int64;
 	top := 0
 
-	dataType := []byte{'D', 'L'}
-
 	for j := 0; j < ln; j++ {
 		switch param[j] {
-		case 'B', 'W', 'D':
-			dataType[0] = param[j]
-
-		case 'H', 'Q':
-			dataType[0] = 'D'
-
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
-			switch dataType[top] {
-			case 'B', 'W', 'D':
-				if dlen, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
+			if top == 0 {
+				if dlen, tl, err = stack.getNum(param[j:], 'D'); err != nil {
 					return err
 				}
-
-			case 'L':
-				if h, tl, err = stack.getBytes(param[j:], dataType[top], uint32(dlen)); err != nil {
+			} else {
+				if h, tl, err = stack.getBytesLen(param[j:], uint32(dlen)); err != nil {
 					return err
 				}
 			}
@@ -2728,7 +2824,7 @@ func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	mtype, _ := evm.StateDB[contract.Address()].GetMint()
-	if (dlen != 0 && len(h) > 20 && mtype != 0) {
+	if (dlen != 0 && len(h) > 20 && mtype != -1) {
 		// exec contract
 		version, addr, method, cparam := parsePkScript(h)
 
@@ -2774,21 +2870,24 @@ func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			msg.AddTxOut(&to)
 			tx.HasOuts = true
 		}
-		msg.AddTxOut(&wire.TxOut{PkScript:h, Token:token.Token{}})
+		msg.AddTxOut(&wire.TxOut{PkScript:h, Token:token.Token{0, &token.NumToken{0}, nil}})
 
 		evm.contractStack = append(evm.contractStack, d)
-		evm.TokenTypes[mtype] = contract.Address()
+		evm.TokenTypes[uint64(mtype)] = contract.Address()
 
-		evm.StateDB[contract.Address()].transferrable = true;
-		_, err := evm.Call(d, method, nil, cparam)
+		evm.StateDB[contract.Address()].transferrable = true
+		_, err := evm.Call(d, method, nil, cparam, 0)
 
 		if evm.StateDB[contract.Address()].transferrable {
-			err = omega.ScriptError(omega.ErrInternal, "Mint not transferred.")
+			err = omega.ScriptError(omega.ErrInternal, "Mint right not transferred.")
 		}
 		if err != nil {
-			evm.TokenTypes[mtype] = contract.Address()
+			evm.StateDB[contract.Address()].transferrable = false
+			evm.TokenTypes[uint64(mtype)] = contract.Address()
 			return err
 		}
+	} else if dlen != 0 || h != nil {
+		return fmt.Errorf("Bad suicide instruction")
 	}
 
 	evm.StateDB[contract.Address()].Suicide()
@@ -2804,13 +2903,13 @@ func opStop(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opReturn(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
-	n := len(stack.data) - 1
-	if n <= 0 {
+	if stack.callTop <= 0 {
 		return nil
 	}
-	*pc = stack.data[n].pc
-	contract.pure = stack.data[n].pure
-	stack.data = stack.data[:n]
+	*pc = stack.data[stack.callTop].pc
+//	contract.pure = stack.Data[stack.callTop].pure
+	delete(stack.data, stack.callTop)
+	stack.callTop--
 	return nil
 }
 
@@ -2820,6 +2919,10 @@ var negHash = chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, }
 
 func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+	if stack.data[stack.callTop].pure & NOSPENDING != 0 {
+		return fmt.Errorf("Spend instruction restricted by contract right")
+	}
+
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -2869,19 +2972,19 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					pks = u.PkScript
 				}
 
-				adr := contract.self.Address()
-				lib := stack.data[len(stack.data) - 1].inlib
+				lib := stack.data[stack.callTop].inlib
 				if !isContract(pks[0]) {
 					return fmt.Errorf("Contract try to spend what does not belong to it.")
 				}
 
-				usr := bytes.Compare(pks[1:21], adr[:]) == 0
+				var zaddr [20]byte
+
+				if bytes.Compare(lib[:], zaddr[:]) == 0 {
+					lib = contract.Address()
+				}
+
 				libusr := bytes.Compare(pks[1:21], lib[:]) == 0
-				if !usr && !libusr {
-					return fmt.Errorf("Unauthorized spending.")
-				} else if libusr && bytes.Compare(stack.data[len(stack.data) - 1].inlib[:], lib[:]) != 0 {
-					return fmt.Errorf("Unauthorized spending.")
-				} else if usr && stack.data[len(stack.data) - 1].pure & 0x2 != 0 {
+				if !libusr {
 					return fmt.Errorf("Unauthorized spending.")
 				}
 
@@ -2898,6 +3001,10 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+	if contract.pure &NODEFINE != 0 {
+		return fmt.Errorf("AddRight instruction restricted by contract right")
+	}
+
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -2929,7 +3036,11 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	defType = stack.data[num >> 32].space[num & 0xFFFFFFFF]
+	if _,ok := stack.data[int32(num >> 32)]; !ok {
+		return fmt.Errorf("Memory address fault")
+	}
+
+	defType = stack.data[int32(num >> 32)].space[num & 0xFFFFFFFF]
 	var tk token.Definition
 
 	switch defType {
@@ -2946,7 +3057,7 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var r bytes.Reader
 
 	num++
-	r.Reset(stack.data[num >> 32].space[num & 0xFFFFFFFF:])
+	r.Reset(stack.data[int32(num >> 32)].space[num & 0xFFFFFFFF:])
 	if err := tk.MemRead(&r, 0); err != nil {
 		return err
 	}
@@ -2961,8 +3072,8 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
-	if stack.data[len(stack.data) - 1].pure & 0x4 != 0 {
-		return fmt.Errorf("Load forbidden in lib %x", stack.data[len(stack.data) - 1].inlib)
+	if stack.data[stack.callTop].pure & NOOUTPUT != 0 {
+		return fmt.Errorf("AddTxOut forbidden in lib %x", stack.data[stack.callTop].inlib)
 	}
 
 	param := contract.GetBytes(*pc)
@@ -2978,6 +3089,8 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
+		case '@':
+
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
@@ -3005,7 +3118,11 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	var r bytes.Reader
 
-	r.Reset(stack.data[num>>32].space[num&0xFFFFFFFF : (num&0xFFFFFFFF)+100])
+	if _,ok := stack.data[int32(num >> 32)]; !ok {
+		return fmt.Errorf("Memory address fault")
+	}
+
+	r.Reset(stack.data[int32(num>>32)].space[num&0xFFFFFFFF : (num&0xFFFFFFFF)+100])
 	if err := tk.Read(&r, 0, 0, wire.SignatureEncoding); err != nil {
 		return err
 	}
@@ -3313,7 +3430,7 @@ func opNul(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 var (
 	errWriteProtection       = errors.New("evm: write protection")
-	errReturnDataOutOfBounds = errors.New("evm: return data out of bounds")
+	errReturnDataOutOfBounds = errors.New("evm: return Data out of bounds")
 	errExecutionReverted     = errors.New("evm: execution reverted")
 	errMaxCodeSizeExceeded   = errors.New("evm: max code size exceeded")
 )
@@ -3345,10 +3462,10 @@ func Exp(base, exponent *big.Int) *big.Int {
 }
 
 func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
-	if stack.data[len(stack.data) - 1].pure & 0x10 != 0 {
-		return fmt.Errorf("Unauthorized spending.")
+	if stack.data[stack.callTop].pure & NOMINT != 0 || stack.data[stack.callTop].gbase != 0 {
+		return fmt.Errorf("Unauthorized minting.")
 	}
-//	{addrOperand, 0xFFFFFFFF}, - return data place holder
+//	{addrOperand, 0xFFFFFFFF}, - return Data place holder
 //	{patOperand, 0}, - tokentype
 //	{patOperand, 0}, - amount / hash
 //	{patOperand, 0}, - right
@@ -3368,7 +3485,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	var r chainhash.Hash		// right hash
 	var tokentype uint64
 
-	dataType := []byte{0xFF, 'Q', 'D', 'h'}
+	dataType := []byte{0xFF, 'Q', 'Q', 'h'}
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
@@ -3407,45 +3524,38 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	mtype, _ := ovm.StateDB[address].GetMint()
-
-	if mtype == 0 {
-		if adr,ok := ovm.TokenTypes[tokentype]; ok {
-			if adr != address {
-				if ovm.StateDB[address].transferrable {
-					mtype, issue := ovm.StateDB[adr].GetMint()
-					if mtype == tokentype {
-						ovm.TokenTypes[tokentype] = address
-						ovm.StateDB[address].transferrable = false
-						c := make([]byte, 16)
-
-						binary.LittleEndian.PutUint64(c, tokentype)
-						binary.LittleEndian.PutUint64(c[8:], issue)
-
-						ovm.setMeta(address, "mint", c[:])
-						return nil
-					}
-				}
-				return fmt.Errorf("The tokentype %d has already been used by another smart contract.")
+	if mtype, _ := ovm.StateDB[address].GetMint(); mtype == -1 {
+		var mtk [8]byte
+		binary.LittleEndian.PutUint64(mtk[:], tokentype)
+		// mint for the first time. fail if the tokentype has been issued.
+		ovm.StateDB[address].DB.View(func(dbTx database.Tx) error {
+			bucket := dbTx.Metadata().Bucket(IssuedTokenTypes)
+			adr := bucket.Get(mtk[:])
+			if adr != nil {
+				var addr [20]byte
+				copy(addr[:], adr)
+				ovm.TokenTypes[tokentype] = addr
+				ovm.ExistingTokenTypes[tokentype] = addr
+			} else {
+				ovm.TokenTypes[tokentype] = address
 			}
-		} else {
-			var mtk [8]byte
-			binary.LittleEndian.PutUint64(mtk[:], tokentype)
-			// mint for the first time. fail if the tokentype has been issued.
-			if err := ovm.StateDB[address].DB.View(func(dbTx database.Tx) error {
-				bucket := dbTx.Metadata().Bucket(IssuedTokenTypes)
-				adr := bucket.Get(mtk[:])
-				if adr != nil && bytes.Compare(adr, address[:]) != 0 {
-					return fmt.Errorf("The tokentype %d has already been used by another smart contract.")
-				}
-				if adr == nil {
-					ovm.TokenTypes[tokentype] = address
-				}
+			return nil
+		})
 
+		if adr := ovm.TokenTypes[tokentype]; adr != address {
+			if t,ok := ovm.StateDB[adr]; ok && t.transferrable {
+				_, issue := t.GetMint()
+				ovm.TokenTypes[tokentype] = address
+				t.transferrable = false
+				c := make([]byte, 16)
+
+				binary.LittleEndian.PutUint64(c, tokentype)
+				binary.LittleEndian.PutUint64(c[8:], issue)
+
+				ovm.setMeta(address, "mint", c[:])
 				return nil
-			}); err != nil {
-				return err
 			}
+			return fmt.Errorf("The tokentype %d has already been used by another smart contract.")
 		}
 	}
 
@@ -3467,6 +3577,21 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		toissue = (!h.IsEqual(&zeroHash))
 	}
 	if tokentype & 2 == 2 {
+		if top != 4 {
+			return fmt.Errorf("Incorrect number of parameters for mint inst.")
+		}
+		zeroHash := chainhash.Hash{}
+		if zeroHash.IsEqual(&r) {
+			return fmt.Errorf("Zero hash as right set in mint inst.")
+		}
+		h, err := ovm.views.FetchRightEntry(&r)
+		if err != nil {
+			return err
+		}
+		if h == nil {
+			return fmt.Errorf("Undefined right set in mint inst.")
+		}
+
 		issued.Rights = &r
 	}
 
@@ -3590,7 +3715,7 @@ func opHeight(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	m := ovm.Block().Height()
+	m := ovm.BlockNumber()
 	return stack.saveInt32(&dest, int32(m))
 }
 

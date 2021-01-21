@@ -17,7 +17,13 @@ import (
 
 const (
 	// TxVersion is the current latest supported transaction version.
+	// It has two parts: higher 28 bits for version, lower 4 bit for tx type
+	// currently, version = 0
+	// for regular tx, tx type = 1
+	// for tx regarding forfeiture/compensation, tx type = 2
 	TxVersion = 1
+	TxTypeMask = 0xF
+	ForfeitTxVersion = 2
 /*
 	// TxSideChain is the genesis transaction of a side chain, thus all outputs in
 	// this Tx will not be added to main chain Utxo database and is thus unspendable
@@ -332,6 +338,10 @@ type MsgTx struct {
 	TxOut    []*TxOut
 	LockTime uint32
 	SignatureScripts [][]byte		// all signatures goes here intentionally. in a block, all signatures goes to the end
+}
+
+func (s *MsgTx) IsForfeit() bool {
+	return s.Version & TxTypeMask == ForfeitTxVersion
 }
 
 func (s *MsgTx) Match(t *MsgTx) bool {

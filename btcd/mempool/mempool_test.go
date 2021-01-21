@@ -165,6 +165,9 @@ func (p *poolHarness) CreateCoinbaseTx(blockHeight int32, numOutputs uint32) (*b
 		Sequence:        wire.MaxTxInSequenceNum,
 	})
 	totalInput := blockchain.CalcBlockSubsidy(blockHeight, p.chainParams)
+	if totalInput < p.chainParams.MinimalAward {
+		totalInput = p.chainParams.MinimalAward
+	}
 	amountPerOutput := totalInput / int64(numOutputs)
 	remainder := totalInput - amountPerOutput*int64(numOutputs)
 	for i := uint32(0); i < numOutputs; i++ {

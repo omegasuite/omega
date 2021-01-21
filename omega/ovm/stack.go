@@ -13,7 +13,7 @@ import (
 type frame struct {
 	space []byte
 	inlib [20]byte
-//	gbase int32
+	gbase int32
 	pc int
 	pure byte		// access control:
 					// bit 0 - forbid store,
@@ -32,24 +32,27 @@ func newFrame() * frame {
 type pointer uint64
 
 type Stack struct {
-	data []*frame
+	callTop int32
+	libTop int32
+	data map[int32]*frame
 }
 
 var outofmemory = fmt.Errorf("Out of memory")
 var outofstack = fmt.Errorf("Out of stack")
 
 func (s *Stack) malloc(n int) (pointer, int) {
-	p := pointer(uint64(len(s.data[0].space)))
+	t := s.data[s.callTop].gbase
+	p := pointer(uint64(len(s.data[t].space)) | (uint64(t) << 32))
 	if n == 0 {
 		return p, 0
 	}
 	m := (n + 63) &^ 63
-	s.data[0].space = append(s.data[0].space, make([]byte, m)...)
+	s.data[t].space = append(s.data[t].space, make([]byte, m)...)
 	return p, m
 }
 
 func (s *Stack) alloc(n int) (pointer, int) {
-	top := len(s.data) - 1
+	top := s.callTop
 	p := pointer((uint64(top) << 32) | uint64(len(s.data[top].space)))
 	if n == 0 {
 		return p, 0
@@ -59,7 +62,7 @@ func (s *Stack) alloc(n int) (pointer, int) {
 	return p, m
 }
 
-func (s *Stack) shrink(n int) {
+func (s *Stack) shrink(n int) {	// it is only used by sig engine and there is no stack
 	if n == 0 {
 		return
 	}
@@ -68,9 +71,8 @@ func (s *Stack) shrink(n int) {
 
 func (s *Stack) toBig(p * pointer) (* big.Int, error) {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+	if _,ok := s.data[area]; !ok {
 		return nil, outofstack
 	}
 
@@ -90,10 +92,9 @@ func (s *Stack) toPointer(p * pointer) (pointer, error) {
 
 func (s *Stack) toByte(p * pointer) (byte, error) {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
+	area := int32(*p >> 32)
 
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	if _,ok := s.data[area]; !ok {
 		return 0, outofstack
 	}
 
@@ -105,12 +106,12 @@ func (s *Stack) toByte(p * pointer) (byte, error) {
 
 func (s *Stack) toBytesLen(p * pointer, n int) ([]byte, error) {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return nil, outofstack
 	}
-	if area < len(s.data) && offset + n < len(s.data[area].space) {
+	if offset + n < len(s.data[area].space) {
 		return s.data[area].space[offset:offset + n], nil
 	}
 	return nil, outofmemory
@@ -118,9 +119,9 @@ func (s *Stack) toBytesLen(p * pointer, n int) ([]byte, error) {
 
 func (s *Stack) toBytes(p * pointer) ([]byte, error) {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return nil, outofstack
 	}
 	if offset < len(s.data[area].space) {
@@ -131,9 +132,9 @@ func (s *Stack) toBytes(p * pointer) ([]byte, error) {
 
 func (s *Stack) toInt16(p * pointer) (int16, error) {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return 0, outofstack
 	}
 	if offset + 1 < len(s.data[area].space) {
@@ -144,9 +145,9 @@ func (s *Stack) toInt16(p * pointer) (int16, error) {
 
 func (s *Stack) toInt32(p * pointer) (int32, error) {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return 0, outofstack
 	}
 	if offset + 3 < len(s.data[area].space) {
@@ -160,9 +161,9 @@ func (s *Stack) toInt32(p * pointer) (int32, error) {
 
 func (s *Stack) toInt64(p * pointer) (int64, error) {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return 0, outofstack
 	}
 	if offset + 7 < len(s.data[area].space) {
@@ -180,9 +181,9 @@ func (s *Stack) toInt64(p * pointer) (int64, error) {
 
 func (s *Stack) toHash(p * pointer) (chainhash.Hash, error) {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return chainhash.Hash{}, outofstack
 	}
 	if offset + 31 < len(s.data[area].space) {
@@ -198,9 +199,9 @@ func (s *Stack) savePointer(p * pointer, d pointer) error {
 
 func (s *Stack) saveByte(p * pointer, b byte) error {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return outofstack
 	}
 	if offset < len(s.data[area].space) {
@@ -212,9 +213,9 @@ func (s *Stack) saveByte(p * pointer, b byte) error {
 
 func (s *Stack) saveBytes(p * pointer, b []byte) error {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return outofstack
 	}
 	if offset < len(s.data[area].space) {
@@ -226,12 +227,12 @@ func (s *Stack) saveBytes(p * pointer, b []byte) error {
 
 func (s *Stack) saveInt16(p * pointer, b int16) error {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return outofstack
 	}
-	if area < len(s.data) && offset + 1 < len(s.data[area].space) {
+	if offset + 1 < len(s.data[area].space) {
 		s.data[area].space[offset] = byte(b)
 		s.data[area].space[offset + 1] = byte(b >> 8)
 		return nil
@@ -241,9 +242,9 @@ func (s *Stack) saveInt16(p * pointer, b int16) error {
 
 func (s *Stack) saveInt32(p * pointer, b int32) error {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return outofstack
 	}
 	if offset + 3 < len(s.data[area].space) {
@@ -257,9 +258,9 @@ func (s *Stack) saveInt32(p * pointer, b int32) error {
 
 func (s *Stack) saveInt64(p * pointer, b int64) error {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return outofstack
 	}
 	if offset + 7 < len(s.data[area].space) {
@@ -273,9 +274,9 @@ func (s *Stack) saveInt64(p * pointer, b int64) error {
 
 func (s *Stack) saveHash(p * pointer, h chainhash.Hash) error {
 	offset := int(*p & 0xFFFFFFFF)
-	area := int(*p >> 32)
-	top := len(s.data) - 1
-	if area < 0 || area > top {
+	area := int32(*p >> 32)
+
+	if _,ok := s.data[area]; !ok {
 		return outofstack
 	}
 	if offset + 31 < len(s.data[area].space) {
@@ -286,7 +287,9 @@ func (s *Stack) saveHash(p * pointer, h chainhash.Hash) error {
 }
 
 func Newstack() *Stack {
-	s := &Stack{data: make([]*frame, 1)}
+	s := &Stack{data: make(map[int32]*frame)}
+	s.callTop = 0
+	s.libTop = 0
 	s.data[0] = newFrame()
 	s.data[0].space = make([]byte, 4, 1024)
 	return s

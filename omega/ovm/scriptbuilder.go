@@ -25,9 +25,9 @@ func (e ErrScriptNotCanonical) Error() string {
 }
 
 // ScriptBuilder provides a facility for building custom scripts.  It allows
-// you to push opcodes, ints, and data while respecting canonical encoding.  In
+// you to push opcodes, ints, and Data while respecting canonical encoding.  In
 // general it does not ensure the script will execute correctly, however any
-// data pushes which would exceed the maximum allowed script engine limits and
+// Data pushes which would exceed the maximum allowed script engine limits and
 // are therefore guaranteed not to execute will not be pushed and will result in
 // the Script function returning an error.
 //

@@ -708,7 +708,7 @@ func handleMiningPolicy(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 		BorderFee:			int64(s.cfg.ChainParams.MinBorderFee),
 		SubBorderFee:		0,
 		MaxExecSteps:		int32(s.cfg.ChainParams.ContractExecLimit),
-		ContractExecFee:	0,
+		ContractExecFee:	s.cfg.ChainParams.ContractExecFee,
 		MinContractFee:		0,
 	}
 
@@ -1689,10 +1689,9 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 	blockHeader := blk.MsgBlock()
 
 	d,_ := btcutil.NewAddressPubKeyHash(blockHeader.Miner[:], params)
-	collateral := make([]string, 0)
-	for _,c := range blockHeader.Utxos {
-		s := fmt.Sprintf("%s:%d", c.Hash.String(), c.Index)
-		collateral = append(collateral, s)
+	collateral := string("")
+	if blockHeader.Utxos != nil {
+		collateral = blockHeader.Utxos.String()
 	}
 
 	blockReply := btcjson.GetMinerBlockVerboseResult{

@@ -42,7 +42,7 @@ func (d destinations) has(codehash chainhash.Hash, code []byte, dest *big.Int) b
 
 // bitvec is a bit vector which maps bytes in a program.
 // An unset bit means the byte is an opcode, a set bit means
-// it's data (i.e. argument of PUSHxx).
+// it's Data (i.e. argument of PUSHxx).
 type bitvec []byte
 
 func (bits *bitvec) set(pos uint64) {
@@ -59,7 +59,7 @@ func (bits *bitvec) codeSegment(pos uint64) bool {
 }
 
 /*
-// codeBitmap collects data locations in code.
+// codeBitmap collects Data locations in code.
 func codeBitmap(code []byte) bitvec {
 	// The bitmap is 4 bytes longer than necessary, in case the code
 	// ends with a PUSH32, the algorithm will push zeroes onto the

@@ -262,7 +262,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		str := fmt.Sprintf("Timestamp is older than previous block", block.MsgBlock().Header.Timestamp)
 		return false, false, ruleError(ErrInvalidAncestorBlock, str), -1
 	}
-	
 	 */
 
 	blockHeight := prevNode.Height + 1
@@ -375,6 +374,50 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	if isMainChain {
 		b.Miners.ProcessOrphans(&b.Miners.BestSnapshot().Hash, BFNone)
+	} else if block.MsgBlock().Header.Nonce < 0 {
+		// CHECK if there is a miner violation
+		mblk,_ := b.BlockByHeight(block.Height())
+		if mblk != nil && mblk.MsgBlock().Header.Nonce < 0 {
+			best := b.BestSnapshot()
+			rotate := best.LastRotation
+			for p := b.BestChain.Tip(); p != nil && p.Height != block.Height(); p = b.ParentNode(p) {
+				switch {
+				case p.Data.GetNonce() > 0:
+					rotate -= wire.POWRotate
+
+				case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
+					rotate--
+				}
+			}
+			// examine signatures. must have double signs
+			signers := make(map[[20]byte]struct{})
+			var name [20]byte
+			for _, sig := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+				copy(name[:], btcutil.Hash160(sig[:btcec.PubKeyBytesLenCompressed]))
+				signers[name] = struct{}{}
+			}
+			for _, sig := range mblk.MsgBlock().Transactions[0].SignatureScripts[1:] {
+				copy(name[:], btcutil.Hash160(sig[:btcec.PubKeyBytesLenCompressed]))
+				rt := rotate
+				if _,ok := signers[name]; ok {
+					// double signer
+					mb,_ := b.Miners.BlockByHeight(int32(rt))
+					for i := 0; i < wire.CommitteeSize; i++ {
+						if mb.MsgBlock().Miner == name {
+							b.BlackedList = append(b.BlackedList, &wire.BlackList {
+								Height: block.Height(),				// Height of Tx blocks
+								Signed: 2,				// times the violator signed blocks at this height
+								MRBlock: *mb.Hash(),		// the MR block of violator
+								Blocks: []chainhash.Hash{*block.Hash(), *mblk.Hash()},
+							})
+							break
+						}
+						rt--
+						mb,_ = b.Miners.BlockByHeight(int32(rt))
+					}
+				}
+			}
+		}
 	}
 
 	// The block has passed all context independent checks and appears sane
@@ -383,9 +426,9 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// Accept any orphan blocks that depend on this block (they are
 	// no longer Orphans) and repeat for those accepted blocks until
 	// there are no more.
-	err = b.ProcessOrphans(blockHash, BFNone)	// flags)
+	b.ProcessOrphans(blockHash, BFNone)	// flags)
 
-	log.Infof("ProcessBlock.ProcessOrphans finished with height = %d Miner height = %d Orphans = %d", b.BestSnapshot().Height,
+	log.Infof("ProcessBlock finished with height = %d Miner height = %d Orphans = %d", b.BestSnapshot().Height,
 		b.Miners.BestSnapshot().Height, b.Orphans.Count())
 
 	return isMainChain, false, nil, -1
@@ -444,7 +487,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 			return false
 		}
 
-		if err := b.CheckCollateral(blk, BFNone); err != nil {
+		if _,err := b.CheckCollateral(blk, BFNone); err != nil {
 			return false
 		}
 

@@ -88,7 +88,7 @@ type thresholdConditionChecker interface {
 	// has been met.  This typically involves checking whether or not the
 	// bit associated with the condition is set, but can be more complex as
 	// needed.
-	Condition(*chainutil.BlockNode) (bool, error)
+	Condition(*chainutil.BlockNode) bool
 }
 
 // thresholdStateCache provides a type to cache the threshold states of each
@@ -222,7 +222,9 @@ func (b *MinerChain) thresholdState(prevNode *chainutil.BlockNode, checker thres
 			var count uint32
 			countNode := prevNode
 			for i := int32(0); i < confirmationWindow; i++ {
-				count++
+				if checker.Condition(countNode) {
+					count++
+				}
 
 				// Get the previous block node.
 				countNode = countNode.Parent
@@ -312,19 +314,7 @@ func (b *MinerChain) deploymentState(prevNode *chainutil.BlockNode, deploymentID
 // bit and defined deployment and provides warnings if the chain is current per
 // the warnUnknownVersions and warnUnknownRuleActivations functions.
 func (b *MinerChain) InitThresholdCaches() error {
-	// Initialize the warning and deployment caches by calculating the
-	// threshold state for each of them.  This will ensure the caches are
-	// populated and any states that needed to be recalculated due to
-	// definition changes is done now.
 	prevNode := b.BestChain.Tip().Parent
-	for bit := uint32(0); bit < vbNumBits; bit++ {
-		checker := bitConditionChecker{bit: bit, chain: b}
-		cache := &b.warningCaches[bit]
-		_, err := b.thresholdState(prevNode, checker, cache)
-		if err != nil {
-			return err
-		}
-	}
 	for id := 1; id < len(b.chainParams.Deployments); id++ {
 		deployment := &b.chainParams.Deployments[id]
 		cache := &b.deploymentCaches[id]

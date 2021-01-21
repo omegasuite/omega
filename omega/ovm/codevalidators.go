@@ -8,8 +8,8 @@ import (
 	"regexp"
 )
 
-var patOperand = regexp.MustCompile(`^[BWDQkKrR@ngi]*(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
-var addrOperand = regexp.MustCompile(`^@?[gi]*i(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
+var patOperand = regexp.MustCompile(`^@*[BWDQkKrR@ngi]*(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
+var addrOperand = regexp.MustCompile(`^@*[gi]*i(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
 var numOperand = regexp.MustCompile(`^n?(([kKrR]?[xa-f][0-9a-f]+)|([0-9]+)),`)
 var patNum = regexp.MustCompile(`[0-9a-f]+`)
 var patHex = regexp.MustCompile(`[xa-f]`)
@@ -69,10 +69,6 @@ func getBig(param []byte) int {
 }
 
 func opEval8Validator(param []byte) int {
-	if m,_ := regexp.Match(`^g?i`, param); !m {
-		return -0xfffffff
-	}
-
 	ln := len(param)
 
 	top := 0
@@ -103,6 +99,11 @@ func opEval8Validator(param []byte) int {
 			'%', '#', '[', ']', '|', '&', '^', '~',
 			'>', '<', '=', '(', ')', '!', '?', '"', '\'':
 
+		case '@':
+			if top != 0 {
+				return -0xfffffff
+			}
+
 		default:
 			return -0xfffffff
 		}
@@ -123,10 +124,6 @@ func opEval32Validator(param []byte) int {
 }
 
 func opEval64Validator(param []byte) int {
-	if m,_ := regexp.Match(`^g?i`, param); !m {
-		return -0xfffffff
-	}
-
 	ln := len(param)
 
 	top := 0
@@ -134,7 +131,7 @@ func opEval64Validator(param []byte) int {
 
 	for j := 0; j < ln; j++ {
 		if d, ok := checkTop[param[j]]; ok {
-			if top <= d + 1 {
+			if top < d + 1 {
 				return -0xfffffff
 			}
 			top -= d
@@ -149,7 +146,7 @@ func opEval64Validator(param []byte) int {
 			j += tl  - 1
 			top++
 
-		case 0x40, 0x75, 0x2b, 0x2d, 0x2a, 0x2f, 'P', 'B', 'W', 'D', 'Q', 'H',
+		case '@', 0x75, 0x2b, 0x2d, 0x2a, 0x2f, 'P', 'B', 'W', 'D', 'Q', 'H',
 			0x25, 0x23, 0x5b, 0x5d, 0x7c, 0x26, 0x5e, 0x7e,
 			0x3e, 0x3c, 0x3d, 0x29, 0x28, 0x21, 0x3f, '"', '\'':
 
@@ -165,10 +162,6 @@ func opEval64Validator(param []byte) int {
 }
 
 func opEval256Validator(param []byte) int {
-	if m, _ := regexp.Match(`^g?i`, param); !m {
-		return -0xfffffff
-	}
-
 	ln := len(param)
 
 	top := 0
@@ -176,7 +169,7 @@ func opEval256Validator(param []byte) int {
 
 	for j := 0; j < ln; j++ {
 		if d, ok := checkTop[param[j]]; ok {
-			if top <= d + 1 {
+			if top < d + 1 {
 				return -0xfffffff
 			}
 			top -= d
@@ -315,7 +308,7 @@ func opLoadValidator(param []byte) int {
 }
 
 var formatStore = []formatDesc{
-	{patOperand, 0}, {regexp.MustCompile(`^[rRBWDQHhkK]|(L[0-9]+)`), 0}, {patOperand, 0},
+	{patOperand, 0}, {regexp.MustCompile(`^[rRBWDQHhkK]|(L[0-9]+,)|(g?i*[0-9]+('[0-9]+)?("[0-9]+)?,)`), 0}, {patOperand, 0},
 }
 
 func opStoreValidator(param []byte) int {
@@ -339,15 +332,29 @@ func opReceivedValidator(param []byte) int {
 }
 
 var formatExec = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, // return space (address:len)
 	{patOperand, 0},			  // contract address (20B)
-	{addrOperand, 0xFFFFFFFF}, // value passed to (token)
-	{addrOperand, 0xFFFFFFFF},	// data address
-	{patOperand, 0xFFFFFFFF},	// data len
+	{patOperand, 0},			  // purity
+	{patOperand, 0xFFFFFFFF}, // return space (address:len)
+	{patOperand, 0xFFFFFFFF}, // value passed to (token)
+	{patOperand, 0xFFFFFFFF},	// Data len
+//	{patOperand, 0xFFFFFFFF},	// parameter
 }
 
 func opExecValidator(param []byte) int {
-	return formatParser(formatExec, param)
+	n := 0
+	for i := 0; i < len(param); i++ {
+		if param[i] == 0x2c {
+			n++
+		}
+	}
+	if n == 6 {
+		p := make([]formatDesc, 6)
+		copy(p[:], formatExec[:])
+		p[5] = formatDesc{patOperand, 0xFFFFFFFF, }
+		return formatParser(p, param)
+	} else {
+		return formatParser(formatExec, param)
+	}
 }
 
 var formatLibload = []formatDesc{
@@ -373,7 +380,7 @@ func opLibLoadValidator(param []byte) int {
 }
 
 var formatMalloc = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
+	{patOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
 }
 
 func opMallocValidator(param []byte) int {
@@ -406,6 +413,7 @@ func opCopyImmValidator(param []byte) int {
 	if n < 2 {
 		return -0xfffffff
 	}
+/*
 	if n > 2 {
 		fmt := make([]formatDesc, 2 * n - 1)
 		copy(fmt, formatImm)
@@ -413,8 +421,9 @@ func opCopyImmValidator(param []byte) int {
 			fmt[i] = formatImm[1]
 			fmt[i + 1] = formatImm[2]
 		}
-		return formatParser(fmt, param)
+		return formatParser(formatImm, param)
 	}
+ */
 	return formatParser(formatImm, param)
 }
 

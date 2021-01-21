@@ -24,6 +24,16 @@ import (
 	"math/big"
 )
 
+const (
+	NOWRITE    = 0x1
+	NOSPENDING = 0x2
+	NOOUTPUT   = 0x4
+	NODEFINE   = 0x8
+	NOMINT     = 0x10
+
+	PUREMASK = 0x1F
+)
+
 type Address [20]byte
 
 func (d Address) Big() * big.Int {
@@ -87,7 +97,7 @@ func (s * inst) Param() []byte { return s.param }
 type lib struct{
 	address int32		// code address
 	end int32			// code end
-	base int32			// lib global data
+	base int32			// lib global Data
 	pure byte
 }
 
@@ -153,7 +163,7 @@ func (c *Contract) Value() *token.Token {
 	return c.value
 }
 
-// SetCallCode sets the code of the contract and address of the backing data
+// SetCallCode sets the code of the contract and address of the backing Data
 // object
 func (self *Contract) SetCallCode(addr []byte, code []byte) error {
 	if code == nil {
@@ -221,7 +231,7 @@ var validators = map[OpCode]codeValidator {
 	RECEIVED: opReceivedValidator,
 	TXFEE: opTxFeeValidator,
 	GETCOIN: opGetCoinValidator,
-	NULOP: func ([]byte) int { return 1},
+	NOP: func ([]byte) int { return 1},
 //	TXIOCOUNT:  opTxIOCountValidator,
 //	GETTXIN: opGetTxInValidator,
 //	GETTXOUT: opGetTxOutValidator,

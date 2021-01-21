@@ -161,7 +161,6 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 	}
 
 	// does he have knowledge about me? In case he is late comer
-
 	if _,ok := self.syncer.forest[self.syncer.Names[me]]; ok && mp != me && self.Knowledge[me][mp] & (0x1 << me) == 0 {
 		// send knowledge about me
 		lmg := wire.NewMsgKnowledge()

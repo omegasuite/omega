@@ -32,7 +32,7 @@ type precompiledTest struct {
 	noBenchmark     bool // Benchmark primarily the worst-cases
 }
 
-// modexpTests are the test and benchmark data for the modexp precompiled contract.
+// modexpTests are the test and benchmark Data for the modexp precompiled contract.
 var modexpTests = []precompiledTest{
 	{
 		input: "0000000000000000000000000000000000000000000000000000000000000001" +
@@ -114,7 +114,7 @@ var modexpTests = []precompiledTest{
 	},
 }
 
-// bn256AddTests are the test and benchmark data for the bn256 addition precompiled
+// bn256AddTests are the test and benchmark Data for the bn256 addition precompiled
 // contract.
 var bn256AddTests = []precompiledTest{
 	{
@@ -184,7 +184,7 @@ var bn256AddTests = []precompiledTest{
 	},
 }
 
-// bn256ScalarMulTests are the test and benchmark data for the bn256 scalar
+// bn256ScalarMulTests are the test and benchmark Data for the bn256 scalar
 // multipication precompiled contract.
 var bn256ScalarMulTests = []precompiledTest{
 	{
@@ -274,7 +274,7 @@ var bn256ScalarMulTests = []precompiledTest{
 	},
 }
 
-// bn256PairingTests are the test and benchmark data for the bn256 pairing check
+// bn256PairingTests are the test and benchmark Data for the bn256 pairing check
 // precompiled contract.
 var bn256PairingTests = []precompiledTest{
 	{

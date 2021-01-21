@@ -545,6 +545,15 @@ func NewManager(db database.DB, enabledIndexes []Indexer) *Manager {
 	}
 }
 
+func (x *Manager) TxBlockRegion(hash *chainhash.Hash) (*database.BlockRegion, error) {
+	for _,p := range x.enabledIndexes {
+		if p.Name() == txIndexName {
+			return p.(*TxIndex).TxBlockRegion(hash)
+		}
+	}
+	return nil,nil
+}
+
 // dropIndex drops the passed index from the database.  Since indexes can be
 // massive, it deletes the index in multiple database transactions in order to
 // keep memory usage to reasonable levels.  It also marks the drop in progress

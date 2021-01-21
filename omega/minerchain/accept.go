@@ -13,7 +13,11 @@ package minerchain
 import (
 	"bytes"
 	"fmt"
-	"github.com/omegasuite/btcutil/base58"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcutil"
+	"sort"
+
+	//	"github.com/omegasuite/btcutil/base58"
 
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
@@ -97,14 +101,6 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 		return false, err
 	}
 
-	if isMainChain {
-		// check version for mandatory update.
-		// If the block creator address is one of chain admin address
-		// and version bit, mandate block version to it to signal consent
-		if MandateVersion(block.MsgBlock().Version, block.MsgBlock().Miner) {
-			wire.CodeVersion = block.MsgBlock().Version
-		}
-	}
 //	log.Infof("isMainChain = %d", isMainChain)
 
 	// Notify the caller that the new block was accepted into the block
@@ -165,13 +161,54 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 
 		factor := int64(1)
 		if flags & blockchain.BFWatingFactor == blockchain.BFWatingFactor {
-			factor = m.factorPOW(m.index.LookupNode(&header.PrevBlock))
+//			factor = m.factorPOW(m.index.LookupNode(&header.PrevBlock))
+			factor = m.factorPOW(uint32(m.index.LookupNode(&header.PrevBlock).Height), header.BestBlock)
 		}
 		if factor < 0 {
 			return fmt.Errorf("Curable POW factor error.")
 		}
 
-		hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+		if header.Version >= 0x20000 {
+			// since Ver 0x20000, the formula is:
+			// 2 * hashNum * factor <= target * (h1 + h2)
+			// h1 is collacteral factor, h2 is tps factor
+			factor *= 2
+
+			// for h1, we compare this block's coin & Collateral for simplicity
+			c := header.Collateral
+			if c < wire.CollateralBase {
+				c = wire.CollateralBase
+			}
+			v,_ := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), flags)
+			h1 := v / c
+			minscore, maxscore := m.reportRctRng(m.NodeByHash(&header.PrevBlock))
+			r := m.reportFromDB(header.Miner)	// max most recent 100 records
+			for i := len(r); i < 100; i++ {
+				r = append(r, rv{ val: minscore })
+			}
+			sort.Slice(r, func(i, j int) bool {
+				return r[i].val < r[j].val
+			})
+
+			sum := uint32(0)
+			for k := 25; k < 75; k++ {
+				sum += r[k].val
+			}
+			sum /= 25
+
+			if sum > minscore + maxscore {
+				// tps greater than avg
+				h2 := int64(sum / (minscore + maxscore))
+				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+				target = target.Mul(target, big.NewInt(int64(h1) + h2))
+			} else {
+				h2 := int64((minscore + maxscore) / sum)
+				hashNum = hashNum.Mul(hashNum, big.NewInt(factor + h2))
+				target = target.Mul(target, big.NewInt(int64(h1)))
+			}
+		} else {
+			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+		}
 
 		if hashNum.Cmp(target) > 0 {
 			str := fmt.Sprintf("block hash of %064x is higher than "+
@@ -183,16 +220,18 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 	return nil
 }
 
-func (m *MinerChain) factorPOW(firstNode *chainutil.BlockNode) int64 {
-	baseh := uint32(firstNode.Height)
-	best := firstNode.Data.(*blockchainNodeData).block.BestBlock
+//func (m *MinerChain) factorPOW(firstNode *chainutil.BlockNode) int64 {
+//baseh := uint32(firstNode.Height)
+//best := firstNode.Data.(*blockchainNodeData).block.BestBlock
+
+func (m *MinerChain) factorPOW(baseh uint32, best chainhash.Hash) int64 {
 	h := m.blockChain.Rotation(best)
 
 	if h < 0 {
 		return -1
 	}
 
-	d := int32(baseh) - int32(h)
+	d := int32(baseh) - h
 
 	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP
@@ -221,7 +260,13 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		return nil
 	}
 
+	nextBlockVersion, err := b.NextBlockVersion(prevNode)
 	header := block.MsgBlock()
+
+	if err != nil || (header.Version & 0xFFFF0000) < (nextBlockVersion & 0xFFFF0000) ||
+		(header.Version & 0xFFFF0000) > ((nextBlockVersion + 0xFFFF) & 0xFFFF0000) {
+		return fmt.Errorf("Incorrect block version")
+	}
 
 	for p, i := prevNode, 0; p != nil && i < wire.MinerGap; i++ {
 		h := NodetoHeader(p)
@@ -241,12 +286,17 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	// Ensure the difficulty specified in the block header matches
 	// the calculated difficulty based on the previous block and
 	// difficulty retarget rules.
-	expectedDifficulty, _ := b.calcNextRequiredDifficulty(prevNode, header.Timestamp)
+	expectedDifficulty, coll, _ := b.calcNextRequiredDifficulty(prevNode, header.Timestamp)
 
 	blockDifficulty := header.Bits
 	if blockDifficulty != expectedDifficulty {
 		str := "block difficulty of %d is not the expected value of %d"
 		str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
+		return ruleError(ErrUnexpectedDifficulty, str)
+	}
+	if header.Version >= 0x20000 && header.Collateral != coll {
+		str := "block collateral of %d is not the expected value of %d"
+		str = fmt.Sprintf(str, header.Collateral, coll)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
 
@@ -276,28 +326,72 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		return err
 	}
 
+	// validity of BlackList
+	uniq := make(map[chainhash.Hash]struct{})
+	mh,_ := b.blockChain.BlockHeightByHash(&block.MsgBlock().BestBlock)
 	for _, p := range block.MsgBlock().BlackList {
-		// verify the signatures
-		if refh,err := b.blockChain.BlockHeightByHash(&p.Hashes[0]); err != nil {
-			return ruleError(ErrBlackList, err.Error())
-			if refh != int32(p.Height) {
-				return ruleError(ErrBlackList, "The first hash must be a block in main chain at the given height")
+		if p.Height <= 0 {
+			return ruleError(ErrBlackList, fmt.Errorf("Invalid height: %d", p.Height).Error())
+		}
+		if p.Height > mh {
+			// If side chain is higher, that means we should choose it as best chain
+			return ruleError(ErrBlackList, fmt.Errorf("Invalid height: %d", p.Height).Error())
+		}
+		if p.Signed < 2 || int(p.Signed) != len(p.Blocks) {
+			return ruleError(ErrBlackList, fmt.Errorf("Invalid evidence: %d blocks", p.Signed).Error())
+		}
+		if !b.BestChain.Contains(b.NodeByHash(&p.MRBlock)) {
+			return ruleError(ErrBlackList, fmt.Errorf("Invalid evidence: block %s not in MR chain", p.MRBlock.String()).Error())
+		}
+		mb,_ := b.BlockByHash(&p.MRBlock)
+		if mb.Height() < block.Height() - 99 {
+			return ruleError(ErrBlackList, fmt.Errorf("Report of violation more than 99 blocks older not allowed. %d", mb.Height()).Error())
+		}
+		miner := mb.MsgBlock().Miner
+		// prep for check for duplicated reports
+		for q,_ := b.BlockByHash(&block.MsgBlock().PrevBlock); q.Height() > mb.Height(); q,_ = b.BlockByHash(&q.MsgBlock().PrevBlock) {
+			for _, s := range q.MsgBlock().BlackList {
+				if !s.MRBlock.IsEqual(&p.MRBlock) {
+					continue
+				}
+				for _,tx := range s.Blocks {
+					if _,err := b.blockChain.BlockHeightByHash(&tx); err != nil {
+						uniq[tx] = struct{}{}
+					}
+				}
 			}
 		}
 
-		for i := 0; i < 2; i++ {
-			k, err := btcec.ParsePubKey(p.Signatures[i][:btcec.PubKeyBytesLenCompressed], btcec.S256())
-			if err != nil {
-				return ruleError(ErrBlackList, err.Error())
+		main := false
+		for _,tx := range p.Blocks {
+			if _,err := b.blockChain.BlockHeightByHash(&tx); err != nil {
+				if _,ok := uniq[tx]; ok {
+					return ruleError(ErrBlackList, fmt.Errorf("Violating block already reported before: %s", tx.String()).Error())
+				}
+				uniq[tx] = struct{}{}
+			} else if main {
+				return ruleError(ErrBlackList, fmt.Errorf("Duplicated block in blacklist: %s", tx.String()).Error())
+			} else {
+				main = true
 			}
-			sig, err := btcec.ParseDERSignature(p.Signatures[i][btcec.PubKeyBytesLenCompressed:], btcec.S256())
-			if err != nil {
-				return ruleError(ErrBlackList, err.Error())
+			tb,_ := b.blockChain.HashToBlock(&tx)	// already checked that it exists
+			if tb.Height() != p.Height {
+				return ruleError(ErrBlackList, fmt.Errorf("Invalid height of violating block: %s", tx.String()).Error())
 			}
 
-			h := blockchain.MakeMinerSigHash(int32(p.Height), p.Hashes[i])
-			if !sig.Verify(h, k) {
-				return ruleError(ErrBlackList, "Incorrect balck list signature")
+			mtch := false
+			for _,sig := range tb.MsgBlock().Transactions[0].SignatureScripts[1:] {
+				// although tb is in side chain, the fact that it is the database means
+				// that all block signatures has been verified. thus we don't need to
+				// verify signature again. we only need to extract address from pub key
+				h := btcutil.Hash160(sig[:btcec.PubKeyBytesLenCompressed])
+				if bytes.Compare(h, miner[:]) == 0 {
+					mtch = true
+					break
+				}
+			}
+			if !mtch {
+				return ruleError(ErrBlackList, fmt.Errorf("Invalid report: %s", tx.String()).Error())
 			}
 		}
 	}
@@ -334,38 +428,4 @@ func (b *MinerChain) CheckConnectBlockTemplate(block *wire.MinerBlock) error {
 	}
 
 	return b.checkBlockContext(block, tip, flags)
-}
-
-var admins = []string{
-	"1KcMgJmKZFM1qzqNGUtjMVNGxLJREo9uZh",
-	"1EmsFJk7cdJWkNgWYpwcKhAwD9GbPrrt1f",
-	"1QGWuK7x5VDXSDSkWi1Yke3ZGgerxm7MFX",
-	"15bT8a3gaqdmko9fqCq7No7gKewQDaoZk6",
-	"1NHgdsr37DCkf7SPKwoLZCNeMuz63x4Avd",
-	"1CxK1Kne5dFy17xarbdUnCDzHm2F8q5brA",
-	"14VoEJngMszKGvWAtN6L1YVNqZmWSXiEGk",
-	"18vzRnYh6hMGGxN5cQU55Dm1knNoxoH2DW",
-}
-
-var scriptAddr [][20]byte
-
-func MandateVersion(version uint32, miner [20]byte) bool {
-	if (wire.CodeVersion >> 16) > (version >> 16) || (version & 0xFFFF) == 0 {
-		return false
-	}
-
-	if scriptAddr == nil {
-		scriptAddr = make([][20]byte, 8)
-		for i, s := range admins {
-			addr, _, _ := base58.CheckDecode(s)
-			copy(scriptAddr[i][:], addr)
-		}
-	}
-
-	for _, s := range scriptAddr {
-		if bytes.Compare(miner[:], s[:]) == 0 {
-			return true
-		}
-	}
-	return false
 }

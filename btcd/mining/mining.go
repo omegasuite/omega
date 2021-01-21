@@ -285,7 +285,12 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 			blockchain.CalcBlockSubsidy(best.Height, params, prevPows)
 	}
 
-	val := blockchain.CalcBlockSubsidy(nextBlockHeight, params, prevPows) + adj
+	award := blockchain.CalcBlockSubsidy(nextBlockHeight, params, prevPows)
+	if award < params.MinimalAward {
+		award = params.MinimalAward
+	}
+
+	val := award + adj
 	val /= int64(len(addrs))
 
 	for _,addr := range addrs {
@@ -388,7 +393,7 @@ type BlkTmplGenerator struct {
 	timeSource  chainutil.MedianTimeSource
 
 	// only used by minerchain
-	Collateral []wire.OutPoint
+	Collateral *wire.OutPoint
 //	sigCache    *txscript.SigCache
 //	hashCache   *txscript.HashCache
 }
@@ -411,7 +416,7 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 		txSource:    txSource,
 		Chain:       chain,
 		timeSource:  timeSource,
-		Collateral: make([]wire.OutPoint, 0),
+		Collateral:  nil,
 //		sigCache:    sigCache,
 //		hashCache:   hashCache,
 	}
@@ -576,11 +581,11 @@ mempoolLoop:
 		// transactions in the mempool must come after those
 		// dependencies in the final generated block.
 //		view, err := g.Chain.FetchUtxoView(tx)
-		if err != nil {
-			log.Warnf("Unable to fetch utxo view for tx %s: %v",
-				tx.Hash(), err)
-			continue
-		}
+//		if err != nil {
+//			log.Warnf("Unable to fetch utxo view for tx %s: %v",
+//				tx.Hash(), err)
+//			continue
+//		}
 
 		// Setup dependencies for any transactions which reference
 		// other transactions in the mempool so they can be properly
@@ -642,7 +647,7 @@ mempoolLoop:
 		// Merge the referenced outputs from the input transactions to
 		// this transaction into the block utxo view.  This allows the
 		// code below to avoid a second lookup.
-		mergeUtxoView(blockUtxos, utxos)
+//		mergeUtxoView(blockUtxos, utxos)
 	}
 
 	log.Tracef("Priority queue len %d, dependers len %d",
@@ -688,8 +693,11 @@ mempoolLoop:
 	Vm.BlockTime = func() uint32 {
 		return uint32(ts.Unix())
 	}
-	Vm.Block = func() *btcutil.Block { return nil }
+//	Vm.Block = func() *btcutil.Block { return nil }
 	Vm.GetCoinBase = func() *btcutil.Tx { return coinbaseTx }
+	Vm.CheckExecCost = true
+
+	paidstoragefees := make(map[[20]byte]int64)
 
 	// Choose which transactions make it into the block.
 	for priorityQueue.Len() > 0 {
@@ -734,7 +742,6 @@ mempoolLoop:
 		if sortedByFee &&
 			prioItem.feePerKB < int64(g.policy.TxMinFreeFee) &&
 			blockPlusTxWeight >= blockMaxSize {
-
 			log.Tracef("Skipping tx %s with feePerKB %d "+
 				"< TxMinFreeFee %d and block weight %d >= "+
 				"minBlockWeight %d", tx.Hash(), prioItem.feePerKB,
@@ -799,6 +806,7 @@ mempoolLoop:
 		// in transaction, a new copy of tx will be returned.
 		savedCoinBase := *coinbaseTx.MsgTx().Copy()
 		newcoins := coinbaseTx.HasOuts
+		Vm.Paidfees = prioItem.fee
 		err = Vm.ExecContract(tx, nextBlockHeight)
 		if err != nil {
 			coinbaseTx.HasOuts = newcoins
@@ -811,6 +819,8 @@ mempoolLoop:
 			logSkippedDeps(tx, deps)
 			continue
 		}
+
+		storage := blockchain.ContractNewStorage(tx, Vm, paidstoragefees)
 
 		tx.Executed = true
 
@@ -833,7 +843,7 @@ mempoolLoop:
 			continue
 		}
 
-		fees, err := blockchain.CheckTransactionFees(tx, nextBlockHeight, views, g.chainParams)
+		fees, err := blockchain.CheckTransactionFees(tx, nextBlockHeight, storage, views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			log.Tracef("Skipping tx %s due to error in "+
@@ -999,7 +1009,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 
 //	reqDifficulty, err := g.Chain.Miners.CalcNextRequiredDifficulty(ts)
 
-	reqDifficulty, err := g.Chain.Miners.NextRequiredDifficulty(last, ts)
+	reqDifficulty, coll, err := g.Chain.Miners.NextRequiredDifficulty(last, ts)
 
 	if err != nil {
 		return nil, err
@@ -1010,6 +1020,10 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	nextBlockVersion, err := g.Chain.Miners.NextBlockVersion(last)
 	if err != nil {
 		return nil, err
+	}
+
+	if nextBlockVersion < 0x20000 {
+		coll = 0
 	}
 
 	cbest := g.Chain.BestSnapshot()
@@ -1031,11 +1045,16 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		PrevBlock:     last.Hash,
 		Timestamp:     ts,
 		Bits:          reqDifficulty,
+		Collateral:	   coll,
 		BestBlock:     cbest.Hash,
 		Utxos:		   g.Collateral,
 		BlackList:     make([]wire.BlackList, 0),
 	}
+
 	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())
+	if nextBlockVersion >= 0x20000 {
+		msgBlock.TphReports = g.Chain.Miners.TphReport(wire.MinTPSReports, last, msgBlock.Miner)
+	}
 
 	// Finally, perform a full check on the created block against the Chain
 	// consensus rules to ensure it properly connects to the current best

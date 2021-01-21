@@ -35,10 +35,18 @@ type meta struct {
 	contract *Contract
 }
 
+type codebytes struct {
+	ovm * OVM
+	contract *Contract
+}
+
 const (
 	OP_CREATE				= 0
 	OP_META					= 1
+	OP_CODEBYTES			= 2
 //	OP_MINT					= 0x40
+
+	OP_PUBLIC				= 0x20
 
 	PAYFUNC_MIN				= 0x41
 	PAYFUNC_MAX				= 0x46
@@ -46,6 +54,7 @@ const (
 	OP_PAY2PKH				= 0x41
 	OP_PAY2SCRIPTH			= 0x42
 	OP_PAYMULTISIG			= 0x43
+	OP_PAYFORFEITURE		= 0x44
 //	OP_PAY2MULTIPKH			= 0x43
 //	OP_PAY2MULTISCRIPTH		= 0x44
 	OP_PAY2NONE				= 0x45
@@ -58,8 +67,13 @@ var PrecompiledContracts = map[[4]byte]func(evm * OVM, contract *Contract) Preco
 		return &create{evm, contract}
 	},			// create a contract
 	([4]byte{OP_META, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
+		contract.Code = nil
 		return &meta{evm, contract}
 	},			// meta
+	([4]byte{OP_CODEBYTES, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
+		contract.Code = nil
+		return &codebytes{evm, contract}
+	},			// OP_CODEBYTES
 	// pk script functions
 	([4]byte{OP_PAY2PKH, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
 		return &pay2pkh{}
@@ -69,7 +83,10 @@ var PrecompiledContracts = map[[4]byte]func(evm * OVM, contract *Contract) Preco
 	},			// pay to script hash script
 	([4]byte{OP_PAYMULTISIG, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
 		return &pay2multisig{evm, contract}
-	},			// pay to script hash script
+	},			// pay to multi-sig script
+	([4]byte{OP_PAYFORFEITURE, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
+		return &pay2forfeiture{evm, contract}
+	},			// pay to multi-sig script
 //	([4]byte{OP_PAY2MULTIPKH, 0, 0, 0}): &pay2pkhs{},		// pay to pubkey hash script, multi-sig
 //	([4]byte{OP_PAY2MULTISCRIPTH, 0, 0, 0}): &pay2scripths{},		// pay to no one and spend it
 	([4]byte{OP_PAY2NONE, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
@@ -93,6 +110,19 @@ func (p *payreturn) Run(input []byte, vunits []vunit) ([]byte, error) {
 	return []byte{0}, nil
 }
 
+type pay2forfeiture struct {
+	ovm * OVM
+	contract *Contract
+}
+
+func (p *pay2forfeiture) Run(input []byte, vunits []vunit) ([]byte, error) {
+	if !p.ovm.GetTx().MsgTx().IsForfeit() {
+		return []byte{0},fmt.Errorf("Try to use forfeiture coin in non forfeit transaction")
+	}
+
+	return []byte{1},nil
+}
+
 type pay2multisig struct {
 	ovm * OVM
 	contract *Contract
@@ -100,45 +130,69 @@ type pay2multisig struct {
 
 // multiple address multiple key
 func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
+	_, r, e := p.run(input, vunits, p.ovm.GetTx().MsgTx().IsForfeit())
+	return r,e
+}
+
+func (p *pay2multisig) run(input []byte, vunits []vunit, forfeit bool) (int, []byte, error) {
 	// input - hash of multi-sig descriptor (20-byte value)
-	// vunits[0].data: multi-sig descriptor
+	// vunits[0].Data: multi-sig descriptor
 	//			 bytes 0 - 1: M - number of scripts
 	//			 bytes 2 - 3: N - number of signatures required
-	// vunits[1:].data: publick key
+	// vunits[1:].Data: publick key
 	//		  signature
 	// vunits[1:].text - text to be signed (in chucks of 0-padded 32-bytes units)
+
+	// in forfeit mode, all contract calls will pass
 
 	contracts := make([][]byte, 0)
 	params := make([][]byte, 0)
 
 	if len(vunits[0].data) < 4 {
-		return []byte{0}, nil	// never. should have been verified in tx validity
+		return 0, []byte{0}, nil	// never. should have been verified in tx validity
 	}
 	m := int(common.LittleEndian.Uint16(vunits[0].data[:2]))
 	n := int(common.LittleEndian.Uint16(vunits[0].data[2:4]))
 
 	if len(vunits[0].data) < 21 * m + 4 || n > m {
-		return []byte{0}, nil	// never. should have been verified in tx validity
+		return 0, []byte{0}, nil	// never. should have been verified in tx validity
 	}
 
 	sigcnt := 0
 	h := make([]byte, 0, 21 * (m - 1))
 
-	for _,v := range vunits[1:] {
-		if len(v.data) == 25 && v.data[0] == p.ovm.chainConfig.PubKeyHashAddrID {
+	for i := 0; i < len(vunits); i++ {
+		v := vunits[i]
+		if len(v.data) == 25 && v.data[0] == p.ovm.chainConfig.MultiSigAddrID {
+			h = append(h, v.data...)
+			mm, r, err := p.run(v.data[1:], vunits[i+1:], forfeit)
+			if err != nil {
+				return m, []byte{0}, err
+			}
+			if r != nil && r[0] != 0 {
+				sigcnt++
+			}
+			i += mm + 1
+			m += mm + 1
+			continue
+		} else if len(v.data) == 25 && v.data[0] == p.ovm.chainConfig.PubKeyHashAddrID {
 			// a PubKeyHashAddrID not signed. but, if it is pay anyone scripts, it is counted as signed
-			h = append(h, v.data[:21]...)
+			h = append(h, v.data...)
 			if v.data[21] == OP_PAY2ANY {
 				sigcnt++
 			}
 			continue
 		} else if v.data[0] == p.ovm.chainConfig.ContractAddrID {
 			h = append(h, v.data...)
-			contracts = append(contracts, v.data[:21])
-			params = append(params, v.data[21:])
+			if forfeit {
+				sigcnt++
+			} else {
+				contracts = append(contracts, v.data[:21])
+				params = append(params, v.data[21:])
+			}
 			continue
 		} else if len(v.data) >= 25 && v.data[0] == p.ovm.chainConfig.ScriptHashAddrID {
-			h = append(h, v.data[:21]...)
+			h = append(h, v.data...)
 			if len(v.data) > 25 {
 				hash := chainhash.HashB(v.data[25:])
 				if bytes.Compare(v.data[1:21], hash) == 0 {
@@ -158,18 +212,18 @@ func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
 		kpos++
 
 		if siglen == 0 {
-			return []byte{0}, nil
+			return m, []byte{0}, nil
 		}
 
 		if inlen < kpos + int(siglen) {
-			return []byte{0}, nil
+			return m, []byte{0}, nil
 		}
 
 		sigBytes := v.data[kpos : kpos+int(siglen)]
 
 		pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
 		if err != nil {
-			return []byte{0}, err
+			return m, []byte{0}, err
 		}
 
 		var signature *btcec.Signature
@@ -177,7 +231,7 @@ func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
 		signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
 
 		if err != nil {
-			return []byte{0}, err
+			return m, []byte{0}, err
 		}
 
 		hash := chainhash.DoubleHashB(v.text)
@@ -187,22 +241,23 @@ func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
 			sigcnt++
 		}
 
-		ph := Hash160(pkBytes)
+		ph := btcutil.Hash160(pkBytes)
+//		ph := Hash160(pkBytes)
 		h = append(h, p.ovm.chainConfig.PubKeyHashAddrID)
 		h = append(h, ph...)
 	}
 
 	hash := chainhash.HashB(h)
 	if bytes.Compare(input[:20], hash) != 0 {
-		return []byte{0}, nil
+		return m, []byte{0}, nil
 	}
 
 	if sigcnt >= n {
-		return []byte{1}, nil
+		return m, []byte{1}, nil
 	}
 
 	if len(contracts) < n - sigcnt {
-		return []byte{0}, nil
+		return m, []byte{0}, nil
 	}
 
 	// run smart contracts
@@ -222,7 +277,7 @@ func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
 	vm.GetCurrentOutput = func() wire.OutPoint { return wire.OutPoint{} }
 	vm.AddCoinBase = func(wire.TxOut) wire.OutPoint { return wire.OutPoint{} }
 	vm.GasLimit    = 100000
-	vm.Block 	= func() * btcutil.Block { return nil }
+//	vm.Block 	= func() * btcutil.Block { return nil }
 
 	vm.NoLoop = false
 	vm.interpreter.readOnly = false
@@ -233,17 +288,17 @@ func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
 		copy(a[:], c)
 		t.TokenType = 0
 		t.Value = &token.NumToken{Val: -1}
-		r, err := vm.Call(a, params[i][:4], &t, params[i][4:])
+		r, err := vm.Call(a, params[i][:4], &t, params[i][4:], PUREMASK)
 		if err != nil || r == nil || r[0] == 0 {
 			continue
 		}
 		sigcnt++
 		if sigcnt >= n {
-			return []byte{1}, nil
+			return m, []byte{1}, nil
 		}
 	}
 
-	return []byte{0}, nil
+	return m, []byte{0}, nil
 }
 
 /*
@@ -255,7 +310,7 @@ func (p *pay2scripths) Run(input []byte, vunits []vunit) ([]byte, error) {
 	// input: pkh - public key hash (20-byte value)
 	//		  N:M - bytes 0-4 = M, bytes 4-8 = N (M >= N)
 	// vunits: M vunit
-	//		  data: publick key-signature pairs
+	//		  Data: publick key-signature pairs
 	//	      text: text to be signed
 
 	pkh := make([]byte, 0)
@@ -270,10 +325,10 @@ func (p *pay2scripths) Run(input []byte, vunits []vunit) ([]byte, error) {
 	sigcnt := 0
 
 	for _,v := range vunits {
-		inlen := len(v.data)
+		inlen := len(v.Data)
 
-		kpos := int(v.data[0]) + 1
-		pkBytes := v.data[1:kpos]
+		kpos := int(v.Data[0]) + 1
+		pkBytes := v.Data[1:kpos]
 
 		pkh = append(pkh, pkBytes...)
 
@@ -329,7 +384,7 @@ func (p *pay2pkhs) Run(input []byte, vunits []vunit) ([]byte, error) {
 	//		  N:M - bytes 0-4 = M, bytes 4-8 = N (M >= N)
 	//		  (M - 1) public key hashes (each 30-byte value)
 	// vunits: M vunit
-	//		  data: publick key-signature pairs
+	//		  Data: publick key-signature pairs
 	//	      text: text to be signed
 
 	pks := [][]byte{input[:20]}
@@ -352,10 +407,10 @@ func (p *pay2pkhs) Run(input []byte, vunits []vunit) ([]byte, error) {
 	sigcnt := 0
 
 	for _,v := range vunits {
-		inlen := len(v.data)
+		inlen := len(v.Data)
 
-		kpos := int(v.data[0]) + 1
-		pkBytes := v.data[1:kpos]
+		kpos := int(v.Data[0]) + 1
+		pkBytes := v.Data[1:kpos]
 		
 		siglen := input[kpos]
 		kpos++
@@ -425,7 +480,8 @@ func (p *pay2scripth) Run(input []byte, _ []vunit) ([]byte, error) {
 	l := binary.LittleEndian.Uint32(input[20:])
 	text := input[24:24+l]
 
-	hash := Hash160(text)
+	hash := btcutil.Hash160(text)
+//	hash := Hash160(text)
 
 	if bytes.Compare(hash[:], pkh[:]) == 0 {
 		return []byte{1}, nil
@@ -460,7 +516,8 @@ func (p *pay2pkh) Run(input []byte, vunits []vunit) ([]byte, error) {
 		return []byte{0}, nil
 	}
 
-	ph := Hash160(pkBytes)
+	ph := btcutil.Hash160(pkBytes)
+//	ph := Hash160(pkBytes)
 
 	if bytes.Compare(ph[:], pkh[:]) != 0 {
 		return []byte{0}, nil
@@ -502,8 +559,8 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 	vuints := make([]vunit, 0)	// verification unit, generated for each SIGNTEXT inst
 	
 	if len(contract.Code) != 0 {
-		// Reset the previous call's return data. It's unimportant to preserve the old buffer
-		// as every returning call will return new data anyway.
+		// Reset the previous call's return Data. It's unimportant to preserve the old buffer
+		// as every returning call will return new Data anyway.
 		var res []byte
 
 	ret:
@@ -585,5 +642,9 @@ func (c *create) Run(input []byte, _ []vunit) ([]byte, error) {
 }
 
 func (c *meta) Run(input []byte, _ []vunit) ([]byte, error) {
-	return c.ovm.getMeta(c.contract.self.Address(), string(input)), nil
+	return c.ovm.getMeta(c.contract.self.Address(), string(input[4:])), nil
+}
+
+func (c *codebytes) Run(input []byte, _ []vunit) ([]byte, error) {
+	return c.ovm.GetCode(c.contract.self.Address()), nil
 }

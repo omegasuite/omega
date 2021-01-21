@@ -173,12 +173,6 @@ func handleConnNotice(c interface{}) {
 	}
 }
 
-
-func CommitteePolling() {
-	miner.server.CommitteePolling()
-	DebugInfo()
-}
-
 func Consensus(s PeerNotifier, addr []btcutil.Address, cfg *chaincfg.Params) {
 	miner = &Miner{}
 	miner.server = s
@@ -253,6 +247,10 @@ func Consensus(s PeerNotifier, addr []btcutil.Address, cfg *chaincfg.Params) {
 			bh := blk.block.Height()
 			log.Infof("miner received newblock %s at %d vs. %d",
 				blk.block.Hash().String(), top, bh)
+
+			if len(blk.block.MsgBlock().Transactions) > 1 {
+				log.Infof("non-trivial block")
+			}
 
 			if bh <= top {
 				log.Infof("newblock ignored")

@@ -656,7 +656,7 @@ func (s *server) handleCommitteRotation(r int32) {
 			continue
 		}
 
-		if s.chain.CheckCollateral(mb, blockchain.BFNone) != nil {
+		if _,err := s.chain.CheckCollateral(mb, blockchain.BFNone); err != nil {
 			continue
 		}
 
@@ -691,6 +691,9 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 
 	s.peerState.cmutex.Lock()
 	sp,ok := s.peerState.committee[p]
+	if ok {
+		sp.queue <- m
+	}
 	s.peerState.cmutex.Unlock()
 
 	if !ok {
@@ -702,7 +705,7 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 		btcdLog.Infof("CommitteeMsgMG makeConnection to %s %d", mb.MsgBlock().Connection, mb.Height())
 
 		s.makeConnection(mb.MsgBlock().Connection, p, mb.Height())
-
+/*
 		s.peerState.cmutex.Lock()
 		sp,ok = s.peerState.committee[p]
 		s.peerState.cmutex.Unlock()
@@ -710,11 +713,13 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 			btcdLog.Infof("Fail to send Committee Msg %s to %x because unable to connect", m.Command(), sp.member)
 			return
 		}
+ */
 	}
-
+/*
 	btcdLog.Info("Queueing Msg ... ")
 	sp.queue <- m
 	btcdLog.Infof("... %s for sending to %x", m.Command(), sp.member)
+ */
 }
 
 func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {

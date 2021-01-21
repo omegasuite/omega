@@ -104,9 +104,9 @@ var (
 	// right definition set.
 	rightSetBucketName = []byte("rights")
 
-	// MycoinsBucketName is the name of the db bucket used to house the
-	// my (Miner) coins that may be used for collateral.
-//	MycoinsBucketName = []byte("mycoins")
+	// minerTPSBucketName is the name of the db bucket used to house the
+	// miner's TPS record.
+	minerTPSBucketName = []byte("tpsrecord")
 
 	// byteOrder is the preferred byte order used for serializing numeric
 	// fields for storage in the database.
@@ -169,7 +169,6 @@ func DbFetchOrCreateVersion(dbTx database.Tx, key []byte, defaultVersion uint32)
 
 	return version, nil
 }
-
 
 // FetchUtxoEntry loads and returns the requested unspent transaction output
 // from the point of view of the end of the main chain.
@@ -440,6 +439,11 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 	var numStxos int
 	for _, tx := range txns {
 		numStxos += len(tx.TxIn)
+		for _,in := range tx.TxIn {
+			if in.IsSeparator() {
+				numStxos--
+			}
+		}
 	}
 
 	// When a block has no spent txouts there is nothing to serialize.
@@ -890,6 +894,11 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
+		// Create the bucket that houses the miner tps records
+		if _, err = meta.CreateBucket(minerTPSBucketName); err != nil {
+			return err
+		}
+
 		// Save the genesis block to the block index database.
 		if err = dbStoreBlockNode(dbTx, node); err != nil {
 			return err
@@ -940,10 +949,11 @@ func (b *BlockChain) createChainState() error {
 func (b *BlockChain) initChainState() error {
 	// Determine the state of the chain database. We may need to initialize
 	// everything from scratch or upgrade certain buckets.
-	var initialized, hasBlockIndex bool
+	var initialized, hasBlockIndex, hasminertps bool
 	err := b.db.View(func(dbTx database.Tx) error {
 		initialized = dbTx.Metadata().Get(chainStateKeyName) != nil
 		hasBlockIndex = dbTx.Metadata().Bucket(blockIndexBucketName) != nil
+		hasminertps = dbTx.Metadata().Bucket(minerTPSBucketName) != nil
 		return nil
 	})
 	if err != nil {
@@ -958,6 +968,18 @@ func (b *BlockChain) initChainState() error {
 
 	if !hasBlockIndex {
 		panic("block index mssing")
+	}
+
+	if !hasminertps {
+		err := b.db.Update(func(dbTx database.Tx) error {
+			if _, err = dbTx.Metadata().CreateBucket(minerTPSBucketName); err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	// Attempt to load the chain state from the database.
@@ -1466,6 +1488,17 @@ func (b *BlockChain) BlockByHeight(blockHeight int32) (*btcutil.Block, error) {
 	return block, err
 }
 
+func (b *BlockChain) HeighOfBlock(hash chainhash.Hash) int32 {
+	if h,ok := b.index.Unloaded[hash]; ok {
+		return h
+	}
+	n := b.NodeByHash(&hash)
+	if n == nil {
+		return -1
+	}
+	return n.Height
+}
+
 // BlockByHash returns the block from the main chain with the given hash with
 // the appropriate chain height set.
 //
@@ -1489,6 +1522,22 @@ func (b *BlockChain) BlockByHash(hash *chainhash.Hash) (*btcutil.Block, error) {
 	return block, err
 }
 
+func (b *BlockChain) HashToBlock(hash *chainhash.Hash) (*btcutil.Block, error) {
+	node := b.NodeByHash(hash)
+	if node == nil {
+		str := fmt.Sprintf("block %s is not in the block chain", hash.String())
+		return nil, bccompress.ErrNotInMainChain(str)
+	}
+
+	// Load the block from the database and return it.
+	var block *btcutil.Block
+	err := b.db.View(func(dbTx database.Tx) error {
+		var err error
+		block, err = dbFetchBlockByNode(dbTx, node)
+		return err
+	})
+	return block, err
+}
 
 // FetchVtxEntry loads and returns the requested vertex definition
 // from the point of view of the end of the main chain.

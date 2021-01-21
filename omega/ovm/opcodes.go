@@ -13,13 +13,13 @@ type OpCode byte
 
 const (
 	// 0x0 range - arithmetic ops
-	EVAL8	 OpCode = 0x41 + iota  // byte data evaluation "A"
-	EVAL16	// word data evaluation "B"
-	EVAL32	// dword data evaluation
-	EVAL64  // 64-bit data evaluation
-	EVAL256 // 256-bit data evaluation (as big.Int) "E"
+	EVAL8	 OpCode = 0x41 + iota  // byte Data evaluation "A"
+	EVAL16	// word Data evaluation "B"
+	EVAL32	// dword Data evaluation
+	EVAL64  // 64-bit Data evaluation
+	EVAL256 // 256-bit Data evaluation (as big.Int) "E"
 
-	CONV	// data conversion "F"
+	CONV	// Data conversion "F"
 	HASH	// Hash
 	HASH160	// Hash160
 	SIGCHECK	// verify sig
@@ -28,16 +28,16 @@ const (
 	IF		// "K"
 	CALL	// call function
 	EXEC	// execute other contract
-	LOAD	// load state data
-	STORE	// store state data
-	DEL		// 0x50 delete state data
+	LOAD	// load state Data
+	STORE	// store state Data
+	DEL		// 0x50 delete state Data
 	LIBLOAD	// load lib
 
 	MALLOC	// global mem alloc "R"
 	ALLOC	// mem alloc in func
 
-	COPY	// data copy
-	COPYIMM	// immediate data copy
+	COPY	// Data copy
+	COPYIMM	// immediate Data copy
 //	CODECOPY	// copy code
 	PUSH	// 0x56 V
 
@@ -50,14 +50,14 @@ const (
 	RECEIVED OpCode = 0x61 + iota	// "a". outpoint of the current call
 	TXFEE		// TXIOCOUNT. min tx fee for current tx
 	GETCOIN		// GETTXIN. coin received for the current call
-	NULOP		// GETTXOUT
+	NOP
 	SPEND		// add tx in
 	ADDRIGHTDEF	// add def
 	ADDTXOUT	// add tx out
 	GETDEFINITION	// get def
 	GETUTXO			// get any utxo
 	MINT		// mint a coin
-	META		// get contract meta data
+	META		// get contract meta Data
 	TIME		// timestamp in block
 	HEIGHT		// block height
 	
@@ -101,7 +101,7 @@ var opCodeToString = map[OpCode]string{
 	ADDTXOUT: "ADDTXOUT",
 	GETDEFINITION:    "GETDEFINITION",
 	GETCOIN:     "GETCOIN",
-	NULOP: "NULOP",
+	NOP: "NOP",
 	GETUTXO:    "GETUTXO",
 	SELFDESTRUCT:   "SELFDESTRUCT",
 	REVERT:    "REVERT",
@@ -155,7 +155,7 @@ var stringToOp = map[string]OpCode{
 	"ADDTXOUT": ADDTXOUT,
 	"GETDEFINITION": GETDEFINITION,
 	"GETCOIN": GETCOIN,
-	"NULOP": NULOP,
+	"NOP": NOP,
 	"GETUTXO": GETUTXO,
 	"SELFDESTRUCT":   SELFDESTRUCT,
 	"REVERT":         REVERT,

@@ -295,7 +295,6 @@ func validateMsgTx(tx *wire.MsgTx, prevScripts [][]byte, inputValues []btcutil.A
 //	ctx.GetHash = ovm.GetHash
 	ctx.BlockNumber = func() uint64 { return 0 }
 	ctx.BlockTime = func() uint32 { return 0	}
-	ctx.Block = func() *btcutil.Block { return nil }
 
 	vm := ovm.NewOVM(nil)
 	vm.SetContext(ctx)

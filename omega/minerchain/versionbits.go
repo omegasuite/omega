@@ -5,9 +5,7 @@
 package minerchain
 
 import (
-	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
-	"math"
 
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/wire"
@@ -32,87 +30,6 @@ const (
 	// unknown version to use for the purposes of warning the user.
 	unknownVerWarnNum = unknownVerNumToCheck / 2
 )
-
-// bitConditionChecker provides a thresholdConditionChecker which can be used to
-// test whether or not a specific bit is set when it's not supposed to be
-// according to the expected version based on the known deployments and the
-// current state of the chain.  This is useful for detecting and warning about
-// unknown rule activations.
-type bitConditionChecker struct {
-	bit   uint32
-	chain *MinerChain
-}
-
-// Ensure the bitConditionChecker type implements the thresholdConditionChecker
-// interface.
-var _ thresholdConditionChecker = bitConditionChecker{}
-
-// BeginTime returns the unix timestamp for the median block time after which
-// voting on a rule change starts (at the next window).
-//
-// Since this implementation checks for unknown rules, it returns 0 so the rule
-// is always treated as active.
-//
-// This is part of the thresholdConditionChecker interface implementation.
-func (c bitConditionChecker) BeginTime() uint64 {
-	return 0
-}
-
-// EndTime returns the unix timestamp for the median block time after which an
-// attempted rule change fails if it has not already been locked in or
-// activated.
-//
-// Since this implementation checks for unknown rules, it returns the maximum
-// possible timestamp so the rule is always treated as active.
-//
-// This is part of the thresholdConditionChecker interface implementation.
-func (c bitConditionChecker) EndTime() uint64 {
-	return math.MaxUint64
-}
-
-// RuleChangeActivationThreshold is the number of blocks for which the condition
-// must be true in order to lock in a rule change.
-//
-// This implementation returns the value defined by the chain params the checker
-// is associated with.
-//
-// This is part of the thresholdConditionChecker interface implementation.
-func (c bitConditionChecker) RuleChangeActivationThreshold() uint32 {
-	return c.chain.chainParams.RuleChangeActivationThreshold
-}
-
-// MinerConfirmationWindow is the number of blocks in each threshold state
-// retarget window.
-//
-// This implementation returns the value defined by the chain params the checker
-// is associated with.
-//
-// This is part of the thresholdConditionChecker interface implementation.
-func (c bitConditionChecker) MinerConfirmationWindow() uint32 {
-	return c.chain.chainParams.MinerConfirmationWindow
-}
-
-// Condition returns true when the specific bit associated with the checker is
-// set and it's not supposed to be according to the expected version based on
-// the known deployments and the current state of the chain.
-//
-// This function MUST be called with the chain state lock held (for writes).
-//
-// This is part of the thresholdConditionChecker interface implementation.
-func (c bitConditionChecker) Condition(node *chainutil.BlockNode) (bool, error) {
-	conditionMask := uint32(1) << c.bit
-	version := uint32(node.Data.GetVersion())
-
-	if version&conditionMask == 0 {
-		return false, nil
-	}
-
-	expectedVersion, err := c.chain.calcNextBlockVersion(node.Parent)
-	if err != nil {
-		return false, err
-	}
-	return uint32(expectedVersion)&conditionMask == 0, nil
-}
 
 // deploymentChecker provides a thresholdConditionChecker which can be used to
 // test a specific deployment rule.  This is required for properly detecting
@@ -175,10 +92,10 @@ func (c deploymentChecker) MinerConfirmationWindow() uint32 {
 // associated with the checker is set.
 //
 // This is part of the thresholdConditionChecker interface implementation.
-func (c deploymentChecker) Condition(node *chainutil.BlockNode) (bool, error) {
-	conditionMask := uint32(1) << c.deployment.BitNumber
-	version := uint32(node.Data.GetVersion())
-	return (version & conditionMask != 0), nil
+func (c deploymentChecker) Condition(node *chainutil.BlockNode) bool {
+	conditionMask := c.deployment.FeatureMask
+	version := node.Data.GetVersion()
+	return version & conditionMask == conditionMask
 }
 
 func (b *MinerChain) NextBlockVersion(prevNode *chainutil.BlockNode) (uint32, error) {
@@ -198,9 +115,15 @@ func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (uint32
 	// Set the appropriate bits for each actively defined rule deployment
 	// that is either in the process of being voted on, or locked in for the
 	// activation at the next threshold window change.
-	expectedVersion := uint32(0x10000)
+	expectedVersion := wire.CodeVersion	// uint32(0x10000)		// current version
 	for id := 0; id < len(b.chainParams.Deployments); id++ {
 		deployment := &b.chainParams.Deployments[id]
+
+		if expectedVersion > deployment.PrevVersion {
+			continue
+		}
+
+		expectedVersion = deployment.PrevVersion
 		cache := &b.deploymentCaches[id]
 		checker := deploymentChecker{deployment: deployment, chain: b}
 		state, err := b.thresholdState(prevNode, checker, cache)
@@ -208,9 +131,9 @@ func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (uint32
 			return 0, err
 		}
 		if state == ThresholdStarted || state == ThresholdLockedIn {
-			expectedVersion |= uint32(1) << deployment.BitNumber
+			expectedVersion |= deployment.FeatureMask
 		} else if state == ThresholdActive {
-			expectedVersion += (2 << vbNumBits)
+			expectedVersion = (deployment.PrevVersion + (1 << vbNumBits)) &^ ((1 << vbNumBits) - 1)
 		}
 	}
 	return expectedVersion, nil
@@ -236,8 +159,25 @@ func (b *MinerChain) CalcNextBlockVersion() (uint32, error) {
 // when new rules have been activated and every block for those about to be
 // activated.
 //
-// This function MUST be called with the chain state lock held (for writes)
 func (b *MinerChain) warnUnknownRuleActivations(node *chainutil.BlockNode) error {
+	v := node.Data.GetVersion()
+	checked := false
+	for _,d := range b.chainParams.Deployments {
+		if v &^ ((1 << vbNumBits) - 1) == d.PrevVersion {
+			if (v & ((1 << vbNumBits) - 1)) &^ d.FeatureMask != 0 {
+				log.Warnf("Unknown new rules are activated in block %d", node.Height)
+			}
+			checked = true
+		} else if v &^ ((1 << vbNumBits) - 1) == (d.PrevVersion + (1 << vbNumBits)) {
+			checked = true
+		}
+	}
+
+	if !checked {
+		log.Warnf("Unknown new rules are activated in block %d", node.Height)
+	}
+
+/*
 	// Warn if any unknown new rules are either about to activate or have
 	// already been activated.
 	for bit := uint32(0); bit < vbNumBits; bit++ {
@@ -251,8 +191,7 @@ func (b *MinerChain) warnUnknownRuleActivations(node *chainutil.BlockNode) error
 		switch state {
 		case ThresholdActive:
 			if !b.unknownRulesWarned {
-				log.Warnf("Unknown new rules activated (bit %d)",
-					bit)
+				log.Warnf("Unknown new rules activated (bit %d)", bit)
 				b.unknownRulesWarned = true
 			}
 
@@ -263,6 +202,7 @@ func (b *MinerChain) warnUnknownRuleActivations(node *chainutil.BlockNode) error
 				"%d blocks (bit %d)", activationHeight, bit)
 		}
 	}
+ */
 
 	return nil
 }
@@ -281,11 +221,13 @@ func (b *MinerChain) warnUnknownVersions(node *chainutil.BlockNode) error {
 	numUpgraded := uint32(0)
 	for i := uint32(0); i < unknownVerNumToCheck && node != nil; i++ {
 		expectedVersion, err := b.calcNextBlockVersion(node.Parent)
+/*
 		if (expectedVersion >> vbNumBits) > (wire.CodeVersion >> vbNumBits) {
 			log.Error("New rules are in effect. You are running an older version of the software.")
 			b.unknownVersionsWarned = true
 			return fmt.Errorf("New rules are in effect. You are running an older version of the software.")
 		}
+ */
 		if err != nil {
 			return err
 		}

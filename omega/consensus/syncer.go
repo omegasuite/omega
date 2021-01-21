@@ -233,7 +233,7 @@ func (self *Syncer) repeater() {
 			for i,_ := range self.agrees {
 				self.CommitteeMsgMG(self.Names[i], r)
 			}
-			self.agrees = nil
+			self.agrees = make(map[int32]struct{})
 		}
 	}
 
@@ -349,19 +349,20 @@ func (self *Syncer) run() {
 
 	begin := time.Now().Unix()
 
-//	self.mutex.Lock()
+	self.mutex.Lock()
 	for going {
-//		self.mutex.Unlock()
+		self.mutex.Unlock()
 		select {
 		case <-self.quit:
-//			self.mutex.Lock()
+			self.mutex.Lock()
 			going = false
 
 		case <-self.debug:
+			self.mutex.Lock()
 			self.debugging()
 
 		case tree := <- self.newtree:
-//			self.mutex.Lock()
+			self.mutex.Lock()
 			if self.sigGiven >= 0 {
 				continue
 			}
@@ -411,7 +412,7 @@ func (self *Syncer) run() {
 			self.print()
 
 		case m := <- self.messages:
-//			self.mutex.Lock()
+			self.mutex.Lock()
 			self.handeling = m.Command()
 			log.Infof("processing %s message at %d", m.Command(), m.Block())
 			switch m.(type) {
@@ -544,14 +545,14 @@ func (self *Syncer) run() {
 //			self.print()
 
 		case <-self.repeating:
-//			self.mutex.Lock()
+			self.mutex.Lock()
 			self.repeater()
 			for len(self.repeating) > 0 {
 				<-self.repeating
 			}
 
 		case <-ticker.C:
-//			self.mutex.Lock()
+			self.mutex.Lock()
 			if 	time.Now().Unix() - begin > 600 {
 				log.Infof("sync %d exceeded time limit", self.Height)
 				going = false
@@ -562,7 +563,7 @@ func (self *Syncer) run() {
 		self.handeling = ""
 	}
 
-//	defer self.mutex.Unlock()
+	defer self.mutex.Unlock()
 
 	ticker.Stop()
 
@@ -1270,8 +1271,11 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 
 func (self *Syncer) SetCommittee() {
 	self.mutex.Lock()
-	defer self.mutex.Unlock()
+	self.setCommittee()
+	self.mutex.Unlock()
+}
 
+func (self *Syncer) setCommittee() {
 	if self.Runnable || self.Done {
 		return
 	}
@@ -1352,7 +1356,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	eq := int64(-1)
 	for _, txo := range block.MsgBlock().Transactions[0].TxOut {
 		if txo.IsSeparator() {
-			continue
+			break
 		}
 		if txo.TokenType == 0 {
 			if eq < 0 {
@@ -1370,7 +1374,10 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 		return
 	}
 
-	self.SetCommittee()
+	self.mutex.Lock()
+	defer self.mutex.Unlock()
+
+	self.setCommittee()
 
 	log.Infof("syner initialized block %s, sending to newtree", block.Hash().String())
 
@@ -1532,6 +1539,7 @@ func (self *Syncer) better(left, right int32) bool {
 
 func (self *Syncer) best() int32 {
 	var seld *[20]byte
+
 	for left,l := range self.forest {
 		if seld == nil {
 			if l.block != nil {
@@ -1545,6 +1553,7 @@ func (self *Syncer) best() int32 {
 			}
 		}
 	}
+
 	if seld == nil {
 		return -1
 	}

@@ -44,15 +44,15 @@ var (
 const (
 	// the base size for block (excluding header). Allowed block size is
 	// set periodically based on actual block size utiliation and block
-	// rate. Specifically, Allowed block size is every 100,000 tx blocks
-	// based on space utilization of the most recent 100,000 weighing blocks.
-	// A weighing block is a signed block that is at least 10,000 blocks before
-	// the checking point.
+	// rate. Specifically, Allowed block size is reevaluated every 20 tx blocks
+	// based on space utilization of the 600 weighing block preceeding the
+	// 600-th block before the evaluation point. A weighing block is a signed
+	// block that is at least 600 blocks before the checking point.
 	BlockBaseSize = 256		// 256 Txs. must be 2 ^ n
 	TargetBlockRate = 3		// 3 seconds.
-	BlockSizeEvalPeriod = 100000	// re-evaluate block size every 100000 blocks
-	SkipBlocks = 10000
-	StartEvalBlocks = 2000
+	BlockSizeEvalPeriod = 200	// re-evaluate block size every 200 blocks
+	BlockSizeEvalWindow = 1200	// window of sample data for evaluation
+	SkipBlocks = 600			// BlockSizeEvalPeriod > SkipBlocks > StartEvalBlocks
 
 	// MaxBlockSigOpsCost is the maximum number of signature operations
 	// allowed for a block.
@@ -88,9 +88,12 @@ type DNSSeed struct {
 // ConsensusDeployment defines details related to a specific consensus rule
 // change that is voted in.  This is part of BIP0009.
 type ConsensusDeployment struct {
-	// BitNumber defines the specific bit number within the block version
+	// PrevVersion defines the previous version that this deployment is based on
+	PrevVersion uint32
+
+	// FeatureMask defines the specific features within the block version
 	// this particular soft-fork deployment refers to.
-	BitNumber uint8
+	FeatureMask uint32
 
 	// StartTime is the median block time after which voting on the
 	// deployment starts.
@@ -109,10 +112,14 @@ const (
 	// purposes.
 	DeploymentTestDummy = iota
 
-	// NOTE: DefinedDeployments must always come last since it is used to
-	// determine how many defined deployments there currently are.
+	// DeploymentVersion2 includes: requirement for collateral, treating tx fees
+	// as insurance and conpensate seller using collateral; new POW adjust scheme
+	// combining collecteral amount and TPS score.
+	DeploymentVersion2
 
 	// DefinedDeployments is the number of currently defined deployments.
+	// It must always come last since it is used to determine how many
+	// defined deployments there currently are.
 	DefinedDeployments
 )
 
@@ -160,6 +167,8 @@ type Params struct {
 	// is reduced.
 	SubsidyReductionInterval int32
 
+	MinimalAward int64
+
 	// TargetTimespan is the desired amount of time that should elapse
 	// before the block difficulty requirement is examined to determine how
 	// it should be changed in order to maintain the desired block
@@ -183,7 +192,7 @@ type Params struct {
 	// minimum required difficulty after a long enough period of time has
 	// passed without finding a block.  This is really only useful for test
 	// networks and should not be set on a main network.
-	ReduceMinDifficulty bool
+//	ReduceMinDifficulty bool
 
 	// MinDiffReductionTime is the amount of time after which the minimum
 	// required difficulty should be reduced when a block hasn't been found.
@@ -227,8 +236,6 @@ type Params struct {
 	ScriptHashAddrID        byte // First byte of a P2SH address
 	ContractAddrID	        byte // First byte of a P2C address
 	PrivateKeyID            byte // First byte of a WIF private key
-//	WitnessPubKeyHashAddrID byte // First byte of a P2WPKH address
-//	WitnessScriptHashAddrID byte // First byte of a P2WSH address
 
 	// BIP32 hierarchical deterministic extended key magics
 	HDPublicKeyID  [4]byte
@@ -246,6 +253,7 @@ type Params struct {
 
 	MinBorderFee int
 	MinRelayTxFee int64
+	ContractExecFee		int64			// contract execution cost as Satoshis per 10K steps
 }
 
 // MainNetParams defines the network parameters for the main Omega network.
@@ -266,12 +274,13 @@ var MainNetParams = Params{
 	PowLimitBits:             0x1e00fff0,
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
+	MinimalAward: 			  1171875,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	ChainCurrentStd:		  time.Hour * 24,
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 	MinBorderFee:			  100000,
-	ReduceMinDifficulty:      false,
+//	ReduceMinDifficulty:      false,
 	MinDiffReductionTime:     0,
 	GenerateSupported:        false,
 
@@ -287,9 +296,16 @@ var MainNetParams = Params{
 	MinerConfirmationWindow:       2016, //
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
-			BitNumber:  0,
-			StartTime:  1199145601, // January 1, 2008 UTC
-			ExpireTime: 1230767999, // December 31, 2008 UTC
+			PrevVersion: 0,
+			FeatureMask: 0,
+			StartTime:   1199145601, // January 1, 2008 UTC
+			ExpireTime:  1230767999, // December 31, 2008 UTC
+		},
+		DeploymentVersion2: {
+			PrevVersion: 0x10000,
+			FeatureMask: 0x3,
+			StartTime:   uint64(time.Date(2020, 12, 31, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 1, 31, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 
@@ -316,6 +332,7 @@ var MainNetParams = Params{
 	HDCoinType: 0,
 	ContractExecLimit: 10000000,		// hard limit of total contract execution steps in a block
 	SigVeriConcurrency: 1,
+	ContractExecFee: 1,
 }
 
 // RegressionNetParams defines the network parameters for the regression test
@@ -336,12 +353,13 @@ var RegressionNetParams = Params{
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         10,
 	SubsidyReductionInterval: 150 * wire.MINER_RORATE_FREQ,
+	MinimalAward: 			  1171875,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	ChainCurrentStd:		  time.Hour * 24000,
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 	MinBorderFee:			  100000,
-	ReduceMinDifficulty:      true,
+//	ReduceMinDifficulty:      true,
 	MinDiffReductionTime:     time.Minute * 20, // TargetTimePerBlock * 2
 	GenerateSupported:        true,
 
@@ -352,13 +370,20 @@ var RegressionNetParams = Params{
 	//
 	// The miner confirmation window is defined as:
 	//   target proof of work timespan / target proof of work spacing
-	RuleChangeActivationThreshold: 108, // 75%  of MinerConfirmationWindow
-	MinerConfirmationWindow:       144,
+	RuleChangeActivationThreshold: 75, // 75%  of MinerConfirmationWindow
+	MinerConfirmationWindow:       100,
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
-			BitNumber:  16,
-			StartTime:  0,             // Always available for vote
-			ExpireTime: math.MaxInt64, // Never expires
+			PrevVersion: 0,
+			FeatureMask: 0,
+			StartTime:   0,             // Always available for vote
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
+		DeploymentVersion2: {
+			PrevVersion: 0x10000,
+			FeatureMask: 0x3,
+			StartTime:   uint64(time.Date(2020, 12, 31, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 1, 31, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 
@@ -385,6 +410,7 @@ var RegressionNetParams = Params{
 
 	ContractExecLimit: 10000000,
 	SigVeriConcurrency: 4,
+	ContractExecFee: 1,
 }
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
@@ -407,12 +433,13 @@ var TestNet3Params = Params{
 	PowLimitBits:             0x1f0fffff,	// 0x1d3fffff
 	CoinbaseMaturity:         10,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
+	MinimalAward: 			  1171875,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 4,    // 10 minutes
 	ChainCurrentStd:		  time.Hour * 24000,
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 	MinBorderFee:			  100000,
-	ReduceMinDifficulty:      true,
+//	ReduceMinDifficulty:      true,
 	MinDiffReductionTime:     time.Minute * 3, // TargetTimePerBlock * 2
 	GenerateSupported:        true,
 
@@ -424,13 +451,20 @@ var TestNet3Params = Params{
 	//
 	// The miner confirmation window is defined as:
 	//   target proof of work timespan / target proof of work spacing
-	RuleChangeActivationThreshold: 1512, // 75% of MinerConfirmationWindow
-	MinerConfirmationWindow:       2016,
+	RuleChangeActivationThreshold: 75, // 75% of MinerConfirmationWindow
+	MinerConfirmationWindow:       100,
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
-			BitNumber:  16,
-			StartTime:  1199145601, // January 1, 2008 UTC
-			ExpireTime: 1230767999, // December 31, 2008 UTC
+			PrevVersion: 0,
+			FeatureMask: 0,
+			StartTime:   1199145601, // January 1, 2008 UTC
+			ExpireTime:  1230767999, // December 31, 2008 UTC
+		},
+		DeploymentVersion2: {
+			PrevVersion: 0x10000,
+			FeatureMask: 0x3,
+			StartTime:   uint64(time.Date(2020, 12, 31, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 1, 31, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 
@@ -457,6 +491,7 @@ var TestNet3Params = Params{
 
 	ContractExecLimit: 10000000,
 	SigVeriConcurrency: 4,
+	ContractExecFee: 1,
 }
 
 // SimNetParams defines the network parameters for the simulation test Bitcoin
@@ -481,12 +516,13 @@ var SimNetParams = Params{
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
+	MinimalAward: 			  1171875,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	ChainCurrentStd:		  time.Hour * 24000,
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 	MinBorderFee:			  100000,
-	ReduceMinDifficulty:      true,
+//	ReduceMinDifficulty:      true,
 	MinDiffReductionTime:     time.Minute * 20, // TargetTimePerBlock * 2
 	GenerateSupported:        true,
 
@@ -501,9 +537,16 @@ var SimNetParams = Params{
 	MinerConfirmationWindow:       100,
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
-			BitNumber:  16,
-			StartTime:  0,             // Always available for vote
-			ExpireTime: math.MaxInt64, // Never expires
+			PrevVersion: 0,
+			FeatureMask: 0,
+			StartTime:   0,             // Always available for vote
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
+		DeploymentVersion2: {
+			PrevVersion: 0x10000,
+			FeatureMask: 0x3,
+			StartTime:   uint64(time.Date(2020, 12, 31, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 1, 31, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 
@@ -530,6 +573,7 @@ var SimNetParams = Params{
 
 	ContractExecLimit: 10000000,
 	SigVeriConcurrency: 4,
+	ContractExecFee: 1,
 }
 
 var (

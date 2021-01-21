@@ -14,11 +14,11 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/omegasuite/neutrino"
 	"github.com/omegasuite/omgwallet/chain"
 	"github.com/omegasuite/omgwallet/rpc/legacyrpc"
 	"github.com/omegasuite/omgwallet/wallet"
 	"github.com/omegasuite/omgwallet/walletdb"
-	"github.com/lightninglabs/neutrino"
 )
 
 var (

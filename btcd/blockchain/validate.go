@@ -10,9 +10,12 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/omega/ovm"
 	"math"
 	"math/big"
+	"sort"
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg"
@@ -189,6 +192,8 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 	// A transaction must have at least one input.
 	msgTx := tx.MsgTx()
 
+	forfeit := msgTx.Version & wire.TxTypeMask == wire.ForfeitTxVersion
+
 	contract := false
 	for _,to := range msgTx.TxOut {
 		if to.IsSeparator() {
@@ -197,8 +202,12 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		contract = contract || to.PkScript[0] == 0x88 // IsContract(to.PkScript[0])
 	}
 
-	if contract && msgTx.LockTime != 0 {
+	if (forfeit || contract) && msgTx.LockTime != 0 {
 		return ruleError(ErrBadTxInput, "transaction has contract call and LockTime is not 0")
+	}
+
+	if forfeit && len(msgTx.TxDef) > 0 {
+		return ruleError(ErrBadTxInput, "forfeiture transaction may not have definition")
 	}
 
 	if len(msgTx.TxIn) == 0 && !contract {
@@ -317,7 +326,7 @@ func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
 	if p == nil {
 		return -1
 	}
-	return int32(rotate)
+	return rotate
 }
 
 // checkProofOfWork ensures the block header bits which indicate the target
@@ -575,13 +584,294 @@ func CheckProofOfWork(stubBlock * btcutil.Block, powLimit *big.Int) error {
 	return nil
 }
 
+type txlistitem struct {
+	hash chainhash.Hash
+	fees int64
+}
+type txlist struct {
+	txs []*txlistitem
+}
+
+func (b *BlockChain) CheckForfeit(block *btcutil.Block, prevNode *chainutil.BlockNode,
+	view * viewpoint.UtxoViewpoint) error {
+	blacklist, compensated, err := b.PrepForfeit(block, prevNode)
+	if err != nil {
+		return err
+	}
+
+	thistx := make(map[chainhash.Hash]struct{})
+	for _,tx := range block.Transactions()[1:] {
+		thistx[*tx.Hash()] = struct{}{}
+	}
+	// find all txs that needs compensation. group them by miner
+	tbc := make(map[[20]byte]*txlist)		// miner=>tx list
+	utx := make(map[chainhash.Hash]*btcutil.Tx)
+
+	collacterals := make(map[wire.OutPoint][20]byte)
+	for _,p := range blacklist {
+		mb,_ := b.Miners.BlockByHash(&p.MRBlock)
+		if _,ok := tbc[mb.MsgBlock().Miner]; !ok {
+			txs := txlist{make([]*txlistitem, 0)}
+			tbc[mb.MsgBlock().Miner] = &txs
+		}
+		txs := tbc[mb.MsgBlock().Miner]
+		collacterals[*mb.MsgBlock().Utxos] = mb.MsgBlock().Miner
+		for _,q := range p.Blocks {
+			if b.InBestChain(&q) {
+				continue
+			}
+			blk,_ := b.BlockByHash(&q)
+			for _,tx := range blk.Transactions()[1:] {
+				if _, ok := thistx[*tx.Hash()]; ok || tx.MsgTx().IsForfeit() {
+					// the tx is in current block, no compensation needed
+					continue
+				}
+				if b.TxInMainChain(tx.Hash(), prevNode.Height) {
+					// if this is is in main chain, no compendation
+					continue
+				}
+				txs.txs = append(txs.txs, &txlistitem{
+					*tx.Hash(),
+					int64(0),
+				})
+			}
+			compensated[q] = struct{}{}
+		}
+		for _,q := range p.Blocks {
+			for blk, _ := b.BlockByHash(&q); !b.MainChainHasBlock(&q); {
+				for _,tx := range blk.Transactions() {
+					utx[*tx.Hash()] = tx
+				}
+				q = blk.MsgBlock().Header.PrevBlock
+				blk, _ = b.BlockByHash(&q)
+			}
+		}
+	}
+
+	// calculate tx fees. compensation = 10000 * fees
+	for _,txl := range tbc {
+		for _,tx := range txl.txs {
+			out, in := int64(0), int64(0)
+			for _,txo := range utx[tx.hash].MsgTx().TxOut {
+				if txo.IsSeparator() {
+					break
+				}
+				if txo.TokenType != 0 {
+					continue
+				}
+				out += txo.Token.Value.(*token.NumToken).Val
+			}
+			for _,txin := range utx[tx.hash].MsgTx().TxIn {
+				if txin.IsSeparator() {
+					break
+				}
+				var tk * wire.MsgTx
+				if p,ok := utx[txin.PreviousOutPoint.Hash]; ok {
+					tk = p.MsgTx()
+				} else {
+					tk = b.MainChainTx(txin.PreviousOutPoint.Hash)
+				}
+				if tk.TxOut[txin.PreviousOutPoint.Index].TokenType != 0 {
+					continue
+				}
+				in += tk.TxOut[txin.PreviousOutPoint.Index].Token.Value.(*token.NumToken).Val
+			}
+			tx.fees = in - out
+		}
+
+		// sort txs in ascending order by tx fees
+		sort.Slice(txl.txs, func (i int, j int) bool {
+			if txl.txs[i].fees < txl.txs[j].fees {
+				return true
+			} else if txl.txs[i].fees > txl.txs[j].fees {
+				return false
+			}
+			// tie break by hash to ensure consistent result across nodes
+			return bytes.Compare(txl.txs[i].hash[:], txl.txs[j].hash[:]) < 0
+		})
+	}
+
+	// all foreit txs in a block must process exactly all blacklists
+	for _,tx := range block.MsgBlock().Transactions[1:] {
+		if !tx.IsForfeit() {
+			break
+		}
+		if len(tx.TxIn) != 1 || len(tx.TxDef) > 0 {
+			return fmt.Errorf("A forfeit transaction must have eactly one input and no definition")
+		}
+
+		// the item should have been loaded already
+		utxo := view.LookupEntry(tx.TxIn[0].PreviousOutPoint)
+		var miner [20]byte
+		copy(miner[:], utxo.PkScript()[1:21])
+		if utxo.TokenType != 0 {
+			return fmt.Errorf("Forfeit input must be an omega coin")
+		}
+		if _,ok := tbc[miner]; !ok {
+			return fmt.Errorf("Forfeit input from unknown source")
+		}
+		if utxo.PkScript()[21] != ovm.OP_PAYFORFEITURE {
+			// it must be a collectral
+			if _,ok := collacterals[tx.TxIn[0].PreviousOutPoint]; !ok {
+				return fmt.Errorf("Forfeit input from unknown source")
+			}
+		}
+		// amount available
+		amount := utxo.Amount.(*token.NumToken).Val
+		fees := int64(0)
+		for _,txo := range tbc[miner].txs {
+			fees += txo.fees		// this would be tx fees to miner
+		}
+
+		if amount >= fees + tbc[miner].txs[0].fees * 10000 { // must compensate at least 1 tx
+			amount -= fees
+		}
+
+		for i,txo := range tbc[miner].txs {
+			mn := uint16(0)
+			var lpk []byte
+			for _,tto := range utx[txo.hash].MsgTx().TxOut {
+				if tto.IsSeparator() {
+					continue
+				}
+				if tto.PkScript[0] == b.ChainParams.ContractAddrID {
+					// can not compensate contract calls because contracts don't know
+					// how to express agreement to a settlement plan. leave to future
+					continue
+				}
+				lpk = tto.PkScript
+				mn++
+			}
+			if mn == 0 {
+				continue
+			}
+			// must exactly match outputs in tx
+			if tx.TxOut[i].TokenType != 0 {
+				return fmt.Errorf("Forfeit output type must be an omega coin")
+			}
+			m := 10000 * txo.fees
+			if tx.TxOut[i].Token.Value.(*token.NumToken).Val <= amount {
+				if tx.TxOut[i].Token.Value.(*token.NumToken).Val != m {
+					return fmt.Errorf("Forfeit compensation should be 10000 times of tx fees")
+				}
+				amount -= m
+			} else {
+				if tx.TxOut[i].Token.Value.(*token.NumToken).Val != amount {
+					return fmt.Errorf("Forfeit compensation amount incorrect")
+				}
+				amount = 0
+			}
+
+			// check pkscript
+			if mn == 1 {
+				if bytes.Compare(lpk, tx.TxOut[i].PkScript) != 0 {
+					return fmt.Errorf("Forfeit compensation pkscript incorrect")
+				}
+			} else if tx.TxOut[i].PkScript[0] != b.ChainParams.MultiSigAddrID {
+				return fmt.Errorf("Forfeit compensation pkscript incorrect")
+			} else {
+				if bytes.Compare(tx.TxOut[i].PkScript[21:], []byte{ovm.OP_PAYFORFEITURE,0,0,0}) != 0 {
+					return fmt.Errorf("Forfeit compensation pkscript incorrect")
+				}
+				scripts := make([]byte, 4, 4 + 21 * mn)
+				common.LittleEndian.PutUint16(scripts, mn)
+				common.LittleEndian.PutUint16(scripts[2:], mn)
+				for _, tto := range utx[txo.hash].MsgTx().TxOut {
+					if tto.IsSeparator() {
+						continue
+					}
+					if tto.PkScript[0] == b.ChainParams.ContractAddrID {
+						continue
+					}
+					scripts = append(scripts, tto.PkScript...)
+				}
+				h := btcutil.Hash160(scripts)
+				if bytes.Compare(h, tx.TxOut[i].PkScript[1:21]) != 0 {
+					return fmt.Errorf("Forfeit compensation pkscript incorrect")
+				}
+			}
+
+			if amount == 0 {
+				if i + 1 != len(tx.TxOut) {
+					return fmt.Errorf("Forfeit number of txo incorrect")
+				}
+				break
+			}
+		}
+
+		if amount > 0 {
+			if len(tbc[miner].txs) + 1 != len(tx.TxOut) {
+				return fmt.Errorf("Forfeit number of txo incorrect")
+			}
+			// residue tx
+			txo := tx.TxOut[len(tx.TxOut) - 1]
+			if txo.TokenType != 0 {
+				return fmt.Errorf("Forfeit output type must be an omega coin")
+			}
+			if txo.Token.Value.(*token.NumToken).Val != amount {
+				return fmt.Errorf("Forfeit compensation amount incorrect")
+			}
+			if txo.PkScript[0] != b.ChainParams.PubKeyHashAddrID ||
+				bytes.Compare(txo.PkScript[1:21], miner[:]) != 0 ||
+				bytes.Compare(txo.PkScript[21:], []byte{ovm.OP_PAYFORFEITURE,0,0,0}) != 0 {
+				return fmt.Errorf("Forfeit residue incorrect")
+			}
+		}
+		delete(tbc, miner)
+	}
+
+	if len(tbc) != 0 {
+		return fmt.Errorf("%d blacklist item unhandled")
+	}
+
+	return nil
+}
+
+func (b *BlockChain) MainChainTx(txHash chainhash.Hash) *wire.MsgTx{
+	// Look up the location of the transaction.
+	blockRegion, err := b.indexManager.TxBlockRegion(&txHash)
+	if err != nil || blockRegion == nil{
+		return nil
+	}
+
+	var txBytes []byte
+	err = b.db.View(func(dbTx database.Tx) error {
+		var err error
+		txBytes, err = dbTx.FetchBlockRegion(blockRegion)
+		return err
+	})
+
+	if err != nil {
+		return nil
+	}
+
+	// Deserialize the transaction
+	var msgTx wire.MsgTx
+	err = msgTx.Deserialize(bytes.NewReader(txBytes))
+	if err != nil {
+		return nil
+	}
+	return &msgTx
+}
+
+func (b *BlockChain) TxInMainChain(txHash *chainhash.Hash, height int32) bool {
+	// Look up the location of the transaction.
+	blockRegion, err := b.indexManager.TxBlockRegion(txHash)
+	if err != nil || blockRegion == nil{
+		return false
+	}
+
+	blkHeight, err := b.BlockHeightByHash(blockRegion.Hash)
+	return err == nil && blkHeight <= height
+}
+
 // CountSigOps returns the number of signature operations for all transaction
 // input and output scripts in the provided transaction.  This uses the
 // quicker, but imprecise, signature operation counting mechanism from
 // txscript.
 func CountSigOps(tx *btcutil.Tx) int {
 	if tx.IsCoinBase() {
-		return len(tx.MsgTx().SignatureScripts) - 1
+		return 0
 	}
 	return len(tx.MsgTx().SignatureScripts)
 }
@@ -654,12 +944,21 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 			"block is not a coinbase")
 	}
 
-	// A block must not have more than one coinbase.
+	// All forfeiture txs must be immediately after coinbase
+	minrtx := 0x7FFFFFFF
 	for i, tx := range transactions[1:] {
 		if IsCoinBase(tx) {
 			str := fmt.Sprintf("block contains second coinbase at "+
 				"index %d", i+1)
 			return ruleError(ErrMultipleCoinbases, str)
+		}
+		// forfeiture txs must be immediately after coinbase. there could be more than one
+		if tx.MsgTx().Version & wire.TxTypeMask == wire.ForfeitTxVersion && i > minrtx {
+			str := fmt.Sprintf("block contains forfeiture coinbase at "+
+				"index %d", i+1)
+			return ruleError(ErrMultipleCoinbases, str)
+		} else if minrtx > i {
+			minrtx = i
 		}
 	}
 
@@ -668,8 +967,8 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	for _, tx := range transactions {
 		err := CheckTransactionSanity(tx)
 		if err != nil {
-			return err
-		}
+				return err
+			}
 	}
 
 	// There are two hashes in a full block. One in header and one as coinbase's first
@@ -814,9 +1113,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 
 		// Ensure all transactions in the block are finalized.
 		for _, tx := range block.Transactions() {
-			if !IsFinalizedTransaction(tx, blockHeight,
-				blockTime) {
-
+			if !IsFinalizedTransaction(tx, blockHeight,	blockTime) {
 				str := fmt.Sprintf("block contains unfinalized "+
 					"transaction %v", tx.Hash())
 				return ruleError(ErrUnfinalizedTx, str)
@@ -877,6 +1174,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 
 	utxoView := views.Utxo
 
+	// polygon check
 	if err := validate.CheckTransactionInputs(tx, views); err != nil {
 		// actually check definitions only
 		return err
@@ -885,7 +1183,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 	totalIns := make(map[uint64]int64)
 	for txInIndex, txIn := range tx.MsgTx().TxIn {
 		if txIn.IsSeparator() {
-			continue
+			break
 		}
 		// Ensure the referenced input transaction is available.
 		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
@@ -1186,7 +1484,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 	return nil
 }
 
-func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, error) {
+func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, storage int64, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, error) {
 	// Coinbase transactions have no inputs.
 	utxoView := views.Utxo
 
@@ -1237,7 +1535,11 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.View
 		if txOut.IsSeparator() {
 			continue
 		}
+
 		if txOut.TokenType & 3 == 0 {
+			if txOut.Value == nil {
+				continue
+			}
 			if _, ok := totalSatoshiOut[txOut.TokenType]; ok {
 				totalSatoshiOut[txOut.TokenType] += txOut.Value.(*token.NumToken).Val
 			} else {
@@ -1272,11 +1574,39 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, views * viewpoint.View
 			n++
 		}
 	}
-	if txFeeInSatoshi < int64(n * chainParams.MinBorderFee) {
+
+	// must pay more than border fee + tx storage fee + contract storage fee
+	if txFeeInSatoshi < int64(n * chainParams.MinBorderFee) + chainParams.MinRelayTxFee * (storage + int64(tx.MsgTx().SerializeSizeFull())) / 1000 {
 		return 0, fmt.Errorf("Transaction fee is less than the mandatory storage fee.")
 	}
 
 	return txFeeInSatoshi, nil
+}
+
+func ContractNewStorage(tx *btcutil.Tx, vm * ovm.OVM, paidstoragefees map[[20]byte]int64) int64 {
+	storagefees := make(map[[20]byte]int64)
+
+	for _, txOut := range tx.MsgTx().TxOut {
+		if txOut.IsSeparator() || !chaincfg.IsContractAddrID(txOut.PkScript[0]) {
+			continue
+		}
+
+		var addr [20]byte
+		copy(addr[:], txOut.PkScript[1:21])
+		if _,ok := storagefees[addr]; !ok {
+			storagefees[addr] = int64(vm.NewUage(addr))
+		}
+	}
+	storage := int64(0)		// storage fees need to be paid by this tx
+	for addr,t := range storagefees {
+		if s, ok := paidstoragefees[addr]; ok {
+			storage += t - s
+		} else {
+			storage = t
+		}
+		paidstoragefees[addr] = t
+	}
+	return storage
 }
 
 // checkConnectBlock performs several checks to confirm connecting the passed
@@ -1377,37 +1707,43 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// against all the inputs when the signature operations are out of
 	// bounds.
 
-	coinBase := btcutil.NewTx(transactions[0].MsgTx().Stripped())
-	coinBase.SetIndex(transactions[0].Index())
-	coinBaseHash := *coinBase.Hash()
+	var coinBase * btcutil.Tx
 
-	Vm.SetCoinBaseOp(
-		func(txo wire.TxOut) wire.OutPoint {
-			if !coinBase.HasOuts {
-				// this servers as a separater. only TokenType is serialized
-				to := wire.TxOut{}
-				to.Token = token.Token{TokenType: token.DefTypeSeparator}
-				coinBase.MsgTx().AddTxOut(&to)
-				coinBase.HasOuts = true
-			}
-			coinBase.MsgTx().AddTxOut(&txo)
-			op := wire.OutPoint { coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
-			views.Utxo.AddRawTxOut(op, &txo, false, block.Height())
-			return op
-		})
+	if Vm != nil {
+		coinBase = btcutil.NewTx(transactions[0].MsgTx().Stripped())
+		coinBase.SetIndex(transactions[0].Index())
+		coinBaseHash := *coinBase.Hash()
 
-	Vm.GasLimit = block.MsgBlock().Header.ContractExec
-	Vm.BlockNumber = func() uint64 {
-		return uint64(block.Height())
+		Vm.SetCoinBaseOp(
+			func(txo wire.TxOut) wire.OutPoint {
+				if !coinBase.HasOuts {
+					// this servers as a separater. only TokenType is serialized
+					to := wire.TxOut{}
+					to.Token = token.Token{TokenType: token.DefTypeSeparator}
+					coinBase.MsgTx().AddTxOut(&to)
+					coinBase.HasOuts = true
+				}
+				coinBase.MsgTx().AddTxOut(&txo)
+				op := wire.OutPoint{coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
+				views.Utxo.AddRawTxOut(op, &txo, false, block.Height())
+				return op
+			})
+
+		Vm.GasLimit = block.MsgBlock().Header.ContractExec
+		Vm.BlockNumber = func() uint64 {
+			return uint64(block.Height())
+		}
+		Vm.BlockTime = func() uint32 {
+			return uint32(block.MsgBlock().Header.Timestamp.Unix())
+		}
+		//	Vm.Block = func() *btcutil.Block { return block }
+		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
+		Vm.BlockTime = func() uint32 {
+			return uint32(block.MsgBlock().Header.Timestamp.Unix())
+		}
 	}
-	Vm.BlockTime = func() uint32 {
-		return uint32(block.MsgBlock().Header.Timestamp.Unix())
-	}
-	Vm.Block = func() *btcutil.Block { return block }
-	Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
-	Vm.BlockTime = func() uint32 {
-		return uint32(block.MsgBlock().Header.Timestamp.Unix())
-	}
+
+	paidstoragefees := make(map[[20]byte]int64)
 
 	var totalFees int64
 	for i, tx := range transactions {
@@ -1420,8 +1756,9 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 					return err
 				}
 			}
+			storage := int64(0)
 
-			if !tx.Executed {
+			if Vm != nil {
 				newtx := btcutil.NewTx(tx.MsgTx().Stripped())
 				newtx.SetIndex(tx.Index())
 				newtx.HasIns, newtx.HasDefs, newtx.HasOuts = false, false, false
@@ -1439,16 +1776,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				transactions[i] = newtx
 				tx = newtx
 
-				// compare tx & newtx
-//				if !tx.Match(newtx) {
-//					return fmt.Errorf("Mismatch contract execution result")
-//				}
-//				tx.Executed = newtx.Executed
-			} else {
-				err := CheckTransactionInputs(tx, node.Height, views, b.ChainParams)
-				if err != nil {
-					return err
-				}
+				storage = ContractNewStorage(tx, Vm, paidstoragefees)
 			}
 
 			err = CheckAdditionalTransactionInputs(tx, node.Height, views, b.ChainParams)
@@ -1461,7 +1789,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				return err
 			}
 
-			txFee, err = CheckTransactionFees(tx, node.Height, views, b.ChainParams)
+			txFee, err = CheckTransactionFees(tx, node.Height, storage, views, b.ChainParams)
 			if err != nil {
 				return err
 			}
@@ -1490,8 +1818,18 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			return err
 		}
 	}
-	if Vm.GasLimit != 0 {
-		return fmt.Errorf("Incorrect contract execution cost.")
+	if Vm != nil {
+		if Vm.GasLimit != 0 {
+			return fmt.Errorf("Incorrect contract execution cost.")
+		}
+		if !block.Transactions()[0].Match(coinBase) {
+			//			Vm.AbortRollback()
+			return fmt.Errorf("Mismatch contract execution result")
+		}
+	}
+	err = b.CheckForfeit(block, node.Parent, views.Utxo)
+	if err != nil {
+		return err
 	}
 
 	// Build merkle tree and ensure the calculated merkle root matches the
@@ -1508,11 +1846,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		return ruleError(ErrBadMerkleRoot, str)
 	}
 
-	// compare coinBase and transactions[0]
-	if !transactions[0].Executed && !transactions[0].Match(coinBase) {
-		return fmt.Errorf("Mismatch contract execution result")
-	}
-
 	// The total output values of the coinbase transaction must not exceed
 	// the expected subsidy value plus total transaction fees gained from
 	// mining the block.  It is safe to ignore overflow and out of range
@@ -1521,7 +1854,10 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	var totalSatoshiOut int64
 
 	for _, txOut := range transactions[0].MsgTx().TxOut {
-		if !txOut.IsSeparator() && txOut.TokenType == 0 {
+		if txOut.IsSeparator() {
+			break
+		}
+		if txOut.TokenType == 0 {
 			totalSatoshiOut += txOut.Value.(*token.NumToken).Val
 		}
 	}
@@ -1540,7 +1876,12 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			CalcBlockSubsidy(best.Height, b.ChainParams, prevPows)
 	}
 
-	expectedSatoshiOut := CalcBlockSubsidy(node.Height, b.ChainParams, prevPows) + adj + totalFees
+	award := CalcBlockSubsidy(node.Height, b.ChainParams, prevPows)
+	if award < b.ChainParams.MinimalAward {
+		award = b.ChainParams.MinimalAward
+	}
+
+	expectedSatoshiOut := award + adj + totalFees
 	if totalSatoshiOut > expectedSatoshiOut {
 		str := fmt.Sprintf("coinbase transaction for block pays %v "+
 			"which is more than expected value of %v",
@@ -1573,21 +1914,27 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 
+/*	// we don't forbid violating miner from makeing tx. we only forfeit bond and not
+	// allow him mining (generating MR block)
 	// blacklist check
-	for _, tx := range block.Transactions() {
-		for _, txo := range tx.MsgTx().TxOut {
+	var name [20]byte
+	for _, tx := range block.MsgBlock().Transactions {
+		for _, txo := range tx.TxOut {
 			if txo.IsSeparator() {
-				continue
+				break
 			}
-			var name [20]byte
 			copy(name[:], txo.PkScript[1:21])
-			if b.Blacklist.IsBlack(name) {
+			if txo.PkScript[0] == b.ChainParams.PubKeyHashAddrID && b.Blacklist.IsBlack(name) {
 				return fmt.Errorf("Blacklised txo")
 			}
 		}
-		for _, txi := range tx.MsgTx().TxIn {
+
+		if tx.IsCoinBase() || tx.IsForfeit() {
+			continue
+		}
+		for _, txi := range tx.TxIn {
 			if txi.IsSeparator() {
-				continue
+				break
 			}
 			utxo := views.Utxo.LookupEntry(txi.PreviousOutPoint)
 			if utxo == nil || utxo.IsSpent() {
@@ -1595,13 +1942,13 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			}
 
 			// check blacklist
-			var name [20]byte
 			copy(name[:], utxo.PkScript()[1:21])
 			if b.Blacklist.IsBlack(name) {
 				return fmt.Errorf("Blacklised input")
 			}
 		}
 	}
+ */
 
 	// Update the best hash for view to include this block since all of its
 	// transactions have been connected.

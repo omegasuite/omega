@@ -181,7 +181,7 @@ type TxPool struct {
 	// to on an unconditional timer.
 	nextExpireScan time.Time
 
-	Blacklist blockchain.BlackList
+//	Blacklist blockchain.BlackList
 }
 
 // Ensure the TxPool type implements the mining.TxSource interface.
@@ -769,11 +769,11 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		}
 
 		// check if any out to black list
-		var name [20]byte
-		copy(name[:], txOut.PkScript[1:21])
-		if mp.Blacklist.IsGrey(name) {
-			return nil, nil, fmt.Errorf("Blacklised txo")
-		}
+//		var name [20]byte
+//		copy(name[:], txOut.PkScript[1:21])
+//		if mp.Blacklist.IsGrey(name) {
+//			return nil, nil, fmt.Errorf("Blacklised txo")
+//		}
 
 		prevOut.Index = uint32(txOutIdx)
 		entry := utxoView.LookupEntry(prevOut)
@@ -795,11 +795,11 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		}
 
 		// check blacklist
-		var name [20]byte
-		copy(name[:], utxo.PkScript()[1:21])
-		if mp.Blacklist.IsGrey(name) {
-			return nil, nil, fmt.Errorf("Blacklised input")
-		}
+//		var name [20]byte
+//		copy(name[:], utxo.PkScript()[1:21])
+//		if mp.Blacklist.IsGrey(name) {
+//			return nil, nil, fmt.Errorf("Blacklised input")
+//		}
 	}
 
 	// Transaction is an orphan if any of the referenced transaction outputs
@@ -851,7 +851,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		return nil, nil, err
 	}
 
-	txFee, err := blockchain.CheckTransactionFees(tx, nextBlockHeight, views, mp.cfg.ChainParams)
+	txFee, err := blockchain.CheckTransactionFees(tx, nextBlockHeight, 0, views,  mp.cfg.ChainParams)
 	if err != nil && !tx.ContainContract() {
 		if cerr, ok := err.(blockchain.RuleError); ok {
 			return nil, nil, chainRuleError(cerr)

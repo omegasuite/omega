@@ -180,10 +180,12 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, false, fmt.Errorf("Blacklised Miner"), nil
 	}
 
-	// Perform preliminary sanity checks on the block and its transactions.
-	err = b.blockChain.CheckCollateral(block, flags)
-	if err != nil {
-		return false, false, err, nil
+	if block.MsgBlock().Version >= 0x20000 {
+		// check the coin for collateral exists and have correct amount
+		_, err = b.blockChain.CheckCollateral(block, flags)
+		if err != nil {
+			return false, false, err, nil
+		}
 	}
 
 	// Find the previous checkpoint and perform some additional checks based
@@ -211,6 +213,20 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	if have,_ := b.blockChain.HaveBlock(&block.MsgBlock().BestBlock); !have {
 		return false, true, nil, &block.MsgBlock().BestBlock
 	}
+	if block.MsgBlock().Version >= 0x20000 {
+		for _, p := range block.MsgBlock().BlackList {
+			for j, tb := range p.Blocks {
+				if !b.blockChain.HaveNode(&tb) {
+					// if we have node of the hash, it is in main chain or side chain
+					// otherwise, it is missing and we need to request it
+					return false, false, nil, &p.Blocks[j]
+				}
+			}
+		}
+	} else if len(block.MsgBlock().BlackList) > 0 {
+		return false, false, fmt.Errorf("Unexpected blacklist"), nil
+	}
+
 	if !b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) {
 		log.Infof("block and parent tx reference not in the same chain.")
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
@@ -283,5 +299,19 @@ func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource cha
 			hex.EncodeToString(header.MsgBlock().Connection))
 	}
 
+	if header.MsgBlock().Version >= 0x20000 {
+		k := len(header.MsgBlock().TphReports)
+		if k > wire.MaxTPSReports {
+			return fmt.Errorf("Reported more than max allowed TPS items")
+		}
+		if k < wire.MinTPSReports {
+			return fmt.Errorf("Reported less than min required TPS items")
+		}
+		for _,v := range header.MsgBlock().TphReports {
+			if v == 0 {
+				return fmt.Errorf("Reported 0 in TPS value")
+			}
+		}
+	}
 	return nil
 }

@@ -208,7 +208,9 @@ func (state * peerState) RemovePeer(sp *serverPeer) {
 			todel = false
 			for i, p := range m.peers {
 				if p.ID() == sp.ID() {
-					if i == len(m.peers)-1 {
+					if len(m.peers) == 1 {
+						m.peers = m.peers[:0]
+					} else if i == len(m.peers)-1 {
 						m.peers = m.peers[:i]
 					} else if i == 0 {
 						m.peers = m.peers[1:]
@@ -886,16 +888,6 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 // OnGetBlocks is invoked when a peer receives a getblocks bitcoin
 // message.
 func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
-	if len(msg.TxBlockLocatorHashes) == 0 {
-		btcdLog.Infof("OnGetBlocks from %s (%s)\ntx: %s", sp.Addr(), sp.LocalAddr().String(),
-			msg.MinerBlockLocatorHashes[0].String())
-	} else if len(msg.MinerBlockLocatorHashes) == 0 {
-		btcdLog.Infof("OnGetBlocks from %s (%s)\nminer: %s", sp.Addr(), sp.LocalAddr().String(),
-			msg.TxBlockLocatorHashes[0].String())
-	} else {
-		btcdLog.Infof("OnGetBlocks from %s (%s)\ntx: %s\nminer: %s", sp.Addr(), sp.LocalAddr().String(),
-			msg.TxBlockLocatorHashes[0].String(), msg.MinerBlockLocatorHashes[0].String())
-	}
  	invMsg := wire.NewMsgInv()
 
 	chain := sp.server.chain
@@ -2081,6 +2073,17 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		btcdLog.Infof("%v", newLogClosure(func() string {
 			return spew.Sdump(state)
 		}))
+
+		// kill some inbound connections
+		delpeer := 0
+		for _,p := range s.peerState.inboundPeers {
+			if delpeer < 10 {
+				p.Disconnect("handleAddPeerMsg @ kill to make room")
+				delpeer++
+			} else {
+				break
+			}
+		}
 /*
 		skip := false
 
@@ -3027,7 +3030,7 @@ func (s *server) Stop() error {
 
 	// Signal the remaining goroutines to quit.
 	btcdLog.Info("Signal the remaining goroutines to quit")
-	close(blockchain.BlockSizerQuit)
+
 	close(s.quit)
 	return nil
 }
@@ -3366,9 +3369,8 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		return nil, err
 	}
 
-	go s.chain.BlockSizeUpdater()
-
 	s.chain.Subscribe(s.chain.BlockSizerNotice)
+	s.chain.Subscribe(s.chain.TphNotice)
 
 	// Search for a FeeEstimator state in the database. If none can be found
 	// or if it cannot be loaded, create a new one.
@@ -3452,7 +3454,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		FeeEstimator:       s.feeEstimator,
 	}
 	s.txMemPool = mempool.New(&txC)
-	s.txMemPool.Blacklist = &s
+//	s.txMemPool.Blacklist = &s
 
 	s.chain.Blacklist = &s
 

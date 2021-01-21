@@ -6,8 +6,8 @@ package ovm
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/binary"
+	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
@@ -18,28 +18,29 @@ import (
 	"github.com/omegasuite/omega/token"
 	"github.com/omegasuite/omega/validate"
 	"github.com/omegasuite/omega/viewpoint"
-	"golang.org/x/crypto/ripemd160"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-// hash160 returns the RIPEMD160 hash of the SHA-256 HASH of the given data.
-func hash160(data []byte) []byte {
-	h := sha256.Sum256(data)
+// hash160 returns the RIPEMD160 hash of the SHA-256 HASH of the given Data.
+/*
+func hash160(Data []byte) []byte {
+	h := sha256.Sum256(Data)
 	return ripemd160h(h[:])
 }
 
-// ripemd160h returns the RIPEMD160 hash of the given data.
-func ripemd160h(data []byte) []byte {
+// ripemd160h returns the RIPEMD160 hash of the given Data.
+func ripemd160h(Data []byte) []byte {
 	h := ripemd160.New()
-	h.Write(data)
+	h.Write(Data)
 	return h.Sum(nil)
 }
 
-func Hash160(data []byte) []byte {
-	return hash160(data)
+func Hash160(Data []byte) []byte {
+	return hash160(Data)
 }
+ */
 
 func zeroaddr(addr []byte) bool {
 	for _,t := range addr {
@@ -88,7 +89,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	ctx.AddTxOutput = func(t wire.TxOut) int { return -1	}
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ctx.BlockTime = func() uint32 { return 0 }
-	ctx.Block = func() *btcutil.Block { return nil }
+//	ctx.Block = func() *btcutil.Block { return nil }
 	ctx.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
 
@@ -134,17 +135,17 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 		return nil
 	}
 
-	nsig := 0
-	var zerohash chainhash.Hash
-
+	nsigs := uint32(len(tx.MsgTx().SignatureScripts))
 	for _,tin := range tx.MsgTx().TxIn {
-		if tin.PreviousOutPoint.Hash.IsEqual(&zerohash) && tin.PreviousOutPoint.Index == 0 {
+		if tin.IsSeparator() {
 			break
 		}
-		nsig++
+		if tin.SignatureIndex >= nsigs || tx.MsgTx().SignatureScripts[tin.SignatureIndex] == nil {		// no signature
+			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
+		}
 	}
 	
-	if nsig == 0 {
+	if nsigs == 0 {
 		return nil
 	}
 
@@ -184,15 +185,14 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 				go func() {
 					ovm := NewSigVM(param)
 					ovm.SetViewPoint(views)
+					ovm.Init(tx, views)
 					ovm.GetCoinBase = func() *btcutil.Tx { return nil }
-					ovm.GetTx = func () * btcutil.Tx {	return tx }
 					ovm.Spend = func(t wire.OutPoint) bool { return false }
 					ovm.AddTxOutput = func(t wire.TxOut) int { return -1 }
 					ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 					ovm.BlockTime = func() uint32 { return 0 }
-					ovm.Block = func() *btcutil.Block { return nil }
+//					ovm.Block = func() *btcutil.Block { return nil }
 					ovm.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
-					ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
 					ovm.NoLoop = true
 					ovm.interpreter.readOnly = true
 
@@ -224,8 +224,6 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 		}
 	} ()
 
-	nsigs := uint32(len(tx.MsgTx().SignatureScripts))
-
 	type shared struct {
 		sign []byte
 		skip byte
@@ -233,50 +231,42 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 	sharedSigs := make(map[uint32] * shared)
 
 	// prepare and shoot the real work
-	contracts := false
 	for txinidx, txin := range tx.MsgTx().TxIn {
 		if txin.IsSeparator() {	// never
-			contracts = true
-			continue
-		}
-		if txin.SignatureIndex == 0xFFFFFFFF {	// coinbase, never
-			continue
+			break
 		}
 
 		// get utxo
 		utxo := views.Utxo.LookupEntry(txin.PreviousOutPoint)
 
 		if utxo == nil {
-			allrun = true
-			close(queue)
-			return omega.ScriptError(omega.ErrInternal, "UTXO does not exist.")
+			final <- false
+			break
 		}
 
 		version, addr, method, excode := parsePkScript(utxo.PkScript())
 
-		if contracts {
-			if !isContract(version) {
-				allrun = true
-				close(queue)
-				return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
-			}
-			continue
-		}
-
-		if txin.SignatureIndex >= nsigs || tx.MsgTx().SignatureScripts[txin.SignatureIndex] == nil {		// no signature
-			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
-		}
-
 		if addr == nil {
-			allrun = true
-			close(queue)
-			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+			final <- false
+			break
 		}
 
 		if zeroaddr(addr) || isContract(version) { // zero address, sys call
-			allrun = true
-			close(queue)
-			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+			final <- false
+			break
+		}
+
+		if method[0] == OP_PAY2ANY {
+			continue
+		}
+		if method[0] == OP_PAY2NONE {
+			final <- false
+			break
+		}
+		if txin.SignatureIndex >= uint32(len(tx.MsgTx().SignatureScripts)) ||
+			len(tx.MsgTx().SignatureScripts[txin.SignatureIndex]) < btcec.MinSigLen {
+			final <- false
+			break
 		}
 
 		// check if it is monitored
@@ -407,6 +397,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 		}
 
 		atomic.AddInt32(&toverify, 1)
+
 		queue <- tbv { txinidx, txin.PreviousOutPoint, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
 /*
 		sig := tx.MsgTx().SignatureScripts[txin.SignatureIndex]
@@ -472,8 +463,12 @@ func (ovm * OVM) ContractCall(addr Address, input []byte) ([]byte, error) {
 
 	ovm.contractStack = []Address{addr}
 	ovm.writeback = false
+	
+	if len(input) < 4 {
+		return nil, nil
+	}
 
-	return ovm.Call(addr, input[:4], nil, input)
+	return ovm.Call(addr, input[:4], nil, input, PUREMASK)
 }
 
 func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
@@ -482,49 +477,18 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 		return nil
 	}
 
-	ovm.GetTx = func () * btcutil.Tx { return tx }
-	ovm.AddTxOutput = func(t wire.TxOut) int {
-		return tx.AddTxOut(t)
-	}
+	ovm.Init(tx, ovm.views)
 	ovm.BlockNumber = func() uint64 {
 		return uint64(txHeight)
 	}
 	ovm.BlockTime = func() uint32 {
 		return uint32(time.Now().Unix())
 	}
-	ovm.Spend = func(t wire.OutPoint) bool {
-		// it has alreadty been verified that the coin belongs to the contract
-		tx.AddTxIn(t)
-		return true
-	}
 	ovm.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash {
 		if coinbase {
 			return ovm.GetCoinBase().AddDef(t)
 		}
 		return tx.AddDef(t)
-	}
-	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
-		if hash.IsEqual(tx.Hash()) {
-			if int(seq) >= len(tx.MsgTx().TxOut) {
-				return nil
-			}
-			return tx.MsgTx().TxOut[seq]
-		}
-		op := make(map[wire.OutPoint]struct{})
-		p := wire.OutPoint{hash,uint32(seq)}
-		e := ovm.views.Utxo.LookupEntry(p)
-		if e != nil {
-			return e.ToTxOut()
-		}
-		op[p] = struct{}{}
-		if ovm.views.Utxo.FetchUtxosMain(ovm.views.Db, op) != nil {
-			return nil
-		}
-		e = ovm.views.Utxo.LookupEntry(p)
-		if e == nil {
-			return nil
-		}
-		return e.ToTxOut()
 	}
 
 	cb := wire.MsgTx{}
@@ -612,7 +576,7 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 
 		ovm.contractStack = []Address{d}
 
-		_, err := ovm.Call(d, method, &txOut.Token, param)
+		_, err := ovm.Call(d, method, &txOut.Token, param, 0)
 
 		if err != nil {
 			// if fail, ovm.Call should have restored ovm.stateDB[d]
@@ -636,43 +600,12 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 		return nil
 	}
 
-	ovm.GetTx = func () * btcutil.Tx { return tx }
-	ovm.AddTxOutput = func(t wire.TxOut) int {
-		return tx.AddTxOut(t)
-	}
-	ovm.Spend = func(t wire.OutPoint) bool {
-		// it has alreadty been verified that the coin belongs to the contract
-		tx.AddTxIn(t)
-		return true
-	}
+	ovm.Init(tx, ovm.views)
 	ovm.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash {
 		if coinbase {
 			return ovm.GetCoinBase().AddDef(t)
 		}
 		return tx.AddDef(t)
-	}
-	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
-		if hash.IsEqual(tx.Hash()) {
-			if int(seq) >= len(tx.MsgTx().TxOut) {
-				return nil
-			}
-			return tx.MsgTx().TxOut[seq]
-		}
-		op := make(map[wire.OutPoint]struct{})
-		p := wire.OutPoint{hash,uint32(seq)}
-		e := ovm.views.Utxo.LookupEntry(p)
-		if e != nil {
-			return e.ToTxOut()
-		}
-		op[p] = struct{}{}
-		if ovm.views.Utxo.FetchUtxosMain(ovm.views.Db, op) != nil {
-			return nil
-		}
-		e = ovm.views.Utxo.LookupEntry(p)
-		if e == nil {
-			return nil
-		}
-		return e.ToTxOut()
 	}
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 
@@ -743,7 +676,7 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 
 		ovm.contractStack = []Address{d}
 
-		_, err := ovm.Call(d, method, &txOut.Token, param)
+		_, err := ovm.Call(d, method, &txOut.Token, param, 0)
 
 		if err != nil {
 			// if fail, ovm.Call should have restored ovm.stateDB[d]

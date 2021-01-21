@@ -52,6 +52,9 @@ var (
 	// BlacklistKeyName is the name of the db key used to store the blacklist.
 	BlacklistKeyName = []byte("blacklist")
 
+	// TphReportsName is the name of the db key used to reports of tph.
+	TphReportsName = []byte("tphreports")
+
 	// byteOrder is the preferred byte order used for serializing numeric
 	// fields for storage in the database.
 	byteOrder = binary.LittleEndian
@@ -200,6 +203,11 @@ func (b *MinerChain) createChainState() error {
 			return err
 		}
 
+		// Create the bucket that houses the tph reports.
+		if _, err = meta.CreateBucket(TphReportsName); err != nil {
+			return err
+		}
+
 		// Save the genesis block to the block index database.
 		if err = dbStoreBlockNode(dbTx, node); err != nil {
 			return err
@@ -230,10 +238,11 @@ func (b *MinerChain) createChainState() error {
 func (b *MinerChain) initChainState() error {
 	// Determine the state of the chain database. We may need to initialize
 	// everything from scratch or upgrade certain buckets.
-	var initialized, hasBlockIndex bool
+	var initialized, hasBlockIndex, hasTphReports bool
 	err := b.db.View(func(dbTx database.Tx) error {
 		initialized = dbTx.Metadata().Get(chainStateKeyName) != nil
 		hasBlockIndex = dbTx.Metadata().Bucket(blockIndexBucketName) != nil
+		hasTphReports = dbTx.Metadata().Bucket(TphReportsName) != nil
 		return nil
 	})
 	if err != nil {
@@ -248,6 +257,17 @@ func (b *MinerChain) initChainState() error {
 
 	if !hasBlockIndex {
 		panic("block index mssing")
+	}
+	if !hasTphReports {
+		err := b.db.Update(func(dbTx database.Tx) error {
+			if _, err = dbTx.Metadata().CreateBucket(TphReportsName); err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	// Attempt to load the chain state from the database.

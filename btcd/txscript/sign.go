@@ -192,7 +192,8 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 
 			pk := (*btcec.PublicKey)(&key.PublicKey)
 			pkData := pk.SerializeCompressed()
-			hk := ovm.Hash160(pkData)
+			hk := btcutil.Hash160(pkData)
+//			hk := ovm.Hash160(pkData)
 			if bytes.Compare(pkscript, hk[:]) != 0 {
 				pkData = pk.SerializeUncompressed()
 			}

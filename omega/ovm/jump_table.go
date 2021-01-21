@@ -15,7 +15,7 @@ type operation struct {
 	writes  bool // determines whether this a state modifying operation
 	valid   bool // indication whether the retrieved operation is valid and known
 	reverts bool // determines whether the operation reverts state (implicitly halts)
-	returns bool // determines whether the operations sets the return data content
+	returns bool // determines whether the operations sets the return Data content
 }
 
 var (
@@ -160,7 +160,7 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opGetCoin,
 			valid:         true,
 		},
-		NULOP: operation{
+		NOP: operation{
 			execute:       opNul,
 			valid:         true,
 		},
