@@ -37,9 +37,9 @@ const (
 	// NOTE: This must be defined last in order to avoid influencing iota.
 	StatusNone BlockStatus = 0
 
-	// medianTimeBlocks is the number of previous blocks which should be
+	// MedianTimeBlocks is the number of previous blocks which should be
 	// used to calculate the median time used to validate block timestamps.
-	medianTimeBlocks = 11
+	MedianTimeBlocks = 11
 )
 
 // blockIndexBucketName is the name of the db bucket used to house to the
@@ -133,11 +133,11 @@ func (node *BlockNode) RelativeAncestor(distance int32) *BlockNode {
 // This function is safe for concurrent access.
 func (node *BlockNode) CalcPastMedianTime() time.Time {
 	// Create a slice of the previous few block timestamps used to calculate
-	// the median per the number defined by the constant medianTimeBlocks.
-	timestamps := make([]int64, medianTimeBlocks)
+	// the median per the number defined by the constant MedianTimeBlocks.
+	timestamps := make([]int64, MedianTimeBlocks)
 	numNodes := 0
 	iterNode := node
-	for i := 0; i < medianTimeBlocks && iterNode != nil; i++ {
+	for i := 0; i < MedianTimeBlocks && iterNode != nil; i++ {
 		timestamps[i] = iterNode.Data.TimeStamp()
 		numNodes++
 
@@ -160,7 +160,7 @@ func (node *BlockNode) CalcPastMedianTime() time.Time {
 	// will always be an odd number of blocks in the set per the constant.
 	//
 	// This code follows suit to ensure the same rules are used, however, be
-	// aware that should the medianTimeBlocks constant ever be changed to an
+	// aware that should the MedianTimeBlocks constant ever be changed to an
 	// even number, this code will be wrong.
 	medianTimestamp := timestamps[numNodes/2]
 	return time.Unix(medianTimestamp, 0)
@@ -187,7 +187,11 @@ type BlockIndex struct {
 	index map[chainhash.Hash]*BlockNode
 	dirty map[*BlockNode]bool
 
-	Unloaded map[chainhash.Hash]int32
+	Unloaded []chainhash.Hash		// unloaded blocks. sorted by hash
+
+	Cutoff uint32
+//	Unloaded map[chainhash.Hash]int32
+//	Ulocator []chainhash.Hash
 
 	// Tips of side chains
 	Tips map[chainhash.Hash]*BlockNode
@@ -203,7 +207,7 @@ func NewBlockIndex(db database.DB, chainParams *chaincfg.Params) *BlockIndex {
 		index:       make(map[chainhash.Hash]*BlockNode),
 		dirty:       make(map[*BlockNode]bool),
 		Tips:        make(map[chainhash.Hash]*BlockNode),
-		Unloaded:	 make(map[chainhash.Hash]int32),
+//		Unloaded:	 make(map[chainhash.Hash]int32),
 	}
 }
 
@@ -218,16 +222,34 @@ func (bi *BlockIndex) Highest() *BlockNode {
 	return high
 }
 
-// HaveBlock returns whether or not the block index ContainsUL the provided hash.
+/*
+func (bi *BlockIndex) search(hash *chainhash.Hash, m, start, end uint32) bool {
+	if r := bytes.Compare((*hash)[:], bi.Unloaded[m][:]); r == 0 {
+		return true
+	} else if start >= end {
+		return false
+	} else if r > 0 {
+		return bi.search(hash, (m + 1 + end) / 2, m + 1, end)
+	} else {
+		return bi.search(hash, (m - 1 + start) / 2, start, m - 1)
+	}
+}
+
+ */
+// HaveBlock returns whether or not the block index Contains the provided hash.
 //
 // This function is safe for concurrent access.
 func (bi *BlockIndex) HaveBlock(hash *chainhash.Hash) bool {
 	bi.RLock()
 	_, hasBlock := bi.index[*hash]
-	if !hasBlock {
-		_, hasBlock = bi.Unloaded[*hash]
-	}
 	bi.RUnlock()
+
+/*
+	if !hasBlock && bi.Cutoff > 0 {
+		hasBlock = bi.search(hash, bi.Cutoff / 2, 1, bi.Cutoff)
+	}
+ */
+
 	return hasBlock
 }
 
@@ -283,6 +305,11 @@ func (bi *BlockIndex) AddNodeUL(node *BlockNode) {
 	bi.index[node.Hash] = node
 	bi.Tips[node.Hash] = node
 }
+/*
+func (bi *BlockIndex) AddNodeHash(h chainhash.Hash) {
+	bi.index[h] = nil
+}
+ */
 
 func (bi *BlockIndex) Untip(hash chainhash.Hash) {
 	delete(bi.Tips, hash)
@@ -331,16 +358,12 @@ func (bi *BlockIndex) FlushToDB(dbStoreBlockNode func(dbTx database.Tx, node *Bl
 	}
 
 	err := bi.db.Update(func(dbTx database.Tx) error {
-//		blockIndexBucket := dbTx.Metadata().Bucket(blockIndexBucketName)
 		for node, b := range bi.dirty {
 			if b {
 				err := dbStoreBlockNode(dbTx, node)
 				if err != nil {
 					return err
 				}
-//			} else {
-//				key := blockchain.BlockIndexKey(&node.Hash, uint32(node.Height))
-//				return blockIndexBucket.Delete(key)
 			}
 		}
 		return nil

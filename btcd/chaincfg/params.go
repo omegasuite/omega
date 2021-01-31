@@ -123,6 +123,10 @@ const (
 	DefinedDeployments
 )
 
+const (
+	Version1 = 0x10000
+	Version2 = 0x20000
+)
 // Params defines a Bitcoin network by its parameters.  These parameters may be
 // used by Bitcoin applications to differentiate networks as well as addresses
 // and keys for one network from those intended for use on another network.
@@ -304,8 +308,8 @@ var MainNetParams = Params{
 		DeploymentVersion2: {
 			PrevVersion: 0x10000,
 			FeatureMask: 0x3,
-			StartTime:   uint64(time.Date(2020, 12, 31, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 1, 31, 0, 0, 0, 0, time.UTC).Unix()),
+			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 3, 28, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 
@@ -318,7 +322,7 @@ var MainNetParams = Params{
 
 	// Address encoding magics
 	PubKeyHashAddrID:        0x00, // starts with 1
-	MultiSigAddrID:			 0x67,
+	MultiSigAddrID:			 0x78,
 
 	ScriptHashAddrID:        0x05, // starts with 3
 	ContractAddrID:			 0x88, // start with 8
@@ -382,8 +386,8 @@ var RegressionNetParams = Params{
 		DeploymentVersion2: {
 			PrevVersion: 0x10000,
 			FeatureMask: 0x3,
-			StartTime:   uint64(time.Date(2020, 12, 31, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 1, 31, 0, 0, 0, 0, time.UTC).Unix()),
+			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 2, 28, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 
@@ -434,8 +438,8 @@ var TestNet3Params = Params{
 	CoinbaseMaturity:         10,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	MinimalAward: 			  1171875,
-	TargetTimespan:           time.Hour * 24 * 14, // 14 days
-	TargetTimePerBlock:       time.Minute * 4,    // 10 minutes
+	TargetTimespan:           time.Hour * 2, // 2 hours
+	TargetTimePerBlock:       time.Minute * 4,    // 4 minutes
 	ChainCurrentStd:		  time.Hour * 24000,
 	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 	MinBorderFee:			  100000,
@@ -463,8 +467,8 @@ var TestNet3Params = Params{
 		DeploymentVersion2: {
 			PrevVersion: 0x10000,
 			FeatureMask: 0x3,
-			StartTime:   uint64(time.Date(2020, 12, 31, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 1, 31, 0, 0, 0, 0, time.UTC).Unix()),
+			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 2, 28, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 
@@ -545,8 +549,8 @@ var SimNetParams = Params{
 		DeploymentVersion2: {
 			PrevVersion: 0x10000,
 			FeatureMask: 0x3,
-			StartTime:   uint64(time.Date(2020, 12, 31, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 1, 31, 0, 0, 0, 0, time.UTC).Unix()),
+			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 2, 28, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 
@@ -559,7 +563,7 @@ var SimNetParams = Params{
 
 	// Address encoding magics
 	PubKeyHashAddrID:        0x3f, // starts with S
-	MultiSigAddrID:			 0x67,
+	MultiSigAddrID:			 0x60,
 	ScriptHashAddrID:        0x7b, // starts with s
 	ContractAddrID:			 0x88, // start with 8
 	PrivateKeyID:            0x64, // starts with 4 (uncompressed) or F (compressed)

@@ -2,7 +2,6 @@ package ovm
 
 import (
 	"fmt"
-	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
 	"sync/atomic"
@@ -11,8 +10,6 @@ import (
 	"encoding/binary"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	//	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/omega/token"
 )
 
 type vunit struct {
@@ -44,9 +41,10 @@ const (
 	OP_CREATE				= 0
 	OP_META					= 1
 	OP_CODEBYTES			= 2
-//	OP_MINT					= 0x40
+	OP_OWNER				= 0x10		// User supplied standard func. returns address of contract owner
+	OP_INIT					= 0x11		// User supplied standard func. for lib initialization
 
-	OP_PUBLIC				= 0x20
+	OP_PUBLIC				= 0x20		// codes below are public func callable by anyone
 
 	PAYFUNC_MIN				= 0x41
 	PAYFUNC_MAX				= 0x46
@@ -54,7 +52,6 @@ const (
 	OP_PAY2PKH				= 0x41
 	OP_PAY2SCRIPTH			= 0x42
 	OP_PAYMULTISIG			= 0x43
-	OP_PAYFORFEITURE		= 0x44
 //	OP_PAY2MULTIPKH			= 0x43
 //	OP_PAY2MULTISCRIPTH		= 0x44
 	OP_PAY2NONE				= 0x45
@@ -84,9 +81,6 @@ var PrecompiledContracts = map[[4]byte]func(evm * OVM, contract *Contract) Preco
 	([4]byte{OP_PAYMULTISIG, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
 		return &pay2multisig{evm, contract}
 	},			// pay to multi-sig script
-	([4]byte{OP_PAYFORFEITURE, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
-		return &pay2forfeiture{evm, contract}
-	},			// pay to multi-sig script
 //	([4]byte{OP_PAY2MULTIPKH, 0, 0, 0}): &pay2pkhs{},		// pay to pubkey hash script, multi-sig
 //	([4]byte{OP_PAY2MULTISCRIPTH, 0, 0, 0}): &pay2scripths{},		// pay to no one and spend it
 	([4]byte{OP_PAY2NONE, 0, 0, 0}): func(evm * OVM, contract *Contract) PrecompiledContract {
@@ -110,19 +104,6 @@ func (p *payreturn) Run(input []byte, vunits []vunit) ([]byte, error) {
 	return []byte{0}, nil
 }
 
-type pay2forfeiture struct {
-	ovm * OVM
-	contract *Contract
-}
-
-func (p *pay2forfeiture) Run(input []byte, vunits []vunit) ([]byte, error) {
-	if !p.ovm.GetTx().MsgTx().IsForfeit() {
-		return []byte{0},fmt.Errorf("Try to use forfeiture coin in non forfeit transaction")
-	}
-
-	return []byte{1},nil
-}
-
 type pay2multisig struct {
 	ovm * OVM
 	contract *Contract
@@ -130,23 +111,19 @@ type pay2multisig struct {
 
 // multiple address multiple key
 func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
-	_, r, e := p.run(input, vunits, p.ovm.GetTx().MsgTx().IsForfeit())
+	_, r, e := p.run(input, vunits)
 	return r,e
 }
 
-func (p *pay2multisig) run(input []byte, vunits []vunit, forfeit bool) (int, []byte, error) {
+func (p *pay2multisig) run(input []byte, vunits []vunit) (int, []byte, error) {
 	// input - hash of multi-sig descriptor (20-byte value)
 	// vunits[0].Data: multi-sig descriptor
 	//			 bytes 0 - 1: M - number of scripts
 	//			 bytes 2 - 3: N - number of signatures required
-	// vunits[1:].Data: publick key
-	//		  signature
+	// vunits[1:].Data: lock script, or P2SH script + script text, or public key + signature
 	// vunits[1:].text - text to be signed (in chucks of 0-padded 32-bytes units)
 
 	// in forfeit mode, all contract calls will pass
-
-	contracts := make([][]byte, 0)
-	params := make([][]byte, 0)
 
 	if len(vunits[0].data) < 4 {
 		return 0, []byte{0}, nil	// never. should have been verified in tx validity
@@ -154,18 +131,22 @@ func (p *pay2multisig) run(input []byte, vunits []vunit, forfeit bool) (int, []b
 	m := int(common.LittleEndian.Uint16(vunits[0].data[:2]))
 	n := int(common.LittleEndian.Uint16(vunits[0].data[2:4]))
 
-	if len(vunits[0].data) < 21 * m + 4 || n > m {
+	if n > m {
 		return 0, []byte{0}, nil	// never. should have been verified in tx validity
 	}
 
 	sigcnt := 0
-	h := make([]byte, 0, 21 * (m - 1))
+	h := make([]byte, 0, 21 * m + 4)
+	h = append(h, []byte{byte(PUSH), 4}...)
+	h = append(h, vunits[0].data[:4]...)
+	h = append(h, []byte{byte(SIGNTEXT), 0}...)
 
-	for i := 0; i < len(vunits); i++ {
+	for i := 1; i < len(vunits); i++ {
 		v := vunits[i]
-		if len(v.data) == 25 && v.data[0] == p.ovm.chainConfig.MultiSigAddrID {
+		if len(v.data) == 21 && v.data[0] == p.ovm.chainConfig.MultiSigAddrID {
+			// recursive multisig
 			h = append(h, v.data...)
-			mm, r, err := p.run(v.data[1:], vunits[i+1:], forfeit)
+			mm, r, err := p.run(v.data[1:], vunits[i+1:])
 			if err != nil {
 				return m, []byte{0}, err
 			}
@@ -175,24 +156,12 @@ func (p *pay2multisig) run(input []byte, vunits []vunit, forfeit bool) (int, []b
 			i += mm + 1
 			m += mm + 1
 			continue
-		} else if len(v.data) == 25 && v.data[0] == p.ovm.chainConfig.PubKeyHashAddrID {
+		} else if len(v.data) == 21 && v.data[0] == p.ovm.chainConfig.PubKeyHashAddrID {
 			// a PubKeyHashAddrID not signed. but, if it is pay anyone scripts, it is counted as signed
 			h = append(h, v.data...)
-			if v.data[21] == OP_PAY2ANY {
-				sigcnt++
-			}
 			continue
-		} else if v.data[0] == p.ovm.chainConfig.ContractAddrID {
-			h = append(h, v.data...)
-			if forfeit {
-				sigcnt++
-			} else {
-				contracts = append(contracts, v.data[:21])
-				params = append(params, v.data[21:])
-			}
-			continue
-		} else if len(v.data) >= 25 && v.data[0] == p.ovm.chainConfig.ScriptHashAddrID {
-			h = append(h, v.data...)
+		} else if len(v.data) >= 21 && v.data[0] == p.ovm.chainConfig.ScriptHashAddrID {
+			h = append(h, v.data[:21]...)
 			if len(v.data) > 25 {
 				hash := chainhash.HashB(v.data[25:])
 				if bytes.Compare(v.data[1:21], hash) == 0 {
@@ -202,7 +171,7 @@ func (p *pay2multisig) run(input []byte, vunits []vunit, forfeit bool) (int, []b
 			continue
 		}
 
-		// it must be a signature script
+		// if not any case above, it must be a signature script
 		inlen := len(v.data)
 
 		kpos := int(v.data[0]) + 1
@@ -241,64 +210,25 @@ func (p *pay2multisig) run(input []byte, vunits []vunit, forfeit bool) (int, []b
 			sigcnt++
 		}
 
+		h = append(h, []byte{byte(PUSH), 21}...)
+
 		ph := btcutil.Hash160(pkBytes)
 //		ph := Hash160(pkBytes)
 		h = append(h, p.ovm.chainConfig.PubKeyHashAddrID)
 		h = append(h, ph...)
+		h = append(h, []byte{byte(SIGNTEXT), 0}...)
 	}
 
-	hash := chainhash.HashB(h)
+	if sigcnt < n {
+		return m, []byte{0}, nil
+	}
+
+	hash := btcutil.Hash160(h)
 	if bytes.Compare(input[:20], hash) != 0 {
 		return m, []byte{0}, nil
 	}
 
-	if sigcnt >= n {
-		return m, []byte{1}, nil
-	}
-
-	if len(contracts) < n - sigcnt {
-		return m, []byte{0}, nil
-	}
-
-	// run smart contracts
-	vm := NewOVM(p.ovm.chainConfig)
-	vm.writeback = false
-
-	vm.GetCoinBase = func () * btcutil.Tx { return nil }
-	vm.GetTx = func () * btcutil.Tx { return nil }
-	vm.AddTxOutput = func(t wire.TxOut) int { return -1 }
-	vm.Spend = func(t wire.OutPoint) bool {	return false }
-	vm.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash {
-		return chainhash.Hash{}
-	}
-	vm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil	}
-	vm.BlockNumber = func() uint64 { return 0 }
-	vm.BlockTime = func() uint32 { return 0 }
-	vm.GetCurrentOutput = func() wire.OutPoint { return wire.OutPoint{} }
-	vm.AddCoinBase = func(wire.TxOut) wire.OutPoint { return wire.OutPoint{} }
-	vm.GasLimit    = 100000
-//	vm.Block 	= func() * btcutil.Block { return nil }
-
-	vm.NoLoop = false
-	vm.interpreter.readOnly = false
-
-	for i,c := range contracts {
-		t := token.Token{}
-		var a Address
-		copy(a[:], c)
-		t.TokenType = 0
-		t.Value = &token.NumToken{Val: -1}
-		r, err := vm.Call(a, params[i][:4], &t, params[i][4:], PUREMASK)
-		if err != nil || r == nil || r[0] == 0 {
-			continue
-		}
-		sigcnt++
-		if sigcnt >= n {
-			return m, []byte{1}, nil
-		}
-	}
-
-	return m, []byte{0}, nil
+	return m, []byte{1}, nil
 }
 
 /*

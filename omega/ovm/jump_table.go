@@ -125,11 +125,11 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opTxFee,
 			valid:         true,
 		},
-/*
 		TXIOCOUNT: operation{
-			execute:       opTxIOCount,
+			execute:       opGetIOCount,
 			valid:         true,
 		},
+/*
 		GETTXIN: operation{
 			execute:       opGetTxIn,
 			valid:         true,

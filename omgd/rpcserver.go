@@ -749,7 +749,7 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 
 	// Add all transaction inputs to a new transaction after performing
 	// some validity checks.
-	mtx := wire.NewMsgTx(wire.TxVersion)
+	mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoLock)
 	scripts := make(map[string]uint32)
 
 	var zerohash chainhash.Hash
@@ -856,13 +856,13 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 				// the network encoded with the address matches the network the
 				// server is currently on.
 
-				// TODO: Other type pkscripts: contract, milti-sig
-
 				switch addr.(type) {
 				case *btcutil.AddressPubKeyHash:
-					pkFunc = []byte{0x41, 0, 0, 0} // pay2pkh
+					pkFunc = []byte{ovm.OP_PAY2PKH, 0, 0, 0} // pay2pkh
 				case *btcutil.AddressScriptHash:
-					pkFunc = []byte{0x42, 0, 0, 0} // pay2scripth
+					pkFunc = []byte{ovm.OP_PAY2SCRIPTH, 0, 0, 0} // pay2scripth
+				case *btcutil.AddressMultiSig:
+					pkFunc = []byte{ovm.OP_PAYMULTISIG, 0, 0, 0} // pay2scripth
 				default:
 					return nil, &btcjson.RPCError{
 						Code:    btcjson.ErrRPCInvalidAddressOrKey,
@@ -872,10 +872,10 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 				if amount.Script != nil {
 					switch *amount.Script {
 					case "paynone":
-						pkFunc = []byte{0x45, 0, 0, 0}
+						pkFunc = []byte{ovm.OP_PAY2NONE, 0, 0, 0}
 
 					case "payany":
-						pkFunc = []byte{0x46, 0, 0, 0}
+						pkFunc = []byte{ovm.OP_PAY2ANY, 0, 0, 0}
 					}
 				}
 				if !addr.IsForNet(params) {
@@ -1710,7 +1710,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Address:	   d.String(),	// hex.EncodeToString(blockHeader.Miner),
 		Best:		   blockHeader.BestBlock.String(),
 		Collateral:    collateral,
-//		BlackList:	   hex.EncodeToString(blockHeader.BlackList),
+//		Violations:	   hex.EncodeToString(blockHeader.Violations),
 	}
 
 	return blockReply, nil
@@ -2535,7 +2535,7 @@ func handleGetBlockTemplateRequest(s *rpcServer, request *btcjson.TemplateReques
 
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCClientNotConnected,
-			Message: "Bitcoin is not connected",
+			Message: "Omega is not connected",
 		}
 	}
 
@@ -2544,7 +2544,7 @@ func handleGetBlockTemplateRequest(s *rpcServer, request *btcjson.TemplateReques
 	if currentHeight != 0 && !s.cfg.SyncMgr.IsCurrent() {
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCClientInInitialDownload,
-			Message: "Bitcoin is downloading blocks...",
+			Message: "Omega is downloading blocks...",
 		}
 	}
 
@@ -4107,8 +4107,6 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 
 		// Add the block information to the result if there is any.
 		if blkHeader != nil {
-			// This is not a typo, they are identical in Bitcoin
-			// Core as well.
 			result.Time = blkHeader.Timestamp.Unix()
 			result.Blocktime = blkHeader.Timestamp.Unix()
 			result.BlockHash = blkHashStr
@@ -4437,12 +4435,6 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 			return "Empty Connection", fmt.Errorf("Empty Connection")
 		}
 
-		if chain.Blacklist.IsGrey(block.MsgBlock().Miner) {
-			rpcsLog.Errorf("Blacklised Miner %x", block.MsgBlock().Miner[:])
-			t := fmt.Sprintf("Blacklised Miner %x", block.MsgBlock().Miner[:])
-			return t, nil
-		}
-
 		bblk,_ := chain.BlockByHash(&block.MsgBlock().BestBlock)
 		if bblk == nil {
 			t := fmt.Sprintf("BestBlock %s does not exist in tx chain @ height %d", block.MsgBlock().BestBlock.String(), height)
@@ -4506,14 +4498,12 @@ func handleVerifyMessage(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 	// Validate the signature - this just shows that it was valid at all.
 	// we will compare it with the key next.
 	var buf bytes.Buffer
-	common.WriteVarString(&buf, 0, "Bitcoin Signed Message:\n")
+	common.WriteVarString(&buf, 0, "Omega Signed Message:\n")
 	common.WriteVarString(&buf, 0, c.Message)
 	expectedMessageHash := chainhash.DoubleHashB(buf.Bytes())
 	pk, wasCompressed, err := btcec.RecoverCompact(btcec.S256(), sig,
 		expectedMessageHash)
 	if err != nil {
-		// Mirror Bitcoin Core behavior, which treats error in
-		// RecoverCompact as invalid signature.
 		return false, nil
 	}
 
@@ -4526,8 +4516,6 @@ func handleVerifyMessage(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 	}
 	address, err := btcutil.NewAddressPubKey(serializedPK, params)
 	if err != nil {
-		// Again mirror Bitcoin Core behavior, which treats error in public key
-		// reconstruction as invalid signature.
 		return false, nil
 	}
 
@@ -4763,7 +4751,7 @@ type parsedRPCCmd struct {
 	err    *btcjson.RPCError
 }
 
-// standardCmdResult checks that a parsed command is a standard Bitcoin JSON-RPC
+// standardCmdResult checks that a parsed command is a standard Omega JSON-RPC
 // command and runs the appropriate handler to reply to the command.  Any
 // commands which are not recognized or not implemented will return an error
 // suitable for use in replies.
@@ -4898,7 +4886,7 @@ func (s *rpcServer) jsonRPCRead(w http.ResponseWriter, r *http.Request, isAdmin 
 			// must not be responded to. JSON-RPC 2.0 permits the null value as a
 			// valid request id, therefore such requests are not notifications.
 			//
-			// Bitcoin Core serves requests with "id":null or even an absent "id",
+			// Omega serves requests with "id":null or even an absent "id",
 			// and responds to such requests with "id":null in the response.
 			//
 			// Omcd does not respond to any request without and "id" or "id":null,
@@ -4966,7 +4954,6 @@ func (s *rpcServer) jsonRPCRead(w http.ResponseWriter, r *http.Request, isAdmin 
 		rpcsLog.Errorf("Failed to write marshalled reply: %v", err)
 	}
 
-	// Terminate with newline to maintain compatibility with Bitcoin Core.
 	if err := buf.WriteByte('\n'); err != nil {
 		rpcsLog.Errorf("Failed to append terminating newline to reply: %v", err)
 	}

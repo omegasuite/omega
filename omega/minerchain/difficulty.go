@@ -280,11 +280,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		for mb != nil && (mb.Data.GetNonce() > -wire.MINER_RORATE_FREQ) {
 			if mb.Parent == nil && mb.Height != 0 {
 				// this should not happen. but we keep code here in case something is wrong
-				h := mb.Height - wire.MINER_RORATE_FREQ
-				if h < 0 {
-					h = 0
-				}
-				b.blockChain.FetchMissingNodes(&mb.Hash, h)
+				return lastNode.Data.(*blockchainNodeData).block.Bits, coll, fmt.Errorf("broken best chain at %s", mb.Hash)
 			}
 
 			mb = mb.Parent

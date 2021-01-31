@@ -232,7 +232,7 @@ var validators = map[OpCode]codeValidator {
 	TXFEE: opTxFeeValidator,
 	GETCOIN: opGetCoinValidator,
 	NOP: func ([]byte) int { return 1},
-//	TXIOCOUNT:  opTxIOCountValidator,
+	TXIOCOUNT:  opTxIOCountValidator,
 //	GETTXIN: opGetTxInValidator,
 //	GETTXOUT: opGetTxOutValidator,
 	SPEND:  opSpendValidator,

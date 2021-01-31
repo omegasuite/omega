@@ -380,7 +380,7 @@ func (c *ChainView) Lock() {
 // See the exported BlockLocator function comments for more details.
 //
 // This function MUST be called with the view mutex locked (for reads).
-func (c *ChainView) blockLocator(node *BlockNode) chainhash.BlockLocator {
+func (c *ChainView) blockLocator(node *BlockNode, index *BlockIndex) chainhash.BlockLocator {
 	// Use the current tip if requested.
 	if node == nil {
 		node = c.tip()
@@ -393,6 +393,8 @@ func (c *ChainView) blockLocator(node *BlockNode) chainhash.BlockLocator {
 	// block locator.  See the description of the algorithm for how these
 	// numbers are derived.
 	var maxEntries uint8
+	maxEntries = 2 + fastLog2Floor(uint32(node.Height))
+/*
 	if node.Height <= 12 {
 		maxEntries = uint8(node.Height) + 1
 	} else {
@@ -401,13 +403,18 @@ func (c *ChainView) blockLocator(node *BlockNode) chainhash.BlockLocator {
 		adjustedHeight := uint32(node.Height) - 10
 		maxEntries = 12 + fastLog2Floor(adjustedHeight)
 	}
+ */
 	locator := make(chainhash.BlockLocator, 0, maxEntries)
+
+	var nodehash * chainhash.Hash
 
 	step := int32(1)
 	height := node.Height
+	nodehash = &node.Hash
 
 	for height > 0 {
-		locator = append(locator, &node.Hash)
+		locator = append(locator, nodehash)
+		nodehash = nil
 
 		height -= step
 		if height <= 0 {
@@ -420,19 +427,30 @@ func (c *ChainView) blockLocator(node *BlockNode) chainhash.BlockLocator {
 		// the nodes of the other chain to the correct ancestor.
 		if c.ContainsUL(node) {
 			node = c.nodes[height]
+			if node != nil {
+				nodehash = &node.Hash
+			}
+		} else if height <= int32(index.Cutoff) {
+//			for _, h := range index.Ulocator {
+//				var hash chainhash.Hash
+//				hash = h
+//				locator = append(locator, &hash)
+//			}
+			break
 		} else {
-			node = node.Ancestor(height)
+			for ; node != nil && node.Height > height; node = node.Parent {}
+			if node != nil {
+				nodehash = &node.Hash
+			}
 		}
 
-		if node == nil {
+		if nodehash == nil {
 			break
 		}
+		step <<= 1
 
 		// Once 11 entries have been included, start doubling the
 		// distance between included hashes.
-		if len(locator) > 10 {
-			step *= 2
-		}
 	}
 
 	locator = append(locator, &c.nodes[0].Hash)
@@ -461,9 +479,9 @@ func (c *ChainView) LastNil(begin, end int32) int32 {
 // locator.
 //
 // This function is safe for concurrent access.
-func (c *ChainView) BlockLocator(node *BlockNode) chainhash.BlockLocator {
+func (c *ChainView) BlockLocator(node *BlockNode, index * BlockIndex) chainhash.BlockLocator {
 	c.mtx.Lock()
-	locator := c.blockLocator(node)
+	locator := c.blockLocator(node, index)
 	c.mtx.Unlock()
 	return locator
 }

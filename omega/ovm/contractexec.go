@@ -59,7 +59,9 @@ func parsePkScript(script []byte) (byte, []byte, []byte, []byte) {
 		if script[0] == 0x88 {
 			return script[0], script[1:21], script[21:], script[21:]
 		}
-		return 0, nil, nil, nil
+		var method [4]byte
+		copy(method[:], script[21:])
+		return script[0], script[1:21], method[:], script[21:]
 	}
 
 	return script[0], script[1:21], script[21:25], script[21:]
@@ -85,7 +87,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 
 	ctx.GetCoinBase = func() *btcutil.Tx { return nil }
 	ctx.GetTx = func () * btcutil.Tx {	return utx	}
-	ctx.Spend = func(t wire.OutPoint) bool { return false }
+	ctx.Spend = func(t wire.OutPoint, _ []byte) bool { return false }
 	ctx.AddTxOutput = func(t wire.TxOut) int { return -1	}
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ctx.BlockTime = func() uint32 { return 0 }
@@ -130,13 +132,13 @@ func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, er
 
 // sig verification includes all pk script type, e.g. multi sig, pkscripthash
 
-func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *viewpoint.ViewPointSet) error {
+func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int, views *viewpoint.ViewPointSet) error {
 	if tx.IsCoinBase() {
 		return nil
 	}
 
 	nsigs := uint32(len(tx.MsgTx().SignatureScripts))
-	for _,tin := range tx.MsgTx().TxIn {
+	for _,tin := range tx.MsgTx().TxIn[skip:] {
 		if tin.IsSeparator() {
 			break
 		}
@@ -187,7 +189,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 					ovm.SetViewPoint(views)
 					ovm.Init(tx, views)
 					ovm.GetCoinBase = func() *btcutil.Tx { return nil }
-					ovm.Spend = func(t wire.OutPoint) bool { return false }
+					ovm.Spend = func(t wire.OutPoint, _ []byte) bool { return false }
 					ovm.AddTxOutput = func(t wire.TxOut) int { return -1 }
 					ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 					ovm.BlockTime = func() uint32 { return 0 }
@@ -231,10 +233,14 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 	sharedSigs := make(map[uint32] * shared)
 
 	// prepare and shoot the real work
-	for txinidx, txin := range tx.MsgTx().TxIn {
+	for txinidx, txin := range tx.MsgTx().TxIn[skip:] {
 		if txin.IsSeparator() {	// never
 			break
 		}
+		if txin.SignatureIndex == 0xFFFFFFFF {
+			continue
+		}
+		tinidx := txinidx + skip
 
 		// get utxo
 		utxo := views.Utxo.LookupEntry(txin.PreviousOutPoint)
@@ -336,7 +342,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 						}
 
 						if docheck {
-							queue <- tbv{txinidx, txin.PreviousOutPoint,param, code}
+							queue <- tbv{tinidx, txin.PreviousOutPoint,param, code}
 						}
 					}
 				}
@@ -398,12 +404,12 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, views *v
 
 		atomic.AddInt32(&toverify, 1)
 
-		queue <- tbv { txinidx, txin.PreviousOutPoint, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
+		queue <- tbv { tinidx, txin.PreviousOutPoint, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
 /*
 		sig := tx.MsgTx().SignatureScripts[txin.SignatureIndex]
 		if len(sig) > 0 {
 			atomic.AddInt32(&toverify, 1)
-			queue <- tbv{txinidx, txin.PreviousOutPoint, sig, code}
+			queue <- tbv{tinidx, txin.PreviousOutPoint, sig, code}
 		} else {
 			allrun = true
 			close(queue)
@@ -442,7 +448,7 @@ func GetHash(d uint64) *chainhash.Hash {
 func (ovm * OVM) ContractCall(addr Address, input []byte) ([]byte, error) {
 	ovm.GetTx = func () * btcutil.Tx { return nil }
 	ovm.AddTxOutput = func(t wire.TxOut) int {	return -1 }
-	ovm.Spend = func(t wire.OutPoint) bool { return false }
+	ovm.Spend = func(t wire.OutPoint, _ []byte) bool { return false }
 	ovm.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
 
@@ -552,8 +558,6 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 		}
 	}
 
-	savedTx := *tx.MsgTx().Copy()
-	haves := []bool {tx.HasDefs, tx.HasIns, tx.HasOuts}
 	end := len(tx.MsgTx().TxOut)
 	hash := *tx.Hash()
 
@@ -579,16 +583,8 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 		_, err := ovm.Call(d, method, &txOut.Token, param, 0)
 
 		if err != nil {
-			// if fail, ovm.Call should have restored ovm.stateDB[d]
-			// we need to restore Tx
-			tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
-			*tx.MsgTx() = savedTx
 			return err
 		}
-	}
-
-	if !anew {
-		tx.Executed = true
 	}
 
 	return nil
@@ -654,36 +650,69 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 
 	savedTx := *tx.MsgTx().Copy()
 	haves := []bool {tx.HasDefs, tx.HasIns, tx.HasOuts}
-	end := len(tx.MsgTx().TxOut)
 	hash := *tx.Hash()
 
-	for i, txOut := range tx.MsgTx().TxOut {
-		if i >= end {
-			continue
+	e2, end := len(tx.MsgTx().TxOut), 0
+	ovm.exeout = make([]bool, e2)
+
+	intx := len(tx.MsgTx().TxIn)
+
+	for end < e2 && e2 <= wire.MaxTxOutPerMessage && len(tx.MsgTx().TxIn) <= wire.MaxTxInPerMessage {
+		for i, txOut := range tx.MsgTx().TxOut[end:] {
+			// for any contract call added but not executed
+			if i >= e2 - end || ovm.exeout[i + end] {
+				continue
+			}
+			ovm.exeout[i + end] = true
+
+			version, addr, method, param := parsePkScript(txOut.PkScript)
+
+			if !isContract(version) || len(method) == 0 {
+				continue
+			}
+
+			ovm.GetCurrentOutput = func() wire.OutPoint {
+				return wire.OutPoint{hash, uint32(i + end)}
+			}
+
+			var d Address
+			copy(d[:], addr)
+
+			ovm.contractStack = []Address{d}
+
+			_, err := ovm.Call(d, method, &txOut.Token, param, 0)
+
+			if err != nil {
+				// if fail, ovm.Call should have restored ovm.stateDB[d]
+				// we need to restore Tx
+				tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
+				*tx.MsgTx() = savedTx
+				return err
+			}
 		}
-		ovm.GetCurrentOutput = func() wire.OutPoint {
-			return wire.OutPoint{hash, uint32(i) }
+		end = e2
+		e2 = len(tx.MsgTx().TxOut)
+	}
+
+	if e2 > wire.MaxTxOutPerMessage || len(tx.MsgTx().TxIn) > wire.MaxTxInPerMessage {
+		tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
+		*tx.MsgTx() = savedTx
+		return omega.ScriptError(omega.ErrInternal, "Tx in/out exceeds the max.")
+	}
+
+	if intx < len(tx.MsgTx().TxIn) {
+		needsv := false
+		for _, tin := range tx.MsgTx().TxIn[intx:] {
+			if tin.SignatureIndex != 0xFFFFFFFF {
+				needsv = true
+				break
+			}
 		}
-
-		version, addr, method, param := parsePkScript(txOut.PkScript)
-
-		if !isContract(version) || len(method) < 4 {
-			continue
-		}
-
-		var d Address
-		copy(d[:], addr)
-
-		ovm.contractStack = []Address{d}
-
-		_, err := ovm.Call(d, method, &txOut.Token, param, 0)
-
-		if err != nil {
-			// if fail, ovm.Call should have restored ovm.stateDB[d]
-			// we need to restore Tx
-			tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
-			*tx.MsgTx() = savedTx
-			return err
+		if needsv {
+			err := VerifySigs(tx, txHeight, ovm.chainConfig, intx, ovm.views)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

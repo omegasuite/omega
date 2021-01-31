@@ -48,7 +48,7 @@ const (
 
 const (
 	RECEIVED OpCode = 0x61 + iota	// "a". outpoint of the current call
-	TXFEE		// TXIOCOUNT. min tx fee for current tx
+	TXFEE		// min tx fee for current tx
 	GETCOIN		// GETTXIN. coin received for the current call
 	NOP
 	SPEND		// add tx in
@@ -60,6 +60,7 @@ const (
 	META		// get contract meta Data
 	TIME		// timestamp in block
 	HEIGHT		// block height
+	TXIOCOUNT	// current io count of this tx
 	
 	STOP	 OpCode = 0x7A	//  "z"
 )
@@ -93,7 +94,7 @@ var opCodeToString = map[OpCode]string{
 //	CODECOPY:       "CODECOPY",
 	RECEIVED:        "RECEIVED",
 	TXFEE: "TXFEE",
-//	TXIOCOUNT:        "TXIOCOUNT",
+	TXIOCOUNT:        "TXIOCOUNT",
 //	GETTXIN:        "GETTXIN",
 //	GETTXOUT:        "GETTXOUT",
 	SPEND:         "SPEND",
@@ -147,7 +148,7 @@ var stringToOp = map[string]OpCode{
 //	"CODECOPY":           CODECOPY,
 	"RECEIVED": RECEIVED,
 	"TXFEE": TXFEE,
-//	"TXIOCOUNT": TXIOCOUNT,
+	"TXIOCOUNT": TXIOCOUNT,
 //	"GETTXIN": GETTXIN,
 //	"GETTXOUT": GETTXOUT,
 	"SPEND": SPEND,

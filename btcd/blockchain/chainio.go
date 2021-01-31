@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/wire/common"
 	"math/big"
+//	"sort"
 	"time"
 
 	"github.com/omegasuite/btcd/blockchain/bccompress"
@@ -982,6 +984,13 @@ func (b *BlockChain) initChainState() error {
 		}
 	}
 
+	unloaded := make(map[chainhash.Hash]int32)
+	buffer := make([]struct {
+		hash chainhash.Hash
+		height int32
+	}, 5000)
+	buffertop := 0
+
 	// Attempt to load the chain state from the database.
 	err = b.db.View(func(dbTx database.Tx) error {
 		// Fetch the stored chain state from the database metadata.
@@ -996,9 +1005,11 @@ func (b *BlockChain) initChainState() error {
 		}
 
 		var cutoff = uint32(0)
-		if state.height > 300000 {
-			cutoff = state.height - 300000
+		if state.height > 200000 {
+			cutoff = state.height - 200000
 		}
+		b.index.Cutoff = cutoff
+//		b.index.Unloaded = make([]chainhash.Hash, cutoff + 1)
 
 		// Load all of the headers from the data for the known best
 		// chain and construct the block index accordingly.  Since the
@@ -1033,6 +1044,7 @@ func (b *BlockChain) initChainState() error {
 			// in order of height, if the blocks are mostly linear there is a
 			// very good chance the previous header processed is the parent.
 			var parent *chainutil.BlockNode
+			var parentheight int32
 			if lastNode == nil {
 				blockHash := header.BlockHash()
 				if !blockHash.IsEqual(b.ChainParams.GenesisHash) {
@@ -1040,18 +1052,30 @@ func (b *BlockChain) initChainState() error {
 						"first entry in block index to be genesis block, "+
 						"found %s", blockHash))
 				}
+				parentheight = 0
 			} else if header.PrevBlock == lastNode.Hash {
 				// Since we iterate block headers in order of height, if the
 				// blocks are mostly linear there is a very good chance the
 				// previous header processed is the parent.
 				parent = lastNode
+				parentheight = parent.Height
 			} else {
 				parent = b.index.LookupNode(&header.PrevBlock)
 				if parent == nil {
-					if _, ok := b.index.Unloaded[header.PrevBlock]; !ok {
-						return AssertError(fmt.Sprintf("initChainState: Could "+
-							"not find parent for block %s", header.BlockHash()))
+					if parentheight, ok = unloaded[header.PrevBlock]; !ok {
+						parentheight = -1
+						for _, buf := range buffer {
+							if buf.hash.IsEqual(&header.PrevBlock) {
+								parentheight = buf.height
+							}
+						}
+						if parentheight < 0 {
+							return AssertError(fmt.Sprintf("initChainState: Could "+
+								"not find parent for block %s", header.BlockHash()))
+						}
 					}
+				} else {
+					parentheight = parent.Height
 				}
 			}
 
@@ -1059,20 +1083,34 @@ func (b *BlockChain) initChainState() error {
 				lastNode = tmpnode
 				blockHash := header.BlockHash()
 				lastNode.Hash = blockHash
-				if parent != nil {
-					lastNode.Height = parent.Height + 1
-				} else {
-					lastNode.Height = b.index.Unloaded[header.PrevBlock] + 1
-				}
+				lastNode.Height = parentheight + 1
+
 				peekh = lastNode.Height
-				b.index.Unloaded[blockHash] = peekh
+				buffer[buffertop%5000] = struct {
+					hash   chainhash.Hash
+					height int32
+				}{hash: header.PrevBlock, height: peekh - 1}
+				buffertop++
+
+				delete(unloaded, header.PrevBlock)
 				b.index.Untip(header.PrevBlock)
+				unloaded[blockHash] = peekh
+				//				b.index.Unloaded[peekh] = blockHash
+				//				b.index.AddNodeHash(blockHash)
+			} else if parent == nil && cutoff > 0 && parentheight > 0 {
+				// this forms a side chain and will be discarded
+				buffer[buffertop%5000] = struct {
+					hash   chainhash.Hash
+					height int32
+				}{hash: header.BlockHash(), height: parentheight + 1}
+				buffertop++
 			} else {
 				// Initialize the block node for the block, connect it,
 				// and add it to the block index.
 				node := &blockNodes[i]
 				i++
 				InitBlockNode(node, header, parent)
+
 				if cutoff > 0 && peekh == int32(cutoff) {
 					node.Parent = nil
 				}
@@ -1092,12 +1130,7 @@ func (b *BlockChain) initChainState() error {
 			return AssertError(fmt.Sprintf("initChainState: cannot find "+
 				"chain tip %s in block index", state.hash))
 		}
-/*
-		if tip.Parent == nil {
-			tip.Data.SetBits(b.ChainParams.PowLimitBits)
-			state.bits = tip.Data.GetBits()
-		}
-*/
+
 		b.BestChain.SetTip(tip)
 
 		// Load the raw block bytes for the best block.
@@ -1134,7 +1167,6 @@ func (b *BlockChain) initChainState() error {
 		blockSize := uint64(len(blockBytes))
 		numTxns := uint64(len(block.Transactions))
 
-//		tip.Data.SetBits(state.bits)
 		b.stateSnapshot = newBestState(tip, blockSize,
 			numTxns, state.totalTxns, tip.CalcPastMedianTime(), // state.bits,
 			state.rotation)
@@ -1146,6 +1178,11 @@ func (b *BlockChain) initChainState() error {
 	if err != nil {
 		return err
 	}
+
+//	b.index.Unloaded = b.index.Unloaded[1:]
+//	sort.Slice(b.index.Unloaded, func (i, j int) bool {
+//		return bytes.Compare(b.index.Unloaded[i][:], b.index.Unloaded[j][:]) < 0
+//	})
 
 	b.blockSizer.knownLimits = b.stateSnapshot.sizeLimits
 
@@ -1160,7 +1197,7 @@ func (b *BlockChain) initChainState() error {
 	// write if the elements are dirty, so it'll usually be a noop.
 	return b.index.FlushToDB(dbStoreBlockNode)
 }
-
+/*
 func (b *BlockChain) FetchMissingNodes(hash * chainhash.Hash, to int32) error {
 	// fetching missing nodes in best chain from tip till 'to'
 	log.Infof("FetchMissingNodes from %s to %d", hash.String(), to)
@@ -1251,6 +1288,7 @@ func (b *BlockChain) FetchMissingNodes(hash * chainhash.Hash, to int32) error {
 		return nil
 	})
 }
+ */
 
 type blockchainNodeData struct {
 	// Some fields from block headers to aid in best chain selection and
@@ -1304,11 +1342,14 @@ func (d * blockchainNodeData) WorkSum() *big.Int {
 // Header constructs a block header from the node and returns it.
 //
 // This function is safe for concurrent access.
-func NodetoHeader(node *chainutil.BlockNode) wire.BlockHeader {
+func (b * BlockChain) NodetoHeader(node *chainutil.BlockNode) wire.BlockHeader {
 	// No lock is needed because all accessed fields are immutable.
 	prevHash := &zeroHash
 	if node.Parent != nil {
 		prevHash = &node.Parent.Hash
+	} else if node.Height != 0 {
+		t := b.NodeByHeight(node.Height - 1)
+		prevHash = &t.Hash
 	}
 	d := node.Data.(*blockchainNodeData)
 	return wire.BlockHeader{
@@ -1427,7 +1468,29 @@ func dbFetchBlockByNode(dbTx database.Tx, node *chainutil.BlockNode) (*btcutil.B
 func dbStoreBlockNode(dbTx database.Tx, node *chainutil.BlockNode) error {
 	// Serialize block data to be stored.
 	w := bytes.NewBuffer(make([]byte, 0, blockHdrSize+1))
-	header := NodetoHeader(node)
+
+	prevHash := &zeroHash
+	if node.Parent != nil {
+		prevHash = &node.Parent.Hash
+	} else if node.Height != 0 {
+		bucket := dbTx.Metadata().Bucket(heightIndexBucketName)
+		var key [4]byte
+		common.LittleEndian.PutUint32(key[:], uint32(node.Height - 1))
+		hash := bucket.Get(key[:])
+		var h chainhash.Hash
+		copy(h[:], hash)
+		prevHash = &h
+	}
+	d := node.Data.(*blockchainNodeData)
+	header := wire.BlockHeader{
+		Version:    d.Version,
+		PrevBlock:  *prevHash,
+		Timestamp:  time.Unix(d.Timestamp, 0),
+		Nonce:      d.Nonce,
+		MerkleRoot: d.MerkleRoot,
+		ContractExec: d.ContractExec,
+	}
+
 	err := header.Serialize(w)
 	if err != nil {
 		return err
@@ -1488,16 +1551,15 @@ func (b *BlockChain) BlockByHeight(blockHeight int32) (*btcutil.Block, error) {
 	return block, err
 }
 
-func (b *BlockChain) HeighOfBlock(hash chainhash.Hash) int32 {
-	if h,ok := b.index.Unloaded[hash]; ok {
-		return h
-	}
+/*
+func (b *BlockChain) HeightOfBlock(hash chainhash.Hash) int32 {
 	n := b.NodeByHash(&hash)
 	if n == nil {
 		return -1
 	}
 	return n.Height
 }
+ */
 
 // BlockByHash returns the block from the main chain with the given hash with
 // the appropriate chain height set.
@@ -1681,4 +1743,34 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 	err := view.Utxo.FetchUtxosMain(b.db, neededSet)
 	b.ChainLock.RUnlock()
 	return view, err
+}
+
+func (b *BlockChain) dbHashByHeight(blockHeight int32) *chainhash.Hash {
+	var hash []byte
+	b.db.View(func (dbTx database.Tx) error {
+		bucket := dbTx.Metadata().Bucket(heightIndexBucketName)
+		var key [4]byte
+		common.LittleEndian.PutUint32(key[:], uint32(blockHeight))
+		hash = bucket.Get(key[:])
+		return nil
+	})
+	if hash != nil {
+		var h chainhash.Hash
+		copy(h[:], hash)
+		return &h
+	}
+	return nil
+}
+
+func (b *BlockChain) dbHeightofHash(key chainhash.Hash) int32 {
+	var d []byte
+	b.db.View(func (dbTx database.Tx) error {
+		bucket := dbTx.Metadata().Bucket(hashIndexBucketName)
+		d = bucket.Get(key[:])
+		return nil
+	})
+	if d != nil {
+		return int32(common.LittleEndian.Uint32(d))
+	}
+	return -1
 }

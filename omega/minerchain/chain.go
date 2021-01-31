@@ -25,7 +25,7 @@ import (
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcd/wire/common"
+//	"github.com/omegasuite/btcd/wire/common"
 )
 
 const (
@@ -161,6 +161,13 @@ type MinerChain struct {
 	cycleBegin	int32	// begin block height. if negative, the score data is not set
 	minTPH		uint32
 	maxTPH		uint32
+
+	violations []*wire.Violations
+	blacklist map[[20]byte][]int32
+}
+
+func (b *MinerChain) DSReport(p *wire.Violations) {
+	b.violations = append(b.violations, p)
 }
 
 // HaveBlock returns whether or not the chain instance has the block represented
@@ -179,7 +186,7 @@ func (b *MinerChain) HaveBlock(hash *chainhash.Hash) (bool, error) {
 func (b *MinerChain) LatestMinerBlockLocator() (chainhash.BlockLocator, error) {
 //	log.Infof("MinerChain.LatestMinerBlockLocator: ChainLock.RLock")
 	b.chainLock.RLock()
-	locator := b.BestChain.BlockLocator(nil)
+	locator := b.BestChain.BlockLocator(nil, b.index)
 	b.chainLock.RUnlock()
 //	log.Infof("MinerChain.LatestMinerBlockLocator: ChainLock.RUnlock")
 
@@ -364,6 +371,10 @@ func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBl
 			"that extends the main chain")
 	}
 
+	if _,ok := b.blacklist[block.MsgBlock().Miner]; ok {
+		return fmt.Errorf("Blacklised Miner")
+	}
+
 	// No warnings about unknown rules or versions until the chain is
 	// current.
 	if b.IsCurrent() {
@@ -405,15 +416,15 @@ func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBl
 		if err != nil {
 			return err
 		}
-
-		if len(NodetoHeader(node).BlackList) > 0 {
+/*
+		if len(NodetoHeader(node).ViolationReport) > 0 {
 			meta := dbTx.Metadata()
 
 			bkt := meta.Bucket(BlacklistKeyName)
 			var height [4]byte
 			common.LittleEndian.PutUint32(height[:], uint32(node.Height))
-			ser := make([]byte, len(NodetoHeader(node).BlackList) * 20)
-			for i, p := range NodetoHeader(node).BlackList {
+			ser := make([]byte, len(NodetoHeader(node).ViolationReport) * 20)
+			for i, p := range NodetoHeader(node).ViolationReport {
 				mb,_ := b.BlockByHash(&p.MRBlock)
 				miner := mb.MsgBlock().Miner
 				copy(ser[20 * i:], miner[:])
@@ -423,11 +434,37 @@ func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBl
 				return err
 			}
 		}
+ */
 
 		return nil
 	})
 	if err != nil {
 		return err
+	}
+
+	// add to black list
+	for _,r := range block.MsgBlock().ViolationReport {
+		mb := b.index.LookupNodeUL(&r.MRBlock)
+		miner := mb.Data.(*blockchainNodeData).block.Miner
+		if _,ok := b.blacklist[miner]; ok {
+			b.blacklist[miner] = append(b.blacklist[miner], r.Height)
+		} else {
+			b.blacklist[miner] = []int32{r.Height}
+		}
+	}
+
+	// remove from violation report pool expired ones
+	tbr := true
+	for tbr {
+		tbr = false
+		for i,u := range b.violations {
+			mb := b.NodeByHash(&u.MRBlock)
+			if node.Height - mb.Height >= wire.ViolationReportDeadline {
+				tbr = true
+				b.violations = append(b.violations[:i], b.violations[i+1:]...)
+				break
+			}
+		}
 	}
 
 	// This node is now the end of the best chain.
@@ -498,7 +535,7 @@ func (b *MinerChain) disconnectBlock(node *chainutil.BlockNode, block *wire.Mine
 		if err != nil {
 			return err
 		}
-
+/*
 		meta := dbTx.Metadata()
 		bkt := meta.Bucket(BlacklistKeyName)
 		var height [4]byte
@@ -507,6 +544,7 @@ func (b *MinerChain) disconnectBlock(node *chainutil.BlockNode, block *wire.Mine
 		if b.blockChain.Blacklist != nil {
 			b.blockChain.Blacklist.Remove(uint32(node.Height))
 		}
+ */
 
 		return nil
 	})
@@ -516,6 +554,30 @@ func (b *MinerChain) disconnectBlock(node *chainutil.BlockNode, block *wire.Mine
 
 	// This node's parent is now the end of the best chain.
 	b.BestChain.SetTip(node.Parent)
+
+	// add to black list
+	for _,r := range block.MsgBlock().ViolationReport {
+		mb := b.index.LookupNodeUL(&r.MRBlock)
+		miner := mb.Data.(*blockchainNodeData).block.Miner
+		if _,ok := b.blacklist[miner]; ok {
+			t := make([]int32, 0)
+			for _,h := range b.blacklist[miner] {
+				if h != r.Height {
+					t = append(t, h)
+				}
+			}
+			if len(t) > 0 {
+				b.blacklist[miner] = t
+			} else {
+				delete(b.blacklist, miner)
+			}
+		}
+	}
+
+	// add back to pool
+	if len(block.MsgBlock().ViolationReport) > 0 {
+		b.violations = append(b.violations, block.MsgBlock().ViolationReport...)
+	}
 
 	// Update the state for the best block.  Notice how this replaces the
 	// entire struct instead of updating the existing one.  This effectively
@@ -1017,7 +1079,7 @@ func (b *MinerChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockL
 //	log.Infof("MinerChain.BlockLocatorFromHash: ChainLock.RLock")
 	b.chainLock.RLock()
 	node := b.index.LookupNode(hash)
-	locator := b.BestChain.BlockLocator(node)
+	locator := b.BestChain.BlockLocator(node, b.index)
 	b.chainLock.RUnlock()
 //	log.Infof("MinerChain.BlockLocatorFromHash: ChainLock.RUnlock")
 
@@ -1031,7 +1093,7 @@ func (b *MinerChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockL
 func (b *MinerChain) LatestBlockLocator() (chainhash.BlockLocator, error) {
 //	log.Infof("MinerChain.LatestBlockLocator: ChainLock.RLock")
 	b.chainLock.RLock()
-	locator := b.BestChain.BlockLocator(nil)
+	locator := b.BestChain.BlockLocator(nil, b.index)
 	b.chainLock.RUnlock()
 //	log.Infof("MinerChain.LatestBlockLocator: ChainLock.RUnlock")
 	return locator, nil
@@ -1064,6 +1126,10 @@ func (b *MinerChain) BlockHashByHeight(blockHeight int32) (*chainhash.Hash, erro
 	}
 
 	return &node.Hash, nil
+}
+
+func (b *MinerChain) NodeByHeight(height int32) *chainutil.BlockNode {
+	return b.BestChain.NodeByHeight(height)
 }
 
 // HeightRange returns a range of block hashes for the given start and end
@@ -1404,9 +1470,11 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		chainLock:			 &s.ChainLock,
 		warningCaches:       NewThresholdCaches(vbNumBits),
 		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
-		cycleBegin:			 -1,
+		cycleBegin:			 -100000,
 		minTPH:				 1,
 		maxTPH:				 1,
+		violations:		     make([]*wire.Violations, 0),
+		blacklist:		     make(map[[20]byte][]int32),
 	}
 
 	// Initialize the chain state from the passed database.  When the db
@@ -1630,6 +1698,9 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 
 	for n,m := 0,0; n < rpts && m < 100 * rpts; m++ {
 		w := last.Data.(*blockchainNodeData).block.Miner
+		if w == me {
+			break
+		}
 		last = last.Parent
 		if _,ok := miners[w]; ok {
 			continue
@@ -1720,6 +1791,12 @@ func (g *MinerChain) reportFromDB(miner [20]byte) []rv {
 			return nil
 		}
 		bucket := rootBucket.Bucket(miner[:])
+		if bucket == nil {
+			var err error
+			if bucket, err = rootBucket.CreateBucket(miner[:]); err != nil {
+				return err
+			}
+		}
 		cursor := bucket.Cursor()
 
 		for ok := cursor.First(); ok; ok = cursor.Next() {
@@ -1756,9 +1833,17 @@ func (g *MinerChain) reportNotice(n *blockchain.Notification) {
 		node := g.NodeByHash(&block.MsgBlock().PrevBlock)
 		for _, r := range block.MsgBlock().TphReports {
 			w := node.Data.(*blockchainNodeData).block.Miner
-			for _, ok := checked[w]; ok; {
+			_, ok := checked[w]
+			for ok {
 				node = node.Parent
+				if node == nil {
+					break
+				}
 				w = node.Data.(*blockchainNodeData).block.Miner
+				_, ok = checked[w]
+			}
+			if ok {
+				continue
 			}
 			checked[w] = struct{}{}
 			g.db.Update(func(tx database.Tx) error {
@@ -1767,6 +1852,9 @@ func (g *MinerChain) reportNotice(n *blockchain.Notification) {
 					return nil
 				}
 				bucket := rootBucket.Bucket(w[:])
+				if bucket == nil {
+					bucket,_ = rootBucket.CreateBucket(w[:])
+				}
 				switch n.Type {
 				case blockchain.NTBlockConnected:
 					var s [24]byte

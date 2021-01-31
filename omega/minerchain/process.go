@@ -11,7 +11,11 @@
 package minerchain
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcutil"
 	"math/big"
 //	"net"
 	"time"
@@ -168,24 +172,12 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
-	err = CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
+	err = CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags | blockchain.BFNoPoWCheck)
 	if err != nil {
 		return false, false, err, nil
 	}
 	if len(block.MsgBlock().Connection) == 0 {
 		return false, false, fmt.Errorf("Empty Connection"), nil
-	}
-
-	if b.blockChain.Blacklist.IsGrey(block.MsgBlock().Miner) {
-		return false, false, fmt.Errorf("Blacklised Miner"), nil
-	}
-
-	if block.MsgBlock().Version >= 0x20000 {
-		// check the coin for collateral exists and have correct amount
-		_, err = b.blockChain.CheckCollateral(block, flags)
-		if err != nil {
-			return false, false, err, nil
-		}
 	}
 
 	// Find the previous checkpoint and perform some additional checks based
@@ -209,12 +201,20 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, true, nil, nil
 	}
 
+	if block.MsgBlock().Version >= chaincfg.Version2 {
+		// check the coin for collateral exists and have correct amount
+		_, err = b.blockChain.CheckCollateral(block, flags)
+		if err != nil {
+			return false, false, err, nil
+		}
+	}
+
 	parent := b.index.LookupNode(prevHash)
 	if have,_ := b.blockChain.HaveBlock(&block.MsgBlock().BestBlock); !have {
 		return false, true, nil, &block.MsgBlock().BestBlock
 	}
-	if block.MsgBlock().Version >= 0x20000 {
-		for _, p := range block.MsgBlock().BlackList {
+	if block.MsgBlock().Version >= chaincfg.Version2 {
+		for _, p := range block.MsgBlock().ViolationReport {
 			for j, tb := range p.Blocks {
 				if !b.blockChain.HaveNode(&tb) {
 					// if we have node of the hash, it is in main chain or side chain
@@ -223,7 +223,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 				}
 			}
 		}
-	} else if len(block.MsgBlock().BlackList) > 0 {
+	} else if len(block.MsgBlock().ViolationReport) > 0 {
 		return false, false, fmt.Errorf("Unexpected blacklist"), nil
 	}
 
@@ -231,6 +231,64 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		log.Infof("block and parent tx reference not in the same chain.")
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
 		return false, true, nil, nil
+	}
+
+	// validate violation reports
+	for _,v := range block.MsgBlock().ViolationReport {
+		vb := make(map[chainhash.Hash]struct{})
+		mb := b.NodeByHash(&v.MRBlock)
+		if mb == nil {
+			return false, false, fmt.Errorf("Incorrect violation report"), nil
+		}
+		if block.Height() - mb.Height >= wire.ViolationReportDeadline {
+			return false, false, fmt.Errorf("Incorrect violation report"), nil
+		}
+		for _,h := range v.Blocks {
+			if _,ok := vb[h]; ok {
+				return false, false, fmt.Errorf("Incorrect violation report"), nil
+			}
+			vb[h] = struct{}{}
+			txb,err := b.blockChain.BlockByHash(&h)
+			if err != nil {
+				return false, false, err, nil
+			}
+			if txb.Height() != v.Height {
+				return false, false, fmt.Errorf("Incorrect violation report"), nil
+			}
+			signed := false
+			for _,sig := range txb.MsgBlock().Transactions[0].SignatureScripts[1:] {
+				signer := btcutil.Hash160(sig[:btcec.PubKeyBytesLenCompressed])
+				if bytes.Compare(signer[:], mb.Data.(*blockchainNodeData).block.Miner[:]) == 0 {
+					signed = true
+					hash := blockchain.MakeMinerSigHash(txb.Height(), *txb.Hash())
+					_, err := btcutil.VerifySigScript(sig, hash, b.blockChain.ChainParams)
+					if err != nil {
+						return false, false, fmt.Errorf("Incorrect violation report"), nil
+					}
+					break
+				}
+			}
+			if !signed {
+				return false, false, fmt.Errorf("Incorrect violation report"), nil
+			}
+		}
+
+		// check dup report
+		inrange := false
+		for p, i := parent, 0; i < wire.ViolationReportDeadline; i++ {
+			if mb == p {
+				inrange = true
+			}
+			for _,u := range p.Data.(*blockchainNodeData).block.ViolationReport {
+				for _,h := range u.Blocks {
+					delete(vb, h)
+				}
+			}
+			p = p.Parent
+		}
+		if !inrange || len(vb) == 0 {
+			return false, false, fmt.Errorf("Duplicated violation report"), nil
+		}
 	}
 
 	// The block has passed all context independent checks and appears sane

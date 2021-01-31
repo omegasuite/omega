@@ -22,6 +22,8 @@ import (
 	"github.com/omegasuite/btcutil"
 	"math/big"
 	"math/rand"
+	"sort"
+
 	//	"runtime"
 	"sync"
 	"time"
@@ -29,7 +31,7 @@ import (
 
 const (
 	// maxNonce is the maximum value a nonce can be in a block header.
-	maxNonce = ^uint32(0) // 2^32 - 1
+	maxNonce = 0x7FFFFFFF
 
 	// hpsUpdateSecs is the number of seconds to wait in between each
 	// update to the hashes per second monitor.
@@ -251,15 +253,20 @@ func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 {	// *big.I
 // This function will return early with false when conditions that trigger a
 // stale block such as a new block showing up or periodically when there are
 // new transactions and enough time has elapsed without finding a solution.
-func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
+func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h int64,
 	ticker *time.Ticker, quit chan struct{}) bool {
 
 	// Create some convenience variables.
 	targetDifficulty := blockchain.CompactToBig(header.Bits)
 	header.Block.(*wire.MingingRightBlock).Bits = header.Bits
 
-//	factorPOW := m.factorPOW(header.Block.(*wire.MingingRightBlock).PrevBlock)
 	factorPOW := m.factorPOW(header.Height - 1, header.Block.(*wire.MingingRightBlock).BestBlock)
+	block := header.Block.(*wire.MingingRightBlock)
+
+	if block.Version >= chaincfg.Version2 {
+		factorPOW = 16 * factorPOW	// factor 16 is for smooth transition from V1 to V2
+		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(h))
+	}
 
 	// Initial state.
 	hashesCompleted := uint64(0)
@@ -302,6 +309,11 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32,
 			// The block is solved when the new block hash is less
 			// than the target difficulty.  Yay!
 			res := blockchain.HashToBig(&hash)
+
+			if res.Cmp(m.cfg.ChainParams.PowLimit) >= 0 {
+				continue
+			}
+
 			if res.Mul(res, big.NewInt(factorPOW)).Cmp(targetDifficulty) <= 0 {
 				return true
 			}
@@ -481,6 +493,36 @@ out:
 		// a new block template can be generated.  When the return is
 		// true a solution was found, so submit the solved block.
 		block := wire.NewMinerBlock(template.Block.(*wire.MingingRightBlock))
+
+		if chainChoice.Hash == *m.g.Chain.Miners.Tip().Hash() {
+			// we choose the best chain, file violation report
+			t := make([]*wire.Violations, 0, len(m.g.Chain.Miners.(*MinerChain).violations))
+			for _,v := range m.g.Chain.Miners.(*MinerChain).violations {
+				vb := make(map[chainhash.Hash]struct{})
+				for _,h := range v.Blocks {
+					vb[h] = struct{}{}
+				}
+
+				// check dup report
+				inrange := false
+				for p, i := chainChoice, 0; i < wire.ViolationReportDeadline; i++ {
+					if v.MRBlock == p.Data.(*blockchainNodeData).block.BlockHash() {
+						inrange = true
+					}
+					for _,u := range p.Data.(*blockchainNodeData).block.ViolationReport {
+						for _,h := range u.Blocks {
+							delete(vb, h)
+						}
+					}
+					p = p.Parent
+				}
+				if inrange && len(vb) > 0 {
+					t = append(t, v)
+				}
+			}
+			block.MsgBlock().ViolationReport = t
+		}
+
 		if len(m.cfg.ExternalIPs) > 0 {
 			block.MsgBlock().Connection = []byte(m.cfg.ExternalIPs[0])
 		} else if len(m.cfg.RSAPubKey) > 0 {
@@ -492,27 +534,68 @@ out:
 			time.Sleep(time.Second * 5)
 			continue
 		}
-
+/*
 		bm := len(m.g.Chain.BlackedList)
 		if bm > 0 {
-			bl := make([]wire.BlackList, 0, bm)
+			bl := make([]*wire.Violations, 0, bm)
 			for j := 0; j < bm; j++ {
 				n := m.g.Chain.BlackedList[j]
 				mb, _ := m.g.Chain.Miners.BlockByHash(&n.MRBlock)
 				if mb.Height() < template.Height-99 {
 					continue
 				}
-				bl = append(bl, *n)
+				bl = append(bl, n)
 			}
 			m.g.Chain.BlackedList = m.g.Chain.BlackedList[bm:]
 			if len(bl) > 0 {
-				block.MsgBlock().BlackList = bl
+				block.MsgBlock().ViolationReport = bl
 			}
 		}
+ */
 		m.submitBlockLock.Unlock()
 
+		var h1, h2 int64
+
+		if block.MsgBlock().Version >= chaincfg.Version2 {
+			// for h1, we compare this block's coin & Collateral for simplicity
+			h := NodetoHeader(chainChoice)
+			c := h.Collateral
+			if c < wire.CollateralBase {
+				c = wire.CollateralBase
+			}
+			v,err := m.g.Chain.CheckCollateral(block, 0)
+			h1 = int64(v / c)
+			if err != nil || h1 < 1 {
+				h1 = 1
+			}
+
+			me := m.g.Chain.Miners.(*MinerChain)
+			minscore, maxscore := me.reportRctRng(me.NodeByHash(&block.MsgBlock().PrevBlock))
+			r := me.reportFromDB(block.MsgBlock().Miner)	// max most recent 100 records
+			for i := len(r); i < 100; i++ {
+				r = append(r, rv{ val: minscore })
+			}
+			sort.Slice(r, func(i, j int) bool {
+				return r[i].val < r[j].val
+			})
+
+			sum := uint32(0)
+			for k := 25; k < 75; k++ {
+				sum += r[k].val
+			}
+			sum /= 50
+
+			if sum <= minscore {
+				h2 = 1
+			} else if maxscore > 64 * minscore {
+				h2 = 1 + int64((sum - minscore) * 63 / (maxscore - minscore))
+			} else {
+				h2 = int64(sum / minscore)
+			}
+		}
+
 		log.Infof("miner Trying to solve block at %d with difficulty %d", template.Height, template.Bits)
-		if m.solveBlock(template, curHeight+1, ticker, quit) {
+		if m.solveBlock(template, curHeight+1, h1 + h2, ticker, quit) {
 			log.Infof("New miner block produced by %x at %d", signAddr.ScriptAddress(), template.Height)
 			m.submitBlock(block)
 		} else {

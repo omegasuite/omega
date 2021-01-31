@@ -85,6 +85,7 @@ type MinerChain interface {
 	BestSnapshot () *BestState
 	BlockByHash (hash *chainhash.Hash) (*wire.MinerBlock, error)
 	NodeByHash(hash *chainhash.Hash) *chainutil.BlockNode
+	NodeByHeight(height int32) *chainutil.BlockNode
 	BlockByHeight (height int32) (*wire.MinerBlock, error)
 	CheckConnectBlockTemplate (*wire.MinerBlock) error
 	CalcNextRequiredDifficulty (timestamp time.Time) (uint32, uint32, error)
@@ -100,15 +101,7 @@ type MinerChain interface {
 	NextBlockVersion(prevNode *chainutil.BlockNode) (uint32, error)
 	NodetoHeader(node *chainutil.BlockNode) wire.MingingRightBlock
 	TphReport(rpts int, last *chainutil.BlockNode, me [20]byte) []uint32
-}
-
-type BlackList interface {
-	IsBlack([20]byte) bool
-	IsGrey([20]byte) bool
-	Update(uint32)
-	Rollback(uint32)
-	Add(uint32, [20]byte)
-	Remove(uint32)
+	DSReport(*wire.Violations)
 }
 
 type sizeCalculator struct {
@@ -193,16 +186,38 @@ type BlockChain struct {
 	notificationsLock sync.RWMutex
 	notifications     []NotificationCallback
 
-	Blacklist BlackList
-
 	Miner []btcutil.Address
 	PrivKey []*btcec.PrivateKey
 
 	// block size calculator
 	blockSizer sizeCalculator
-	BlackedList	[]*wire.BlackList
 
+	// records about miner's performance
 	MinerTPH map[[20]byte]*TPHRecord
+
+	// locked collaterals
+	collaterals []wire.OutPoint
+	lockedCollaterals map[wire.OutPoint]int
+}
+
+func (b *BlockChain) InitCollateral() {
+	b.collaterals = make([]wire.OutPoint, wire.ViolationReportDeadline)
+	b.lockedCollaterals = make(map[wire.OutPoint]int)
+
+	rot := b.BestSnapshot().LastRotation
+	for i := 0; i < wire.ViolationReportDeadline; i++ {
+		mb,_ := b.Miners.BlockByHeight(int32(rot) - int32(i))
+		if mb == nil || mb.MsgBlock().Utxos == nil {
+			return
+		}
+		c := *mb.MsgBlock().Utxos
+		b.collaterals[wire.ViolationReportDeadline - 1 - i] = c
+		if _,ok := b.lockedCollaterals[c]; !ok {
+			b.lockedCollaterals[c] = 1
+		} else {
+			b.lockedCollaterals[c] = b.lockedCollaterals[c] + 1
+		}
+	}
 }
 
 // HaveBlock returns whether or not the chain instance has the block represented
@@ -269,6 +284,7 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 	// indicating that this transaction can be included within a block at any given height or time.
 	mTx := tx.MsgTx()
 
+	// comp tx is not subject to seq lock rule
 	if mTx.Version == 2 || IsCoinBase(tx) {
 		return sequenceLock, nil
 	}
@@ -320,8 +336,20 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 			if prevInputHeight < 0 {
 				prevInputHeight = 0
 			}
-			blockNode := b.Ancestor(node, prevInputHeight)
-			medianTime := blockNode.CalcPastMedianTime()
+
+			var medianTime time.Time
+			var blockNode *chainutil.BlockNode
+
+			if prevInputHeight >= int32(b.index.Cutoff) {
+				blockNode = b.Ancestor(node, prevInputHeight)
+			} else {
+				for i := prevInputHeight - chainutil.MedianTimeBlocks + 1; i <= prevInputHeight; i++ {
+					t := blockNode
+					blockNode = b.NodeByHeight(i)
+					blockNode.Parent = t
+				}
+			}
+			medianTime = blockNode.CalcPastMedianTime()
 
 			// Time based relative time-locks as defined by BIP 68
 			// have a time granularity of RelativeLockSeconds, so
@@ -442,6 +470,9 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	// so they are attached in the appropriate order when iterating the list
 	// later.
 	forkNode := b.FindFork(node)
+	if forkNode.Height < int32(b.index.Cutoff) {
+		return detachNodes, attachNodes
+	}
 
 	// fork node can not be before the last block reference by tip of miner chain
 //	bh := b.Miners.Tip().MsgBlock().BestBlock
@@ -450,12 +481,12 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 //		return detachNodes, attachNodes
 //	}
 
-	for p := node; p != nil && p != forkNode; p = b.ParentNode(p) {
+	for p := node; p != nil && p != forkNode; p = p.Parent {
 		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			h := -p.Data.GetNonce() - wire.MINER_RORATE_FREQ
 			mb, _ := b.Miners.BlockByHeight(h)
 			if mb == nil {
-				node = b.ParentNode(p)
+				node = p.Parent
 				if node == forkNode {
 					return detachNodes, attachNodes
 				}
@@ -464,7 +495,7 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	}
 
 	invalidChain := false
-	for n := node; n != nil && n != forkNode; n = b.ParentNode(n) {
+	for n := node; n != nil && n != forkNode; n = n.Parent {
 		if b.index.NodeStatus(n).KnownInvalid() {
 			invalidChain = true
 			break
@@ -489,7 +520,7 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	// Start from the end of the main chain and work backwards until the
 	// common ancestor adding each block to the list of nodes to detach from
 	// the main chain.
-	for n := b.BestChain.Tip(); n != nil && n != forkNode; n = b.ParentNode(n) {
+	for n := b.BestChain.Tip(); n != nil && n != forkNode; n = n.Parent {
 		detachNodes.PushBack(n)
 	}
 
@@ -563,12 +594,15 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		curTotalTxns+numTxns, node.CalcPastMedianTime(), // bst.Bits,
 		bst.LastRotation)
 	state.sizeLimits = b.blockSizer.knownLimits
+	m, rot := 0, state.LastRotation
 
 	if node.Data.GetNonce() > 0 {
 		state.LastRotation += wire.POWRotate
+		m = wire.POWRotate
 		log.Infof("Update LastRotation to %d", state.LastRotation)
 	} else if node.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 		state.LastRotation = uint32(-node.Data.GetNonce() - wire.MINER_RORATE_FREQ)
+		m = 1
 		log.Infof("Update LastRotation to %d", state.LastRotation)
 	}
 
@@ -618,13 +652,37 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		return err
 	}
 
+	for i := 0; i < m; i++ {
+		c := b.collaterals[0]
+		if _,ok := b.lockedCollaterals[c]; ok {
+			b.lockedCollaterals[c] = b.lockedCollaterals[c] - 1
+			if b.lockedCollaterals[c] == 0 {
+				delete(b.lockedCollaterals, c)
+			}
+		}
+		b.collaterals = b.collaterals[1:]
+
+		mb,_ := b.Miners.BlockByHeight(int32(rot) + int32(i) + 1)
+		if mb == nil || mb.MsgBlock().Utxos == nil {
+			b.collaterals = append(b.collaterals, wire.OutPoint{})
+			continue
+		}
+		c = *mb.MsgBlock().Utxos
+		b.collaterals = append(b.collaterals, c)
+		if _,ok := b.lockedCollaterals[c]; ok {
+			b.lockedCollaterals[c] = b.lockedCollaterals[c] + 1
+		} else {
+			b.lockedCollaterals[c] = 1
+		}
+	}
+
 	// Prune fully spent entries and mark all entries in the view unmodified
 	// now that the modifications have been committed to the database.
 	view.Commit()
 	vm.Commit()
 
 	// update blocklist
-	b.Blacklist.Update(uint32(node.Height))
+//	b.Blacklist.Update(uint32(node.Height))
 
 	// This node is now the end of the best chain.
 	b.BestChain.SetTip(node)
@@ -715,11 +773,13 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		}
 	}
 */
-
+	m, rot := 0, rotation
 	if node.Data.GetNonce() >= 0 {
 		rotation -= wire.POWRotate
+		m = wire.POWRotate
 	} else if node.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 		rotation--
+		m = 1
 	}
 
 	if rotation < 0 {		// should never happen
@@ -783,13 +843,38 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		return err
 	}
 
+	for i := 0; i < m; i++ {
+		c := b.collaterals[wire.ViolationReportDeadline-1]
+		if _,ok := b.lockedCollaterals[c]; ok {
+			b.lockedCollaterals[c] = b.lockedCollaterals[c] - 1
+			if b.lockedCollaterals[c] == 0 {
+				delete(b.lockedCollaterals, c)
+			}
+		}
+		b.collaterals = b.collaterals[:wire.ViolationReportDeadline-1]
+
+		mb, _ := b.Miners.BlockByHeight(int32(rot) - wire.ViolationReportDeadline - int32(i))
+		if mb == nil || mb.MsgBlock().Utxos == nil {
+			b.collaterals = append([]wire.OutPoint{wire.OutPoint{}}, b.collaterals...)
+			continue
+		}
+		c = *mb.MsgBlock().Utxos
+		b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
+		if _, ok := b.lockedCollaterals[c]; ok {
+			b.lockedCollaterals[c] = b.lockedCollaterals[c] + 1
+		} else {
+			b.lockedCollaterals[c] = 1
+		}
+	}
+
 	// Prune fully spent entries and mark all entries in the view unmodified
 	// now that the modifications have been committed to the database.
 	view.Commit()
-
+/*
 	if b.Blacklist != nil {
 		b.Blacklist.Rollback(uint32(node.Height))
 	}
+ */
 
 	// This node's parent is now the end of the best chain.
 	b.BestChain.SetTip(prevNode)
@@ -831,12 +916,7 @@ func (b *BlockChain) ParentNode(n * chainutil.BlockNode) * chainutil.BlockNode {
 	if n.Parent != nil || n.Height == 0 {
 		return n.Parent
 	}
-	h := n.Height - 100
-	if h < 0 {
-		h = 0
-	}
-	b.FetchMissingNodes(&n.Hash, h)
-	return n.Parent
+	return b.NodeByHeight(n.Height - 1)
 }
 
 func (b *BlockChain) SideChainContains(x * list.Element, hash chainhash.Hash) bool {
@@ -1315,12 +1395,15 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 // checkBlockSanity check whether the miner has provided sufficient collateral
 func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags) (uint32, error) {
-	if block.MsgBlock().Version < 0x20000 || block.MsgBlock().Utxos == nil {
+	if block.MsgBlock().Utxos == nil {
 		return 0, nil
 	}
 
 	// the required amount is in the prev block's Collacteral
 	mb,_ := b.Miners.BlockByHash(&block.MsgBlock().PrevBlock)
+	if mb == nil {
+		return 0, fmt.Errorf("Prev block does not exist")
+	}
 	req := mb.MsgBlock().Collateral
 
 	if req < wire.CollateralBase {
@@ -1335,16 +1418,25 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags
 
 	e := utxos.LookupEntry(*block.MsgBlock().Utxos)
 	if e == nil {
-		return 0, fmt.Errorf("Collateral does not exist.")
+		if block.MsgBlock().Version >= 0x20000 {
+			return 0, fmt.Errorf("Collateral does not exist.")
+		} else {
+			return 0, nil
+		}
 	}
 
 	if e.TokenType != 0 {
-		return 0, fmt.Errorf("Collateral is not OTC.")
+		if block.MsgBlock().Version >= 0x20000 {
+			return 0, fmt.Errorf("Collateral is not OTC.")
+		} else {
+			return 0, nil
+		}
 	}
 
-	if e.Amount.(*token.NumToken).Val < int64(req) * 1e8 {
+	if block.MsgBlock().Version >= 0x20000 && e.Amount.(*token.NumToken).Val < int64(req) * 1e8 {
 		return 0, fmt.Errorf("Insufficient Collateral.")
 	}
+
 	return uint32(e.Amount.(*token.NumToken).Val/1e8), nil
 }
 
@@ -1501,9 +1593,6 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			flushIndexState()
 		}
 
-
-//		Vm.Commit() it's done in connect block
-
 		return true, nil
 	}
 
@@ -1567,69 +1656,6 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 	return err == nil, err
 }
 
-func (b *BlockChain) PrepForfeit(block *btcutil.Block, prevNode *chainutil.BlockNode) ([]wire.BlackList, map[chainhash.Hash]struct{}, error) {
-	// check bond/forfeiture
-	var forfeiture []wire.BlackList
-	var pmh int32
-	if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
-		pmh = -(block.MsgBlock().Header.Nonce + wire.MINER_RORATE_FREQ)
-		mb,_ := b.Miners.BlockByHeight(pmh)
-		forfeiture = mb.MsgBlock().BlackList
-	} else if block.MsgBlock().Header.Nonce > 0	{
-		q, m := prevNode, 0
-		for ; q != nil && q.Data.GetNonce() > -wire.MINER_RORATE_FREQ; q = q.Parent {
-			if q.Data.GetNonce() > 0 {
-				m++
-			}
-		}
-		if q != nil {
-			pmh = int32(2*m+1) - (q.Data.GetNonce() + wire.MINER_RORATE_FREQ)
-			mb, _ := b.Miners.BlockByHeight(pmh)
-			forfeiture = mb.MsgBlock().BlackList
-			for j, h := 1, pmh; j < wire.POWRotate; j++ {
-				h++
-				mb, _ := b.Miners.BlockByHeight(h)
-				forfeiture = append(forfeiture, mb.MsgBlock().BlackList...)
-			}
-		}
-	} else {
-		return nil, nil, nil
-	}
-
-	compensated := make(map[chainhash.Hash]struct{})	// blocks compensated before
-
-	if len(forfeiture) == 0 {
-		return forfeiture, compensated, nil
-	}
-
-	uminers := make(map[[20]byte]struct{})
-	for _,bl := range forfeiture {
-		bk,_ := b.Miners.BlockByHash(&bl.MRBlock)
-		uminers[bk.MsgBlock().Miner] = struct{}{}
-	}
-	mx := 0
-	for _,mtx := range block.MsgBlock().Transactions[1:] {
-		if mtx.Version & wire.TxTypeMask != wire.ForfeitTxVersion { // if it is not a forfeit tx
-			break
-		}
-		mx++
-	}
-	if mx != len(uminers) {
-			return nil, nil, fmt.Errorf("Incorrect number of forfeiture transaction")
-		}
-	// since it is rare we are in need of forfeiture, efficiency is not our concern here
-	smb,_ := b.Miners.BlockByHeight(pmh - 1)
-	for q := smb; q.Height() > pmh - 100; q,_ = b.Miners.BlockByHeight(q.Height() - 1) {
-		for _, blk := range q.MsgBlock().BlackList {
-			for _, s := range blk.Blocks {
-				compensated[s] = struct{}{}
-			}
-		}
-	}
-
-	return forfeiture, compensated, nil
-}
-
 // findFork returns the final common block between the provided node and the
 // the chain view.  It will return nil if there is no common block.  This only
 // differs from the exported Version in that it is up to the caller to ensure
@@ -1640,7 +1666,8 @@ func (b *BlockChain) PrepForfeit(block *btcutil.Block, prevNode *chainutil.Block
 // This function MUST be called with the view mutex locked (for reads).
 func (b *BlockChain) FindFork(node *chainutil.BlockNode) *chainutil.BlockNode {
 	// No fork point for node that doesn't exist.
-	if node == nil {
+	// assert(node.Height >= int32(b.index.Cutoff))
+	if node == nil || node.Height < int32(b.index.Cutoff) {
 		return nil
 	}
 
@@ -1658,6 +1685,7 @@ func (b *BlockChain) FindFork(node *chainutil.BlockNode) *chainutil.BlockNode {
 	// this code to take advantage of any potential future optimizations to
 	// the Ancestor function such as using an O(log n) skip list.
 	chainHeight := c.Height()
+
 	if node.Height > chainHeight {
 		node = b.Ancestor(node, chainHeight)
 	}
@@ -1777,7 +1805,11 @@ func (b *BlockChain) HeaderByHash(hash *chainhash.Hash) (wire.BlockHeader, error
 		return wire.BlockHeader{}, err
 	}
 
-	return NodetoHeader(node), nil
+	if node.Parent == nil {
+
+	}
+
+	return b.NodetoHeader(node), nil
 }
 
 // MainChainHasBlock returns whether or not the block with the given hash is in
@@ -1804,16 +1836,20 @@ func (b *BlockChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockL
 
 	node := b.index.LookupNode(hash)
 	if node == nil {
-		if h, ok := b.index.Unloaded[*hash]; ok {
-			h = h - 20
-			if h < 1 {
-				h = 1
+		var n chainutil.BlockNode
+		b.db.View(func (tx database.Tx) error {
+			h, _ := dbFetchHeaderByHash(tx, hash)
+			if h != nil {
+				InitBlockNode(&n, h, nil)
+				node = &n
 			}
-			b.FetchMissingNodes(hash, h)
-			node = b.index.LookupNode(hash)
+			return nil
+		})
+		if node != nil {
+			node.Height = b.dbHeightofHash(*hash)
 		}
 	}
-	locator := b.BestChain.BlockLocator(node)
+	locator := b.BestChain.BlockLocator(node, b.index)
 //	log.Infof("BlockLocatorFromHash: ChainLock.RUnlock")
 	return locator
 }
@@ -1825,7 +1861,7 @@ func (b *BlockChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockL
 func (b *BlockChain) LatestBlockLocator() (chainhash.BlockLocator, error) {
 //	log.Infof("LatestBlockLocator: ChainLock.RLock")
 	b.ChainLock.RLock()
-	locator := b.BestChain.BlockLocator(nil)
+	locator := b.BestChain.BlockLocator(nil, b.index)
 	b.ChainLock.RUnlock()
 //	log.Infof("LatestBlockLocator: ChainLock.RUnlock")
 	return locator, nil
@@ -1850,23 +1886,27 @@ func (b *BlockChain) BlockHeightByHash(hash *chainhash.Hash) (int32, error) {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) BlockHashByHeight(blockHeight int32) (*chainhash.Hash, error) {
-	node := b.NodeByHeight(blockHeight)
+	node := b.BestChain.NodeByHeight(blockHeight)
 	if node == nil {
+		hash := b.dbHashByHeight(blockHeight)
+		if hash != nil {
+			return hash, nil
+		}
 		str := fmt.Sprintf("no block at height %d exists", blockHeight)
 		return nil, bccompress.ErrNotInMainChain(str)
 	}
-
 	return &node.Hash, nil
 }
 
 func (b *BlockChain) NodeByHeight(blockHeight int32) *chainutil.BlockNode {
+	if blockHeight < 0 {
+		return nil
+	}
 	node := b.BestChain.NodeByHeight(blockHeight)
 	if node == nil {
-		h := b.BestChain.LastNil(blockHeight, b.BestChain.Height())
-		p := b.BestChain.NodeByHeight(h)
-		b.FetchMissingNodes(&p.Hash, blockHeight)
-		node = b.BestChain.NodeByHeight(blockHeight)
+		node = b.NodeByHash(b.dbHashByHeight(blockHeight))
 	}
+	node.Height = blockHeight
 	return node
 }
 
@@ -2019,8 +2059,7 @@ func (b *BlockChain) IntervalBlockHashes(endHash *chainhash.Hash, interval int,
 func (b *BlockChain) Ancestor(blockNode *chainutil.BlockNode, blockHeight int32) *chainutil.BlockNode {
 	node := blockNode.Ancestor(blockHeight)
 	if node == nil {
-		b.FetchMissingNodes(&blockNode.Hash, blockHeight)
-		node = blockNode.Ancestor(blockHeight)
+		return b.NodeByHeight(blockHeight)
 	}
 	return node
 }
@@ -2044,7 +2083,14 @@ func (b *BlockChain) Ancestor(blockNode *chainutil.BlockNode, blockHeight int32)
 func (b *BlockChain) locateInventory(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxEntries uint32) (*chainutil.BlockNode, uint32, bool) {
 	// There are no block locators so a specific block is being requested
 	// as identified by the stop hash.
-	stopNode := b.NodeByHash(hashStop)
+	var stopNode * chainutil.BlockNode
+	var stopheight, startheight int32
+
+	stopNode = b.NodeByHash(hashStop)
+	if stopNode != nil{
+		stopheight = stopNode.Height
+	}
+
 	if len(locator) == 0 {
 		if stopNode == nil {
 			// No blocks with the stop hash were found so there is
@@ -2059,10 +2105,11 @@ func (b *BlockChain) locateInventory(locator chainhash.BlockLocator, hashStop *c
 	// back to the genesis block.
 	startNode := b.BestChain.Genesis()
 	sideChain := false
-	if stopNode == nil || b.BestChain.Contains(stopNode) {
+
+	if stopNode == nil || stopNode.Height < int32(b.index.Cutoff) || b.BestChain.Contains(stopNode) {
 		for _, hash := range locator {
 			node := b.NodeByHash(hash)
-			if node != nil && b.BestChain.Contains(node) {
+			if node != nil && (node.Height < int32(b.index.Cutoff) || b.BestChain.Contains(node)) {
 				startNode = node
 				break
 			}
@@ -2073,30 +2120,28 @@ func (b *BlockChain) locateInventory(locator chainhash.BlockLocator, hashStop *c
 		for _, hash := range locator {
 			node := b.NodeByHash(hash)
 			if node != nil {
-				if node.Height < startNode.Height {
-					startNode = node
-				}
-				break
+				startNode = node
 			}
 		}
-	}
-
-	if startNode == b.BestChain.Genesis() {
-		b.FetchMissingNodes(&b.stateSnapshot.Hash, 0)
 	}
 
 	// Start at the block after the most recently known block.  When there
 	// is no next block it means the most recently known block is the tip of
 	// the best chain, so there is nothing more to do.
-	startNode = b.BestChain.Next(startNode)
+	if startNode.Height >= int32(b.index.Cutoff) {
+		startNode = b.BestChain.Next(startNode)
+	} else {
+		startNode = b.NodeByHeight(startNode.Height + 1)
+	}
 	if startNode == nil {
 		return nil, 0, false
 	}
+	startheight = startNode.Height
 
 	// Calculate how many entries are needed.
-	total := uint32((b.BestChain.Tip().Height - startNode.Height) + 1)
-	if stopNode != nil && stopNode.Height >= startNode.Height {
-		total = uint32((stopNode.Height - startNode.Height) + 1)
+	total := uint32((b.BestChain.Tip().Height - startheight) + 1)
+	if stopheight != 0 && stopheight >= startheight {
+		total = uint32((stopheight - startheight) + 1)
 	}
 
 	if total > maxEntries {
@@ -2127,7 +2172,11 @@ func (b *BlockChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 		hashes := make([]chainhash.Hash, 0, total)
 		for i := uint32(0); i < total; i++ {
 			hashes = append(hashes, node.Hash)
-			node = b.BestChain.Next(node)
+			if node.Height >= int32(b.index.Cutoff) {
+				node = b.BestChain.Next(node)
+			} else {
+				node = b.NodeByHeight(node.Height + 1)
+			}
 		}
 		return hashes
 	} else {
@@ -2135,7 +2184,11 @@ func (b *BlockChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 		node = b.NodeByHash(hashStop)
 		for i := int32(total - 1); i >= 0; i-- {
 			hashes[i] = node.Hash
-			node = node.Parent
+			if node.Parent == nil {
+				node = b.NodeByHeight(node.Height - 1)
+			} else {
+				node = node.Parent
+			}
 		}
 		return hashes
 	}
@@ -2183,7 +2236,7 @@ func (b *BlockChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 	if !sideChain {
 		headers := make([]wire.BlockHeader, 0, total)
 		for i := uint32(0); i < total; i++ {
-			headers = append(headers, NodetoHeader(node))
+			headers = append(headers, b.NodetoHeader(node))
 			node = b.BestChain.Next(node)
 		}
 		return headers
@@ -2191,8 +2244,12 @@ func (b *BlockChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 		headers := make([]wire.BlockHeader, total)
 		node = b.NodeByHash(hashStop)
 		for i := int32(total - 1); i >= 0; i-- {
-			headers[i] = NodetoHeader(node)
-			node = node.Parent
+			headers[i] = b.NodetoHeader(node)
+			if node.Parent != nil {
+				node = node.Parent
+			} else {
+				node = b.NodeByHeight(node.Height - 1)
+			}
 		}
 		return headers
 	}
@@ -2365,7 +2422,7 @@ func New(config *Config) (*BlockChain, error) {
 		Orphans:             chainutil.NewOrphanMgr(),
 		Miner:               config.Miner,
 		PrivKey:             config.PrivKey,
-		BlackedList:         make([]*wire.BlackList,0),
+//		BlackedList:         make([]*wire.Violations,0),
 		MinerTPH:            make(map[[20]byte]*TPHRecord),
 	}
 
@@ -2402,10 +2459,8 @@ func (b *BlockChain) HaveNode(h *chainhash.Hash) bool {
 	if p != nil {
 		return true
 	}
-	b.index.Lock()
-	_, ok := b.index.Unloaded[*h]
-	b.index.Unlock()
-	return ok
+
+	return b.dbHeightofHash(*h) >= 0
 }
 
 func (b *BlockChain) NodeByHash(h *chainhash.Hash) * chainutil.BlockNode {
@@ -2414,12 +2469,19 @@ func (b *BlockChain) NodeByHash(h *chainhash.Hash) * chainutil.BlockNode {
 		return p
 	}
 
-	b.index.Lock()
-	ht, ok := b.index.Unloaded[*h]
-	b.index.Unlock()
-	if !ok {
+	var n chainutil.BlockNode
+
+	b.db.View(func (tx database.Tx) error {
+		h, _ := dbFetchHeaderByHash(tx, h)
+		if h != nil {
+			InitBlockNode(&n, h, nil)
+			p = &n
+		}
 		return nil
+	})
+	if p != nil {
+		p.Height = b.dbHeightofHash(*h)
 	}
-	b.FetchMissingNodes(h, ht)
-	return b.index.LookupNode(h)
+
+	return p
 }

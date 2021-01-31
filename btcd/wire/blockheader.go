@@ -29,6 +29,7 @@ const (
 	SCALEFACTORCAP             = 48
 	DifficultyRatio            = 4         // ratio of difficulty for tx chain and miner chain
 	CollateralBase             = 100	 // base is 100 OMC
+	ViolationReportDeadline    = 100
 )
 
 // current code version
@@ -44,15 +45,15 @@ var	CodeVersion = uint32(0x10000) // current version of code.
 const MaxBlockHeaderPayload = 24 + (chainhash.HashSize * 2)
 const MaxMinerBlockHeaderPayload = 5000
 
-type BlackList struct {
-	// blacklist format：
+type Violations struct {
+	// Violation report format：
 	Height int32				// Height of Tx blocks
 	Signed int32				// times the violator signed blocks at this height
 	MRBlock chainhash.Hash		// the MR block of violator
 	Blocks []chainhash.Hash		// the double signed TX blocks
 }
 
-func (b * BlackList) Read(r io.Reader) error {
+func (b *Violations) Read(r io.Reader) error {
 	if err := common.ReadElement(r, &b.Height); err != nil {
 		return nil
 	}
@@ -75,7 +76,7 @@ func (b * BlackList) Read(r io.Reader) error {
 	return nil
 }
 
-func (b * BlackList) Write(w io.Writer) error {
+func (b *Violations) Write(w io.Writer) error {
 	if b.Height == 0 {
 		return nil
 	}
@@ -114,9 +115,6 @@ type MingingRightBlock struct {
 	// Difficulty target
 	Bits uint32
 
-	// Min Collateral required. ver. 0x20000
-	Collateral uint32
-
 	// Nonce used to generate the Miner,
 	Nonce int32
 
@@ -125,11 +123,13 @@ type MingingRightBlock struct {
 
 	Connection []byte	// connection info. either an IP:port address or an RSA pubkey
 
-	Utxos 	*OutPoint		  // assurance provided by the miner. Accumulated sum must
-	 						  // be at least Collateral in OTC.
+	// Min Collateral required for the next block. ver. 0x20000
+	Collateral uint32
 
-	BlackList []BlackList		  // the double signers and proof
-	TphReports []uint32			  // report of TPS of preceeing miners
+	Utxos 	*OutPoint		  // Collateral provided by the miner.
+
+	ViolationReport []*Violations // the double signers and proof
+	TphReports      []uint32     // report of TPS of preceeing miners
 }
 
 // difficulty target for new node submission is 1 min.
@@ -357,10 +357,11 @@ func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
 	if err != nil {
 		return nil
 	}
-	bh.BlackList = make([]BlackList, d)
+	bh.ViolationReport = make([]*Violations, d)
 
 	for i := 0; i < int(d); i++ {
-		if err := bh.BlackList[i].Read(r); err != nil {
+		bh.ViolationReport[i] = &Violations{}
+		if err := bh.ViolationReport[i].Read(r); err != nil {
 			return err
 		}
 	}
@@ -423,10 +424,10 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 		}
 	}
 
-	if err := common.WriteVarInt(w, 0, uint64(len(bh.BlackList))); err != nil {
+	if err := common.WriteVarInt(w, 0, uint64(len(bh.ViolationReport))); err != nil {
 		return err
 	}
-	for _, p := range bh.BlackList {
+	for _, p := range bh.ViolationReport {
 		if err := p.Write(w); err != nil {
 			return err
 		}

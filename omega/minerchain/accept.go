@@ -13,6 +13,7 @@ package minerchain
 import (
 	"bytes"
 	"fmt"
+	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcutil"
 	"sort"
@@ -168,11 +169,11 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			return fmt.Errorf("Curable POW factor error.")
 		}
 
-		if header.Version >= 0x20000 {
+		if header.Version >= chaincfg.Version2 {
 			// since Ver 0x20000, the formula is:
 			// 2 * hashNum * factor <= target * (h1 + h2)
 			// h1 is collacteral factor, h2 is tps factor
-			factor *= 2
+			factor *= 16
 
 			// for h1, we compare this block's coin & Collateral for simplicity
 			c := header.Collateral
@@ -180,7 +181,11 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 				c = wire.CollateralBase
 			}
 			v,_ := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), flags)
-			h1 := v / c
+			h1 := int64(v / c)
+			if h1 < 1 {
+				h1 = 1
+			}
+
 			minscore, maxscore := m.reportRctRng(m.NodeByHash(&header.PrevBlock))
 			r := m.reportFromDB(header.Miner)	// max most recent 100 records
 			for i := len(r); i < 100; i++ {
@@ -194,18 +199,19 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			for k := 25; k < 75; k++ {
 				sum += r[k].val
 			}
-			sum /= 25
+			sum /= 50
 
-			if sum > minscore + maxscore {
-				// tps greater than avg
-				h2 := int64(sum / (minscore + maxscore))
-				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-				target = target.Mul(target, big.NewInt(int64(h1) + h2))
+			h2 := int64(1)
+			if sum <= minscore {
+				h2 = 1
+			} else if maxscore > 64 * minscore {
+				h2 = 1 + int64((sum - minscore) * 63 / (maxscore - minscore))
 			} else {
-				h2 := int64((minscore + maxscore) / sum)
-				hashNum = hashNum.Mul(hashNum, big.NewInt(factor + h2))
-				target = target.Mul(target, big.NewInt(int64(h1)))
+				h2 = int64(sum / minscore)
 			}
+
+			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+			target = target.Mul(target, big.NewInt(h1 + h2))
 		} else {
 			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
 		}
@@ -264,7 +270,11 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	header := block.MsgBlock()
 
 	if err != nil || (header.Version & 0xFFFF0000) < (nextBlockVersion & 0xFFFF0000) ||
-		(header.Version & 0xFFFF0000) > ((nextBlockVersion + 0xFFFF) & 0xFFFF0000) {
+		header.Version > nextBlockVersion {
+//		(header.Version & 0xFFFF0000) > ((nextBlockVersion + 0xFFFF) & 0xFFFF0000) ||
+//		(header.Version > nextBlockVersion && (header.Version & 0xFFFF0000) == (nextBlockVersion & 0xFFFF0000)){
+		// fail if: 1. major version is less than expected
+		// 2. version is larger than expected
 		return fmt.Errorf("Incorrect block version")
 	}
 
@@ -326,10 +336,10 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		return err
 	}
 
-	// validity of BlackList
+	// validity of Violations
 	uniq := make(map[chainhash.Hash]struct{})
 	mh,_ := b.blockChain.BlockHeightByHash(&block.MsgBlock().BestBlock)
-	for _, p := range block.MsgBlock().BlackList {
+	for _, p := range block.MsgBlock().ViolationReport {
 		if p.Height <= 0 {
 			return ruleError(ErrBlackList, fmt.Errorf("Invalid height: %d", p.Height).Error())
 		}
@@ -350,7 +360,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		miner := mb.MsgBlock().Miner
 		// prep for check for duplicated reports
 		for q,_ := b.BlockByHash(&block.MsgBlock().PrevBlock); q.Height() > mb.Height(); q,_ = b.BlockByHash(&q.MsgBlock().PrevBlock) {
-			for _, s := range q.MsgBlock().BlackList {
+			for _, s := range q.MsgBlock().ViolationReport {
 				if !s.MRBlock.IsEqual(&p.MRBlock) {
 					continue
 				}

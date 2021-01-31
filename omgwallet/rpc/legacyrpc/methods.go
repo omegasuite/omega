@@ -1765,39 +1765,57 @@ func signRawTransaction(icmd interface{}, w *wallet.Wallet, chainClient *chain.R
 			cmdInputs = *cmd.Inputs
 		}
 		for _, rti := range cmdInputs {
-			inputHash, err := chainhash.NewHashFromStr(rti.Txid)
-			if err != nil {
-				return nil, DeserializationError{err}
+			var inputHash *chainhash.Hash
+			var script []byte
+			var err error
+
+			if len(rti.Txid) > 0 {
+				inputHash, err = chainhash.NewHashFromStr(rti.Txid)
+				if err != nil {
+					return nil, DeserializationError{err}
+				}
 			}
 
-			script, err := decodeHexStr(rti.ScriptPubKey)
-			if err != nil {
-				return nil, err
+			if len(rti.ScriptPubKey) > 0 {
+				script, err = decodeHexStr(rti.ScriptPubKey)
+				if err != nil {
+					return nil, err
+				}
 			}
 
-			// redeemScript is only actually used iff the user provided
-			// private keys. In which case, it is used to get the scripts
-			// for signing. If the user did not provide keys then we always
-			// get scripts from the wallet.
-			// Empty strings are ok for this one and hex.DecodeString will
-			// DTRT.
-			if cmd.PrivKeys != nil && len(*cmd.PrivKeys) != 0 {
+			// RedeemScript is used to get the scripts for signing.
+			if len(rti.RedeemScript) > 0 {
 				redeemScript, err := decodeHexStr(rti.RedeemScript)
 				if err != nil {
 					return nil, err
 				}
 
-				addr, err := btcutil.NewAddressScriptHash(redeemScript,
-					w.ChainParams())
-				if err != nil {
-					return nil, DeserializationError{err}
+				param := w.ChainParams()
+				switch redeemScript[0] {
+				case param.MultiSigAddrID:
+					scriptHash := btcutil.Hash160(redeemScript[1:])
+					addr, err := btcutil.NewAddressMultiSig(scriptHash,
+						w.ChainParams())
+					if err != nil {
+						return nil, DeserializationError{err}
+					}
+					scripts[addr.String()] = redeemScript[1:]
+
+				case param.ScriptHashAddrID:
+					addr, err := btcutil.NewAddressScriptHash(redeemScript[1:],
+						w.ChainParams())
+					if err != nil {
+						return nil, DeserializationError{err}
+					}
+					scripts[addr.String()] = redeemScript[1:]
 				}
-				scripts[addr.String()] = redeemScript
 			}
-			inputs[wire.OutPoint{
-				Hash:  *inputHash,
-				Index: rti.Vout,
-			}] = script
+			if inputHash != nil && script != nil {
+				inputs[wire.OutPoint{
+					Hash:  *inputHash,
+					Index: rti.Vout,
+				}] = script
+			}
 		}
 
 		// Now we go and look for any inputs that we were not provided by
@@ -2008,7 +2026,7 @@ func verifyMessage(icmd interface{}, w *wallet.Wallet) (interface{}, error) {
 	// Validate the signature - this just shows that it was valid at all.
 	// we will compare it with the key next.
 	var buf bytes.Buffer
-	common.WriteVarString(&buf, 0, "Bitcoin Signed Message:\n")
+	common.WriteVarString(&buf, 0, "Omega Signed Message:\n")
 	common.WriteVarString(&buf, 0, cmd.Message)
 	expectedMessageHash := chainhash.DoubleHashB(buf.Bytes())
 	pk, wasCompressed, err := btcec.RecoverCompact(btcec.S256(), sig,

@@ -3248,7 +3248,7 @@ type SignatureError struct {
 func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 	additionalPrevScripts map[wire.OutPoint][]byte,
 	additionalKeysByAddress map[string]*btcutil.WIF,
-	p2shRedeemScriptsByAddress map[string][]byte) ([]SignatureError, error) {
+	redeemScriptsByAddress map[string][]byte) ([]SignatureError, error) {
 
 	ctx := ovm.Context{}
 	ctx.GetCoinBase = func() *btcutil.Tx { return nil }
@@ -3334,14 +3334,13 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 			getScript := txscript.ScriptClosure(func(addr btcutil.Address) ([]byte, error) {
 				// If keys were provided then we can only use the
 				// redeem scripts provided with our inputs, too.
-				if len(additionalKeysByAddress) != 0 {
+//				if len(additionalKeysByAddress) != 0 {
 					addrStr := addr.EncodeAddress()
-					script, ok := p2shRedeemScriptsByAddress[addrStr]
-					if !ok {
-						return nil, errors.New("no script for address")
+					script, ok := redeemScriptsByAddress[addrStr]
+					if ok {
+						return script, nil
 					}
-					return script, nil
-				}
+//				}
 				address, err := w.Manager.Address(addrmgrNs, addr)
 				if err != nil {
 					return nil, err

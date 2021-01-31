@@ -244,8 +244,8 @@ func (msg *MsgBlock) SerializeSize() int {
 	// transactions.
 	n := blockHeaderLen + common.VarIntSerializeSize(uint64(len(msg.Transactions)))
 
-//	if msg.Header.BlackList != nil {
-//		n += len(msg.Header.BlackList) + common.VarIntSerializeSize(uint64(len(msg.Header.BlackList)))
+//	if msg.Header.Violations != nil {
+//		n += len(msg.Header.Violations) + common.VarIntSerializeSize(uint64(len(msg.Header.Violations)))
 //	}
 
 	for _, tx := range msg.Transactions {
@@ -262,8 +262,8 @@ func (msg *MsgBlock) SerializeSizeStripped() int {
 	// transactions.
 	n := blockHeaderLen + common.VarIntSerializeSize(uint64(len(msg.Transactions)))
 
-//	if msg.Header.BlackList != nil {
-//		n += len(msg.Header.BlackList) + common.VarIntSerializeSize(uint64(len(msg.Header.BlackList)))
+//	if msg.Header.Violations != nil {
+//		n += len(msg.Header.Violations) + common.VarIntSerializeSize(uint64(len(msg.Header.Violations)))
 //	}
 
 	for _, tx := range msg.Transactions {

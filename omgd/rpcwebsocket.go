@@ -1451,7 +1451,7 @@ out:
 		// must not be responded to. JSON-RPC 2.0 permits the null value as a
 		// valid request id, therefore such requests are not notifications.
 		//
-		// Bitcoin Core serves requests with "id":null or even an absent "id",
+		// Omega Core serves requests with "id":null or even an absent "id",
 		// and responds to such requests with "id":null in the response.
 		//
 		// Omcd does not respond to any request without and "id" or "id":null,

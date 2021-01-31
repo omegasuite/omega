@@ -303,6 +303,7 @@ func (b *MinerChain) initChainState() error {
 
 		var i int32
 		var lastNode *chainutil.BlockNode
+
 		cursor = blockIndexBucket.Cursor()
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			header, status, err := deserializeBlockRow(cursor.Value())
@@ -338,6 +339,7 @@ func (b *MinerChain) initChainState() error {
 			// and add it to the block index.
 			node := &blockNodes[i]
 			InitBlockNode(node, header.MsgBlock(), parent)
+
 			node.Status = status
 			b.index.AddNodeUL(node)
 
@@ -381,6 +383,16 @@ func (b *MinerChain) initChainState() error {
 					iterNode.hash, iterNode.height)
 */
 				b.index.SetStatusFlags(iterNode, chainutil.StatusValid)
+			}
+
+			// update blacklist
+			for _,r := range NodetoHeader(iterNode).ViolationReport {
+				mb := b.index.LookupNodeUL(&r.MRBlock)
+				if _,ok := b.blacklist[NodetoHeader(mb).Miner]; ok {
+					b.blacklist[NodetoHeader(mb).Miner] = append(b.blacklist[NodetoHeader(mb).Miner], mb.Height)
+				} else {
+					b.blacklist[NodetoHeader(mb).Miner] = []int32{mb.Height}
+				}
 			}
 		}
 

@@ -359,8 +359,8 @@ type server struct {
 	rsaPrivateKey	   *rsa.PrivateKey
 	peerState 		   * peerState
 
-	BlackList          map[[20]byte]struct{}
-	PendingBlackList   map[[20]byte]uint32
+//	Violations          map[[20]byte]struct{}
+//	PendingBlackList   map[[20]byte]uint32
 
 	// broadcasted is the inventory of message we have broadcasted,
 	// the purpose is to prevent rebroadcast
@@ -774,12 +774,6 @@ func (sp *serverPeer) OnInv(_ *peer.Peer, msg *wire.MsgInv) {
 		if invVect.Type == common.InvTypeTx {
 			peerLog.Tracef("Ignoring tx %v in inv from %v -- "+
 				"blocksonly enabled", invVect.Hash, sp)
-			if sp.ProtocolVersion() >= wire.BIP0037Version {
-				peerLog.Tracef("Peer %v is announcing "+
-					"transactions -- disconnecting", sp)
-				sp.Disconnect("OnInv")
-				return
-			}
 			continue
 		}
 		err := newInv.AddInvVect(invVect)
@@ -941,7 +935,21 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 	nonce := int32(-1)
 
 	if len(hashList) > 0 {
-		rot = chain.Rotation(hashList[0])
+		p := chain.NodeByHash(&hashList[0])
+		r,d  := int32(-1), int32(0)
+		for ; p != nil && r < 0; p = chain.NodeByHeight(p.Height - 1) {
+			switch {
+			case p.Height == 0:
+				r = 0
+
+			case p.Data.GetNonce() > 0:
+				d += wire.POWRotate
+
+			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
+				r = -(p.Data.GetNonce() + wire.MINER_RORATE_FREQ)
+			}
+		}
+		rot = r + d
 		blk,err := chain.HeaderByHash(&hashList[0])
 		if err == nil && blk.Nonce < 0 {
 			nonce = blk.Nonce
@@ -2684,7 +2692,7 @@ func (s *server) peerHandler() {
 		// Add peers discovered through DNS to the address manager.
 		connmgr.SeedFromDNS(activeNetParams.Params, defaultRequiredServices,
 			btcdLookup, func(addrs []*wire.NetAddress) {
-				// Bitcoind uses a lookup of the dns seeder here. This
+				// Omega uses a lookup of the dns seeder here. This
 				// is rather strange since the values looked up by the
 				// DNS seed lookups will vary quite a lot.
 				// to replicate this behaviour we put all addresses as
@@ -3285,8 +3293,8 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		cfCheckptCaches:      make(map[wire.FilterType][]cfHeaderKV),
 		signAddress:		  cfg.signAddress,
 		privKeys:			  cfg.privateKeys,
-		BlackList:            make(map[[20]byte]struct{}),
-		PendingBlackList:     make(map[[20]byte]uint32),
+//		BlackList:            make(map[[20]byte]struct{}),
+//		PendingBlackList:     make(map[[20]byte]uint32),
 		Broadcasted:		  make(map[chainhash.Hash]int64),
 	}
 
@@ -3395,30 +3403,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		return nil
 	})
 
-	// load black list
-	best := s.chain.BestSnapshot().LastRotation
-
-	minerdb.View(func(tx database.Tx) error {
-		metadata := tx.Metadata()
-		bkt := metadata.Bucket(minerchain.BlacklistKeyName)
-		cursor := bkt.Cursor()
-
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			d := binary.LittleEndian.Uint32(cursor.Key())
-			cs := cursor.Value()
-			for i := 0; i < len(cs); i+= 20 {
-				var name [20]byte
-				copy(name[:], cs[i:i+20])
-				if d <= best {
-					s.BlackList[name] = struct{}{}
-				} else {
-					s.PendingBlackList[name] = d
-				}
-			}
-		}
-
-		return nil
-	})
+	s.chain.InitCollateral()
 
 	// If no feeEstimator has been found, or if the one that has been found
 	// is behind somehow, create a new one and start over.
@@ -3456,7 +3441,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	s.txMemPool = mempool.New(&txC)
 //	s.txMemPool.Blacklist = &s
 
-	s.chain.Blacklist = &s
+//	s.chain.Blacklist = &s
 
 	s.syncManager, err = netsync.New(&netsync.Config{
 		PeerNotifier:       &s,
@@ -3672,7 +3657,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 
 	return &s, nil
 }
-
+/*
 func (s *server) IsBlack(n [20]byte) bool {
 	_,ok := s.BlackList[n]
 	return ok
@@ -3736,6 +3721,7 @@ func (s *server) Remove(n uint32) {
 		}
 	}
 }
+ */
 
 // initListeners initializes the configured net listeners and adds any bound
 // addresses to the address manager. Returns the listeners and a NAT interface,

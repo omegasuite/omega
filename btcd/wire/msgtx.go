@@ -17,13 +17,13 @@ import (
 
 const (
 	// TxVersion is the current latest supported transaction version.
-	// It has two parts: higher 28 bits for version, lower 4 bit for tx type
-	// currently, version = 0
+	// It has two parts: higher 28 bits for features, lower 4 bit for tx type
 	// for regular tx, tx type = 1
 	// for tx regarding forfeiture/compensation, tx type = 2
 	TxVersion = 1
 	TxTypeMask = 0xF
 	ForfeitTxVersion = 2
+	TxNoLock = 0x10			// feature: the tx does not have time lock
 /*
 	// TxSideChain is the genesis transaction of a side chain, thus all outputs in
 	// this Tx will not be added to main chain Utxo database and is thus unspendable
@@ -86,13 +86,13 @@ const (
 	// SignatureScript length 1 byte + Sequence 4 bytes.
 	minTxInPayload = 9 + chainhash.HashSize
 
-	// maxTxInPerMessage is the maximum number of transactions inputs that
+	// MaxTxInPerMessage is the maximum number of transactions inputs that
 	// a transaction which fits into a message could possibly have.
-	maxTxInPerMessage = (MaxMessagePayload / minTxInPayload) + 1
+	MaxTxInPerMessage = (MaxMessagePayload / minTxInPayload) + 1
 
-	// maxTxOutPerMessage is the maximum number of transactions outputs that
+	// MaxTxOutPerMessage is the maximum number of transactions outputs that
 	// a transaction which fits into a message could possibly have.
-	maxTxOutPerMessage = (MaxMessagePayload / common.MinTxOutPayload) + 1
+	MaxTxOutPerMessage = (MaxMessagePayload / common.MinTxOutPayload) + 1
 
 	// minTxPayload is the minimum payload size for a transaction.  Note
 	// that any realistically usable transaction must have at least one
@@ -203,7 +203,7 @@ func (o OutPoint) ToBytes() []byte {
 func (o OutPoint) String() string {
 	// Allocate enough for hash string, colon, and 10 digits.  Although
 	// at the time of writing, the number of digits can be no greater than
-	// the length of the decimal representation of maxTxOutPerMessage, the
+	// the length of the decimal representation of MaxTxOutPerMessage, the
 	// maximum message payload may increase in the future and this
 	// optimization may go unnoticed, so allocate space for 10 decimal
 	// digits, which will fit any uint32.
@@ -737,10 +737,10 @@ func (msg *MsgTx) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 	// Prevent more input transactions than could possibly fit into a
 	// message.  It would be possible to cause memory exhaustion and panics
 	// without a sane upper bound on this count.
-	if count > uint64(maxTxInPerMessage) {
+	if count > uint64(MaxTxInPerMessage) {
 		str := fmt.Sprintf("too many input transactions to fit into "+
 			"max message size [count %d, max %d]", count,
-			maxTxInPerMessage)
+			MaxTxInPerMessage)
 		return messageError("MsgTx.OmcDecode", str)
 	}
 
@@ -766,10 +766,10 @@ func (msg *MsgTx) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 	// Prevent more output transactions than could possibly fit into a
 	// message.  It would be possible to cause memory exhaustion and panics
 	// without a sane upper bound on this count.
-	if count > uint64(maxTxOutPerMessage) {
+	if count > uint64(MaxTxOutPerMessage) {
 		str := fmt.Sprintf("too many output transactions to fit into "+
 			"max message size [count %d, max %d]", count,
-			maxTxOutPerMessage)
+			MaxTxOutPerMessage)
 		return messageError("MsgTx.OmcDecode", str)
 	}
 
@@ -787,9 +787,13 @@ func (msg *MsgTx) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 		}
 	}
 
-	msg.LockTime,err = common.BinarySerializer.Uint32(r, common.LittleEndian)
-	if err != nil {
-		return err
+	if msg.Version & TxNoLock == 0 {
+		msg.LockTime, err = common.BinarySerializer.Uint32(r, common.LittleEndian)
+		if err != nil {
+			return err
+		}
+	} else {
+		msg.LockTime = 0
 	}
 
 	return msg.ReadSignature(r, pver)
@@ -911,8 +915,10 @@ func (msg *MsgTx) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 		}
 	}
 
-	if err := common.BinarySerializer.PutUint32(w, common.LittleEndian, msg.LockTime); err != nil {
-		return err
+	if msg.Version & TxNoLock == 0 {
+		if err := common.BinarySerializer.PutUint32(w, common.LittleEndian, msg.LockTime); err != nil {
+			return err
+		}
 	}
 
 	if enc == SignatureEncoding {

@@ -181,7 +181,7 @@ type TxPool struct {
 	// to on an unconditional timer.
 	nextExpireScan time.Time
 
-//	Blacklist blockchain.BlackList
+//	Blacklist blockchain.Violations
 }
 
 // Ensure the TxPool type implements the mining.TxSource interface.

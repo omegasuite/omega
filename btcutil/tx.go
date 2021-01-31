@@ -92,16 +92,27 @@ func (s *Tx) AddTxOut(t wire.TxOut) int {
 	return s.msgTx.AddTxOut(&t)
 }
 
-func (s *Tx) AddTxIn(t wire.OutPoint) {
+func (s *Tx) AddTxIn(t wire.OutPoint, sig []byte) {
 	if !s.HasIns {
 		s.msgTx.AddTxIn(&wire.TxIn{})
 		s.HasIns = true
 	}
-	s.msgTx.AddTxIn(&wire.TxIn{
-		PreviousOutPoint: t,
-		Sequence: 0xFFFFFFFF,
-		SignatureIndex: 0xFFFFFFFF,
-	})
+	if len(sig) == 0 {
+		s.msgTx.AddTxIn(&wire.TxIn{
+			PreviousOutPoint: t,
+			Sequence:         0xFFFFFFFF,
+			SignatureIndex:   0xFFFFFFFF,
+		})
+	} else {
+		s.msgTx.AddTxIn(&wire.TxIn{
+			PreviousOutPoint: t,
+			Sequence:         0xFFFFFFFF,
+			SignatureIndex:   uint32(len(s.msgTx.SignatureScripts)),
+		})
+		csig := make([]byte, len(sig))
+		copy(csig, sig)
+		s.msgTx.SignatureScripts = append(s.msgTx.SignatureScripts, csig)
+	}
 }
 
 func (s *Tx) AddDef(t token.Definition) chainhash.Hash {

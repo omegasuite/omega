@@ -264,7 +264,7 @@ func standardCoinbaseScript(nextBlockHeight int32, extraNonce uint64) ([]byte, e
 // See the comment for NewBlockTemplate for more information about why the nil
 // address handling is useful.
 func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []btcutil.Address, chain *blockchain.BlockChain) (*btcutil.Tx, error) {
-	tx := wire.NewMsgTx(wire.TxVersion)
+	tx := wire.NewMsgTx(wire.TxVersion | wire.TxNoLock)
 	tx.AddTxIn(&wire.TxIn{
 		// Coinbase transactions have no inputs, so previous outpoint is
 		// zero hash and we use index portion to store nextBlockHeight so Coinbase transactions
@@ -494,6 +494,13 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	best := g.Chain.BestSnapshot()
 	nextBlockHeight := best.Height + 1
 
+	// Calculate the required difficulty for the block.
+	rotate := best.LastRotation
+	s, err := g.Chain.Miners.BlockByHeight(int32(rotate))
+	if err != nil || s == nil {
+		return nil, fmt.Errorf("Miner chain not ready.")
+	}
+
 	// Create a standard coinbase transaction paying to the provided
 	// addresses.  NOTE: The coinbase value will be updated to include the
 	// fees from the selected transactions later after they have actually
@@ -515,14 +522,27 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	sortedByFee := g.policy.BlockPrioritySize == 0
 	priorityQueue := newTxPriorityQueue(len(sourceTxns), sortedByFee)
 
+	views, Vm := g.Chain.Canvas(nil)
+
+	var comptx []*wire.MsgTx
+	if s.MsgBlock().Version >= chaincfg.Version2 {
+		comptx, err = g.Chain.CompTxs(nonce, g.Chain.BestChain.Tip(), Vm)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Create a slice to hold the transactions to be included in the
 	// generated block with reserved space.  Also create a utxo view to
 	// house all of the input transactions so multiple lookups can be
 	// avoided.
-	blockTxns := make([]*btcutil.Tx, 0, len(sourceTxns))
+	blockTxns := make([]*btcutil.Tx, 0, len(sourceTxns) + len(comptx) + 1)
 	blockTxns = append(blockTxns, coinbaseTx)
-
-	views, Vm := g.Chain.Canvas(nil)
+	for _,tx := range comptx {
+		btx := btcutil.NewTx(tx)
+		blockTxns = append(blockTxns, btx)
+		spendTransaction(views, btx, nextBlockHeight)
+	}
 
 	blockUtxos := views.Utxo	// blockchain.NewUtxoViewpoint()
 
@@ -791,7 +811,7 @@ mempoolLoop:
 			continue
 		}
 
-		err = ovm.VerifySigs(tx, nextBlockHeight, g.chainParams, views)
+		err = ovm.VerifySigs(tx, nextBlockHeight, g.chainParams, 0, views)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
 
@@ -930,13 +950,6 @@ mempoolLoop:
 
 	msg.SignatureScripts[0] = (*witnessMerkleRoot)[:]
 
-	// Calculate the required difficulty for the block.
-	rotate := best.LastRotation
-
-	s, err := g.Chain.Miners.BlockByHeight(int32(rotate))
-	if err != nil || s == nil {
-		return nil, fmt.Errorf("Miner chain not ready.")
-	}
 	reqDifficulty := s.MsgBlock().Bits
 
 //	reqDifficulty := g.Chain.BestSnapshot().Bits
@@ -945,7 +958,7 @@ mempoolLoop:
 	merkles := blockchain.BuildMerkleTreeStore(blockTxns, false)
 	var msgBlock wire.MsgBlock
 	msgBlock.Header = wire.BlockHeader{
-		Version:    0x10000,
+		Version:    s.MsgBlock().Version &^ 0xFFFF,
 		PrevBlock:  best.Hash,
 		MerkleRoot: *merkles[len(merkles)-1],
 		Timestamp:  ts,
@@ -1041,14 +1054,14 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 
 	// Create a new block ready to be solved.
 	msgBlock := wire.MingingRightBlock{
-		Version:       nextBlockVersion,
-		PrevBlock:     last.Hash,
-		Timestamp:     ts,
-		Bits:          reqDifficulty,
-		Collateral:	   coll,
-		BestBlock:     cbest.Hash,
-		Utxos:		   g.Collateral,
-		BlackList:     make([]wire.BlackList, 0),
+		Version:         nextBlockVersion,
+		PrevBlock:       last.Hash,
+		Timestamp:       ts,
+		Bits:            reqDifficulty,
+		Collateral:      coll,
+		BestBlock:       cbest.Hash,
+		Utxos:           g.Collateral,
+		ViolationReport: make([]*wire.Violations, 0),
 	}
 
 	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())

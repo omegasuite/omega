@@ -84,11 +84,11 @@ var (
 const (
 	OP_PAY2PKH				= 0x41
 	OP_PAY2SCRIPTH			= 0x42
-	OP_PAY2MULTIPKH			= 0x43
-	OP_PAY2MULTISCRIPTH		= 0x44
+	OP_PAYMULTISIG			= 0x43
 	OP_PAY2NONE				= 0x45
 	OP_PAY2ANY				= 0x46
 )
+
 
 // -----------------------------------------------------------------------------
 // The address index maps addresses referenced in the blockchain to a list of
@@ -669,8 +669,10 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 			return nil, 0, fmt.Errorf("Malformed pkScript")
 		}
 		switch pkScript[21] {
-		case OP_PAY2PKH, OP_PAY2MULTIPKH, OP_PAY2MULTISCRIPTH:
+		case OP_PAY2PKH:
 			addr, _ = btcutil.NewAddressPubKeyHash(pkScript[1:21], chainParams)
+		case OP_PAYMULTISIG:
+			addr, _ = btcutil.NewAddressMultiSig(pkScript[1:21], chainParams)
 		case OP_PAY2SCRIPTH:
 			addr, _ = btcutil.NewAddressScriptHash(pkScript[1:21], chainParams)
 		default:
@@ -679,13 +681,6 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 	}
 
 	addrs = append(addrs, addr)
-
-	if pkScript[21] == OP_PAY2MULTIPKH {
-		for p := 25; p < len(pkScript); p += 20 {
-			addr, _ = btcutil.NewAddressPubKeyHash(pkScript[p:p+20], chainParams)
-			addrs = append(addrs, addr)
-		}
-	}
 
 	return addrs, len(addrs), nil
 }

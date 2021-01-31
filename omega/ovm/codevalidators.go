@@ -486,15 +486,15 @@ func opGetCoinValidator(param []byte) int {
 	return formatParser(formatGetCoin, param)
 }
 
-/*
 var formatTxIOCount = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
+	{addrOperand, 0xFFFFFFFF},
 }
 
 func opTxIOCountValidator(param []byte) int {
 	return formatParser(formatTxIOCount, param)
 }
 
+/*
 var formatTxIO = []formatDesc{
 	{addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
 }
@@ -509,11 +509,15 @@ func opGetTxOutValidator(param []byte) int {
  */
 
 var formatSpend = []formatDesc{
-	{patOperand, 0}, {patOperand, 0xFFFFFFFF},
+	{patOperand, 0}, {patOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
 }
 
 func opSpendValidator(param []byte) int {
-	return formatParser(formatSpend, param)
+	if d := formatParser(formatSpend, param); d < 0 {
+		return formatParser(formatSpend, param[:2])
+	} else {
+		return d
+	}
 }
 
 var formatAddRight = []formatDesc{

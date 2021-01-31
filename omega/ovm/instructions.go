@@ -2335,8 +2335,9 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			to.Token = token.Token{TokenType:token.DefTypeSeparator}
 			msg.AddTxOut(&to)
 			tx.HasOuts = true
+			evm.exeout = append(evm.exeout, true)
 		}
-
+		evm.exeout = append(evm.exeout, true)
 		msg.AddTxOut(&wire.TxOut{PkScript: pks, Token: *value})
 	}
 
@@ -2470,7 +2471,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				binary.LittleEndian.PutUint32(f.space[4:], uint32(contract.libs[d].base))
 
 				var bn [4]byte
-				binary.LittleEndian.PutUint32(bn[:], uint32(1))	// entry point for init()
+				binary.LittleEndian.PutUint32(bn[:], uint32(OP_INIT))	// entry point for init()
 				f.space = append(f.space, bn[:]...)
 				f.pc = *pc
 				f.pure = pure | stack.data[stack.callTop].pure
@@ -2927,9 +2928,10 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	ln := len(param)
 
-	var dtype = []byte{0x68, 0x44}
+	var dtype = []byte{0x68, 0x44, 0xFF}		// hash, index, optional sig
 	top := 0
 	p := wire.OutPoint{}
+	var sig pointer
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
@@ -2954,46 +2956,61 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				if num, _, err := stack.getNum(param[j:], dtype[top]); err != nil {
 					return err
 				} else {
-					p.Index = uint32(num)
-				}
-
-				// validate outpoint: it belongs to this contract
-				u := evm.GetUtxo(p.Hash, uint64(p.Index))
-				var pks []byte
-				if u == nil {
-					cb := evm.GetCoinBase()
-					cbh := cb.Hash()
-					if bytes.Compare(p.Hash[:], negHash[:]) == 0 || bytes.Compare(p.Hash[:], (*cbh)[:]) == 0 {
-						pks = cb.MsgTx().TxOut[p.Index].PkScript
+					if dtype[top] == 0x44 {
+						p.Index = uint32(num)
 					} else {
-						return fmt.Errorf("Contract try to spend what does not exist.")
+						sig = pointer(num)
 					}
-				} else {
-					pks = u.PkScript
 				}
 
-				lib := stack.data[stack.callTop].inlib
-				if !isContract(pks[0]) {
-					return fmt.Errorf("Contract try to spend what does not belong to it.")
-				}
-
-				var zaddr [20]byte
-
-				if bytes.Compare(lib[:], zaddr[:]) == 0 {
-					lib = contract.Address()
-				}
-
-				libusr := bytes.Compare(pks[1:21], lib[:]) == 0
-				if !libusr {
-					return fmt.Errorf("Unauthorized spending.")
-				}
-
-				if evm.Spend(p) {
-					return nil
-				}
-
-				return fmt.Errorf("Spend failed")
 			}
+		}
+	}
+
+	if sig == pointer(0) {
+		// validate outpoint: it belongs to this contract
+		u := evm.GetUtxo(p.Hash, uint64(p.Index))
+		var pks []byte
+		if u == nil {
+			cb := evm.GetCoinBase()
+			cbh := cb.Hash()
+			if bytes.Compare(p.Hash[:], negHash[:]) == 0 || bytes.Compare(p.Hash[:], (*cbh)[:]) == 0 {
+				pks = cb.MsgTx().TxOut[p.Index].PkScript
+			} else {
+				return fmt.Errorf("Contract try to spend what does not exist.")
+			}
+		} else {
+			pks = u.PkScript
+		}
+
+		lib := stack.data[stack.callTop].inlib
+		if !isContract(pks[0]) {
+			return fmt.Errorf("Contract try to spend what does not belong to it.")
+		}
+
+		var zaddr [20]byte
+
+		if bytes.Compare(lib[:], zaddr[:]) == 0 {
+			lib = contract.Address()
+		}
+
+		libusr := bytes.Compare(pks[1:21], lib[:]) == 0
+		if !libusr {
+			return fmt.Errorf("Unauthorized spending.")
+		}
+
+		if evm.Spend(p, nil) {
+			return nil
+		}
+	} else {
+		d, err := stack.toInt32(&sig)
+		if err != nil {
+			return err
+		}
+		sig += 4
+		loc := int32(sig & 0xFFFFFFFF)
+		if evm.Spend(p, stack.data[int32(int64(sig) >> 32)].space[loc : loc + d]) {
+			return nil
 		}
 	}
 
@@ -3069,6 +3086,40 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	return nil
+}
+
+func opGetIOCount(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+	param := contract.GetBytes(*pc)
+
+	ln := len(param)
+	num := int64(0)
+	var err error
+	var dest pointer
+
+	for j := 0; j < ln; j++ {
+		switch param[j] {
+		case '@':
+
+		case '0', '1', '2', '3', '4', '5',
+			'6', '7', '8', '9', 'a', 'b', 'c',
+			'd', 'e', 'f', 'x', 'i', 'g':
+			if num, _, err = stack.getNum(param[j:], 0xFF); err != nil {
+				return err
+			}
+			dest = pointer(num)
+
+			tx := evm.GetTx()
+			count := int32(len(tx.MsgTx().TxIn) | (len(tx.MsgTx().TxOut) << 16))
+
+			if dest != 0 {
+				stack.saveInt32(&dest, count)
+			}
+
+			return nil
+		}
+	}
+
+	return fmt.Errorf("Malformed expression")
 }
 
 func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
@@ -3863,6 +3914,11 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	start := inidx
 
 	switch SigHashType(it) & SigHashMask {
+	case 0:		// no text generated. used where there is no sig and SIGNTEXT only servers as a mrker
+		nextop(contract, u)
+		*pc--
+		return nil
+
 	case SigHashNone:
 		t.TxOut = t.TxOut[0:0]
 		for i := range t.TxIn {

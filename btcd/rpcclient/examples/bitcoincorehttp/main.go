@@ -462,7 +462,7 @@ func main() {
 				log.Printf("BestBlock:%s\n", res.BestBlock.String())
 				log.Printf("Miner:%s (%s)\n", hex.EncodeToString(res.Miner[:]), mn)
 				log.Printf("Connection:%s\n", string(res.Connection))
-//				log.Printf("Header.BlackList:%s\n", hex.EncodeToString(res.BlackList))
+//				log.Printf("Header.Violations:%s\n", hex.EncodeToString(res.Violations))
 			}
 			break
 		case "getminerblocks":	//  "hash" ( verbose )
@@ -510,7 +510,7 @@ func main() {
 					log.Printf("Miner:%s (%s)\n", hex.EncodeToString(blk.Miner[:]), mn)
 					log.Printf("Connection:%s\n", string(blk.Connection))
 
-//					log.Printf("Header.BlackList:%s\n", hex.EncodeToString(blk.BlackList))
+//					log.Printf("Header.Violations:%s\n", hex.EncodeToString(blk.Violations))
 				}
 			}
 
@@ -950,7 +950,7 @@ func main() {
 		case "signmessage":	// "bitcoinaddress" "message"
 			fmt.Println("hello, Yourself")
 			break
-		case "verifymessage":	// "bitcoinaddress" "signature" "message"
+		case "verifymessage":	// "omegaaddress" "signature" "message"
 			fmt.Println("hello, Yourself")
 			break
 		}

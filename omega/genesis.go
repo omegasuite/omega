@@ -610,9 +610,9 @@ var MainNetGenesisMinerBlock = wire.MingingRightBlock{
 	Connection:      []byte{
 				0x6f, 0x6d, 0x65, 0x67, 0x61, 0x73, 0x75, 0x69, 
 				0x74, 0x65, 0x2e, 0x6f, 0x72, 0x67, },
-	BlackList: []wire.BlackList{},
-	Utxos: nil,
-	Miner: mainnetcreator,
+	ViolationReport: []*wire.Violations{},
+	Utxos:           nil,
+	Miner:           mainnetcreator,
 }
 
 var regtestcreator = [20]byte{
@@ -715,9 +715,9 @@ var RegNetGenesisMinerBlock = wire.MingingRightBlock{
 	Connection:      []byte{
 				0x6f, 0x6d, 0x65, 0x67, 0x61, 0x73, 0x75, 0x69, 
 				0x74, 0x65, 0x2e, 0x6f, 0x72, 0x67, },
-	BlackList: []wire.BlackList{},
-	Utxos: nil,
-	Miner: regtestcreator,
+	ViolationReport: []*wire.Violations{},
+	Utxos:           nil,
+	Miner:           regtestcreator,
 }
 
 var testnetcreator = [20]byte{
@@ -820,9 +820,9 @@ var TestNetGenesisMinerBlock = wire.MingingRightBlock{
 	Connection:      []byte{
 				0x6f, 0x6d, 0x65, 0x67, 0x61, 0x73, 0x75, 0x69, 
 				0x74, 0x65, 0x2e, 0x6f, 0x72, 0x67, },
-	BlackList: []wire.BlackList{},
-	Utxos: nil,
-	Miner: testnetcreator,
+	ViolationReport: []*wire.Violations{},
+	Utxos:           nil,
+	Miner:           testnetcreator,
 }
 
 var simnetcreator = [20]byte{
@@ -925,7 +925,7 @@ var SimNetGenesisMinerBlock = wire.MingingRightBlock{
 	Connection:      []byte{
 				0x6f, 0x6d, 0x65, 0x67, 0x61, 0x73, 0x75, 0x69, 
 				0x74, 0x65, 0x2e, 0x6f, 0x72, 0x67, },
-	BlackList: []wire.BlackList{},
-	Utxos: nil,
-	Miner: simnetcreator,
+	ViolationReport: []*wire.Violations{},
+	Utxos:           nil,
+	Miner:           simnetcreator,
 }

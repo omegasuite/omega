@@ -41,7 +41,7 @@ type (
 
 	// SpendFunc adds an input to the transaction template for currect transaction
 	// and is used by the ADDTXIN EVM op code.
-	SpendFunc func(wire.OutPoint) bool
+	SpendFunc func(wire.OutPoint, []byte) bool
 
 	// AddRight adds an right definition to the transaction template for currect transaction
 	// and is used by the ADDTXIN EVM op code.
@@ -63,11 +63,7 @@ type (
 func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
 	if contract.CodeAddr != nil {
 		var abi [4]byte
-		if input[0] == evm.chainConfig.MultiSigAddrID {
-			abi[0] = OP_PAYMULTISIG
-		} else {
-			copy(abi[:], contract.CodeAddr)
-		}
+		copy(abi[:], contract.CodeAddr)
 		p := PrecompiledContracts[abi]
 		if p != nil {
 			return evm.interpreter.RunPrecompiledContract(p(evm, contract), input, contract)
@@ -92,26 +88,33 @@ type Context struct {
 	GasLimit    uint64 			      // GASLIMIT policy
 	BlockNumber GetBlockNumberFunc    // Provides information for NUMBER
 	BlockTime GetBlockTimeFunc
+
+	exeout []bool
 //	Block 		GetBlockFunc
 }
 
-func (ovm * Context) Init(tx *btcutil.Tx, views * viewpoint.ViewPointSet) {
-	ovm.GetTx = func() *btcutil.Tx { return tx }
-	ovm.AddTxOutput = func(t wire.TxOut) int {
+func (vm * Context) Init(tx *btcutil.Tx, views * viewpoint.ViewPointSet) {
+	vm.GetTx = func() *btcutil.Tx { return tx }
+	vm.AddTxOutput = func(t wire.TxOut) int {
 		if tx == nil {
 			return -1
 		}
+		if !tx.HasOuts {
+			vm.exeout = append(vm.exeout, true)
+		}
+		vm.exeout = append(vm.exeout, false)
 		return tx.AddTxOut(t)
 	}
-	ovm.Spend = func(t wire.OutPoint) bool {
+	vm.Spend = func(t wire.OutPoint, sig []byte) bool {
 		if tx == nil {
 			return false
 		}
-		// it has alreadty been verified that the coin belongs to the contract
-		tx.AddTxIn(t)
+		// it has already been verified that the coin either belongs to the contract
+		// or has a signature
+		tx.AddTxIn(t, sig)
 		return true
 	}
-	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
+	vm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {
 		if tx != nil && hash.IsEqual(tx.Hash()) {
 			if int(seq) >= len(tx.MsgTx().TxOut) {
 				return nil

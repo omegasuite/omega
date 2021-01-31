@@ -19,6 +19,9 @@ type blockData struct {
 var blockwindow [2 * chaincfg.BlockSizeEvalWindow]blockData		// circular window of blocks
 
 func (b *BlockChain) GetBlockLimit(ht int32) uint32 {
+	return 5000		// no need to control block rate by adjusting block size
+					// we now use TPS to do that. it's better.
+
 	// block limit in number of tx
 	if ht < chaincfg.BlockSizeEvalWindow {
 		return chaincfg.BlockBaseSize
@@ -97,6 +100,8 @@ func (b *BlockChain) GetBlockLimit(ht int32) uint32 {
 }
 
 func (b *BlockChain) BlockSizerNotice(notification *Notification) {
+	return
+
 	switch notification.Data.(type) {
 	case *btcutil.Block:
 		block := notification.Data.(*btcutil.Block)
@@ -123,6 +128,8 @@ func (b *BlockChain) BlockSizerNotice(notification *Notification) {
 }
 
 func (b *sizeCalculator) RollBackTo(h int32) {
+	return
+
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
 

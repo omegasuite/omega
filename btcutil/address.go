@@ -129,6 +129,7 @@ func DecodeAddress(addr string, defaultNet *chaincfg.Params) (Address, error) {
 		isP2PKH := chaincfg.IsPubKeyHashAddrID(netID)
 		isP2SH := chaincfg.IsScriptHashAddrID(netID)
 		isContract := chaincfg.IsContractAddrID(netID)
+		ismultisig := chaincfg.IsMultiSigAddrID(netID)
 		switch hash160 := decoded; {
 		case isP2PKH && isP2SH:
 			return nil, ErrAddressCollision
@@ -138,6 +139,8 @@ func DecodeAddress(addr string, defaultNet *chaincfg.Params) (Address, error) {
 			return newAddressScriptHashFromHash(hash160, netID)
 		case isContract:
 			return newAddressContract(hash160, netID)
+		case ismultisig:
+			return newAddressMultiSig(hash160, netID)
 		default:
 			return nil, ErrUnknownAddressType
 		}

@@ -514,7 +514,13 @@ out:
 			if nonce >= 0 || nonce <= -wire.MINER_RORATE_FREQ {
 				nonce = -1
 			} else if nonce == -wire.MINER_RORATE_FREQ+1 {
-				nonce = -int32(bs.LastRotation) - 1 - wire.MINER_RORATE_FREQ
+				h := int32(bs.LastRotation) + 1
+				nonce = -h - wire.MINER_RORATE_FREQ
+				if mb, err := m.g.Chain.Miners.BlockByHeight(h); err != nil || mb == nil {
+					log.Infof("generateBlocks: sleep because MR block %d is not available", h)
+					time.Sleep(time.Second * 5)
+					continue
+				}
 			} else {
 				nonce--
 			}

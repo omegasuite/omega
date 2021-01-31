@@ -414,7 +414,7 @@ func (self *Syncer) run() {
 		case m := <- self.messages:
 			self.mutex.Lock()
 			self.handeling = m.Command()
-			log.Infof("processing %s message at %d", m.Command(), m.Block())
+//			log.Infof("processing %s message at %d", m.Command(), m.Block())
 			switch m.(type) {
 			case *wire.MsgKnowledge:		// passing knowledge
 				if self.sigGiven >= 0 {
@@ -425,8 +425,8 @@ func (self *Syncer) run() {
 
 				self.knowRevd[self.Members[k.From]] = self.Members[k.From]
 
-				log.Infof("MsgKnowledge: Finder = %x\nFrom = %x\nHeight = %d\nM = %s\nK = [%v]",
-					k.Finder, k.From, k.Height, k.M.String(), k.K)
+//				log.Infof("MsgKnowledge: Finder = %x\nFrom = %x\nHeight = %d\nM = %s\nK = [%v]",
+//					k.Finder, k.From, k.Height, k.M.String(), k.K)
 				if !self.validateMsg(k.Finder, &k.M, m) {
 					log.Infof("MsgKnowledge invalid")
 					continue
@@ -444,7 +444,7 @@ func (self *Syncer) run() {
 					}
 					self.knows[k.Finder] = append(self.knows[k.Finder], k)
 				}
-				log.Infof("MsgKnowledge processed")
+//				log.Infof("MsgKnowledge processed")
 
 			case *wire.MsgKnowledgeDone:
 				if self.sigGiven >= 0 {
@@ -467,8 +467,8 @@ func (self *Syncer) run() {
 
 				self.candRevd[self.Members[k.F]] = self.Members[k.F]
 
-				log.Infof("MsgCandidate: M = %s\nHeight = %d\nF = %x\nSignature = %x\n",
-					k.M.String(), k.Height, k.F, k.Signature)
+//				log.Infof("MsgCandidate: M = %s\nHeight = %d\nF = %x\nSignature = %x\n",
+//					k.M.String(), k.Height, k.F, k.Signature)
 				if !self.validateMsg(k.F, &k.M, m) {
 					log.Infof("Invalid MsgCandidate message")
 					continue
@@ -489,8 +489,8 @@ func (self *Syncer) run() {
 				if !self.validateMsg(k.From, nil, m) {
 					continue
 				}
-				log.Infof("candidateResp: From = %x\nHeight = %d\nM = %s %s",
-					k.From, k.Height, k.M.String(), k.Reply)
+//				log.Infof("candidateResp: From = %x\nHeight = %d\nM = %s %s",
+//					k.From, k.Height, k.M.String(), k.Reply)
 				self.candidateResp(k)
 
 			case *wire.MsgRelease:			// grant a release from duty
@@ -501,8 +501,8 @@ func (self *Syncer) run() {
 				if !self.validateMsg(k.From, nil, m) {
 					continue
 				}
-				log.Infof("MsgRelease: From = %x\nHeight = %d\nM = %s",
-					k.From, k.Height, k.M.String())
+//				log.Infof("MsgRelease: From = %x\nHeight = %d\nM = %s",
+//					k.From, k.Height, k.M.String())
 				self.Release(k)
 
 			case *wire.MsgConsensus:			// announce consensus reached
@@ -523,13 +523,13 @@ func (self *Syncer) run() {
 				if self.Consensus(k) {
 					going = false
 				}
-				log.Infof("MsgConsensus: From = %x\nHeight = %d\nM = %s",
-					k.From, k.Height, k.M.String())
+//				log.Infof("MsgConsensus: From = %x\nHeight = %d\nM = %s",
+//					k.From, k.Height, k.M.String())
 
 			case *wire.MsgSignature:		// received signature
 				k := m.(*wire.MsgSignature)
-				log.Infof("MsgSignature: From = %x\nHeight = %d\nM = %s",
-					k.From, k.Height, k.M.String())
+//				log.Infof("MsgSignature: From = %x\nHeight = %d\nM = %s",
+//					k.From, k.Height, k.M.String())
 				if self.Signature(k) {
 					going = false
 				}
@@ -537,7 +537,7 @@ func (self *Syncer) run() {
 			default:
 				log.Infof("unable to handle message type %s at %d", m.Command(), m.Block())
 			}
-			log.Infof("%d message processed %s at %d", m.Command(), m.Block())
+//			log.Infof("%d message processed %s at %d", m.Command(), m.Block())
 
 			for len(self.repeating) > 1 {
 				<-self.repeating
@@ -573,7 +573,7 @@ func (self *Syncer) run() {
 		case m := <- self.messages:
 			switch m.(type) {
 			case *wire.MsgSignature:
-				log.Info("handling MsgSignature on quit")
+//				log.Info("handling MsgSignature on quit")
 				self.Signature(m.(*wire.MsgSignature))
 			}
 
@@ -582,7 +582,7 @@ func (self *Syncer) run() {
 				owner := self.Names[self.sigGiven]
 				if self.Runnable && self.forest[owner] != nil && self.forest[owner].block != nil &&
 					len(self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
-					log.Info("passing NewConsusBlock on quit")
+//					log.Info("passing NewConsusBlock on quit")
 					miner.server.NewConsusBlock(self.forest[owner].block)
 				}
 			}
@@ -755,7 +755,7 @@ func (self *Syncer) Consensus(msg * wire.MsgConsensus) bool {
 	copy(sigmsg.Signature[:], privKey.PubKey().SerializeCompressed())
 	copy(sigmsg.Signature[btcec.PubKeyBytesLenCompressed:], sgs)
 
-	log.Infof("Consensus: cast signature")
+//	log.Infof("Consensus: cast signature")
 
 	self.CommitteeCastMG(&sigmsg)
 
@@ -818,7 +818,7 @@ func (self *Syncer) reckconsensus() {
 		copy(msg.Signature[:], privKey.PubKey().SerializeCompressed())
 		copy(msg.Signature[btcec.PubKeyBytesLenCompressed:], ss)
 
-		log.Infof("reckconsensus: cast Consensus")
+//		log.Infof("reckconsensus: cast Consensus")
 
 		self.CommitteeCastMG(&msg)
 	}
@@ -859,7 +859,7 @@ func (self *Syncer) ckconsensus() {
 		self.signed[self.Me] = struct{}{}
 		self.agrees[self.Myself] = struct{}{}
 
-		log.Infof("ckconsensus: cast Consensus")
+//		log.Infof("ckconsensus: cast Consensus")
 
 		self.CommitteeCastMG(&msg)
 	}
@@ -927,7 +927,7 @@ func (self *Syncer) yield(better int32) bool {
 			d.M = self.forest[self.Names[better]].hash
 			d.Sign(miner.server.GetPrivKey(self.Me))
 
-			log.Infof("yield: yield to %x", self.Names[better])
+//			log.Infof("yield: yield to %x", self.Names[better])
 
 			self.CommitteeMsgMG(self.Names[better], &d)
 		}
@@ -941,18 +941,18 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 	if msg.Reply == "cnst" && self.agreed != -1 {
 		if self.agreed != self.Myself {
 			// release the node from obligation and notify him about new agreed
-			log.Infof("consent received from %x but I am not taking it", msg.From)
+//			log.Infof("consent received from %x but I am not taking it", msg.From)
 			self.CommitteeMsgMG(msg.From, self.makeRelease(self.agreed))
 		} else {
-			log.Infof("consent received from %x", msg.From)
+//			log.Infof("consent received from %x", msg.From)
 			self.agrees[self.Members[msg.From]] = struct{}{}
 			self.ckconsensus()
 		}
 	} else if msg.Reply == "cnst" && self.agreed == -1 {
-		log.Infof("consent received from %x but I am not taking it", msg.From)
+//		log.Infof("consent received from %x but I am not taking it", msg.From)
 		self.CommitteeMsgMG(msg.From, self.makeRelease(self.agreed))
 	} else if msg.Reply == "rjct" && self.agreed == self.Myself {
-		log.Infof("rejection received from %x", msg.From)
+//		log.Infof("rejection received from %x", msg.From)
 		self.knowledges.Rejected(self.Members[msg.From])
 
 		switch msg.Better {
@@ -977,7 +977,7 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 					msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
 					msg.Sign(miner.server.GetPrivKey(self.Me))
 
-					log.Infof("candidateResp: reaffirm candidacy")
+//					log.Infof("candidateResp: reaffirm candidacy")
 
 					self.CommitteeMsgMG(msg.F, msg) // ask again
 				}
@@ -1045,7 +1045,7 @@ func (self *Syncer) candidacy() {
 
 //	self.consents[self.Me] = 1
 
-	log.Infof("Announce candicacy by %d at %d", self.Myself, self.Height)
+//	log.Infof("Announce candicacy by %d at %d", self.Myself, self.Height)
 //	self.DebugInfo()
 
 	msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
@@ -1075,7 +1075,7 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 		d.Better = -1
 		d.Sign(miner.server.GetPrivKey(self.Me))
 
-		log.Infof("Candidate: Reject candicacy by %x", self.Names[fmp])
+//		log.Infof("Candidate: Reject candicacy by %x", self.Names[fmp])
 
 		self.CommitteeMsgMG(self.Names[fmp], &d)
 		return
@@ -1112,13 +1112,13 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 	}
 
 	if self.agreed == -1 || self.agreed == fmp {
-		log.Infof("consent given by %x to %d", self.Me, fmp)
+//		log.Infof("consent given by %x to %d", self.Me, fmp)
 		d.Reply = "cnst"
 		d.Better = fmp
 		self.agreed = fmp
 		d.Sign(miner.server.GetPrivKey(self.Me))
 
-		log.Infof("Candidate: Consent candicacy by %x", self.Names[fmp])
+//		log.Infof("Candidate: Consent candicacy by %x", self.Names[fmp])
 
 		self.CommitteeMsgMG(self.Names[fmp], &d)
 		return
@@ -1138,7 +1138,7 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 	d.M = self.forest[self.Names[self.agreed]].hash
 	d.Sign(miner.server.GetPrivKey(self.Me))
 
-	log.Infof("Candidate: Reject candicacy by %x", self.Names[fmp])
+//	log.Infof("Candidate: Reject candicacy by %x", self.Names[fmp])
 
 	self.CommitteeMsgMG(self.Names[fmp], &d)
 }
