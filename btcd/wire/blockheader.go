@@ -30,6 +30,7 @@ const (
 	DifficultyRatio            = 4         // ratio of difficulty for tx chain and miner chain
 	CollateralBase             = 100	 // base is 100 OMC
 	ViolationReportDeadline    = 100
+	Version2				   = 0x20000
 )
 
 // current code version
@@ -124,7 +125,8 @@ type MingingRightBlock struct {
 	Connection []byte	// connection info. either an IP:port address or an RSA pubkey
 
 	// Min Collateral required for the next block. ver. 0x20000
-	Collateral uint32
+	Collateral uint32	// Collateral required for the next block
+	MeanTPH	uint32		// average TPH = (63 * prev MeanTPH + averga TPH of this block) / 64
 
 	Utxos 	*OutPoint		  // Collateral provided by the miner.
 
@@ -366,11 +368,16 @@ func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
 		}
 	}
 
-	if bh.Version >= 0x20000 {
+	if bh.Version >= Version2 {
 		if d, err := common.ReadVarInt(r, 0); err != nil {
 			return err
 		} else {
 			bh.Collateral = uint32(d)
+		}
+		if d, err := common.ReadVarInt(r, 0); err != nil {
+			return err
+		} else {
+			bh.MeanTPH = uint32(d)
 		}
 
 		d, err = common.ReadVarInt(r, 0)
@@ -433,10 +440,14 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 		}
 	}
 
-	if bh.Version >= 0x20000 {	// TphReports activated
+	if bh.Version >= Version2 {	// TphReports activated
 		if err := common.WriteVarInt(w, 0, uint64(bh.Collateral)); err != nil {
 			return err
 		}
+		if err := common.WriteVarInt(w, 0, uint64(bh.MeanTPH)); err != nil {
+			return err
+		}
+
 		// for compatibility with old structure, we should not write a '0' when report
 		// length is 0 for it would change block hash
 		if err := common.WriteVarInt(w, 0, uint64(len(bh.TphReports))); err != nil {

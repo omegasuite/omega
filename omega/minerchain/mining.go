@@ -570,7 +570,8 @@ out:
 			}
 
 			me := m.g.Chain.Miners.(*MinerChain)
-			minscore, maxscore := me.reportRctRng(me.NodeByHash(&block.MsgBlock().PrevBlock))
+			prev,_ := me.BlockByHash(&block.MsgBlock().PrevBlock)
+			minscore := prev.MsgBlock().MeanTPH >> 3
 			r := me.reportFromDB(block.MsgBlock().Miner)	// max most recent 100 records
 			for i := len(r); i < 100; i++ {
 				r = append(r, rv{ val: minscore })
@@ -587,8 +588,6 @@ out:
 
 			if sum <= minscore {
 				h2 = 1
-			} else if maxscore > 64 * minscore {
-				h2 = 1 + int64((sum - minscore) * 63 / (maxscore - minscore))
 			} else {
 				h2 = int64(sum / minscore)
 			}

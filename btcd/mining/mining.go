@@ -1005,22 +1005,14 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	// the longest MR chain refers to a stalled TX side chain, we should
 	// switch to a side chain.
 
-	//	best := g.Chain.Miners.BestSnapshot()
 	nextBlockHeight := last.Height + 1
 	lastBlk := g.Chain.Miners.NodetoHeader(last)
-
-	// Calculate the required difficulty for the block.  The timestamp
-	// is potentially adjusted to ensure it comes after the median time of
-	// the last several blocks per the Chain consensus rules.
-//	ts := medianAdjustedTime(best, g.timeSource)
 
 	ts := g.timeSource.AdjustedTime()
 	ts2 := last.CalcPastMedianTime().Add(time.Second)
 	if ts.Before(ts2) {
 		ts = ts2
 	}
-
-//	reqDifficulty, err := g.Chain.Miners.CalcNextRequiredDifficulty(ts)
 
 	reqDifficulty, coll, err := g.Chain.Miners.NextRequiredDifficulty(last, ts)
 
@@ -1035,7 +1027,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		return nil, err
 	}
 
-	if nextBlockVersion < 0x20000 {
+	if nextBlockVersion < chaincfg.Version2 {
 		coll = 0
 	}
 
@@ -1046,11 +1038,6 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	if bh < h0  {
 		return nil, nil
 	}
-
-//	utxos := g.Chain.FetchMycoins(wire.Collateral(nextBlockHeight))
-//	if utxos == nil {
-//		return nil, fmt.Errorf("Insufficient collateral.")
-//	}
 
 	// Create a new block ready to be solved.
 	msgBlock := wire.MingingRightBlock{
@@ -1065,8 +1052,38 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	}
 
 	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())
-	if nextBlockVersion >= 0x20000 {
+	if nextBlockVersion >= chaincfg.Version2 {
 		msgBlock.TphReports = g.Chain.Miners.TphReport(wire.MinTPSReports, last, msgBlock.Miner)
+		sum := uint32(0)
+		prev := g.Chain.Miners.NodetoHeader(last)
+		p2 := prev.Version >= chaincfg.Version2
+		v2 := prev.MeanTPH
+		for j,v := range msgBlock.TphReports {
+			if p2 {
+				if v > v2 * 8 {
+					v =	v2 * 8
+					msgBlock.TphReports[j] = v
+				} else if 8 * v < v2 {
+					v =	v2 >> 3
+					if v == 0 {
+						v = 1
+					}
+					msgBlock.TphReports[j] = v
+				}
+			}
+			sum += v
+		}
+		if len(msgBlock.TphReports) == 0 {
+			sum = 1
+		} else {
+			sum /= uint32(len(msgBlock.TphReports))
+		}
+
+		if p2 {
+			msgBlock.MeanTPH = (v2 * 63 + sum) >> 6
+		} else {
+			msgBlock.MeanTPH = sum
+		}
 	}
 
 	// Finally, perform a full check on the created block against the Chain

@@ -312,7 +312,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	// contract execution must not exceed block limit
 	if block.MsgBlock().Header.ContractExec > b.ChainParams.ContractExecLimit {
-		str := fmt.Sprintf("Eontract execution steps exceeds block limit in %v", blockHash)
+		str := fmt.Sprintf("Contract execution steps exceeds block limit in %v", blockHash)
 		return false, true, ruleError(ErrExcessContractExec, str), -1
 	}
 
@@ -357,10 +357,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		// this mark an pre-consus block
 //		b.AddOrphanBlock(block)
 		return isMainChain, false, nil, -1
-	}
-
-	if len(block.MsgBlock().Transactions) > 1 {
-		log.Infof("")
 	}
 
 	err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
@@ -489,16 +485,12 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNo
 		}
 	}
 
-	// examine signers are in committee and have sufficient collateral
+	// examine signers are in committee
 	miners := make(map[[20]byte]struct{})
 
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
 		if blk == nil {
-			return false
-		}
-
-		if _,err := b.CheckCollateral(blk, BFNone); err != nil {
 			return false
 		}
 

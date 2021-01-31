@@ -927,7 +927,7 @@ func (b *BlockChain) SideChainContains(x * list.Element, hash chainhash.Hash) bo
 	return n != nil
 }
 
-func (b *BlockChain) SignedBy(x * list.Element, miners [][20]byte) bool {
+func (b *BlockChain) SignedBy(x * list.Element, miners []*[20]byte) bool {
 	n := x.Value.(*chainutil.BlockNode)
 	if n.Data.GetNonce() > 0 {
 		return true
@@ -943,7 +943,10 @@ func (b *BlockChain) SignedBy(x * list.Element, miners [][20]byte) bool {
 	return b.signedBy(block, miners)
 }
 
-func (b *BlockChain) signedBy(block * btcutil.Block, miners [][20]byte) bool {
+// check if all signatures belongs to the committee. fails if any signature
+// is outside committee. commiteee does not include those collateral are spent,
+// thus if they sign, the check will fail
+func (b *BlockChain) signedBy(block * btcutil.Block, miners []*[20]byte) bool {
 	for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 		k, _ := btcec.ParsePubKey(sign[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 		pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.ChainParams)
@@ -951,7 +954,7 @@ func (b *BlockChain) signedBy(block * btcutil.Block, miners [][20]byte) bool {
 		signer := *pk.AddressPubKeyHash().Hash160()
 		matched := false
 		for _, sig := range miners {
-			if bytes.Compare(signer[:], sig[:]) != 0 {
+			if sig != nil && bytes.Compare(signer[:], sig[:]) != 0 {
 				matched = true
 				break
 			}
@@ -1112,13 +1115,13 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	// issues before ever modifying the chain.
 
 	// examine signers are in committee
-	miners := make([][20]byte, wire.CommitteeSize)
+	miners := make([]*[20]byte, wire.CommitteeSize)
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		if blk, _ := b.Miners.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
 			if _,err := b.CheckCollateral(blk, BFNone); err != nil {
-				return err
+				continue
 			}
-			miners[i] = blk.MsgBlock().Miner
+			miners[i] = &blk.MsgBlock().Miner
 		}
 	}
 
@@ -1152,7 +1155,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		if shift > 0 {
 			j := 0
 			for k := shift; k < wire.CommitteeSize; k++ {
-				copy(miners[j][:], miners[k][:])
+				miners[j] = miners[k]
 				j++
 			}
 
@@ -1160,9 +1163,10 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 				rotate++
 				if blk, _ := b.Miners.BlockByHeight(int32(rotate)); blk != nil {
 					if _,err := b.CheckCollateral(blk, BFNone); err != nil {
-						return err
+						miners[j] = nil
+						continue
 					}
-					miners[j] = blk.MsgBlock().Miner
+					miners[j] = &blk.MsgBlock().Miner
 				} else if shift == 1 {
 					return fmt.Errorf("Incorrect rotation")
 				}
@@ -1395,7 +1399,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 // checkBlockSanity check whether the miner has provided sufficient collateral
 func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags) (uint32, error) {
-	if block.MsgBlock().Utxos == nil {
+	if block.MsgBlock().Utxos == nil || block.MsgBlock().Version < chaincfg.Version2 {
 		return 0, nil
 	}
 
@@ -1418,22 +1422,14 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags
 
 	e := utxos.LookupEntry(*block.MsgBlock().Utxos)
 	if e == nil {
-		if block.MsgBlock().Version >= 0x20000 {
-			return 0, fmt.Errorf("Collateral does not exist.")
-		} else {
-			return 0, nil
-		}
+		return 0, fmt.Errorf(" does not exist.")
 	}
 
 	if e.TokenType != 0 {
-		if block.MsgBlock().Version >= 0x20000 {
-			return 0, fmt.Errorf("Collateral is not OTC.")
-		} else {
-			return 0, nil
-		}
+		return 0, fmt.Errorf("Collateral is not OTC.")
 	}
 
-	if block.MsgBlock().Version >= 0x20000 && e.Amount.(*token.NumToken).Val < int64(req) * 1e8 {
+	if e.Amount.(*token.NumToken).Val < int64(req) * 1e8 {
 		return 0, fmt.Errorf("Insufficient Collateral.")
 	}
 

@@ -156,12 +156,6 @@ type MinerChain struct {
 	notificationsLock sync.RWMutex
 	notifications     []blockchain.NotificationCallback
 
-	// max/min TPH scores in the previous adjustment cycle. It will be used to
-	// determine each block's difficulty target.
-	cycleBegin	int32	// begin block height. if negative, the score data is not set
-	minTPH		uint32
-	maxTPH		uint32
-
 	violations []*wire.Violations
 	blacklist map[[20]byte][]int32
 }
@@ -283,17 +277,24 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	rotate := int32(best.LastRotation) - b.blockChain.TotalRotate(txdetachNodes)
 
 	// examine signers are in committee
-	miners := make([][20]byte, wire.CommitteeSize)
+	miners := make([]*[20]byte, wire.CommitteeSize)
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		if blk, _ := b.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
-			miners[i] = blk.MsgBlock().Miner
+			if _, err := b.blockChain.CheckCollateral(blk, blockchain.BFNone); err == nil {
+				miners[i] = &blk.MsgBlock().Miner
+			}
 		}
 	}
 
 	x, y, p := attachNodes.Front(), txattachNodes.Front(), forkNode
 	for x != nil && rotate >= p.Height {
 		if p.Height > rotate - wire.CommitteeSize {
-			miners[p.Height - (rotate - wire.CommitteeSize + 1)] = NodetoHeader(p).Miner
+			hdr := NodetoHeader(p)
+			if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), blockchain.BFNone); err == nil {
+				miners[p.Height-(rotate-wire.CommitteeSize+1)] = &hdr.Miner
+			} else {
+				miners[p.Height-(rotate-wire.CommitteeSize+1)] = nil
+			}
 		}
 		x = x.Next()
 		if x != nil {
@@ -331,12 +332,19 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 			contain = false
 			j := 0
 			for k := shift; k < wire.CommitteeSize; k++ {
-				copy(miners[j][:], miners[k][:])
+				miners[j] = miners[k]
 				j++
 			}
 			for k := int32(0); k < shift; k++ {
 				rotate++
-				miners[j] = NodetoHeader(n).Miner
+
+				hdr := NodetoHeader(n)
+				if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), blockchain.BFNone); err == nil {
+					miners[j] = &hdr.Miner
+				} else {
+					miners[j] = nil
+				}
+
 				x = x.Next()
 				if x != nil {
 					n = x.Value.(*chainutil.BlockNode)
@@ -1470,9 +1478,6 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		chainLock:			 &s.ChainLock,
 		warningCaches:       NewThresholdCaches(vbNumBits),
 		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
-		cycleBegin:			 -100000,
-		minTPH:				 1,
-		maxTPH:				 1,
 		violations:		     make([]*wire.Violations, 0),
 		blacklist:		     make(map[[20]byte][]int32),
 	}
@@ -1645,39 +1650,6 @@ type rv struct {
 	val uint32
 }
 
-func (g *MinerChain) reportRctRng(last *chainutil.BlockNode) (uint32, uint32) {
-	if last.Data.GetVersion() < 0x20000 {
-		return 1, 1
-	}
-	if g.cycleBegin / g.blocksPerRetarget == last.Height / g.blocksPerRetarget {
-		return g.minTPH, g.maxTPH
-	}
-
-	maxscore := uint32(1)
-	minscore := uint32(0x7FFFFFFF)
-
-	node := last.RelativeAncestor(last.Height % g.blocksPerRetarget)
-	g.cycleBegin = node.Height
-
-	for n := int32(0); n < g.blocksPerRetarget; n++ {
-		for _,v := range node.Data.(*blockchainNodeData).block.TphReports {
-			if v < minscore {
-				minscore = v
-			}
-			if v > maxscore {
-				maxscore = v
-			}
-			node = node.Parent
-		}
-	}
-	if minscore > maxscore  {
-		g.minTPH, g.maxTPH = 1,1
-		return 1,1
-	}
-	g.minTPH, g.maxTPH = minscore, maxscore
-	return minscore, maxscore
-}
-
 func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte) []uint32 {
 	rpt := make([]uint32, 0, rpts)
 	miners := make(map[[20]byte]struct{})
@@ -1694,7 +1666,11 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 	}
 
 	// min score is the min in most recent 100 blocks
-	minscore,_ := g.reportRctRng(last)
+	prev := g.NodetoHeader(last)
+	minscore := prev.MeanTPH >> 3
+	if minscore == 0 {
+		minscore = 1
+	}
 
 	for n,m := 0,0; n < rpts && m < 100 * rpts; m++ {
 		w := last.Data.(*blockchainNodeData).block.Miner

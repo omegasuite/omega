@@ -478,7 +478,8 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			copy(tw[:], txo.PkScript[1:21])
 			awardto[tw] = struct{}{}
 		}
-		if len(awardto) != wire.CommitteeSize {
+
+		if len(awardto) != wire.CommitteeSize && block.MsgBlock().Header.Version < chaincfg.Version2 {
 			return fmt.Errorf("Coinbase award error."), false
 		}
 
@@ -489,15 +490,30 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		nsigned := 0
 
 		var imin = false
-//		var inkey *btcec.PrivateKey
-//		inkey = nil
 		var meme btcutil.Address
+
+		var mbs [3]*wire.MinerBlock
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
 			mb, _ := b.Miners.BlockByHeight(int32(i))
 			if mb == nil {
 				return nil, true
 			}
+			mbs[i - (rotate - wire.CommitteeSize + 1)] = mb
+		}
+
+		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
+			mb := mbs[i - (rotate - wire.CommitteeSize + 1)]
+			if _,err := b.CheckCollateral(mb, BFNone); err != nil {
+				if _,ok := awardto[mb.MsgBlock().Miner]; ok {
+					return fmt.Errorf("Coinbase award error."), false
+				}
+			} else if block.MsgBlock().Header.Version >= chaincfg.Version2 {
+				if _,ok := awardto[mb.MsgBlock().Miner]; !ok {
+					return fmt.Errorf("Coinbase award error."), false
+				}
+			}
+
 			committee[mb.MsgBlock().Miner] = struct{}{}
 			delete(awardto, mb.MsgBlock().Miner)
 
@@ -505,7 +521,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 				for j,me := range b.Miner {
 					imin = bytes.Compare(me.ScriptAddress(), mb.MsgBlock().Miner[:]) == 0
 					if imin {
-//						inkey = b.PrivKey[j]
 						meme = b.Miner[j]
 						break
 					}
@@ -540,26 +555,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			block.MsgBlock().Transactions[0].SignatureScripts =
 			append(block.MsgBlock().Transactions[0].SignatureScripts[:tbr[k]], block.MsgBlock().Transactions[0].SignatureScripts[tbr[k]+1:]...)
 		}
-/*
-		if imin && inkey != nil && nsigned < wire.CommitteeSigs {
-			// add my signature to the block
-			sig, _ := inkey.Sign(hash)
-			sgs := sig.Serialize()
-
-			fmt.Printf("\t\t\t\tAdding signature")
-
-			Signature := make([]byte, btcec.PubKeyBytesLenCompressed+len(sgs))
-
-			copy(Signature[:], inkey.PubKey().SerializeCompressed())
-			copy(Signature[btcec.PubKeyBytesLenCompressed:], sgs)
-
-			// add my signature to block
-			block.MsgBlock().Transactions[0].SignatureScripts = append(
-				block.MsgBlock().Transactions[0].SignatureScripts,
-				Signature)
-			nsigned++
-		}
-*/
 
 		if nsigned < wire.CommitteeSigs {
 			return fmt.Errorf("Insufficient number of Miner signatures."), false

@@ -64,6 +64,32 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 		flags |= blockchain.BFNoReorg | blockchain.BFSideChain
 	}
 
+	if block.MsgBlock().Version >= chaincfg.Version2 {
+		sum := uint32(0)
+		p2 := prevNode.Data.(*blockchainNodeData).block.Version >= chaincfg.Version2
+		v2 := prevNode.Data.(*blockchainNodeData).block.MeanTPH
+		for _, v := range block.MsgBlock().TphReports {
+			if p2 && (v > v2 * 8 || 8 * v < v2) {
+				return false, ruleError(ErrInvalidAncestorBlock, "Out of range TPH score")
+			}
+			sum += v
+		}
+		if len(block.MsgBlock().TphReports) == 0 {
+			sum = 1
+		} else {
+			sum /= uint32(len(block.MsgBlock().TphReports))
+		}
+		var meanTPH uint32
+		if p2 {
+			meanTPH = (v2 * 63 + sum) >> 6
+		} else {
+			meanTPH = sum
+		}
+		if meanTPH != block.MsgBlock().MeanTPH {
+			return false, ruleError(ErrInvalidAncestorBlock, "Incorrect mean TPH score")
+		}
+	}
+
 	// Insert the block into the database if it's not already there.  Even
 	// though it is possible the block will ultimately fail to connect, it
 	// has already passed all proof-of-work and validity tests which means
@@ -186,7 +212,12 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 				h1 = 1
 			}
 
-			minscore, maxscore := m.reportRctRng(m.NodeByHash(&header.PrevBlock))
+			prev,_ := m.BlockByHash(&header.PrevBlock)
+			minscore := prev.MsgBlock().MeanTPH >> 3
+			if minscore == 0 {
+				minscore = 1
+			}
+
 			r := m.reportFromDB(header.Miner)	// max most recent 100 records
 			for i := len(r); i < 100; i++ {
 				r = append(r, rv{ val: minscore })
@@ -204,8 +235,6 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			h2 := int64(1)
 			if sum <= minscore {
 				h2 = 1
-			} else if maxscore > 64 * minscore {
-				h2 = 1 + int64((sum - minscore) * 63 / (maxscore - minscore))
 			} else {
 				h2 = int64(sum / minscore)
 			}
@@ -304,7 +333,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
-	if header.Version >= 0x20000 && header.Collateral != coll {
+	if header.Version >= chaincfg.Version2 && header.Collateral != coll {
 		str := "block collateral of %d is not the expected value of %d"
 		str = fmt.Sprintf(str, header.Collateral, coll)
 		return ruleError(ErrUnexpectedDifficulty, str)
