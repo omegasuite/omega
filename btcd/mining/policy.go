@@ -18,7 +18,7 @@ const (
 	UnminedHeight = 0x7fffffff
 )
 
-// Policy houses the policy (configuration parameters) which is used to control
+// Policy houses the Policy (configuration parameters) which is used to control
 // the generation of block templates.  See the documentation for
 // NewBlockTemplate for more details on each of these parameters are used.
 type Policy struct {
@@ -30,6 +30,9 @@ type Policy struct {
 	// required for a transaction to be treated as free for mining purposes
 	// (block template generation).
 	TxMinFreeFee btcutil.Amount
+
+	// min number of txs a block should try to fill
+	MinBlockWeight uint32
 }
 
 // minInt is a helper function to return the minimum of two ints.  This avoids

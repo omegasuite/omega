@@ -680,9 +680,6 @@ func (s *server) handleCommitteRotation(r int32) {
 		conn := mb.MsgBlock().Connection
 
 		s.makeConnection(conn, mb.MsgBlock().Miner, j)
-//		if na, _ := s.addrManager.DeserializeNetAddress(string(mb.MsgBlock().Connection)); na != nil {
-//			s.addrManager.AddLocalAddress(na, addrmgr.CommitteePrio)
-//		}
 	}
 }
 
@@ -705,21 +702,7 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 		btcdLog.Infof("CommitteeMsgMG makeConnection to %s %d", mb.MsgBlock().Connection, mb.Height())
 
 		s.makeConnection(mb.MsgBlock().Connection, p, mb.Height())
-/*
-		s.peerState.cmutex.Lock()
-		sp,ok = s.peerState.committee[p]
-		s.peerState.cmutex.Unlock()
-		if !ok {
-			btcdLog.Infof("Fail to send Committee Msg %s to %x because unable to connect", m.Command(), sp.member)
-			return
-		}
- */
 	}
-/*
-	btcdLog.Info("Queueing Msg ... ")
-	sp.queue <- m
-	btcdLog.Infof("... %s for sending to %x", m.Command(), sp.member)
- */
 }
 
 func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {
@@ -786,9 +769,6 @@ func (s *server) CommitteeMsg(p [20]byte, h int32, m wire.Message) bool {
 	} else {
 		btcdLog.Infof("%x not in committee yet, add it", p)
 
-//		best := s.chain.BestSnapshot()
-//		my := s.MyPlaceInCommittee(int32(best.LastRotation))
-
 		blk, _ := s.chain.Miners.BlockByHeight(h)
 
 		if p != blk.MsgBlock().Miner {
@@ -821,122 +801,6 @@ func (s *server) CommitteePolling() {
 	}
 	s.peerState.cmutex.Unlock()
 	return
-/*
-	best := s.chain.BestSnapshot()
-	ht := best.Height
-	mht := s.chain.Miners.BestSnapshot().Height
-
-	consensusLog.Infof("%v", newLogClosure(func() string {
-		return spew.Sdump(s.peerState)
-	}))
-
-	syncid := s.syncManager.SyncPeerID()
-	s.peerState.ForAllPeers(func (ob *serverPeer) {
-		if ob.ID() == syncid {
-			consensusLog.Infof("My sync peer is: %s", ob.Addr())
-		}
-	})
-
-//	my := s.MyPlaceInCommittee(int32(best.LastRotation))
-//	var name [20]byte
-//	copy(name[:], s.signAddress.ScriptAddress())
-
-	consensusLog.Infof("My heights %d %d rotation at %d", ht, mht, best.LastRotation)
-
-	total := 100
-
-	// those we want to have connections
-	cmt := make(map[[20]byte]*wire.MinerBlock)
-	for i := 0; i < wire.CommitteeSize; i++ {
-		blk,_ := s.chain.Miners.BlockByHeight(int32(best.LastRotation) - int32(i))
-		if blk != nil {
-			cmt[blk.MsgBlock().Miner] = blk
-		}
-	}
-
-	reconns := make([]*serverPeer, 0)
-
-	s.peerState.cmutex.Lock()
-	for pname,sp := range s.peerState.committee {
-		consensusLog.Infof("Peer %x", pname)
-		if _, ok := cmt[pname]; !ok {
-			continue
-		}
-		mtch := false
-		for _,sa := range s.signAddress {
-			if bytes.Compare(sa.ScriptAddress(), pname[:]) == 0 {
-				mtch = true
-				break
-			}
-		}
-		if mtch {
-			continue
-		}
-
-		consensusLog.Infof("\tis in committee at %d", cmt[pname].Height())
-		delete(cmt, pname)
-
-		idmap := make(map[int32]struct{})
-		addrmap := make(map[string]int32)
-
-		peers := make([]*serverPeer, 0, len(sp.peers))
-
-		for i,r := range sp.peers {
-			if _,ok := idmap[r.ID()]; ok {
-				continue
-			}
-			idmap[r.ID()] = struct{}{}
-
-			if _,ok := addrmap[r.Addr()]; ok {
-				if r.Connected() && !r.persistent {
-					r.Disconnect("duplicated connection")
-				}
-				continue
-			}
-
-			peers = append(peers, r)
-
-			if !r.Connected() {
-				continue
-			}
-
-			addrmap[r.Addr()] = int32(i)
-		}
-
-		sp.peers = peers
-
-		for _, r := range sp.peers {
-			if r.connReq != nil && !r.Connected() {
-				reconns = append(reconns, r)
-				total += 100
-				break
-			}
-		}
-	}
-/*
-	for peer,blk := range cmt {
-		if name != peer {
-			consensusLog.Infof("Peer %x has no good connection", peer)
-			s.makeConnection(blk.MsgBlock().Connection, peer, blk.Height())
-			total += 100
-		}
-	}
- * /
-	s.peerState.cmutex.Unlock()
-
-	for _, r := range reconns {
-		s.makeConnection([]byte(r.connReq.Addr.String()), r.connReq.Miner,
-			r.connReq.Committee)
-	}
-
-	// start sync if there is no sync peer
-	if !s.syncManager.StartSync() {
-		// need to make a new connection
-		go s.connManager.NewConnReq(nil)
-	}
-
-	time.Sleep(time.Second * time.Duration(total / 100))
- */
 }
 
 func (s *server) SubscribeChain(fn func (*blockchain.Notification)) {
@@ -945,9 +809,6 @@ func (s *server) SubscribeChain(fn func (*blockchain.Notification)) {
 }
 
 func (s *server) NewConsusBlock(m * btcutil.Block) {
-//	consensusLog.Infof("NewConsusBlock at %d", m.Height())
-//	s.peerState.print()
-
 	m.ClearSize()
 	if isMainchain, orphan, err, _ := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil && !orphan && isMainchain {
 		consensusLog.Debugf("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
@@ -955,60 +816,9 @@ func (s *server) NewConsusBlock(m * btcutil.Block) {
 		s.chain.SendNotification(blockchain.NTBlockRejected, m)
 		if err != nil {
 			consensusLog.Infof("consensus faield to process ProcessBlock!!! %s", err.Error())
-//		if r,ok := err.(blockchain.RuleError); !ok || r.ErrorCode != blockchain.ErrDuplicateBlock {
-//			s.chain.ProcessBlock(m, blockchain.BFNone) // for debugging
 		}
 	}
 }
-
-/*
-func (s *server) CommitteeCast(msg wire.Message) {
-	if s.signAddress == nil {
-		return
-	}
-	var name [20]byte
-	copy(name[:], s.signAddress.ScriptAddress())
-
-	s.peerState.forAllCommittee(func(nm [20]byte, sp *committeeState) {
-		if nm == name {
-			return
-		}
-		for _,peer := range sp.peers {
-			if peer.Connected() {
-				srvrLog.Infof("casting %s message to %s (remote = %s)", msg.Command(), peer.Peer.LocalAddr().String(), peer.Peer.Addr())
-				peer.QueueMessageWithEncoding(msg, nil, wire.SignatureEncoding)
-				return
-			}
-		}
-		for _,peer := range sp.peers {
-			if !peer.Peer.Inbound() && peer.connReq != nil {
-				peer.connReq.Initcallback = func(sp connmgr.ServerPeer) {
-					srvrLog.Infof("casting %s message to %s (remote = %s)", msg.Command(), peer.Peer.LocalAddr().String(), peer.Peer.Addr())
-					peer.QueueMessageWithEncoding(msg, nil, wire.SignatureEncoding)
-				}
-				s.connManager.Connect(peer.connReq)
-				return
-			}
-		}
-	})
-}
-
-func (s *server) CommitteeCastMG(sender [20]byte, msg wire.Message, h int32) {
-	peers := make([]*serverPeer, 0, wire.CommitteeSize)
-	s.peerState.forAllCommittee(func(sd [20]byte, sp *committeeState) {
-		for _, r := range sp.peers {
-			if r.Connected() {
-				peers = append(peers, r)
-				return
-			}
-		}
-	})
-
-	for _, r := range peers {
-		senNewMsg(r, msg, h)
-	}
-}
- */
 
 func (s *server) GetPrivKey(who [20]byte) * btcec.PrivateKey {
 	for i,k := range s.signAddress {

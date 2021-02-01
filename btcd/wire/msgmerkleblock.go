@@ -16,7 +16,7 @@ import (
 // possibly fit into a merkle block.  Since each transaction is represented by
 // a single bit, this is the max number of transactions per block divided by
 // 8 bits per byte.  Then an extra one to cover partials.
-const maxFlagsPerMerkleBlock = maxTxPerBlock / 8
+const maxFlagsPerMerkleBlock = MaxTxPerBlock / 8
 
 // MsgMerkleBlock implements the Message interface and represents a bitcoin
 // merkleblock message which is used to reset a Bloom filter.
@@ -31,9 +31,9 @@ type MsgMerkleBlock struct {
 
 // AddTxHash adds a new transaction hash to the message.
 func (msg *MsgMerkleBlock) AddTxHash(hash *chainhash.Hash) error {
-	if len(msg.Hashes)+1 > maxTxPerBlock {
+	if len(msg.Hashes)+1 > MaxTxPerBlock {
 		str := fmt.Sprintf("too many tx hashes for message [max %v]",
-			maxTxPerBlock)
+			MaxTxPerBlock)
 		return messageError("MsgMerkleBlock.AddTxHash", str)
 	}
 
@@ -65,9 +65,9 @@ func (msg *MsgMerkleBlock) OmcDecode(r io.Reader, pver uint32, enc MessageEncodi
 	if err != nil {
 		return err
 	}
-	if count > maxTxPerBlock {
+	if count > MaxTxPerBlock {
 		str := fmt.Sprintf("too many transaction hashes for message "+
-			"[count %v, max %v]", count, maxTxPerBlock)
+			"[count %v, max %v]", count, MaxTxPerBlock)
 		return messageError("MsgMerkleBlock.OmcDecode", str)
 	}
 
@@ -100,9 +100,9 @@ func (msg *MsgMerkleBlock) OmcEncode(w io.Writer, pver uint32, enc MessageEncodi
 
 	// Read num transaction hashes and limit to max.
 	numHashes := len(msg.Hashes)
-	if numHashes > maxTxPerBlock {
+	if numHashes > MaxTxPerBlock {
 		str := fmt.Sprintf("too many transaction hashes for message "+
-			"[count %v, max %v]", numHashes, maxTxPerBlock)
+			"[count %v, max %v]", numHashes, MaxTxPerBlock)
 		return messageError("MsgMerkleBlock.OmcDecode", str)
 	}
 	numFlagBytes := len(msg.Flags)

@@ -26,9 +26,9 @@ const MaxBlocksPerMsg = 500
 // MaxBlockPayload is the maximum bytes a block message can be in bytes, which is 400MB.
 const MaxBlockPayload = 400000000
 
-// maxTxPerBlock is the maximum number of transactions that could
+// MaxTxPerBlock is the maximum number of transactions that could
 // possibly fit into a block.
-const maxTxPerBlock = (MaxBlockPayload / minTxPayload) + 1
+const MaxTxPerBlock = (MaxBlockPayload / minTxPayload) + 1
 
 // TxLoc holds locator data for the offset and length of where a transaction is
 // located within a MsgBlock data buffer.
@@ -74,9 +74,9 @@ func (msg *MsgBlock) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) er
 	// Prevent more transactions than could possibly fit into a block.
 	// It would be possible to cause memory exhaustion and panics without
 	// a sane upper bound on this count.
-	if txCount > maxTxPerBlock {
+	if txCount > MaxTxPerBlock {
 		str := fmt.Sprintf("too many transactions to fit into a block "+
-			"[count %d, max %d]", txCount, maxTxPerBlock)
+			"[count %d, max %d]", txCount, MaxTxPerBlock)
 		return messageError("MsgBlock.OmcDecode", str)
 	}
 
@@ -149,9 +149,9 @@ func (msg *MsgBlock) DeserializeTxLoc(r *bytes.Buffer) ([]TxLoc, error) {
 	// Prevent more transactions than could possibly fit into a block.
 	// It would be possible to cause memory exhaustion and panics without
 	// a sane upper bound on this count.
-	if txCount > maxTxPerBlock {
+	if txCount > MaxTxPerBlock {
 		str := fmt.Sprintf("too many transactions to fit into a block "+
-			"[count %d, max %d]", txCount, maxTxPerBlock)
+			"[count %d, max %d]", txCount, MaxTxPerBlock)
 		return nil, messageError("MsgBlock.DeserializeTxLoc", str)
 	}
 

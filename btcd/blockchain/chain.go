@@ -54,7 +54,6 @@ type BestState struct {
 							   // for every POW block, it increase by CommitteeSize
 							   // to phase out the last committee EVEN it means to pass the
 							   // end of Miner chain (for consistency among nodes
-	sizeLimits map[int32]uint32	// up to 5 most recent size limits
 
 	// values below are not store in DB
 	BlockSize   uint64         // The size of the best block.
@@ -71,7 +70,6 @@ func newBestState(node *chainutil.BlockNode, blockSize, numTxns,
 		Height:       node.Height,
 //		Bits:         bits,
 		LastRotation: rotation,
-		sizeLimits:	  make(map[int32]uint32),
 
 		BlockSize:    blockSize,
 		NumTxns:      numTxns,
@@ -102,19 +100,6 @@ type MinerChain interface {
 	NodetoHeader(node *chainutil.BlockNode) wire.MingingRightBlock
 	TphReport(rpts int, last *chainutil.BlockNode, me [20]byte) []uint32
 	DSReport(*wire.Violations)
-}
-
-type sizeCalculator struct {
-	knownLimits map[int32]uint32		// block size limits height to tx
-
-	// accumulator
-	target int32
-	sizeSum int64
-	timeSum int64
-	blockCount int32
-	lastNode * chainutil.BlockNode
-
-	mtx sync.Mutex
 }
 
 // BlockChain provides functions for working with the bitcoin block chain.
@@ -189,15 +174,15 @@ type BlockChain struct {
 	Miner []btcutil.Address
 	PrivKey []*btcec.PrivateKey
 
-	// block size calculator
-	blockSizer sizeCalculator
-
 	// records about miner's performance
 	MinerTPH map[[20]byte]*TPHRecord
 
 	// locked collaterals
-	collaterals []wire.OutPoint
-	lockedCollaterals map[wire.OutPoint]int
+	collaterals []wire.OutPoint		// list of locked collateral
+	lockedCollaterals map[wire.OutPoint]int		// reference counts of them
+
+	// running consensus in this range
+	ConsensusRange [2]int32
 }
 
 func (b *BlockChain) InitCollateral() {
@@ -593,7 +578,6 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	state := newBestState(node, blockSize, numTxns,
 		curTotalTxns+numTxns, node.CalcPastMedianTime(), // bst.Bits,
 		bst.LastRotation)
-	state.sizeLimits = b.blockSizer.knownLimits
 	m, rot := 0, state.LastRotation
 
 	if node.Data.GetNonce() > 0 {
@@ -789,7 +773,6 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	state := newBestState(prevNode, blockSize, numTxns,
 		newTotalTxns, prevNode.CalcPastMedianTime(), // bits,
 		rotation)	// prevNode.bits, b.BestSnapshot().LastRotation)
-	state.sizeLimits = b.blockSizer.knownLimits
 
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
@@ -1215,8 +1198,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	views, Vm = b.Canvas(nil)
 	views.SetBestHash(&b.BestChain.Tip().Hash)
 
-	detachto := int32(0x7FFFFFFF)
-
 	// Disconnect blocks from the main chain.
 	for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
@@ -1262,11 +1243,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			// also disconnect the Miner chain tip. make it an orphan!
 			b.Miners.DisconnectTip()
 		}
-		
-		detachto = n.Height
 	}
-
-	b.blockSizer.RollBackTo(detachto)
 
 	// Connect the new best chain blocks.
 	e := attachNodes.Front()
@@ -1601,8 +1578,6 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 	// work for this new side chain is not enough to make it the new chain.
 	tip := b.BestChain.Tip()
 	if node.Height <= tip.Height {
-//	if node.workSum.Cmp(tip.workSum) < 0 ||
-//		(node.workSum.Cmp(tip.workSum) == 0 && node.height <= tip.height) {
 		// Log information about how the block is forking the chain.
 		fork := b.FindFork(node)
 		if fork.Hash.IsEqual(parentHash) {
@@ -2419,7 +2394,8 @@ func New(config *Config) (*BlockChain, error) {
 		Miner:               config.Miner,
 		PrivKey:             config.PrivKey,
 //		BlackedList:         make([]*wire.Violations,0),
-		MinerTPH:            make(map[[20]byte]*TPHRecord),
+		MinerTPH:       make(map[[20]byte]*TPHRecord),
+		ConsensusRange: [2]int32{-1,-1},
 	}
 
 	// Initialize the chain state from the passed database.  When the db

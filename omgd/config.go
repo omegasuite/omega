@@ -136,6 +136,7 @@ type config struct {
 	PrivKeys  	         []string      `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
 	RsaPrivateKey		 string		   `long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
 	BlockPrioritySize    uint32        `long:"blockprioritysize" description:"Size in bytes for high-priority/low-fee transactions when creating a block"`
+	MinBlockWeight	     uint32        `long:"minblockweight" description:"Minimal desired transactions in a block"`
 	UserAgentComments    []string      `long:"uacomment" description:"Comment to add to the user agent -- See BIP 14 for more information."`
 	NoPeerBloomFilters   bool          `long:"nopeerbloomfilters" description:"Disable bloom filtering support"`
 	NoCFilters           bool          `long:"nocfilters" description:"Disable committed filtering (CF) support"`

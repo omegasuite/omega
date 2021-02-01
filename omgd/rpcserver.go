@@ -4377,9 +4377,9 @@ func verifyChain(s *rpcServer, level, depth int32) (string, error) {
 					block.Hash().String(), height, err.Error())
 				return err.Error(), err
 			}
-			if len(block.MsgBlock().Transactions) > int(chain.GetBlockLimit(block.Height())) {
+			if len(block.MsgBlock().Transactions) > wire.MaxTxPerBlock {
 				err = fmt.Errorf("serialized block is too big - got %d, "+
-					"max %d", block.Size(), chain.GetBlockLimit(block.Height()))
+					"max %d", block.Size(), wire.MaxTxPerBlock)
 				return err.Error(), err
 			}
 		}

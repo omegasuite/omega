@@ -322,9 +322,9 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return false, false, err, -1
 	}
 
-	if len(block.MsgBlock().Transactions) > int(b.GetBlockLimit(block.Height())) {
+	if block.Size() > wire.MaxBlockPayload {
 		str := fmt.Sprintf("serialized block is too big - got %d, "+
-			"max %d", block.Size(), b.GetBlockLimit(block.Height()))
+			"max %d", block.Size(), wire.MaxBlockPayload)
 		return false, false, ruleError(ErrBlockTooBig, str), -1
 	}
 

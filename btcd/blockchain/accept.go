@@ -81,14 +81,18 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	}
 
 	isMainChain := false
-	wm, _ := b.BlockHeightByHash(&b.Miners.Tip().MsgBlock().BestBlock)
-	if block.Height() > wm {
-		// Connect the passed block to the chain while respecting proper chain
-		// selection according to the chain with the most proof of work.  This
-		// also handles validation of the transaction scripts.
-		isMainChain, err = b.connectBestChain(newNode, block, flags)
-		if err != nil {
-			return false, err, -1
+
+	if block.Height() > b.BestChain.Height() {
+		// if it is a POW block and we are in committee, we keep the committee going
+		// until the POW block is followed by signed block
+		if block.MsgBlock().Header.Nonce < 0 || block.Height() > b.ConsensusRange[1] {
+			// Connect the passed block to the chain while respecting proper chain
+			// selection according to the chain with the most proof of work.  This
+			// also handles validation of the transaction scripts.
+			isMainChain, err = b.connectBestChain(newNode, block, flags)
+			if err != nil {
+				return false, err, -1
+			}
 		}
 	}
 

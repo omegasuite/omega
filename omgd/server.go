@@ -3377,7 +3377,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		return nil, err
 	}
 
-	s.chain.Subscribe(s.chain.BlockSizerNotice)
 	s.chain.Subscribe(s.chain.TphNotice)
 
 	// Search for a FeeEstimator state in the database. If none can be found
@@ -3463,6 +3462,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	// created before calling the function to create the CPU miner.
 	policy := mining.Policy{
 		BlockPrioritySize: cfg.BlockPrioritySize,
+		MinBlockWeight:    cfg.MinBlockWeight,
 		TxMinFreeFee:      cfg.minRelayTxFee,
 	}
 	blockTemplateGenerator := mining.NewBlkTmplGenerator(&policy,

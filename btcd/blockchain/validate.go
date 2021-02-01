@@ -873,11 +873,11 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 	}
 	fastAdd := flags&BFFastAdd == BFFastAdd
 	if !fastAdd {
-		// Obtain the latest state of the deployed CSV soft-fork in
-		// order to properly guard the new validation behavior based on
-		// the current BIP 9 version bits state.
+		if len(block.MsgBlock().Transactions) > wire.MaxTxPerBlock {
+			str := fmt.Sprintf("Transactions exceed %d limit", wire.MaxTxPerBlock)
+			return ruleError(ErrBlockWeightTooHigh, str)
+		}
 
-		// Once the CSV soft-fork is fully active, we'll switch to
 		// using the current median time past of the past block's
 		// timestamps for all lock-time based checks.
 		blockTime := header.Timestamp
@@ -903,30 +903,17 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 			return ruleError(ErrBadCoinbaseScriptLen, str)
 		}
 
-			// Validate the witness commitment (if any) within the
-			// block.  This involves asserting that if the coinbase
-			// contains the special commitment output, then this
-			// merkle root matches a computed merkle root of all
-			// the wtxid's of the transactions within the block. In
-			// addition, various other checks against the
-			// coinbase's witness stack.
-			if err := ValidateWitnessCommitment(block); err != nil {
+		// Validate the witness commitment (if any) within the
+		// block.  This involves asserting that if the coinbase
+		// contains the special commitment output, then this
+		// merkle root matches a computed merkle root of all
+		// the wtxid's of the transactions within the block. In
+		// addition, various other checks against the
+		// coinbase's witness stack.
+		if err := ValidateWitnessCommitment(block); err != nil {
 				return err
 			}
-
-			// Once the witness commitment, witness nonce, and sig
-			// op cost have been validated, we can finally assert
-			// that the block's weight doesn't exceed the current
-			// consensus parameter.
-			blockWeight := len(block.MsgBlock().Transactions) // GetBlockWeight(block)
-			blockLimit := int(b.GetBlockLimit(block.Height()))
-			if blockWeight > blockLimit { // chaincfg.MaxBlockWeight {
-				str := fmt.Sprintf("block's weight metric is "+
-					"too high - got %v, max %v",
-					blockWeight, blockLimit) //	chaincfg.MaxBlockWeight)
-				return ruleError(ErrBlockWeightTooHigh, str)
-			}
-		}
+	}
 
 	return nil
 }
@@ -1773,12 +1760,6 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 	err := checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return err
-	}
-
-	if len(block.MsgBlock().Transactions) > int(b.GetBlockLimit(block.Height())) {
-		str := fmt.Sprintf("serialized block is too big - got %d, "+
-			"max %d", block.Size(), b.GetBlockLimit(block.Height()))
-		return ruleError(ErrBlockTooBig, str)
 	}
 
 	err = b.checkBlockContext(block, tip, flags)

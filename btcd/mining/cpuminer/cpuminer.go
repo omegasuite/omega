@@ -577,8 +577,6 @@ out:
 			}
 			m.minedBlock = block
 
-			blockMaxSize := m.g.Chain.GetBlockLimit(template.Height)
-
 			sz := len(block.MsgBlock().Transactions)
 			block.ClearSize()
 
@@ -586,14 +584,13 @@ out:
 			nt := wire.TimeGap - (time.Now().Unix() - lastblkgen)
 
 			if m.g.Chain.ChainParams.Net == common.MainNet {
-//				log.Infof("sz = %d blockMaxSize = %d nt = %d", sz, blockMaxSize, nt)
-
-				if sz < int(blockMaxSize)/2 && nt > 4 {
-					log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 4", sz, blockMaxSize, nt)
+				wanted := m.cfg.BlockTemplateGenerator.Policy.MinBlockWeight
+				if sz < int(wanted)/2 && nt > 4 {
+					log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 4", sz, wanted, nt)
 					time.Sleep(time.Duration(nt) / 4 * time.Second)
 					continue
-				} else if sz < int(blockMaxSize)/2 && nt > 0 {
-					log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 0", sz, blockMaxSize, nt)
+				} else if sz < int(wanted)/2 && nt > 0 {
+					log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 0", sz, wanted, nt)
 					time.Sleep(time.Duration(nt) * time.Second)
 					continue
 				}
@@ -604,6 +601,11 @@ out:
 			}
 
 			lastblkgen = time.Now().Unix()
+
+			if template.Height > m.g.Chain.ConsensusRange[1] + wire.MINER_RORATE_FREQ / 2 {
+				m.g.Chain.ConsensusRange[0] = template.Height
+			}
+			m.g.Chain.ConsensusRange[1] = template.Height
 
 //			log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
 			if !m.submitBlock(block) {

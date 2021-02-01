@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
-	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/wire/common"
 	"math/big"
 //	"sort"
@@ -678,7 +677,6 @@ type bestChainState struct {
 	height    uint32
 	totalTxns uint64
 	rotation  uint32
-	sizeLimits  map[int32]uint32
 }
 
 // serializeBestChainState returns the serialization of the passed block best
@@ -688,8 +686,6 @@ func serializeBestChainState(state bestChainState) []byte {
 //	workSumBytes := state.workSum.Bytes()
 //	workSumBytesLen := uint32(len(workSumBytes))
 	serializedLen := chainhash.HashSize + 4 + 8 + 4 + 4 + 4	// + workSumBytesLen
-
-	serializedLen += 8 * len(state.sizeLimits)
 
 	// Serialize the chain state.
 	serializedData := make([]byte, serializedLen)
@@ -703,19 +699,6 @@ func serializeBestChainState(state bestChainState) []byte {
 	offset += 4
 	byteOrder.PutUint64(serializedData[offset:], state.totalTxns)
 
-	offset += 8
-	for k,v := range state.sizeLimits {
-		byteOrder.PutUint32(serializedData[offset:], uint32(k))
-		offset += 4
-		byteOrder.PutUint32(serializedData[offset:], v)
-		offset += 4
-	}
-/*
-	offset += 8
-	byteOrder.PutUint32(serializedData[offset:], workSumBytesLen)
-	offset += 4
-	copy(serializedData[offset:], workSumBytes)
- */
 	return serializedData[:]
 }
 
@@ -744,35 +727,6 @@ func deserializeBestChainState(serializedData []byte) (bestChainState, error) {
 	offset += 4
 	state.totalTxns = byteOrder.Uint64(serializedData[offset : offset+8])
 
-	state.sizeLimits =  make(map[int32]uint32)
-	offset += 8
-	if int(offset) < len(serializedData) {
-		for m := (len(serializedData) - int(offset)) / 8; m > 0; m-- {
-			k := byteOrder.Uint32(serializedData[offset : offset+4])
-			offset += 4
-			v := byteOrder.Uint32(serializedData[offset : offset+4])
-			offset += 4
-			state.sizeLimits[int32(k)] = v
-		}
-	}
-
-	/*
-		offset += 8
-		workSumBytesLen := byteOrder.Uint32(serializedData[offset : offset+4])
-		offset += 4
-
-		// Ensure the serialized data has enough bytes to deserialize the work
-		// sum.
-		if uint32(len(serializedData[offset:])) < workSumBytesLen {
-			return bestChainState{}, database.Error{
-				ErrorCode:   database.ErrCorruption,
-				Description: "corrupt best chain state",
-			}
-		}
-		workSumBytes := serializedData[offset : offset+workSumBytesLen]
-		state.workSum = new(big.Int).SetBytes(workSumBytes)
-	*/
-
 	return state, nil
 }
 
@@ -786,7 +740,6 @@ func dbPutBestState(dbTx database.Tx, snapshot *BestState) error {
 		rotation:  snapshot.LastRotation,
 		height:    uint32(snapshot.Height),
 		totalTxns: snapshot.TotalTxns,
-		sizeLimits: snapshot.sizeLimits,
 	})
 
 	// Store the current best chain state into the database.
@@ -913,8 +866,6 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
-		b.stateSnapshot.sizeLimits = map[int32]uint32{0 : chaincfg.BlockBaseSize }
-
 		// Store the current best chain state into the database.
 		if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
 			return err
@@ -936,11 +887,6 @@ func (b *BlockChain) createChainState() error {
 		// Store the genesis block into the database.
 		return dbStoreBlock(dbTx, genesisBlock)
 	})
-
-	b.blockSizer.knownLimits = b.stateSnapshot.sizeLimits
-
-	// Create system wallet
-//	ovm.CreateSysWallet(b.ChainParams, b.db)
 
 	return err
 }
@@ -1170,7 +1116,6 @@ func (b *BlockChain) initChainState() error {
 		b.stateSnapshot = newBestState(tip, blockSize,
 			numTxns, state.totalTxns, tip.CalcPastMedianTime(), // state.bits,
 			state.rotation)
-		b.stateSnapshot.sizeLimits = state.sizeLimits
 
 		return nil
 	})
@@ -1178,15 +1123,6 @@ func (b *BlockChain) initChainState() error {
 	if err != nil {
 		return err
 	}
-
-//	b.index.Unloaded = b.index.Unloaded[1:]
-//	sort.Slice(b.index.Unloaded, func (i, j int) bool {
-//		return bytes.Compare(b.index.Unloaded[i][:], b.index.Unloaded[j][:]) < 0
-//	})
-
-	b.blockSizer.knownLimits = b.stateSnapshot.sizeLimits
-
-	log.Debugf("BlockSizer: %v", b.blockSizer)
 
 	if err != nil {
 		return err

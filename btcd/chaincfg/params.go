@@ -42,18 +42,6 @@ var (
 )
 
 const (
-	// the base size for block (excluding header). Allowed block size is
-	// set periodically based on actual block size utiliation and block
-	// rate. Specifically, Allowed block size is reevaluated every 20 tx blocks
-	// based on space utilization of the 600 weighing block preceeding the
-	// 600-th block before the evaluation point. A weighing block is a signed
-	// block that is at least 600 blocks before the checking point.
-	BlockBaseSize = 256		// 256 Txs. must be 2 ^ n
-	TargetBlockRate = 3		// 3 seconds.
-	BlockSizeEvalPeriod = 200	// re-evaluate block size every 200 blocks
-	BlockSizeEvalWindow = 1200	// window of sample data for evaluation
-	SkipBlocks = 600			// BlockSizeEvalPeriod > SkipBlocks > StartEvalBlocks
-
 	// MaxBlockSigOpsCost is the maximum number of signature operations
 	// allowed for a block.
 	MaxBlockSigOpsCost = 80000

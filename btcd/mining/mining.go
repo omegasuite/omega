@@ -12,7 +12,6 @@ import (
 	"github.com/omegasuite/omega/ovm"
 	"time"
 
-	"encoding/binary"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg"
@@ -32,11 +31,6 @@ const (
 	// blockHeaderOverhead is the max number of bytes it takes to serialize
 	// a block header and max possible transaction count.
 	blockHeaderOverhead = wire.MaxBlockHeaderPayload + common.MaxVarIntPayload
-
-	// CoinbaseFlags is added to the coinbase script of a generated block
-	// and is used to monitor BIP16 support as well as blocks that are
-	// generated via btcd.
-	CoinbaseFlags = "/P2SH/btcd/"
 )
 
 // TxDesc is a descriptor about a transaction in a transaction source along with
@@ -245,18 +239,6 @@ func mergeUtxoView(viewA *viewpoint.UtxoViewpoint, viewB *viewpoint.UtxoViewpoin
 	}
 }
 
-// standardCoinbaseScript returns a standard script suitable for use as the
-// signature script of the coinbase transaction of a new block.  In particular,
-// it starts with the block height that is required by version 2 blocks and adds
-// the extra nonce as well as additional coinbase flags.
-func standardCoinbaseScript(nextBlockHeight int32, extraNonce uint64) ([]byte, error) {
-	var buf bytes.Buffer
-	binary.Write(&buf, binary.LittleEndian, uint64(nextBlockHeight))
-	binary.Write(&buf, binary.LittleEndian, uint64(extraNonce))
-	buf.Write([]byte(CoinbaseFlags))
-	return buf.Bytes(), nil
-}
-
 // createCoinbaseTx returns a coinbase transaction paying an appropriate subsidy
 // based on the passed block height to the provided address.  When the address
 // is nil, the coinbase transaction will instead be redeemable by anyone.
@@ -382,11 +364,11 @@ func medianAdjustedTime(chainState *blockchain.BestState, timeSource chainutil.M
 }
 
 // BlkTmplGenerator provides a type that can be used to generate block templates
-// based on a given mining policy and source of transactions to choose from.
+// based on a given mining Policy and source of transactions to choose from.
 // It also houses additional state required in order to ensure the templates
 // are built on top of the current best Chain and adhere to the consensus rules.
 type BlkTmplGenerator struct {
-	policy      *Policy
+	Policy      *Policy
 	chainParams *chaincfg.Params
 	txSource    TxSource
 	Chain       *blockchain.BlockChain
@@ -399,7 +381,7 @@ type BlkTmplGenerator struct {
 }
 
 // NewBlkTmplGenerator returns a new block template generator for the given
-// policy using transactions from the provided transaction source.
+// Policy using transactions from the provided transaction source.
 //
 // The additional state-related fields are required in order to ensure the
 // templates are built on top of the current best Chain and adhere to the
@@ -411,7 +393,7 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 //	hashCache *txscript.HashCache) *BlkTmplGenerator {
 
 	return &BlkTmplGenerator{
-		policy:      policy,
+		Policy:      policy,
 		chainParams: params,
 		txSource:    txSource,
 		Chain:       chain,
@@ -437,13 +419,13 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 // amounts, older inputs, and small sizes have the highest priority.  Second, a
 // fee per kilobyte is calculated for each transaction.  Height with a
 // higher fee per kilobyte are preferred.  Finally, the block generation related
-// policy settings are all taken into account.
+// Policy settings are all taken into account.
 //
 // Height which only spend outputs from other transactions already in the
 // block Chain are immediately added to a priority queue which either
 // prioritizes based on the priority (then fee per kilobyte) or the fee per
 // kilobyte (then priority) depending on whether or not the BlockPrioritySize
-// policy setting allots space for high-priority transactions.  Height
+// Policy setting allots space for high-priority transactions.  Height
 // which spend outputs from other transactions in the source pool are added to a
 // dependency map so they can be added to the priority queue once the
 // transactions they depend on have been included.
@@ -453,8 +435,8 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 // the priority queue is updated to prioritize by fees per kilobyte (then
 // priority).
 //
-// When the fees per kilobyte drop below the TxMinFreeFee policy setting, the
-// transaction will be skipped unless the BlockMinSize policy setting is
+// When the fees per kilobyte drop below the TxMinFreeFee Policy setting, the
+// transaction will be skipped unless the BlockMinSize Policy setting is
 // nonzero, in which case the block will be filled with the low-fee/free
 // transactions until the block size reaches that minimum size.
 //
@@ -464,7 +446,7 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 // executed in the order they appear in the transaction output list.
 //
 // Any transactions which would cause the block to exceed the BlockMaxSize
-// policy setting, exceed the maximum allowed signature operations per block, or
+// Policy setting, exceed the maximum allowed signature operations per block, or
 // otherwise cause the block to be invalid are skipped.
 //
 // Given the above, a block generated by this function is of the following form:
@@ -472,22 +454,22 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 //   -----------------------------------  --  --
 //  |      Coinbase Transaction         |   |   |
 //  |-----------------------------------|   |   |
-//  |                                   |   |   | ----- policy.BlockPrioritySize
+//  |                                   |   |   | ----- Policy.BlockPrioritySize
 //  |   High-priority Height      |   |   |
 //  |                                   |   |   |
 //  |-----------------------------------|   | --
 //  |                                   |   |
 //  |                                   |   |
-//  |                                   |   |--- policy.BlockMaxSize
+//  |                                   |   |--- Policy.BlockMaxSize
 //  |  Height prioritized by fee  |   |
-//  |  until <= policy.TxMinFreeFee     |   |
+//  |  until <= Policy.TxMinFreeFee     |   |
 //  |                                   |   |
 //  |                                   |   |
 //  |                                   |   |
 //  |-----------------------------------|   |
 //  |  Low-fee/Non high-priority (free) |   |
 //  |  transactions (while block size   |   |
-//  |  <= policy.BlockMinSize)          |   |
+//  |  <= Policy.BlockMinSize)          |   |
 //   -----------------------------------  --
 func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonce int32) (*BlockTemplate, error) {
 	// Extend the most recently known best block.
@@ -519,7 +501,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	// choose the initial sort order for the priority queue based on whether
 	// or not there is an area allocated for high-priority transactions.
 	sourceTxns := g.txSource.MiningDescs()
-	sortedByFee := g.policy.BlockPrioritySize == 0
+	sortedByFee := g.Policy.BlockPrioritySize == 0
 	priorityQueue := newTxPriorityQueue(len(sourceTxns), sortedByFee)
 
 	views, Vm := g.Chain.Canvas(nil)
@@ -682,7 +664,6 @@ mempoolLoop:
 	blockSigOpCost := coinbaseSigOpCost
 	totalFees := int64(0)
 
-	blockMaxSize := g.Chain.GetBlockLimit(nextBlockHeight)
 	coinBaseHash := chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -732,9 +713,9 @@ mempoolLoop:
 		// Enforce maximum block size.  Also check for overflow.
 //		txWeight := uint32(blockchain.GetTransactionWeight(tx))
 		blockPlusTxWeight := blockWeight + 1
-		if blockPlusTxWeight >= blockMaxSize {
+		if blockPlusTxWeight >= wire.MaxTxPerBlock {
 			log.Tracef("Skipping tx %s because it would exceed "+
-				"the max block weight", tx.Hash())
+				"the allowed max block transactions", tx.Hash())
 			logSkippedDeps(tx, deps)
 			continue
 		}
@@ -758,28 +739,43 @@ mempoolLoop:
 		}
 
 		// Skip free transactions once the block is larger than the
-		// minimum block size.
+		// minimum txs which is 10 txs.
 		if sortedByFee &&
-			prioItem.feePerKB < int64(g.policy.TxMinFreeFee) &&
-			blockPlusTxWeight >= blockMaxSize {
-			log.Tracef("Skipping tx %s with feePerKB %d "+
-				"< TxMinFreeFee %d and block weight %d >= "+
-				"minBlockWeight %d", tx.Hash(), prioItem.feePerKB,
-				g.policy.TxMinFreeFee, blockPlusTxWeight,
-				blockMaxSize)
-			logSkippedDeps(tx, deps)
-			continue
+			prioItem.feePerKB < int64(g.Policy.TxMinFreeFee) {
+			// free tx Policy only apply to simple small txs
+			qualified := len(tx.MsgTx().TxDef) == 0
+			if qualified {
+				sum := int64(0)
+				for _, txo := range tx.MsgTx().TxOut {
+					if txo.IsSeparator() || txo.TokenType != 0 || txo.PkScript[0] == g.chainParams.ContractAddrID {
+						qualified = false
+					}
+					sum += txo.Token.Value.(*token.NumToken).Val
+				}
+				if sum > 200 * int64(g.Policy.TxMinFreeFee) {
+					qualified = false
+				}
+			}
+			if !qualified || blockPlusTxWeight >= g.Policy.MinBlockWeight {
+				log.Tracef("Skipping tx %s with feePerKB %d "+
+					"< TxMinFreeFee %d and block weight %d >= "+
+					"MinBlockWeight %d", tx.Hash(), prioItem.feePerKB,
+					g.Policy.TxMinFreeFee, blockPlusTxWeight,
+					g.Policy.MinBlockWeight)
+				logSkippedDeps(tx, deps)
+				continue
+			}
 		}
 
 		// Prioritize by fee per kilobyte once the block is larger than
 		// the priority size or there are no more high-priority
 		// transactions.
-		if !sortedByFee && (blockPlusTxWeight >= g.policy.BlockPrioritySize ||
+		if !sortedByFee && (blockPlusTxWeight >= g.Policy.BlockPrioritySize ||
 			prioItem.priority <= MinHighPriority) {
 			log.Tracef("Switching to sort by fees per "+
 				"kilobyte blockSize %d >= BlockPrioritySize "+
 				"%d || priority %.2f <= minHighPriority %.2f",
-				blockPlusTxWeight, g.policy.BlockPrioritySize,
+				blockPlusTxWeight, g.Policy.BlockPrioritySize,
 				prioItem.priority, MinHighPriority)
 
 			sortedByFee = true
@@ -791,7 +787,7 @@ mempoolLoop:
 			// is too low.  Otherwise this transaction will be the
 			// final one in the high-priority section, so just fall
 			// though to the code below so it is added now.
-			if blockPlusTxWeight > g.policy.BlockPrioritySize ||
+			if blockPlusTxWeight > g.Policy.BlockPrioritySize ||
 				prioItem.priority < MinHighPriority {
 
 				heap.Push(priorityQueue, prioItem)
