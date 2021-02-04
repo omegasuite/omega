@@ -12,6 +12,7 @@ package minerchain
 
 import (
 	"fmt"
+	"github.com/omegasuite/btcd/chaincfg"
 	"math/big"
 	"time"
 
@@ -275,19 +276,27 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			// error. abort recalculation
 			return lastNode.Data.(*blockchainNodeData).block.Bits, coll, fmt.Errorf("unexpected BestBlock for %s", pb.Hash)
 		}
-		mb := bb
+		mb, h, dh := bb, int32(-1), int32(0)
 		// find out length of waiting list. this is a simplified, ignores POW tx blocks
 		for mb != nil && (mb.Data.GetNonce() > -wire.MINER_RORATE_FREQ) {
-			if mb.Parent == nil && mb.Height != 0 {
+			if mb.Data.GetNonce() < 0 {
+				mb = b.blockChain.NodeByHeight(mb.Height + mb.Data.GetNonce())
+				continue
+			}
+			dh -= 2
+			pmb := b.blockChain.ParentNode(mb)
+			if pmb == nil && mb.Height != 0 {
 				// this should not happen. but we keep code here in case something is wrong
 				return lastNode.Data.(*blockchainNodeData).block.Bits, coll, fmt.Errorf("broken best chain at %s", mb.Hash)
 			}
 
-			mb = mb.Parent
+			mb = pmb
 		}
-		var h int32
 		if mb != nil {
 			h = - mb.Data.GetNonce() - wire.MINER_RORATE_FREQ
+		}
+		if lastNode.Data.GetVersion() >= chaincfg.Version2 {
+			h += dh
 		}
 		d = int(pb.Height - h)
 		nb := pb.Parent

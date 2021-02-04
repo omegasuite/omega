@@ -300,7 +300,6 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 
 					for _, re := range monitoreds {
 						monitored := re.Desc
-
 						// a token may subject to multiple monitoring, each could have multiple condition,
 						// the Tx must pass all
 
@@ -405,19 +404,6 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 		atomic.AddInt32(&toverify, 1)
 
 		queue <- tbv { tinidx, txin.PreviousOutPoint, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code }
-/*
-		sig := tx.MsgTx().SignatureScripts[txin.SignatureIndex]
-		if len(sig) > 0 {
-			atomic.AddInt32(&toverify, 1)
-			queue <- tbv{tinidx, txin.PreviousOutPoint, sig, code}
-		} else {
-			allrun = true
-			close(queue)
-//			<- final
-
-			return omega.ScriptError(omega.ErrInternal, "Missing signature.")
-		}
- */
 	}
 
 	allrun = true
@@ -668,6 +654,13 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 			version, addr, method, param := parsePkScript(txOut.PkScript)
 
 			if !isContract(version) || len(method) == 0 {
+				continue
+			}
+
+			mv := common.LittleEndian.Uint32(method)
+
+			if mv < 256 && end > 0 {
+				// ignore output added by contract (end > 0) and uses a system standard call
 				continue
 			}
 

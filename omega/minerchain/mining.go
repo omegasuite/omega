@@ -12,6 +12,7 @@ package minerchain
 
 import (
 	"bytes"
+//	"fmt"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
@@ -266,6 +267,9 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 	if block.Version >= chaincfg.Version2 {
 		factorPOW = 16 * factorPOW	// factor 16 is for smooth transition from V1 to V2
 		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(h))
+		if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))) > 0 {
+			targetDifficulty = m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))
+		}
 	}
 
 	// Initial state.

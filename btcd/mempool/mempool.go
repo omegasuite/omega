@@ -851,7 +851,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		return nil, nil, err
 	}
 
-	txFee, err := blockchain.CheckTransactionFees(tx, nextBlockHeight, 0, views,  mp.cfg.ChainParams)
+	txFee, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, 0, views,  mp.cfg.ChainParams)
 	if err != nil && !tx.ContainContract() {
 		if cerr, ok := err.(blockchain.RuleError); ok {
 			return nil, nil, chainRuleError(cerr)

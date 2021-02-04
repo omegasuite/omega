@@ -24,6 +24,7 @@ const (
 	TxTypeMask = 0xF
 	ForfeitTxVersion = 2
 	TxNoLock = 0x10			// feature: the tx does not have time lock
+	TxNoDefine = 0x20		// feature: the tx does not have definition
 /*
 	// TxSideChain is the genesis transaction of a side chain, thus all outputs in
 	// this Tx will not be added to main chain Utxo database and is thus unspendable
@@ -703,29 +704,35 @@ func (msg *MsgTx) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 	}
 	msg.Version = int32(version)
 
-	// definitions
-	count, err := common.ReadVarInt(r, pver)
-	if err != nil {
-		return err
-	}
+	var count uint64
 
-	// Prevent more definition than could possibly fit into a
-	// message.  It would be possible to cause memory exhaustion and panics
-	// without a sane upper bound on this count.
-	if count > uint64(token.MaxDefinitionPerMessage) {
-		str := fmt.Sprintf("too many definitions to fit into "+
-			"max message size [count %d, max %d]", count,
-			token.MaxDefinitionPerMessage)
-		return messageError("MsgTx.OmcDecode", str)
-	}
-
-	msg.TxDef = make([]token.Definition, 0, count)
-	for i := uint64(0); i < count; i++ {
-		definition, err := token.ReadDefinition(r, pver, msg.Version)
+	if version & TxNoDefine == 0 {
+		// definitions
+		count, err = common.ReadVarInt(r, pver)
 		if err != nil {
 			return err
 		}
-		msg.TxDef = append(msg.TxDef, definition)
+
+		// Prevent more definition than could possibly fit into a
+		// message.  It would be possible to cause memory exhaustion and panics
+		// without a sane upper bound on this count.
+		if count > uint64(token.MaxDefinitionPerMessage) {
+			str := fmt.Sprintf("too many definitions to fit into "+
+				"max message size [count %d, max %d]", count,
+				token.MaxDefinitionPerMessage)
+			return messageError("MsgTx.OmcDecode", str)
+		}
+
+		msg.TxDef = make([]token.Definition, 0, count)
+		for i := uint64(0); i < count; i++ {
+			definition, err := token.ReadDefinition(r, pver, msg.Version)
+			if err != nil {
+				return err
+			}
+			msg.TxDef = append(msg.TxDef, definition)
+		}
+	} else {
+		msg.TxDef = make([]token.Definition, 0)
 	}
 
 	// TxIn
@@ -840,29 +847,34 @@ func (msg *MsgTx) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 		return err
 	}
 
-	count := uint64(len(msg.TxDef))
+	count := uint64(0)
+	if msg.Version & TxNoDefine == 0 {
+		count = uint64(len(msg.TxDef))
 
-	if !full {
-		for i := uint64(0); i < count; i++ {
-			if msg.TxDef[i].IsSeparator() {
-				count = i
-				break
+		if !full {
+			for i := uint64(0); i < count; i++ {
+				if msg.TxDef[i].IsSeparator() {
+					count = i
+					break
+				}
 			}
 		}
-	}
 
-	if err = common.WriteVarInt(w, pver, count); err != nil {
-		return err
-	}
-
-	for i, ti := range msg.TxDef {
-		if i >= int(count) {
-			break
-		}
-		err = token.WriteDefinition(w, pver, msg.Version, ti)
-		if err != nil {
+		if err = common.WriteVarInt(w, pver, count); err != nil {
 			return err
 		}
+
+		for i, ti := range msg.TxDef {
+			if i >= int(count) {
+				break
+			}
+			err = token.WriteDefinition(w, pver, msg.Version, ti)
+			if err != nil {
+				return err
+			}
+		}
+	} else if len(msg.TxDef) != 0 {
+		return fmt.Errorf("Incorrect tx format")
 	}
 
 	count = uint64(len(msg.TxIn))

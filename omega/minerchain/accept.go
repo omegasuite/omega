@@ -241,6 +241,9 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 
 			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
 			target = target.Mul(target, big.NewInt(h1 + h2))
+			if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
+				target = powLimit.Mul(powLimit, big.NewInt(16))
+			}
 		} else {
 			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
 		}
@@ -260,13 +263,28 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 //best := firstNode.Data.(*blockchainNodeData).block.BestBlock
 
 func (m *MinerChain) factorPOW(baseh uint32, best chainhash.Hash) int64 {
-	h := m.blockChain.Rotation(best)
+	var d = int32(0)
+	var h = int32(0)
+
+	hit:
+	for p := m.blockChain.NodeByHash(&best); p != nil; p = m.blockChain.ParentNode(p) {
+		switch {
+		case p.Data.GetNonce() > 0:
+			d += wire.POWRotate
+
+		case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
+			h = -(p.Data.GetNonce() + wire.MINER_RORATE_FREQ)
+			break hit
+		}
+	}
+
+	h += d
 
 	if h < 0 {
 		return -1
 	}
 
-	d := int32(baseh) - h
+	d = int32(baseh) - h
 
 	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP

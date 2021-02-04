@@ -699,6 +699,7 @@ mempoolLoop:
 	Vm.CheckExecCost = true
 
 	paidstoragefees := make(map[[20]byte]int64)
+	blksz := wire.MaxBlockHeaderPayload
 
 	// Choose which transactions make it into the block.
 	for priorityQueue.Len() > 0 {
@@ -859,7 +860,7 @@ mempoolLoop:
 			continue
 		}
 
-		fees, err := blockchain.CheckTransactionFees(tx, nextBlockHeight, storage, views, g.chainParams)
+		fees, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, storage, views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			log.Tracef("Skipping tx %s due to error in "+
@@ -867,6 +868,15 @@ mempoolLoop:
 			logSkippedDeps(tx, deps)
 			continue
 		}
+
+		// check block size
+		if blksz + coinbaseTx.MsgTx().SerializeSize() + tx.MsgTx().SerializeSize() > wire.MaxBlockPayload {
+			log.Tracef("Skipping tx %s because it would make block size exceeding the max", tx.Hash())
+			logSkippedDeps(tx, deps)
+			continue
+		}
+
+		blksz += tx.MsgTx().SerializeSize()
 
 		prioItem.fee = fees
 

@@ -23,8 +23,8 @@ const defaultTransactionAlloc = 2048
 // MaxBlocksPerMsg is the maximum number of blocks allowed per message.
 const MaxBlocksPerMsg = 500
 
-// MaxBlockPayload is the maximum bytes a block message can be in bytes, which is 400MB.
-const MaxBlockPayload = 400000000
+// MaxBlockPayload is the maximum bytes a block message can be in bytes, which is 50MB.
+const MaxBlockPayload = 50000000
 
 // MaxTxPerBlock is the maximum number of transactions that could
 // possibly fit into a block.

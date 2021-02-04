@@ -255,8 +255,16 @@ func opHashValidator(param []byte) int {
 	return formatParser(formatHash, param)
 }
 
+var formatHash160 = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF}, {patOperand, 1},
+}
+
 func opHash160Validator(param []byte) int {
-	return formatParser(formatHash, param)
+	if r := formatParser(formatHash160, param); r < 0 {
+		return formatParser(formatHash, param)
+	} else {
+		return r
+	}
 }
 
 var formatSigCheck = []formatDesc{
@@ -514,7 +522,7 @@ var formatSpend = []formatDesc{
 
 func opSpendValidator(param []byte) int {
 	if d := formatParser(formatSpend, param); d < 0 {
-		return formatParser(formatSpend, param[:2])
+		return formatParser(formatSpend[:2], param)
 	} else {
 		return d
 	}

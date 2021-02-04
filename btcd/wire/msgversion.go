@@ -197,15 +197,11 @@ func (msg *MsgVersion) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) 
 		return err
 	}
 
-	// There was no relay transactions field before BIP0037Version.  Also,
-	// the wire encoding for the field is true when transactions should be
-	// relayed, so reverse it from the DisableRelayTx field.
-	if pver >= BIP0037Version {
-		err = writeElement(w, !msg.DisableRelayTx)
-		if err != nil {
+	err = writeElement(w, !msg.DisableRelayTx)
+	if err != nil {
 			return err
 		}
-	}
+
 	return nil
 }
 

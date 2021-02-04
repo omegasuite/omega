@@ -287,6 +287,13 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	}
 
 	x, y, p := attachNodes.Front(), txattachNodes.Front(), forkNode
+
+	if 	detachNodes.Len() == 0 &&
+		x.Value.(*chainutil.BlockNode).Height == forkNode.Height + 1 &&
+		x.Value.(*chainutil.BlockNode).Parent.Hash == forkNode.Hash {
+		return detachNodes, attachNodes, txdetachNodes, txattachNodes
+	}
+
 	for x != nil && rotate >= p.Height {
 		if p.Height > rotate - wire.CommitteeSize {
 			hdr := NodetoHeader(p)

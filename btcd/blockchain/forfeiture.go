@@ -112,7 +112,7 @@ func (g *BlockChain) CompTxs(nonde int32, prevNode *chainutil.BlockNode, vm *ovm
 	}
 
 	ctx := &wire.MsgTx{}
-	ctx.Version = wire.ForfeitTxVersion | wire.TxNoLock
+	ctx.Version = wire.ForfeitTxVersion | wire.TxNoLock | wire.TxNoDefine
 
 	forrest := make(map[chainhash.Hash]*TreeNode)
 	roots := make(map[chainhash.Hash][]*TreeNode)
@@ -200,7 +200,7 @@ func (g *BlockChain) CompTxs(nonde int32, prevNode *chainutil.BlockNode, vm *ovm
 				ctransactions = append(ctransactions, ctx)
 			}
 			ctx = &wire.MsgTx{}
-			ctx.Version = wire.ForfeitTxVersion | wire.TxNoLock
+			ctx.Version = wire.ForfeitTxVersion | wire.TxNoLock | wire.TxNoDefine
 			ctx.AddTxIn(&wire.TxIn{
 				wire.OutPoint{hash, uint32(toi)}, 0xFFFFFFFF, 0,
 			})

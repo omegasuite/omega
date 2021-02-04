@@ -1283,19 +1283,26 @@ func (b * BlockChain) NodetoHeader(node *chainutil.BlockNode) wire.BlockHeader {
 	prevHash := &zeroHash
 	if node.Parent != nil {
 		prevHash = &node.Parent.Hash
+		d := node.Data.(*blockchainNodeData)
+		return wire.BlockHeader{
+			Version:    d.Version,
+			PrevBlock:  *prevHash,
+			Timestamp:  time.Unix(d.Timestamp, 0),
+			Nonce:      d.Nonce,
+			MerkleRoot: d.MerkleRoot,
+			ContractExec: d.ContractExec,
+		}
 	} else if node.Height != 0 {
-		t := b.NodeByHeight(node.Height - 1)
-		prevHash = &t.Hash
+		var h * wire.BlockHeader
+		b.db.View(func (tx database.Tx) error {
+			h, _ = dbFetchHeaderByHash(tx, &node.Hash)
+			return nil
+		})
+		if h != nil {
+			return *h
+		}
 	}
-	d := node.Data.(*blockchainNodeData)
-	return wire.BlockHeader{
-		Version:    d.Version,
-		PrevBlock:  *prevHash,
-		Timestamp:  time.Unix(d.Timestamp, 0),
-		Nonce:      d.Nonce,
-		MerkleRoot: d.MerkleRoot,
-		ContractExec: d.ContractExec,
-	}
+	return wire.BlockHeader{}
 }
 
 // InitBlockNode initializes a block node from the given header and parent node,

@@ -1310,7 +1310,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			}
 			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
 			newtx.SetIndex(tx.Index())
-			Vm.ExecContract(newtx, block.Height())
+			err = Vm.ExecContract(newtx, block.Height())
 			if err != nil {
 				//				Vm.AbortRollback()
 				return err
@@ -1728,7 +1728,7 @@ func (b *BlockChain) SameChain(u, w chainhash.Hash) bool {
 	}
 
 	for nu != nil && nu.Height >= nw.Height {
-		if nu == nw {
+		if nu.Hash == nw.Hash {
 			return true
 		}
 		if nu.Height == nw.Height {
@@ -1770,17 +1770,22 @@ func (b *BlockChain) BestSnapshot() *BestState {
 // error if it doesn't exist. Note that this will return headers from both the
 // main and side chains.
 func (b *BlockChain) HeaderByHash(hash *chainhash.Hash) (wire.BlockHeader, error) {
-	node := b.NodeByHash(hash)
-	if node == nil {
-		err := fmt.Errorf("block %s is not known", hash)
-		return wire.BlockHeader{}, err
+	node := b.index.LookupNode(hash)
+	if node != nil {
+		return b.NodetoHeader(node), nil
 	}
 
-	if node.Parent == nil {
-
+	var h * wire.BlockHeader
+	var err error
+	b.db.View(func (tx database.Tx) error {
+		h, err = dbFetchHeaderByHash(tx, hash)
+		return nil
+	})
+	if h != nil {
+		return *h, nil
 	}
 
-	return b.NodetoHeader(node), nil
+	return wire.BlockHeader{}, err
 }
 
 // MainChainHasBlock returns whether or not the block with the given hash is in

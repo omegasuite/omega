@@ -20,6 +20,7 @@ import (
 	"github.com/omegasuite/omega/token"
 	"github.com/omegasuite/omega/viewpoint"
 	"sync/atomic"
+	"golang.org/x/crypto/ripemd160"
 )
 
 // emptyCodeHash is used by create to ensure deployment is disallowed to already
@@ -641,6 +642,14 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	contract.Code = ByteCodeParser(data)
 	if err := ByteCodeValidator(contract.Code); err != nil {
 		return nil, err
+	}
+
+	ripemd160 := ripemd160.New()
+	ripemd160.Write(data)
+	hash := ripemd160.Sum(nil)
+
+	if bytes.Compare(hash, d[:]) != 0 {
+		return nil, fmt.Errorf("contract address does not match code hash")
 	}
 
 	ovm.SetAddres(d, contract.self.(AccountRef))

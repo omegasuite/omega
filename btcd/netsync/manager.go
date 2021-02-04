@@ -451,7 +451,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 
 	// Start syncing from the best peer if one was selected.
 	if bestPeer != nil {
-		log.Warnf("Start sync with bestPeer %s", bestPeer.String())
+		log.Warnf("%d: Start sync with bestPeer %s", bestPeer.ID(), bestPeer.String())
 
 		// sync miner chain and then tx chain
 		// Clear the requestedBlocks if the sync peer changes, otherwise
@@ -521,21 +521,17 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 				sm.nextCheckpoint.Height, bestPeer.Addr())
 		}
 		if deferexec == 0 {
-			log.Debugf("startSync: PushGetBlocksMsg from %s", bestPeer.Addr())
+			log.Infof("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
 			bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 		} else {
-			// defer execution
-			go func() {
-				select {
-				case <-time.After(deferexec):
-					if !bestPeer.Connected() {
-						sm.startSync(nil)
-						return
-					}
-					log.Debugf("startSync: PushGetBlocksMsg from %s", bestPeer.Addr())
-					bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
+			time.AfterFunc(deferexec, func () {
+				if !bestPeer.Connected() {
+					sm.startSync(nil)
+					return
 				}
-			}()
+				log.Debugf("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
+				bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
+			})
 		}
 	} else {
 		log.Warnf("No sync peer candidates available or this node has the longest chain")

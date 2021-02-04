@@ -24,7 +24,7 @@ const MessageHeaderSize = 24
 
 // MaxMessagePayload is the maximum bytes a message can be regardless of other
 // individual limits imposed by messages themselves.
-const MaxMessagePayload = (1024 * 1024 * 400) // 400MB
+const MaxMessagePayload = (1024 * 1024 * 64) // 64MB
 
 // Commands used in bitcoin message headers which describe the type of message.
 const (

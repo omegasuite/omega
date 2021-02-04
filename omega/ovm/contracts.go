@@ -42,7 +42,10 @@ const (
 	OP_META					= 1
 	OP_CODEBYTES			= 2
 	OP_OWNER				= 0x10		// User supplied standard func. returns address of contract owner
-	OP_INIT					= 0x11		// User supplied standard func. for lib initialization
+	OP_INIT					= 1		// User supplied standard func. for lib initialization. it's ok to
+							// hasve the same value as op meta because init is called automatically
+							// by lib load as a function of contract, while meta is called by user
+							// and intercepted by vm as a system call
 
 	OP_PUBLIC				= 0x20		// codes below are public func callable by anyone
 

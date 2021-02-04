@@ -211,6 +211,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 
 	parent := b.index.LookupNode(prevHash)
 	if have,_ := b.blockChain.HaveBlock(&block.MsgBlock().BestBlock); !have {
+		log.Infof("BestBlock %s does not Exists ", block.MsgBlock().BestBlock.String())
 		return false, true, nil, &block.MsgBlock().BestBlock
 	}
 	if block.MsgBlock().Version >= chaincfg.Version2 {

@@ -41,7 +41,7 @@ var outofmemory = fmt.Errorf("Out of memory")
 var outofstack = fmt.Errorf("Out of stack")
 
 func (s *Stack) malloc(n int) (pointer, int) {
-	t := s.data[s.callTop].gbase
+	t := s.data[s.libTop].gbase
 	p := pointer(uint64(len(s.data[t].space)) | (uint64(t) << 32))
 	if n == 0 {
 		return p, 0

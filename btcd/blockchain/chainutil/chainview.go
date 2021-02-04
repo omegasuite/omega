@@ -393,8 +393,8 @@ func (c *ChainView) blockLocator(node *BlockNode, index *BlockIndex) chainhash.B
 	// block locator.  See the description of the algorithm for how these
 	// numbers are derived.
 	var maxEntries uint8
-	maxEntries = 2 + fastLog2Floor(uint32(node.Height))
-/*
+//	maxEntries = 2 + fastLog2Floor(uint32(node.Height))
+
 	if node.Height <= 12 {
 		maxEntries = uint8(node.Height) + 1
 	} else {
@@ -403,7 +403,7 @@ func (c *ChainView) blockLocator(node *BlockNode, index *BlockIndex) chainhash.B
 		adjustedHeight := uint32(node.Height) - 10
 		maxEntries = 12 + fastLog2Floor(adjustedHeight)
 	}
- */
+
 	locator := make(chainhash.BlockLocator, 0, maxEntries)
 
 	var nodehash * chainhash.Hash
@@ -411,6 +411,8 @@ func (c *ChainView) blockLocator(node *BlockNode, index *BlockIndex) chainhash.B
 	step := int32(1)
 	height := node.Height
 	nodehash = &node.Hash
+
+	lead := 10
 
 	for height > 0 {
 		locator = append(locator, nodehash)
@@ -447,7 +449,11 @@ func (c *ChainView) blockLocator(node *BlockNode, index *BlockIndex) chainhash.B
 		if nodehash == nil {
 			break
 		}
-		step <<= 1
+
+		if lead <= 0 {
+			step <<= 1
+		}
+		lead--
 
 		// Once 11 entries have been included, start doubling the
 		// distance between included hashes.

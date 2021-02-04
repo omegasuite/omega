@@ -403,7 +403,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			hashNum := HashToBig(&hash)
 			if block.Height() < 383300 {
 				target = target.Mul(target, big.NewInt(wire.DifficultyRatio))
-			} else {
+			} else if block.MsgBlock().Header.Version < chaincfg.Version2 {
 				hashNum = hashNum.Mul(hashNum, big.NewInt(wire.DifficultyRatio))
 			}
 			if hashNum.Cmp(target) > 0 {
@@ -1050,23 +1050,6 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 			return ruleError(ErrMissingTxOut, str)
 		}
 
-		// Ensure the transaction is not spending coins which have not
-		// yet reached the required coinbase maturity.
-		if utxo.IsCoinBase() {
-			originHeight := utxo.BlockHeight()
-			blocksSincePrev := txHeight - originHeight
-			coinbaseMaturity := int32(chainParams.CoinbaseMaturity)
-			if originHeight != 0 && blocksSincePrev < coinbaseMaturity {
-				str := fmt.Sprintf("tried to spend coinbase "+
-					"transaction output %v from height %v "+
-					"at height %v before required maturity "+
-					"of %v blocks", txIn.PreviousOutPoint,
-					originHeight, txHeight,
-					coinbaseMaturity)
-				return ruleError(ErrImmatureSpend, str)
-			}
-		}
-
 		// Ensure the transaction amounts are in range.  Each of the
 		// output values of the input transactions must not be negative
 		// or more than the max allowed per transaction.  All amounts in
@@ -1247,7 +1230,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 	return nil
 }
 
-func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, storage int64, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, error) {
+func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, error) {
 	// Coinbase transactions have no inputs.
 	utxoView := views.Utxo
 
@@ -1338,9 +1321,16 @@ func CheckTransactionFees(tx *btcutil.Tx, txHeight int32, storage int64, views *
 		}
 	}
 
-	// must pay more than border fee + tx storage fee + contract storage fee
-	if txFeeInHao < int64(n * chainParams.MinBorderFee) + chainParams.MinRelayTxFee * (storage + int64(tx.MsgTx().SerializeSizeFull())) / 1000 {
-		return 0, fmt.Errorf("Transaction fee is less than the mandatory storage fee.")
+	if version >= chaincfg.Version2 {
+		// must pay more than border fee + tx storage fee + contract storage fee
+		if txFeeInHao < int64(n*chainParams.MinBorderFee)+chainParams.MinRelayTxFee*(storage+int64(tx.MsgTx().SerializeSizeFull()))/1000 {
+			return 0, fmt.Errorf("Transaction fee is less than the mandatory storage fee.")
+		}
+	} else {
+		// must pay more than min. border fee
+		if txFeeInHao < int64(n*chainParams.MinBorderFee) {
+			return 0, fmt.Errorf("Transaction fee is less than the mandatory storage fee.")
+		}
 	}
 
 	return txFeeInHao, nil
@@ -1552,13 +1542,13 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				return err
 			}
 
-			txFee, err = CheckTransactionFees(tx, node.Height, storage, views, b.ChainParams)
+			txFee, err = CheckTransactionFees(tx, block.MsgBlock().Header.Version, storage, views, b.ChainParams)
 			if err != nil {
 				return err
 			}
 
 			// check locked collateral
-			if block.MsgBlock().Header.Version >= 0x20000 {
+			if block.MsgBlock().Header.Version >= chaincfg.Version2 {
 				for _, txin := range tx.MsgTx().TxIn {
 					if txin.IsSeparator() {
 						continue
@@ -1602,7 +1592,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			return fmt.Errorf("Mismatch contract execution result")
 		}
 	}
-	if block.MsgBlock().Header.Version >= 0x20000 {
+	if block.MsgBlock().Header.Version >= chaincfg.Version2 {
 		err = b.CheckForfeit(block, node.Parent, Vm)
 		if err != nil {
 			return err

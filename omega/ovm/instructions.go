@@ -12,6 +12,7 @@ import (
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega"
 	"github.com/omegasuite/omega/viewpoint"
+	"golang.org/x/crypto/ripemd160"
 	"math"
 	"math/big"
 
@@ -1696,9 +1697,9 @@ func opHash(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 func opHash160(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	param := contract.GetBytes(*pc)
-	// dest, src, len
+	// dest, src, len, ripemd160 only flag
 
-	var scratch [3]pointer
+	var scratch [4]pointer
 	ln := len(param)
 
 	top := 0
@@ -1726,11 +1727,20 @@ func opHash160(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	t := scratch[1]
 	a := t & 0xFFFFFFFF
 	b := a + (scratch[2] & 0xFFFFFFFF)
-	if _,ok := stack.data[int32(t>>32)]; !ok {
+	if _,ok := stack.data[int32(t>>32)]; !ok || len(stack.data[int32(t>>32)].space) < int(b) {
 		return fmt.Errorf("Memory address fault")
 	}
-	hash := btcutil.Hash160(stack.data[int32(t >> 32)].space[a:b])
-//	hash := hash160(stack.Data[t >> 32].space[a:b])
+
+	var hash []byte
+
+	if top < 4 || scratch[3] == 0 {
+		hash = btcutil.Hash160(stack.data[int32(t>>32)].space[a:b])
+	} else {
+		ripemd160 := ripemd160.New()
+		ripemd160.Write(stack.data[int32(t>>32)].space[a:b])
+		hash = ripemd160.Sum(nil)
+	}
+//		hash160(stack.data[int32(t >> 32)].space[a:b])
 
 	return stack.saveBytes(&scratch[0], hash)
 }
@@ -2043,10 +2053,13 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	stack.saveInt32(&store, int32(n))
 	store += 4
+	p := store
+/*
 	p,err := stack.toPointer(&store)
 	if err != nil {
 		return err
 	}
+ */
 	for i := uint32(0); i < n; i++ {
 		if err := stack.saveByte(&p, d[i]); err != nil {
 			return err
@@ -2074,11 +2087,11 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var tl int
 	var err error
 	var scratch [3][]byte
-	top := 0
-	idx := 0
+	top := 0		// indicate where we are wrt source syntax. 0 - key 1 - data type/length 2 - data
+	idx := 0		// position in data stack (scratch)
 
 	dataType := []byte{'Q', 'L', 'B', 'B'}
-	dt := byte('Q')
+	dt := byte('Q')		// expected data item type
 	var dlen uint32
 	dlen = sizeOfType[dt]
 	fdlen := dlen
@@ -2119,7 +2132,7 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				var d [8]byte
 				binary.LittleEndian.PutUint64(d[:], uint64(num))
 				if top == 0 && num >= 0 && num < (1 << 32) {
-					scratch[idx] = d[:4]
+					scratch[idx] = d[:4]	// 4-byte index
 				} else if top == 1 {
 					dt = 'L'
 					dlen = uint32(num)
@@ -2141,6 +2154,7 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			// BWDQHA - byte, word, dword, qword, big int, hash, address
 			dt = param[j]
 			dlen = sizeOfType[dt]
+			top++
 
 		case 'L':	// long Data
 			dt = 'L'
@@ -2462,13 +2476,15 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 				g := newFrame()
 				g.inlib, g.gbase, g.pure = d, stack.libTop, pure
+				g.space = append(g.space, []byte{4,0,0,0,0,0,0,0}...)
+				binary.LittleEndian.PutUint32(g.space[4:], uint32(contract.libs[d].base))
 				stack.data[stack.libTop] = g
 
 				contract.Code = append(contract.Code, ccode...)
 
 				// execute init call
 				f.space = append(f.space, []byte{4,0,0,0,0,0,0,0}...)
-				binary.LittleEndian.PutUint32(f.space[4:], uint32(contract.libs[d].base))
+				binary.LittleEndian.PutUint32(f.space[4:], uint32(stack.callTop + 1))
 
 				var bn [4]byte
 				binary.LittleEndian.PutUint32(bn[:], uint32(OP_INIT))	// entry point for init()
@@ -2953,16 +2969,17 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				}
 				top++
 			} else {
-				if num, _, err := stack.getNum(param[j:], dtype[top]); err != nil {
+				if num, tl, err := stack.getNum(param[j:], dtype[top]); err != nil {
 					return err
 				} else {
+					j += tl
 					if dtype[top] == 0x44 {
 						p.Index = uint32(num)
 					} else {
 						sig = pointer(num)
 					}
+					top++
 				}
-
 			}
 		}
 	}
@@ -2983,12 +3000,12 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			pks = u.PkScript
 		}
 
-		lib := stack.data[stack.callTop].inlib
-		if !isContract(pks[0]) {
+		addr := contract.Address()
+		if !isContract(pks[0]) || bytes.Compare(pks[1:21], addr[:]) != 0 {
 			return fmt.Errorf("Contract try to spend what does not belong to it.")
 		}
-
-		var zaddr [20]byte
+/*
+		lib := stack.data[stack.callTop].inlib		var zaddr [20]byte
 
 		if bytes.Compare(lib[:], zaddr[:]) == 0 {
 			lib = contract.Address()
@@ -2996,8 +3013,9 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		libusr := bytes.Compare(pks[1:21], lib[:]) == 0
 		if !libusr {
-			return fmt.Errorf("Unauthorized spending.")
+ 			return fmt.Errorf("Unauthorized spending.")
 		}
+ */
 
 		if evm.Spend(p, nil) {
 			return nil
@@ -3536,7 +3554,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	var r chainhash.Hash		// right hash
 	var tokentype uint64
 
-	dataType := []byte{0xFF, 'Q', 'Q', 'h'}
+	dataType := []byte{0xFF, 'Q', 'D', 'h'}
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {

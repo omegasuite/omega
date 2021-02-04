@@ -305,9 +305,10 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 			// The block is solved when the new block hash is less
 			// than the target difficulty.  Yay!
 			hashNum := blockchain.HashToBig(&hash)
-			if template.Height >= 383300 {
+			if template.Height >= 383300 && header.Version < chaincfg.Version2 {
 				hashNum = hashNum.Mul(hashNum, big.NewInt(wire.DifficultyRatio))
 			}
+
 			if hashNum.Cmp(targetDifficulty) <= 0 {
 				log.Info("Block solved ", hash, " vs ", targetDifficulty)
 //				m.updateHashes <- hashesCompleted
