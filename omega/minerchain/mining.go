@@ -498,7 +498,7 @@ out:
 		// true a solution was found, so submit the solved block.
 		block := wire.NewMinerBlock(template.Block.(*wire.MingingRightBlock))
 
-		if chainChoice.Hash == *m.g.Chain.Miners.Tip().Hash() {
+		if chainChoice.Hash == *m.g.Chain.Miners.Tip().Hash() && block.MsgBlock().Version >= chaincfg.Version2 {
 			// we choose the best chain, file violation report
 			t := make([]*wire.Violations, 0, len(m.g.Chain.Miners.(*MinerChain).violations))
 			for _,v := range m.g.Chain.Miners.(*MinerChain).violations {

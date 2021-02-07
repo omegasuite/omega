@@ -328,6 +328,9 @@ var formatDel = []formatDesc{
 }
 
 func opDelValidator(param []byte) int {
+	if param[0] == 'D' || param[0] == 'Q' {
+		return formatParser(formatDel, param[1:])
+	}
 	return formatParser(formatDel, param)
 }
 
@@ -400,7 +403,7 @@ func opAllocValidator(param []byte) int {
 }
 
 var formatCopy = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF}, {patOperand, 0xFFFFFFFF},
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0}, {patOperand, 0xFFFFFFFF},
 }
 
 func opCopyValidator(param []byte) int {

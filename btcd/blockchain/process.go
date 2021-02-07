@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/wire"
 	"time"
 
@@ -266,7 +267,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	blockHeight := prevNode.Height + 1
 
-	if blockHeight < int32(b.index.Cutoff) {
+	if blockHeight <= int32(b.index.Cutoff) {
 		return false, false, ruleError(ErrInvalidAncestorBlock, "Block height is in locked area"), -1
 	}
 
@@ -379,7 +380,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	if isMainChain {
 		b.Miners.ProcessOrphans(&b.Miners.BestSnapshot().Hash, BFNone)
-	} else if block.MsgBlock().Header.Nonce < 0 {
+	} else if block.MsgBlock().Header.Nonce < 0 && block.MsgBlock().Header.Version >= chaincfg.Version2 {
 		// CHECK if there is a miner violation
 		// block is in side chain
 		mblk,_ := b.BlockByHeight(block.Height())		//	main chain block

@@ -2095,7 +2095,7 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var dlen uint32
 	dlen = sizeOfType[dt]
 	fdlen := dlen
-	dts := []byte{'D', 'D', 'L'}
+	dts := []byte{'Q', 'D', 'L'}
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
@@ -2185,14 +2185,20 @@ func opDel(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var err error
 	var d [8]byte
 	var k []byte
+	var dt byte
+
+	dt = 'D'
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
+		case 'D', 'Q':
+			dt = param[j]
+
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
 			num := int64(0)
-			if num, tl, err = stack.getNum(param[j:], 'D'); err != nil {
+			if num, tl, err = stack.getNum(param[j:], dt); err != nil {
 				return err
 			}
 			binary.LittleEndian.PutUint64(d[:], uint64(num))

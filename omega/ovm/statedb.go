@@ -120,7 +120,7 @@ func (v * OVM) getMeta(contract [20]byte, key string) []byte {
 	return t
 }
 
-func (v * OVM) NewUage(contract [20]byte) uint32 {
+func (v * OVM) NewUage(contract [20]byte) int32 {
 	d := v.StateDB[contract]
 
 	if d.suicided {
@@ -130,16 +130,16 @@ func (v * OVM) NewUage(contract [20]byte) uint32 {
 	return d.NewUage()
 }
 
-func (d *stateDB) NewUage() uint32 {
+func (d *stateDB) NewUage() int32 {
 	key := "quota"
 	if k,ok := d.meta[key]; !ok {
 		return 0
 	} else {
-		q := binary.LittleEndian.Uint32(k.data)
+		q := int32(binary.LittleEndian.Uint32(k.data))
 		if k.olddata == nil {
 			return q
 		}
-		p := binary.LittleEndian.Uint32(k.olddata)
+		p := int32(binary.LittleEndian.Uint32(k.olddata))
 		return q - p
 	}
 }

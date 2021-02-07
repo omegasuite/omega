@@ -270,7 +270,7 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 	mTx := tx.MsgTx()
 
 	// comp tx is not subject to seq lock rule
-	if mTx.Version == 2 || IsCoinBase(tx) {
+	if mTx.Version & wire.TxTypeMask == wire.ForfeitTxVersion || IsCoinBase(tx) {
 		return sequenceLock, nil
 	}
 
@@ -325,7 +325,7 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 			var medianTime time.Time
 			var blockNode *chainutil.BlockNode
 
-			if prevInputHeight >= int32(b.index.Cutoff) {
+			if prevInputHeight > int32(b.index.Cutoff) {
 				blockNode = b.Ancestor(node, prevInputHeight)
 			} else {
 				for i := prevInputHeight - chainutil.MedianTimeBlocks + 1; i <= prevInputHeight; i++ {
@@ -455,7 +455,7 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	// so they are attached in the appropriate order when iterating the list
 	// later.
 	forkNode := b.FindFork(node)
-	if forkNode.Height < int32(b.index.Cutoff) {
+	if forkNode.Height <= int32(b.index.Cutoff) {
 		return detachNodes, attachNodes
 	}
 
@@ -1638,7 +1638,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 func (b *BlockChain) FindFork(node *chainutil.BlockNode) *chainutil.BlockNode {
 	// No fork point for node that doesn't exist.
 	// assert(node.Height >= int32(b.index.Cutoff))
-	if node == nil || node.Height < int32(b.index.Cutoff) {
+	if node == nil || node.Height <= int32(b.index.Cutoff) {
 		return nil
 	}
 
@@ -2082,10 +2082,10 @@ func (b *BlockChain) locateInventory(locator chainhash.BlockLocator, hashStop *c
 	startNode := b.BestChain.Genesis()
 	sideChain := false
 
-	if stopNode == nil || stopNode.Height < int32(b.index.Cutoff) || b.BestChain.Contains(stopNode) {
+	if stopNode == nil || stopNode.Height <= int32(b.index.Cutoff) || b.BestChain.Contains(stopNode) {
 		for _, hash := range locator {
 			node := b.NodeByHash(hash)
-			if node != nil && (node.Height < int32(b.index.Cutoff) || b.BestChain.Contains(node)) {
+			if node != nil && (node.Height <= int32(b.index.Cutoff) || b.BestChain.Contains(node)) {
 				startNode = node
 				break
 			}
@@ -2104,7 +2104,7 @@ func (b *BlockChain) locateInventory(locator chainhash.BlockLocator, hashStop *c
 	// Start at the block after the most recently known block.  When there
 	// is no next block it means the most recently known block is the tip of
 	// the best chain, so there is nothing more to do.
-	if startNode.Height >= int32(b.index.Cutoff) {
+	if startNode.Height > int32(b.index.Cutoff) {
 		startNode = b.BestChain.Next(startNode)
 	} else {
 		startNode = b.NodeByHeight(startNode.Height + 1)
@@ -2139,7 +2139,7 @@ func (b *BlockChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 	// total number of nodes after it needed while respecting the stop hash
 	// and max entries.
 	node, total, sideChain := b.locateInventory(locator, hashStop, maxHashes)
-	if total == 0 {
+	if total == 0 || node == nil {
 		return nil
 	}
 
@@ -2148,10 +2148,13 @@ func (b *BlockChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 		hashes := make([]chainhash.Hash, 0, total)
 		for i := uint32(0); i < total; i++ {
 			hashes = append(hashes, node.Hash)
-			if node.Height >= int32(b.index.Cutoff) {
+			if node.Height > int32(b.index.Cutoff) {
 				node = b.BestChain.Next(node)
 			} else {
 				node = b.NodeByHeight(node.Height + 1)
+			}
+			if node == nil {
+				return hashes
 			}
 		}
 		return hashes

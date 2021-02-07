@@ -6,6 +6,7 @@ package mempool
 
 import (
 	"fmt"
+	"github.com/omegasuite/btcd/wire"
 	"time"
 
 	"github.com/omegasuite/btcd/blockchain"
@@ -193,7 +194,7 @@ func checkTransactionStandard(tx *btcutil.Tx, height int32,
 
 	// The transaction must be a currently supported version.
 	msgTx := tx.MsgTx()
-	if msgTx.Version > maxTxVersion || msgTx.Version < 1 {
+	if msgTx.Version & wire.TxTypeMask > maxTxVersion || msgTx.Version < 1 {
 		str := fmt.Sprintf("transaction version %d is not in the "+
 			"valid range of %d-%d", msgTx.Version, 1,
 			maxTxVersion)

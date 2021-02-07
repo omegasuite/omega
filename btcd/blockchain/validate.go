@@ -1352,10 +1352,16 @@ func ContractNewStorage(tx *btcutil.Tx, vm * ovm.OVM, paidstoragefees map[[20]by
 	}
 	storage := int64(0)		// storage fees need to be paid by this tx
 	for addr,t := range storagefees {
+		if t <= 0 {
+			continue
+		}
 		if s, ok := paidstoragefees[addr]; ok {
+			if t <= s {
+				continue
+			}
 			storage += t - s
 		} else {
-			storage = t
+			storage += t
 		}
 		paidstoragefees[addr] = t
 	}
