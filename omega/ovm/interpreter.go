@@ -182,17 +182,22 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 
 		// if the operation clears the return Data (e.g. it has returning Data)
 		// set the last return to the result of the operation.
+		mln := ln + 4
+		if len(stack.data[0].space) < int(ln + 4) {
+			mln = uint32(len(stack.data[0].space))
+
+		}
 		if operation.returns {
-			in.returnData = stack.data[0].space[4:ln + 4]
+			in.returnData = stack.data[0].space[4:mln]
 		}
 
 		switch {
 		case err != nil:
 			return nil, err
 		case operation.reverts:
-			return stack.data[0].space[4:ln + 4], errExecutionReverted
+			return stack.data[0].space[4:mln], errExecutionReverted
 		case operation.halts:
-			return stack.data[0].space[4:ln + 4], nil
+			return stack.data[0].space[4:mln], nil
 		case !operation.jumps:
 			if pc + 1 < int(contract.libs[stack.data[stack.callTop].inlib].end) {
 				pc++

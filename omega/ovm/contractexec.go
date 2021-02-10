@@ -638,56 +638,36 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 	haves := []bool {tx.HasDefs, tx.HasIns, tx.HasOuts}
 	hash := *tx.Hash()
 
-	e2, end := len(tx.MsgTx().TxOut), 0
-	ovm.exeout = make([]bool, e2)
-
 	intx := len(tx.MsgTx().TxIn)
 
-	for end < e2 && e2 <= wire.MaxTxOutPerMessage && len(tx.MsgTx().TxIn) <= wire.MaxTxInPerMessage {
-		for i, txOut := range tx.MsgTx().TxOut[end:] {
-			// for any contract call added but not executed
-			if i >= e2 - end || ovm.exeout[i + end] {
-				continue
-			}
-			ovm.exeout[i + end] = true
+	for i, txOut := range tx.MsgTx().TxOut {
+		version, addr, method, param := parsePkScript(txOut.PkScript)
 
-			version, addr, method, param := parsePkScript(txOut.PkScript)
-
-			if !isContract(version) || len(method) == 0 {
-				continue
-			}
-
-			mv := common.LittleEndian.Uint32(method)
-
-			if mv < 256 && end > 0 {
-				// ignore output added by contract (end > 0) and uses a system standard call
-				continue
-			}
-
-			ovm.GetCurrentOutput = func() wire.OutPoint {
-				return wire.OutPoint{hash, uint32(i + end)}
-			}
-
-			var d Address
-			copy(d[:], addr)
-
-			ovm.contractStack = []Address{d}
-
-			_, err := ovm.Call(d, method, &txOut.Token, param, 0)
-
-			if err != nil {
-				// if fail, ovm.Call should have restored ovm.stateDB[d]
-				// we need to restore Tx
-				tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
-				*tx.MsgTx() = savedTx
-				return err
-			}
+		if !isContract(version) || len(method) == 0 {
+			continue
 		}
-		end = e2
-		e2 = len(tx.MsgTx().TxOut)
+
+		ovm.GetCurrentOutput = func() wire.OutPoint {
+			return wire.OutPoint{hash, uint32(i)}
+		}
+
+		var d Address
+		copy(d[:], addr)
+
+		ovm.contractStack = []Address{d}
+
+		_, err := ovm.Call(d, method, &txOut.Token, param, 0)
+
+		if err != nil {
+			// if fail, ovm.Call should have restored ovm.stateDB[d]
+			// we need to restore Tx
+			tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
+			*tx.MsgTx() = savedTx
+			return err
+		}
 	}
 
-	if e2 > wire.MaxTxOutPerMessage || len(tx.MsgTx().TxIn) > wire.MaxTxInPerMessage {
+	if len(tx.MsgTx().TxOut) > wire.MaxTxOutPerMessage || len(tx.MsgTx().TxIn) > wire.MaxTxInPerMessage {
 		tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
 		*tx.MsgTx() = savedTx
 		return omega.ScriptError(omega.ErrInternal, "Tx in/out exceeds the max.")

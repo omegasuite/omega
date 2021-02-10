@@ -101,9 +101,11 @@ func BuildMerkleTreeStore(transactions []*btcutil.Tx, witness bool) []*chainhash
 			merkles[i] = &txHash	// &zeroHash
 		default:
 			if witness {
+				// for regular merkle hash (to be put in header) we include signatures but not contract results
 				wSha := tx.MsgTx().SignatureHash()
 				merkles[i] = &wSha
 			} else {
+				// for witness merkle hash (to be put in coinbase) we include contract result w/o signatures
 				wSha := tx.MsgTx().TxFullHash()
 				merkles[i] = &wSha
 			}

@@ -303,7 +303,6 @@ type GetRawMempoolVerboseResult struct {
 type ScriptPubKeyResult struct {
 	Asm       string   `json:"asm"`
 	Hex       string   `json:"hex,omitempty"`
-	ReqSigs   int32    `json:"reqSigs,omitempty"`
 	Type      string   `json:"type"`
 	Addresses []string `json:"addresses,omitempty"`
 }

@@ -694,7 +694,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	}
 
 	// All forfeiture txs must be immediately after coinbase
-	minrtx := 0x7FFFFFFF
+	minrtx := 0
 	for i, tx := range transactions[1:] {
 		if IsCoinBase(tx) {
 			str := fmt.Sprintf("block contains second coinbase at "+
@@ -706,8 +706,8 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 			str := fmt.Sprintf("block contains forfeiture coinbase at "+
 				"index %d", i+1)
 			return ruleError(ErrMultipleCoinbases, str)
-		} else if minrtx > i {
-			minrtx = i
+		} else if tx.MsgTx().Version & wire.TxTypeMask == wire.ForfeitTxVersion {
+			minrtx++
 		}
 	}
 

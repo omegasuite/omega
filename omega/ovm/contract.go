@@ -31,7 +31,9 @@ const (
 	NODEFINE   = 0x8
 	NOMINT     = 0x10
 
-	PUREMASK = 0x1F
+	INHERIT     = 0x20
+
+	PUREMASK = 0x3F
 )
 
 type Address [20]byte

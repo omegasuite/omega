@@ -1430,6 +1430,7 @@ func (sp *serverPeer) enforceNodeBloomFlag(cmd string) bool {
 // is used by remote peers to request that no transactions which have a fee rate
 // lower than provided value are inventoried to them.  The peer will be
 // disconnected if an invalid fee filter value is provided.
+/*
 func (sp *serverPeer) OnFeeFilter(_ *peer.Peer, msg *wire.MsgFeeFilter) {
 	// Check that the passed minimum fee is a valid amount.
 	if msg.MinFee < 0 || msg.MinFee > btcutil.MaxHao {
@@ -1441,6 +1442,7 @@ func (sp *serverPeer) OnFeeFilter(_ *peer.Peer, msg *wire.MsgFeeFilter) {
 
 	atomic.StoreInt64(&sp.feeFilter, msg.MinFee)
 }
+ */
 
 // OnFilterAdd is invoked when a peer receives a filteradd bitcoin
 // message and is used by remote peers to add data to an already loaded bloom
@@ -2567,29 +2569,21 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 			OnHeaders:      sp.OnHeaders,
 			OnGetData:      sp.OnGetData,
 			OnGetBlocks:    sp.OnGetBlocks,
-//			OnGetMinerBlocks:    sp.OnGetMinerBlocks,
 			OnGetHeaders:   sp.OnGetHeaders,
-			OnGetCFilters:  sp.OnGetCFilters,
-			OnGetCFHeaders: sp.OnGetCFHeaders,
-			OnGetCFCheckpt: sp.OnGetCFCheckpt,
-			OnFeeFilter:    sp.OnFeeFilter,
-			OnFilterAdd:    sp.OnFilterAdd,
-			OnFilterClear:  sp.OnFilterClear,
-			OnFilterLoad:   sp.OnFilterLoad,
+			OnGetCFilters:  nil,	// sp.OnGetCFilters,
+			OnGetCFHeaders: nil,	// sp.OnGetCFHeaders,
+			OnGetCFCheckpt: nil,	// sp.OnGetCFCheckpt,
+			OnFeeFilter:    nil,	// sp.OnFeeFilter,
+			OnFilterAdd:    nil,	// sp.OnFilterAdd,
+			OnFilterClear:  nil,	// sp.OnFilterClear,
+			OnFilterLoad:   nil,	// sp.OnFilterLoad,
 			OnGetAddr:      sp.OnGetAddr,
 			OnAddr:         sp.OnAddr,
-//			OnInvitation:	sp.OnInvitation,
-//			OnAckInvitation:	sp.OnAckInvitation,
 			OnRead:         sp.OnRead,
 			OnWrite:        sp.OnWrite,
 			PushGetBlock:	sp.PushGetBlock,
 			OnReject:		sp.OnReject,
-
-			// Note: The reference client currently bans peers that send alerts
-			// not signed with its key.  We could verify against their key, but
-			// since the reference client is currently unwilling to support
-			// other implementations' alert messages, we will not relay theirs.
-			OnAlert: nil,
+			OnAlert:		nil,
 		},
 		NewestBlock:       sp.newestBlock,
 		NewestMinerBlock:  sp.newestMinerBlock,

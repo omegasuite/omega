@@ -1018,7 +1018,7 @@ func createVoutList(mtx *wire.MsgTx, chainParams *chaincfg.Params, filterAddrMap
 		// Ignore the error here since an error means the script
 		// couldn't parse and there is no additional information about
 		// it anyways.
-		addrs, reqSigs, _ := indexers.ExtractPkScriptAddrs(v.PkScript, chainParams)
+		addrs, _, _ := indexers.ExtractPkScriptAddrs(v.PkScript, chainParams)
 
 		// Encode the addresses while checking if the address passes the
 		// filter when needed.
@@ -1064,7 +1064,6 @@ func createVoutList(mtx *wire.MsgTx, chainParams *chaincfg.Params, filterAddrMap
 		vout.ScriptPubKey.Asm = disbuf
 		vout.ScriptPubKey.Hex = hex.EncodeToString(v.PkScript)
 		vout.ScriptPubKey.Type = pubKeyTypes(v.PkScript)
-		vout.ScriptPubKey.ReqSigs = int32(reqSigs)
 
 		voutList = append(voutList, vout)
 	}
@@ -1142,7 +1141,7 @@ func handleDecodeRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 
 func DisasmScript(script []byte) string {
 	if script[0] == 0x88 {
-		return "contractowned"
+		return "contract(" + hex.EncodeToString(script[:21]) + ")"
 	}
 
 	switch script[21] {
@@ -3367,7 +3366,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	// Get further info about the script.
 	// Ignore the error here since an error means the script couldn't parse
 	// and there is no additional information about it anyways.
-	addrs, reqSigs, _ := indexers.ExtractPkScriptAddrs(pkScript,
+	addrs, _, _ := indexers.ExtractPkScriptAddrs(pkScript,
 		s.cfg.ChainParams)
 	addresses := make([]string, len(addrs))
 	for i, addr := range addrs {
@@ -3392,7 +3391,6 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		ScriptPubKey: btcjson.ScriptPubKeyResult{
 			Asm:       disbuf,
 			Hex:       hex.EncodeToString(pkScript),
-			ReqSigs:   int32(reqSigs),
 			Type:      pubKeyTypes(pkScript),
 			Addresses: addresses,
 		},
@@ -3746,14 +3744,20 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 		}
 	}
 
+	contracts := false
+
 	for _, txIn := range mtx.TxIn {
 		if txIn.IsSeparator() {
+			contracts = true
 			continue
 		}
 		// The disassembled string will contain [error] inline
 		// if the script doesn't fully parse, so ignore the
 		// error here.
-		disbuf := ovm.DisasmString(mtx.SignatureScripts[txIn.SignatureIndex])
+		hexs := "by contract"
+		if !contracts {
+			hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+		}
 
 		// Create the basic input entry without the additional optional
 		// previous output details which will be added later if
@@ -3764,8 +3768,8 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 			Vout:     prevOut.Index,
 			Sequence: txIn.Sequence,
 			ScriptSig: &btcjson.ScriptSig{
-				Asm: disbuf,
-				Hex: hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex]),
+				Asm: "",
+				Hex: hexs,
 			},
 		}
 
@@ -4117,7 +4121,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	return srtList, nil
 }
 
-// handleSendRawTransaction implements the sendrawtransaction command.
+// handleRecastRawTransaction implements the sendrawtransaction command.
 func handleRecastRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	txs := s.cfg.TxMemPool.TxDescs()
 	s.cfg.ConnMgr.RelayTransactions(txs)

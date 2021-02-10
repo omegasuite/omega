@@ -1877,7 +1877,6 @@ func opIf(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		return fmt.Errorf("Out of range jump")
 	}
 	*pc = target
-	log.Debugf("If %d, pc=", scratch[0], *pc)
 
 	return nil
 }
@@ -2452,57 +2451,74 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			case 1:
 				var d [20]byte
 
+				entry := int32(len(contract.Code))
+
 				copy(d[:], bnum[:20])
-				if _, ok := contract.libs[d]; ok {
-					*pc++
+				_, ok := contract.libs[d]
+				if ok {
+//					if pure & INHERIT == 0 {	always
+						*pc++
+//					}
 					return nil
 				}
 
-				sd := NewStateDB(evm.views.Db, d)
+//				if _, xt := evm.StateDB[d]; !xt {	 always
+					sd := NewStateDB(evm.views.Db, d)
 
-				existence := sd.Exists(true)
-				if !existence {
-					return fmt.Errorf("The library does not exist")
-				}
-
-				evm.StateDB[d] = sd
+					existence := sd.Exists(true)
+					if !existence {
+						return fmt.Errorf("The library does not exist")
+					}
+					evm.StateDB[d] = sd
+//				}
 
 				ccode := ByteCodeParser(evm.GetCode(d))
-				stack.libTop--
-
-				if stack.libTop < -1024 {
-					return fmt.Errorf("Lib loaded exceeds the max 1024 limit")
-				}
-
-				contract.libs[d] = lib{
-					address: int32(len(contract.Code)),
-					end: int32(len(contract.Code) + len(ccode)),
-					base: stack.libTop,
-					pure: pure,
-				}
-				g := newFrame()
-				g.inlib, g.gbase, g.pure = d, stack.libTop, pure
-				g.space = append(g.space, []byte{4,0,0,0,0,0,0,0}...)
-				binary.LittleEndian.PutUint32(g.space[4:], uint32(contract.libs[d].base))
-				stack.data[stack.libTop] = g
-
 				contract.Code = append(contract.Code, ccode...)
 
-				// execute init call
-				f.space = append(f.space, []byte{4,0,0,0,0,0,0,0}...)
-				binary.LittleEndian.PutUint32(f.space[4:], uint32(stack.callTop + 1))
+				if pure & INHERIT == 0 {
+					stack.libTop--
+					if stack.libTop < -1024 {
+						return fmt.Errorf("Lib loaded exceeds the max 1024 limit")
+					}
 
-				var bn [4]byte
-				binary.LittleEndian.PutUint32(bn[:], uint32(OP_INIT))	// entry point for init()
-				f.space = append(f.space, bn[:]...)
-				f.pc = *pc
-				f.pure = pure | stack.data[stack.callTop].pure
-				f.inlib = d
-				f.gbase = contract.libs[d].base
+					contract.libs[d] = lib{
+						address: entry,
+						end:     entry + int32(len(ccode)),
+						base:    stack.libTop,
+						pure:    pure,
+					}
 
-				*pc = int(contract.libs[d].address)
-				stack.callTop++
-				stack.data[stack.callTop] = f
+					g := newFrame()
+					g.inlib, g.gbase, g.pure = d, stack.libTop, pure
+					g.space = append(g.space, []byte{4, 0, 0, 0, 0, 0, 0, 0}...)
+					binary.LittleEndian.PutUint32(g.space[4:], uint32(contract.libs[d].base))
+					stack.data[stack.libTop] = g
+
+					// execute init call
+					f.space = append(f.space, []byte{4, 0, 0, 0, 0, 0, 0, 0}...)
+					binary.LittleEndian.PutUint32(f.space[4:], uint32(stack.callTop+1))
+
+					var bn [4]byte
+					binary.LittleEndian.PutUint32(bn[:], uint32(OP_INIT)) // entry point for init()
+					f.space = append(f.space, bn[:]...)
+					f.pc = *pc
+					f.pure = pure | stack.data[stack.callTop].pure
+					f.inlib = d
+					f.gbase = contract.libs[d].base
+
+					stack.callTop++
+					stack.data[stack.callTop] = f
+				} else {
+					contract.libs[d] = lib{
+						address: entry,
+						end:     entry + int32(len(ccode)),
+						base:    0,
+						pure:    pure,
+					}
+
+					stack.data[stack.callTop].pure |= pure
+				}
+				*pc = int(entry)
 				top++
 
 			case 2:
