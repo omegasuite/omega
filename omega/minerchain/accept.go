@@ -394,8 +394,8 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 			// If side chain is higher, that means we should choose it as best chain
 			return ruleError(ErrBlackList, fmt.Errorf("Invalid height: %d", p.Height).Error())
 		}
-		if p.Signed < 2 || int(p.Signed) != len(p.Blocks) {
-			return ruleError(ErrBlackList, fmt.Errorf("Invalid evidence: %d blocks", p.Signed).Error())
+		if len(p.Blocks) < 2 {
+			return ruleError(ErrBlackList, fmt.Errorf("Invalid evidence: %d blocks", len(p.Blocks)).Error())
 		}
 		if !b.BestChain.Contains(b.NodeByHash(&p.MRBlock)) {
 			return ruleError(ErrBlackList, fmt.Errorf("Invalid evidence: block %s not in MR chain", p.MRBlock.String()).Error())

@@ -414,7 +414,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 						if mb.MsgBlock().Miner == name {
 							b.Miners.DSReport(&wire.Violations{
 								Height: block.Height(),				// Height of Tx blocks
-								Signed: 2,					// times the violator signed blocks at this height
 								MRBlock: *mb.Hash(),		// the MR block of violator
 								Blocks: []chainhash.Hash{*block.Hash(), *mblk.Hash()},
 							})

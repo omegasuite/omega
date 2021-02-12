@@ -234,61 +234,9 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, true, nil, nil
 	}
 
-	// validate violation reports
-	for _,v := range block.MsgBlock().ViolationReport {
-		vb := make(map[chainhash.Hash]struct{})
-		mb := b.NodeByHash(&v.MRBlock)
-		if mb == nil {
-			return false, false, fmt.Errorf("Incorrect violation report"), nil
-		}
-		if block.Height() - mb.Height >= wire.ViolationReportDeadline {
-			return false, false, fmt.Errorf("Incorrect violation report"), nil
-		}
-		for _,h := range v.Blocks {
-			if _,ok := vb[h]; ok {
-				return false, false, fmt.Errorf("Incorrect violation report"), nil
-			}
-			vb[h] = struct{}{}
-			txb,err := b.blockChain.BlockByHash(&h)
-			if err != nil {
-				return false, false, err, nil
-			}
-			if txb.Height() != v.Height {
-				return false, false, fmt.Errorf("Incorrect violation report"), nil
-			}
-			signed := false
-			for _,sig := range txb.MsgBlock().Transactions[0].SignatureScripts[1:] {
-				signer := btcutil.Hash160(sig[:btcec.PubKeyBytesLenCompressed])
-				if bytes.Compare(signer[:], mb.Data.(*blockchainNodeData).block.Miner[:]) == 0 {
-					signed = true
-					hash := blockchain.MakeMinerSigHash(txb.Height(), *txb.Hash())
-					_, err := btcutil.VerifySigScript(sig, hash, b.blockChain.ChainParams)
-					if err != nil {
-						return false, false, fmt.Errorf("Incorrect violation report"), nil
-					}
-					break
-				}
-			}
-			if !signed {
-				return false, false, fmt.Errorf("Incorrect violation report"), nil
-			}
-		}
-
-		// check dup report
-		inrange := false
-		for p, i := parent, 0; i < wire.ViolationReportDeadline; i++ {
-			if mb == p {
-				inrange = true
-			}
-			for _,u := range p.Data.(*blockchainNodeData).block.ViolationReport {
-				for _,h := range u.Blocks {
-					delete(vb, h)
-				}
-			}
-			p = p.Parent
-		}
-		if !inrange || len(vb) == 0 {
-			return false, false, fmt.Errorf("Duplicated violation report"), nil
+	if len(block.MsgBlock().ViolationReport) > 0 {
+		if err := b.validateVioldationReports(block); err != nil {
+			return false, false ,err, nil
 		}
 	}
 
@@ -369,6 +317,126 @@ func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource cha
 		for _,v := range header.MsgBlock().TphReports {
 			if v == 0 {
 				return fmt.Errorf("Reported 0 in TPS value")
+			}
+		}
+	}
+	return nil
+}
+
+// validate violation reports
+// a BR block's violation report includes one or more incident reports. an incident
+// is a double signing violation by a miner at one height. The evidence includes MR
+// block's hash to identify the violator; a number of hashes of blacks at the height
+// signed by the violator. none of the blocks may have height greater than the best
+// block's. the report may or may not include blocks in the chain of best block's
+// chain. miner may not report side chain blocks duplicated in previous MR block
+// reports. yet the reported side chain blocks along with those in previous reports
+// must form a chain extending from a fork point in the chain of best block. i.e.,
+// no orphan block may be reported.
+func (b *MinerChain) validateVioldationReports(block * wire.MinerBlock) error {
+	// validate violation reports
+	bestnode := b.blockChain.NodeByHash(&block.MsgBlock().BestBlock)
+	mynode := b.NodeByHash(block.Hash())
+	vb := make(map[chainhash.Hash]struct{})
+	hoder := int32(-1)
+	for _, v := range block.MsgBlock().ViolationReport {
+		if v.Height < hoder {
+			// ensure reports are in ascending order by height
+			return fmt.Errorf("reports are not in ascending order")
+		}
+		hoder = v.Height
+		mb := b.NodeByHash(&v.MRBlock)
+		if mb == nil {
+			return fmt.Errorf("the reported MR block does not exist")
+		}
+		if block.Height()-mb.Height >= wire.ViolationReportDeadline {
+			return fmt.Errorf("violation report exceeds time limit")
+		}
+		if bestnode.Height < v.Height {
+			return fmt.Errorf("Can not report a violation at hight higher than bestblock")
+		}
+		if len(v.Blocks) < 2 {
+			return fmt.Errorf("A incident must include at least two blocks")
+		}
+
+		hasmainchain := false
+
+		for _, h := range v.Blocks {
+			if _, ok := vb[h]; ok {
+				return fmt.Errorf("Duplicated violation report")
+			}
+			vb[h] = struct{}{}
+			txb, err := b.blockChain.BlockByHash(&h)
+			if err != nil {
+				return err
+			}
+			if txb.Height() != v.Height {
+				return fmt.Errorf("Incorrect violation report height")
+			}
+
+			signed := false
+			for _, sig := range txb.MsgBlock().Transactions[0].SignatureScripts[1:] {
+				signer := btcutil.Hash160(sig[:btcec.PubKeyBytesLenCompressed])
+				if bytes.Compare(signer[:], mb.Data.(*blockchainNodeData).block.Miner[:]) == 0 {
+					signed = true
+					hash := blockchain.MakeMinerSigHash(txb.Height(), *txb.Hash())
+					_, err := btcutil.VerifySigScript(sig, hash, b.blockChain.ChainParams)
+					if err != nil {
+						return fmt.Errorf("report violation block is not signed by the reported miner")
+					}
+					break
+				}
+			}
+
+			if !signed {
+				return fmt.Errorf("report violation block is not signed by the reported miner")
+			}
+
+			p := bestnode
+			for ; p.Height > v.Height; p = b.blockChain.ParentNode(p) {	}
+			if p.Hash == h {
+				// it is in the bestblock's chain
+				hasmainchain = true
+				continue
+			}
+			// it is in a side chain. either its parent is in the bestblock's chain
+			// or its parent has been reported
+			q := txb.MsgBlock().Header.PrevBlock
+			matched := false
+			if q == p.Parent.Hash {
+				matched = true // keep going to check dup of h
+			}
+		matching:
+			for j, w := 0, mynode; j < wire.ViolationReportDeadline; j++ {
+				y := w.Data.(*blockchainNodeData).block
+				if j > 0 {
+					// check h is a new report
+					for _, v2 := range y.ViolationReport {
+						for _, h2 := range v2.Blocks {
+							if h2 == h {
+								return fmt.Errorf("Duplicated report")
+							}
+						}
+					}
+				}
+				if !matched {
+					for _, v2 := range y.ViolationReport {
+						for _, h2 := range v2.Blocks {
+							if h2 == q {
+								matched = true
+								break matching
+							}
+						}
+					}
+				}
+				w = w.Parent
+			}
+
+			if !matched {
+				return fmt.Errorf("An orphan violation is reported")
+			}
+			if !hasmainchain {
+				return fmt.Errorf("The report does not contain a best chain block")
 			}
 		}
 	}

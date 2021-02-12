@@ -138,11 +138,12 @@ func (t *Tx) Hash() *chainhash.Hash {
 	}
 
 	// Cache the hash and return it.
-	hash := t.msgTx.TxHash()
+	hash := t.msgTx.TxHash()	// hash w/o signature
 	t.txHash = &hash
 	return &hash
 }
 
+/*
 func (t *Tx) FullHash() *chainhash.Hash {
 	// Return the cached hash if it has already been generated.
 	if t.txHash != nil {
@@ -150,14 +151,16 @@ func (t *Tx) FullHash() *chainhash.Hash {
 	}
 
 	// Cache the hash and return it.
-	hash := t.msgTx.TxFullHash()
+	hash := t.msgTx.TxFullHash()	// hash w/o signature, but contract execs
 	t.txHash = &hash
 	return &hash
 }
+ */
 
 // WitnessHash returns the witness hash (wtxid) of the transaction.  This is
 // equivalent to calling WitnessHash on the underlying wire.MsgTx, however it
 // caches the result so subsequent calls are more efficient.
+/*
 func (t *Tx) SignatureHash() *chainhash.Hash {
 	// Return the cached hash if it has already been generated.
 	if t.txHashSignature != nil {
@@ -169,6 +172,7 @@ func (t *Tx) SignatureHash() *chainhash.Hash {
 	t.txHashSignature = &hash
 	return &hash
 }
+ */
 
 // Index returns the saved index of the transaction within a block.  This value
 // will be TxIndexUnknown if it hasn't already explicitly been set.

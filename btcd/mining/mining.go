@@ -508,7 +508,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 
 	var comptx []*wire.MsgTx
 	if s.MsgBlock().Version >= chaincfg.Version2 {
-		comptx, err = g.Chain.CompTxs(nonce, g.Chain.BestChain.Tip(), Vm)
+		comptx, err = g.Chain.CompTxs(g.Chain.BestChain.Tip(), Vm)
 		if err != nil {
 			return nil, err
 		}

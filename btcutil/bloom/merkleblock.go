@@ -7,8 +7,6 @@ package bloom
 import (
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
 )
 
 // merkleBlock is used to house intermediate information needed to generate a
@@ -79,6 +77,7 @@ func (m *merkleBlock) traverseAndBuild(height, pos uint32) {
 
 // NewMerkleBlock returns a new *wire.MsgMerkleBlock and an array of the matched
 // transaction index numbers based on the passed block and filter.
+/*
 func NewMerkleBlock(block *btcutil.Block, filter *Filter) (*wire.MsgMerkleBlock, []uint32) {
 	numTx := uint32(len(block.Transactions()))
 	mBlock := merkleBlock{
@@ -96,6 +95,7 @@ func NewMerkleBlock(block *btcutil.Block, filter *Filter) (*wire.MsgMerkleBlock,
 		} else {
 			mBlock.matchedBits = append(mBlock.matchedBits, 0x00)
 		}
+		// hashes w/o signature, but with contract execs. for merkle in header
 		mBlock.allHashes = append(mBlock.allHashes, tx.FullHash())
 	}
 
@@ -123,3 +123,4 @@ func NewMerkleBlock(block *btcutil.Block, filter *Filter) (*wire.MsgMerkleBlock,
 	}
 	return &msgMerkleBlock, matchedIndices
 }
+ */

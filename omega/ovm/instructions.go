@@ -2508,6 +2508,8 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 					stack.callTop++
 					stack.data[stack.callTop] = f
+				} else if stack.callTop != 0 || stack.libTop != 0 {
+					return fmt.Errorf("Improper use of contract inheritance")
 				} else {
 					contract.libs[d] = lib{
 						address: entry,
@@ -2516,7 +2518,12 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 						pure:    pure,
 					}
 
-					stack.data[stack.callTop].pure |= pure
+					stack.data[0].pure |= pure
+
+					lb := contract.libs[stack.data[0].inlib]
+					lb.end = int32(len(contract.Code))
+
+					contract.libs[stack.data[0].inlib] = lb
 				}
 				*pc = int(entry)
 				top++

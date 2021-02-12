@@ -55,7 +55,7 @@ var (
 	// TphReportsName is the name of the db key used to reports of tph.
 	TphReportsName = []byte("tphreports")
 
-	// byteOrder is the preferred byte order used for serializing numeric
+// byteOrder is the preferred byte order used for serializing numeric
 	// fields for storage in the database.
 	byteOrder = binary.LittleEndian
 )

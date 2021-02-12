@@ -4121,7 +4121,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	return srtList, nil
 }
 
-// handleRecastRawTransaction implements the sendrawtransaction command.
+// handleRecastRawTransaction implements the recastRawTransaction command.
 func handleRecastRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	txs := s.cfg.TxMemPool.TxDescs()
 	s.cfg.ConnMgr.RelayTransactions(txs)
