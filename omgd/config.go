@@ -162,8 +162,8 @@ type config struct {
 
 	minRelayTxFee btcutil.Amount
 	whitelists    []*net.IPNet
-	Collateral    string `long:"Collateral" description:"Mining collateral"`
-	collateral    *wire.OutPoint
+	Collateral    []string `long:"Collateral" description:"Mining collateral"`
+	collateral    []*wire.OutPoint
 	ExitOnStall   bool          `long:"exitonstall" description:"Exit program when no activity in 30 minutes."`
 	ChainCurrentStd int		   `long:"chaincurrentstd" description:"Hours beyond which chain is considered not current"`
 }
@@ -870,19 +870,19 @@ func loadConfig() (*config, []string, error) {
 		}
 	}
 
-	cfg.collateral = nil
-	if len(cfg.Collateral) > 0 {
-		i := strings.Index(cfg.Collateral, ":")
+	cfg.collateral = make([]*wire.OutPoint, 0, len(cfg.Collateral))
+	for _,c := range cfg.Collateral {
+		i := strings.Index(c, ":")
 		if i > 0 {
-			rs := []byte(cfg.Collateral)
+			rs := []byte(c)
 			h,_ := chainhash.NewHashFromStr(string(rs[:i]))
 			if h != nil {
 				var d uint32
 				fmt.Sscanf(string(rs[i+1:]), "%d", &d)
-				cfg.collateral = &wire.OutPoint{
+				cfg.collateral = append(cfg.collateral, &wire.OutPoint{
 					Hash:  *h,
 					Index: d,
-				}
+				})
 			}
 		}
 	}

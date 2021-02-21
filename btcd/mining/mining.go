@@ -375,7 +375,7 @@ type BlkTmplGenerator struct {
 	timeSource  chainutil.MedianTimeSource
 
 	// only used by minerchain
-	Collateral *wire.OutPoint
+	Collateral []*wire.OutPoint
 //	sigCache    *txscript.SigCache
 //	hashCache   *txscript.HashCache
 }
@@ -1045,6 +1045,30 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		return nil, nil
 	}
 
+	var uc * wire.OutPoint
+
+	uc = nil
+	if nextBlockVersion >= chaincfg.Version2 {
+		usable := make(map[wire.OutPoint]struct{})
+		for _, c := range g.Collateral {
+			usable[*c] = struct{}{}
+		}
+
+		for p, i := last, 0; i <= wire.ViolationReportDeadline && p != nil; i++ {
+			if q := g.Chain.Miners.NodetoHeader(p).Utxos; q != nil {
+				delete(usable, *q)
+			}
+			p = p.Parent
+		}
+		if len(usable) == 0 {
+			return nil, fmt.Errorf("No qualified collateral available.")
+		}
+		for c,_ := range usable {
+			uc = &c
+			break
+		}
+	}
+
 	// Create a new block ready to be solved.
 	msgBlock := wire.MingingRightBlock{
 		Version:         nextBlockVersion,
@@ -1053,7 +1077,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		Bits:            reqDifficulty,
 		Collateral:      coll,
 		BestBlock:       cbest.Hash,
-		Utxos:           g.Collateral,
+		Utxos:           uc,
 		ViolationReport: make([]*wire.Violations, 0),
 	}
 

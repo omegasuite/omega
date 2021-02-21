@@ -223,7 +223,7 @@ func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 {	// *big.I
 		return int64(1) << wire.SCALEFACTORCAP
 	} else if d < wire.DESIRABLE_MINER_CANDIDATES / 2 {
 		m := wire.DESIRABLE_MINER_CANDIDATES / 2 - d
-		if m < 10 {
+		if m > 10 {
 			m = 10
 		}
 		return (-1) << m
@@ -259,6 +259,10 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 		if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))) > 0 {
 			targetDifficulty = m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))
 		}
+	}
+
+	if factorPOW < 0 {
+		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(-factorPOW))
 	}
 
 	// Initial state.
@@ -312,7 +316,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 					return true
 				}
 			} else {
-				if res.Cmp(targetDifficulty.Mul(targetDifficulty, big.NewInt(-factorPOW))) <= 0 {
+				if res.Cmp(targetDifficulty) <= 0 {
 					return true
 				}
 			}
@@ -671,7 +675,7 @@ out:
 // already been started will have no effect.
 //
 // This function is safe for concurrent access.
-func (m *CPUMiner) Start(collateral *wire.OutPoint) {
+func (m *CPUMiner) Start(collateral []*wire.OutPoint) {
 	m.Lock()
 	defer m.Unlock()
 

@@ -201,7 +201,15 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, true, nil, nil
 	}
 
+	parent := b.index.LookupNode(prevHash)
 	if block.MsgBlock().Version >= chaincfg.Version2 {
+		for p, i := parent, 0; i <= wire.ViolationReportDeadline && p != nil; i++ {
+			if *block.MsgBlock().Utxos == *p.Data.(*blockchainNodeData).block.Utxos {
+				// not allowed same utxo in 100 blks
+				return false, false, fmt.Errorf("Re-use UTXO for collateral within 100 miner blocks"), nil
+			}
+			p = p.Parent
+		}
 		// check the coin for collateral exists and have correct amount
 		_, err = b.blockChain.CheckCollateral(block, flags)
 		if err != nil {
@@ -209,7 +217,6 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		}
 	}
 
-	parent := b.index.LookupNode(prevHash)
 	if have,_ := b.blockChain.HaveBlock(&block.MsgBlock().BestBlock); !have {
 		log.Infof("BestBlock %s does not Exists ", block.MsgBlock().BestBlock.String())
 		return false, true, nil, &block.MsgBlock().BestBlock

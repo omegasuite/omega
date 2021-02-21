@@ -389,7 +389,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	// MINER_RORATE_FREQ, the difficulty increases 20% for every one more candidate.
 
 	xf := blockchain.BFNone
-	if block.Height() > 2200 {
+	if block.Height() > 2200 || block.MsgBlock().Version >= 0x20000 {
 		xf = blockchain.BFWatingFactor
 	}
 
