@@ -439,7 +439,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 	}
 
 	if bestPeer == nil {
-		log.Infof("No sync peer available out of %d peers", len(sm.peerStates))
+//		log.Infof("No sync peer available out of %d peers", len(sm.peerStates))
 		return false
 	}
 

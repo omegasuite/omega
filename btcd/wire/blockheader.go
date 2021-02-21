@@ -28,7 +28,6 @@ const (
 	DESIRABLE_MINER_CANDIDATES = 40		// the desirable number of miner candidate we want to have
 	SCALEFACTORCAP             = 48
 	DifficultyRatio            = 4         // ratio of difficulty for tx chain and miner chain
-	CollateralBase             = 100	 // base is 100 OMC
 	ViolationReportDeadline    = 100
 	Version2				   = 0x20000
 )

@@ -211,33 +211,22 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 }
 
 func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 {	// *big.Int {
-//	chain := m.g.Chain.Miners.(*MinerChain)
-//	best := chain.BestSnapshot()
-//	baseh := best.Height
-//	tip := chain.BestChain.NodeByHeight(baseh)
-
-//	for ; tip != nil && !tip.Hash.IsEqual(&best.Hash); tip = tip.Parent {
-//		baseh--
-//	}
-
-//	if tip == nil {
-		// the block is not in chain. would happen only when a reorg happened. since this is for mining, we do the max.
-//		return int64(1) << wire.SCALEFACTORCAP
-//	}
-// func (m *CPUMiner) factorPOW(hash chainhash.Hash) int64 {	// *big.Int {
-
-//	h := m.g.Chain.Rotation(tip.Data.(*blockchainNodeData).block.BestBlock)
 	h := m.g.Chain.Rotation(best)
 
 	if h < 0 {	// the best block is not in chain. since this is for mining, we do the max.
 		return int64(1) << wire.SCALEFACTORCAP
 	}
 
-//	d := int32(baseh) - int32(h)
 	d := prevh - h
 
 	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP
+	} else if d < wire.DESIRABLE_MINER_CANDIDATES / 2 {
+		m := wire.DESIRABLE_MINER_CANDIDATES / 2 - d
+		if m < 10 {
+			m = 10
+		}
+		return (-1) << m
 	} else if d <= wire.DESIRABLE_MINER_CANDIDATES {
 		return 1
 	}
@@ -318,8 +307,14 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 				continue
 			}
 
-			if res.Mul(res, big.NewInt(factorPOW)).Cmp(targetDifficulty) <= 0 {
-				return true
+			if factorPOW > 0 {
+				if res.Mul(res, big.NewInt(factorPOW)).Cmp(targetDifficulty) <= 0 {
+					return true
+				}
+			} else {
+				if res.Cmp(targetDifficulty.Mul(targetDifficulty, big.NewInt(-factorPOW))) <= 0 {
+					return true
+				}
 			}
 		}
 		m.g.UpdateMinerBlockTime(header.Block.(*wire.MingingRightBlock))
@@ -389,7 +384,7 @@ out:
 		// transactions to work on when there are no connected peers.
 		if m.cfg.ConnectedCount() == 0 {
 			m.Stale = true
-			log.Info("miner.generateBlocks: sleep because of no connection")
+//			log.Info("miner.generateBlocks: sleep because of no connection")
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -564,8 +559,8 @@ out:
 			// for h1, we compare this block's coin & Collateral for simplicity
 			h := NodetoHeader(chainChoice)
 			c := h.Collateral
-			if c < wire.CollateralBase {
-				c = wire.CollateralBase
+			if c == 0 {
+				c = 1
 			}
 			v,err := m.g.Chain.CheckCollateral(block, 0)
 			h1 = int64(v / c)

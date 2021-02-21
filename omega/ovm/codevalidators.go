@@ -574,11 +574,16 @@ func opGetCoinValidator(param []byte) int {
  */
 
 var formatGetUTXO = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {patOperand, 0}, {patOperand, 0xffffffff},
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0},
+	{patOperand, 0xffffffff}, {patOperand, 1},
 }
 
 func opGetUtxoValidator(param []byte) int {
-	return formatParser(formatGetUTXO, param)
+	r := formatParser(formatGetUTXO, param)
+	if r < 0 {
+		return formatParser(formatGetUTXO[:3], param)
+	}
+	return  r
 }
 
 var formatMint = []formatDesc{
@@ -616,5 +621,9 @@ var formatHeight = []formatDesc{
 }
 
 func opHeightValidator(param []byte) int {
+	return formatParser(formatHeight, param)
+}
+
+func opVersionValidator(param []byte) int {
 	return formatParser(formatHeight, param)
 }

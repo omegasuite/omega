@@ -430,7 +430,7 @@ out:
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
 		if ccnt := m.cfg.ConnectedCount(); ccnt == 0 {
-			log.Infof("Sleep 5 sec because there is no connected peer.")
+//			log.Infof("Sleep 5 sec because there is no connected peer.")
 			m.Stale = true
 			time.Sleep(time.Second * 5)
 			continue

@@ -196,13 +196,15 @@ func (b *MinerChain) NextRequiredDifficulty(lastNode *chainutil.BlockNode, newBl
 // while this function accepts any block node.
 func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, uint32, error) {
 	if lastNode == nil || lastNode.Height < b.blocksPerRetarget + 10 {
-		return b.chainParams.PowLimitBits, wire.CollateralBase, nil
+		return b.chainParams.PowLimitBits, 1, nil
 	}
 
 	coll := lastNode.Data.(*blockchainNodeData).block.Collateral
-	if coll < wire.CollateralBase {
-		coll = wire.CollateralBase
+	if coll == 0 {
+		coll = 1
 	}
+
+	v2 := lastNode.Data.GetVersion() >= chaincfg.Version2
 
 //	b.blocksPerRetarget = 10		// temp, to be removed in final release
 	// Return the previous block's difficulty requirements if this block
@@ -310,9 +312,15 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			dt = dt >> wire.SCALEFACTORCAP
 		} else if d > wire.DESIRABLE_MINER_CANDIDATES {
 			dt = dt >> (d - wire.DESIRABLE_MINER_CANDIDATES)
+		} else if v2 && d < wire.DESIRABLE_MINER_CANDIDATES / 2 {
+			m := wire.DESIRABLE_MINER_CANDIDATES / 2 - d
+			if m > 10 {
+				m = 10
+			}
+			dt = dt << m
 		}
 
-		// do we need to cancel adjustments for collateral & TPS scores? no.
+	// do we need to cancel adjustments for collateral & TPS scores? no.
 		// because these adjustment is given on competition basis, so when we
 		// calculate average block time, winners and losers will cancel out
 		// each other.
@@ -361,8 +369,9 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	// newTarget since conversion to the compact representation loses
 	// precision.
 	newTargetBits := BigToCompact(newTarget)
-	if coll < wire.CollateralBase {
-		coll = wire.CollateralBase
+	coll = (coll * 7) >> 3
+	if coll == 0 {
+		coll = 1
 	}
 	return newTargetBits, coll, nil
 }

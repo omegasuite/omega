@@ -15,7 +15,7 @@ type frame struct {
 	inlib [20]byte
 	gbase int32
 	pc int
-	pure byte		// access control:
+	pure byte		// access Control:
 					// bit 0 - forbid store,
 					// bit 1 - forbid spend,
 					// bit 2 - forbid output,

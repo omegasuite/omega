@@ -378,7 +378,7 @@ func (v * OVM) AbortRollback() {
 			s := stateDB {
 				DB: v.DB,
 				contract: t,
-				data: a.data,
+				Data: a.Data,
 				meta: a.meta,
 				suicided: a.suicided,
 				fresh: false,
@@ -482,7 +482,7 @@ func (d *OVM) Rollback() error {
 						} else {
 							d.final[dd.Addr].meta[k] = &entry{
 								olddata: v.Value,
-								data:    fv,
+								Data:    fv,
 							}
 						}
 					}
@@ -498,18 +498,18 @@ func (d *OVM) Rollback() error {
 				}
 
 				bucket = dbTx.Metadata().Bucket([]byte("storage" + string(dd.Addr[:])))
-				for _, v := range dd.Data[0] {		// data
+				for _, v := range dd.Data[0] {		// Data
 /*
-					if _, ok := d.final[dd.Addr].data[k]; !ok {
+					if _, ok := d.final[dd.Addr].Data[k]; !ok {
 						fv := bucket.Get([]byte(k))
 						if fv == nil {
-							d.final[dd.Addr].data[k] = &entry{
+							d.final[dd.Addr].Data[k] = &entry{
 								olddata: v.Value,
 							}
 						} else {
-							d.final[dd.Addr].data[k] = &entry{
+							d.final[dd.Addr].Data[k] = &entry{
 								olddata: v.Value,
-								data:    fv,
+								Data:    fv,
 							}
 						}
 					}
@@ -580,8 +580,10 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 		if err := contract.SetCallCode(method, evm.GetCode(d)); err != nil {
 			return nil, err
 		}
+		contract.isnew = false
 	} else {
 		contract.CodeAddr = []byte{0,0,0,0}
+		contract.isnew = true
 	}
 	contract.pure = pure
 

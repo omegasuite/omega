@@ -61,6 +61,7 @@ const (
 	TIME		// timestamp in block
 	HEIGHT		// block height
 	TXIOCOUNT	// current io count of this tx
+	VERSION		// get tx version
 	
 	STOP	 OpCode = 0x7A	//  "z"
 )
@@ -111,6 +112,7 @@ var opCodeToString = map[OpCode]string{
 	TIME:    "TIME",
 	HEIGHT:    "HEIGHT",
 	META:    "META",
+	VERSION: "VERSION",
 }
 
 func (o OpCode) String() string {
@@ -165,6 +167,7 @@ var stringToOp = map[string]OpCode{
 	"META": META,
 	"TIME": TIME,
 	"HEIGHT": HEIGHT,
+	"VERSION": VERSION,
 }
 
 func StringToOp(str string) OpCode {

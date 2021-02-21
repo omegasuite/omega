@@ -4,12 +4,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/omegasuite/btcd/blockchain/indexers"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg"
-	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/btcd/txscript/txsparser"
-	"github.com/omegasuite/btcd/blockchain/indexers"
-	"github.com/omegasuite/omega/ovm"
+	"github.com/omegasuite/btcutil"
 )
 
 const (
@@ -121,6 +120,7 @@ func (s PkScript) String() string {
 // input's signature script or witness.
 //
 // NOTE: Only P2PKH, P2SH, redeem scripts are supported.
+/*
 func ComputePkScript(sigScript []byte, chainParams *chaincfg.Params) (PkScript, error) {
 	pkScript := PkScript{}
 
@@ -167,3 +167,4 @@ func ComputePkScript(sigScript []byte, chainParams *chaincfg.Params) (PkScript, 
 	return pkScript, txsparser.ScriptError(txsparser.ErrNotPushOnly,
 		"sigscript is not valid")
 }
+*/

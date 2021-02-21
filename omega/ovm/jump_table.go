@@ -207,6 +207,10 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opHeight,
 			valid:         true,
 		},
+		VERSION: {
+			execute:       opVersion,
+			valid:         true,
+		},
 /*
 		SIGNTEXT: operation{
 			execute:       opSignText,

@@ -1635,19 +1635,6 @@ func checkProofOfWork(header *wire.MingingRightBlock, powLimit *big.Int, flags b
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
 
-	// The block hash must be less than the claimed target unless the flag
-	// to avoid proof of work checks is set.
-	if flags&blockchain.BFNoPoWCheck != blockchain.BFNoPoWCheck {
-		// The block hash must be less than the claimed target.
-		hash := header.BlockHash()
-		hashNum := HashToBig(&hash)
-		if hashNum.Cmp(target) > 0 {
-			str := fmt.Sprintf("block hash of %064x is higher than "+
-				"expected max of %064x", hashNum, target)
-			return ruleError(ErrHighHash, str)
-		}
-	}
-
 	return nil
 }
 

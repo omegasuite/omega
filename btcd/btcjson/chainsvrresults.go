@@ -559,6 +559,12 @@ type TxRawResult struct {
 	Blocktime     int64  `json:"blocktime,omitempty"`
 }
 
+// DebugReply
+type DebugReply struct {
+	Result      string `json:"result"`			// Min Relay Fee per KB for priority Tx
+	Line		uint32 `json:"line"`
+}
+
 // MiningPolicy, miner specific policy
 type MiningPolicy struct {
 	RelayFee      int64 `json:"relayfee"`			// Min Relay Fee per KB for priority Tx

@@ -1301,6 +1301,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		Vm.BlockTime = func() uint32 {
 			return uint32(block.MsgBlock().Header.Timestamp.Unix())
 		}
+
 		Vm.GasLimit = block.MsgBlock().Header.ContractExec
 		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
 
@@ -1387,8 +1388,8 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags
 	}
 	req := mb.MsgBlock().Collateral
 
-	if req < wire.CollateralBase {
-		req = wire.CollateralBase
+	if req == 0 {
+		req = 1
 	}
 
 	utxos := viewpoint.NewUtxoViewpoint()

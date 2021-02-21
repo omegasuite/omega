@@ -192,6 +192,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"verifymessage":         handleVerifyMessage,
 	"version":               handleVersion,
 	"shutdownserver":        handleShutdown,
+	"vmdebug":				 handleVMDebug,
 }
 
 // list of commands that we recognize, but for which btcd has no support because
@@ -305,6 +306,7 @@ var rpcLimited = map[string]struct{}{
 	"validateaddress":       {},
 	"verifymessage":         {},
 	"version":               {},
+	"vmdebug":				 {},
 }
 /*
 // builderScript is a convenience function which is used for hard-coded scripts
@@ -532,6 +534,135 @@ func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struc
 	}
 
 	return reply, nil
+}
+
+var debugchan chan []byte
+var pendattach bool
+
+func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.VMDebugCmd)
+
+	gotype := map[string]ovm.DebugCommand{"go":ovm.Gorun, "step":ovm.Stepping, "clearbreakpoint":ovm.Unbreak, "breakpoint":ovm.Breakpoint}
+
+	switch c.DbgCmd {
+	case "attach":
+		if debugchan == nil {
+			debugchan = make(chan []byte, 50)
+		}
+
+		ovm.DebugSetup(true, debugchan)
+		pendattach = true
+		d := <-debugchan
+		pendattach = false
+
+		for true {
+			select {
+			case d = <- debugchan:
+
+			default:
+				return "C" + string(d[1]) + hex.EncodeToString(d[2:]), nil
+			}
+		}
+
+	case "detach":
+		if pendattach {
+			debugchan <- []byte{0,0,0}
+		}
+		fallthrough
+
+	case "stop":
+		ovm.Control <- &ovm.DebugCmd{
+			Cmd:   ovm.Terminate,
+			Data:  nil,
+			Reply: nil,
+		}
+
+		ovm.DebugSetup(false, nil)
+		debugchan = nil
+
+		return "Terminated", nil
+	}
+
+	reply := make(chan []byte)
+
+	switch c.DbgCmd {
+	case "go", "step":
+		ovm.Control <- &ovm.DebugCmd {
+			Cmd: gotype[c.DbgCmd],
+			Data: nil,
+			Reply: reply,
+		}
+
+		d := <- reply
+
+		if d[0] == byte(ovm.Terminated) {
+			rdata := &btcjson.DebugReply {
+				Result:	"Terminated",
+			}
+			return rdata, nil
+		} else if d[0] == byte(ovm.Breaked) {
+			v := common.LittleEndian.Uint32(d[1:])
+			rdata := &btcjson.DebugReply {
+				Result:	fmt.Sprintf("Break at inst %d", v),
+				Line: v,
+			}
+			return rdata, nil
+		} else {
+			rdata := &btcjson.DebugReply {
+				Result:	"Unexpected result: " + hex.EncodeToString(d),
+			}
+			return rdata, nil
+		}
+
+	case "breakpoint", "clearbreakpoint":
+		var b [4]byte
+
+		common.LittleEndian.PutUint32(b[:], uint32(*c.Value))
+
+		ovm.Control <- &ovm.DebugCmd {
+			Cmd: gotype[c.DbgCmd],
+			Data: b[:],
+			Reply: nil,
+		}
+
+		return "Done", nil
+
+	case "getdata":
+		buf := make([]byte, len(*c.Param) + 5)
+		copy(buf, []byte(*c.Param))
+		buf[len(*c.Param)] = ','
+		common.LittleEndian.PutUint32(buf[len(buf) - 4:], uint32(*c.Value))
+		ovm.Control <- &ovm.DebugCmd {
+			Cmd: ovm.Getdata,
+			Data: buf,
+			Reply: reply,
+		}
+
+		d := <- reply
+
+		return hex.EncodeToString(d), nil
+
+	case "getstack":
+		ovm.Control <- &ovm.DebugCmd {
+			Cmd: ovm.Getstack,
+			Data: nil,
+			Reply: reply,
+		}
+
+		d := <- reply
+
+		var stack string
+		stack = "["
+		glue := ""
+		for i := 0; i < len(d); i += 4 {
+			v := common.LittleEndian.Uint32(d[i:])
+			stack += glue + fmt.Sprintf("%d", v)
+			glue = ","
+		}
+		stack += "]"
+		return stack, nil
+	}
+	return nil, nil
 }
 
 // handleNode handles node commands.
@@ -4220,16 +4351,13 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 			ch <- nil
 		})
 
-		t := <- ch
-
-		if t != nil {
+		if t := <- ch; t != nil {
 			cf.Stop()
-
-			w := bytes.NewBuffer(make([]byte, t.SerializeSizeFull()))
-			t.SerializeFull(w)
-			msg += "TxHex" + hex.EncodeToString(w.Bytes())
+//			w := bytes.NewBuffer(make([]byte, t.SerializeSizeFull()))
+//			t.SerializeFull(w)
+//			msg += "TxHex" + hex.EncodeToString(w.Bytes())
 		} else {
-			msg += fmt.Sprintf("No confirmation after %d seconds.", *c.WaitConfirm)
+			msg += fmt.Sprintf("\nNo confirmation after %d seconds.", *c.WaitConfirm)
 		}
 	}
 

@@ -49,6 +49,20 @@ type NodeCmd struct {
 	ConnectSubCmd *string `jsonrpcusage:"\"perm|temp\""`
 }
 
+// VMDebugCmd defines the debug command.
+type VMDebugCmd struct {
+	DbgCmd        string `json:"dbgcmd"`
+	Param		 *string `json:"param"`
+	Value		 *int `json:"value"`
+}
+
+func NewVMDebugCmd(dbgCmd string, param *string) *VMDebugCmd {
+	return &VMDebugCmd{
+		DbgCmd:       dbgCmd,
+		Param:        param,
+	}
+}
+
 // NewNodeCmd returns a new instance which can be used to issue a `node`
 // JSON-RPC command.
 //
@@ -168,4 +182,5 @@ func init() {
 	MustRegisterCmd("getheaders", (*GetHeadersCmd)(nil), flags)
 	MustRegisterCmd("version", (*VersionCmd)(nil), flags)
 	MustRegisterCmd("shutdownserver", (*ShutdownServerCmd)(nil), flags)
+	MustRegisterCmd("vmdebug", (*VMDebugCmd)(nil), flags)
 }

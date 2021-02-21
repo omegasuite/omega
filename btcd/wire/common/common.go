@@ -803,7 +803,7 @@ const (
 	RejectObsolete        RejectCode = 0x11
 	RejectDuplicate       RejectCode = 0x12
 	RejectNonstandard     RejectCode = 0x40
-	RejectDust            RejectCode = 0x41
+//	RejectDust            RejectCode = 0x41
 	RejectInsufficientFee RejectCode = 0x42
 	RejectCheckpoint      RejectCode = 0x43
 )
@@ -815,7 +815,7 @@ var rejectCodeStrings = map[RejectCode]string{
 	RejectObsolete:        "REJECT_OBSOLETE",
 	RejectDuplicate:       "REJECT_DUPLICATE",
 	RejectNonstandard:     "REJECT_NONSTANDARD",
-	RejectDust:            "REJECT_DUST",
+//	RejectDust:            "REJECT_DUST",
 	RejectInsufficientFee: "REJECT_INSUFFICIENTFEE",
 	RejectCheckpoint:      "REJECT_CHECKPOINT",
 }

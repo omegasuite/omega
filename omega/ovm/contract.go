@@ -107,6 +107,7 @@ type lib struct{
 // the the contract code, calling arguments. Contract implements ContractRef
 type Contract struct {
 	self          ContractRef
+	isnew	bool
 
 	libs map[Address]lib
 
@@ -125,6 +126,7 @@ type Contract struct {
 func NewContract(object Address, value *token.Token) *Contract {
 	c := &Contract{
 		self: AccountRef(object),
+		isnew: true,
 		Args: nil,
 		libs:	make(map[Address]lib),
 //		jumpdests: make(destinations),
@@ -250,6 +252,7 @@ var validators = map[OpCode]codeValidator {
 	META: opMetaValidator,
 	TIME: opTimeValidator,
 	HEIGHT: opHeightValidator,
+	VERSION: opVersionValidator,
 }
 
 func ByteCodeValidator(code []inst) error {

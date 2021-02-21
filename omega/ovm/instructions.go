@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega"
 	"github.com/omegasuite/omega/viewpoint"
@@ -1740,7 +1741,7 @@ func opHash160(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		ripemd160.Write(stack.data[int32(t>>32)].space[a:b])
 		hash = ripemd160.Sum(nil)
 	}
-//		hash160(stack.data[int32(t >> 32)].space[a:b])
+//		hash160(stack.Data[int32(t >> 32)].space[a:b])
 
 	return stack.saveBytes(&scratch[0], hash)
 }
@@ -1903,7 +1904,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	binary.LittleEndian.PutUint32(f.space[4:], uint32(stack.callTop + 1))
 	inlen := 8
 
-	paramTypes := []byte{'L', 'D', 'Q' }
+	paramTypes := []byte{'L', 'D', 'Q', 'Q'}
 
 	isself := true
 	sign := 1
@@ -1941,6 +1942,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				return err
 			}
 			j += tl
+			paramTypes[2] = 'Q'
 
 			switch top {
 			case 0:
@@ -2086,11 +2088,11 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var tl int
 	var err error
 	var scratch [3][]byte
-	top := 0		// indicate where we are wrt source syntax. 0 - key 1 - data type/length 2 - data
-	idx := 0		// position in data stack (scratch)
+	top := 0		// indicate where we are wrt source syntax. 0 - key 1 - Data type/length 2 - Data
+	idx := 0		// position in Data stack (scratch)
 
 	dataType := []byte{'Q', 'L', 'B', 'B'}
-	dt := byte('Q')		// expected data item type
+	dt := byte('Q')		// expected Data item type
 	var dlen uint32
 	dlen = sizeOfType[dt]
 	fdlen := dlen
@@ -3034,7 +3036,7 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			return fmt.Errorf("Contract try to spend what does not belong to it.")
 		}
 /*
-		lib := stack.data[stack.callTop].inlib		var zaddr [20]byte
+		lib := stack.Data[stack.callTop].inlib		var zaddr [20]byte
 
 		if bytes.Compare(lib[:], zaddr[:]) == 0 {
 			lib = contract.Address()
@@ -3379,7 +3381,9 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var tl int
 	var err error
 
-	dataType := []byte{0xFF, 0x68, 0x44 }
+	doscript := false
+
+	dataType := []byte{0xFF, 0x68, 0x44, 'B'}
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
@@ -3409,6 +3413,9 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 			case 2:
 				seq = int32(num)
+
+			case 3:
+				doscript = num != 0
 			}
 			top++
 		}
@@ -3417,56 +3424,35 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	t := evm.GetUtxo(tx, uint64(seq))
 
 	if t == nil {
+		if err := stack.saveInt64(&dest, int64(-1)); err != nil {
+			return err
+		}
 		return nil
 	}
 
 	coin := t.Token
-	var olddest = dest
 
-	if err := stack.saveInt64(&dest, int64(coin.TokenType)); err != nil {
+	var w bytes.Buffer
+	if err := coin.Write(&w, 0, 0); err != nil {
+		return err
+	}
+	if err := stack.saveBytes(&dest, w.Bytes()); err != nil {
 		return err
 	}
 
-	dest += 8
-	if coin.TokenType & 1 == 0 {
-		if err := stack.saveInt64(&dest, coin.Value.(*token.NumToken).Val); err != nil {
-			return err
-		}
-		dest += 8
-	} else {
-		if err := stack.saveHash(&dest, coin.Value.(*token.HashToken).Hash); err != nil {
-			return err
-		}
-		dest += 32
-	}
-	if coin.TokenType & 2 == 2 {
-		if coin.Rights != nil {
-			if err := stack.saveHash(&dest, *coin.Rights); err != nil {
-				return err
-			}
-		} else {
-			if err := stack.saveHash(&dest, chainhash.Hash{}); err != nil {
-				return err
-			}
-		}
-	}
-	dest = olddest + 8 + 32 + 32
+	dest += pointer(w.Len())
 
 	var pkl = int32(len(t.PkScript))
 	if err := stack.saveInt32(&dest, pkl); err != nil {
 		return err
 	}
-	dest += 4
 
-	var p pointer
-	if int64(dest >> 32) == int64(len(stack.data) - 1) {
-		p,_ = stack.alloc(len(t.PkScript))
-	} else {
-		p,_ = stack.malloc(len(t.PkScript))
+	if !doscript {
+		return nil
 	}
-	stack.saveBytes(&p, t.PkScript)
 
-	return stack.saveInt64(&dest, int64(p))
+	dest += 4
+	return stack.saveBytes(&dest, t.PkScript)
 }
 
 func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
@@ -3523,6 +3509,23 @@ func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 func opNul(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	// this instruction is for debugging purpose, so we can insert a nul op in contract
 	// and set a break point here
+	if !debugging {
+		return nil
+	}
+
+	if breakpoints[*pc] || stepping {
+		var buf [4]byte
+
+		log.Infof("opNul: break at %d", *pc)
+
+		common.LittleEndian.PutUint32(buf[:], uint32(*pc))
+		Control <- &DebugCmd{Reply: nil, Data: buf[:], Cmd: Breaked}
+
+		log.Infof("opNul: waiting inspector")
+
+		<- inspector
+		log.Infof("opNul: continue")
+	}
 	return nil
 }
 
@@ -3817,6 +3820,33 @@ func opHeight(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveInt32(&dest, int32(m))
 }
 
+func opVersion(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+	param := contract.GetBytes(*pc)
+
+	ln := len(param)
+	var dest pointer
+
+	for j := 0; j < ln; j++ {
+		switch param[j] {
+		case '0', '1', '2', '3', '4', '5',
+			'6', '7', '8', '9', 'a', 'b', 'c',
+			'd', 'e', 'f', 'x', 'i', 'g':
+			num, tl, err := stack.getNum(param[j:], 0xFF)
+			if err != nil { return err }
+			j += tl
+
+			dest = pointer(num)
+
+		}
+	}
+
+	tx := ovm.GetTx()
+	m := int32(1)		// default version
+	if tx != nil {
+		m = tx.MsgTx().Version
+	}
+	return stack.saveInt32(&dest, m)
+}
 /*
 func opSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	param := contract.GetBytes(*pc)

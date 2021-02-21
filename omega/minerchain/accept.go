@@ -188,12 +188,11 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 
 		factor := int64(1)
 		if flags & blockchain.BFWatingFactor == blockchain.BFWatingFactor {
-//			factor = m.factorPOW(m.index.LookupNode(&header.PrevBlock))
 			factor = m.factorPOW(uint32(m.index.LookupNode(&header.PrevBlock).Height), header.BestBlock)
 		}
-		if factor < 0 {
-			return fmt.Errorf("Curable POW factor error.")
-		}
+//		if factor < 0 {
+//			return fmt.Errorf("Curable POW factor error.")
+//		}
 
 		if header.Version >= chaincfg.Version2 {
 			// since Ver 0x20000, the formula is:
@@ -203,8 +202,8 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 
 			// for h1, we compare this block's coin & Collateral for simplicity
 			c := header.Collateral
-			if c < wire.CollateralBase {
-				c = wire.CollateralBase
+			if c == 0 {
+				c = 1
 			}
 			v,_ := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), flags)
 			h1 := int64(v / c)
@@ -239,13 +238,22 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 				h2 = int64(sum / minscore)
 			}
 
-			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-			target = target.Mul(target, big.NewInt(h1 + h2))
+			if factor > 0 {
+				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+				target = target.Mul(target, big.NewInt(h1+h2))
+			} else {
+				target = target.Mul(target, big.NewInt((h1+h2) * (-factor)))
+			}
+
 			if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
 				target = powLimit.Mul(powLimit, big.NewInt(16))
 			}
 		} else {
-			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+			if factor > 0 {
+				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+			} else {
+				target = target.Mul(target, big.NewInt(-factor))
+			}
 		}
 
 		if hashNum.Cmp(target) > 0 {
@@ -288,6 +296,12 @@ func (m *MinerChain) factorPOW(baseh uint32, best chainhash.Hash) int64 {
 
 	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP
+	} else if d < wire.DESIRABLE_MINER_CANDIDATES / 2 {
+		m := wire.DESIRABLE_MINER_CANDIDATES / 2 - d
+		if m > 10 {
+			m = 10
+		}
+		return (-1) << m
 	} else if d <= wire.DESIRABLE_MINER_CANDIDATES {
 		return 1
 	}

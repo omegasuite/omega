@@ -7,6 +7,9 @@ package ovm
 import (
 	"fmt"
 	"encoding/binary"
+	"github.com/omegasuite/btcd/wire/common"
+	"time"
+
 	//	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	//	"github.com/omegasuite/btcd/wire/common"
 	"sync/atomic"
@@ -16,6 +19,23 @@ import (
 // passed evmironment to query external sources for state information.
 // The Interpreter will run the byte code VM based on the passed
 // configuration.
+type DebugCommand byte
+const (
+	Breakpoint = DebugCommand(iota)
+	Unbreak
+	Stepping
+	Gorun
+	Getdata
+	Getstack
+	Breaked
+	Terminate
+	Terminated
+)
+type DebugCmd struct {
+	Cmd   DebugCommand
+	Data  []byte      // command come in
+	Reply chan []byte // returned info
+}
 type Interpreter struct {
 	evm      *OVM
 
@@ -25,12 +45,169 @@ type Interpreter struct {
 	returnData []byte // Last CALL's return Data for subsequent reuse
 }
 
+// smart contract debugger
+var debugNotifier chan []byte
+var debugging 	bool              // whether we are debugging
+var breakpoints map[int]bool    // breaks at inst. PC
+var Control 	chan *DebugCmd      // chan for receiving Control
+var inspector	chan *DebugCmd // chan for inspect inst to prog. code
+var stepping 	bool            // whether we are stepping
+var stop		bool
+var attaching	chan struct{}
+
+func DebugSetup(enable bool, comm chan []byte) {
+	if comm == nil {
+		enable = false
+	}
+	if debugging == enable {
+		return
+	}
+
+	if attaching == nil {
+		attaching = make(chan struct{}, 10)
+	}
+
+	stepping = false
+	stop = false
+	debugging = enable
+	if enable {
+		debugNotifier = comm
+		breakpoints = make(map[int]bool)
+		Control = make(chan *DebugCmd, 10)
+		go intrepdebug()
+	} else {
+		debugNotifier = nil
+		breakpoints = nil
+		Control = nil
+		inspector = nil
+	}
+}
+
 // NewInterpreter returns a new instance of the Interpreter.
 func NewInterpreter(evm *OVM) *Interpreter {
-	return &Interpreter{
+	a := &Interpreter{
 		evm:      evm,
 		JumpTable: omegaInstructionSet,
 	}
+
+	return a
+}
+
+var dbgcontract *Contract
+var dbgstack *Stack
+var readysent = false
+
+func setdbgcontract(contract *Contract, stack *Stack) {
+	dbgcontract, dbgstack = contract, stack
+
+	var addr Address
+	addr = dbgcontract.self.Address()
+
+	inspector = make(chan *DebugCmd, 10)
+
+	var prepend [2]byte
+	prepend[0] = 'C'
+	if dbgcontract.isnew {
+		prepend[1] = 'C'
+	} else {
+		prepend[1] = 'E'
+	}
+
+	debugNotifier <- append(prepend[:], addr[:]...)
+
+	readysent = false
+
+	<- attaching
+}
+
+func intrepdebug() {
+	var breakat int
+	var waitingchan chan []byte
+
+	for debugging {
+		select {
+		case ctrl,ok := <-Control:
+			if !ok {
+				debugging = false
+				break
+			}
+
+			switch ctrl.Cmd {
+			case Breakpoint:
+				inst := common.LittleEndian.Uint32(ctrl.Data)
+				breakpoints[int(inst)] = true
+
+			case Unbreak:
+				inst := common.LittleEndian.Uint32(ctrl.Data)
+				delete(breakpoints, int(inst))
+
+			case Stepping:
+				stepping = true
+				fallthrough
+
+			case Gorun:
+				breakat = 0
+
+				waitingchan = ctrl.Reply
+
+				if !readysent {
+					readysent = true
+					attaching <- struct{}{}
+				} else {
+					inspector <- ctrl
+				}
+
+			case Breaked:
+				breakat = int(common.LittleEndian.Uint32(ctrl.Data))
+
+				if waitingchan != nil {
+					waitingchan <- append([]byte{byte(Breaked)}, ctrl.Data...)
+				}
+
+			case Terminate:		// terminate by user. end debugging
+				inspector <- ctrl
+				debugging = false
+
+			case Terminated:	// natural termination of contract. in this case we will wait for next contract exec
+				if waitingchan != nil {
+					waitingchan <- []byte{byte(Terminated)}
+				}
+
+				if !readysent {
+					readysent = true
+					attaching <- struct{}{}
+				}
+
+			case Getdata:
+				if ctrl.Data != nil && breakat != 0 {
+					v, _, _ := dbgstack.getNum(ctrl.Data[:len(ctrl.Data)-4], 0xFF) // parse data ad address
+					l := common.LittleEndian.Uint32(ctrl.Data[len(ctrl.Data)-4:])
+					ctrl.Reply <- dbgstack.data[int32(v>>32)].space[uint32(v) : uint32(v)+l]
+				} else {
+					ctrl.Reply <- nil
+				}
+
+			case Getstack:
+				if breakat != 0 && dbgstack.callTop != 0 {
+					buf := make([]byte, dbgstack.callTop*4)
+					common.LittleEndian.PutUint32(buf[:], uint32(breakat))
+					for i, j := dbgstack.callTop-1, 4; i > 0; i-- {
+						common.LittleEndian.PutUint32(buf[j:], uint32(dbgstack.data[i].pc))
+						j += 4
+					}
+					ctrl.Reply <- buf
+				} else {
+					ctrl.Reply <- nil
+				}
+			}
+
+		case <-time.After(time.Minute * 10):
+			debugging = false
+		}
+	}
+
+	dbgcontract, dbgstack = nil, nil
+	debugging, stop, stepping, breakpoints = false, true, false, make(map[int]bool)
 }
 
 func NewSigInterpreter(evm *OVM) *Interpreter {
@@ -68,6 +245,7 @@ func DisasmString(code []byte) string {
 	return s
 }
 
+/*
 func (in *Interpreter) Step(code *inst) ([]byte, error) {
 	stack := Newstack()
 	pc   := int(0) // program counter
@@ -90,8 +268,9 @@ func (in *Interpreter) Step(code *inst) ([]byte, error) {
 
 	err := operation.execute(&pc, nil, contract, stack)
 	
-	return stack.data[0].space, err
+	return stack.Data[0].space, err
 }
+ */
 
 // Run loops and evaluates the contract's code with the given input Data and returns
 // the return byte-slice and an error if one occurred.
@@ -101,8 +280,16 @@ func (in *Interpreter) Step(code *inst) ([]byte, error) {
 // errExecutionReverted which means revert-and-keep-gas-left.
 func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err error) {
 	// Increment the call depth which is restricted to 1024
+	// this is exec call depth, not func call depth
 	in.evm.depth++
-	defer func() { in.evm.depth-- }()
+	defer func() {
+		if debugging {
+			Control <- &DebugCmd{ Terminated, nil, nil }
+		}
+		in.evm.depth--
+	}()
+
+	log.Infof("Contract run()")
 
 	// Reset the previous call's return Data. It's unimportant to preserve the old buffer
 	// as every returning call will return new Data anyway.
@@ -140,7 +327,16 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 	if in.evm.chainConfig.ContractExecFee == 0 {
 		in.evm.CheckExecCost = false
 	}
-	
+
+	if debugging {
+		log.Info("start intrepdebug")
+		if attaching == nil {
+			attaching = make(chan struct{}, 10)
+		}
+		setdbgcontract(contract, stack);
+	}
+	log.Info("contract going")
+
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the
@@ -196,6 +392,8 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 			return nil, err
 		case operation.reverts:
 			return stack.data[0].space[4:mln], errExecutionReverted
+		case stop:
+			return nil, nil
 		case operation.halts:
 			return stack.data[0].space[4:mln], nil
 		case !operation.jumps:
