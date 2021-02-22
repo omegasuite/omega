@@ -89,6 +89,9 @@ var (
 	// boxes are indexed by its center coords.
 	borderBoxSetBucketName = []byte("borderboxes")
 
+	// compendatedBucketName is the name of the db key used to record compendated txs
+	compendatedBucketName = []byte("comptxbucket")
+
 	// borderChildrenSetBucketName is the name of the db bucket used to house the
 	// border's children set.
 //	borderChildrenSetBucketName = []byte("borderChildren")
@@ -854,6 +857,11 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
+		// Create the compendatedBucketName bucket
+		if _, err = meta.CreateBucket(compendatedBucketName); err != nil {
+			return err
+		}
+
 		// Save the genesis block to the block index database.
 		if err = dbStoreBlockNode(dbTx, node); err != nil {
 			return err
@@ -897,11 +905,12 @@ func (b *BlockChain) createChainState() error {
 func (b *BlockChain) initChainState() error {
 	// Determine the state of the chain database. We may need to initialize
 	// everything from scratch or upgrade certain buckets.
-	var initialized, hasBlockIndex, hasminertps bool
+	var initialized, hasBlockIndex, hasminertps, hascomptx bool
 	err := b.db.View(func(dbTx database.Tx) error {
 		initialized = dbTx.Metadata().Get(chainStateKeyName) != nil
 		hasBlockIndex = dbTx.Metadata().Bucket(blockIndexBucketName) != nil
 		hasminertps = dbTx.Metadata().Bucket(minerTPSBucketName) != nil
+		hascomptx = dbTx.Metadata().Bucket(compendatedBucketName) != nil
 		return nil
 	})
 	if err != nil {
@@ -921,6 +930,17 @@ func (b *BlockChain) initChainState() error {
 	if !hasminertps {
 		err := b.db.Update(func(dbTx database.Tx) error {
 			if _, err = dbTx.Metadata().CreateBucket(minerTPSBucketName); err != nil {
+				return err
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	if !hascomptx {
+		err := b.db.Update(func(dbTx database.Tx) error {
+			if _, err = dbTx.Metadata().CreateBucket(compendatedBucketName); err != nil {
 				return err
 			}
 			return nil
