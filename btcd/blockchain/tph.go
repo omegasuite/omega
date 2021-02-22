@@ -121,6 +121,11 @@ func (b *BlockChain) TphNotice(t *Notification) {
 		return
 	}
 
+	if !b.IsCurrent() {
+		// if not current, we are syncing chain, it does not reflect real TPS
+		return
+	}
+
 	switch t.Data.(type) {
 	case *btcutil.Block:
 		block := t.Data.(*btcutil.Block)

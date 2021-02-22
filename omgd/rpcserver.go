@@ -651,15 +651,12 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 
 		d := <- reply
 
-		var stack string
-		stack = "["
-		glue := ""
+		stack := make([]int, len(d) / 4)
 		for i := 0; i < len(d); i += 4 {
 			v := common.LittleEndian.Uint32(d[i:])
-			stack += glue + fmt.Sprintf("%d", v)
-			glue = ","
+			stack[i / 4] = int(v)
 		}
-		stack += "]"
+
 		return stack, nil
 	}
 	return nil, nil
