@@ -7,8 +7,8 @@ package indexers
 import (
 	"bytes"
 	"fmt"
-
 	"github.com/omegasuite/btcd/blockchain"
+
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/wire"

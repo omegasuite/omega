@@ -754,7 +754,27 @@ func NewGetTxOutCmd(txHash string, vout uint32, includeMempool *bool) *GetTxOutC
 	}
 }
 
-// GetTxOutCmd defines the gettxout JSON-RPC command.
+// ListUtxosCmd defines the ListUtxos JSON-RPC command.
+type ListUtxosCmd struct {
+	Begin           * uint32
+	Run             * uint32
+	Minval			* int64
+}
+
+// NewListUtxosCmd returns a new instance which can be used to issue a ListUtxos
+// JSON-RPC command.
+//
+// The parameters which are pointers indicate they are optional.  Passing nil
+// for optional parameters will use the default value.
+func NewListUtxosCmd(begin, run * uint32, m * int64) *ListUtxosCmd {
+	return &ListUtxosCmd{
+		Begin:         begin,
+		Run:           run,
+		Minval:		   m,
+	}
+}
+
+// GetDefineCmd defines the GetDefine JSON-RPC command.
 type GetDefineCmd struct {
 	Kind           uint32
 	Hash           string
@@ -1122,6 +1142,7 @@ func init() {
 	MustRegisterCmd("getrawmempool", (*GetRawMempoolCmd)(nil), flags)
 	MustRegisterCmd("getrawtransaction", (*GetRawTransactionCmd)(nil), flags)
 	MustRegisterCmd("gettxout", (*GetTxOutCmd)(nil), flags)
+	MustRegisterCmd("listutxos", (*ListUtxosCmd)(nil), flags)
 	MustRegisterCmd("getdefine", (*GetDefineCmd)(nil), flags)
 	MustRegisterCmd("gettxoutproof", (*GetTxOutProofCmd)(nil), flags)
 	MustRegisterCmd("gettxoutsetinfo", (*GetTxOutSetInfoCmd)(nil), flags)

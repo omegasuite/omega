@@ -467,8 +467,6 @@ func (self *Syncer) run() {
 
 				self.candRevd[self.Members[k.F]] = self.Members[k.F]
 
-//				log.Infof("MsgCandidate: M = %s\nHeight = %d\nF = %x\nSignature = %x\n",
-//					k.M.String(), k.Height, k.F, k.Signature)
 				if !self.validateMsg(k.F, &k.M, m) {
 					log.Infof("Invalid MsgCandidate message")
 					continue
@@ -582,7 +580,6 @@ func (self *Syncer) run() {
 				owner := self.Names[self.sigGiven]
 				if self.Runnable && self.forest[owner] != nil && self.forest[owner].block != nil &&
 					len(self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
-//					log.Info("passing NewConsusBlock on quit")
 					miner.server.NewConsusBlock(self.forest[owner].block)
 				}
 			}

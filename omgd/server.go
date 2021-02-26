@@ -344,6 +344,7 @@ type server struct {
 	// do not need to be protected for concurrent access.
 	txIndex   *indexers.TxIndex
 	addrIndex *indexers.AddrIndex
+	addrUseIndex *indexers.AddrUseIndex
 	cfIndex   *indexers.CfIndex
 
 	// The fee estimator keeps track of how long transactions are left in
@@ -3336,6 +3337,10 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		s.addrIndex = indexers.NewAddrIndex(db, chainParams)
 		indexes = append(indexes, s.addrIndex)
 	}
+
+	s.addrUseIndex = indexers.NewAddrUseIndex(db, chainParams)
+	indexes = append(indexes, s.addrUseIndex)
+
 	if !cfg.NoCFilters {
 		indxLog.Info("Committed filter index is enabled")
 		s.cfIndex = indexers.NewCfIndex(db, chainParams)
@@ -3367,6 +3372,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 		IndexManager: indexManager,
 		Miner:		  cfg.signAddress,
 		PrivKey:	  cfg.privateKeys,
+		AddrUsage:    s.addrUseIndex.Usage,
 //		HashCache:    s.hashCache,
 	})
 	if err != nil {

@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/omegasuite/omega/viewpoint"
 	"os"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
@@ -33,7 +34,6 @@ import (
 	"github.com/omegasuite/omega/minerchain"
 	"github.com/omegasuite/omega/ovm"
 	"github.com/omegasuite/omega/token"
-//	"github.com/omegasuite/omega/viewpoint"
 	"github.com/omegasuite/websocket"
 	"io"
 	"io/ioutil"
@@ -176,6 +176,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getrawmempool":         handleGetRawMempool,
 	"getrawtransaction":     handleGetRawTransaction,
 	"gettxout":              handleGetTxOut,
+	"listutxos":             handleListUtxos,
 	"getdefine":             handleGetDefine,
 	"help":                  handleHelp,
 	"node":                  handleNode,
@@ -298,6 +299,7 @@ var rpcLimited = map[string]struct{}{
 	"getrawmempool":         {},
 	"getrawtransaction":     {},
 	"gettxout":              {},
+	"listutxos":             {},
 	"getdefine":             {},
 	"searchrawtransactions": {},
 	"sendrawtransaction":    {},
@@ -1140,7 +1142,6 @@ func createVoutList(mtx *wire.MsgTx, chainParams *chaincfg.Params, filterAddrMap
 		}
 		// The disassembled string will contain [error] inline if the
 		// script doesn't fully parse, so ignore the error here.
-//		disbuf, _ := txscript.DisasmString(v.PkScript)
 		disbuf := DisasmScript(v.PkScript)
 
 		// Ignore the error here since an error means the script
@@ -1309,7 +1310,7 @@ func handleDecodeScript(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	// Get information about the script.
 	// Ignore the error here since an error means the script couldn't parse
 	// and there is no additinal information about it anyways.
-	addrs, reqSigs, _ := indexers.ExtractPkScriptAddrs(script,
+	addrs, _, _ := indexers.ExtractPkScriptAddrs(script,
 		s.cfg.ChainParams)
 	addresses := make([]string, len(addrs))
 	for i, addr := range addrs {
@@ -1326,7 +1327,7 @@ func handleDecodeScript(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	// Generate and return the reply.
 	reply := btcjson.DecodeScriptResult{
 		Asm:       disbuf,
-		ReqSigs:   int32(reqSigs),
+//		ReqSigs:   int32(reqSigs),
 		Type:      pubKeyTypes(script),
 		Addresses: addresses,
 	}
@@ -3392,6 +3393,92 @@ func handleGetRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan str
 		return nil, err
 	}
 	return *rawTxn, nil
+}
+
+// handleListUtxos handles listutxos commands.
+func handleListUtxos(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.ListUtxosCmd)
+
+	start := uint32(0)
+	if c.Begin != nil {
+		start = *c.Begin
+	}
+	run := uint32(100)
+	if c.Run != nil {
+		run = *c.Run
+	}
+	minval := int64(0)
+	if c.Minval != nil {
+		minval = *c.Minval
+	}
+
+	utxoReply := make([]*btcjson.GetTxOutResult, 0)
+
+	// Attempt to load the chain state from the database.
+	s.cfg.DB.View(func(dbTx database.Tx) error {
+		blockIndexBucket := dbTx.Metadata().Bucket(blockchain.UtxoSetBucketName)
+
+		cursor := blockIndexBucket.Cursor()
+		ok := cursor.Last()
+		for ; ok && start > 0; ok = cursor.Prev() {
+			start--
+		}
+
+		for ; ok && run > 0; ok = cursor.Prev() {
+			e,err := viewpoint.DeserializeUtxoEntry(cursor.Value())
+			if e == nil || err != nil {
+				continue
+			}
+			txo := e.ToTxOut()
+			run--
+
+			op := viewpoint.Key2Outpoint(cursor.Key())
+
+			ivalue := make(map[string]interface{}, 0)
+
+			if txo.IsNumeric() {
+				if txo.Value.(*token.NumToken).Val < minval {
+					continue
+				}
+				ivalue["Val"] = txo.Value.(*token.NumToken).Val
+			} else {
+				ivalue["Hash"] = txo.Value.(*token.HashToken).Hash.String()
+			}
+
+			disbuf := DisasmScript(txo.PkScript)
+			addrs, _, _ := indexers.ExtractPkScriptAddrs(txo.PkScript,
+				s.cfg.ChainParams)
+			addresses := make([]string, len(addrs))
+			for i, addr := range addrs {
+				addresses[i] = addr.EncodeAddress()
+			}
+
+			r := ""
+			if txo.Rights != nil {
+
+
+				r = txo.Rights.String()
+			}
+
+			txOutReply := &btcjson.GetTxOutResult{
+				BestBlock:	   op.String(),
+				Height:        e.BlockHeight(),
+				TokenType:     txo.TokenType,
+				Value:         ivalue,
+				Rights:        r,
+				ScriptPubKey: btcjson.ScriptPubKeyResult{
+					Asm:       disbuf,
+					Hex:       hex.EncodeToString(txo.PkScript),
+					Type:      pubKeyTypes(txo.PkScript),
+					Addresses: addresses,
+				},
+			}
+
+			utxoReply = append(utxoReply, txOutReply)
+		}
+		return nil
+	})
+	return utxoReply, nil
 }
 
 // handleGetTxOut handles gettxout commands.

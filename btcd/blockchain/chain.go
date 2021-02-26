@@ -183,6 +183,9 @@ type BlockChain struct {
 
 	// running consensus in this range
 	ConsensusRange [2]int32
+
+	// address usage index. use in forfeiture
+	AddrUsage func (address btcutil.Address) uint32
 }
 
 func (b *BlockChain) InitCollateral() {
@@ -2350,6 +2353,7 @@ type Config struct {
 	// This field can be nil if the caller is not interested in using a
 	// signature cache.
 //	HashCache *txscript.HashCache
+	AddrUsage func (address btcutil.Address) uint32
 }
 
 // New returns a BlockChain instance using the provided configuration details.
@@ -2403,8 +2407,9 @@ func New(config *Config) (*BlockChain, error) {
 		Miner:               config.Miner,
 		PrivKey:             config.PrivKey,
 //		BlackedList:         make([]*wire.Violations,0),
-		MinerTPH:       make(map[[20]byte]*TPHRecord),
-		ConsensusRange: [2]int32{-1,-1},
+		MinerTPH:       	 make(map[[20]byte]*TPHRecord),
+		ConsensusRange: 	 [2]int32{-1,-1},
+		AddrUsage:			 config.AddrUsage,
 	}
 
 	// Initialize the chain state from the passed database.  When the db

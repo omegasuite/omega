@@ -52,17 +52,13 @@ const (
 	// hash.
 	addrKeyTypeScriptHash = 1
 
-	// addrKeyTypePubKeyHash is the address type in an address key which
-	// represents a pay-to-witness-pubkey-hash address. This is required
-	// as the 20-byte data push of a p2wkh witness program may be the same
-	// data push used a p2pkh address.
-	addrKeyTypeWitnessPubKeyHash = 2
+	// addrKeyTypeContract is the address type in an address key which
+	// represents a contract.
+	addrKeyTypeContract = 2
 
-	// addrKeyTypeScriptHash is the address type in an address key which
-	// represents a pay-to-witness-script-hash address. This is required,
-	// as p2wsh are distinct from p2sh addresses since they use a new
-	// script template, as well as a 32-byte data push.
-	addrKeyTypeWitnessScriptHash = 3
+	// addrKeyTypeMultiSig is the address type in an address key which
+	// represents a multi signature.
+	addrKeyTypeMultiSig = 3
 
 	// Size of a transaction entry.  It consists of 4 bytes block id + 4
 	// bytes offset + 4 bytes length.
@@ -88,7 +84,6 @@ const (
 	OP_PAY2NONE				= 0x45
 	OP_PAY2ANY				= 0x46
 )
-
 
 // -----------------------------------------------------------------------------
 // The address index maps addresses referenced in the blockchain to a list of
@@ -552,10 +547,16 @@ func AddrToKey(addr btcutil.Address) ([addrKeySize]byte, error) {
 		copy(result[1:], addr.Hash160()[:])
 		return result, nil
 
-	case *btcutil.AddressPubKey:
+	case *btcutil.AddressContract:
 		var result [addrKeySize]byte
-		result[0] = addrKeyTypePubKeyHash
-		copy(result[1:], addr.AddressPubKeyHash().Hash160()[:])
+		result[0] = addrKeyTypeContract
+		copy(result[1:], addr.Hash160()[:])
+		return result, nil
+
+	case *btcutil.AddressMultiSig:
+		var result [addrKeySize]byte
+		result[0] = addrKeyTypeMultiSig
+		copy(result[1:], addr.Hash160()[:])
 		return result, nil
 	}
 
@@ -662,8 +663,7 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 	var addr btcutil.Address
 
 	if IsContract(pkScript[0]) {
-		// no need to index contract as it is executed immediately
-		return nil, 0, nil
+		addr, _ = btcutil.NewAddressContract(pkScript[1:21], chainParams)
 	} else {
 		if len(pkScript) < 25 {
 			return nil, 0, fmt.Errorf("Malformed pkScript")
