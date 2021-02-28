@@ -584,10 +584,11 @@ func (self *Syncer) run() {
 				}
 			}
 
+			log.Infof("sync %d quit", self.Height)
+
 			self.Done = true
 			self.Runnable = false
 
-			log.Infof("sync %d quit", self.Height)
 			return
 		}
 	}

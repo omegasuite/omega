@@ -402,6 +402,8 @@ func (b *BlockChain) GetReorganizeSideChain(hash chainhash.Hash) (*list.List, *l
 	attachNodes := list.New()
 	detachNodes := list.New()
 
+	// it is safe to assume side chain is cached, so we can use b.BestChain.Contains
+	// instead of b.BestChainContains
 	node := b.NodeByHash(&hash)
 	if b.BestChain.Contains(node) {
 		return detachNodes, attachNodes
@@ -1715,8 +1717,7 @@ func (b *BlockChain) isCurrent() bool {
 }
 
 func (b *BlockChain) InBestChain(u * chainhash.Hash) bool {
-	nu := b.NodeByHash(u)
-	return nu != nil && b.BestChain.Contains(nu)
+	return b.BestChainContains(u)
 }
 
 func (b *BlockChain) SameChain(u, w chainhash.Hash) bool {
@@ -1782,7 +1783,7 @@ func (b *BlockChain) HeaderByHash(hash *chainhash.Hash) (wire.BlockHeader, error
 	var h * wire.BlockHeader
 	var err error
 	b.db.View(func (tx database.Tx) error {
-		h, err = dbFetchHeaderByHash(tx, hash)
+		h, err = DbFetchHeaderByHash(tx, hash)
 		return nil
 	})
 	if h != nil {
@@ -1797,8 +1798,22 @@ func (b *BlockChain) HeaderByHash(hash *chainhash.Hash) (wire.BlockHeader, error
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) MainChainHasBlock(hash *chainhash.Hash) bool {
-	node := b.NodeByHash(hash)
-	return node != nil && b.BestChain.Contains(node)
+	p := b.index.LookupNode(hash)
+
+	if p != nil && b.BestChain.Contains(p) {
+		return true
+	}
+
+	if p == nil {
+		h := b.dbHeightofHash(*hash)
+		if h < 0 {
+			return false
+		}
+		g := b.dbHashByHeight(h)
+		return g.IsEqual(hash)
+	}
+
+	return false
 }
 
 // BlockLocatorFromHash returns a block locator for the passed block hash.
@@ -1818,7 +1833,7 @@ func (b *BlockChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockL
 	if node == nil {
 		var n chainutil.BlockNode
 		b.db.View(func (tx database.Tx) error {
-			h, _ := dbFetchHeaderByHash(tx, hash)
+			h, _ := DbFetchHeaderByHash(tx, hash)
 			if h != nil {
 				InitBlockNode(&n, h, nil)
 				node = &n
@@ -1852,13 +1867,45 @@ func (b *BlockChain) LatestBlockLocator() (chainhash.BlockLocator, error) {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) BlockHeightByHash(hash *chainhash.Hash) (int32, error) {
-	node := b.NodeByHash(hash)
-	if node == nil || !b.BestChain.Contains(node) {
+	p := b.index.LookupNode(hash)
+
+	if p == nil {
+		h := b.dbHeightofHash(*hash)
+		if h < 0 {
+			str := fmt.Sprintf("block %s is not in the main chain", hash)
+			return 0, bccompress.ErrNotInMainChain(str)
+		}
+		g := b.dbHashByHeight(h)
+		if g.IsEqual(hash) {
+			return h, nil
+		}
 		str := fmt.Sprintf("block %s is not in the main chain", hash)
 		return 0, bccompress.ErrNotInMainChain(str)
 	}
 
-	return node.Height, nil
+	if p.Height >= int32(b.index.Cutoff) {
+		if !b.BestChain.Contains(p) {
+			str := fmt.Sprintf("block %s is not in the main chain", hash)
+			return 0, bccompress.ErrNotInMainChain(str)
+		}
+	}
+
+	return p.Height, nil
+}
+
+func (b *BlockChain) BestChainContains(hash *chainhash.Hash) bool {
+	p := b.index.LookupNode(hash)
+
+	if p == nil {
+		h := b.dbHeightofHash(*hash)
+		if h < 0 {
+			return false
+		}
+		g := b.dbHashByHeight(h)
+		return g.IsEqual(hash)
+	}
+
+	return b.BestChain.Contains(p)
 }
 
 // BlockHashByHeight returns the hash of the block at the given height in the
@@ -2086,6 +2133,8 @@ func (b *BlockChain) locateInventory(locator chainhash.BlockLocator, hashStop *c
 	startNode := b.BestChain.Genesis()
 	sideChain := false
 
+	// b.BestChain.Contains only tells whether the BestChain contains a cached node.
+	// it may give a negative false result. but it is ok here since we will check db
 	if stopNode == nil || stopNode.Height <= int32(b.index.Cutoff) || b.BestChain.Contains(stopNode) {
 		for _, hash := range locator {
 			node := b.NodeByHash(hash)
@@ -2458,7 +2507,7 @@ func (b *BlockChain) NodeByHash(h *chainhash.Hash) * chainutil.BlockNode {
 	var n chainutil.BlockNode
 
 	b.db.View(func (tx database.Tx) error {
-		h, _ := dbFetchHeaderByHash(tx, h)
+		h, _ := DbFetchHeaderByHash(tx, h)
 		if h != nil {
 			InitBlockNode(&n, h, nil)
 			p = &n

@@ -499,8 +499,9 @@ out:
 
 		if chainChoice.Hash == *m.g.Chain.Miners.Tip().Hash() && block.MsgBlock().Version >= chaincfg.Version2 {
 			// we choose the best chain, file violation report
-			t := make([]*wire.Violations, 0, len(m.g.Chain.Miners.(*MinerChain).violations))
-			for _,v := range m.g.Chain.Miners.(*MinerChain).violations {
+			violations := m.g.Chain.Miners.(*MinerChain).violations
+			t := make([]*wire.Violations, 0, len(violations))
+			for _,v := range violations {
 				vb := make(map[chainhash.Hash]struct{})
 				for _,h := range v.Blocks {
 					vb[h] = struct{}{}
@@ -524,6 +525,9 @@ out:
 				}
 			}
 			block.MsgBlock().ViolationReport = t
+			if len(t) > 0 {
+				log.Infof("violation report -- %d", len(t))
+			}
 		}
 
 		if len(m.cfg.ExternalIPs) > 0 {

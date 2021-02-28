@@ -33,7 +33,7 @@ type txfee struct {
 }
 
 // CompTxs is the main function to genrate compensation transactions.
-func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, vm *ovm.OVM) ([]*wire.MsgTx, error) {
+func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, error) {
 	// prevNode is the node in tx chain just before us. it normally is tip of chain
 
 	// we only do compensation in the first block after rotation. i.e., nonce of prev block
@@ -93,6 +93,9 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, vm *ovm.OVM) ([]*wir
 	avgtx := 0
 	for i, p := 0, prevNode; i < wire.ViolationReportDeadline * wire.MINER_RORATE_FREQ; i++ {
 		t,_ := g.BlockByHash(&p.Hash)
+		if t == nil {
+			return nil, nil
+		}
 		avgtx += len(t.MsgBlock().Transactions) - 1
 		p = p.Parent
 	}
@@ -108,7 +111,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, vm *ovm.OVM) ([]*wir
 	for _, blk := range reportee {
 		// process one violator at a time. stx contains the awards to reporters. x is the list
 		// of victims to be compensated
-		stx, x, err := g.processviolator(blk, mrblks, vm)
+		stx, x, err := g.processviolator(blk, mrblks)
 		if err != nil {
 			return nil, err
 		}
@@ -163,7 +166,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, vm *ovm.OVM) ([]*wir
 
 			// append contract script for txs
 			for _, tx := range x {
-				cto.PkScript = append(cto.PkScript, g.comptx(tx, vm)...)
+				cto.PkScript = append(cto.PkScript, g.comptx(tx)...)
 			}
 
 			ctx.AddTxOut(cto)
@@ -219,7 +222,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, vm *ovm.OVM) ([]*wir
 				if tx != nil {
 					t := score(tx)
 					if t > admit {
-						admit = 0
+						admit = t
 					}
 				}
 			}
@@ -237,12 +240,14 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, vm *ovm.OVM) ([]*wir
 				if allocunit > bal {
 					allocable = bal
 				}
-				if tx.fee - tx.sure > allocable {
+				if tx.fee > allocable {
 					tx.sure += allocable
+					tx.fee -= allocable
 					bal -= allocable
 				} else {
 					bal -= (tx.fee - tx.sure)
-					tx.sure = tx.fee
+					tx.sure += tx.fee
+					tx.fee = 0
 					count--
 				}
 				for _,adr := range tx.payees {
@@ -256,7 +261,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, vm *ovm.OVM) ([]*wir
 		// append contract script for txs
 		for _, tx := range x {
 			if tx != nil {
-				cto.PkScript = append(cto.PkScript, g.comptx(tx, vm)...)
+				cto.PkScript = append(cto.PkScript, g.comptx(tx)...)
 			}
 		}
 
@@ -270,7 +275,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, vm *ovm.OVM) ([]*wir
 
 // process violation by one miner (blk). the reports are in mrblks
 // returns: 1. a transaction giving awards to reporters 2. a list of victim txs to be compansated
-func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.MingingRightBlock, vm *ovm.OVM) (*wire.MsgTx, map[chainhash.Hash]*txfee, error) {
+func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.MingingRightBlock) (*wire.MsgTx, map[chainhash.Hash]*txfee, error) {
 	reportblks := make(map[[20]byte]int)
 	totalblks := 0
 	totaltxs := 0
@@ -363,14 +368,14 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 	// collect victim txs to compensate
 	for _,p := range forfeiture {
 		blk,_ := g.BlockByHash(p)
-		g.processForfeitBlock(blk, usable, processed, vm)
+		g.processForfeitBlock(blk, usable, processed)
 	}
 
 	return ctx, processed, nil
 }
 
 func (g *BlockChain) processForfeitBlock(b *btcutil.Block,
-	usable map[wire.OutPoint]int64,	processed map[chainhash.Hash]*txfee, vm *ovm.OVM) {
+	usable map[wire.OutPoint]int64,	processed map[chainhash.Hash]*txfee) {
 	// scan for qualified txs. coinbase is not qualified of course
 	for _, tx := range b.Transactions()[1:] {
 		if tx.MsgTx().Version & wire.TxTypeMask > wire.TxVersion || g.MainChainTx(*tx.Hash()) != nil{
@@ -437,16 +442,16 @@ func (g *BlockChain) processForfeitBlock(b *btcutil.Block,
 
 			var pye [21]byte
 			if tto.PkScript[0] == g.ChainParams.ContractAddrID {
-				var addr ovm.Address
-				copy(addr[:], tto.PkScript[1:21])
+//				var addr ovm.Address
+//				copy(addr[:], tto.PkScript[1:21])
 				// if contract has designated an owner, pay the owner,
 				// otherwide, contract may add an 0 payment to an address for receiving
 				// comp. if neither, contract give up comp
-				owner, err := vm.ContractCall(addr, []byte{ovm.OP_OWNER, 0, 0, 0})
-				if err != nil || len(owner) != 21 || owner[0] == g.ChainParams.ContractAddrID {
+//				owner, err := vm.ContractCall(addr, []byte{ovm.OP_OWNER, 0, 0, 0})
+//				if err != nil || len(owner) != 21 || owner[0] == g.ChainParams.ContractAddrID {
 					continue
-				}
-				copy(pye[:], owner)
+//				}
+//				copy(pye[:], owner)
 			} else {
 				copy(pye[:], tto.PkScript[:21])
 			}
@@ -484,7 +489,7 @@ func (g *BlockChain) recordCompensation(tx *chainhash.Hash) error {
 	})
 }
 
-func (g *BlockChain) comptx(tx *txfee, vm *ovm.OVM) []byte {
+func (g *BlockChain) comptx(tx *txfee) []byte {
 	added := int64(0)
 	scripts := make([]byte, 4)
 	mn := uint16(0)
@@ -494,13 +499,13 @@ func (g *BlockChain) comptx(tx *txfee, vm *ovm.OVM) []byte {
 			continue
 		}
 		if tto.PkScript[0] == g.ChainParams.ContractAddrID {
-			var addr ovm.Address
-			copy(addr[:], tto.PkScript[1:21])
-			owner, err := vm.ContractCall(addr, []byte{ovm.OP_OWNER, 0, 0, 0})
-			if err != nil || len(owner) != 21 || owner[0] == g.ChainParams.ContractAddrID {
+//			var addr ovm.Address
+//			copy(addr[:], tto.PkScript[1:21])
+//			owner, err := vm.ContractCall(addr, []byte{ovm.OP_OWNER, 0, 0, 0})
+//			if err != nil || len(owner) != 21 || owner[0] == g.ChainParams.ContractAddrID {
 				continue
-			}
-			scripts = append(scripts, owner...)
+//			}
+//			scripts = append(scripts, owner...)
 		} else {
 			scripts = append(scripts, tto.PkScript[:21]...)
 		}
@@ -624,8 +629,8 @@ func (b *BlockChain) PrepForfeit(prevNode *chainutil.BlockNode) ([]reportedblk, 
 	return forfeiture, rbase, nil
 }
 
-func (b *BlockChain) CheckForfeit(block *btcutil.Block, prevNode *chainutil.BlockNode, vm *ovm.OVM) error {
-	ftxs, err := b.CompTxs(prevNode, vm)
+func (b *BlockChain) CheckForfeit(block *btcutil.Block, prevNode *chainutil.BlockNode) error {
+	ftxs, err := b.CompTxs(prevNode)
 	if err != nil {
 		return err
 	}

@@ -1838,7 +1838,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Address:	   d.String(),	// hex.EncodeToString(blockHeader.Miner),
 		Best:		   blockHeader.BestBlock.String(),
 		Collateral:    collateral,
-//		Violations:	   hex.EncodeToString(blockHeader.Violations),
+		Violations:	   blockHeader.ViolationReport,
 	}
 
 	return blockReply, nil
@@ -3399,7 +3399,7 @@ func handleGetRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan str
 func handleListUtxos(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.ListUtxosCmd)
 
-	start := uint32(0)
+	start := int32(0)
 	if c.Begin != nil {
 		start = *c.Begin
 	}
@@ -3419,12 +3419,19 @@ func handleListUtxos(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 		blockIndexBucket := dbTx.Metadata().Bucket(blockchain.UtxoSetBucketName)
 
 		cursor := blockIndexBucket.Cursor()
-		ok := cursor.Last()
-		for ; ok && start > 0; ok = cursor.Prev() {
+		bgn := cursor.Last
+		nxt := cursor.Prev
+		if start < 0 {
+			start = -start - 1;
+			bgn = cursor.First
+			nxt = cursor.Next
+		}
+		var ok bool
+		for ok = bgn(); ok && start > 0; ok = nxt() {
 			start--
 		}
 
-		for ; ok && run > 0; ok = cursor.Prev() {
+		for ; ok && run > 0; ok = nxt() {
 			e,err := viewpoint.DeserializeUtxoEntry(cursor.Value())
 			if e == nil || err != nil {
 				continue

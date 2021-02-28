@@ -1175,11 +1175,11 @@ func (b *BlockChain) FetchMissingNodes(hash * chainhash.Hash, to int32) error {
 			for ; p.Height > to; p = p.Parent {
 				if p.Parent == nil {
 					if ph == nil {
-						ph, _ = dbFetchHeaderByHash(dbTx, &p.Hash)
+						ph, _ = DbFetchHeaderByHash(dbTx, &p.Hash)
 					}
 
 					if r = b.index.LookupNodeUL(&ph.PrevBlock); r == nil {
-						ph2, _ := dbFetchHeaderByHash(dbTx, &ph.PrevBlock)
+						ph2, _ := DbFetchHeaderByHash(dbTx, &ph.PrevBlock)
 						if j == 0 {
 							newnodes = make([]chainutil.BlockNode, p.Height - to)
 							j = p.Height - to
@@ -1224,7 +1224,7 @@ func (b *BlockChain) FetchMissingNodes(hash * chainhash.Hash, to int32) error {
 		}
 
 		if p == nil {
-			ph, _ = dbFetchHeaderByHash(dbTx, hash)
+			ph, _ = DbFetchHeaderByHash(dbTx, hash)
 			p = &chainutil.BlockNode{ }
 			InitBlockNode(p, ph, b.index.LookupNodeUL(&ph.PrevBlock))
 			p.Height = b.index.Unloaded[*hash]
@@ -1315,7 +1315,7 @@ func (b * BlockChain) NodetoHeader(node *chainutil.BlockNode) wire.BlockHeader {
 	} else if node.Height != 0 {
 		var h * wire.BlockHeader
 		b.db.View(func (tx database.Tx) error {
-			h, _ = dbFetchHeaderByHash(tx, &node.Hash)
+			h, _ = DbFetchHeaderByHash(tx, &node.Hash)
 			return nil
 		})
 		if h != nil {
@@ -1378,9 +1378,9 @@ func deserializeBlockRow(blockRow []byte) (*wire.BlockHeader, chainutil.BlockSta
 	return &header, chainutil.BlockStatus(statusByte), nil
 }
 
-// dbFetchHeaderByHash uses an existing database transaction to retrieve the
+// DbFetchHeaderByHash uses an existing database transaction to retrieve the
 // block header for the provided hash.
-func dbFetchHeaderByHash(dbTx database.Tx, hash *chainhash.Hash) (*wire.BlockHeader, error) {
+func DbFetchHeaderByHash(dbTx database.Tx, hash *chainhash.Hash) (*wire.BlockHeader, error) {
 	headerBytes, err := dbTx.FetchBlockHeader(hash)
 	if err != nil {
 		return nil, err
@@ -1403,7 +1403,7 @@ func dbFetchHeaderByHeight(dbTx database.Tx, height int32) (*wire.BlockHeader, e
 		return nil, err
 	}
 
-	return dbFetchHeaderByHash(dbTx, hash)
+	return DbFetchHeaderByHash(dbTx, hash)
 }
 
 // dbFetchBlockByNode uses an existing database transaction to retrieve the
@@ -1532,7 +1532,7 @@ func (b *BlockChain) BlockByHash(hash *chainhash.Hash) (*btcutil.Block, error) {
 	// Lookup the block hash in block index and ensure it is in the best
 	// chain.
 	node := b.NodeByHash(hash)
-	if node == nil || !b.BestChain.Contains(node) {
+	if node == nil || !b.BestChainContains(hash) {
 		str := fmt.Sprintf("block %s is not in the main chain", hash)
 		return nil, bccompress.ErrNotInMainChain(str)
 	}

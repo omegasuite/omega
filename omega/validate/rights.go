@@ -361,7 +361,11 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (bool, error
 			for _, r := range y {
 				for i, s := range (*ancester)[r] {
 					f := fval[io]
-					e := views.Rights.LookupEntry(s).(*viewpoint.RightEntry)
+					g := views.Rights.LookupEntry(s)
+					if g == nil {
+						continue
+					}
+					e := g.(*viewpoint.RightEntry)
 //					if e.Attrib & token.Monitored != 0 && emt.tokenType != 3 {
 //						return false, fmt.Errorf("Non-polygon token can not have monitored right")
 //					}
@@ -390,10 +394,11 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (bool, error
 		merge = false
 		for r, g := range sumVals {
 			s := r
-			e := views.Rights.LookupEntry(r.right).(*viewpoint.RightEntry)
-			if e == nil {
+			f := views.Rights.LookupEntry(r.right)
+			if f == nil {
 				continue
 			}
+			e := f.(*viewpoint.RightEntry)
 
 			s.right = e.Sibling()
 			p := r

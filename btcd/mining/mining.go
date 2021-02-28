@@ -508,7 +508,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 
 	var comptx []*wire.MsgTx
 	if s.MsgBlock().Version >= chaincfg.Version2 {
-		comptx, err = g.Chain.CompTxs(g.Chain.BestChain.Tip(), Vm)
+		comptx, err = g.Chain.CompTxs(g.Chain.BestChain.Tip())
 		if err != nil {
 			return nil, err
 		}
@@ -853,6 +853,7 @@ mempoolLoop:
 
 		err = blockchain.CheckTransactionIntegrity(tx, views)
 		if err != nil {
+			g.txSource.RemoveTransaction(tx, true)
 			// we should roll back result of last contract execution here
 			log.Tracef("Skipping tx %s due to error in "+
 				"CheckTransactionIntegrity: %v", tx.Hash(), err)

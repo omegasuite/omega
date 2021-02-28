@@ -756,7 +756,7 @@ func NewGetTxOutCmd(txHash string, vout uint32, includeMempool *bool) *GetTxOutC
 
 // ListUtxosCmd defines the ListUtxos JSON-RPC command.
 type ListUtxosCmd struct {
-	Begin           * uint32
+	Begin           * int32
 	Run             * uint32
 	Minval			* int64
 }
@@ -766,7 +766,7 @@ type ListUtxosCmd struct {
 //
 // The parameters which are pointers indicate they are optional.  Passing nil
 // for optional parameters will use the default value.
-func NewListUtxosCmd(begin, run * uint32, m * int64) *ListUtxosCmd {
+func NewListUtxosCmd(begin * int32, run * uint32, m * int64) *ListUtxosCmd {
 	return &ListUtxosCmd{
 		Begin:         begin,
 		Run:           run,

@@ -1599,7 +1599,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 	if block.MsgBlock().Header.Version >= chaincfg.Version2 {
-		err = b.CheckForfeit(block, node.Parent, Vm)
+		err = b.CheckForfeit(block, node.Parent)
 		if err != nil {
 			return err
 		}

@@ -6,7 +6,9 @@ package btcjson
 
 import (
 	"encoding/json"
-//	"github.com/btcsuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire"
+
+	//	"github.com/btcsuite/btcd/wire"
 )
 
 // GetBlockHeaderVerboseResult models the data from the getblockheader command when
@@ -63,8 +65,8 @@ type GetMinerBlockVerboseResult struct {
 	Difficulty    float64       `json:"difficulty"`
 	Address       string        `json:"address"`
 	Best		  string        `json:"best"`
-	Collateral    string      `json:"collateral"`
-//	ViolationReport	  string        `json:"blacklist"`
+	Collateral    string   	    `json:"collateral"`
+	Violations	  []*wire.Violations    `json:"violations"`
 }
 
 // CreateMultiSigResult models the data returned from the createmultisig

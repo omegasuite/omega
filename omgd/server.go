@@ -3339,6 +3339,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	}
 
 	s.addrUseIndex = indexers.NewAddrUseIndex(db, chainParams)
+	s.addrUseIndex.Snap2V2()
 	indexes = append(indexes, s.addrUseIndex)
 
 	if !cfg.NoCFilters {

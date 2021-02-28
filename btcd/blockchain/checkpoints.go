@@ -99,7 +99,7 @@ func (b *BlockChain) findPreviousCheckpoint() (*chainutil.BlockNode, error) {
 		// that is already available.
 		for i := numCheckpoints - 1; i >= 0; i-- {
 			node := b.NodeByHash(checkpoints[i].Hash)
-			if node == nil || !b.BestChain.Contains(node) {
+			if node == nil || !b.BestChainContains(checkpoints[i].Hash) {
 				continue
 			}
 
@@ -212,7 +212,7 @@ func (b *BlockChain) IsCheckpointCandidate(block *btcutil.Block) (bool, error) {
 
 	// A checkpoint must be in the main chain.
 	node := b.NodeByHash(block.Hash())
-	if node == nil || !b.BestChain.Contains(node) {
+	if node == nil || !b.BestChainContains(block.Hash()) {
 		return false, nil
 	}
 
