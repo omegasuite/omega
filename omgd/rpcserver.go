@@ -542,6 +542,10 @@ var debugchan chan []byte
 var pendattach bool
 
 func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	if s.cfg.ChainParams.Net != common.TestNet {
+		return nil, fmt.Errorf("Vm debugging is only enabled in testNet")
+	}
+
 	c := cmd.(*btcjson.VMDebugCmd)
 
 	gotype := map[string]ovm.DebugCommand{"go":ovm.Gorun, "step":ovm.Stepping, "clearbreakpoint":ovm.Unbreak, "breakpoint":ovm.Breakpoint}
@@ -551,6 +555,7 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 		if debugchan == nil {
 			debugchan = make(chan []byte, 50)
 		}
+
 
 		ovm.DebugSetup(true, debugchan)
 		pendattach = true
@@ -809,9 +814,15 @@ func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 	best := s.cfg.Chain.BestSnapshot()
 	views.SetBestHash(&best.Hash)
+
 	vm.BlockNumber = func() uint64 { return uint64(best.Height + 1) }
 	nt := time.Now().Unix()
 	vm.BlockTime = func() uint32 { return uint32(nt) }
+
+	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
+	if mb.Data.GetContractExec() > vm.StepLimit {
+		vm.StepLimit = mb.Data.GetContractExec()
+	}
 
 	tx := btcutil.NewTx(&msgTx)
 
@@ -1562,8 +1573,14 @@ func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	views := s.cfg.Chain.NewViewPointSet()
 	vm.SetViewPoint(views)
 
-	vm.BlockTime = func() uint32 { return 0	}
-	vm.BlockNumber = func() uint64 { return 0 }
+	best := s.cfg.Chain.BestSnapshot()
+	vm.BlockTime = func() uint32 { return uint32(best.MedianTime.Unix()) }
+	vm.BlockNumber = func() uint64 { return uint64(best.Height) }
+
+	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
+	if mb.Data.GetContractExec() > vm.StepLimit {
+		vm.StepLimit = mb.Data.GetContractExec()
+	}
 
 	contract, err := ovm.AddressFromString(c.Contract)
 	if err != nil {
@@ -4444,9 +4461,9 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 
 		if t := <- ch; t != nil {
 			cf.Stop()
-//			w := bytes.NewBuffer(make([]byte, t.SerializeSizeFull()))
-//			t.SerializeFull(w)
-//			msg += "TxHex" + hex.EncodeToString(w.Bytes())
+			if t.Version == 0 {
+				msg += fmt.Sprintf("\nTransaction rejected.")
+			}
 		} else {
 			msg += fmt.Sprintf("\nNo confirmation after %d seconds.", *c.WaitConfirm)
 		}
@@ -5550,6 +5567,16 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 		default:
 			rpcsLog.Warnf("Chain disconnected notification is not a block.")
 			break
+		}
+
+	case blockchain.NTBlockRejected:
+		switch notification.Data.(type) {
+		case *btcutil.Tx:
+			tx := *notification.Data.(*btcutil.Tx)
+			if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
+				ch <- &wire.MsgTx{Version: 0}
+				delete(s.sendcmdconfirmation, *tx.Hash())
+			}
 		}
 	}
 }

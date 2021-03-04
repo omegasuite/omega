@@ -398,7 +398,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	}
 
 	// validity of Violations
-	uniq := make(map[chainhash.Hash]struct{})
+	uniq := make(map[chainhash.Hash]map[chainhash.Hash]struct{})
 	mh,_ := b.blockChain.BlockHeightByHash(&block.MsgBlock().BestBlock)
 	for _, p := range block.MsgBlock().ViolationReport {
 		if p.Height <= 0 {
@@ -419,15 +419,23 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 			return ruleError(ErrBlackList, fmt.Errorf("Report of violation more than 99 blocks older not allowed. %d", mb.Height()).Error())
 		}
 		miner := mb.MsgBlock().Miner
+
+		if _,ok := uniq[p.MRBlock]; !ok {
+			uniq[p.MRBlock] = make(map[chainhash.Hash]struct{})
+		}
+
 		// prep for check for duplicated reports
 		for q,_ := b.BlockByHash(&block.MsgBlock().PrevBlock); q.Height() > mb.Height(); q,_ = b.BlockByHash(&q.MsgBlock().PrevBlock) {
 			for _, s := range q.MsgBlock().ViolationReport {
 				if !s.MRBlock.IsEqual(&p.MRBlock) {
 					continue
 				}
+				if _,ok := uniq[s.MRBlock]; !ok {
+					uniq[s.MRBlock] = make(map[chainhash.Hash]struct{})
+				}
 				for _,tx := range s.Blocks {
 					if _,err := b.blockChain.BlockHeightByHash(&tx); err != nil {
-						uniq[tx] = struct{}{}
+						uniq[s.MRBlock][tx] = struct{}{}
 					}
 				}
 			}
@@ -436,10 +444,10 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		main := false
 		for _,tx := range p.Blocks {
 			if _,err := b.blockChain.BlockHeightByHash(&tx); err != nil {
-				if _,ok := uniq[tx]; ok {
+				if _,ok := uniq[p.MRBlock][tx]; ok {
 					return ruleError(ErrBlackList, fmt.Errorf("Violating block already reported before: %s", tx.String()).Error())
 				}
-				uniq[tx] = struct{}{}
+				uniq[p.MRBlock][tx] = struct{}{}
 			} else if main {
 				return ruleError(ErrBlackList, fmt.Errorf("Duplicated block in blacklist: %s", tx.String()).Error())
 			} else {

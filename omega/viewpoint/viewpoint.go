@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega"
 	"github.com/omegasuite/omega/token"
@@ -210,7 +209,7 @@ func (views *ViewPointSet) Flattern(p []token.LoopDef) []token.LoopDef {
 // ConnectTransactions updates the view by adding all new vertices created by all
 // of the transactions in the passed block, and setting the best hash for the view
 // to the passed block.
-func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut, minersonhold map[wire.OutPoint]int32) error {
+func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut) error {
 	for _, tx := range block.Transactions() {
 		if !view.AddBorder(tx) {
 			return fmt.Errorf("Attempt to add illegal border.")
@@ -240,10 +239,6 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 					}
 					if p != nil {
 						p.deReference(view)
-					}
-				} else if entry.TokenType == 0 {
-					if _,ok := minersonhold[in.PreviousOutPoint]; ok {
-						return fmt.Errorf("Miner attempts to spend in holding period.")
 					}
 				}
 			}

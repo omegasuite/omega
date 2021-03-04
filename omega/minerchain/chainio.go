@@ -424,7 +424,12 @@ func deserializeBlockRow(blockRow []byte) (*wire.MinerBlock, chainutil.BlockStat
 
 	statusByte, err := buffer.ReadByte()
 	if err != nil {
-		return nil, chainutil.StatusNone, err
+		// make sure we get the last byte
+		buffer.UnreadByte()
+		statusByte, err = buffer.ReadByte()
+		if err != nil {
+			return nil, chainutil.StatusNone, err
+		}
 	}
 
 	return wire.NewMinerBlock(&header), chainutil.BlockStatus(statusByte), nil

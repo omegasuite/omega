@@ -73,6 +73,7 @@ type NodeData interface {
 	GetBits() uint32
 	SetBits(uint32)
 	GetVersion() uint32
+	GetContractExec() int64
 	WorkSum() *big.Int
 }
 

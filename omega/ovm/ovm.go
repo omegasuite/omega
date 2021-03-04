@@ -86,9 +86,9 @@ type Context struct {
 	AddCoinBase AddCoinBaseFunc
 
 	// Block information
-	GasLimit    uint64 			      // GASLIMIT policy
-	BlockNumber GetBlockNumberFunc    // Provides information for NUMBER
-	BlockTime GetBlockTimeFunc
+	StepLimit   int64              // Step LIMIT policy
+	BlockNumber GetBlockNumberFunc // Provides information for NUMBER
+	BlockTime   GetBlockTimeFunc
 
 	exeout []bool
 //	Block 		GetBlockFunc
@@ -229,37 +229,32 @@ func NewOVM(chainConfig *chaincfg.Params) *OVM {
 		StateDB:     make(map[Address]*stateDB),
 		TokenTypes:  make(map[uint64]Address),
 		ExistingTokenTypes:  make(map[uint64]Address),
-//		rollbacks: make(map[uint64]*BlockRollBack),
-//		final: make(map[Address] * fstate),
 		chainConfig: chainConfig,
 		lastBlock: 0,
 		CheckExecCost: false,
 	}
-	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
+	evm.StepLimit = chainConfig.ContractExecLimit // step limit the contract can run, node decided policy
 
 	evm.interpreter = NewInterpreter(evm)
 	return evm
 }
 
+/*
 func (v * OVM) Reset() {
 	v.StateDB =  make(map[Address]*stateDB)
 	v.TokenTypes = make(map[uint64]Address)
 	v.ExistingTokenTypes = make(map[uint64]Address)
-//	v.rollbacks = make(map[uint64]*BlockRollBack)
-//	v.final = make(map[Address] * fstate)
 	v.lastBlock = 0
-	v.GasLimit = uint64(v.chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
+	v.StepLimit = v.chainConfig.ContractExecLimit // step limit the contract can run, node decided policy
 }
+ */
 
 func NewSigVM(chainConfig *chaincfg.Params) *OVM {
 	evm := &OVM{
 		StateDB:     make(map[Address]*stateDB),
-//		TokenTypes:  make(map[uint64]Address),
-//		TokenCheckSupression: make(map[uint64]struct{}),
-//		rollbacks: make(map[uint64]*BlockRollBack),
 		chainConfig: chainConfig,
 	}
-	evm.GasLimit    = uint64(chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
+	evm.StepLimit = chainConfig.ContractExecLimit // step limit the contract can run, node decided policy
 
 	evm.interpreter = NewSigInterpreter(evm)
 	return evm
@@ -333,10 +328,8 @@ func (v * OVM) Commit() {
 	v.StateDB = make(map[Address]*stateDB)
 	v.TokenTypes = make(map[uint64]Address)
 	v.ExistingTokenTypes = make(map[uint64]Address)
-//	v.rollbacks = make(map[uint64]*BlockRollBack)
-//	v.final = make(map[Address] * fstate)
 	v.lastBlock = v.BlockNumber()
-	v.GasLimit = uint64(v.chainConfig.ContractExecLimit)         // step limit the contract can run, node decided policy
+	v.StepLimit = v.chainConfig.ContractExecLimit // step limit the contract can run, node decided policy
 }
 
 /*

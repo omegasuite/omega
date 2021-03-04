@@ -179,7 +179,7 @@ type BlockChain struct {
 
 	// locked collaterals
 	collaterals []wire.OutPoint		// list of locked collateral
-	lockedCollaterals map[wire.OutPoint]int		// reference counts of them
+	lockedCollaterals map[wire.OutPoint]struct{}		// reference counts of them
 
 	// running consensus in this range
 	ConsensusRange [2]int32
@@ -190,7 +190,7 @@ type BlockChain struct {
 
 func (b *BlockChain) InitCollateral() {
 	b.collaterals = make([]wire.OutPoint, wire.ViolationReportDeadline)
-	b.lockedCollaterals = make(map[wire.OutPoint]int)
+	b.lockedCollaterals = make(map[wire.OutPoint]struct{})
 
 	rot := b.BestSnapshot().LastRotation
 	for i := 0; i < wire.ViolationReportDeadline; i++ {
@@ -200,11 +200,7 @@ func (b *BlockChain) InitCollateral() {
 		}
 		c := *mb.MsgBlock().Utxos
 		b.collaterals[wire.ViolationReportDeadline - 1 - i] = c
-		if _,ok := b.lockedCollaterals[c]; !ok {
-			b.lockedCollaterals[c] = 1
-		} else {
-			b.lockedCollaterals[c] = b.lockedCollaterals[c] + 1
-		}
+		b.lockedCollaterals[c] = struct{}{}
 	}
 }
 
@@ -643,12 +639,8 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 
 	for i := 0; i < m; i++ {
 		c := b.collaterals[0]
-		if _,ok := b.lockedCollaterals[c]; ok {
-			b.lockedCollaterals[c] = b.lockedCollaterals[c] - 1
-			if b.lockedCollaterals[c] == 0 {
-				delete(b.lockedCollaterals, c)
-			}
-		}
+		delete(b.lockedCollaterals, c)
+
 		b.collaterals = b.collaterals[1:]
 
 		mb,_ := b.Miners.BlockByHeight(int32(rot) + int32(i) + 1)
@@ -658,11 +650,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		}
 		c = *mb.MsgBlock().Utxos
 		b.collaterals = append(b.collaterals, c)
-		if _,ok := b.lockedCollaterals[c]; ok {
-			b.lockedCollaterals[c] = b.lockedCollaterals[c] + 1
-		} else {
-			b.lockedCollaterals[c] = 1
-		}
+		b.lockedCollaterals[c] = struct{}{}
 	}
 
 	// Prune fully spent entries and mark all entries in the view unmodified
@@ -833,12 +821,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 
 	for i := 0; i < m; i++ {
 		c := b.collaterals[wire.ViolationReportDeadline-1]
-		if _,ok := b.lockedCollaterals[c]; ok {
-			b.lockedCollaterals[c] = b.lockedCollaterals[c] - 1
-			if b.lockedCollaterals[c] == 0 {
-				delete(b.lockedCollaterals, c)
-			}
-		}
+		delete(b.lockedCollaterals, c)
 		b.collaterals = b.collaterals[:wire.ViolationReportDeadline-1]
 
 		mb, _ := b.Miners.BlockByHeight(int32(rot) - wire.ViolationReportDeadline - int32(i))
@@ -848,11 +831,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		}
 		c = *mb.MsgBlock().Utxos
 		b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
-		if _, ok := b.lockedCollaterals[c]; ok {
-			b.lockedCollaterals[c] = b.lockedCollaterals[c] + 1
-		} else {
-			b.lockedCollaterals[c] = 1
-		}
+		b.lockedCollaterals[c] = struct{}{}
 	}
 
 	// Prune fully spent entries and mark all entries in the view unmodified
@@ -1252,23 +1231,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 	// Connect the new best chain blocks.
 	e := attachNodes.Front()
-	// check if it is within holding period: a miner can not do any transaction
-	// within MinerHoldingPeriod blocks since he becomes a member
-	minersonhold := make(map[wire.OutPoint]int32)
-	var p *chainutil.BlockNode
-	if e != nil {
-		p = e.Value.(*chainutil.BlockNode)
-	}
-	for i := int32(0); p != nil && i < MinerHoldingPeriod; i++ {
-		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
-			mb,_ := b.Miners.BlockByHeight(-p.Data.GetNonce() - wire.MINER_RORATE_FREQ)
-			if mb.MsgBlock().Utxos != nil {
-				minersonhold[*mb.MsgBlock().Utxos] = p.Height
-			}
-		}
-		p = b.ParentNode(p)
-	}
-
 	for i := 0; e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 
@@ -1307,7 +1269,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return uint32(block.MsgBlock().Header.Timestamp.Unix())
 		}
 
-		Vm.GasLimit = block.MsgBlock().Header.ContractExec
+		Vm.StepLimit = block.MsgBlock().Header.ContractExec
 		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
 
 		for i, tx := range block.Transactions() {
@@ -1329,7 +1291,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		if !block.Transactions()[0].Match(coinBase) {
 			return fmt.Errorf("Mismatch contract execution result")
 		}
-		if Vm.GasLimit != 0 {
+		if Vm.StepLimit != 0 {
 			return fmt.Errorf("Incorrect contract execution cost.")
 		}
 
@@ -1338,7 +1300,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		// to it.  Also, provide an stxo slice so the spent txout
 		// details are generated.
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
-		err = views.ConnectTransactions(block, &stxos, minersonhold)
+		err = views.ConnectTransactions(block, &stxos)
 		if err != nil {
 			return err		// should panic. this should never happend and would potentially corrupt the database
 		}
@@ -1350,18 +1312,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 
 		Vm.Commit()	// commit state change & establish a rollback point
-
-		for u,v := range minersonhold {
-			if v + MinerHoldingPeriod < n.Height {
-				delete(minersonhold, u)
-			}
-		}
-		if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
-			mb,_ := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ)
-			if mb.MsgBlock().Utxos != nil {
-				minersonhold[*mb.MsgBlock().Utxos] = block.Height()
-			}
-		}
 
 		b.index.SetStatusFlags(n, chainutil.StatusValid)
 	}
@@ -1483,22 +1433,6 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		}
 	}
 
-	// check if it is within holding period: a miner can not do any transaction
-	// within MinerHoldingPeriod blocks since he becomes a member
-	minersonhold := make(map[wire.OutPoint]int32)
-	for i, p := int32(0), node.Parent; p != nil && i < MinerHoldingPeriod; i++ {
-		if p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
-			mb,_ := b.Miners.BlockByHeight(-p.Data.GetNonce() - wire.MINER_RORATE_FREQ)
-			if mb == nil {
-				return false, fmt.Errorf("missing miner block")
-			}
-			if mb.MsgBlock().Utxos != nil {
-				minersonhold[*mb.MsgBlock().Utxos] = p.Height
-			}
-		}
-		p = b.ParentNode(p)
-	}
-
 	// We are extending the main (best) chain with a new block.  This is the
 	// most common case.
 	parentHash := &block.MsgBlock().Header.PrevBlock
@@ -1507,12 +1441,24 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		// Skip checks if node has already been fully validated.
 		fastAdd = fastAdd || b.index.NodeStatus(node).KnownValid()
 
+		best := b.BestSnapshot()
+		mb := b.Miners.NodeByHeight(int32(best.LastRotation))
+
+		cnl := mb.Data.GetContractExec()
+		if cnl == 0 {
+			cnl = b.ChainParams.ContractExecLimit
+		}
+		if block.MsgBlock().Header.ContractExec > cnl {
+			// contract execution must not exceed block limit
+			str := fmt.Sprintf("Contract execution steps exceeds block limit in %v", *block.Hash())
+			return false, ruleError(ErrExcessContractExec, str)
+		}
+
 		// Perform several checks to verify the block can be connected
 		// to the main chain without violating any rules and without
 		// actually connecting the block.
 		views, Vm := b.Canvas(block)
-//		views.db = &b.db
-//		view := NewUtxoViewpoint()
+
 		views.Utxo.SetBestHash(parentHash)
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
 		if !fastAdd {
@@ -1541,7 +1487,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			if err != nil {
 				return false, err
 			}
-			err = views.ConnectTransactions(block, &stxos, minersonhold)
+			err = views.ConnectTransactions(block, &stxos)
 			if err != nil {
 				return false, err
 			}
@@ -1931,7 +1877,11 @@ func (b *BlockChain) NodeByHeight(blockHeight int32) *chainutil.BlockNode {
 	}
 	node := b.BestChain.NodeByHeight(blockHeight)
 	if node == nil {
-		node = b.NodeByHash(b.dbHashByHeight(blockHeight))
+		h := b.dbHashByHeight(blockHeight)
+		if h == nil {
+			return nil
+		}
+		node = b.NodeByHash(h)
 	}
 	node.Height = blockHeight
 	return node
@@ -2519,4 +2469,23 @@ func (b *BlockChain) NodeByHash(h *chainhash.Hash) * chainutil.BlockNode {
 	}
 
 	return p
+}
+
+func (b *BlockChain) MaxContractExec(lastBlk chainhash.Hash, cbest chainhash.Hash) int64 {
+	// max contractexec during this period
+	var m int64
+	var h *chainhash.Hash
+	h = &cbest
+	for p := b.NodeByHash(h); p != nil && !h.IsEqual(&lastBlk); h = &p.Hash {
+		if p.Data.(*blockchainNodeData).ContractExec > m {
+			m = p.Data.(*blockchainNodeData).ContractExec
+		}
+		if p.Parent != nil {
+			p = p.Parent
+		} else {
+			header := b.NodetoHeader(p)
+			p = b.NodeByHash(&header.PrevBlock)
+		}
+	}
+	return m
 }

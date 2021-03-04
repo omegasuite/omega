@@ -23,6 +23,10 @@ type blockchainNodeData struct {
 	block   *wire.MingingRightBlock
 }
 
+func (d * blockchainNodeData) GetContractExec() int64 {
+	return d.block.ContractLimit
+}
+
 func (d * blockchainNodeData) TimeStamp() int64 {
 	return d.block.Timestamp.Unix()
 }

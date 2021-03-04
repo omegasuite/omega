@@ -1252,11 +1252,14 @@ type blockchainNodeData struct {
 	// immutable and are intentionally ordered to avoid padding on 64-bit
 	// platforms.
 	Version   uint32
-//	Bits      uint32
 	Nonce     int32
 	Timestamp int64
 	MerkleRoot chainhash.Hash
-	ContractExec uint64
+	ContractExec int64
+}
+
+func (d * blockchainNodeData) GetContractExec() int64 {
+	return d.ContractExec
 }
 
 func (d * blockchainNodeData) GetData(s interface{}) {

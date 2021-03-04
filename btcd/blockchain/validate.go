@@ -1488,7 +1488,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				return op
 			})
 
-		Vm.GasLimit = block.MsgBlock().Header.ContractExec
+		Vm.StepLimit = block.MsgBlock().Header.ContractExec
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
 		}
@@ -1590,7 +1590,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 	if Vm != nil {
-		if Vm.GasLimit != 0 {
+		if Vm.StepLimit != 0 {
 			return fmt.Errorf("Incorrect contract execution cost.")
 		}
 		if !block.Transactions()[0].Match(coinBase) {

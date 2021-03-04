@@ -23,25 +23,6 @@ import (
 	"time"
 )
 
-// hash160 returns the RIPEMD160 hash of the SHA-256 HASH of the given Data.
-/*
-func hash160(Data []byte) []byte {
-	h := sha256.Sum256(Data)
-	return ripemd160h(h[:])
-}
-
-// ripemd160h returns the RIPEMD160 hash of the given Data.
-func ripemd160h(Data []byte) []byte {
-	h := ripemd160.New()
-	h.Write(Data)
-	return h.Sum(nil)
-}
-
-func Hash160(Data []byte) []byte {
-	return hash160(Data)
-}
- */
-
 func zeroaddr(addr []byte) bool {
 	for _,t := range addr {
 		if t != 0 {
@@ -134,6 +115,9 @@ func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, er
 
 func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int, views *viewpoint.ViewPointSet) error {
 	if tx.IsCoinBase() {
+		return nil
+	}
+	if tx.MsgTx().IsForfeit() {
 		return nil
 	}
 

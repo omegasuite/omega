@@ -524,6 +524,9 @@ out:
 					t = append(t, v)
 				}
 			}
+			sort.Slice(t, func (i int, j int) bool {
+				return t[i].Height < t[j].Height
+			})
 			block.MsgBlock().ViolationReport = t
 			if len(t) > 0 {
 				log.Infof("violation report -- %d", len(t))

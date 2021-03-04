@@ -115,6 +115,14 @@ const (
 	Version1 = 0x10000
 	Version2 = 0x20000
 )
+
+type forfeitureContract struct {
+	Contract 	[21]byte
+	Opening		[4]byte
+	Filing		[4]byte
+	Claim		[4]byte
+}
+
 // Params defines a Bitcoin network by its parameters.  These parameters may be
 // used by Bitcoin applications to differentiate networks as well as addresses
 // and keys for one network from those intended for use on another network.
@@ -238,7 +246,7 @@ type Params struct {
 	HDCoinType uint32
 
 	// ContractExecLimit is a policy by each node to limit step a contract may execute
-	ContractExecLimit uint64
+	ContractExecLimit int64
 
 	// SigVeriConcurrency is the number of concurrent verifiers for signature veridfication
 	SigVeriConcurrency int
@@ -246,6 +254,9 @@ type Params struct {
 	MinBorderFee int
 	MinRelayTxFee int64
 	ContractExecFee		int64			// contract execution cost as Haos per 10K steps
+
+	// forfeiture
+	Forfeit		forfeitureContract
 }
 
 // MainNetParams defines the network parameters for the main Omega network.
@@ -322,9 +333,16 @@ var MainNetParams = Params{
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 0,
-	ContractExecLimit: 10000000,		// hard limit of total contract execution steps in a block
+	ContractExecLimit: 10000,		// min limit of total contract execution steps in a block
 	SigVeriConcurrency: 1,
 	ContractExecFee: 1,
+	Forfeit:	forfeitureContract {
+		Contract: 	[21]byte{0x88, 0x1a, 0x52, 0x0f, 0xa9, 0x4d, 0x8e, 0x07,
+			0x3b, 0x0b, 0x46, 0x79, 0x43, 0x5b, 0x55, 0x09, 0xa5, 0xc6, 0x84, 0x7d, 0xb3},
+		Opening:	[4]byte{0x7c, 0xef, 0x8a, 0x73},
+		Filing:		[4]byte{0xb2, 0x18, 0x16, 0x5a},
+		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
+	},
 }
 
 // RegressionNetParams defines the network parameters for the regression test
@@ -400,9 +418,16 @@ var RegressionNetParams = Params{
 	// address generation.
 	HDCoinType: 1,
 
-	ContractExecLimit: 10000000,
+	ContractExecLimit: 10000,
 	SigVeriConcurrency: 4,
 	ContractExecFee: 1,
+	Forfeit:	forfeitureContract {
+		Contract: 	[21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
+			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
+		Opening:	[4]byte{0x7c,0xef,0x8a,0x73},
+		Filing:		[4]byte{0xb2,0x18,0x16,0x5a},
+		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
+	},
 }
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
@@ -481,9 +506,16 @@ var TestNet3Params = Params{
 	// address generation.
 	HDCoinType: 1,
 
-	ContractExecLimit: 10000000,
+	ContractExecLimit: 10000,
 	SigVeriConcurrency: 4,
 	ContractExecFee: 1,
+	Forfeit:	forfeitureContract {
+		Contract: 	[21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
+			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
+		Opening:	[4]byte{0x7c,0xef,0x8a,0x73},
+		Filing:		[4]byte{0xb2,0x18,0x16,0x5a},
+		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
+	},
 }
 
 // SimNetParams defines the network parameters for the simulation test Bitcoin
@@ -563,9 +595,16 @@ var SimNetParams = Params{
 	// address generation.
 	HDCoinType: 115, // ASCII for s
 
-	ContractExecLimit: 10000000,
+	ContractExecLimit: 10000,
 	SigVeriConcurrency: 4,
 	ContractExecFee: 1,
+	Forfeit:	forfeitureContract {
+		Contract: 	[21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
+			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
+		Opening:	[4]byte{0x7c,0xef,0x8a,0x73},
+		Filing:		[4]byte{0xb2,0x18,0x16,0x5a},
+		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
+	},
 }
 
 var (

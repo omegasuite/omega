@@ -506,6 +506,11 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 
 	views, Vm := g.Chain.Canvas(nil)
 
+	if s.MsgBlock().ContractLimit > Vm.StepLimit {
+		Vm.StepLimit = s.MsgBlock().ContractLimit
+	}
+	stepLimit := Vm.StepLimit
+
 	var comptx []*wire.MsgTx
 	if s.MsgBlock().Version >= chaincfg.Version2 {
 		comptx, err = g.Chain.CompTxs(g.Chain.BestChain.Tip())
@@ -555,6 +560,9 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	ts := medianAdjustedTime(best, g.timeSource)
 
 	prev := g.Chain.NodeByHeight(best.Height)
+	if prev == nil {
+		return nil, fmt.Errorf("bad state")
+	}
 	if ts.Unix() < prev.Data.TimeStamp() {
 		ts = time.Unix(prev.Data.TimeStamp(), 0)
 	}
@@ -602,6 +610,9 @@ mempoolLoop:
 			entry := views.GetUtxo(txIn.PreviousOutPoint)
 			if entry == nil || entry.IsSpent() {
 				if !g.txSource.HaveTransaction(originHash) {
+					g.txSource.RemoveTransaction(tx, true)
+					g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+					
 					log.Tracef("Skipping tx %s because it "+
 						"references unspent output %s "+
 						"which is not available",
@@ -811,6 +822,7 @@ mempoolLoop:
 		err = ovm.VerifySigs(tx, nextBlockHeight, g.chainParams, 0, views)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			// we should roll back result of last contract execution here
 			log.Infof("Remove tx %s due to error in "+
@@ -830,6 +842,7 @@ mempoolLoop:
 			*coinbaseTx.MsgTx() = savedCoinBase
 
 			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			log.Infof("Remove tx %s due to error in "+
 				"ExecContract: %v", tx.Hash(), err)
@@ -854,6 +867,8 @@ mempoolLoop:
 		err = blockchain.CheckTransactionIntegrity(tx, views)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+
 			// we should roll back result of last contract execution here
 			log.Tracef("Skipping tx %s due to error in "+
 				"CheckTransactionIntegrity: %v", tx.Hash(), err)
@@ -864,6 +879,8 @@ mempoolLoop:
 		fees, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, storage, views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+
 			log.Tracef("Skipping tx %s due to error in "+
 				"CheckTransactionFeess: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
@@ -913,7 +930,7 @@ mempoolLoop:
 		}
 	}
 
-	contractExec := uint64(g.Chain.ChainParams.ContractExecLimit) - Vm.GasLimit
+	contractExec := stepLimit - Vm.StepLimit
 
 	// add fees to miner outputs
 	m := int64(0)
@@ -1070,6 +1087,18 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		}
 	}
 
+	// the rule is new ContractLimit must not less than prev ContractLimit
+	// and max ContractExec between BestBlocks of prev and this MR blocks
+	// it that is less than chain param, it could be 0 implying the chain
+	// defauly limit
+	contractlim := 2 * g.Chain.MaxContractExec(lastBlk.BestBlock, cbest.Hash)
+	if lastBlk.ContractLimit > contractlim {
+		contractlim = lastBlk.ContractLimit
+	}
+	if contractlim < g.chainParams.ContractExecLimit {
+		contractlim = 0
+	}
+
 	// Create a new block ready to be solved.
 	msgBlock := wire.MingingRightBlock{
 		Version:         nextBlockVersion,
@@ -1080,6 +1109,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		BestBlock:       cbest.Hash,
 		Utxos:           uc,
 		ViolationReport: make([]*wire.Violations, 0),
+		ContractLimit: contractlim,
 	}
 
 	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())
@@ -1095,7 +1125,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 					v =	v2 * 8
 					msgBlock.TphReports[j] = v
 				} else if 8 * v < v2 {
-					v =	v2 >> 3
+					v =	(v2 + 7) >> 3
 					if v == 0 {
 						v = 1
 					}

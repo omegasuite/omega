@@ -23,8 +23,6 @@ type reportedblk struct {
 	reporter * [20]byte
 }
 
-var ADDVTM = []byte{45,12,45,65,0,0,0,0,0,0,0,0,28,0,0,0,}		// TBD correct method
-
 type txfee struct {
 	tx * btcutil.Tx
 	fee int64
@@ -116,11 +114,19 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, erro
 			return nil, err
 		}
 
-		if stx != nil {
-			ctransactions = append(ctransactions, stx)
+		if stx == nil {
+			// this miner is innocent
+			continue
 		}
 
+		ctransactions = append(ctransactions, stx)
+
+		// this is the opening contract call
+		bal := stx.TxOut[0].Value.(*token.NumToken).Val
+
 		if len(x) == 0 {
+			// no claim. no need to open, destroy the entire bal.
+			stx.TxOut[0].PkScript = []byte{g.ChainParams.PubKeyHashAddrID, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ovm.OP_PAY2NONE}
 			continue
 		}
 
@@ -128,28 +134,34 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, erro
 		ctx.Version = wire.ForfeitTxVersion | wire.TxNoLock | wire.TxNoDefine
 		cto := &wire.TxOut{}
 		cto.TokenType = 0
+
 		cto.Value = &token.NumToken{0}
-		cto.PkScript = make([]byte, len(ADDVTM))
-		copy(cto.PkScript, ADDVTM)
+		cto.PkScript = make([]byte, 25)
+		// contract call for filing claim records
+		copy(cto.PkScript, g.ChainParams.Forfeit.Contract[:])
+		copy(cto.PkScript[21:], g.ChainParams.Forfeit.Filing[:])
 
 		count, sum := uint64(0), int64(0)
 		// is available fund more than what is needed to compensate all? if yes, no
 		// nned to prioritize txs
 		for _, tx := range x {
 			if tx != nil {
-				sum += tx.fee + 1000
+				sum += tx.fee
 				count++
 			}
 		}
 
 		var ht [8]byte
+		// claim record call parameters: paypoint, count, claim list
+		// paypoint
 		common.LittleEndian.PutUint64(ht[:], uint64(blk.Height()))
 		cto.PkScript = append(cto.PkScript, ht[:]...)
+		// count
 		common.LittleEndian.PutUint64(ht[:], count)
 		cto.PkScript = append(cto.PkScript, ht[:]...)
-		cto.PkScript = append(cto.PkScript, []byte{36, 0, 0, 0, 0, 0, 0, 0}...)
 
-		bal := stx.TxOut[0].Value.(*token.NumToken).Val
+//		cto.PkScript = append(cto.PkScript, []byte{36, 0, 0, 0, 0, 0, 0, 0}...)
+
 		if sum <= bal {
 			for _, tx := range x {
 				if tx == nil {
@@ -158,13 +170,15 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, erro
 				tx.sure = tx.fee // mark it as full payment upon request
 			}
 			// destroy the left over
-			leftover := &wire.TxOut{}
-			leftover.Value = &token.NumToken{bal - sum}
-			leftover.TokenType = 0
-			leftover.PkScript = []byte{0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ovm.OP_PAY2NONE}
-			ctx.AddTxOut(leftover)
+			if sum < bal {
+				leftover := &wire.TxOut{}
+				leftover.Value = &token.NumToken{bal - sum}
+				leftover.TokenType = 0
+				leftover.PkScript = []byte{g.ChainParams.PubKeyHashAddrID, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ovm.OP_PAY2NONE}
+				ctx.AddTxOut(leftover)
+			}
 
-			// append contract script for txs
+			// append claim list for txs
 			for _, tx := range x {
 				cto.PkScript = append(cto.PkScript, g.comptx(tx)...)
 			}
@@ -215,7 +229,6 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, erro
 		}
 
 		// now we allocate fund by their uscore
-		bal -= int64(count) * 1000
 		for bal > 0 && count > 0 {
 			admit := uint32(0)
 			for _, tx := range x {
@@ -300,7 +313,7 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 				if g.InBestChain(&r.Blocks[i]) {
 					continue
 				}
-				bbk,_ := g.BlockByHash(&r.Blocks[i])
+				bbk,_ := g.HashToBlock(&r.Blocks[i])
 				totaltxs += len(bbk.MsgBlock().Transactions)
 				forfeiture = append(forfeiture, &r.Blocks[i])
 			}
@@ -323,7 +336,6 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 	// any leftover collateral will be destroyed.
 
 	// spend collateral
-	forfeiturecontract := []byte{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,171,8,19,20}
 	const DEPOSIT = byte(ovm.OP_PAY2PKH)
 
 	ctx.AddTxIn(&wire.TxIn{
@@ -342,8 +354,9 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 	rpo := &wire.TxOut{}
 	rpo.TokenType = 0
 	rpo.Value = &token.NumToken{ forcontract }
-	rpo.PkScript = forfeiturecontract
-	rpo.PkScript = append(rpo.PkScript, []byte{DEPOSIT,0,0,0}...)
+	rpo.PkScript = make([]byte, 21, 25)
+	copy(rpo.PkScript, g.ChainParams.Forfeit.Contract[:])
+	rpo.PkScript = append(rpo.PkScript, g.ChainParams.Forfeit.Opening[:]...)	// open contract call
 	var ht [8]byte
 	common.LittleEndian.PutUint32(ht[:], uint32(blk.Height()))
 	rpo.PkScript = append(rpo.PkScript, ht[:]...)
@@ -352,6 +365,9 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 	// pay to reporters
 	r125 := avail >> 3		// 1/8 of collaterals goes to all reports
 	for r,s := range reportblks {
+		if s == 0 {
+			continue
+		}
 		rpo := &wire.TxOut{}
 		rpo.TokenType = 0
 		rpo.Value = &token.NumToken{r125 * int64(s) / int64(totalblks) }
@@ -367,7 +383,7 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 
 	// collect victim txs to compensate
 	for _,p := range forfeiture {
-		blk,_ := g.BlockByHash(p)
+		blk,_ := g.HashToBlock(p)
 		g.processForfeitBlock(blk, usable, processed)
 	}
 
@@ -442,16 +458,7 @@ func (g *BlockChain) processForfeitBlock(b *btcutil.Block,
 
 			var pye [21]byte
 			if tto.PkScript[0] == g.ChainParams.ContractAddrID {
-//				var addr ovm.Address
-//				copy(addr[:], tto.PkScript[1:21])
-				// if contract has designated an owner, pay the owner,
-				// otherwide, contract may add an 0 payment to an address for receiving
-				// comp. if neither, contract give up comp
-//				owner, err := vm.ContractCall(addr, []byte{ovm.OP_OWNER, 0, 0, 0})
-//				if err != nil || len(owner) != 21 || owner[0] == g.ChainParams.ContractAddrID {
 					continue
-//				}
-//				copy(pye[:], owner)
 			} else {
 				copy(pye[:], tto.PkScript[:21])
 			}
@@ -499,13 +506,7 @@ func (g *BlockChain) comptx(tx *txfee) []byte {
 			continue
 		}
 		if tto.PkScript[0] == g.ChainParams.ContractAddrID {
-//			var addr ovm.Address
-//			copy(addr[:], tto.PkScript[1:21])
-//			owner, err := vm.ContractCall(addr, []byte{ovm.OP_OWNER, 0, 0, 0})
-//			if err != nil || len(owner) != 21 || owner[0] == g.ChainParams.ContractAddrID {
 				continue
-//			}
-//			scripts = append(scripts, owner...)
 		} else {
 			scripts = append(scripts, tto.PkScript[:21]...)
 		}
@@ -630,38 +631,50 @@ func (b *BlockChain) PrepForfeit(prevNode *chainutil.BlockNode) ([]reportedblk, 
 }
 
 func (b *BlockChain) CheckForfeit(block *btcutil.Block, prevNode *chainutil.BlockNode) error {
+	nonce := prevNode.Data.GetNonce()
+	if nonce < 0 && nonce > -wire.MINER_RORATE_FREQ {
+		// this is not a block after rotation, make sure there is no Forfeit tx
+		for _,tx := range block.MsgBlock().Transactions[1:] {
+			if tx.IsForfeit() {
+				return fmt.Errorf("Incorrect forfeiture txs")
+			}
+		}
+		return nil
+	}
+
 	ftxs, err := b.CompTxs(prevNode)
 	if err != nil {
 		return err
 	}
 
 	// all foreit txs in a block must process exactly all violation reports
-	for _,tx := range block.MsgBlock().Transactions[1:] {
+	cnt := 0
+	for i,tx := range block.MsgBlock().Transactions[1:] {
 		if !tx.IsForfeit() {
-			if len(ftxs) != 0 {
+			if len(ftxs) > i {
 				return fmt.Errorf("Incorrect forfeiture txs")
 			}
 			return nil
 		}
-		if len(ftxs) == 0 {
+		if len(ftxs) < i + 1 {
 			return fmt.Errorf("Incorrect forfeiture txs")
 		}
+		cnt++
 
 		var w1 bytes.Buffer
 		var w2 bytes.Buffer
 		if err := tx.SerializeFull(&w1); err != nil {
 			return err
 		}
-		if err := ftxs[0].SerializeFull(&w2); err != nil {
+		if err := ftxs[i].SerializeFull(&w2); err != nil {
 			return err
 		}
 		if bytes.Compare(w1.Bytes(), w2.Bytes()) != 0 {
 			return fmt.Errorf("Incorrect forfeiture txs")
 		}
-		ftxs = ftxs[1:]
 	}
 
-	if len(ftxs) != 0 {
+	if len(ftxs) != cnt {
 		return fmt.Errorf("Incorrect forfeiture txs")
 	}
 

@@ -232,9 +232,9 @@ func (b * orphanBlock) NeedUpdate(ob chainutil.Orphaned) bool {
 // This function is safe for concurrent access.
 func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error, int32) {
 	if block.MsgBlock().Header.Nonce > 0 {
-		// if it is a POW block, wait 20 seconds. Thus if the committee if functioning
-		// they will generate signed blocks during this period and surpeceds this block
-		time.Sleep(20 * time.Second)
+		// if it is a POW block, wait 10 seconds. Thus if the committee if functioning
+		// they will generate signed blocks during this period and supersedes this block
+		time.Sleep(10 * time.Second)
 	}
 
 //	log.Infof("ProcessBlock: ChainLock.RLock")
@@ -315,12 +315,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	if !b.Orphans.CheckOrphan(blockHash, (*orphanBlock)(block)) {
 		str := fmt.Sprintf("already have block (orphan) %v", blockHash)
 		return false, true, ruleError(ErrDuplicateBlock, str), -1
-	}
-
-	// contract execution must not exceed block limit
-	if block.MsgBlock().Header.ContractExec > b.ChainParams.ContractExecLimit {
-		str := fmt.Sprintf("Contract execution steps exceeds block limit in %v", blockHash)
-		return false, true, ruleError(ErrExcessContractExec, str), -1
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.

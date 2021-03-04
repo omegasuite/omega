@@ -247,6 +247,24 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		}
 	}
 
+	// the rule is new ContractLimit must not less than prev ContractLimit
+	// and max ContractExec between BestBlocks of prev and this MR blocks.
+	// it may not be larger than twice of the max ContractExec and prev
+	// ContractLimit if that is less than chain param, it could be 0
+	// implying the chain param value
+	lastBlk := parent.Data.(*blockchainNodeData).block
+	contractlim := block.MsgBlock().ContractLimit
+	if contractlim == 0 {
+		contractlim = b.chainParams.ContractExecLimit
+	}
+	limita := b.blockChain.MaxContractExec(lastBlk.BestBlock, block.MsgBlock().BestBlock)
+	if contractlim < limita || contractlim < lastBlk.ContractLimit {
+		return false, false, fmt.Errorf("ContractLimit is too low"), nil
+	}
+	if contractlim > 2 * limita && contractlim > lastBlk.ContractLimit && contractlim > b.chainParams.ContractExecLimit {
+		return false, false, fmt.Errorf("ContractLimit is too big"), nil
+	}
+
 	// The block has passed all context independent checks and appears sane
 	// enough to potentially accept it into the block chain.
 	isMainChain, err := b.maybeAcceptBlock(block, flags)
@@ -343,19 +361,20 @@ func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource cha
 func (b *MinerChain) validateVioldationReports(block * wire.MinerBlock) error {
 	// validate violation reports
 	bestnode := b.blockChain.NodeByHash(&block.MsgBlock().BestBlock)
-	mynode := b.NodeByHash(block.Hash())
-	vb := make(map[chainhash.Hash]struct{})
+
+	mynode := &chainutil.BlockNode{}
+	InitBlockNode(mynode, block.MsgBlock(), b.NodeByHash(&block.MsgBlock().PrevBlock))
+
+	vb := make(map[chainhash.Hash]map[chainhash.Hash]struct{})
+
 	hoder := int32(-1)
 	for _, v := range block.MsgBlock().ViolationReport {
+		mb := b.NodeByHash(&v.MRBlock)
 		if v.Height < hoder {
 			// ensure reports are in ascending order by height
 			return fmt.Errorf("reports are not in ascending order")
 		}
 		hoder = v.Height
-		mb := b.NodeByHash(&v.MRBlock)
-		if mb == nil {
-			return fmt.Errorf("the reported MR block does not exist")
-		}
 		if block.Height()-mb.Height >= wire.ViolationReportDeadline {
 			return fmt.Errorf("violation report exceeds time limit")
 		}
@@ -368,14 +387,21 @@ func (b *MinerChain) validateVioldationReports(block * wire.MinerBlock) error {
 
 		hasmainchain := false
 
+		if _, ok := vb[v.MRBlock]; !ok {
+			vb[v.MRBlock] = make(map[chainhash.Hash]struct{})
+		}
+
 		for _, h := range v.Blocks {
-			if _, ok := vb[h]; ok {
+			if _, ok := vb[v.MRBlock][h]; ok {
 				return fmt.Errorf("Duplicated violation report")
 			}
-			vb[h] = struct{}{}
-			txb, err := b.blockChain.BlockByHash(&h)
+			vb[v.MRBlock][h] = struct{}{}
+			txb, err := b.blockChain.HashToBlock(&h)
 			if err != nil {
 				return err
+			}
+			if b.MainChainHasBlock(&h) {
+				delete(vb[v.MRBlock], h)
 			}
 			if txb.Height() != v.Height {
 				return fmt.Errorf("Incorrect violation report height")
@@ -400,7 +426,8 @@ func (b *MinerChain) validateVioldationReports(block * wire.MinerBlock) error {
 			}
 
 			p := bestnode
-			for ; p.Height > v.Height; p = b.blockChain.ParentNode(p) {	}
+			for ; p.Height > v.Height; p = b.blockChain.ParentNode(p) {
+			}
 			if p.Hash == h {
 				// it is in the bestblock's chain
 				hasmainchain = true

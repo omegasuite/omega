@@ -16,6 +16,7 @@ import (
 	"golang.org/x/crypto/ripemd160"
 	"math"
 	"math/big"
+	"time"
 
 	"bytes"
 	"encoding/binary"
@@ -2492,7 +2493,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 					g := newFrame()
 					g.inlib, g.gbase, g.pure = d, stack.libTop, pure
-					g.space = append(g.space, []byte{4, 0, 0, 0, 0, 0, 0, 0}...)
+					g.space = append(g.space, []byte{4, 0, 0, 0, 0, 0, 0, 0, OP_INIT, 0, 0, 0}...)
 					binary.LittleEndian.PutUint32(g.space[4:], uint32(contract.libs[d].base))
 					stack.data[stack.libTop] = g
 
@@ -3523,7 +3524,12 @@ func opNul(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		log.Infof("opNul: waiting inspector")
 
-		<- inspector
+		select {
+		case <-inspector:
+		case <-time.After(5 * time.Minute):
+			// if no activity in 5 min., cancel debugging
+			debugging = false
+		}
 		log.Infof("opNul: continue")
 	}
 	return nil

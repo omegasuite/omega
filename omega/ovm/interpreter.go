@@ -156,6 +156,7 @@ func intrepdebug() {
 				} else {
 					inspector <- ctrl
 				}
+				stepping = false
 
 			case Breaked:
 				breakat = int(common.LittleEndian.Uint32(ctrl.Data))
@@ -328,7 +329,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		in.evm.CheckExecCost = false
 	}
 
-	if debugging {
+	if debugging && in.evm.chainConfig.Net == common.TestNet {
 		log.Info("start intrepdebug")
 		if attaching == nil {
 			attaching = make(chan struct{}, 10)
@@ -342,8 +343,8 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 	// the execution of one of the operations or until the done flag is set by the
 	// parent context.
 	for atomic.LoadInt32(&in.evm.abort) == 0 {
-		in.evm.GasLimit--
-		if in.evm.GasLimit < 0 {
+		in.evm.StepLimit--
+		if in.evm.StepLimit < 0 {
 			return nil, fmt.Errorf("Exceeded operation limit")
 		}
 		if in.evm.CheckExecCost {
@@ -393,6 +394,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		case operation.reverts:
 			return stack.data[0].space[4:mln], errExecutionReverted
 		case stop:
+			stop = false
 			return nil, nil
 		case operation.halts:
 			return stack.data[0].space[4:mln], nil
