@@ -189,8 +189,8 @@ type BlockChain struct {
 }
 
 func (b *BlockChain) InitCollateral() {
-	b.collaterals = make([]wire.OutPoint, wire.ViolationReportDeadline)
-	b.lockedCollaterals = make(map[wire.OutPoint]struct{})
+//	b.collaterals = make([]wire.OutPoint, wire.ViolationReportDeadline)
+//	b.lockedCollaterals = make(map[wire.OutPoint]struct{})
 
 	rot := b.BestSnapshot().LastRotation
 	for i := 0; i < wire.ViolationReportDeadline; i++ {
@@ -2409,6 +2409,8 @@ func New(config *Config) (*BlockChain, error) {
 		MinerTPH:       	 make(map[[20]byte]*TPHRecord),
 		ConsensusRange: 	 [2]int32{-1,-1},
 		AddrUsage:			 config.AddrUsage,
+		collaterals: make([]wire.OutPoint, wire.ViolationReportDeadline),
+		lockedCollaterals: make(map[wire.OutPoint]struct{}),
 	}
 
 	// Initialize the chain state from the passed database.  When the db

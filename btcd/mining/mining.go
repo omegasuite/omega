@@ -1096,7 +1096,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		contractlim = lastBlk.ContractLimit
 	}
 	if contractlim < g.chainParams.ContractExecLimit {
-		contractlim = 0
+		contractlim = g.chainParams.ContractExecLimit
 	}
 
 	// Create a new block ready to be solved.

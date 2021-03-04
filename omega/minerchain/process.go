@@ -253,16 +253,18 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// ContractLimit if that is less than chain param, it could be 0
 	// implying the chain param value
 	lastBlk := parent.Data.(*blockchainNodeData).block
-	contractlim := block.MsgBlock().ContractLimit
-	if contractlim == 0 {
-		contractlim = b.chainParams.ContractExecLimit
-	}
-	limita := b.blockChain.MaxContractExec(lastBlk.BestBlock, block.MsgBlock().BestBlock)
-	if contractlim < limita || contractlim < lastBlk.ContractLimit {
-		return false, false, fmt.Errorf("ContractLimit is too low"), nil
-	}
-	if contractlim > 2 * limita && contractlim > lastBlk.ContractLimit && contractlim > b.chainParams.ContractExecLimit {
-		return false, false, fmt.Errorf("ContractLimit is too big"), nil
+	if block.MsgBlock().Version >= chaincfg.Version2 {
+		contractlim := block.MsgBlock().ContractLimit
+		if contractlim == 0 {
+			contractlim = b.chainParams.ContractExecLimit
+		}
+		limita := b.blockChain.MaxContractExec(lastBlk.BestBlock, block.MsgBlock().BestBlock)
+		if contractlim < limita || contractlim < lastBlk.ContractLimit {
+			return false, false, fmt.Errorf("ContractLimit is too low"), nil
+		}
+		if contractlim > 2*limita && contractlim > lastBlk.ContractLimit && contractlim > b.chainParams.ContractExecLimit {
+			return false, false, fmt.Errorf("ContractLimit is too big"), nil
+		}
 	}
 
 	// The block has passed all context independent checks and appears sane

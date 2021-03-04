@@ -462,11 +462,9 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 				return err
 			}
 		}
-		if bh.ContractLimit > 0 {
-			if err := common.WriteElement(w, bh.ContractLimit); err != nil {
+		if err := common.WriteElement(w, bh.ContractLimit); err != nil {
 				return err
 			}
-		}
 	}
 
 	return nil
