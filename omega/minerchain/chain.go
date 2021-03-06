@@ -1690,10 +1690,9 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 		}
 		score := int32(q.TPHscore)
 		if p,ok := rptmemap[w]; myscore > 0 && ok {
-			// 80% reciprocol policy
-			if p.val > myscore {
-				score += int32(p.val - myscore) * 80 / 100
-			} else {
+			if p.val > myscore {	// 2% courtesy
+				score += int32(p.val - myscore) * 2 / 100
+			} else {		// 80% retaliation
 				score -= int32(myscore - p.val) * 80 / 100
 				if score < int32(minscore) {
 					score = int32(minscore)
