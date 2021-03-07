@@ -98,11 +98,16 @@ func (s *Tx) AddTxIn(t wire.OutPoint, sig []byte) {
 		s.HasIns = true
 	}
 	if len(sig) == 0 {
-		s.msgTx.AddTxIn(&wire.TxIn{
-			PreviousOutPoint: t,
-			Sequence:         0xFFFFFFFF,
-			SignatureIndex:   0xFFFFFFFF,
-		})
+		if t.Index == 0 && t.Hash.IsEqual(&chainhash.Hash{}) {
+			// add a separator
+			s.msgTx.AddTxIn(&wire.TxIn{})
+		} else {
+			s.msgTx.AddTxIn(&wire.TxIn{
+				PreviousOutPoint: t,
+				Sequence:         0xFFFFFFFF,
+				SignatureIndex:   0xFFFFFFFF,
+			})
+		}
 	} else {
 		s.msgTx.AddTxIn(&wire.TxIn{
 			PreviousOutPoint: t,

@@ -1219,6 +1219,7 @@ func (p *Peer) maybeAddDeadline(pendingResponses map[string]time.Time, msgCmd st
 	switch msgCmd {
 	case wire.CmdVersion:
 		// Expects a verack message.
+		deadline = time.Now().Add(stallResponseTimeout * 3)
 		pendingResponses[wire.CmdVerAck] = deadline
 
 	case wire.CmdMemPool:
@@ -1226,7 +1227,9 @@ func (p *Peer) maybeAddDeadline(pendingResponses map[string]time.Time, msgCmd st
 		pendingResponses[wire.CmdInv] = deadline
 
 	case wire.CmdGetBlocks:
-		// Expects an inv message.
+		// Expects an inv message. allow more time for CmdGetBlocks
+		// command because we are not caching the entire chain index
+		deadline = time.Now().Add(stallResponseTimeout * 10)
 		pendingResponses[wire.CmdInv] = deadline
 
 	case wire.CmdGetMinerBlocks:

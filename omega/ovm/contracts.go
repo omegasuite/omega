@@ -575,7 +575,7 @@ func (c *create) Run(input []byte, _ []vunit) ([]byte, error) {
 }
 
 func (c *meta) Run(input []byte, _ []vunit) ([]byte, error) {
-	return c.ovm.getMeta(c.contract.self.Address(), string(input[4:])), nil
+	return c.ovm.GetMeta(c.contract.self.Address(), string(input[4:])), nil
 }
 
 func (c *codebytes) Run(input []byte, _ []vunit) ([]byte, error) {

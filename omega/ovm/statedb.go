@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcd/wire/common"
 	//	"encoding/json"
 	//	"github.com/omegasuite/btcd/wire"
@@ -81,7 +82,7 @@ func (v * OVM) setMeta(contract [20]byte, key string, code []byte) {
 	}
 
 	if _, ok := d.meta[key]; !ok {
-		m := d.getMeta(key)
+		m := d.GetMeta(key)
 		t := make([]byte, len(code))
 		copy(t, code)
 		d.meta[key] = &entry {m,  t}
@@ -98,7 +99,7 @@ func (v * OVM) setMeta(contract [20]byte, key string, code []byte) {
 	}
 }
 
-func (v * OVM) getMeta(contract [20]byte, key string) []byte {
+func (v * OVM) GetMeta(contract [20]byte, key string) []byte {
 	d := v.StateDB[contract]
 	if d.suicided {
 		return nil
@@ -108,9 +109,39 @@ func (v * OVM) getMeta(contract [20]byte, key string) []byte {
 		return t.data
 	}
 
-	m := d.getMeta(key)
+	m := d.GetMeta(key)
 	if m == nil {
-		return m
+		if key == "creator" {
+			// generate creator
+			code := v.GetMeta(contract, "code")
+			var txh chainhash.Hash
+			copy(txh[:], code[:32])
+
+			// fetch raw tx
+			var creator [21]byte
+
+			v.DB.View(func(dbTx database.Tx) error {
+				blockRegion, _ := dbFetchTxIndexEntry(dbTx, &txh)
+				txBytes, _ := dbTx.FetchBlockRegion(blockRegion)
+
+				var msgTx wire.MsgTx
+				msgTx.Deserialize(bytes.NewReader(txBytes))
+
+				blockRegion, _ = dbFetchTxIndexEntry(dbTx, &msgTx.TxIn[0].PreviousOutPoint.Hash)
+				txBytes, _ = dbTx.FetchBlockRegion(blockRegion)
+
+				var msgTxprev wire.MsgTx
+				msgTxprev.Deserialize(bytes.NewReader(txBytes))
+
+				txo := msgTxprev.TxOut[msgTx.TxIn[0].PreviousOutPoint.Index]
+				copy(creator[:], txo.PkScript[:21])
+
+				return nil
+			})
+			m = creator[:]
+		} else {
+			return nil
+		}
 	}
 
 	t := make([]byte, len(m))
@@ -144,7 +175,7 @@ func (d *stateDB) NewUage() int32 {
 	}
 }
 
-func (d *stateDB) getMeta(key string) []byte {
+func (d *stateDB) GetMeta(key string) []byte {
 	if d.suicided || d.fresh {
 		return nil
 	}
@@ -215,7 +246,7 @@ func dbFetchTxIndexEntry(dbTx database.Tx, txHash *chainhash.Hash) (*database.Bl
 }
 
 func (d * OVM) GetCode(contract [20]byte) []byte {
-	r := d.getMeta(contract, "code")
+	r := d.GetMeta(contract, "code")
 	var h chainhash.Hash
 	copy(h[:], r)
 
@@ -266,7 +297,7 @@ func (d *stateDB) GetCodeHash() chainhash.Hash {
 		return codeHash
 	}
 
-	code := d.getMeta("codeHash")
+	code := d.GetMeta("codeHash")
 	copy(codeHash[:], code)
 	return codeHash
 }
@@ -277,7 +308,7 @@ func (d * OVM) SetCodeHash(contract [20]byte, code chainhash.Hash) {
  */
 
 func (d *stateDB) GetMint() (int64, uint64) {
-	c := d.getMeta("mint")
+	c := d.GetMeta("mint")
 
 	if c == nil {
 		return -1, 0
@@ -289,7 +320,7 @@ func (d *stateDB) GetMint() (int64, uint64) {
 	return int64(tokenType), issue
 }
 
-func (v * OVM) SetMint(contract [20]byte, tokenType uint64, qty uint64) bool {
+func (v * OVM) setMint(contract [20]byte, tokenType uint64, qty uint64) bool {
 	d := v.StateDB[contract]
 	if d.suicided {
 		return false
@@ -311,7 +342,7 @@ func (v * OVM) SetMint(contract [20]byte, tokenType uint64, qty uint64) bool {
 }
 
 func (v * OVM) GetQuota(contract [20]byte) int32 {
-	c := v.getMeta(contract, "quota")
+	c := v.GetMeta(contract, "quota")
 
 	if c == nil {
 		return 0
@@ -320,17 +351,10 @@ func (v * OVM) GetQuota(contract [20]byte) int32 {
 	q := binary.LittleEndian.Uint32(c)
 
 	return int32(q)
-}
-
-func (v * OVM) SetQuota(contract [20]byte, q uint32) {
-	var c [4]byte
-	binary.LittleEndian.PutUint32(c[:], q)
-
-	v.setMeta(contract, "quota", c[:])
 }
 
 func (v * OVM) GetUsage(contract [20]byte) int32 {
-	c := v.getMeta(contract, "usage")
+	c := v.GetMeta(contract, "usage")
 
 	if c == nil {
 		return 0
@@ -339,13 +363,6 @@ func (v * OVM) GetUsage(contract [20]byte) int32 {
 	q := binary.LittleEndian.Uint32(c)
 
 	return int32(q)
-}
-
-func (v * OVM) SetUsage(contract [20]byte, q uint32) {
-	var c [4]byte
-	binary.LittleEndian.PutUint32(c[:], q)
-
-	v.setMeta(contract, "usage", c[:])
 }
 
 func (d *stateDB) setQuota(q uint32) {
@@ -357,7 +374,7 @@ func (d *stateDB) setQuota(q uint32) {
 
 	key := "quota"
 	if _, ok := d.meta[key]; !ok {
-		m := d.getMeta(key)
+		m := d.GetMeta(key)
 		d.meta[key] = &entry {m,  c[:]}
 	} else {
 		d.meta[key].data = c[:]
@@ -365,7 +382,7 @@ func (d *stateDB) setQuota(q uint32) {
 }
 
 func (d *stateDB) getQuota() uint32 {
-	c := d.getMeta("quota")
+	c := d.GetMeta("quota")
 
 	if c == nil {
 		return 0
@@ -385,7 +402,7 @@ func (d *stateDB) setUsage(q uint32) {
 
 	key := "usage"
 	if _, ok := d.meta[key]; !ok {
-		m := d.getMeta(key)
+		m := d.GetMeta(key)
 		d.meta[key] = &entry {m,  c[:]}
 	} else {
 		d.meta[key].data = c[:]
@@ -396,7 +413,7 @@ func (d *stateDB) getUsage() uint32 {
 	key := "usage"
 	var m []byte
 	if _, ok := d.meta[key]; !ok {
-		m = d.getMeta(key)
+		m = d.GetMeta(key)
 		if m == nil {
 			return 0
 		}
@@ -410,9 +427,9 @@ func (d *stateDB) getUsage() uint32 {
 	return q
 }
 
-func (d *stateDB) GetAddres() AccountRef {
+func (d *stateDB) GetAddress() AccountRef {
 	var codeHash AccountRef
-	code := d.getMeta("address")
+	code := d.GetMeta("address")
 
 	if code == nil {
 		return codeHash
@@ -422,7 +439,7 @@ func (d *stateDB) GetAddres() AccountRef {
 	return codeHash
 }
 
-func (d * OVM) SetAddres(contract [20]byte, code AccountRef) {
+func (d * OVM) setAddress(contract [20]byte, code AccountRef) {
 	d.setMeta(contract, "address", code[:])
 }
 

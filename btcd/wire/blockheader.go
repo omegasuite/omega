@@ -59,13 +59,15 @@ func (b *Violations) Read(r io.Reader) error {
 	if b.Height == 0 {
 		return nil
 	}
+	if err := common.ReadElement(r, &b.MRBlock); err != nil {
+		return err
+	}
+
 	var signed int32
 	if err := common.ReadElement(r, &signed); err != nil {
 		return err
 	}
-	if err := common.ReadElement(r, &b.MRBlock); err != nil {
-		return err
-	}
+
 	b.Blocks = make([]chainhash.Hash, signed)
 	for i := int32(0); i < signed; i++ {
 		if err := common.ReadElement(r, &b.Blocks[i]); err != nil {
@@ -84,10 +86,10 @@ func (b *Violations) Write(w io.Writer) error {
 		return err
 	}
 	var signed = int32(len(b.Blocks))
-	if err := common.WriteElement(w, signed); err != nil {
+	if err := common.WriteElement(w, b.MRBlock); err != nil {
 		return err
 	}
-	if err := common.WriteElement(w, b.MRBlock); err != nil {
+	if err := common.WriteElement(w, signed); err != nil {
 		return err
 	}
 	for i := int32(0); i < signed; i++ {

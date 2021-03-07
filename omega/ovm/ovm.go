@@ -103,8 +103,14 @@ func (vm * Context) Init(tx *btcutil.Tx, views * viewpoint.ViewPointSet) {
 		if !tx.HasOuts {
 			vm.exeout = append(vm.exeout, true)
 		}
-		vm.exeout = append(vm.exeout, false)
-		return tx.AddTxOut(t)
+		if t.TokenType == token.DefTypeSeparator {
+			to := wire.TxOut{}
+			to.Token = token.Token{TokenType: token.DefTypeSeparator}
+			return tx.AddTxOut(to)
+		} else {
+			vm.exeout = append(vm.exeout, false)
+			return tx.AddTxOut(t)
+		}
 	}
 	vm.Spend = func(t wire.OutPoint, sig []byte) bool {
 		if tx == nil {
@@ -239,16 +245,6 @@ func NewOVM(chainConfig *chaincfg.Params) *OVM {
 	return evm
 }
 
-/*
-func (v * OVM) Reset() {
-	v.StateDB =  make(map[Address]*stateDB)
-	v.TokenTypes = make(map[uint64]Address)
-	v.ExistingTokenTypes = make(map[uint64]Address)
-	v.lastBlock = 0
-	v.StepLimit = v.chainConfig.ContractExecLimit // step limit the contract can run, node decided policy
-}
- */
-
 func NewSigVM(chainConfig *chaincfg.Params) *OVM {
 	evm := &OVM{
 		StateDB:     make(map[Address]*stateDB),
@@ -331,58 +327,6 @@ func (v * OVM) Commit() {
 	v.lastBlock = v.BlockNumber()
 	v.StepLimit = v.chainConfig.ContractExecLimit // step limit the contract can run, node decided policy
 }
-
-/*
-func (v * OVM) AbortRollback() {
-	rbbs := make([]uint64, len(v.rollbacks))
-	j := 0
-	for i, _ := range v.rollbacks {
-		rbbs[j] = i
-		j++
-	}
-	sort.Slice(rbbs, func(i, j int) bool {
-		return rbbs[i] < rbbs[j]
-	})
-
-	var rbkey [16]byte
-	copy(rbkey[:], []byte("Rollback"))
-
-	v.DB.Update(func (dbTx  database.Tx) error {
-		for _,i := range rbbs {
-			binary.LittleEndian.PutUint64(rbkey[8:], i)
-
-			s,_ := json.Marshal(v.rollbacks[i])
-
-			dbTx.Metadata().Put(rbkey[:], s)
-			v.lastBlock = i
-		}
-
-		bucket := dbTx.Metadata().Bucket(IssuedTokenTypes)
-
-		for t,a := range v.final {
-			if a.issuedToken != 0 {
-				var mtk [8]byte
-				binary.LittleEndian.PutUint64(mtk[:], a.issuedToken)
-				bucket.Put(mtk[:], t[:])
-			}
-		}
-
-		for t,a := range v.final {
-			s := stateDB {
-				DB: v.DB,
-				contract: t,
-				Data: a.Data,
-				meta: a.meta,
-				suicided: a.suicided,
-				fresh: false,
-			}
-			s.commit(v.lastBlock)
-		}
-
-		return DbPutVersion(dbTx, []byte("lastCommitBlock"), v.lastBlock)
-	})
-}
- */
 
 func (d *OVM) Rollback() error {
 	// perform roll back op. roll back is performed on block basis
@@ -632,6 +576,20 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation does not take a value.")
 	}
 
+	if len(tx.MsgTx().TxIn) != 0 {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation must have exactly one input.")
+	}
+	// the only input must come from a pkh address so we can identify the creator
+	ovm.views.Utxo.FetchUtxosMain(ovm.DB, map[wire.OutPoint]struct{}{tx.MsgTx().TxIn[0].PreviousOutPoint: struct {}{}})
+	e := ovm.views.Utxo.LookupEntry(tx.MsgTx().TxIn[0].PreviousOutPoint)
+	version, addr, _, _ := parsePkScript(e.PkScript())
+	if version != ovm.chainConfig.PubKeyHashAddrID {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creator must be a pubkeyhash address.")
+	}
+	var creator [21]byte
+	creator[0] = version
+	copy(creator[1:], addr)
+
 	ovm.StateDB[d].fresh = true
 
 	contract.Code = ByteCodeParser(data)
@@ -647,7 +605,7 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 		return nil, fmt.Errorf("contract address does not match code hash")
 	}
 
-	ovm.SetAddres(d, contract.self.(AccountRef))
+	ovm.setAddress(d, contract.self.(AccountRef))
 
 	contract.CodeAddr = nil
 	ret, err := run(ovm, contract, nil)	// contract constructor. ret is the real contract code, ex. constructor
@@ -656,12 +614,6 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 		return nil, omega.ScriptError(omega.ErrInternal, "Fail to initialize contract.")
 	}
 
-//	block := ovm.Block()
-//	if block == nil {
-//		return nil, nil
-//	}
-
-//	loc,_ := block.TxLoc()
 	n := m.Index
 	msg := tx.MsgTx()
 
@@ -706,6 +658,7 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	common.LittleEndian.PutUint32(br[36:], uint32(ln))
 
 	ovm.setMeta(d, "code", br)
+	ovm.setMeta(d, "creator", creator[:])
 
 	log.Infof("Contract created: %x", d)
 

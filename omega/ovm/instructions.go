@@ -3016,7 +3016,10 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	if sig == pointer(0) {
+	if p.Hash.IsEqual(&chainhash.Hash{}) && p.Index == 0 && sig == 0 {
+		// it is ok to add a separator
+		evm.Spend(p, nil)
+	} else if sig == pointer(0) {
 		// validate outpoint: it belongs to this contract
 		u := evm.GetUtxo(p.Hash, uint64(p.Index))
 		var pks []byte
@@ -3036,18 +3039,6 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		if !isContract(pks[0]) || bytes.Compare(pks[1:21], addr[:]) != 0 {
 			return fmt.Errorf("Contract try to spend what does not belong to it.")
 		}
-/*
-		lib := stack.Data[stack.callTop].inlib		var zaddr [20]byte
-
-		if bytes.Compare(lib[:], zaddr[:]) == 0 {
-			lib = contract.Address()
-		}
-
-		libusr := bytes.Compare(pks[1:21], lib[:]) == 0
-		if !libusr {
- 			return fmt.Errorf("Unauthorized spending.")
-		}
- */
 
 		if evm.Spend(p, nil) {
 			return nil
@@ -3229,25 +3220,17 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	var zeroaddr [20]byte
-	if bytes.Compare(tk.PkScript[1:21], zeroaddr[:]) == 0 {
+	if tk.TokenType != token.DefTypeSeparator && bytes.Compare(tk.PkScript[1:21], zeroaddr[:]) == 0 {
 		return fmt.Errorf("Address is all zero.")
 	}
 
 	if isContract(tk.PkScript[0]) {
 		me := contract.self.Address()
-/*
-		allowed := bytes.Compare(tk.PkScript[1:21], me[:]) == 0
 
-		for lib, _ := range contract.libs {
-			if !allowed {
-				allowed = bytes.Compare(tk.PkScript[1:21], lib[:]) == 0
-			}
-		}
- */
 		if bytes.Compare(tk.PkScript[1:21], me[:]) != 0 {
 			return fmt.Errorf("Contract may not add a txout outside scope")
 		}
-	} else {
+	} else if tk.TokenType != token.DefTypeSeparator {
 		// check address is valid type & net
 		netID := tk.PkScript[0]
 		isP2PKH := evm.chainConfig.PubKeyHashAddrID == netID
@@ -3666,7 +3649,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	if !ovm.SetMint(address, tokentype, md) {
+	if !ovm.setMint(address, tokentype, md) {
 		return fmt.Errorf("Unable to mint.")
 	}
 
@@ -3770,7 +3753,7 @@ func opMeta(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	m := ovm.getMeta(address, key)
+	m := ovm.GetMeta(address, key)
 
 	if err = stack.saveInt32(&dest, int32(len(m))); err != nil {
 		return err
