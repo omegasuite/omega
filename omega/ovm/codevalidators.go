@@ -1,6 +1,10 @@
-// Copyright 2020 The omega suite Authors. All rights reserved.
-// This file is part of the omega library.
-//
+/* Copyright (C) 2019-2021 Omegasuite developers - All Rights Reserved
+* This file is part of the omega chain library.
+*
+* Use of this source code is governed by license that can be
+* found in the LICENSE file.
+*
+ */
 
 package ovm
 

@@ -85,14 +85,6 @@ func solveMinerBlock(header *wire.MingingRightBlock) {
 }
 
 func main() {
-/*
-	dwif,_ := btcutil.DecodeWIF("L3kRJS1Bjuio9YLieWg7M9griXt92bxgsR18WKeWQSiUmR2qqGF1")
-	fmt.Printf("%x\n", dwif.SerializePubKey())
-
-	dwif,_ = btcutil.DecodeWIF("L5EHinBHrxbv7vZpTmtbqd75xCfbNZJP7MTpdBifYxTH6afJoxzF")
-	fmt.Printf("%x\n", dwif.SerializePubKey())
- */
-
 	// generate initial polygon representing the globe
 	var vertices = []geoCoords{ // international date line
 		{Lat: 90.0000, Lng: 180.0000},

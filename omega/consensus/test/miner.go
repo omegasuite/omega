@@ -55,10 +55,10 @@ type pvk struct {
 }
 var connections = []string{"127.0.0.1:1836", "127.0.0.1:1837", "127.0.0.1:1838", "127.0.0.1:1839"}
 var privKeys = []pvk{
-	pvk{wif: "cVMUyQwB5qWkFLcjASEnZh8VJNPiPs1A1jaHZ1SczP5bWkkVQesG" },
-	pvk{wif: "cSzkuyCypXYpRpxxpv7cSELaZVmZCZSrEzdJLo4Zc9bFRz53tjgL" },
-	pvk{wif: "cQdPVU5KSzLkD1rhvLJztvpWBu9TrVAE2iPxfgEQrzWuS5xLNRX6" },
-	pvk{wif: "cQAaTApS5V3jT8fjtPdT4rWhKEErwsLdN6QxTsKa29tW9UA4Eunm" },
+	pvk{wif: "" },
+	pvk{wif: "" },
+	pvk{wif: "" },
+	pvk{wif: "" },
 }
 
 var conns [4]net.Conn

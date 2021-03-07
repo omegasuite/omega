@@ -1,3 +1,6 @@
+// Copyright (c) 2018-2021 The Omegasuite developers
+// Use of this source code is governed by
+// license that can be found in the LICENSE file.
 
 package omega
 

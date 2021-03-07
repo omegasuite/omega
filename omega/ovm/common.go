@@ -52,16 +52,6 @@ func BigMin(x, y *big.Int) *big.Int {
 	return x
 }
 
-// getDataBig returns a slice from the Data based on the start and size and pads
-// up to size with zero's. This function is overflow safe.
-func getDataBig(data []byte, start *big.Int, size *big.Int) []byte {
-	dlen := big.NewInt(int64(len(data)))
-
-	s := BigMin(start, dlen)
-	e := BigMin(new(big.Int).Add(s, size), dlen)
-	return RightPadBytes(data[s.Uint64():e.Uint64()], int(size.Uint64()))
-}
-
 // bigUint64 returns the integer casted to a uint64 and returns whether it
 // overflowed in the process.
 func bigUint64(v *big.Int) (uint64, bool) {

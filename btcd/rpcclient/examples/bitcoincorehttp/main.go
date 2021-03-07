@@ -1,4 +1,5 @@
 // Copyright (c) 2014-2017 The btcsuite developers
+// Copyright (c) 2018-2021 The Omegasuite developers
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
@@ -220,16 +221,12 @@ func main() {
 			t, _ := reader.ReadString('\n')
 			t = strings.Replace(strings.Replace(t, "\r", "", -1), "\n", "", -1)
 
-//			a,_ := btcutil.DecodeAddress(s, &chaincfg.MainNetParams)
 			a,_ := btcutil.DecodeAddress(s, &chaincfg.TestNet3Params)
-//			a,_ := btcutil.DecodeAddress(s, &chaincfg.RegressionNetParams)
-//			a,_ := btcutil.NewAddressPubKeyHash([]byte(s), &chaincfg.RegressionNetParams)
 
 			if len(t) == 64 {
 				out[a] = btcjson.Token {
 					TokenType:3,
 					Value:map[string]interface{}{"hash":t},
-//					Rights: nil,
 				}
 			} else {
 				var f float64
@@ -237,7 +234,6 @@ func main() {
 				out[a] = btcjson.Token {
 					TokenType:0,
 					Value:map[string]interface{}{"value":uint64(f * btcutil.HaoPerBitcoin)},
-//					Rights: nil,
 				}
 			}
 			lock := int64(0)
@@ -251,7 +247,7 @@ func main() {
 
 		case "signrawtransaction":	//  "hexstring" ( [{"txid":"id","vout":n,"scriptPubKey":"hex","redeemScript":"hex"},...] ["privatekey1",...] sighashtype )
 			keys := make([]string, 1)
-			keys[0] = string("cQdPVU5KSzLkD1rhvLJztvpWBu9TrVAE2iPxfgEQrzWuS5xLNRX6")
+			keys[0] = string("priv key")
 			tx, suc, err := client.SignRawTransaction(gtx, keys)
 			if err != nil {
 				log.Print(err)
@@ -262,7 +258,7 @@ func main() {
 			}
 			gtx = tx
 			break
-		case "sendrawtransaction":	// "hexstring" ( allowhighfees )
+		case "sendrawtransaction":
 			hash, err := client.SendRawTransaction(gtx, true)
 			if err != nil {
 				log.Print(err)
@@ -270,7 +266,7 @@ func main() {
 				log.Printf("sendrawtransaction hash=: %s", hash)
 			}
 			break
-		case "getrawmempool":	//  ( verbose )
+		case "getrawmempool":
 			h, err := client.GetRawMempool()
 			if err != nil {
 				log.Print(err)
@@ -279,7 +275,7 @@ func main() {
 				log.Printf("getrawmempool: %s", s.String())
 			}
 			break
-		case "gettxout":	//  "txid" n ( includemempool )
+		case "gettxout":
 			fmt.Println("UTXO(!) tx hash -> ")
 			s, _ := reader.ReadString('\n')
 			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
@@ -294,7 +290,7 @@ func main() {
 			}
 			log.Printf("gettxout: %s", res)
 			break
-		case "lod":	//  "txid" ( verbose )
+		case "lod":
 			fmt.Println("Level of detail (0-4) -> ")
 			s, _ := reader.ReadString('\n')
 			fmt.Sscanf(s,"%d", &detail)
@@ -462,7 +458,6 @@ func main() {
 				log.Printf("BestBlock:%s\n", res.BestBlock.String())
 				log.Printf("Miner:%s (%s)\n", hex.EncodeToString(res.Miner[:]), mn)
 				log.Printf("Connection:%s\n", string(res.Connection))
-//				log.Printf("Header.Violations:%s\n", hex.EncodeToString(res.Violations))
 			}
 			break
 		case "getminerblocks":	//  "hash" ( verbose )
@@ -484,10 +479,7 @@ func main() {
 					log.Print(err)
 					break
 				}
-/*
-				s, _ := client.GetMinerBlockVerbose(res)
-				log.Print(string(s))
-*/
+
 				blk, err := client.GetMinerBlock(res)
 				if err != nil {
 					log.Print(err)
@@ -509,8 +501,6 @@ func main() {
 					}
 					log.Printf("Miner:%s (%s)\n", hex.EncodeToString(blk.Miner[:]), mn)
 					log.Printf("Connection:%s\n", string(blk.Connection))
-
-//					log.Printf("Header.Violations:%s\n", hex.EncodeToString(blk.Violations))
 				}
 			}
 
@@ -635,9 +625,7 @@ func main() {
 			fmt.Println("hello, Yourself")
 			break
 		case "searchrawtransactions":	//  "hexdata" ( "jsonparametersobject" )
-			address,_ := btcutil.DecodeAddress("2MuVt8ZtHw1mTawgbru2SA5mH1Ubriyv97Q", &chaincfg.TestNet3Params)
-//			address,_ := btcutil.DecodeAddress("1FuzgSAked4aechNDzmn3kc4nxLsFfLadq", &chaincfg.RegressionNetParams)
-//			address,_ := btcutil.DecodeAddress("1FuzgSAked4aechNDzmn3kc4nxLsFfLadq", &chaincfg.MainNetParams)
+			address,_ := btcutil.DecodeAddress("addr", &chaincfg.TestNet3Params)
 			res, err := client.SearchRawTransactions(address, 0, 10, false, make([]string, 0))
 
 			if err != nil {
@@ -665,7 +653,6 @@ func main() {
 		// 钱包、账户、地址、转帐、发消息
 		case "listsinceblock":	//  ( "blockhash" target-confirmations )
 			fmt.Println("Block hash -> ")
-			// 00002c7307e3905a38ca29a862cc2e018202de40619c88765124d37a771cae49
 			s, _ := reader.ReadString('\n')
 			s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
 			h,_ := chainhash.NewHashFromStr(s)
@@ -696,15 +683,6 @@ func main() {
 			}
 			log.Printf("gettransaction: %s", b)
 			break
-/*
-		case "getwalletinfo":	//
-			res, err := client.GetWalletInfo()
-			if err != nil {
-				log.Fatal(err)
-			}
-			log.Printf("Peer: %d", res)
-			break
-*/
 		case "walletpassphrase":	//  "passphrase" timeout
 			err := client.WalletPassphrase("123456", 20)
 			if err != nil {
@@ -722,29 +700,6 @@ func main() {
 		case "walletpassphrasechange":	// "oldpassphrase" "newpassphrase"
 			fmt.Println("hello, Yourself")
 			break
-/*
-		case "backupwallet":	// "destination"
-			res, err := client.BackUpWallet()
-			if err != nil {
-				log.Print(err)
-			}
-			log.Printf("Peer: %d", res)
-			break
-		case "importwallet":	// "filename"
-			res, err := client.Importwallet()
-			if err != nil {
-				log.Print(err)
-			}
-			log.Printf("Peer: %d", res)
-			break
-		case "dumpwallet":	// "filename"
-			res, err := client.DumpWallet()
-			if err != nil {
-				log.Print(err)
-			}
-			log.Printf("Peer: %d", res)
-			break
-*/
 		case "listaccounts":	// ( minconf )
 			res, err := client.ListAccounts()
 			if err != nil {
@@ -759,22 +714,6 @@ func main() {
 			}
 			log.Printf("getaddressesbyaccount: %s", res)
 			break
-/*
-		case "getaccountaddress":	// "account"
-			fmt.Println("account-> ")
-			s := ""
-			for len(s) == 0 {
-				s, _ = reader.ReadString('\n')
-				s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
-			}
-
-			res, err := client.GetAccountAddress(s)
-			if err != nil {
-				log.Fatal(err)
-			}
-			log.Printf("getaccountaddress: %s", res)
-			break
-*/
 		case "getaccount":	// "bitcoinaddress"
 			fmt.Println("Address-> ")
 			s := ""
@@ -794,41 +733,22 @@ func main() {
 			fmt.Println("hello, Yourself")
 			break
 		case "dumpprivkey":	// "bitcoinaddress"
-			a,_ := btcutil.DecodeAddress("mjt7WtJzcrG8rcNdn8WC1UveLRpqP69cmp", &chaincfg.TestNet3Params)
+			a,_ := btcutil.DecodeAddress("addr", &chaincfg.TestNet3Params)
 
 			res, err := client.DumpPrivKey(a)
 			if err != nil {
 				log.Print(err)
 			}
 
-			log.Printf("dumpprivkey for mjt7WtJzcrG8rcNdn8WC1UveLRpqP69cmp: %s", res)
-
-			a,_ = btcutil.DecodeAddress("mrKn4LYmDvRzB9Tkt6geUrBevokzBt9rnr", &chaincfg.TestNet3Params)
+			a,_ = btcutil.DecodeAddress("addr", &chaincfg.TestNet3Params)
 
 			res, err = client.DumpPrivKey(a)
 			if err != nil {
 				log.Print(err)
 			}
 
-			log.Printf("dumpprivkey for mrKn4LYmDvRzB9Tkt6geUrBevokzBt9rnr: %s", res)
+			log.Printf("dumpprivkey for : %s", res)
 			break
-/*
-		case "setaccount":	// "bitcoinaddress" "account"
-			fmt.Println("Address-> ")
-			s := ""
-			for len(s) == 0 {
-				s, _ = reader.ReadString('\n')
-				s = strings.Replace(strings.Replace(s, "\r", "", -1), "\n", "", -1)
-			}
-
-			//			a,_ := btcutil.DecodeAddress(s, &chaincfg.MainNetParams)
-			a,_ := btcutil.DecodeAddress(s, &chaincfg.TestNet3Params)
-
-			res := client.SetAccount(a, "default")
-
-			log.Printf("setaccount: %s", res)
-			break
-*/
 		case "getnewaddress":	// ( "account" )
 			res, err := client.GetNewAddress("default")
 			if err != nil {
@@ -840,7 +760,7 @@ func main() {
 			fmt.Println("hello, Yourself")
 			break
 		case "importprivkey":	// "bitcoinprivkey" ( "label" rescan )
-			pk,err := btcutil.DecodeWIF("cQdPVU5KSzLkD1rhvLJztvpWBu9TrVAE2iPxfgEQrzWuS5xLNRX6")
+			pk,err := btcutil.DecodeWIF("priv key")
 			err = client.ImportPrivKey(pk)
 			if err != nil {
 				log.Print(err)
