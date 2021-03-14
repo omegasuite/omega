@@ -1,5 +1,6 @@
 // Copyright (c) 2013-2017 The btcsuite developers
 // Copyright (c) 2015-2017 The Decred developers
+// Copyright (C) 2019-2021 Omegasuite developer
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
@@ -928,13 +929,8 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 					return nil, rpcNoTxInfoError(txHash)
 				}
 
-				// To match the behavior of the reference client, return nil
-				// (JSON null) if the transaction output is spent by another
-				// transaction already in the main chain.  Mined transactions
-				// that are spent by a mempool transaction are not affected by
-				// this.
 				if entry == nil || entry.IsSpent() {
-					return nil, nil
+					return nil, rpcNoTxInfoError(txHash)
 				}
 				pkScript = string(entry.PkScript())
 			}
@@ -3879,6 +3875,7 @@ type retrievedTx struct {
 	txBytes []byte
 	blkHash *chainhash.Hash // Only set when transaction is in a block.
 	tx      *btcutil.Tx
+	height	uint32
 }
 
 // fetchInputTxos fetches the outpoints from all transactions referenced by the
@@ -4153,18 +4150,22 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	}
 
 	// Override the default number of entries to skip if needed.
-	var numToSkip int
+	var blocksToSkip int
 	if c.Skip != nil {
-		numToSkip = *c.Skip
-		if numToSkip < 0 {
-			numToSkip = 0
+		blocksToSkip = *c.Skip
+		if blocksToSkip < 0 {
+			blocksToSkip = 0
 		}
 	}
 
+	best := s.cfg.Chain.BestSnapshot()
 	// Override the reverse flag if needed.
 	var reverse bool
 	if c.Reverse != nil {
 		reverse = *c.Reverse
+	}
+	if reverse && blocksToSkip == 0 {
+		blocksToSkip = int(best.Height + 1)
 	}
 
 	// Add transactions from mempool first if client asked for reverse
@@ -4174,8 +4175,9 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	// NOTE: This code doesn't sort by dependency.  This might be something
 	// to do in the future for the client's convenience, or leave it to the
 	// client.
-	numSkipped := uint32(0)
+//	numSkipped := uint32(0)
 	addressTxns := make([]retrievedTx, 0, numRequested)
+/*	Don't search in mempool
 	if reverse {
 		// Height in the mempool are not in a block header yet,
 		// so the block header field in the retieved transaction struct
@@ -4187,14 +4189,15 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 			addressTxns = append(addressTxns, retrievedTx{tx: tx})
 		}
 	}
+ */
 
 	// Fetch transactions from the database in the desired order if more are
 	// needed.
-	if len(addressTxns) < numRequested {
+//	if len(addressTxns) < numRequested {
 		err = s.cfg.DB.View(func(dbTx database.Tx) error {
-			regions, dbSkipped, err := addrIndex.TxRegionsForAddress(
-				dbTx, addr, uint32(numToSkip)-numSkipped,
-				uint32(numRequested-len(addressTxns)), reverse)
+			regions, heights, _, err := addrIndex.TxRegionsForAddress(
+				dbTx, addr, uint32(blocksToSkip),
+				uint32(numRequested), reverse)
 			if err != nil {
 				return err
 			}
@@ -4214,10 +4217,11 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 			for i, serializedTx := range serializedTxns {
 				addressTxns = append(addressTxns, retrievedTx{
 					txBytes: serializedTx,
+					height: heights[i],
 					blkHash: regions[i].Hash,
 				})
 			}
-			numSkipped += dbSkipped
+//			numSkipped += dbSkipped
 
 			return nil
 		})
@@ -4226,10 +4230,11 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 			return nil, internalRPCError(err.Error(), context)
 		}
 
-	}
+//	}
 
 	// Add transactions from mempool last if client did not request reverse
 	// order and the number of results is still under the number requested.
+/*
 	if !reverse && len(addressTxns) < numRequested {
 		// Height in the mempool are not in a block header yet,
 		// so the block header field in the retieved transaction struct
@@ -4242,6 +4247,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 			addressTxns = append(addressTxns, retrievedTx{tx: tx})
 		}
 	}
+ */
 
 	// Address has never been used if neither source yielded any results.
 	if len(addressTxns) == 0 {
@@ -4252,19 +4258,20 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	}
 
 	// Serialize all of the transactions to hex.
-	hexTxns := make([]string, len(addressTxns))
+	hexTxns := make([]btcjson.SearchRawTransactionsRawResult, len(addressTxns))
 	for i := range addressTxns {
 		// Simply encode the raw bytes to hex when the retrieved
 		// transaction is already in serialized form.
 		rtx := &addressTxns[i]
+		hexTxns[i].Height = rtx.height
 		if rtx.txBytes != nil {
-			hexTxns[i] = hex.EncodeToString(rtx.txBytes)
+			hexTxns[i].Hex = hex.EncodeToString(rtx.txBytes)
 			continue
 		}
 
 		// Serialize the transaction first and convert to hex when the
 		// retrieved transaction is the deserialized structure.
-		hexTxns[i], err = messageToHex(rtx.tx.MsgTx())
+		hexTxns[i].Hex, err = messageToHex(rtx.tx.MsgTx())
 		if err != nil {
 			return nil, err
 		}
@@ -4285,7 +4292,6 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	}
 
 	// The verbose flag is set, so generate the JSON object and return it.
-	best := s.cfg.Chain.BestSnapshot()
 	srtList := make([]btcjson.SearchRawTransactionsResult, len(addressTxns))
 	for i := range addressTxns {
 		// The deserialized transaction is needed, so deserialize the
@@ -4308,7 +4314,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		}
 
 		result := &srtList[i]
-		result.Hex = hexTxns[i]
+		result.Hex = hexTxns[i].Hex
 		result.Txid = mtx.TxHash().String()
 		result.Vin, err = createVinListPrevOut(s, mtx, params, vinExtra,
 			filterAddrMap)
@@ -4336,16 +4342,9 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 				}
 			}
 
-			// Get the block height from chain.
-			height, err := s.cfg.Chain.BlockHeightByHash(blkHash)
-			if err != nil {
-				context := "Failed to obtain block height"
-				return nil, internalRPCError(err.Error(), context)
-			}
-
 			blkHeader = &header
 			blkHashStr = blkHash.String()
-			blkHeight = height
+			blkHeight = int32(rtx.height)
 		}
 
 		// Add the block information to the result if there is any.

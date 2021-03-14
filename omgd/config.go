@@ -1,4 +1,5 @@
 // Copyright (c) 2013-2017 The btcsuite developers
+// Copyright (C) 2019-2021 Omegasuite developer
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 

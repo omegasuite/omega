@@ -50,18 +50,20 @@ type Loader struct {
 	wallet         *Wallet
 	db             walletdb.DB
 	mu             sync.Mutex
+	async		   bool
 }
 
 // NewLoader constructs a Loader with an optional recovery window. If the
 // recovery window is non-zero, the wallet will attempt to recovery addresses
 // starting from the last SyncedTo height.
 func NewLoader(chainParams *chaincfg.Params, dbDirPath string,
-	recoveryWindow uint32) *Loader {
+	recoveryWindow uint32, async bool) *Loader {
 
 	return &Loader{
 		chainParams:    chainParams,
 		dbDirPath:      dbDirPath,
 		recoveryWindow: recoveryWindow,
+		async:			async,
 	}
 }
 
@@ -133,7 +135,7 @@ func (l *Loader) CreateNewWallet(pubPassphrase, privPassphrase, seed []byte,
 	}
 
 	// Open the newly-created wallet.
-	w, err := Open(db, pubPassphrase, nil, l.chainParams, l.recoveryWindow)
+	w, err := Open(db, pubPassphrase, nil, l.chainParams, l.recoveryWindow, false)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +188,7 @@ func (l *Loader) OpenExistingWallet(pubPassphrase []byte, canConsolePrompt bool)
 			ObtainPrivatePass: noConsole,
 		}
 	}
-	w, err := Open(db, pubPassphrase, cbs, l.chainParams, l.recoveryWindow)
+	w, err := Open(db, pubPassphrase, cbs, l.chainParams, l.recoveryWindow, l.async)
 	if err != nil {
 		// If opening the wallet fails (e.g. because of wrong
 		// passphrase), we must close the backing database to

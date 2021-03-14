@@ -126,6 +126,7 @@ type Wallet struct {
 	started bool
 	quit    chan struct{}
 	quitMu  sync.Mutex
+	async	bool
 }
 
 // Start starts the goroutines necessary to manage a wallet.
@@ -3261,6 +3262,7 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 
 	svm := ovm.NewSigVM(w.chainParams)
 	svm.SetContext(ctx)
+	svm.StepLimit = w.chainParams.ContractExecLimit
 	intp := svm.Interpreter()
 
 	signed := make(map[uint32]struct{})
@@ -3636,7 +3638,7 @@ func Create(db walletdb.DB, pubPass, privPass, seed []byte, params *chaincfg.Par
 
 // Open loads an already-created wallet from the passed database and namespaces.
 func Open(db walletdb.DB, pubPass []byte, cbs *waddrmgr.OpenCallbacks,
-	params *chaincfg.Params, recoveryWindow uint32) (*Wallet, error) {
+	params *chaincfg.Params, recoveryWindow uint32, async bool) (*Wallet, error) {
 
 	var (
 		addrMgr *waddrmgr.Manager
@@ -3702,6 +3704,7 @@ func Open(db walletdb.DB, pubPass []byte, cbs *waddrmgr.OpenCallbacks,
 		changePassphrases:   make(chan changePassphrasesRequest),
 		chainParams:         params,
 		quit:                make(chan struct{}),
+		async:				 async,
 	}
 
 	w.NtfnServer = newNotificationServer(w)

@@ -40,6 +40,7 @@ const (
 	SigHashDouble       SigHashType = 0x4
 	SigHashTriple       SigHashType = 0x5
 	SigHashQuardruple   SigHashType = 0x6
+	SigMultiSigMark	    SigHashType = 0x1f		// marks end of a multi-sig segment
 	SigHashAnyOneCanPay SigHashType = 0x80
 
 	// sigHashMask defines the number of bits of the hash type which is used
@@ -3984,7 +3985,12 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	start := inidx
 
 	switch SigHashType(it) & SigHashMask {
-	case 0:		// no text generated. used where there is no sig and SIGNTEXT only servers as a mrker
+	case 0:		// no text generated. used where there is no sig and SIGNTEXT only servers as a marker
+		nextop(contract, u)
+		*pc--
+		return nil
+
+	case SigMultiSigMark:
 		nextop(contract, u)
 		*pc--
 		return nil

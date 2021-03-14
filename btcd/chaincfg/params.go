@@ -234,6 +234,7 @@ type Params struct {
 	// Address encoding magics
 	PubKeyHashAddrID        byte // First byte of a P2PKH address
 	MultiSigAddrID          byte // First byte of a multisig address
+	MultiSigAddrXID         byte // First byte of a multisig redeem script
 	ScriptHashAddrID        byte // First byte of a P2SH address
 	ContractAddrID	        byte // First byte of a P2C address
 	PrivateKeyID            byte // First byte of a WIF private key
@@ -323,6 +324,7 @@ var MainNetParams = Params{
 	// Address encoding magics
 	PubKeyHashAddrID:        0x00, // starts with 1
 	MultiSigAddrID:			 0x78,
+	MultiSigAddrXID:		 0xC3,
 
 	ScriptHashAddrID:        0x05, // starts with 3
 	ContractAddrID:			 0x88, // start with 8
@@ -408,6 +410,8 @@ var RegressionNetParams = Params{
 	// Address encoding magics
 	PubKeyHashAddrID: 0x6f, // starts with m or n
 	MultiSigAddrID:	  0x67,
+	MultiSigAddrXID:  0xC3,
+
 	ScriptHashAddrID: 0xc4, // starts with 2
 	ContractAddrID:	  0x88, // start with 8
 	PrivateKeyID:     0xef, // starts with 9 (uncompressed) or c (compressed)
@@ -496,6 +500,8 @@ var TestNet3Params = Params{
 	// Address encoding magics
 	PubKeyHashAddrID:        0x6f, // starts with m or n
 	MultiSigAddrID:			 0x67,
+	MultiSigAddrXID:		 0xC3,
+
 	ScriptHashAddrID:        0xc4, // starts with 2
 	ContractAddrID:	 		 0x88, // start with 8
 	PrivateKeyID:            0xef, // starts with 9 (uncompressed) or c (compressed)
@@ -585,6 +591,8 @@ var SimNetParams = Params{
 	// Address encoding magics
 	PubKeyHashAddrID:        0x3f, // starts with S
 	MultiSigAddrID:			 0x60,
+	MultiSigAddrXID:		 0xC3,
+
 	ScriptHashAddrID:        0x7b, // starts with s
 	ContractAddrID:			 0x88, // start with 8
 	PrivateKeyID:            0x64, // starts with 4 (uncompressed) or F (compressed)

@@ -22,6 +22,7 @@ import (
 
 type vunit struct {
 	data, text []byte
+	mode SigHashType
 }
 
 // PrecompiledContract is the basic interface for native Go contracts.
@@ -122,11 +123,19 @@ type pay2multisig struct {
 
 // multiple address multiple key
 func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
-	_, r, e := p.run(input, vunits)
-	return r,e
+	_, r, hash, e := p.run(vunits)
+	m := common.LittleEndian.Uint16(input[22:])
+
+	if r < m || e != nil {
+		return []byte{0}, e
+	}
+	if bytes.Compare(input[:20], hash) != 0 {
+		return []byte{0}, nil
+	}
+	return []byte{1},e
 }
 
-func (p *pay2multisig) run(input []byte, vunits []vunit) (int, []byte, error) {
+func (p *pay2multisig) run(vunits []vunit) (int, uint16, []byte, error) {
 	// input - hash of multi-sig descriptor (20-byte value)
 	// vunits[0].Data: multi-sig descriptor
 	//			 bytes 0 - 1: M - number of scripts
@@ -135,46 +144,59 @@ func (p *pay2multisig) run(input []byte, vunits []vunit) (int, []byte, error) {
 	// vunits[1:].text - text to be signed (in chucks of 0-padded 32-bytes units)
 
 	// in forfeit mode, all contract calls will pass
+	genericerr := fmt.Errorf("Multisignature format error")
 
-	if len(vunits[0].data) < 4 {
-		return 0, []byte{0}, nil	// never. should have been verified in tx validity
+	if len(vunits[0].data) < 3 {
+		return 0, 0, nil, genericerr	// never. should have been verified in tx validity
 	}
-	m := int(common.LittleEndian.Uint16(vunits[0].data[:2]))
-	n := int(common.LittleEndian.Uint16(vunits[0].data[2:4]))
+	m := int(common.LittleEndian.Uint16(vunits[0].data[1:3]))
 
-	if n > m {
-		return 0, []byte{0}, nil	// never. should have been verified in tx validity
-	}
-
-	sigcnt := 0
-	h := make([]byte, 0, 21 * m + 4)
-	h = append(h, []byte{byte(PUSH), 4}...)
-	h = append(h, vunits[0].data[:4]...)
+	sigcnt := uint16(0)
+	h := make([]byte, 0, 21 * m + 5)
+	h = append(h, []byte{byte(PUSH), byte(len(vunits[0].data))}...)
+	h = append(h, vunits[0].data[:]...)
 	h = append(h, []byte{byte(SIGNTEXT), 0}...)
 
 	for i := 1; i < len(vunits); i++ {
 		v := vunits[i]
-		if len(v.data) == 21 && v.data[0] == p.ovm.chainConfig.MultiSigAddrID {
-			// recursive multisig
-			h = append(h, v.data...)
-			mm, r, err := p.run(v.data[1:], vunits[i+1:])
+		if v.data[0] == p.ovm.chainConfig.MultiSigAddrXID {
+			// redeem script for recursive multisig
+			var req = uint16(0)
+			req = common.LittleEndian.Uint16(vunits[0].data[1:3])
+
+			mm, n, hash, err := p.run(vunits[i+1:])
 			if err != nil {
-				return m, []byte{0}, err
+				return m, 0, nil, err
 			}
-			if r != nil && r[0] != 0 {
+			if n >= req {
 				sigcnt++
 			}
+			h = append(h, []byte{byte(PUSH), 25}...)
+			h = append(h, p.ovm.chainConfig.MultiSigAddrID)
+			h = append(h, hash...)
+			h = append(h, []byte{OP_PAYMULTISIG,0,0,0}...)
+			common.LittleEndian.PutUint16(h[len(h)-2:], req)
+			h = append(h, []byte{byte(SIGNTEXT), byte(SigMultiSigMark)}...)
 			i += mm + 1
 			m += mm + 1
 			continue
-		} else if len(v.data) == 21 && v.data[0] == p.ovm.chainConfig.PubKeyHashAddrID {
+		} else if len(v.data) == 25 && v.data[0] == p.ovm.chainConfig.MultiSigAddrID {
+			// recursive multisig
+			h = append(h, []byte{byte(PUSH), 25}...)
+			h = append(h, v.data...)
+			h = append(h, []byte{byte(SIGNTEXT), byte(SigMultiSigMark)}...)
+			continue
+		} else if len(v.data) == 25 && v.data[0] == p.ovm.chainConfig.PubKeyHashAddrID {
 			// a PubKeyHashAddrID not signed. but, if it is pay anyone scripts, it is counted as signed
 			h = append(h, v.data...)
+			h = append(h, []byte{byte(SIGNTEXT), 0}...)
 			continue
-		} else if len(v.data) >= 21 && v.data[0] == p.ovm.chainConfig.ScriptHashAddrID {
+		} else if len(v.data) >= 25 && v.data[0] == p.ovm.chainConfig.ScriptHashAddrID {
+			h = append(h, []byte{byte(PUSH), 25}...)
 			h = append(h, v.data[:21]...)
-			if len(v.data) > 25 {
-				hash := chainhash.HashB(v.data[25:])
+			h = append(h, []byte{byte(SIGNTEXT), 0}...)
+			if len(v.data) > 29 {
+				hash := chainhash.HashB(v.data[29:])
 				if bytes.Compare(v.data[1:21], hash) == 0 {
 					sigcnt++
 				}
@@ -192,18 +214,18 @@ func (p *pay2multisig) run(input []byte, vunits []vunit) (int, []byte, error) {
 		kpos++
 
 		if siglen == 0 {
-			return m, []byte{0}, nil
+			return m, 0, nil, genericerr
 		}
 
 		if inlen < kpos + int(siglen) {
-			return m, []byte{0}, nil
+			return m, 0, nil, genericerr
 		}
 
 		sigBytes := v.data[kpos : kpos+int(siglen)]
 
 		pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
 		if err != nil {
-			return m, []byte{0}, err
+			return m, 0, nil, err
 		}
 
 		var signature *btcec.Signature
@@ -211,7 +233,7 @@ func (p *pay2multisig) run(input []byte, vunits []vunit) (int, []byte, error) {
 		signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
 
 		if err != nil {
-			return m, []byte{0}, err
+			return m, 0, nil, err
 		}
 
 		hash := chainhash.DoubleHashB(v.text)
@@ -224,190 +246,16 @@ func (p *pay2multisig) run(input []byte, vunits []vunit) (int, []byte, error) {
 		h = append(h, []byte{byte(PUSH), 21}...)
 
 		ph := btcutil.Hash160(pkBytes)
-//		ph := Hash160(pkBytes)
 		h = append(h, p.ovm.chainConfig.PubKeyHashAddrID)
 		h = append(h, ph...)
 		h = append(h, []byte{byte(SIGNTEXT), 0}...)
 	}
-
-	if sigcnt < n {
-		return m, []byte{0}, nil
-	}
+	h = append(h, []byte{byte(SIGNTEXT), byte(SigMultiSigMark)}...)
 
 	hash := btcutil.Hash160(h)
-	if bytes.Compare(input[:20], hash) != 0 {
-		return m, []byte{0}, nil
-	}
 
-	return m, []byte{1}, nil
+	return m, sigcnt, hash, nil
 }
-
-/*
-type pay2pkhs struct {}
-type pay2scripths struct {}
-
-// single address multiple key
-func (p *pay2scripths) Run(input []byte, vunits []vunit) ([]byte, error) {
-	// input: pkh - public key hash (20-byte value)
-	//		  N:M - bytes 0-4 = M, bytes 4-8 = N (M >= N)
-	// vunits: M vunit
-	//		  Data: publick key-signature pairs
-	//	      text: text to be signed
-
-	pkh := make([]byte, 0)
-	
-	m := int(binary.LittleEndian.Uint32(input[20:]))
-	n := int(binary.LittleEndian.Uint32(input[24:]))
-	
-	if len(vunits) != m {
-		return []byte{0}, nil
-	}
-
-	sigcnt := 0
-
-	for _,v := range vunits {
-		inlen := len(v.Data)
-
-		kpos := int(v.Data[0]) + 1
-		pkBytes := v.Data[1:kpos]
-
-		pkh = append(pkh, pkBytes...)
-
-		siglen := input[kpos]
-		kpos++
-
-		if siglen == 0 {
-			continue
-		}
-
-		if inlen < kpos + int(siglen) {
-			return []byte{0}, nil
-		}
-
-		sigBytes := input[kpos : kpos+int(siglen)]
-
-		pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
-		if err != nil {
-			return []byte{0}, nil
-		}
-
-		var signature *btcec.Signature
-
-		signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
-
-		if err != nil {
-			return []byte{0}, nil
-		}
-
-		hash := chainhash.DoubleHashB(v.text)
-		valid := signature.Verify(hash, pubKey)
-
-		if valid {
-			sigcnt++
-		}
-	}
-
-	if sigcnt < n {
-		return []byte{0}, nil
-	}
-
-	ph := Hash160(pkh)
-	if bytes.Compare(ph[:], input[:20]) != 0 {
-		return []byte{0}, nil
-	}
-
-	return []byte{1}, nil
-}
-
-// multiple address multiple key
-func (p *pay2pkhs) Run(input []byte, vunits []vunit) ([]byte, error) {
-	// input: pkh - public key hash (20-byte value)
-	//		  N:M - bytes 0-4 = M, bytes 4-8 = N (M >= N)
-	//		  (M - 1) public key hashes (each 30-byte value)
-	// vunits: M vunit
-	//		  Data: publick key-signature pairs
-	//	      text: text to be signed
-
-	pks := [][]byte{input[:20]}
-
-	m := int(binary.LittleEndian.Uint32(input[20:]))
-	n := int(binary.LittleEndian.Uint32(input[24:]))
-	
-	if len(input) < 8 + 20 * m {
-		return []byte{0}, nil
-	}
-
-	pos := 28
-	for i := 1; i < m; i++ {
-		var k [20]byte
-		copy(k[:], input[pos:])
-		pks = append(pks, k[:])
-		pos += 20
-	}
-
-	sigcnt := 0
-
-	for _,v := range vunits {
-		inlen := len(v.Data)
-
-		kpos := int(v.Data[0]) + 1
-		pkBytes := v.Data[1:kpos]
-		
-		siglen := input[kpos]
-		kpos++
-
-		if siglen == 0 {
-			continue
-		}
-
-		if inlen < kpos + int(siglen) {
-			return []byte{0}, nil
-		}
-
-		sigBytes := input[kpos : kpos+int(siglen)]
-		
-		pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
-		if err != nil {
-			return []byte{0}, nil
-		}
-		
-		ph := Hash160(pkBytes)
-		matched := false
-		for i, k := range pks {
-			if bytes.Compare(ph[:], k) == 0 {
-				pks = append(pks[:i], pks[i+1:]...)
-				matched = true
-				break
-			}
-		}
-		
-		if !matched {
-			continue
-		}
-
-		var signature *btcec.Signature
-
-		signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
-
-		if err != nil {
-			return []byte{0}, nil
-		}
-		
-		hash := chainhash.DoubleHashB(v.text)
-		valid := signature.Verify(hash, pubKey)
-
-		if valid {
-			sigcnt++
-		}
-	}
-
-	if sigcnt < n {
-		return []byte{0}, nil
-	}
-
-	return []byte{1}, nil
-}
- */
 
 type pay2scripth struct {}
 
@@ -532,6 +380,7 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 				} else {
 					v.data = make([]byte, 0)
 				}
+				v.mode = SigHashType(contract.GetOp(pc + 1))
 
 				stack.data[0].space = stack.data[0].space[:4]
 				copy(stack.data[0].space, []byte{0,0,0,0})

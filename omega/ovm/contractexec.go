@@ -86,6 +86,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 //	ovm.interpreter = NewSigInterpreter(ovm, cfg)
 	ovm.interpreter.readOnly = true
 	ovm.NoLoop = true
+	ovm.StepLimit = chainParams.ContractExecLimit
 
 	return calcSignatureHash(txinidx, script, ovm)
 }

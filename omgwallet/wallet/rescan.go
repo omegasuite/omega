@@ -115,6 +115,9 @@ func (w *Wallet) rescanBatchHandler() {
 	for {
 		select {
 		case job := <-w.rescanAddJob:
+			if w.async {
+				continue
+			}
 			if curBatch == nil {
 				// Set current batch as this job and send
 				// request.

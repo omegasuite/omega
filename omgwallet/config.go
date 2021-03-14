@@ -106,6 +106,9 @@ type config struct {
 
 	// Deprecated options
 	DataDir *cfgutil.ExplicitString `short:"b" long:"datadir" default-mask:"-" description:"DEPRECATED -- use appdata instead"`
+
+	// async mode. don't sync chain
+	Async				  bool                 `long:"async" description:"Async mode"`
 }
 
 // cleanAndExpandPath expands environement variables and leading ~ in the

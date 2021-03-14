@@ -95,6 +95,9 @@ func (w *Wallet) handleChainNotifications() {
 			var err error
 			switch n := n.(type) {
 			case chain.ClientConnected:
+				if w.async {
+					continue
+				}
 				// Before attempting to sync with our backend,
 				// we'll make sure that our birthday block has
 				// been set correctly to potentially prevent

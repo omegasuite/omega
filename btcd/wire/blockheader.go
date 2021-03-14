@@ -65,8 +65,10 @@ func (b *Violations) Read(r io.Reader) error {
 	}
 
 	var signed int32
-	if err := common.ReadElement(r, &signed); err != nil {
+	if t, err := common.ReadVarInt(r, 0); err != nil {
 		return err
+	} else {
+		signed = int32(t)
 	}
 
 	b.Blocks = make([]chainhash.Hash, signed)
@@ -90,7 +92,7 @@ func (b *Violations) Write(w io.Writer) error {
 	if err := common.WriteElement(w, b.MRBlock); err != nil {
 		return err
 	}
-	if err := common.WriteElement(w, signed); err != nil {
+	if err := common.WriteVarInt(w, 0, uint64(signed)); err != nil {
 		return err
 	}
 	for i := int32(0); i < signed; i++ {

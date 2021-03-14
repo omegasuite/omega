@@ -298,6 +298,7 @@ func validateMsgTx(tx *wire.MsgTx, prevScripts [][]byte, inputValues []btcutil.A
 
 	vm := ovm.NewOVM(nil)
 	vm.SetContext(ctx)
+	vm.StepLimit = 10000
 	intp := ovm.NewInterpreter(vm)
 
 	for i, prevScript := range prevScripts {

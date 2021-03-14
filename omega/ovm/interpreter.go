@@ -250,7 +250,6 @@ func DisasmString(code []byte) string {
 	return s
 }
 
-/*
 func (in *Interpreter) Step(code *inst) ([]byte, error) {
 	stack := Newstack()
 	pc   := int(0) // program counter
@@ -273,9 +272,8 @@ func (in *Interpreter) Step(code *inst) ([]byte, error) {
 
 	err := operation.execute(&pc, nil, contract, stack)
 	
-	return stack.Data[0].space, err
+	return stack.data[0].space, err
 }
- */
 
 // Run loops and evaluates the contract's code with the given input Data and returns
 // the return byte-slice and an error if one occurred.

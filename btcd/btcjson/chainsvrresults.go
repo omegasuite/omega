@@ -602,6 +602,11 @@ type SearchRawTransactionsResult struct {
 	Blocktime     int64        `json:"blocktime,omitempty"`
 }
 
+type SearchRawTransactionsRawResult struct {
+	Height        uint32       `json:"height"`
+	Hex           string       `json:"hex"`
+}
+
 // TxRawDecodeResult models the data from the decoderawtransaction command.
 type TxRawDecodeResult struct {
 	Txid     string `json:"txid"`

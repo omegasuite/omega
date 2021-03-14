@@ -950,9 +950,9 @@ func (msg *MsgTx) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 // across the network.  The wire encoding can technically differ depending on
 // the protocol version and doesn't even really need to match the format of a
 // stored transaction at all.
-//func (msg *MsgTx) Serialize(w io.Writer) error {
-//	return msg.OmcEncode(w, 0, SignatureEncoding | FullEncoding)	// SignatureEncoding
-//}
+func (msg *MsgTx) Serialize(w io.Writer) error {
+	return msg.OmcEncode(w, 0, SignatureEncoding | FullEncoding)	// SignatureEncoding
+}
 
 // SerializeNoWitness encodes the transaction to w in an identical manner to
 // Serialize, however even if the source transaction has inputs with witness
