@@ -26,27 +26,7 @@ const (
 	ForfeitTxVersion = 2
 	TxNoLock = 0x10			// feature: the tx does not have time lock
 	TxNoDefine = 0x20		// feature: the tx does not have definition
-/*
-	// TxSideChain is the genesis transaction of a side chain, thus all outputs in
-	// this Tx will not be added to main chain Utxo database and is thus unspendable
-	// in main chain. Each block can have at most one TxSideChain Tx.
-	TxSideChain = 0x80000000
 
-	// TxMainToSideChain is a Tx that transfters value from main chian to a side chain,
-	// thus all outputs in this Tx will not be addded to Utxo database and is thus
-	// unspendable in this chain.
-	TxMainToSideChain = 0x40000000
-
-	// TxSideChain is the Tx is a transaction that transfters from a side chain to main chain.
-	// main chain keeps a wallet for each side chain. address of the wallet is hash of main chain
-	// block hacing TxSideChain Tx. block of side chain. main chain accept this Tx only after it
-	// is finalized in side chain. TxSideChain, TxMainToSideChain, TxSideToMainChain will appear
-	// in both main chain and side chain.
-	// There can be no Def or contract call in TxSideChain, TxMainToSideChain, TxSideToMainChain Tx
-	TxSideToMainChain = 0x20000000
-
-	// How to make contract based on a land in side chain work on main chain?
-*/
 	// MaxTxInSequenceNum is the maximum sequence number the sequence field
 	// of a transaction input can be.
 	MaxTxInSequenceNum uint32 = 0xffffffff

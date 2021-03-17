@@ -728,7 +728,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	// contracts. A SVP client will take a partial block w/o the hash in coinbase.
 
 	if len(block.MsgBlock().Transactions[0].SignatureScripts) > 0 {
-		merkles := BuildMerkleTreeStore(block.Transactions(), true)
+		merkles := BuildMerkleTreeStore(block.Transactions(), true, block.MsgBlock().Header.Version)
 		calculatedMerkleRoot := merkles[len(merkles)-1]
 		if bytes.Compare(block.MsgBlock().Transactions[0].SignatureScripts[0], calculatedMerkleRoot[:]) != 0 {
 			str := fmt.Sprintf("block signature merkle root is invalid - block "+
@@ -1610,7 +1610,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// entry in the block header. This also has the effect of caching all
 	// of the transaction hashes in the block to speed up future hash
 	// checks. We do this check here after contract execution has been validated.
-	merkles := BuildMerkleTreeStore(block.Transactions(), false)
+	merkles := BuildMerkleTreeStore(block.Transactions(), false, block.MsgBlock().Header.Version)
 	calculatedMerkleRoot := merkles[len(merkles)-1]
 	header := block.MsgBlock().Header
 	if !header.MerkleRoot.IsEqual(calculatedMerkleRoot) {

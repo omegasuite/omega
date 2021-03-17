@@ -965,7 +965,7 @@ mempoolLoop:
 	// Next, obtain the merkle root of a tree which consists of the
 	// wtxid of all transactions in the block. The coinbase
 	// transaction will have a special wtxid of all zeroes.
-	witnessMerkleTree := blockchain.BuildMerkleTreeStore(blockTxns,true)
+	witnessMerkleTree := blockchain.BuildMerkleTreeStore(blockTxns,true, s.MsgBlock().Version &^ 0xFFFF)
 	witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
 
 	msg := coinbaseTx.MsgTx()
@@ -980,7 +980,7 @@ mempoolLoop:
 //	reqDifficulty := g.Chain.BestSnapshot().Bits
 
 	// Create a new block ready to be solved.
-	merkles := blockchain.BuildMerkleTreeStore(blockTxns, false)
+	merkles := blockchain.BuildMerkleTreeStore(blockTxns, false, s.MsgBlock().Version &^ 0xFFFF)
 	var msgBlock wire.MsgBlock
 	msgBlock.Header = wire.BlockHeader{
 		Version:    s.MsgBlock().Version &^ 0xFFFF,

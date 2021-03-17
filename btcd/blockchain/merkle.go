@@ -8,6 +8,7 @@ package blockchain
 import (
 	"bytes"
 	"fmt"
+	"github.com/omegasuite/btcd/wire"
 	"math"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -87,7 +88,7 @@ func HashMerkleBranches(left *chainhash.Hash, right *chainhash.Hash) *chainhash.
 // using witness transaction id's rather than regular transaction id's. This
 // also presents an additional case wherein the wtxid of the coinbase transaction
 // is the zeroHash.
-func BuildMerkleTreeStore(transactions []*btcutil.Tx, witness bool) []*chainhash.Hash {
+func BuildMerkleTreeStore(transactions []*btcutil.Tx, witness bool, version uint32) []*chainhash.Hash {
 	// Calculate how many entries are required to hold the binary merkle
 	// tree as a linear array and create an array of that size.
 	nextPoT := nextPowerOfTwo(len(transactions))
@@ -98,15 +99,20 @@ func BuildMerkleTreeStore(transactions []*btcutil.Tx, witness bool) []*chainhash
 	for i, tx := range transactions {
 		switch {
 		case i == 0:
-			txHash := tx.MsgTx().TxHash()
+			var txHash chainhash.Hash
+			if version >= wire.Version2 {
+				txHash = tx.MsgTx().TxFullHash()
+			} else {
+				txHash = tx.MsgTx().TxHash()
+			}
 			merkles[i] = &txHash	// &zeroHash
 		default:
 			if witness {
-				// for regular merkle hash (to be put in header) we include signatures but not contract results
+				// for witness merkle hash (to be put in coinbase) we include signatures but not contract results
 				wSha := tx.MsgTx().SignatureHash()
 				merkles[i] = &wSha
 			} else {
-				// for witness merkle hash (to be put in coinbase) we include contract result w/o signatures
+				// for regular merkle hash (to be put in header) we include contract result w/o signatures
 				wSha := tx.MsgTx().TxFullHash()
 				merkles[i] = &wSha
 			}
@@ -159,7 +165,7 @@ func ValidateWitnessCommitment(blk *btcutil.Block) error {
 
 	witnessCommitment := blk.MsgBlock().Transactions[0].SignatureScripts[0]
 
-	witnessMerkleTree := BuildMerkleTreeStore(blk.Transactions(), true)
+	witnessMerkleTree := BuildMerkleTreeStore(blk.Transactions(), true, blk.MsgBlock().Header.Version)
 	witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
 
 	if !bytes.Equal((*witnessMerkleRoot)[:], witnessCommitment) {

@@ -4275,6 +4275,34 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		if err != nil {
 			return nil, err
 		}
+
+		hexTxns[i].BlockHash = rtx.blkHash.String()
+
+		var mtx *wire.MsgTx
+		if rtx.tx == nil {
+			// Deserialize the transaction.
+			mtx = new(wire.MsgTx)
+			err := mtx.Deserialize(bytes.NewReader(rtx.txBytes))
+			if err != nil {
+				context := "Failed to deserialize transaction"
+				return nil, internalRPCError(err.Error(),
+					context)
+			}
+		} else {
+			mtx = rtx.tx.MsgTx()
+		}
+
+		hexTxns[i].Txid = mtx.TxHash().String()
+
+		header, err := s.cfg.Chain.HeaderByHash(rtx.blkHash)
+		if err != nil {
+				return nil, &btcjson.RPCError{
+					Code:    btcjson.ErrRPCBlockNotFound,
+					Message: "Block not found",
+				}
+			}
+
+		hexTxns[i].Blocktime = header.Timestamp.Unix()
 	}
 
 	// When not in verbose mode, simply return a list of serialized txns.
@@ -5235,9 +5263,9 @@ func (s *rpcServer) Start() {
 			r.Close = true
 		}
 
-		if strings.Index(r.RemoteAddr, "127.0.0.1:") == 0 || strings.Index(r.RemoteAddr, "localhost:") == 0 {
+//		if strings.Index(r.RemoteAddr, "127.0.0.1:") == 0 || strings.Index(r.RemoteAddr, "localhost:") == 0 {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-		}
+//		}
 
 		// Limit the number of connections to max allowed.
 		if s.limitConnections(w, r.RemoteAddr) {
