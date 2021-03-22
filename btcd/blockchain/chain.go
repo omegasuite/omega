@@ -179,8 +179,8 @@ type BlockChain struct {
 	MinerTPH map[[20]byte]*TPHRecord
 
 	// locked collaterals
-	collaterals []wire.OutPoint		// list of locked collateral
-	lockedCollaterals map[wire.OutPoint]struct{}		// reference counts of them
+	collaterals       []wire.OutPoint            // list of locked collateral
+	LockedCollaterals map[wire.OutPoint]struct{} // reference counts of them
 
 	// running consensus in this range
 	ConsensusRange [2]int32
@@ -191,7 +191,7 @@ type BlockChain struct {
 
 func (b *BlockChain) InitCollateral() {
 //	b.collaterals = make([]wire.OutPoint, wire.ViolationReportDeadline)
-//	b.lockedCollaterals = make(map[wire.OutPoint]struct{})
+//	b.LockedCollaterals = make(map[wire.OutPoint]struct{})
 
 	rot := b.BestSnapshot().LastRotation
 	for i := 0; i < wire.ViolationReportDeadline; i++ {
@@ -201,7 +201,7 @@ func (b *BlockChain) InitCollateral() {
 		}
 		c := *mb.MsgBlock().Utxos
 		b.collaterals[wire.ViolationReportDeadline - 1 - i] = c
-		b.lockedCollaterals[c] = struct{}{}
+		b.LockedCollaterals[c] = struct{}{}
 	}
 }
 
@@ -640,7 +640,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 
 	for i := 0; i < m; i++ {
 		c := b.collaterals[0]
-		delete(b.lockedCollaterals, c)
+		delete(b.LockedCollaterals, c)
 
 		b.collaterals = b.collaterals[1:]
 
@@ -651,7 +651,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		}
 		c = *mb.MsgBlock().Utxos
 		b.collaterals = append(b.collaterals, c)
-		b.lockedCollaterals[c] = struct{}{}
+		b.LockedCollaterals[c] = struct{}{}
 	}
 
 	// Prune fully spent entries and mark all entries in the view unmodified
@@ -822,7 +822,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 
 	for i := 0; i < m; i++ {
 		c := b.collaterals[wire.ViolationReportDeadline-1]
-		delete(b.lockedCollaterals, c)
+		delete(b.LockedCollaterals, c)
 		b.collaterals = b.collaterals[:wire.ViolationReportDeadline-1]
 
 		mb, _ := b.Miners.BlockByHeight(int32(rot) - wire.ViolationReportDeadline - int32(i))
@@ -832,7 +832,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		}
 		c = *mb.MsgBlock().Utxos
 		b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
-		b.lockedCollaterals[c] = struct{}{}
+		b.LockedCollaterals[c] = struct{}{}
 	}
 
 	// Prune fully spent entries and mark all entries in the view unmodified
@@ -1086,7 +1086,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	miners := make([]*[20]byte, wire.CommitteeSize)
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		if blk, _ := b.Miners.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
-			if _,err := b.CheckCollateral(blk, BFNone); err != nil {
+			if _,err := b.CheckCollateral(blk, &newBest.Hash, BFNone); err != nil {
 				continue
 			}
 			miners[i] = &blk.MsgBlock().Miner
@@ -1130,7 +1130,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			for k := 0; k < shift; k++ {
 				rotate++
 				if blk, _ := b.Miners.BlockByHeight(int32(rotate)); blk != nil {
-					if _,err := b.CheckCollateral(blk, BFNone); err != nil {
+					if _,err := b.CheckCollateral(blk, &newBest.Hash, BFNone); err != nil {
 						miners[j] = nil
 						continue
 					}
@@ -1144,9 +1144,6 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		b.index.UnsetStatusFlags(n, chainutil.StatusValid)
 
-		// Store the loaded block for later.
-		attachBlocks = append(attachBlocks, block)
-
 		// Notice the spent txout details are not requested here and
 		// thus will not be generated.  This is done because the state
 		// is not being immediately written to the database, so it is
@@ -1156,7 +1153,13 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		// rule violation, mark it as invalid and mark all of its
 		// descendants as having an invalid ancestor.
 		err = b.checkConnectBlock(n, block, views, nil, nil)
-		if err != nil {
+
+		// check proof of work
+		var mkorphan bool
+		if err == nil {
+			err, mkorphan = b.checkProofOfWork(block, newBest, b.ChainParams.PowLimit, BFNone)
+		}
+		if err != nil || mkorphan {
 			if _, ok := err.(RuleError); ok {
 				b.index.SetStatusFlags(n, chainutil.StatusValidateFailed)
 				for de := e.Next(); de != nil; de = de.Next() {
@@ -1164,8 +1167,11 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 					b.index.SetStatusFlags(dn, chainutil.StatusInvalidAncestor)
 				}
 			}
-			return err
+			break
 		}
+
+		// Store the loaded block for later.
+		attachBlocks = append(attachBlocks, block)
 
 		newBest = n
 	}
@@ -1232,12 +1238,9 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 	// Connect the new best chain blocks.
 	e := attachNodes.Front()
-	for i := 0; e != nil; i, e = i+1, e.Next() {
+	for i := 0; e != nil && i < len(attachBlocks); i, e = i+1, e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 
-		if i >= len(attachBlocks) {
-			break
-		}
 		block := attachBlocks[i]
 
 		// Load all of the utxos referenced by the block that aren't
@@ -1332,7 +1335,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 }
 
 // checkBlockSanity check whether the miner has provided sufficient collateral
-func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags) (uint32, error) {
+func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest * chainhash.Hash, flags BehaviorFlags) (uint32, error) {
 	if block.MsgBlock().Utxos == nil || block.MsgBlock().Version < chaincfg.Version2 {
 		return 0, nil
 	}
@@ -1350,13 +1353,42 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, flags BehaviorFlags
 
 	utxos := viewpoint.NewUtxoViewpoint()
 
-	if err := utxos.FetchUtxosMain(b.db, map[wire.OutPoint]struct{}{*block.MsgBlock().Utxos: struct{}{}}); err != nil {
-		return 0, err
-	}
+	err := utxos.FetchUtxosMain(b.db, map[wire.OutPoint]struct{}{*block.MsgBlock().Utxos: struct{}{}})
 
 	e := utxos.LookupEntry(*block.MsgBlock().Utxos)
-	if e == nil {
-		return 0, fmt.Errorf(" does not exist.")
+	if err != nil || e == nil {
+		// check when it was spent
+		if latest == nil {
+			return 0, fmt.Errorf("Collateral does not exist.")
+		}
+
+		if !b.BestChainContains(latest) {
+			return 0, nil
+		}
+
+		for p := b.BestChain.Tip(); p != nil && !p.Hash.IsEqual(latest); p = p.Parent {
+			blk,_ := b.BlockByHash(&p.Hash)
+			var seq = 0
+			for _, tx := range blk.MsgBlock().Transactions[1:] {
+				for _, txin := range tx.TxIn {
+					if txin.IsSeparator() { continue }
+					if txin.PreviousOutPoint == *block.MsgBlock().Utxos {
+						var stxos []viewpoint.SpentTxOut
+						b.db.View(func (dbTx database.Tx) error {
+							stxos, _ = dbFetchSpendJournalEntry(dbTx, blk)
+							return nil
+						})
+						s := stxos[seq]
+						if s.TokenType != 0 {
+							return 0, fmt.Errorf("Collateral is not OTC.")
+						}
+						return uint32(s.Amount.(*token.NumToken).Val/1e8), nil
+					}
+					seq++
+				}
+			}
+		}
+		return 0, fmt.Errorf("Collateral does not exist.")
 	}
 
 	if e.TokenType != 0 {
@@ -1558,7 +1590,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 	if attachNodes.Len() == 0 {
 		return false, nil
 	}
-	if detachNodes.Len() > 10000 {
+	if detachNodes.Len() > 100000 {
 		panic(fmt.Errorf("Don't support roll back more than 10000 blocks. You should reload the entire chain."))
 		// panic, not return failure to prevent forking
 		// the purpose is to allow us to keep less contract roll back state
@@ -2407,11 +2439,11 @@ func New(config *Config) (*BlockChain, error) {
 		Miner:               config.Miner,
 		PrivKey:             config.PrivKey,
 //		BlackedList:         make([]*wire.Violations,0),
-		MinerTPH:       	 make(map[[20]byte]*TPHRecord),
-		ConsensusRange: 	 [2]int32{-1,-1},
-		AddrUsage:			 config.AddrUsage,
-		collaterals: make([]wire.OutPoint, wire.ViolationReportDeadline),
-		lockedCollaterals: make(map[wire.OutPoint]struct{}),
+		MinerTPH:          make(map[[20]byte]*TPHRecord),
+		ConsensusRange:    [2]int32{-1,-1},
+		AddrUsage:         config.AddrUsage,
+		collaterals:       make([]wire.OutPoint, wire.ViolationReportDeadline),
+		LockedCollaterals: make(map[wire.OutPoint]struct{}),
 	}
 
 	// Initialize the chain state from the passed database.  When the db

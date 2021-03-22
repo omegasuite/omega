@@ -581,9 +581,13 @@ out:
 			if c == 0 {
 				c = 1
 			}
-			v,err := m.g.Chain.CheckCollateral(block, 0)
+			v,err := m.g.Chain.CheckCollateral(block, nil,0)
+			if err != nil {
+				time.Sleep(time.Second * 5)
+				continue
+			}
 			h1 = int64(v / c)
-			if err != nil || h1 < 1 {
+			if h1 < 1 {
 				h1 = 1
 			}
 

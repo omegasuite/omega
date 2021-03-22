@@ -183,6 +183,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"node":                  handleNode,
 	"ping":                  handlePing,
 	"searchrawtransactions": handleSearchRawTransactions,
+	"checkfork":		 	 handleCheckFork,
 	"sendrawtransaction":    handleSendRawTransaction,
 	"recastrawtransaction":  handleRecastRawTransaction,
 	"setgenerate":           handleSetGenerate,
@@ -310,6 +311,7 @@ var rpcLimited = map[string]struct{}{
 	"verifymessage":         {},
 	"version":               {},
 	"vmdebug":				 {},
+	"checkfork":			 {},
 }
 /*
 // builderScript is a convenience function which is used for hard-coded scripts
@@ -4095,6 +4097,30 @@ func fetchMempoolTxnsForAddress(s *rpcServer, addr btcutil.Address, numToSkip, n
 	return mpTxns[numToSkip:rangeEnd], numToSkip
 }
 
+func handleCheckFork(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.CheckForkCmd)
+	hexStr := c.HexTx
+	if len(hexStr)%2 != 0 {
+		hexStr = "0" + hexStr
+	}
+	hb, err := hex.DecodeString(hexStr)
+	if err != nil || len(hb) != chainhash.HashSize {
+		return 0, rpcDecodeHexError(hexStr)
+	}
+
+	var hash chainhash.Hash
+	copy(hash[:], hb)
+
+	node := s.cfg.Chain.NodeByHash(&hash)
+	if node == nil {
+		return 0, fmt.Errorf("Block does not exist.")
+	}
+	if s.cfg.Chain.BestChain.Contains(node) {
+		return node.Height, nil
+	}
+	return -s.cfg.Chain.FindFork(node).Height, nil
+}
+
 // handleSearchRawTransactions implements the searchrawtransactions command.
 func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	// Respond with an error if the address index is not enabled.
@@ -4266,14 +4292,13 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		hexTxns[i].Height = rtx.height
 		if rtx.txBytes != nil {
 			hexTxns[i].Hex = hex.EncodeToString(rtx.txBytes)
-			continue
-		}
-
-		// Serialize the transaction first and convert to hex when the
-		// retrieved transaction is the deserialized structure.
-		hexTxns[i].Hex, err = messageToHex(rtx.tx.MsgTx())
-		if err != nil {
-			return nil, err
+		} else {
+			// Serialize the transaction first and convert to hex when the
+			// retrieved transaction is the deserialized structure.
+			hexTxns[i].Hex, err = messageToHex(rtx.tx.MsgTx())
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		hexTxns[i].BlockHash = rtx.blkHash.String()

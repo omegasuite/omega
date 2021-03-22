@@ -655,7 +655,7 @@ func (s *server) handleCommitteRotation(r int32) {
 			continue
 		}
 
-		if _,err := s.chain.CheckCollateral(mb, blockchain.BFNone); err != nil {
+		if _,err := s.chain.CheckCollateral(mb, nil, blockchain.BFNone); err != nil {
 			continue
 		}
 

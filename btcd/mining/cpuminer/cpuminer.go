@@ -731,7 +731,7 @@ func (m *CPUMiner) coinbaseByCommittee(me btcutil.Address) []btcutil.Address {
 	qualified := false
 	for i := -int32(wire.CommitteeSize - 1); i <= 0; i++ {
 		if mb, _ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
-			if _,err := m.g.Chain.CheckCollateral(mb, blockchain.BFNone); err != nil {
+			if _,err := m.g.Chain.CheckCollateral(mb, nil, blockchain.BFNone); err != nil {
 				log.Infof("CheckCollateral failed")
 				continue
 			}

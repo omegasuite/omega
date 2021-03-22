@@ -290,6 +290,24 @@ func (r FutureSendRawTransactionResult) Receive() (*chainhash.Hash, error) {
 	return chainhash.NewHashFromStr(txHashStr)
 }
 
+type FutureCheckForkResult chan *response
+
+func (r FutureCheckForkResult) Receive() (int32, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return -1, err
+	}
+
+	// Unmarshal result as a int32.
+	var h int32
+	err = json.Unmarshal(res, &h)
+	if err != nil {
+		return -1, err
+	}
+
+	return h, nil
+}
+
 // SendRawTransactionAsync returns an instance of a type that can be used to get
 // the result of the RPC at some future time by invoking the Receive function on
 // the returned instance.
@@ -316,6 +334,17 @@ func (c *Client) SendRawTransactionAsync(tx *wire.MsgTx, allowHighFees bool) Fut
 // then relay it to the network.
 func (c *Client) SendRawTransaction(tx *wire.MsgTx, allowHighFees bool) (*chainhash.Hash, error) {
 	return c.SendRawTransactionAsync(tx, allowHighFees).Receive()
+}
+
+func (c *Client) CheckForkAsync(txHex string) FutureCheckForkResult {
+	cmd := btcjson.NewCheckForkCmd(txHex)
+	return c.sendCmd(cmd)
+}
+
+// SendRawTransaction submits the encoded transaction to the server which will
+// then relay it to the network.
+func (c *Client) CheckFork(h string) (int32, error) {
+	return c.CheckForkAsync(h).Receive()
 }
 
 // FutureSignRawTransactionResult is a future promise to deliver the result

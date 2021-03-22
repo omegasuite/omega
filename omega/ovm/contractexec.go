@@ -146,7 +146,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 	final := make(chan bool, 2)
 
 	defer func () {
-		close(verifiers)
+//		close(verifiers)
 	} ()
 
 	allrun := false

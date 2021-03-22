@@ -505,7 +505,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
 			mb := mbs[i - (rotate - wire.CommitteeSize + 1)]
-			if _,err := b.CheckCollateral(mb, BFNone); err != nil {
+			if _,err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
 				if _,ok := awardto[mb.MsgBlock().Miner]; ok {
 					return fmt.Errorf("Coinbase award error."), false
 				}
@@ -568,8 +568,8 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 // CheckProofOfWork ensures the block header bits which indicate the target
 // difficulty is in min/max range and that the block hash is less than the
 // target difficulty as claimed.
-func (b *BlockChain) CheckProofOfWork(block *btcutil.Block, parent * chainutil.BlockNode, powLimit *big.Int) error {
-	err, _ := b.checkProofOfWork(block, parent, powLimit, BFNone)
+func (b *BlockChain) CheckProofOfWork(block *btcutil.Block, powLimit *big.Int) error {
+	err, _ := b.checkProofOfWork(block, b.BestChain.Tip(), powLimit, BFNone)
 	return err
 }
 
@@ -1560,7 +1560,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 					if txin.IsSeparator() {
 						continue
 					}
-					if _, ok := b.lockedCollaterals[txin.PreviousOutPoint]; ok {
+					if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; ok {
 						return fmt.Errorf("Try to spend locked collateral")
 					}
 				}

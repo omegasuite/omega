@@ -579,6 +579,25 @@ mempoolLoop:
 			log.Tracef("Skipping coinbase tx %s", tx.Hash())
 			continue
 		}
+		log.Infof("mempoolLoop processing tx %s", tx.Hash())
+
+		if s.MsgBlock().Version &^ 0xFFFF >= chaincfg.Version2 {
+			var locked = false
+			for _, txin := range tx.MsgTx().TxIn {
+				if txin.IsSeparator() {
+					continue
+				}
+				if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
+					locked = true
+					break
+				}
+			}
+			if locked {
+				log.Tracef("Skipping tx %s that spends locked UTXO", tx.Hash())
+				continue
+			}
+		}
+
 		if !blockchain.IsFinalizedTransaction(tx, nextBlockHeight,
 			g.timeSource.AdjustedTime()) {
 
@@ -1093,7 +1112,9 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	// it that is less than chain param, it could be 0 implying the chain
 	// defauly limit
 	contractlim := 2 * g.Chain.MaxContractExec(lastBlk.BestBlock, cbest.Hash)
-	if lastBlk.ContractLimit > contractlim {
+	if contractlim < lastBlk.ContractLimit * 95 / 100 && contractlim > 10000000 {
+		contractlim = lastBlk.ContractLimit * 95 / 100
+	} else if contractlim < lastBlk.ContractLimit {
 		contractlim = lastBlk.ContractLimit
 	}
 	if contractlim < g.chainParams.ContractExecLimit {

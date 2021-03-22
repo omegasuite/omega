@@ -46,31 +46,31 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, erro
 	// MR blocks. the violator is the 100-th block (or two blocks) before the just-rotated-in MR block
 	if nonce < -wire.MINER_RORATE_FREQ {
 		pmh = -(nonce + wire.MINER_RORATE_FREQ)
+		prevminer = g.Miners.NodeByHeight(pmh - 1)
 		mb, err := g.Miners.BlockByHeight(pmh - wire.ViolationReportDeadline)
 		if err != nil {
 			return nil, err
 		}
 		reportee[pmh-wire.ViolationReportDeadline] = mb
 		rbase = pmh - wire.ViolationReportDeadline
-		prevminer = g.Miners.NodeByHeight(pmh - 1)
 	} else if nonce > 0 {
-		q, m := prevNode, wire.POWRotate
+		q, m := prevNode, 0
 		for ; q != nil && q.Data.GetNonce() > -wire.MINER_RORATE_FREQ; q = q.Parent {
 			if q.Data.GetNonce() > 0 {
 				m += wire.POWRotate
 			}
 		}
 		if q != nil {
-			pmh = int32(m+1) - (q.Data.GetNonce() + wire.MINER_RORATE_FREQ)
+			pmh = - (q.Data.GetNonce() + wire.MINER_RORATE_FREQ) + int32(m)
 			prevminer = g.Miners.NodeByHeight(pmh - 1)
-			rbase = pmh - wire.ViolationReportDeadline - wire.POWRotate + 1
-			for j, h := 0, rbase; j < wire.POWRotate; j++ {
+			rbase = pmh - wire.ViolationReportDeadline - int32(m)
+			for j, h := 0, rbase; j < m; j++ {
 				mb, err := g.Miners.BlockByHeight(h)
 				if err != nil {
 					return nil, err
 				}
-				h++
 				reportee[h] = mb
+				h++
 			}
 		}
 	} else {
@@ -86,21 +86,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, erro
 		prevminer = prevminer.Parent
 	}
 
-	// get 200 block avergae txs in the reporting period. we will decode allocation unit based on this
-	// reporting period = ViolationReportDeadline (100) * MINER_RORATE_FREQ (200)
-	avgtx := 0
-	for i, p := 0, prevNode; i < wire.ViolationReportDeadline * wire.MINER_RORATE_FREQ; i++ {
-		t,_ := g.BlockByHash(&p.Hash)
-		if t == nil {
-			return nil, nil
-		}
-		avgtx += len(t.MsgBlock().Transactions) - 1
-		p = p.Parent
-	}
-	avgtx /= wire.ViolationReportDeadline		// should we use avg txs in 1 rotation , or 2, or 3?
-	if avgtx < 10 {
-		avgtx = 10
-	}
+	avgtx := -1
 
 	// usage score by addresses
 	usescores := make(map[[21]byte]uint32)
@@ -187,6 +173,23 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, erro
 
 			ctransactions = append(ctransactions, ctx)
 			continue
+		}
+
+		if avgtx < 0 {
+			// get 200 block avergae txs in the reporting period. we will decide allocation unit based on this
+			// reporting period = ViolationReportDeadline (100) * MINER_RORATE_FREQ (200)
+			for i, p := 0, prevNode; i < wire.ViolationReportDeadline * wire.MINER_RORATE_FREQ; i++ {
+				t,_ := g.BlockByHash(&p.Hash)
+				if t == nil {
+					return nil, nil
+				}
+				avgtx += len(t.MsgBlock().Transactions) - 1
+				p = p.Parent
+			}
+			avgtx /= wire.ViolationReportDeadline		// should we use avg txs in 1 rotation , or 2, or 3?
+			if avgtx < 10 {
+				avgtx = 10
+			}
 		}
 
 		// collateral is not enough to pay all, need to decide who gets paid first

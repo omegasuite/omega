@@ -134,6 +134,45 @@ func (b *MinerChain) CheckSideChain(hash *chainhash.Hash) {
 	b.index.FlushToDB(dbStoreBlockNode)
 }
 
+func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode, flags blockchain.BehaviorFlags) (bool, error, *chainhash.Hash) {
+	// if it is in side chain, skip these tests below as they depends on chain state
+	for p, i := parent, 0; i <= wire.ViolationReportDeadline && p != nil; i++ {
+		if p.Data.GetVersion() < chaincfg.Version2 {
+			break
+		}
+		if *block.MsgBlock().Utxos == *p.Data.(*blockchainNodeData).block.Utxos {
+			// not allowed same utxo in 100 blks
+			return false, fmt.Errorf("Re-use UTXO for collateral within 100 miner blocks"), nil
+		}
+		p = p.Parent
+	}
+	// check the coin for collateral exists and have correct amount
+	_, err := b.blockChain.CheckCollateral(block, &block.MsgBlock().BestBlock, flags)
+	if err != nil {
+		return false, err, nil
+	}
+	/* SameChain includes test of existence
+	   if have, _ := b.blockChain.HaveBlock(&block.MsgBlock().BestBlock); !have {
+	   	log.Infof("BestBlock %s does not Exists ", block.MsgBlock().BestBlock.String())
+	   	return false, true, nil, &block.MsgBlock().BestBlock
+	   }
+	*/
+
+	for _, p := range block.MsgBlock().ViolationReport {
+		for j, tb := range p.Blocks {
+			if !b.blockChain.HaveNode(&tb) {
+				// if we have node of the hash, it is in main chain or side chain
+				// otherwise, it is missing and we need to request it
+				return false, nil, &p.Blocks[j]
+			}
+		}
+	}
+	if err := b.validateVioldationReports(block); err != nil {
+		return false, err, nil
+	}
+	return true, nil, nil
+}
+
 // ProcessBlock is the main workhorse for handling insertion of new blocks into
 // the block chain.  It includes functionality such as rejecting duplicate
 // blocks, ensuring blocks follow all rules, orphan handling, and insertion into
@@ -200,49 +239,18 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	}
 
 	parent := b.index.LookupNode(prevHash)
-	if block.MsgBlock().Version >= chaincfg.Version2 {
-		for p, i := parent, 0; i <= wire.ViolationReportDeadline && p != nil; i++ {
-			if *block.MsgBlock().Utxos == *p.Data.(*blockchainNodeData).block.Utxos {
-				// not allowed same utxo in 100 blks
-				return false, false, fmt.Errorf("Re-use UTXO for collateral within 100 miner blocks"), nil
-			}
-			p = p.Parent
-		}
-		// check the coin for collateral exists and have correct amount
-		_, err = b.blockChain.CheckCollateral(block, flags)
-		if err != nil {
-			return false, false, err, nil
-		}
-	}
-
-	if have,_ := b.blockChain.HaveBlock(&block.MsgBlock().BestBlock); !have {
-		log.Infof("BestBlock %s does not Exists ", block.MsgBlock().BestBlock.String())
-		return false, true, nil, &block.MsgBlock().BestBlock
-	}
-	if block.MsgBlock().Version >= chaincfg.Version2 {
-		for _, p := range block.MsgBlock().ViolationReport {
-			for j, tb := range p.Blocks {
-				if !b.blockChain.HaveNode(&tb) {
-					// if we have node of the hash, it is in main chain or side chain
-					// otherwise, it is missing and we need to request it
-					return false, false, nil, &p.Blocks[j]
-				}
-			}
-		}
-	} else if len(block.MsgBlock().ViolationReport) > 0 {
-		return false, false, fmt.Errorf("Unexpected blacklist"), nil
-	}
-
 	if !b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) {
 		log.Infof("block and parent tx reference not in the same chain.")
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
 		return false, true, nil, nil
 	}
 
-	if len(block.MsgBlock().ViolationReport) > 0 {
-		if err := b.validateVioldationReports(block); err != nil {
-			return false, false ,err, nil
+	if block.MsgBlock().Version >= chaincfg.Version2 {
+		if r, err, hreq := b.checkV2(block, parent, flags); !r {
+			return false, false, err, hreq
 		}
+	} else if len(block.MsgBlock().ViolationReport) > 0 {
+		return false, false, fmt.Errorf("Unexpected blacklist"), nil
 	}
 
 	// the rule is new ContractLimit must not less than prev ContractLimit
@@ -257,7 +265,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 			contractlim = b.chainParams.ContractExecLimit
 		}
 		limita := b.blockChain.MaxContractExec(lastBlk.BestBlock, block.MsgBlock().BestBlock)
-		if contractlim < limita || contractlim < lastBlk.ContractLimit {
+		if contractlim < limita || contractlim < lastBlk.ContractLimit*95/100 {
 			return false, false, fmt.Errorf("ContractLimit is too low"), nil
 		}
 		if contractlim > 2*limita && contractlim > lastBlk.ContractLimit && contractlim > b.chainParams.ContractExecLimit {

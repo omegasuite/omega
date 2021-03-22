@@ -977,6 +977,16 @@ func NewSendRawTransactionCmd(hexTx string, allowHighFees *bool) *SendRawTransac
 	}
 }
 
+type CheckForkCmd struct {
+	HexTx         string
+}
+
+func NewCheckForkCmd(hexTx string) *CheckForkCmd {
+	return &CheckForkCmd{
+		HexTx:         hexTx,
+	}
+}
+
 // SetGenerateCmd defines the setgenerate JSON-RPC command.
 type SetGenerateCmd struct {
 	Generate     bool
@@ -1155,6 +1165,7 @@ func init() {
 	MustRegisterCmd("reconsiderblock", (*ReconsiderBlockCmd)(nil), flags)
 	MustRegisterCmd("searchrawtransactions", (*SearchRawTransactionsCmd)(nil), flags)
 	MustRegisterCmd("sendrawtransaction", (*SendRawTransactionCmd)(nil), flags)
+	MustRegisterCmd("checkfork", (*CheckForkCmd)(nil), flags)
 	MustRegisterCmd("recastrawtransaction", (*RecastRawTransactionCmd)(nil), flags)
 	MustRegisterCmd("setgenerate", (*SetGenerateCmd)(nil), flags)
 	MustRegisterCmd("stop", (*StopCmd)(nil), flags)

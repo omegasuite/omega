@@ -278,7 +278,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	miners := make([]*[20]byte, wire.CommitteeSize)
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		if blk, _ := b.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
-			if _, err := b.blockChain.CheckCollateral(blk, blockchain.BFNone); err == nil {
+			if _, err := b.blockChain.CheckCollateral(blk, &blk.MsgBlock().BestBlock, blockchain.BFNone); err == nil {
 				miners[i] = &blk.MsgBlock().Miner
 			}
 		}
@@ -295,7 +295,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	for x != nil && rotate >= p.Height {
 		if p.Height > rotate - wire.CommitteeSize {
 			hdr := NodetoHeader(p)
-			if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), blockchain.BFNone); err == nil {
+			if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); err == nil {
 				miners[p.Height-(rotate-wire.CommitteeSize+1)] = &hdr.Miner
 			} else {
 				miners[p.Height-(rotate-wire.CommitteeSize+1)] = nil
@@ -344,7 +344,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 				rotate++
 
 				hdr := NodetoHeader(n)
-				if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), blockchain.BFNone); err == nil {
+				if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); err == nil {
 					miners[j] = &hdr.Miner
 				} else {
 					miners[j] = nil
@@ -722,6 +722,15 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
+		if block.MsgBlock().Version >= chaincfg.Version2 {
+			if r, _, _ := b.checkV2(block, newBest, blockchain.BFNone); !r {
+				break
+			}
+		}
+		if b.checkProofOfWork(block.MsgBlock(), b.chainParams.PowLimit, blockchain.BFNone) != nil {
+			break
+		}
+
 		// Store the loaded block for later.
 		attachBlocks = append(attachBlocks, block)
 
@@ -795,7 +804,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
  */
 
 	// Connect the new best chain blocks.
-	for i, e := 0, attachNodes.Front(); e != nil; i, e = i+1, e.Next() {
+	for i, e := 0, attachNodes.Front(); i < len(attachBlocks) && e != nil; i, e = i+1, e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 		block := attachBlocks[i]
 

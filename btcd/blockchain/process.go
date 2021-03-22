@@ -130,12 +130,14 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 		if prevNode := b.NodeByHash(&block.MsgBlock().Header.PrevBlock); prevNode != nil {
 			block.SetHeight(prevNode.Height + 1)
 			// Potentially accept the block into the block chain.
-			err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
-			if err != nil || mkorphan {
-				return true
+			if prevNode == b.BestChain.Tip() {
+				err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
+				if err != nil || mkorphan {
+					return true
+				}
 			}
 
-			_, err, _ = b.maybeAcceptBlock(block, flags)
+			_, err, _ := b.maybeAcceptBlock(block, flags)
 			return err != nil
 		}
 		return true
@@ -361,14 +363,30 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return isMainChain, false, nil, -1
 	}
 
-	err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
-	if err != nil {
-		return isMainChain, true, err, -1
-	}
-	if mkorphan {
-		log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
-		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-		return isMainChain, true, nil, -1
+	if prevNode == b.BestChain.Tip() {
+		// only check proof of work if it extends the best chain. if the block
+		// would cause a reorg, pow check will be done in reorg
+		err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
+		if err != nil {
+			return isMainChain, true, err, -1
+		}
+		if mkorphan {
+			log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
+			b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+			return isMainChain, true, nil, -1
+		}
+	} else {
+		switch {
+		case block.MsgBlock().Header.Nonce == -1:
+			if prevNode.Data.GetNonce() > -wire.MINER_RORATE_FREQ && prevNode.Data.GetNonce() < 0 {
+				return isMainChain, false, fmt.Errorf("Bad nonce sequence"), -1
+			}
+
+		case block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ:
+			if 1 - wire.MINER_RORATE_FREQ != prevNode.Data.GetNonce() {
+				return isMainChain, false, fmt.Errorf("Bad nonce sequence"), -1
+			}
+		}
 	}
 
 	isMainChain, err, missing := b.maybeAcceptBlock(block, flags)

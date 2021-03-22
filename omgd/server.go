@@ -1,7 +1,7 @@
 // Copyright (c) 2013-2017 The btcsuite developers
 // Copyright (c) 2015-2018 The Decred develserver.dbopers
 // Copyright (C) 2019-2021 Omegasuite developer
-// Use of this sogetminerblockurce code is governed by an ISC
+// Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
 package main
@@ -3319,6 +3319,9 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	// addrindex is run first, it may not have the transactions from the
 	// current block indexed.
 	var indexes []indexers.Indexer
+
+	cfg.TxIndex, cfg.AddrIndex = true, true	// it's now mandatory
+
 	if cfg.TxIndex || cfg.AddrIndex {
 		// Enable transaction index if address index is enabled since it
 		// requires it.
@@ -3340,7 +3343,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	}
 
 	s.addrUseIndex = indexers.NewAddrUseIndex(db, chainParams)
-	s.addrUseIndex.Snap2V2()
 	indexes = append(indexes, s.addrUseIndex)
 
 	if !cfg.NoCFilters {
@@ -3380,6 +3382,8 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	if err != nil {
 		return nil, err
 	}
+
+	s.addrUseIndex.Snap2V2()
 
 	s.chain.Subscribe(s.chain.TphNotice)
 
