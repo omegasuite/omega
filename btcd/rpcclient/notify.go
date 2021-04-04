@@ -69,9 +69,9 @@ func newNotificationState() *notificationState {
 // result waiting on the channel with the reply set to nil.  This is useful
 // to ignore things such as notifications when the caller didn't specify any
 // notification handlers.
-func newNilFutureResult() chan *response {
-	responseChan := make(chan *response, 1)
-	responseChan <- &response{result: nil, err: nil}
+func newNilFutureResult() chan *Response {
+	responseChan := make(chan *Response, 1)
+	responseChan <- &Response{Result: nil, Err: nil}
 	return responseChan
 }
 
@@ -856,7 +856,7 @@ func parseWalletLockStateNtfnParams(params []json.RawMessage) (account string,
 
 // FutureNotifyBlocksResult is a future promise to deliver the result of a
 // NotifyBlocksAsync RPC invocation (or an applicable error).
-type FutureNotifyBlocksResult chan *response
+type FutureNotifyBlocksResult chan *Response
 
 // Receive waits for the response promised by the future and returns an error
 // if the registration was not successful.
@@ -906,7 +906,7 @@ func (c *Client) NotifyBlocks() error {
 // NotifySpentAsync RPC invocation (or an applicable error).
 //
 // NOTE: Deprecated. Use FutureLoadTxFilterResult instead.
-type FutureNotifySpentResult chan *response
+type FutureNotifySpentResult chan *Response
 
 // Receive waits for the response promised by the future and returns an error
 // if the registration was not successful.
@@ -990,7 +990,7 @@ func (c *Client) NotifySpent(outpoints []*wire.OutPoint) error {
 
 // FutureNotifyNewTransactionsResult is a future promise to deliver the result
 // of a NotifyNewTransactionsAsync RPC invocation (or an applicable error).
-type FutureNotifyNewTransactionsResult chan *response
+type FutureNotifyNewTransactionsResult chan *Response
 
 // Receive waits for the response promised by the future and returns an error
 // if the registration was not successful.
@@ -1041,7 +1041,7 @@ func (c *Client) NotifyNewTransactions(verbose bool) error {
 // NotifyReceivedAsync RPC invocation (or an applicable error).
 //
 // NOTE: Deprecated. Use FutureLoadTxFilterResult instead.
-type FutureNotifyReceivedResult chan *response
+type FutureNotifyReceivedResult chan *Response
 
 // Receive waits for the response promised by the future and returns an error
 // if the registration was not successful.
@@ -1127,7 +1127,8 @@ func (c *Client) NotifyReceived(addresses []btcutil.Address) error {
 // or RescanEndHeightAsync RPC invocation (or an applicable error).
 //
 // NOTE: Deprecated. Use FutureRescanBlocksResult instead.
-type FutureRescanResult chan *response
+type FutureRescanResult chan *Response
+type FutureSearchTxResult chan *Response
 
 // Receive waits for the response promised by the future and returns an error
 // if the rescan was not successful.
@@ -1188,6 +1189,33 @@ func (c *Client) RescanAsync(startBlock *chainhash.Hash,
 	return c.sendCmd(cmd)
 }
 
+func (c *Client) SearchTxAsync(begin, end int,
+	addresses btcutil.Address) FutureSearchTxResult {
+
+	// Not supported in HTTP POST mode.
+	if c.config.HTTPPostMode {
+		return newFutureError(ErrWebsocketsRequired)
+	}
+
+	// Ignore the notification if the client is not interested in
+	// notifications.
+	if c.ntfnHandlers == nil {
+		return newNilFutureResult()
+	}
+
+	var Verbose,skip,count int
+	var reverse bool
+	Verbose = 0
+	skip = begin
+	count = end - begin
+	reverse = false
+
+	cmd := btcjson.NewSearchRawTransactionsCmd(addresses.String(),
+		&Verbose, &skip, &count, nil, &reverse, nil)
+
+	return c.sendCmd(cmd)
+}
+
 // Rescan rescans the block chain starting from the provided starting block to
 // the end of the longest chain for transactions that pay to the passed
 // addresses and transactions which spend the passed outpoints.
@@ -1221,6 +1249,12 @@ func (c *Client) Rescan(startBlock *chainhash.Hash,
 	outpoints []*wire.OutPoint) error {
 
 	return c.RescanAsync(startBlock, addresses, outpoints).Receive()
+}
+
+func (c *Client) SearchTx(begin, end int,
+	address btcutil.Address) FutureSearchTxResult {
+
+	return c.SearchTxAsync(begin, end, address)
 }
 
 // RescanEndBlockAsync returns an instance of a type that can be used to get
@@ -1307,7 +1341,7 @@ func (c *Client) RescanEndHeight(startBlock *chainhash.Hash,
 //
 // NOTE: This is a btcd extension ported from github.com/decred/dcrrpcclient
 // and requires a websocket connection.
-type FutureLoadTxFilterResult chan *response
+type FutureLoadTxFilterResult chan *Response
 
 // Receive waits for the response promised by the future and returns an error
 // if the registration was not successful.

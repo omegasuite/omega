@@ -18,8 +18,8 @@ import (
 
 // FutureGetBestBlockHashResult is a future promise to deliver the result of a
 // GetBestBlockAsync RPC invocation (or an applicable error).
-type FutureGetBestBlockHashResult chan *response
-type FutureGetBestMinerBlockHashResult chan *response
+type FutureGetBestBlockHashResult chan *Response
+type FutureGetBestMinerBlockHashResult chan *Response
 
 // Receive waits for the response promised by the future and returns the hash of
 // the best block in the longest block chain.
@@ -80,11 +80,11 @@ func (c *Client) GetBestMinerBlockHash() (*chainhash.Hash, error) {
 
 // FutureGetBlockResult is a future promise to deliver the result of a
 // GetBlockAsync RPC invocation (or an applicable error).
-type FutureGetBlockResult chan *response
-type FutureGetBlockTxHasesResult chan *response
-type FutureSearchBorderResult chan *response
-type FutureContractCallResult chan *response
-type FutureGetMinerBlockResult chan *response
+type FutureGetBlockResult chan *Response
+type FutureGetBlockTxHasesResult chan *Response
+type FutureSearchBorderResult chan *Response
+type FutureContractCallResult chan *Response
+type FutureGetMinerBlockResult chan *Response
 
 // Receive waits for the response promised by the future and returns the raw
 // block requested from the server given its hash.
@@ -292,7 +292,7 @@ func (c *Client) GetMinerBlock(blockHash *chainhash.Hash) (*wire.MingingRightBlo
 
 // FutureGetBlockVerboseResult is a future promise to deliver the result of a
 // GetBlockVerboseAsync RPC invocation (or an applicable error).
-type FutureGetBlockVerboseResult chan *response
+type FutureGetBlockVerboseResult chan *Response
 
 // Receive waits for the response promised by the future and returns the data
 // structure from the server with information about the requested block.
@@ -361,8 +361,8 @@ func (c *Client) GetBlockVerboseTx(blockHash *chainhash.Hash) (*btcjson.GetBlock
 
 // FutureGetBlockCountResult is a future promise to deliver the result of a
 // GetBlockCountAsync RPC invocation (or an applicable error).
-type FutureGetBlockCountResult chan *response
-type FutureGetMinerBlockCountResult chan *response
+type FutureGetBlockCountResult chan *Response
+type FutureGetMinerBlockCountResult chan *Response
 
 // Receive waits for the response promised by the future and returns the number
 // of blocks in the longest block chain.
@@ -422,7 +422,7 @@ func (c *Client) GetMinerBlockCount() (int64, error) {
 
 // FutureGetDifficultyResult is a future promise to deliver the result of a
 // GetDifficultyAsync RPC invocation (or an applicable error).
-type FutureGetDifficultyResult chan *response
+type FutureGetDifficultyResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // proof-of-work difficulty as a multiple of the minimum difficulty.
@@ -459,7 +459,7 @@ func (c *Client) GetDifficulty() (float64, error) {
 
 // FutureGetBlockChainInfoResult is a promise to deliver the result of a
 // GetBlockChainInfoAsync RPC invocation (or an applicable error).
-type FutureGetBlockChainInfoResult chan *response
+type FutureGetBlockChainInfoResult chan *Response
 
 // Receive waits for the response promised by the future and returns chain info
 // result provided by the server.
@@ -495,8 +495,8 @@ func (c *Client) GetBlockChainInfo() (*btcjson.GetBlockChainInfoResult, error) {
 
 // FutureGetBlockHashResult is a future promise to deliver the result of a
 // GetBlockHashAsync RPC invocation (or an applicable error).
-type FutureGetBlockHashResult chan *response
-type FutureGetMinerBlockHashResult chan *response
+type FutureGetBlockHashResult chan *Response
+type FutureGetMinerBlockHashResult chan *Response
 
 // Receive waits for the response promised by the future and returns the hash of
 // the block in the best block chain at the given height.
@@ -557,7 +557,7 @@ func (c *Client) GetMinerBlockHash(blockHeight int64) (*chainhash.Hash, error) {
 
 // FutureGetBlockHeaderResult is a future promise to deliver the result of a
 // GetBlockHeaderAsync RPC invocation (or an applicable error).
-type FutureGetBlockHeaderResult chan *response
+type FutureGetBlockHeaderResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // blockheader requested from the server given its hash.
@@ -614,7 +614,7 @@ func (c *Client) GetBlockHeader(blockHash *chainhash.Hash) (*wire.BlockHeader, e
 
 // FutureGetBlockHeaderVerboseResult is a future promise to deliver the result of a
 // GetBlockAsync RPC invocation (or an applicable error).
-type FutureGetBlockHeaderVerboseResult chan *response
+type FutureGetBlockHeaderVerboseResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // data structure of the blockheader requested from the server given its hash.
@@ -659,7 +659,7 @@ func (c *Client) GetBlockHeaderVerbose(blockHash *chainhash.Hash) (*btcjson.GetB
 
 // FutureGetMempoolEntryResult is a future promise to deliver the result of a
 // GetMempoolEntryAsync RPC invocation (or an applicable error).
-type FutureGetMempoolEntryResult chan *response
+type FutureGetMempoolEntryResult chan *Response
 
 // Receive waits for the response promised by the future and returns a data
 // structure with information about the transaction in the memory pool given
@@ -698,7 +698,7 @@ func (c *Client) GetMempoolEntry(txHash string) (*btcjson.GetMempoolEntryResult,
 
 // FutureGetRawMempoolResult is a future promise to deliver the result of a
 // GetRawMempoolAsync RPC invocation (or an applicable error).
-type FutureGetRawMempoolResult chan *response
+type FutureGetRawMempoolResult chan *Response
 
 // Receive waits for the response promised by the future and returns the hashes
 // of all transactions in the memory pool.
@@ -748,7 +748,7 @@ func (c *Client) GetRawMempool() ([]*chainhash.Hash, error) {
 
 // FutureGetRawMempoolVerboseResult is a future promise to deliver the result of
 // a GetRawMempoolVerboseAsync RPC invocation (or an applicable error).
-type FutureGetRawMempoolVerboseResult chan *response
+type FutureGetRawMempoolVerboseResult chan *Response
 
 // Receive waits for the response promised by the future and returns a map of
 // transaction hashes to an associated data structure with information about the
@@ -790,7 +790,7 @@ func (c *Client) GetRawMempoolVerbose() (map[string]btcjson.GetRawMempoolVerbose
 
 // FutureEstimateFeeResult is a future promise to deliver the result of a
 // EstimateFeeAsync RPC invocation (or an applicable error).
-type FutureEstimateFeeResult chan *response
+type FutureEstimateFeeResult chan *Response
 
 // Receive waits for the response promised by the future and returns the info
 // provided by the server.
@@ -828,7 +828,7 @@ func (c *Client) EstimateFee(numBlocks int64) (float64, error) {
 // FutureVerifyChainResult is a future promise to deliver the result of a
 // VerifyChainAsync, VerifyChainLevelAsyncRPC, or VerifyChainBlocksAsync
 // invocation (or an applicable error).
-type FutureVerifyChainResult chan *response
+type FutureVerifyChainResult chan *Response
 
 // Receive waits for the response promised by the future and returns whether
 // or not the chain verified based on the check level and number of blocks
@@ -916,7 +916,7 @@ func (c *Client) VerifyChainBlocks(checkLevel, numBlocks int32) (bool, error) {
 
 // FutureGetTxOutResult is a future promise to deliver the result of a
 // GetTxOutAsync RPC invocation (or an applicable error).
-type FutureGetTxOutResult chan *response
+type FutureGetTxOutResult chan *Response
 
 // Receive waits for the response promised by the future and returns a
 // transaction given its hash.
@@ -965,7 +965,7 @@ func (c *Client) GetTxOut(txHash *chainhash.Hash, index uint32, mempool bool) (*
 
 // FutureGetTxOutResult is a future promise to deliver the result of a
 // GetTxOutAsync RPC invocation (or an applicable error).
-type FutureGetDefineResult chan *response
+type FutureGetDefineResult chan *Response
 
 // Receive waits for the response promised by the future and returns a
 // transaction given its hash.
@@ -1017,7 +1017,7 @@ func (c *Client) GetDefine(kind uint32, hash *chainhash.Hash, recursive bool) (*
 //
 // NOTE: This is a btcsuite extension ported from
 // github.com/decred/dcrrpcclient.
-type FutureRescanBlocksResult chan *response
+type FutureRescanBlocksResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // discovered rescanblocks data.
@@ -1069,7 +1069,7 @@ func (c *Client) RescanBlocks(blockHashes []chainhash.Hash) ([]btcjson.Rescanned
 
 // FutureInvalidateBlockResult is a future promise to deliver the result of a
 // InvalidateBlockAsync RPC invocation (or an applicable error).
-type FutureInvalidateBlockResult chan *response
+type FutureInvalidateBlockResult chan *Response
 
 // Receive waits for the response promised by the future and returns the raw
 // block requested from the server given its hash.
@@ -1101,7 +1101,7 @@ func (c *Client) InvalidateBlock(blockHash *chainhash.Hash) error {
 
 // FutureGetCFilterResult is a future promise to deliver the result of a
 // GetCFilterAsync RPC invocation (or an applicable error).
-type FutureGetCFilterResult chan *response
+type FutureGetCFilterResult chan *Response
 
 // Receive waits for the response promised by the future and returns the raw
 // filter requested from the server given its block hash.
@@ -1156,7 +1156,7 @@ func (c *Client) GetCFilter(blockHash *chainhash.Hash,
 
 // FutureGetCFilterHeaderResult is a future promise to deliver the result of a
 // GetCFilterHeaderAsync RPC invocation (or an applicable error).
-type FutureGetCFilterHeaderResult chan *response
+type FutureGetCFilterHeaderResult chan *Response
 
 // Receive waits for the response promised by the future and returns the raw
 // filter header requested from the server given its block hash.

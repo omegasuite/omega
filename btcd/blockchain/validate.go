@@ -154,7 +154,7 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 	// the transaction might still be finalized if the sequence number
 	// for all transaction inputs is maxed out.
 	for _, txIn := range msgTx.TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		if txIn.Sequence != math.MaxUint32 {
@@ -270,10 +270,11 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		return err
 	}
 
+	var zerohash chainhash.Hash
 	// Check for duplicate transaction inputs.
 	existingTxOut := make(map[wire.OutPoint]struct{})
 	for _, txIn := range msgTx.TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		if _, exists := existingTxOut[txIn.PreviousOutPoint]; exists {
@@ -291,7 +292,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		// Previous transaction outputs referenced by the inputs to this
 		// transaction must not be null.
 		for _, txIn := range msgTx.TxIn {
-			if txIn.IsSeparator() {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
 			if isNullOutpoint(&txIn.PreviousOutPoint) {
@@ -943,12 +944,17 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 		// actually check definitions only
 		return err
 	}
+	var zerohash chainhash.Hash
 
 	totalIns := make(map[uint64]int64)
 	for txInIndex, txIn := range tx.MsgTx().TxIn {
 		if txIn.IsSeparator() {
 			break
 		}
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) && txIn.SignatureIndex == 0xFFFFFFFF {
+			continue
+		}
+
 		// Ensure the referenced input transaction is available.
 		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
 		if utxo == nil || utxo.IsSpent() {
@@ -1036,6 +1042,9 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 	for txInIndex, txIn := range tx.MsgTx().TxIn {
 		if txIn.IsSeparator() {
 			additional = true
+			continue
+		}
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		if !additional {
@@ -1200,7 +1209,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 
 	inputs := make([]token.Token, len(tx.MsgTx().TxIn))
 	for i, txIn := range tx.MsgTx().TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		out := txIn.PreviousOutPoint
@@ -1239,7 +1248,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 	totalIns := make(map[uint64]int64)
 
 	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		// Ensure the referenced input transaction is available.
@@ -1557,7 +1566,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			// check locked collateral
 			if block.MsgBlock().Header.Version >= chaincfg.Version2 {
 				for _, txin := range tx.MsgTx().TxIn {
-					if txin.IsSeparator() {
+					if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 						continue
 					}
 					if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; ok {

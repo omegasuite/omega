@@ -100,7 +100,7 @@ type jsonRequest struct {
 	method         string
 	cmd            interface{}
 	marshalledJSON []byte
-	responseChan   chan *response
+	responseChan   chan *Response
 }
 
 // Client represents a Bitcoin RPC client which allows easy access to the
@@ -282,16 +282,16 @@ type (
 	// rawResponse is a partially-unmarshaled JSON-RPC response.  For this
 	// to be valid (according to JSON-RPC 1.0 spec), ID may not be nil.
 	rawResponse struct {
-		Result json.RawMessage   `json:"result"`
+		Result json.RawMessage   `json:"Result"`
 		Error  *btcjson.RPCError `json:"error"`
 	}
 )
 
 // response is the raw bytes of a JSON-RPC result, or the error if the response
 // error object was non-null.
-type response struct {
-	result []byte
-	err    error
+type Response struct {
+	Result []byte
+	Err    error
 }
 
 // result checks whether the unmarshaled response contains a non-nil error,
@@ -343,17 +343,17 @@ func (c *Client) handleMessage(msg []byte) {
 
 	// ensure that in.ID can be converted to an integer without loss of precision
 	if *in.ID < 0 || *in.ID != math.Trunc(*in.ID) {
-		log.Warn("Malformed response: invalid identifier")
+		log.Warn("Malformed Response: invalid identifier")
 		return
 	}
 
 	if in.rawResponse == nil {
-		log.Warn("Malformed response: missing result and error")
+		log.Warn("Malformed Response: missing Result and error")
 		return
 	}
 
 	id := uint64(*in.ID)
-	log.Tracef("Received response for id %d (result %s)", id, in.Result)
+	log.Tracef("Received Response for id %d (Result %s)", id, in.Result)
 	request := c.removeRequest(id)
 
 	// Nothing more to do if there is no request associated with this reply.
@@ -370,7 +370,7 @@ func (c *Client) handleMessage(msg []byte) {
 
 	// Deliver the response.
 	result, err := in.rawResponse.result()
-	request.responseChan <- &response{result: result, err: err}
+	request.responseChan <- &Response{Result: result, Err: err}
 }
 
 // shouldLogReadError returns whether or not the passed error, which is expected
@@ -694,7 +694,7 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 	log.Tracef("Sending command [%s] with id %d", jReq.method, jReq.id)
 	httpResponse, err := c.httpClient.Do(details.httpRequest)
 	if err != nil {
-		jReq.responseChan <- &response{err: err}
+		jReq.responseChan <- &Response{Err: err}
 		return
 	}
 
@@ -703,7 +703,7 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 	httpResponse.Body.Close()
 	if err != nil {
 		err = fmt.Errorf("error reading json reply: %v", err)
-		jReq.responseChan <- &response{err: err}
+		jReq.responseChan <- &Response{Err: err}
 		return
 	}
 
@@ -714,14 +714,14 @@ func (c *Client) handleSendPostMessage(details *sendPostDetails) {
 		// When the response itself isn't a valid JSON-RPC response
 		// return an error which includes the HTTP status code and raw
 		// response bytes.
-		err = fmt.Errorf("status code: %d, response: %q",
+		err = fmt.Errorf("status code: %d, Response: %q",
 			httpResponse.StatusCode, string(respBytes))
-		jReq.responseChan <- &response{err: err}
+		jReq.responseChan <- &Response{Err: err}
 		return
 	}
 
 	res, err := resp.result()
-	jReq.responseChan <- &response{result: res, err: err}
+	jReq.responseChan <- &Response{Result: res, Err: err}
 }
 
 // sendPostHandler handles all outgoing messages when the client is running
@@ -748,9 +748,9 @@ cleanup:
 	for {
 		select {
 		case details := <-c.sendPostChan:
-			details.jsonRequest.responseChan <- &response{
-				result: nil,
-				err:    ErrClientShutdown,
+			details.jsonRequest.responseChan <- &Response{
+				Result: nil,
+				Err:    ErrClientShutdown,
 			}
 
 		default:
@@ -769,7 +769,7 @@ func (c *Client) sendPostRequest(httpReq *http.Request, jReq *jsonRequest) {
 	// Don't send the message if shutting down.
 	select {
 	case <-c.shutdown:
-		jReq.responseChan <- &response{result: nil, err: ErrClientShutdown}
+		jReq.responseChan <- &Response{Result: nil, Err: ErrClientShutdown}
 	default:
 	}
 
@@ -782,9 +782,9 @@ func (c *Client) sendPostRequest(httpReq *http.Request, jReq *jsonRequest) {
 // newFutureError returns a new future result channel that already has the
 // passed error waitin on the channel with the reply set to nil.  This is useful
 // to easily return errors from the various Async functions.
-func newFutureError(err error) chan *response {
-	responseChan := make(chan *response, 1)
-	responseChan <- &response{err: err}
+func newFutureError(err error) chan *Response {
+	responseChan := make(chan *Response, 1)
+	responseChan <- &Response{Err: err}
 	return responseChan
 }
 
@@ -792,10 +792,10 @@ func newFutureError(err error) chan *response {
 // reply or any errors.  The examined errors include an error in the
 // futureResult and the error in the reply from the server.  This will block
 // until the result is available on the passed channel.
-func receiveFuture(f chan *response) ([]byte, error) {
 	// Wait for a response on the returned channel.
+func receiveFuture(f chan *Response) ([]byte, error) {
 	r := <-f
-	return r.result, r.err
+	return r.Result, r.Err
 }
 
 // sendPost sends the passed request to the server by issuing an HTTP POST
@@ -813,7 +813,7 @@ func (c *Client) sendPost(jReq *jsonRequest) {
 	bodyReader := bytes.NewReader(jReq.marshalledJSON)
 	httpReq, err := http.NewRequest("POST", url, bodyReader)
 	if err != nil {
-		jReq.responseChan <- &response{result: nil, err: err}
+		jReq.responseChan <- &Response{Result: nil, Err: err}
 		return
 	}
 	httpReq.Close = true
@@ -844,7 +844,7 @@ func (c *Client) sendRequest(jReq *jsonRequest) {
 	select {
 	case <-c.connEstablished:
 	default:
-		jReq.responseChan <- &response{err: ErrClientNotConnected}
+		jReq.responseChan <- &Response{Err: ErrClientNotConnected}
 		return
 	}
 
@@ -853,7 +853,7 @@ func (c *Client) sendRequest(jReq *jsonRequest) {
 	// channel.  Then send the marshalled request via the websocket
 	// connection.
 	if err := c.addRequest(jReq); err != nil {
-		jReq.responseChan <- &response{err: err}
+		jReq.responseChan <- &Response{Err: err}
 		return
 	}
 	log.Tracef("Sending command [%s] with id %d", jReq.method, jReq.id)
@@ -864,7 +864,7 @@ func (c *Client) sendRequest(jReq *jsonRequest) {
 // response channel on which the reply will be delivered at some point in the
 // future.  It handles both websocket and HTTP POST mode depending on the
 // configuration of the client.
-func (c *Client) sendCmd(cmd interface{}) chan *response {
+func (c *Client) sendCmd(cmd interface{}) chan *Response {
 	// Get the method associated with the command.
 	method, err := btcjson.CmdMethod(cmd)
 	if err != nil {
@@ -879,7 +879,7 @@ func (c *Client) sendCmd(cmd interface{}) chan *response {
 	}
 
 	// Generate the request and send it along with a channel to respond on.
-	responseChan := make(chan *response, 1)
+	responseChan := make(chan *Response, 1)
 	jReq := &jsonRequest{
 		id:             id,
 		method:         method,
@@ -979,9 +979,9 @@ func (c *Client) Disconnect() {
 	if c.config.DisableAutoReconnect {
 		for e := c.requestList.Front(); e != nil; e = e.Next() {
 			req := e.Value.(*jsonRequest)
-			req.responseChan <- &response{
-				result: nil,
-				err:    ErrClientDisconnect,
+			req.responseChan <- &Response{
+				Result: nil,
+				Err:    ErrClientDisconnect,
 			}
 		}
 		c.removeAllRequests()
@@ -1007,9 +1007,9 @@ func (c *Client) Shutdown() {
 	// Send the ErrClientShutdown error to any pending requests.
 	for e := c.requestList.Front(); e != nil; e = e.Next() {
 		req := e.Value.(*jsonRequest)
-		req.responseChan <- &response{
-			result: nil,
-			err:    ErrClientShutdown,
+		req.responseChan <- &Response{
+			Result: nil,
+			Err:    ErrClientShutdown,
 		}
 	}
 	c.removeAllRequests()
@@ -1018,7 +1018,7 @@ func (c *Client) Shutdown() {
 	c.doDisconnect()
 }
 
-type FutureShutdownServerResult chan *response
+type FutureShutdownServerResult chan *Response
 
 // Shutdown shuts down the btcd servers.
 func (c *Client) ShutdownServer() error {

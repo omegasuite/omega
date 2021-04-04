@@ -25,7 +25,7 @@ import (
 
 // FutureGetTransactionResult is a future promise to deliver the result
 // of a GetTransactionAsync RPC invocation (or an applicable error).
-type FutureGetTransactionResult chan *response
+type FutureGetTransactionResult chan *Response
 
 // Receive waits for the response promised by the future and returns detailed
 // information about a wallet transaction.
@@ -70,7 +70,7 @@ func (c *Client) GetTransaction(txHash *chainhash.Hash) (*btcjson.GetTransaction
 // FutureListTransactionsResult is a future promise to deliver the result of a
 // ListTransactionsAsync, ListTransactionsCountAsync, or
 // ListTransactionsCountFromAsync RPC invocation (or an applicable error).
-type FutureListTransactionsResult chan *response
+type FutureListTransactionsResult chan *Response
 
 // Receive waits for the response promised by the future and returns a list of
 // the most recent transactions.
@@ -109,7 +109,7 @@ func (c *Client) ListTransactions(account string) ([]btcjson.ListTransactionsRes
 }
 
 // ListTransactionsCountAsync returns an instance of a type that can be used to
-// get the result of the RPC at some future time by invoking the Receive
+// get the Result of the RPC at some future time by invoking the Receive
 // function on the returned instance.
 //
 // See ListTransactionsCount for the blocking version and more details.
@@ -148,7 +148,7 @@ func (c *Client) ListTransactionsCountFrom(account string, count, from int) ([]b
 // FutureListUnspentResult is a future promise to deliver the result of a
 // ListUnspentAsync, ListUnspentMinAsync, ListUnspentMinMaxAsync, or
 // ListUnspentMinMaxAddressesAsync RPC invocation (or an applicable error).
-type FutureListUnspentResult chan *response
+type FutureListUnspentResult chan *Response
 
 // Receive waits for the response promised by the future and returns all
 // unspent wallet transaction outputs returned by the RPC call.  If the
@@ -244,10 +244,10 @@ func (c *Client) ListUnspentMinMaxAddresses(minConf, maxConf int, addrs []btcuti
 	return c.ListUnspentMinMaxAddressesAsync(minConf, maxConf, addrs).Receive()
 }
 
-// FutureListSinceBlockResult is a future promise to deliver the result of a
+// FutureListSinceBlockResult is a future promise to deliver the Result of a
 // ListSinceBlockAsync or ListSinceBlockMinConfAsync RPC invocation (or an
 // applicable error).
-type FutureListSinceBlockResult chan *response
+type FutureListSinceBlockResult chan *Response
 
 // Receive waits for the response promised by the future and returns all
 // transactions added in blocks since the specified block hash, or all
@@ -322,7 +322,7 @@ func (c *Client) ListSinceBlockMinConf(blockHash *chainhash.Hash, minConfirms in
 
 // FutureLockUnspentResult is a future promise to deliver the error result of a
 // LockUnspentAsync RPC invocation.
-type FutureLockUnspentResult chan *response
+type FutureLockUnspentResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of locking or unlocking the unspent output(s).
@@ -371,7 +371,7 @@ func (c *Client) LockUnspent(unlock bool, ops []*wire.OutPoint) error {
 
 // FutureListLockUnspentResult is a future promise to deliver the result of a
 // ListLockUnspentAsync RPC invocation (or an applicable error).
-type FutureListLockUnspentResult chan *response
+type FutureListLockUnspentResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of all currently locked unspent outputs.
@@ -418,9 +418,9 @@ func (c *Client) ListLockUnspent() ([]*wire.OutPoint, error) {
 	return c.ListLockUnspentAsync().Receive()
 }
 
-// FutureSetTxFeeResult is a future promise to deliver the result of a
+// FutureSetTxFeeResult is a future promise to deliver the Result of a
 // SetTxFeeAsync RPC invocation (or an applicable error).
-type FutureSetTxFeeResult chan *response
+type FutureSetTxFeeResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of setting an optional transaction fee per KB that helps ensure transactions
@@ -448,7 +448,7 @@ func (c *Client) SetTxFee(fee btcutil.Amount) error {
 
 // FutureSendToAddressResult is a future promise to deliver the result of a
 // SendToAddressAsync RPC invocation (or an applicable error).
-type FutureSendToAddressResult chan *response
+type FutureSendToAddressResult chan *Response
 
 // Receive waits for the response promised by the future and returns the hash
 // of the transaction sending the passed amount to the given address.
@@ -526,7 +526,7 @@ func (c *Client) SendToAddressComment(address btcutil.Address, amount btcutil.Am
 // FutureSendFromResult is a future promise to deliver the result of a
 // SendFromAsync, SendFromMinConfAsync, or SendFromCommentAsync RPC invocation
 // (or an applicable error).
-type FutureSendFromResult chan *response
+type FutureSendFromResult chan *Response
 
 // Receive waits for the response promised by the future and returns the hash
 // of the transaction sending amount to the given address using the provided
@@ -634,7 +634,7 @@ func (c *Client) SendFromComment(fromAccount string, toAddress btcutil.Address,
 // FutureSendManyResult is a future promise to deliver the result of a
 // SendManyAsync, SendManyMinConfAsync, or SendManyCommentAsync RPC invocation
 // (or an applicable error).
-type FutureSendManyResult chan *response
+type FutureSendManyResult chan *Response
 
 // Receive waits for the response promised by the future and returns the hash
 // of the transaction sending multiple amounts to multiple addresses using the
@@ -757,7 +757,7 @@ func (c *Client) SendManyComment(fromAccount string,
 
 // FutureAddMultisigAddressResult is a future promise to deliver the result of a
 // AddMultisigAddressAsync RPC invocation (or an applicable error).
-type FutureAddMultisigAddressResult chan *response
+type FutureAddMultisigAddressResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // multisignature address that requires the specified number of signatures for
@@ -802,7 +802,7 @@ func (c *Client) AddMultisigAddress(requiredSigs int, addresses []btcutil.Addres
 
 // FutureCreateMultisigResult is a future promise to deliver the result of a
 // CreateMultisigAsync RPC invocation (or an applicable error).
-type FutureCreateMultisigResult chan *response
+type FutureCreateMultisigResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // multisignature address and script needed to redeem it.
@@ -846,7 +846,7 @@ func (c *Client) CreateMultisig(requiredSigs int, addresses []btcutil.Address) (
 
 // FutureCreateNewAccountResult is a future promise to deliver the result of a
 // CreateNewAccountAsync RPC invocation (or an applicable error).
-type FutureCreateNewAccountResult chan *response
+type FutureCreateNewAccountResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // result of creating new account.
@@ -872,7 +872,7 @@ func (c *Client) CreateNewAccount(account string) error {
 
 // FutureGetNewAddressResult is a future promise to deliver the result of a
 // GetNewAddressAsync RPC invocation (or an applicable error).
-type FutureGetNewAddressResult chan *response
+type FutureGetNewAddressResult chan *Response
 
 // Receive waits for the response promised by the future and returns a new
 // address.
@@ -909,7 +909,7 @@ func (c *Client) GetNewAddress(account string) (btcutil.Address, error) {
 
 // FutureGetRawChangeAddressResult is a future promise to deliver the result of
 // a GetRawChangeAddressAsync RPC invocation (or an applicable error).
-type FutureGetRawChangeAddressResult chan *response
+type FutureGetRawChangeAddressResult chan *Response
 
 // Receive waits for the response promised by the future and returns a new
 // address for receiving change that will be associated with the provided
@@ -949,7 +949,7 @@ func (c *Client) GetRawChangeAddress(account string) (btcutil.Address, error) {
 
 // FutureAddWitnessAddressResult is a future promise to deliver the result of
 // a AddWitnessAddressAsync RPC invocation (or an applicable error).
-type FutureAddWitnessAddressResult chan *response
+type FutureAddWitnessAddressResult chan *Response
 
 // Receive waits for the response promised by the future and returns the new
 // address.
@@ -987,7 +987,7 @@ func (c *Client) AddWitnessAddress(address string) (btcutil.Address, error) {
 
 // FutureGetAccountAddressResult is a future promise to deliver the result of a
 // GetAccountAddressAsync RPC invocation (or an applicable error).
-type FutureGetAccountAddressResult chan *response
+type FutureGetAccountAddressResult chan *Response
 
 // Receive waits for the response promised by the future and returns the current
 // Bitcoin address for receiving payments to the specified account.
@@ -1025,7 +1025,7 @@ func (c *Client) GetAccountAddress(account string) (btcutil.Address, error) {
 
 // FutureGetAccountResult is a future promise to deliver the result of a
 // GetAccountAsync RPC invocation (or an applicable error).
-type FutureGetAccountResult chan *response
+type FutureGetAccountResult chan *Response
 
 // Receive waits for the response promised by the future and returns the account
 // associated with the passed address.
@@ -1063,7 +1063,7 @@ func (c *Client) GetAccount(address btcutil.Address) (string, error) {
 
 // FutureSetAccountResult is a future promise to deliver the result of a
 // SetAccountAsync RPC invocation (or an applicable error).
-type FutureSetAccountResult chan *response
+type FutureSetAccountResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of setting the account to be associated with the passed address.
@@ -1090,7 +1090,7 @@ func (c *Client) SetAccount(address btcutil.Address, account string) error {
 
 // FutureGetAddressesByAccountResult is a future promise to deliver the result
 // of a GetAddressesByAccountAsync RPC invocation (or an applicable error).
-type FutureGetAddressesByAccountResult chan *response
+type FutureGetAddressesByAccountResult chan *Response
 
 // Receive waits for the response promised by the future and returns the list of
 // addresses associated with the passed account.
@@ -1139,7 +1139,7 @@ func (c *Client) GetAddressesByAccount(account string) ([]btcutil.Address, error
 // FutureMoveResult is a future promise to deliver the result of a MoveAsync,
 // MoveMinConfAsync, or MoveCommentAsync RPC invocation (or an applicable
 // error).
-type FutureMoveResult chan *response
+type FutureMoveResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of the move operation.
@@ -1229,7 +1229,7 @@ func (c *Client) MoveComment(fromAccount, toAccount string, amount btcutil.Amoun
 
 // FutureRenameAccountResult is a future promise to deliver the result of a
 // RenameAccountAsync RPC invocation (or an applicable error).
-type FutureRenameAccountResult chan *response
+type FutureRenameAccountResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // result of creating new account.
@@ -1255,7 +1255,7 @@ func (c *Client) RenameAccount(oldAccount, newAccount string) error {
 
 // FutureValidateAddressResult is a future promise to deliver the result of a
 // ValidateAddressAsync RPC invocation (or an applicable error).
-type FutureValidateAddressResult chan *response
+type FutureValidateAddressResult chan *Response
 
 // Receive waits for the response promised by the future and returns information
 // about the given bitcoin address.
@@ -1293,7 +1293,7 @@ func (c *Client) ValidateAddress(address btcutil.Address) (*btcjson.ValidateAddr
 
 // FutureKeyPoolRefillResult is a future promise to deliver the result of a
 // KeyPoolRefillAsync RPC invocation (or an applicable error).
-type FutureKeyPoolRefillResult chan *response
+type FutureKeyPoolRefillResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of refilling the key pool.
@@ -1342,7 +1342,7 @@ func (c *Client) KeyPoolRefillSize(newSize uint) error {
 // FutureListAccountsResult is a future promise to deliver the result of a
 // ListAccountsAsync or ListAccountsMinConfAsync RPC invocation (or an
 // applicable error).
-type FutureListAccountsResult chan *response
+type FutureListAccountsResult chan *Response
 
 // Receive waits for the response promised by the future and returns returns a
 // map of account names and their associated balances.
@@ -1411,7 +1411,7 @@ func (c *Client) ListAccountsMinConf(minConfirms int) (map[string]btcutil.Amount
 // FutureGetBalanceResult is a future promise to deliver the result of a
 // GetBalanceAsync or GetBalanceMinConfAsync RPC invocation (or an applicable
 // error).
-type FutureGetBalanceResult chan *response
+type FutureGetBalanceResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // available balance from the server for the specified account.
@@ -1440,7 +1440,7 @@ func (r FutureGetBalanceResult) Receive() (btcutil.Amount, error) {
 // that the result is expected to be a string which is then parsed into
 // a float64 value
 // This is required for compatibility with servers like blockchain.info
-type FutureGetBalanceParseResult chan *response
+type FutureGetBalanceParseResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // available balance from the server for the specified account.
@@ -1493,7 +1493,7 @@ func (c *Client) GetBalance(account string) (btcutil.Amount, error) {
 // be "*" for all accounts.
 //
 // See GetBalanceMinConf to override the minimum number of confirmations.
-type FutureGetAssetResult chan *response
+type FutureGetAssetResult chan *Response
 type Block struct {
 	Hash   chainhash.Hash
 	Height int32
@@ -1580,7 +1580,7 @@ func (c *Client) GetAsset(account string) ([]Asset, error) {
 	return c.GetAssetAsync(account).Receive()
 }
 
-type FutureGetDBResult chan *response
+type FutureGetDBResult chan *Response
 
 func (r FutureGetDBResult) Receive() (map[string]string, error) {
 	res, err := receiveFuture(r)
@@ -1633,7 +1633,7 @@ func (c *Client) GetBalanceMinConf(account string, minConfirms int) (btcutil.Amo
 // FutureGetReceivedByAccountResult is a future promise to deliver the result of
 // a GetReceivedByAccountAsync or GetReceivedByAccountMinConfAsync RPC
 // invocation (or an applicable error).
-type FutureGetReceivedByAccountResult chan *response
+type FutureGetReceivedByAccountResult chan *Response
 
 // Receive waits for the response promised by the future and returns the total
 // amount received with the specified account.
@@ -1698,7 +1698,7 @@ func (c *Client) GetReceivedByAccountMinConf(account string, minConfirms int) (b
 
 // FutureGetUnconfirmedBalanceResult is a future promise to deliver the result
 // of a GetUnconfirmedBalanceAsync RPC invocation (or an applicable error).
-type FutureGetUnconfirmedBalanceResult chan *response
+type FutureGetUnconfirmedBalanceResult chan *Response
 
 // Receive waits for the response promised by the future and returns returns the
 // unconfirmed balance from the server for the specified account.
@@ -1742,7 +1742,7 @@ func (c *Client) GetUnconfirmedBalance(account string) (btcutil.Amount, error) {
 // FutureGetReceivedByAddressResult is a future promise to deliver the result of
 // a GetReceivedByAddressAsync or GetReceivedByAddressMinConfAsync RPC
 // invocation (or an applicable error).
-type FutureGetReceivedByAddressResult chan *response
+type FutureGetReceivedByAddressResult chan *Response
 
 // Receive waits for the response promised by the future and returns the total
 // amount received by the specified address.
@@ -1811,7 +1811,7 @@ func (c *Client) GetReceivedByAddressMinConf(address btcutil.Address, minConfirm
 // of a ListReceivedByAccountAsync, ListReceivedByAccountMinConfAsync, or
 // ListReceivedByAccountIncludeEmptyAsync RPC invocation (or an applicable
 // error).
-type FutureListReceivedByAccountResult chan *response
+type FutureListReceivedByAccountResult chan *Response
 
 // Receive waits for the response promised by the future and returns a list of
 // balances by account.
@@ -1898,7 +1898,7 @@ func (c *Client) ListReceivedByAccountIncludeEmpty(minConfirms int, includeEmpty
 // of a ListReceivedByAddressAsync, ListReceivedByAddressMinConfAsync, or
 // ListReceivedByAddressIncludeEmptyAsync RPC invocation (or an applicable
 // error).
-type FutureListReceivedByAddressResult chan *response
+type FutureListReceivedByAddressResult chan *Response
 
 // Receive waits for the response promised by the future and returns a list of
 // balances by address.
@@ -1987,7 +1987,7 @@ func (c *Client) ListReceivedByAddressIncludeEmpty(minConfirms int, includeEmpty
 
 // FutureWalletLockResult is a future promise to deliver the result of a
 // WalletLockAsync RPC invocation (or an applicable error).
-type FutureWalletLockResult chan *response
+type FutureWalletLockResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of locking the wallet.
@@ -2026,7 +2026,7 @@ func (c *Client) WalletPassphrase(passphrase string, timeoutSecs int64) error {
 
 // FutureWalletPassphraseChangeResult is a future promise to deliver the result
 // of a WalletPassphraseChangeAsync RPC invocation (or an applicable error).
-type FutureWalletPassphraseChangeResult chan *response
+type FutureWalletPassphraseChangeResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of changing the wallet passphrase.
@@ -2057,7 +2057,7 @@ func (c *Client) WalletPassphraseChange(old, new string) error {
 
 // FutureSignMessageResult is a future promise to deliver the result of a
 // SignMessageAsync RPC invocation (or an applicable error).
-type FutureSignMessageResult chan *response
+type FutureSignMessageResult chan *Response
 
 // Receive waits for the response promised by the future and returns the message
 // signed with the private key of the specified address.
@@ -2098,7 +2098,7 @@ func (c *Client) SignMessage(address btcutil.Address, message string) (string, e
 
 // FutureVerifyMessageResult is a future promise to deliver the result of a
 // VerifyMessageAsync RPC invocation (or an applicable error).
-type FutureVerifyMessageResult chan *response
+type FutureVerifyMessageResult chan *Response
 
 // Receive waits for the response promised by the future and returns whether or
 // not the message was successfully verified.
@@ -2143,7 +2143,7 @@ func (c *Client) VerifyMessage(address btcutil.Address, signature, message strin
 
 // FutureDumpPrivKeyResult is a future promise to deliver the result of a
 // DumpPrivKeyAsync RPC invocation (or an applicable error).
-type FutureDumpPrivKeyResult chan *response
+type FutureDumpPrivKeyResult chan *Response
 
 // Receive waits for the response promised by the future and returns the private
 // key corresponding to the passed address encoded in the wallet import format
@@ -2186,7 +2186,7 @@ func (c *Client) DumpPrivKey(address btcutil.Address) (*btcutil.WIF, error) {
 
 // FutureImportAddressResult is a future promise to deliver the result of an
 // ImportAddressAsync RPC invocation (or an applicable error).
-type FutureImportAddressResult chan *response
+type FutureImportAddressResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of importing the passed public address.
@@ -2228,7 +2228,7 @@ func (c *Client) ImportAddressRescan(address string, account string, rescan bool
 
 // FutureImportPrivKeyResult is a future promise to deliver the result of an
 // ImportPrivKeyAsync RPC invocation (or an applicable error).
-type FutureImportPrivKeyResult chan *response
+type FutureImportPrivKeyResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of importing the passed private key which must be the wallet import format
@@ -2304,7 +2304,7 @@ func (c *Client) ImportPrivKeyRescan(privKeyWIF *btcutil.WIF, label string, resc
 
 // FutureImportPubKeyResult is a future promise to deliver the result of an
 // ImportPubKeyAsync RPC invocation (or an applicable error).
-type FutureImportPubKeyResult chan *response
+type FutureImportPubKeyResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of importing the passed public key.
@@ -2353,7 +2353,7 @@ func (c *Client) ImportPubKeyRescan(pubKey string, rescan bool) error {
 
 // FutureGetInfoResult is a future promise to deliver the result of a
 // GetInfoAsync RPC invocation (or an applicable error).
-type FutureGetInfoResult chan *response
+type FutureGetInfoResult chan *Response
 
 // Receive waits for the response promised by the future and returns the info
 // provided by the server.

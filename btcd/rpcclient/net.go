@@ -35,7 +35,7 @@ func (cmd AddNodeCommand) String() string {
 
 // FutureAddNodeResult is a future promise to deliver the result of an
 // AddNodeAsync RPC invocation (or an applicable error).
-type FutureAddNodeResult chan *response
+type FutureAddNodeResult chan *Response
 
 // Receive waits for the response promised by the future and returns an error if
 // any occurred when performing the specified command.
@@ -65,7 +65,7 @@ func (c *Client) AddNode(host string, command AddNodeCommand) error {
 
 // FutureNodeResult is a future promise to deliver the result of a NodeAsync
 // RPC invocation (or an applicable error).
-type FutureNodeResult chan *response
+type FutureNodeResult chan *Response
 
 // Receive waits for the response promised by the future and returns an error if
 // any occurred when performing the specified command.
@@ -99,7 +99,7 @@ func (c *Client) Node(command btcjson.NodeSubCmd, host string,
 
 // FutureGetAddedNodeInfoResult is a future promise to deliver the result of a
 // GetAddedNodeInfoAsync RPC invocation (or an applicable error).
-type FutureGetAddedNodeInfoResult chan *response
+type FutureGetAddedNodeInfoResult chan *Response
 
 // Receive waits for the response promised by the future and returns information
 // about manually added (persistent) peers.
@@ -139,7 +139,7 @@ func (c *Client) GetAddedNodeInfo(peer string) ([]btcjson.GetAddedNodeInfoResult
 
 // FutureGetAddedNodeInfoNoDNSResult is a future promise to deliver the result
 // of a GetAddedNodeInfoNoDNSAsync RPC invocation (or an applicable error).
-type FutureGetAddedNodeInfoNoDNSResult chan *response
+type FutureGetAddedNodeInfoNoDNSResult chan *Response
 
 // Receive waits for the response promised by the future and returns a list of
 // manually added (persistent) peers.
@@ -180,7 +180,7 @@ func (c *Client) GetAddedNodeInfoNoDNS(peer string) ([]string, error) {
 
 // FutureGetConnectionCountResult is a future promise to deliver the result
 // of a GetConnectionCountAsync RPC invocation (or an applicable error).
-type FutureGetConnectionCountResult chan *response
+type FutureGetConnectionCountResult chan *Response
 
 // Receive waits for the response promised by the future and returns the number
 // of active connections to other peers.
@@ -217,7 +217,7 @@ func (c *Client) GetConnectionCount() (int64, error) {
 
 // FuturePingResult is a future promise to deliver the result of a PingAsync RPC
 // invocation (or an applicable error).
-type FuturePingResult chan *response
+type FuturePingResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of queueing a ping to be sent to each connected peer.
@@ -246,7 +246,7 @@ func (c *Client) Ping() error {
 
 // FutureGetPeerInfoResult is a future promise to deliver the result of a
 // GetPeerInfoAsync RPC invocation (or an applicable error).
-type FutureGetPeerInfoResult chan *response
+type FutureGetPeerInfoResult chan *Response
 
 // Receive waits for the response promised by the future and returns  data about
 // each connected network peer.
@@ -283,7 +283,7 @@ func (c *Client) GetPeerInfo() ([]btcjson.GetPeerInfoResult, error) {
 
 // FutureGetNetTotalsResult is a future promise to deliver the result of a
 // GetNetTotalsAsync RPC invocation (or an applicable error).
-type FutureGetNetTotalsResult chan *response
+type FutureGetNetTotalsResult chan *Response
 
 // Receive waits for the response promised by the future and returns network
 // traffic statistics.

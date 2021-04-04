@@ -21,7 +21,7 @@ import (
 
 // FutureDebugLevelResult is a future promise to deliver the result of a
 // DebugLevelAsync RPC invocation (or an applicable error).
-type FutureDebugLevelResult chan *response
+type FutureDebugLevelResult chan *Response
 
 // Receive waits for the response promised by the future and returns the result
 // of setting the debug logging level to the passed level specification or the
@@ -69,7 +69,7 @@ func (c *Client) DebugLevel(levelSpec string) (string, error) {
 
 // FutureCreateEncryptedWalletResult is a future promise to deliver the error
 // result of a CreateEncryptedWalletAsync RPC invocation.
-type FutureCreateEncryptedWalletResult chan *response
+type FutureCreateEncryptedWalletResult chan *Response
 
 // Receive waits for and returns the error response promised by the future.
 func (r FutureCreateEncryptedWalletResult) Receive() error {
@@ -103,7 +103,7 @@ func (c *Client) CreateEncryptedWallet(passphrase string) error {
 
 // FutureListAddressTransactionsResult is a future promise to deliver the result
 // of a ListAddressTransactionsAsync RPC invocation (or an applicable error).
-type FutureListAddressTransactionsResult chan *response
+type FutureListAddressTransactionsResult chan *Response
 
 // Receive waits for the response promised by the future and returns information
 // about all transactions associated with the provided addresses.
@@ -149,7 +149,7 @@ func (c *Client) ListAddressTransactions(addresses []btcutil.Address, account st
 
 // FutureGetBestBlockResult is a future promise to deliver the result of a
 // GetBestBlockAsync RPC invocation (or an applicable error).
-type FutureGetBestBlockResult chan *response
+type FutureGetBestBlockResult chan *Response
 
 // Receive waits for the response promised by the future and returns the hash
 // and height of the block in the longest (best) chain.
@@ -202,7 +202,7 @@ func (c *Client) GetBestBlock() (*chainhash.Hash, int32, *chainhash.Hash, int32,
 
 // FutureGetCurrentNetResult is a future promise to deliver the result of a
 // GetCurrentNetAsync RPC invocation (or an applicable error).
-type FutureGetCurrentNetResult chan *response
+type FutureGetCurrentNetResult chan *Response
 
 // Receive waits for the response promised by the future and returns the network
 // the server is running on.
@@ -246,7 +246,7 @@ func (c *Client) GetCurrentNet() (common.OmegaNet, error) {
 //
 // NOTE: This is a btcsuite extension ported from
 // github.com/decred/dcrrpcclient.
-type FutureGetHeadersResult chan *response
+type FutureGetHeadersResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // getheaders result.
@@ -313,7 +313,7 @@ func (c *Client) GetHeaders(blockLocators []chainhash.Hash, hashStop *chainhash.
 
 // FutureExportWatchingWalletResult is a future promise to deliver the result of
 // an ExportWatchingWalletAsync RPC invocation (or an applicable error).
-type FutureExportWatchingWalletResult chan *response
+type FutureExportWatchingWalletResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // exported wallet.
@@ -333,13 +333,13 @@ func (r FutureExportWatchingWalletResult) Receive() ([]byte, []byte, error) {
 	// Check for the wallet and tx string fields in the object.
 	base64Wallet, ok := obj["wallet"].(string)
 	if !ok {
-		return nil, nil, fmt.Errorf("unexpected response type for "+
+		return nil, nil, fmt.Errorf("unexpected Response type for "+
 			"exportwatchingwallet 'wallet' field: %T\n",
 			obj["wallet"])
 	}
 	base64TxStore, ok := obj["tx"].(string)
 	if !ok {
-		return nil, nil, fmt.Errorf("unexpected response type for "+
+		return nil, nil, fmt.Errorf("unexpected Response type for "+
 			"exportwatchingwallet 'tx' field: %T\n",
 			obj["tx"])
 	}
@@ -382,7 +382,7 @@ func (c *Client) ExportWatchingWallet(account string) ([]byte, []byte, error) {
 
 // FutureSessionResult is a future promise to deliver the result of a
 // SessionAsync RPC invocation (or an applicable error).
-type FutureSessionResult chan *response
+type FutureSessionResult chan *Response
 
 // Receive waits for the response promised by the future and returns the
 // session result.
@@ -433,7 +433,7 @@ func (c *Client) Session() (*btcjson.SessionResult, error) {
 //
 // NOTE: This is a btcsuite extension ported from
 // github.com/decred/dcrrpcclient.
-type FutureVersionResult chan *response
+type FutureVersionResult chan *Response
 
 // Receive waits for the response promised by the future and returns the version
 // result.
