@@ -75,6 +75,8 @@ var (
 	// unsupported address type has been used.
 	errUnsupportedAddressType = errors.New("address type is not supported " +
 		"by the address index")
+
+	zerohash = chainhash.Hash{}
 )
 
 // copied from ovm to avoid circular importation
@@ -700,15 +702,24 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 	if IsContract(pkScript[0]) {
 		addr, _ = btcutil.NewAddressContract(pkScript[1:21], chainParams)
 	} else {
-		if len(pkScript) < 25 {
-			return nil, 0, fmt.Errorf("Malformed pkScript")
-		}
+//		if len(pkScript) < 25 {
+//			return nil, 0, fmt.Errorf("Malformed pkScript")
+//		}
 		switch pkScript[21] {
 		case OP_PAY2PKH:
+			if pkScript[0] != chainParams.PubKeyHashAddrID {
+				return nil, 0, fmt.Errorf("Malformed pkScript")
+			}
 			addr, _ = btcutil.NewAddressPubKeyHash(pkScript[1:21], chainParams)
 		case OP_PAYMULTISIG:
+			if pkScript[0] != chainParams.ScriptHashAddrID {
+				return nil, 0, fmt.Errorf("Malformed pkScript")
+			}
 			addr, _ = btcutil.NewAddressMultiSig(pkScript[1:21], chainParams)
 		case OP_PAY2SCRIPTH:
+			if pkScript[0] != chainParams.MultiSigAddrID {
+				return nil, 0, fmt.Errorf("Malformed pkScript")
+			}
 			addr, _ = btcutil.NewAddressScriptHash(pkScript[1:21], chainParams)
 		default:
 			return nil, 0, nil
@@ -766,7 +777,7 @@ func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 		// a coinbase.
 		if txIdx != 0 {
 			for _,txIn := range tx.MsgTx().TxIn {
-				if txIn.IsSeparator() {
+				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
 				// We'll access the slice of all the
@@ -946,7 +957,7 @@ func (idx *AddrIndex) AddUnconfirmedTx(tx *btcutil.Tx, utxoView *viewpoint.UtxoV
 	// transaction has already been validated and thus all inputs are
 	// already known to exist.
 	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		entry := utxoView.LookupEntry(txIn.PreviousOutPoint)

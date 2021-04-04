@@ -68,6 +68,16 @@ func (w *Wallet) handleChainNotifications() {
 					Hash:      *hash,
 					Timestamp: header.Timestamp,
 				}
+// Howard: the original code does not check txs in scanned blocks, resulting
+// loss of data
+				blkmeta := wtxmgr.BlockMeta{
+					wtxmgr.Block {*hash, i},
+					header.Timestamp,
+				}
+
+				w.connectBlock(tx, blkmeta)
+// Howard
+
 				err = w.Manager.SetSyncedTo(ns, &bs)
 				if err != nil {
 					return err
@@ -91,35 +101,44 @@ func (w *Wallet) handleChainNotifications() {
 				return
 			}
 
+			// Before attempting to sync with our backend,
+			// we'll make sure that our birthday block has
+			// been set correctly to potentially prevent
+			// missing relevant events.
+			birthdayStore := &walletBirthdayStore{
+				db:      w.db,
+				manager: w.Manager,
+			}
+			birthdayBlock, err := birthdaySanityCheck(
+				chainClient, birthdayStore,
+			)
+			if birthdayBlock == nil {
+				// if no birthdayBlock is set, no need to sync
+				// birthdayBlock is set when first address is created / imported
+				continue
+			}
+
+			if err != nil && !waddrmgr.IsError(err, waddrmgr.ErrBirthdayBlockNotSet) {
+				panic(fmt.Errorf("Unable to sanity "+
+					"check wallet birthday block: %v",
+					err))
+			}
+
 			var notificationName string
-			var err error
 			switch n := n.(type) {
 			case chain.ClientConnected:
 				if w.async {
+					log.Infof("ClientConnected: skip due to async mode")
 					continue
-				}
-				// Before attempting to sync with our backend,
-				// we'll make sure that our birthday block has
-				// been set correctly to potentially prevent
-				// missing relevant events.
-				birthdayStore := &walletBirthdayStore{
-					db:      w.db,
-					manager: w.Manager,
-				}
-				birthdayBlock, err := birthdaySanityCheck(
-					chainClient, birthdayStore,
-				)
-				if err != nil && !waddrmgr.IsError(err, waddrmgr.ErrBirthdayBlockNotSet) {
-					panic(fmt.Errorf("Unable to sanity "+
-						"check wallet birthday block: %v",
-						err))
 				}
 
 				err = w.syncWithChain(birthdayBlock)
+
 				if err != nil && !w.ShuttingDown() {
 					panic(fmt.Errorf("Unable to synchronize "+
 						"wallet to chain: %v", err))
 				}
+
 			case chain.BlockConnected:
 				err = walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
 					return w.connectBlock(tx, wtxmgr.BlockMeta(n))

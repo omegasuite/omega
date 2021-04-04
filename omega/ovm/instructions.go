@@ -4004,38 +4004,16 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		}
 
 	case SigHashSingle, SigHashDouble, SigHashTriple, SigHashQuardruple:
-		if inidx < uint32(SigHashType(it) & SigHashMask) - uint32(SigHashSingle) {
-			start = 0
-		} else {
-			start = inidx + uint32(SigHashSingle) - uint32(SigHashType(it)&SigHashMask)
-		}
-		zo := int(start)
-		// Resize output array to up to and including requested index.
-		if int(inidx) >= len(t.TxOut) {
-			zo = len(t.TxOut)
-			t.TxOut = t.TxOut[:inidx+1]
-			t.TxOut[inidx].Token.Value = &token.NumToken{0}
-			t.TxOut[inidx].Token.TokenType = 0
-			t.TxOut[inidx].Token.Rights = nil
-			t.TxOut[inidx].PkScript = nil
-		} else {
-			t.TxOut = t.TxOut[:inidx+1]
+		if inidx < uint32(SigHashType(it) & SigHashMask) - uint32(SigHashSingle) ||
+			int(inidx) >= len(t.TxOut) || int(inidx) >= len(t.TxIn){
+			return fmt.Errorf("Insufficient data for line signature")
 		}
 
-		// All but current output get zeroed out.
-		for i := 0; i < zo; i++ {
-			t.TxOut[i].Token.Value = &token.NumToken{0}
-			t.TxOut[i].Token.TokenType = 0
-			t.TxOut[i].Token.Rights = nil
-			t.TxOut[i].PkScript = nil
-		}
+		start = inidx + uint32(SigHashSingle) - uint32(SigHashType(it)&SigHashMask)
+		t.TxOut = t.TxOut[start:inidx+1]
+		t.TxIn = t.TxIn[start:inidx+1]
 
-		// Sequence on all other inputs is 0, too.
-		for i := range t.TxIn {
-			if i < int(start) || i > int(inidx) {
-				t.TxIn[i].Sequence = 0
-			}
-		}
+		it = it &^ byte(SigHashAnyOneCanPay)		// to skip SigHashAnyOneCanPay check below
 
 	default:
 		// Consensus treats undefined hashtypes like normal SigHashAll
@@ -4044,11 +4022,11 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	case SigHashAll:
 		// Nothing special here.
 	}
-	
+
 	if SigHashType(it) & SigHashAnyOneCanPay != 0 {
 		t.TxIn = t.TxIn[start : inidx+1]
 	}
-	
+
 	wbuf := bytes.NewBuffer(make([]byte, 0, t.SerializeSizeStripped()+4))
 	t.SerializeNoSignature(wbuf)
 

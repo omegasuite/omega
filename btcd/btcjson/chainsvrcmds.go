@@ -1151,6 +1151,7 @@ func init() {
 	MustRegisterCmd("getnetworkhashps", (*GetNetworkHashPSCmd)(nil), flags)
 	MustRegisterCmd("getpeerinfo", (*GetPeerInfoCmd)(nil), flags)
 	MustRegisterCmd("getrawmempool", (*GetRawMempoolCmd)(nil), flags)
+	MustRegisterCmd("clearmempool", (*GetRawMempoolCmd)(nil), flags)
 	MustRegisterCmd("getrawtransaction", (*GetRawTransactionCmd)(nil), flags)
 	MustRegisterCmd("gettxout", (*GetTxOutCmd)(nil), flags)
 	MustRegisterCmd("listutxos", (*ListUtxosCmd)(nil), flags)

@@ -416,7 +416,7 @@ func (g *BlockChain) processForfeitBlock(b *btcutil.Block,
 		out, in := int64(0), int64(0)
 		// calculate input sum
 		for _, txin := range tx.MsgTx().TxIn {
-			if txin.IsSeparator() {
+			if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
 			if u, ok := usable[txin.PreviousOutPoint]; ok {

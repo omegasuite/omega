@@ -102,6 +102,7 @@ type txPriorityQueue struct {
 	items    []*txPrioItem
 }
 
+var zerohash chainhash.Hash
 // Len returns the number of items in the priority queue.  It is part of the
 // heap.Interface implementation.
 func (pq *txPriorityQueue) Len() int {
@@ -311,7 +312,7 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 // which are not provably unspendable as available unspent transaction outputs.
 func spendTransaction(utxoView *viewpoint.ViewPointSet, tx *btcutil.Tx, height int32) error {
 	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		entry := utxoView.Utxo.LookupEntry(txIn.PreviousOutPoint)
@@ -584,7 +585,7 @@ mempoolLoop:
 		if s.MsgBlock().Version &^ 0xFFFF >= chaincfg.Version2 {
 			var locked = false
 			for _, txin := range tx.MsgTx().TxIn {
-				if txin.IsSeparator() {
+				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
 				if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
@@ -622,7 +623,7 @@ mempoolLoop:
 		// ordered below.
 		prioItem := &txPrioItem{tx: tx}
 		for _, txIn := range tx.MsgTx().TxIn {
-			if txIn.IsSeparator() {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				// never here
 				continue
 			}

@@ -287,6 +287,8 @@ func pushedAddreses(pkScript []byte) [][]byte {
 	return res
 }
 
+var zerohash chainhash.Hash
+
 // matchTxAndUpdate returns true if the bloom filter matches data within the
 // passed transaction, otherwise false is returned.  If the filter does match
 // the passed transaction, it will also update the filter depending on the bloom
@@ -334,7 +336,7 @@ func (bf *Filter) matchTxAndUpdate(tx *btcutil.Tx) bool {
 	// Check if the filter matches any outpoints this transaction spends or
 	// any any data elements in the signature scripts of any of the inputs.
 	for _, txin := range tx.MsgTx().TxIn {
-		if txin.IsSeparator() {
+		if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		if bf.matchesOutPoint(&txin.PreviousOutPoint) {

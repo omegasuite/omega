@@ -224,6 +224,9 @@ func (t *TxIn) IsSeparator() bool {
 	z := chainhash.Hash{}
 	return t.PreviousOutPoint.Hash.IsEqual(&z) && t.PreviousOutPoint.Index == 0 &&
 		t.SignatureIndex == 0 && t.Sequence == 0
+	// if SignatureIndex is 0xFFFFFFFF and everything else is 0, it is not a
+	// separator but an empty input is useful for padding
+	// for output, padding is done by a 0 value with pay none for any address
 }
 
 // NewTxIn returns a new bitcoin transaction input with the provided

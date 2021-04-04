@@ -349,7 +349,7 @@ func (view *ViewPointSet) ConnectTransaction(tx *btcutil.Tx, blockHeight int32, 
 	// if a slice was provided for the spent txout details, append an entry
 	// to it.
 	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		// Ensure the referenced utxo exists in the view.  This should
@@ -473,7 +473,7 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 			continue
 		}
 		for txInIdx := len(tx.MsgTx().TxIn) - 1; txInIdx > -1; txInIdx-- {
-			if tx.MsgTx().TxIn[txInIdx].IsSeparator() {
+			if tx.MsgTx().TxIn[txInIdx].PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
 			// Ensure the spent txout index is decremented to stay
@@ -903,7 +903,7 @@ func (view *ViewPointSet) FetchInputUtxos(block *btcutil.Block) error {
 	neededSet := make(map[wire.OutPoint]struct{})
 	for i, tx := range transactions[1:] {
 		for _, txIn := range tx.MsgTx().TxIn {
-			if txIn.IsSeparator() {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
 			// It is acceptable for a transaction input to reference

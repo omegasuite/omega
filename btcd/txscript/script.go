@@ -46,6 +46,8 @@ const (
 	MaxScriptElementSize  = 520 // Max bytes pushable to the stack.
 )
 
+var zerohash chainhash.Hash
+
 // IsPayToScriptHash returns true if the script is in the standard
 // pay-to-script-hash (P2SH) format, false otherwise.
 func IsPayToScriptHash(script []byte) bool {
@@ -70,7 +72,7 @@ func DisasmString(buf []byte) (string, error) {
 func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
 	for _, in := range tx.TxIn {
-		if in.IsSeparator() {
+		if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		// First write out the 32-byte transaction ID one of whose
@@ -96,7 +98,7 @@ func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 func calcHashSequence(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
 	for _, in := range tx.TxIn {
-		if in.IsSeparator() {
+		if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		var buf [4]byte

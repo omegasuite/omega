@@ -8,7 +8,6 @@ package netsync
 import (
 	"container/list"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/omegasuite/omega/minerchain"
 	"net"
 	"reflect"
@@ -1820,7 +1819,7 @@ out:
 
 		case m := <-sm.msgChan:
 			log.Debugf("blockHandler took a message from sm.msgChan: ", reflect.TypeOf(m).String())
-			sm.lastBlockOp = spew.Sdump(m)
+			sm.lastBlockOp = "sm.msgChan"
 
 			switch msg := m.(type) {
 			case *newPeerMsg:

@@ -48,6 +48,8 @@ func (b *Block) MsgBlock() *wire.MsgBlock {
 	return b.msgBlock
 }
 
+var zerohash chainhash.Hash
+
 // countSpentOutputs returns the number of utxos the passed block spends.
 func (block *Block)  CountSpentOutputs() int {
 	// Exclude the coinbase transaction since it can't spend anything.
@@ -55,7 +57,7 @@ func (block *Block)  CountSpentOutputs() int {
 	for _, tx := range block.Transactions()[1:] {
 		numSpent += len(tx.MsgTx().TxIn)
 		for _, ti := range tx.MsgTx().TxIn {
-			if ti.IsSeparator() {
+			if ti.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				numSpent--
 			}
 		}

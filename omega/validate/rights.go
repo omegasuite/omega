@@ -98,7 +98,7 @@ func parseRights(tx *btcutil.Tx, views *viewpoint.ViewPointSet, checkPolygon boo
 		txouts = append(txouts, tx.MsgTx().TxOut[i])
 	}
 	for i, n := 1, len(tx.MsgTx().TxIn); i < n; i++ {
-		if tx.MsgTx().TxIn[i].IsSeparator() {
+		if tx.MsgTx().TxIn[i].PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		txin := views.Utxo.LookupEntry(tx.MsgTx().TxIn[i].PreviousOutPoint)
@@ -222,11 +222,13 @@ type tokennelement struct {
 	value token.TokenValue
 }
 
+var zerohash chainhash.Hash
+
 func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 	res := [2][]tokennelement {make([]tokennelement, 0, len(tx.MsgTx().TxIn)),
 		make([]tokennelement, 0, len(tx.MsgTx().TxOut))}
 	for _, y := range tx.MsgTx().TxIn {
-		if y.IsSeparator() {
+		if y.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		x := views.Utxo.LookupEntry(y.PreviousOutPoint).ToTxOut()
@@ -313,7 +315,7 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (bool, error
 	}
 	if checkPolygon {
 		for _, txIn := range tx.MsgTx().TxIn {
-			if txIn.IsSeparator() {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
 			txin := views.Utxo.LookupEntry(txIn.PreviousOutPoint).ToTxOut()

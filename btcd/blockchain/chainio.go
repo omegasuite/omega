@@ -445,7 +445,7 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 	for _, tx := range txns {
 		numStxos += len(tx.TxIn)
 		for _,in := range tx.TxIn {
-			if in.IsSeparator() {
+			if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				numStxos--
 			}
 		}
@@ -477,7 +477,7 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 		// the associated stxo.
 		for txInIdx := len(tx.TxIn) - 1; txInIdx > -1; txInIdx-- {
 			txIn := tx.TxIn[txInIdx]
-			if txIn.IsSeparator() {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
 			stxo := &stxos[stxoIdx]
@@ -1711,7 +1711,7 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 	}
 	if !IsCoinBase(tx) {
 		for _, txIn := range tx.MsgTx().TxIn {
-			if txIn.IsSeparator() {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
 			neededSet[txIn.PreviousOutPoint] = struct{}{}

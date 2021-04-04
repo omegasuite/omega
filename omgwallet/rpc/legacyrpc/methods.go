@@ -86,7 +86,7 @@ var rpcHandlers = map[string]struct {
 	"getaddressesbyaccount":  {handler: getAddressesByAccount},
 	"getbalance":             {handler: getBalance},
 	"getasset":               {handler: getAsset},
-	"getdb":                   {handler: getDB},
+	"getdb":                  {handler: getDB},
 	"getbestblockhash":       {handler: getBestBlockHash},
 	"getblockcount":          {handler: getBlockCount},
 	"getinfo":                {handlerWithChain: getInfo},

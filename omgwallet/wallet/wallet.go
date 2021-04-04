@@ -8,8 +8,10 @@ package wallet
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/omegasuite/btcd/blockchain/indexers"
 	"sort"
 	"strings"
 	"sync"
@@ -347,27 +349,31 @@ func (w *Wallet) syncWithChain(birthdayStamp *waddrmgr.BlockStamp) error {
 		log.Debug("Chain backend synced to tip!")
 	}
 
+/*
 	// If we've yet to find our birthday block, we'll do so now.
 	if birthdayStamp == nil {
+
 		var err error
 
 		birthdayStamp, err = locateBirthdayBlock(
 			chainClient, w.Manager.Birthday(),
 		)
 
-		fmt.Printf("locateBirthdayBlock birthdayStamp = %V", birthdayStamp)
+		log.Info("locateBirthdayBlock birthday Height = %d", birthdayStamp.Height)
 
 		if err != nil {
-			return fmt.Errorf("unable to locate birthday block: %v",
-				err)
-		}
+//			return fmt.Errorf("unable to locate birthday block: %v",
+//				err)
+//		}
 
-		// start from genesis
-		birthdayStamp = &waddrmgr.BlockStamp {
-			Height: 0,
-			Hash: *w.chainParams.GenesisHash,
-			Timestamp: w.chainParams.GenesisBlock.Header.Timestamp,
-		}
+
+			// start from genesis
+			birthdayStamp = &waddrmgr.BlockStamp {
+				Height: 0,
+				Hash: *w.chainParams.GenesisHash,
+				Timestamp: w.chainParams.GenesisBlock.Header.Timestamp,
+			}
+//		}
 
 		// We'll also determine our initial sync starting height. This
 		// is needed as the wallet can now begin storing blocks from an
@@ -404,6 +410,7 @@ func (w *Wallet) syncWithChain(birthdayStamp *waddrmgr.BlockStamp) error {
 				"data: %v", err)
 		}
 	}
+*/
 
 	// If the wallet requested an on-chain recovery of its funds, we'll do
 	// so now.
@@ -675,69 +682,33 @@ func (w *Wallet) recovery(chainClient chain.Interface,
 	// that a wallet rescan will be performed from the wallet's tip, which
 	// will be of bestHeight after completing the recovery process.
 	var blocks []*waddrmgr.BlockStamp
-	startHeight := w.Manager.SyncedTo().Height + 1
+	startHeight := w.Manager.SyncedTo().Height
 
-	if startHeight < 0 {
+	if birthdayBlock == nil {
 		startHeight = 0
 	}
 
-	for height := startHeight; height <= bestHeight; height++ {
-		hash, err := chainClient.GetBlockHash(int64(height))
-		if err != nil {
-			return err
-		}
-		header, err := chainClient.GetBlockHeader(hash)
-		if err != nil {
-			return err
-		}
-		blocks = append(blocks, &waddrmgr.BlockStamp{
-			Hash:      *hash,
-			Height:    height,
-			Timestamp: header.Timestamp,
-		})
-
-		// It's possible for us to run into blocks before our birthday
-		// if our birthday is after our reorg safe height, so we'll make
-		// sure to not add those to the batch.
-		if height >= birthdayBlock.Height {
-			recoveryMgr.AddToBlockBatch(
-				hash, height, header.Timestamp,
-			)
-		}
-
+	for height := startHeight; height <= bestHeight; height += recoveryBatchSize {
 		// We'll perform our recovery in batches of 2000 blocks.  It's
 		// possible for us to reach our best height without exceeding
 		// the recovery batch size, so we can proceed to commit our
 		// state to disk.
-		recoveryBatch := recoveryMgr.BlockBatch()
-		if len(recoveryBatch) == recoveryBatchSize || height == bestHeight {
-			err := walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
-				ns := tx.ReadWriteBucket(waddrmgrNamespaceKey)
-				for _, block := range blocks {
-					err := w.Manager.SetSyncedTo(ns, block)
-					if err != nil {
-						return err
-					}
+		err := walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
+			ns := tx.ReadWriteBucket(waddrmgrNamespaceKey)
+			for _, block := range blocks {
+				err := w.Manager.SetSyncedTo(ns, block)
+				if err != nil {
+					return err
 				}
-				return w.recoverDefaultScopes(
-					chainClient, tx, ns, recoveryBatch,
-					recoveryMgr.State(),
-				)
-			})
-			if err != nil {
-				return err
 			}
-
-			if len(recoveryBatch) > 0 {
-				log.Infof("Recovered addresses from blocks "+
-					"%d-%d", recoveryBatch[0].Height,
-					recoveryBatch[len(recoveryBatch)-1].Height)
-			}
-
-			// Clear the batch of all processed blocks to reuse the
-			// same memory for future batches.
-			blocks = blocks[:0]
-			recoveryMgr.ResetBlockBatch()
+			_, err := w.recoverDefaultScopes(
+				chainClient, tx, ns, int(height), int(height) + recoveryBatchSize,
+				recoveryMgr.State(),
+			)
+			return err
+		})
+		if err != nil {
+			return err
 		}
 	}
 
@@ -770,16 +741,16 @@ func (w *Wallet) recoverDefaultScopes(
 	chainClient chain.Interface,
 	tx walletdb.ReadWriteTx,
 	ns walletdb.ReadWriteBucket,
-	batch []wtxmgr.BlockMeta,
-	recoveryState *RecoveryState) error {
+	start, end int,
+	recoveryState *RecoveryState) (int32, error) {
 
 	scopedMgrs, err := w.defaultScopeManagers()
 	if err != nil {
-		return err
+		return int32(start), err
 	}
 
 	return w.recoverScopedAddresses(
-		chainClient, tx, ns, batch, recoveryState, scopedMgrs,
+		chainClient, tx, ns, start, end, recoveryState, scopedMgrs,
 	)
 }
 
@@ -795,34 +766,204 @@ func (w *Wallet) recoverDefaultScopes(
 //  6) Repeat from (1) if there are still more blocks in the range.
 func (w *Wallet) recoverScopedAddresses(
 	chainClient chain.Interface,
-	tx walletdb.ReadWriteTx,
+	rwtx walletdb.ReadWriteTx,
 	ns walletdb.ReadWriteBucket,
-	batch []wtxmgr.BlockMeta,
+	start, end int,
 	recoveryState *RecoveryState,
-	scopedMgrs map[waddrmgr.KeyScope]*waddrmgr.ScopedKeyManager) error {
+	scopedMgrs map[waddrmgr.KeyScope]*waddrmgr.ScopedKeyManager) (int32, error) {
 
 	// If there are no blocks in the batch, we are done.
-	if len(batch) == 0 {
-		return nil
+	if end <= start {
+		return int32(start), nil
 	}
 
-	log.Infof("Scanning %d blocks for recoverable addresses", len(batch))
+	log.Infof("Scanning blocks %d - %d for recoverable addresses", start, end)
 
-expandHorizons:
 	for scope, scopedMgr := range scopedMgrs {
 		scopeState := recoveryState.StateForScope(scope)
 		err := expandScopeHorizons(ns, scopedMgr, scopeState)
 		if err != nil {
-			return err
+			return int32(start), err
 		}
 	}
 
-	// With the internal and external horizons properly expanded, we now
-	// construct the filter blocks request. The request includes the range
-	// of blocks we intend to scan, in addition to the scope-index -> addr
-	// map for all internal and external branches.
-	filterReq := newFilterBlocksRequest(batch, scopedMgrs, recoveryState)
+	addresstr := make(map[string]struct{})
 
+	for scope := range scopedMgrs {
+		accts, _ := w.Accounts(scope)
+		for _, act := range accts.Accounts {
+			account := act.AccountNumber
+			qq, err := w.AccountAddresses(account)
+			if err != nil {
+				continue
+			}
+
+			for _, a := range qq {
+				addresstr[a.String()] = struct{}{}
+			}
+		}
+	}
+
+	// use search tx
+	cc,_ := w.requireChainClient()
+	c := cc.(*chain.RPCClient)
+
+	var highest int
+	if start == 0 {
+		highest = end
+	} else {
+		highest = start + 1
+	}
+
+	//	ns := rwtx.ReadWriteBucket(waddrmgrNamespaceKey)
+
+	for p,_ := range addresstr {
+		found := true
+		begin := start
+		address,_ := btcutil.DecodeAddress(p, w.chainParams)
+		for found && begin < end {
+			found = false
+			pend := end
+			if start == 0 {
+				pend = start + 10
+			}
+			resp := c.SearchTx(begin, pend, address)
+			result := <-resp
+			if result.Result == nil {
+				continue
+			}
+
+			var txs []btcjson.SearchRawTransactionsResult
+
+			err := json.Unmarshal(result.Result, &txs)
+			if err != nil {
+				return int32(start), err
+			}
+
+			for _, tx := range txs {
+				if start == 0 {
+					if int(tx.Height) < highest {
+						highest = int(tx.Height)
+					}
+					break
+				}
+
+				begin = int(tx.Height)
+				if tx.Height <= uint32(start) || tx.Height > uint32(end) {
+					continue
+				}
+
+				for highest < int(tx.Height) {
+					startHash, err := chainClient.GetBlockHash(int64(highest))
+					if err != nil {
+						return int32(highest), err
+					}
+					startHeader, err := chainClient.GetBlockHeader(startHash)
+					if err != nil {
+						return int32(highest), err
+					}
+
+					block := waddrmgr.BlockStamp{
+						Hash:      *startHash,
+						Height:    int32(highest),
+						Timestamp: startHeader.Timestamp,
+					}
+					err = w.Manager.SetSyncedTo(ns, &block)
+					if err != nil {
+						log.Infof("SetSyncedTo ar point A %d", highest)
+						return int32(highest), err
+					}
+					highest++
+				}
+
+				found = true
+
+				var outPoint wire.OutPoint
+				h, _ := chainhash.NewHashFromStr(tx.Txid)
+				outPoint.Hash = *h
+
+				var txn wire.MsgTx
+				t, _ := hex.DecodeString(tx.Hex)
+				r := bytes.NewReader(t)
+				txn.Deserialize(r)
+
+				// Update the global set of watched outpoints with any that were found
+				// in the block.
+				for i, txout := range txn.TxOut {
+					if txout.IsSeparator() {
+						continue
+					}
+					adrs, _, _ :=indexers.ExtractPkScriptAddrs(txout.PkScript, w.chainParams)
+					if _, ok := addresstr[adrs[0].String()]; !ok {
+						continue
+					}
+
+					outPoint.Index = uint32(i)
+
+					recoveryState.AddWatchedOutPoint(&outPoint, adrs[0])
+				}
+
+				utm := time.Unix(tx.Blocktime, 0)
+				txRecord, err := wtxmgr.NewTxRecordFromMsgTx(&txn, utm)
+				if err != nil {
+					return int32(highest), err
+				}
+
+				blkhash, _ := chainhash.NewHashFromStr(tx.BlockHash)
+
+				blockMeta := wtxmgr.BlockMeta{
+					wtxmgr.Block{*blkhash, int32(tx.Height)},
+					utm,
+				}
+
+				err = w.addRelevantTx(rwtx, txRecord, &blockMeta)
+				if err != nil {
+					return int32(highest), err
+				}
+
+				if tx.Height == uint32(highest) {
+					bs := waddrmgr.BlockStamp{
+						Height: int32(tx.Height),
+						Hash: blockMeta.Hash,
+						Timestamp: blockMeta.Time,
+					}
+					err = w.Manager.SetSyncedTo(ns, &bs)
+					if err != nil {
+						log.Infof("SetSyncedTo ar point B %d", tx.Height)
+						return int32(highest), err
+					}
+
+					highest++
+				}
+				log.Infof("addRelevantTx %s @ %d", outPoint.Hash.String(), tx.Height)
+			}
+		}
+	}
+
+	for highest <= end {
+		startHash, err := chainClient.GetBlockHash(int64(highest))
+		if err != nil {
+			return int32(highest), err
+		}
+		startHeader, err := chainClient.GetBlockHeader(startHash)
+		if err != nil {
+			return int32(highest), err
+		}
+
+		block := waddrmgr.BlockStamp{
+			Hash:      *startHash,
+			Height:    int32(highest),
+			Timestamp: startHeader.Timestamp,
+		}
+		err = w.Manager.SetSyncedTo(ns, &block)
+		if err != nil {
+			log.Infof("SetSyncedTo ar point C %d", highest)
+			return int32(highest), err
+		}
+		highest++
+	}
+
+/*
 	// Initiate the filter blocks request using our chain backend. If an
 	// error occurs, we are unable to proceed with the recovery.
 	filterResp, err := chainClient.FilterBlocks(filterReq)
@@ -837,6 +978,12 @@ expandHorizons:
 	if filterResp == nil {
 		return nil
 	}
+
+	// With the internal and external horizons properly expanded, we now
+	// construct the filter blocks request. The request includes the range
+	// of blocks we intend to scan, in addition to the scope-index -> addr
+	// map for all internal and external branches.
+	filterReq := newFilterBlocksRequest(batch, scopedMgrs, recoveryState)
 
 	// Otherwise, retrieve the block info for the block that detected a
 	// non-zero number of address matches.
@@ -887,8 +1034,9 @@ expandHorizons:
 	if len(batch) > 0 {
 		goto expandHorizons
 	}
+ */
 
-	return nil
+	return int32(highest), nil
 }
 
 // expandScopeHorizons ensures that the ScopeRecoveryState has an adequately
@@ -1566,8 +1714,40 @@ func (w *Wallet) ListAssets(detail bool) ([]wtxmgr.Asset, error) {
 	err := walletdb.View(w.db, func(tx walletdb.ReadTx) error {
 		txmgrNs := tx.ReadBucket(wtxmgrNamespaceKey)
 		var err error
-		blk := w.Manager.SyncedTo()
-		balance, err = w.TxStore.Utxos(txmgrNs, detail, blk.Height)
+		if detail {
+			unspent, err := w.TxStore.UnspentOutputs(txmgrNs)
+
+			if err != nil {
+				return err
+			}
+			for i := range unspent {
+				output := &unspent[i]
+
+				var ast = wtxmgr.Asset{}
+				ast.OutPoint = output.OutPoint
+				ast.BlockMeta = output.BlockMeta
+				ast.Outpoint = ast.OutPoint.String()
+				ast.TokenType = output.Amount.TokenType
+				if (ast.TokenType & 1) == 0 {
+					ast.Value = output.Amount.Value.(*token.NumToken).Val
+				} else {
+					ast.VHash = output.Amount.Value.(*token.HashToken).Hash.String()
+				}
+				if (ast.TokenType & 2) != 0 {
+					ast.Rights = output.Amount.Rights.String()
+				} else {
+					ast.Rights = ""
+				}
+				ast.PkScript = output.PkScript
+				ast.Received = output.Received
+				ast.FromCoinBase = output.FromCoinBase
+				balance = append(balance, ast)
+			}
+			return err
+		} else {
+			blk := w.Manager.SyncedTo()
+			balance, err = w.TxStore.Utxos(txmgrNs, detail, blk.Height)
+		}
 		return err
 	})
 	return balance, err
@@ -2746,17 +2926,85 @@ func (w *Wallet) ImportPrivateKey(scope waddrmgr.KeyScope, wif *btcutil.WIF,
 
 	manager, err := w.Manager.FetchScopedKeyManager(scope)
 	if err != nil {
-		return "", err
+		return err.Error(), err
 	}
 
-	// The starting block for the key is the genesis block unless otherwise
-	// specified.
+	// Attempt to import private key into wallet.
+	var addr btcutil.Address
+
+	// The starting block for the key is the first block it was used,
+	// otherwise, the current time
 	if bs == nil {
-		bs = &waddrmgr.BlockStamp{
-			Hash:      *w.chainParams.GenesisHash,
-			Height:    0,
-			Timestamp: w.chainParams.GenesisBlock.Header.Timestamp,
+		walletdb.View(w.db, func(tx walletdb.ReadTx) error {
+			ns := tx.ReadBucket(waddrmgrNamespaceKey)
+			bblk, _, err := w.Manager.BirthdayBlock(ns)
+			if err == nil {
+				bs = &bblk
+			}
+			return nil
+		})
+	}
+
+	if bs == nil {
+		serializedPubKey := wif.SerializePubKey()
+		pubKeyHash := btcutil.Hash160(serializedPubKey)
+		addr,err := btcutil.NewAddressPubKeyHash(pubKeyHash, w.chainParams)
+		highest := 0
+
+		cc, _ := w.requireChainClient()
+		c := cc.(*chain.RPCClient)
+
+		if err == nil {
+			// use search tx
+			resp := c.SearchTx(0, 1, addr)
+			result := <-resp
+			if result.Result != nil {
+				var txs []btcjson.SearchRawTransactionsResult
+				err = json.Unmarshal(result.Result, &txs)
+				if err == nil {
+					for _, tx := range txs {
+						highest = int(tx.Height)
+						break
+					}
+				}
+			}
 		}
+
+		if highest > 0 {
+			// With the starting height obtained, get the remaining block
+			// details required by the wallet.
+			startHash, err := cc.GetBlockHash(int64(highest - 1))
+			if err != nil {
+				return err.Error(), err
+			}
+			startHeader, err := cc.GetBlockHeader(startHash)
+			if err != nil {
+				return err.Error(), err
+			}
+
+			bs = &waddrmgr.BlockStamp {
+				Height: int32(highest - 1),
+				Hash: * startHash,
+				Timestamp: startHeader.Timestamp,
+			}
+		} else {
+			bs, err = locateBirthdayBlock(cc, w.Manager.Birthday())
+			if bs == nil || err != nil {
+				bs = &waddrmgr.BlockStamp {
+					Height: 0,
+					Hash: *w.chainParams.GenesisHash,
+					Timestamp: w.chainParams.GenesisBlock.Header.Timestamp,
+				}
+			}
+		}
+		err = walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
+			ns := tx.ReadWriteBucket(waddrmgrNamespaceKey)
+			err := w.Manager.SetSyncedTo(ns, bs)
+			if err != nil {
+				return err
+			}
+			return w.Manager.SetBirthdayBlock(ns, *bs, true)
+		})
 	} else if bs.Timestamp.IsZero() {
 		// Only update the new birthday time from default value if we
 		// actually have timestamp info in the header.
@@ -2766,8 +3014,6 @@ func (w *Wallet) ImportPrivateKey(scope waddrmgr.KeyScope, wif *btcutil.WIF,
 		}
 	}
 
-	// Attempt to import private key into wallet.
-	var addr btcutil.Address
 	var props *waddrmgr.AccountProperties
 	err = walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
 		addrmgrNs := tx.ReadWriteBucket(waddrmgrNamespaceKey)
@@ -2782,16 +3028,21 @@ func (w *Wallet) ImportPrivateKey(scope waddrmgr.KeyScope, wif *btcutil.WIF,
 		if err != nil {
 			return err
 		}
+		return nil
+	})
 
+	if err != nil {
+		return err.Error(), err
+	}
+
+	err = walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
 		// We'll only update our birthday with the new one if it is
 		// before our current one. Otherwise, if we do, we can
 		// potentially miss detecting relevant chain events that
 		// occurred between them while rescanning.
+		addrmgrNs := tx.ReadWriteBucket(waddrmgrNamespaceKey)
 		birthdayBlock, _, err := w.Manager.BirthdayBlock(addrmgrNs)
-		if err != nil {
-			return err
-		}
-		if bs.Height >= birthdayBlock.Height {
+		if err == nil && bs.Height >= birthdayBlock.Height {
 			return nil
 		}
 
@@ -2938,6 +3189,20 @@ func (w *Wallet) NewAddress(account uint32,
 	if err != nil {
 		return nil, err
 	}
+
+	err = walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
+		ns := tx.ReadWriteBucket(waddrmgrNamespaceKey)
+		_,_,err = w.Manager.BirthdayBlock(ns)
+		if err != nil {
+			bs, _ := locateBirthdayBlock(chainClient, time.Now())
+			err := w.Manager.SetSyncedTo(ns, bs)
+			if err != nil {
+				return err
+			}
+			return w.Manager.SetBirthdayBlock(ns, *bs, true)
+		}
+		return nil
+	})
 
 	var (
 		addr  btcutil.Address
@@ -3380,10 +3645,10 @@ func (w *Wallet) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
 					})
 					continue
 				}
-				signed[txIn.SignatureIndex] = struct{}{}
 				if len(script) == 0 {
 					continue
 				}
+				signed[txIn.SignatureIndex] = struct{}{}
 				tx.SignatureScripts[txIn.SignatureIndex] = script
 			}
 

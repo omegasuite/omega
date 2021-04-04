@@ -51,6 +51,8 @@ var (
 	// lowFee is a single hao and exists to make the test code more
 	// readable.
 	lowFee = btcutil.Amount(1)
+
+	zerohash = chainhash.Hash{}
 )
 
 // TestInstance is an interface that describes a specific test instance returned
@@ -677,7 +679,7 @@ func countBlockSigOps(block *wire.MsgBlock) int {
 	totalSigOps := 0
 	for _, tx := range block.Transactions {
 		for _, txIn := range tx.TxIn {
-			if txIn.IsSeparator() {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
 			numSigOps := txscript.GetSigOpCount(txIn.SignatureScript)

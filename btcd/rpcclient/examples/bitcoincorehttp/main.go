@@ -38,6 +38,7 @@ var minerName = map[string]string{
 	"4e3b7e6fd416b92c0ff168712552479bae812a9d":"donald"}
 
 var detail = int(4)
+var zerohash chainhash.Hash
 
 func main() {
 	var parser = flags.NewParser(&options, flags.Default)
@@ -416,7 +417,7 @@ func main() {
 					log.Printf("LockTime: %d\n", t.LockTime)
 					log.Printf("TxIn: \n")
 					for _, in := range t.TxIn {
-						if in.IsSeparator() {
+						if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 							continue
 						}
 						log.Printf("PreviousOutPoint: %s : %d\n", in.PreviousOutPoint.Hash.String(), in.PreviousOutPoint.Index)
@@ -546,7 +547,7 @@ func main() {
 							log.Printf("LockTime: %d\n", t.LockTime)
 							log.Printf("TxIn: \n")
 							for _, in := range t.TxIn {
-								if in.IsSeparator() {
+								if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 									continue
 								}
 								log.Printf("PreviousOutPoint: %s : %d\n", in.PreviousOutPoint.Hash.String(), in.PreviousOutPoint.Index)

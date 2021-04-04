@@ -117,6 +117,7 @@ func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, er
 // while it may pass interpreter verification because only signature verification is done there
 
 // sig verification includes all pk script type, e.g. multi sig, pkscripthash
+var zerohash chainhash.Hash
 
 func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int, views *viewpoint.ViewPointSet) error {
 	if tx.IsCoinBase() {
@@ -131,6 +132,10 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 		if tin.IsSeparator() {
 			break
 		}
+		if tin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+
 		if tin.SignatureIndex >= nsigs || tx.MsgTx().SignatureScripts[tin.SignatureIndex] == nil {		// no signature
 			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
 		}

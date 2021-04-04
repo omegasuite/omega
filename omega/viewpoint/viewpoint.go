@@ -204,6 +204,8 @@ func (views *ViewPointSet) Flattern(p []token.LoopDef) []token.LoopDef {
 	return loops
 }
 
+var zerohash chainhash.Hash
+
 // ConnectTransactions updates the view by adding all new vertices created by all
 // of the transactions in the passed block, and setting the best hash for the view
 // to the passed block.
@@ -221,7 +223,7 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 
 		if !tx.IsCoinBase() {
 			for _, in := range tx.MsgTx().TxIn {
-				if in.IsSeparator() {
+				if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
 				entry := view.Utxo.LookupEntry(in.PreviousOutPoint)

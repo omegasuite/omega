@@ -175,6 +175,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getnetworkhashps":      handleGetNetworkHashPS,
 	"getpeerinfo":           handleGetPeerInfo,
 	"getrawmempool":         handleGetRawMempool,
+	"clearmempool":          handleClearMempool,
 	"getrawtransaction":     handleGetRawTransaction,
 	"gettxout":              handleGetTxOut,
 	"listutxos":             handleListUtxos,
@@ -299,6 +300,7 @@ var rpcLimited = map[string]struct{}{
 	"getnettotals":          {},
 	"getnetworkhashps":      {},
 	"getrawmempool":         {},
+	"clearmempool":          {},
 	"getrawtransaction":     {},
 	"gettxout":              {},
 	"listutxos":             {},
@@ -1098,7 +1100,7 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		// if the script doesn't fully parse, so ignore the
 		// error here.
 //		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
-		if txIn.SignatureIndex == 0xFFFFFFFF || txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		disbuf := hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
@@ -2430,7 +2432,7 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		// when multiple inputs reference the same transaction.
 		dependsMap := make(map[int64]struct{})
 		for _, txIn := range tx.TxIn {
-			if !txIn.IsSeparator() {
+			if !txIn.IsSeparator() && !txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
 					dependsMap[idx] = struct{}{}
 				}
@@ -3286,6 +3288,20 @@ func handleGetRawMempool(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 	return hashStrings, nil
 }
 
+// handleClearMempool implements the clearmempool command.
+func handleClearMempool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	mp := s.cfg.TxMemPool
+
+	// The response is simply an array of the transaction hashes if the
+	// verbose flag is not set.
+	descs := mp.TxDescs()
+	for _, tx := range descs {
+		mp.RemoveTransaction(tx.Tx, true)
+	}
+
+	return "Done", nil
+}
+
 // handleGetRawTransaction implements the getrawtransaction command.
 func handleGetRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetRawTransactionCmd)
@@ -3887,9 +3903,10 @@ func fetchInputTxos(s *rpcServer, tx *wire.MsgTx) (map[wire.OutPoint]wire.TxOut,
 	mp := s.cfg.TxMemPool
 	originOutputs := make(map[wire.OutPoint]wire.TxOut)
 	for txInIndex, txIn := range tx.TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
+
 		// Attempt to fetch and use the referenced transaction from the
 		// memory pool.
 		origin := &txIn.PreviousOutPoint
@@ -3987,6 +4004,9 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 	for _, txIn := range mtx.TxIn {
 		if txIn.IsSeparator() {
 			contracts = true
+			continue
+		}
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		// The disassembled string will contain [error] inline
@@ -4115,10 +4135,22 @@ func handleCheckFork(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 	if node == nil {
 		return 0, fmt.Errorf("Block does not exist.")
 	}
-	if s.cfg.Chain.BestChain.Contains(node) {
+	if s.cfg.Chain.MainChainHasBlock(&node.Hash) {
 		return node.Height, nil
 	}
-	return -s.cfg.Chain.FindFork(node).Height, nil
+
+	var f = s.cfg.Chain.FindFork(node)
+
+	if f != nil {
+		return -f.Height, nil
+	}
+	for node != nil && !s.cfg.Chain.MainChainHasBlock(&node.Hash) {
+		node = s.cfg.Chain.ParentNode(node)
+	}
+	if node != nil {
+		return -node.Height, nil
+	}
+	return 0, fmt.Errorf("Block is alien.")
 }
 
 // handleSearchRawTransactions implements the searchrawtransactions command.
@@ -4243,7 +4275,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 			for i, serializedTx := range serializedTxns {
 				addressTxns = append(addressTxns, retrievedTx{
 					txBytes: serializedTx,
-					height: heights[i],
+					height: heights[i] - 1,		// height in serializedTxns is internal height which is 1 more than real height
 					blkHash: regions[i].Hash,
 				})
 			}
@@ -4402,7 +4434,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 
 		// Add the block information to the result if there is any.
 		if blkHeader != nil {
-			result.Time = blkHeader.Timestamp.Unix()
+			result.Height = uint32(blkHeight)
 			result.Blocktime = blkHeader.Timestamp.Unix()
 			result.BlockHash = blkHashStr
 			result.Confirmations = uint64(1 + best.Height - blkHeight)

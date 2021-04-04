@@ -62,6 +62,8 @@ type BestState struct {
 	Updated     time.Time      // local time the best state was updated.
 }
 
+var zerohash chainhash.Hash
+
 // newBestState returns a new best stats instance for the given parameters.
 func newBestState(node *chainutil.BlockNode, blockSize, numTxns,
 	totalTxns uint64, medianTime time.Time, /* bits uint32,*/ rotation uint32) *BestState {
@@ -279,7 +281,7 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 	nextHeight := node.Height + 1
 
 	for txInIndex, txIn := range mTx.TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
@@ -1371,7 +1373,9 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest * chainhash.
 			var seq = 0
 			for _, tx := range blk.MsgBlock().Transactions[1:] {
 				for _, txin := range tx.TxIn {
-					if txin.IsSeparator() { continue }
+					if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+						continue
+					}
 					if txin.PreviousOutPoint == *block.MsgBlock().Utxos {
 						var stxos []viewpoint.SpentTxOut
 						b.db.View(func (dbTx database.Tx) error {

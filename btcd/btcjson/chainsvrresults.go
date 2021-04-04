@@ -598,7 +598,7 @@ type SearchRawTransactionsResult struct {
 	Vout          []Vout       `json:"vout"`
 	BlockHash     string       `json:"blockhash,omitempty"`
 	Confirmations uint64       `json:"confirmations,omitempty"`
-	Time          int64        `json:"time,omitempty"`
+	Height        uint32       `json:"height,omitempty"`
 	Blocktime     int64        `json:"blocktime,omitempty"`
 }
 

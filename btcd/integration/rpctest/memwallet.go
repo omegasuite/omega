@@ -31,6 +31,8 @@ var (
 		0x75, 0x63, 0x2e, 0x75, 0xf1, 0xdf, 0x9c, 0x3f,
 		0xa6, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	}
+
+	zerohash = chainhash.Hash{}
 )
 
 // utxo represents an unspent output spendable by the memWallet. The maturity
@@ -506,6 +508,9 @@ func (m *memWallet) CreateTransaction(outputs []*wire.TxOut,
 	// potential double spend.
 	spentOutputs := make([]*utxo, 0, len(tx.TxIn))
 	for i, txIn := range tx.TxIn {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
 		outPoint := txIn.PreviousOutPoint
 		utxo := m.utxos[outPoint]
 

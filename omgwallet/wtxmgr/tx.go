@@ -230,17 +230,22 @@ func (s *Store) updateMinedBalance(ns walletdb.ReadWriteBucket, rec *TxRecord,
 		spender.index = uint32(i)
 		amt, err := spendCredit(ns, credKey, &spender)
 		if err != nil {
+			log.Infof("spendCredit error %x", err)
 			return err
 		}
 		err = putDebit(
 			ns, &rec.Hash, uint32(i), *amt, &block.Block, credKey,
 		)
 		if err != nil {
+			log.Infof("putDebit error %x", err)
 			return err
 		}
 		if err := deleteRawUnspent(ns, unspentKey); err != nil {
+			log.Infof("deleteRawUnspent error %x", err)
 			return err
 		}
+
+		log.Infof("utxo %s deleted", input.PreviousOutPoint.String())
 
 		if amt.TokenType == 0 {
 			newMinedBalance -= btcutil.Amount(amt.Value.(*token.NumToken).Val)

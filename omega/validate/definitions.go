@@ -262,7 +262,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 	unxloops := make(MatchLoop, 0)	// loops not intersect each other
 
 	for _,d := range tx.MsgTx().TxIn {
-		if d.IsSeparator() {
+		if d.PreviousOutPoint.Hash.IsEqual(&zerohash) || d.SignatureIndex == 0xFFFFFFFF {
 			continue
 		}
 		utxo := views.Utxo.LookupEntry(d.PreviousOutPoint)
@@ -458,7 +458,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 			}
 
 			for _, txIn := range tx.MsgTx().TxIn {
-				if txIn.IsSeparator() {
+				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
 				utxo := views.Utxo.LookupEntry(txIn.PreviousOutPoint)

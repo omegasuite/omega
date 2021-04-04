@@ -57,6 +57,8 @@ func (s semaphore) release() { <-s }
 // creating multiple instances.
 var timeZeroVal time.Time
 
+var zerohash chainhash.Hash
+
 // wsCommandHandler describes a callback function used to handle a specific
 // command.
 type wsCommandHandler func(*wsClient, interface{}) (interface{}, error)
@@ -684,7 +686,7 @@ func (m *wsNotificationManager) subscribedClients(tx *btcutil.Tx,
 
 	msgTx := tx.MsgTx()
 	for _, input := range msgTx.TxIn {
-		if input.IsSeparator() {
+		if input.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		for quitChan, wsc := range clients {
@@ -1183,7 +1185,7 @@ func (m *wsNotificationManager) notifyForTxIns(ops map[wire.OutPoint]map[chan st
 	txHex := ""
 	wscNotified := make(map[chan struct{}]struct{})
 	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		prevOut := &txIn.PreviousOutPoint
@@ -2119,7 +2121,7 @@ func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
 		recvNotified := false
 
 		for _, txin := range tx.MsgTx().TxIn {
-			if txin.IsSeparator() {
+			if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
 			if _, ok := lookups.unspent[txin.PreviousOutPoint]; ok {
@@ -2262,7 +2264,8 @@ func rescanBlockFilter(filter *wsClientFilter, block *btcutil.Block, params *cha
 		// Scan inputs if not a coinbase transaction.
 		if !blockchain.IsCoinBaseTx(msgTx) {
 			for _, input := range msgTx.TxIn {
-				if input.IsSeparator() || !filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
+				if input.PreviousOutPoint.Hash.IsEqual(&zerohash) ||
+						!filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
 					continue
 				}
 				if !added {

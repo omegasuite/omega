@@ -54,7 +54,7 @@ func minInt(a, b int) int {
 func calcInputValueAge(tx *wire.MsgTx, utxoView *viewpoint.UtxoViewpoint, nextBlockHeight int32) float64 {
 	var totalInputAge float64
 	for _, txIn := range tx.TxIn {
-		if txIn.IsSeparator() {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		// Don't attempt to accumulate the total input age if the
