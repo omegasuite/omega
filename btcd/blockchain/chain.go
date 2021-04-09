@@ -85,6 +85,7 @@ type MinerChain interface {
 	ProcessBlock (*wire.MinerBlock, BehaviorFlags) (bool, bool, error, *chainhash.Hash)
 	BestSnapshot () *BestState
 	BlockByHash (hash *chainhash.Hash) (*wire.MinerBlock, error)
+	DBBlockByHash (hash *chainhash.Hash) (*wire.MinerBlock, error)
 	NodeByHash(hash *chainhash.Hash) *chainutil.BlockNode
 	NodeByHeight(height int32) *chainutil.BlockNode
 	BlockByHeight (height int32) (*wire.MinerBlock, error)
@@ -1343,7 +1344,7 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest * chainhash.
 	}
 
 	// the required amount is in the prev block's Collacteral
-	mb,_ := b.Miners.BlockByHash(&block.MsgBlock().PrevBlock)
+	mb,_ := b.Miners.DBBlockByHash(&block.MsgBlock().PrevBlock)
 	if mb == nil {
 		return 0, fmt.Errorf("Prev block does not exist")
 	}

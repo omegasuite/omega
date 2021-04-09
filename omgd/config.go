@@ -907,7 +907,7 @@ func loadConfig() (*config, []string, error) {
 	// Add default port to all rpc listener addresses if needed and remove
 	// duplicate addresses.
 	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.rpcPort)
-
+/*
 	// Only allow TLS to be disabled if the RPC is bound to localhost
 	// addresses.
 	if !cfg.DisableRPC && cfg.DisableTLS {
@@ -937,6 +937,7 @@ func loadConfig() (*config, []string, error) {
 			}
 		}
 	}
+ */
 
 	// Add default port to all added peer addresses if needed and remove
 	// duplicate addresses.

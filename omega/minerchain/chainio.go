@@ -301,7 +301,6 @@ func (b *MinerChain) initChainState() error {
 
 		var i int32
 		var lastNode *chainutil.BlockNode
-
 		cursor = blockIndexBucket.Cursor()
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			header, status, err := deserializeBlockRow(cursor.Value())
@@ -523,6 +522,25 @@ func (b *MinerChain) BlockByHash(hash *chainhash.Hash) (*wire.MinerBlock, error)
 	// chain.
 	node := b.index.LookupNode(hash)
 	if node == nil || !b.BestChain.Contains(node) {
+		str := fmt.Sprintf("block %s is not in the main chain", hash)
+		return nil, bccompress.ErrNotInMainChain(str)
+	}
+
+	// Load the block from the database and return it.
+	var block *wire.MinerBlock
+	err := b.db.View(func(dbTx database.Tx) error {
+		var err error
+		block, err = dbFetchBlockByNode(dbTx, node)
+		return err
+	})
+	return block, err
+}
+
+func (b *MinerChain) DBBlockByHash(hash *chainhash.Hash) (*wire.MinerBlock, error) {
+	// Lookup the block hash in block index and ensure it is in the best
+	// chain.
+	node := b.index.LookupNode(hash)
+	if node == nil {
 		str := fmt.Sprintf("block %s is not in the main chain", hash)
 		return nil, bccompress.ErrNotInMainChain(str)
 	}

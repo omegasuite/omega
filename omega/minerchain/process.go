@@ -26,6 +26,22 @@ import (
 	"github.com/omegasuite/btcd/wire"
 )
 
+func (b *MinerChain) blockExistsSomewhere(hash *chainhash.Hash) (bool, error) {
+	// Check block index first (could be main chain or side chain blocks).
+	if b.index.HaveBlock(hash) {
+		return true, nil
+	}
+
+	// Check in the database.
+	var exists bool
+	err := b.db.View(func(dbTx database.Tx) error {
+		var err error
+		exists, err = dbTx.HasBlock(hash)
+		return err
+	})
+	return exists, err
+}
+
 // blockExists determines whether a block with the given hash exists either in
 // the main chain or any side chains.
 //
@@ -227,7 +243,9 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 
 	// Handle orphan blocks.
 	prevHash := &blockHeader.PrevBlock
-	prevHashExists, err := b.blockExists(prevHash)
+
+	prevHashExists, err := b.blockExistsSomewhere(prevHash)
+
 	if err != nil {
 		return false, false, err, nil
 	}

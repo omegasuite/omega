@@ -580,7 +580,7 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation does not take a value.")
 	}
 
-	if len(tx.MsgTx().TxIn) != 0 {
+	if len(tx.MsgTx().TxIn) != 1 {
 		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation must have exactly one input.")
 	}
 	// the only input must come from a pkh address so we can identify the creator
