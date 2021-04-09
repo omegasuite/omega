@@ -209,7 +209,7 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 				h1 = 1
 			}
 
-			prev,_ := m.BlockByHash(&header.PrevBlock)
+			prev,_ := m.DBBlockByHash(&header.PrevBlock)
 			minscore := prev.MsgBlock().MeanTPH >> 3
 			if minscore == 0 {
 				minscore = 1
