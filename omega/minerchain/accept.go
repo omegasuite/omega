@@ -452,7 +452,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 				main = true
 			}
 			tb,_ := b.blockChain.HashToBlock(&tx)	// already checked that it exists
-			if tb.Height() != p.Height {
+			if tb == nil || tb.Height() != p.Height {
 				return ruleError(ErrBlackList, fmt.Errorf("Invalid height of violating block: %s", tx.String()).Error())
 			}
 
