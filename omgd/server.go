@@ -802,7 +802,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	numAdded := 0
 	notFound := wire.NewMsgNotFound()
 
-	btcdLog.Debugf("OnGetData: getting %d items %s", len(msg.InvList), msg.InvList[0].Hash.String())
+	btcdLog.Infof("OnGetData: getting %d items starting %s", len(msg.InvList), msg.InvList[0].Hash.String())
 
 	length := len(msg.InvList)
 	// A decaying ban score increase is applied to prevent exhausting resources
@@ -1864,7 +1864,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		sp.continueHash = nil
 	}
 
-	peerLog.Tracef("sending block %d", msgBlock.Transactions[0].TxIn[0].PreviousOutPoint.Index)
+	peerLog.Infof("sending block %d", msgBlock.Transactions[0].TxIn[0].PreviousOutPoint.Index)
 
 	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)	// | wire.FullEncoding)
 

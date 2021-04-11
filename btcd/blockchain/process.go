@@ -125,7 +125,7 @@ func (b *BlockChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) error {
-	b.Orphans.ProcessOrphans(hash, func(_ *chainhash.Hash, blk interface{}) bool {
+	b.Orphans.ProcessOrphans(hash, func(_ *chainhash.Hash, blk interface{}) (bool, *chainhash.Hash) {
 		block := (*btcutil.Block)(blk.(*orphanBlock))
 		if prevNode := b.NodeByHash(&block.MsgBlock().Header.PrevBlock); prevNode != nil {
 			block.SetHeight(prevNode.Height + 1)
@@ -133,14 +133,14 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 			if prevNode == b.BestChain.Tip() {
 				err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
 				if err != nil || mkorphan {
-					return true
+					return true, nil
 				}
 			}
 
 			_, err, _ := b.maybeAcceptBlock(block, flags)
-			return err != nil
+			return err != nil, nil
 		}
-		return true
+		return true, nil
 	})
 
 	return nil

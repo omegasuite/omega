@@ -91,7 +91,8 @@ func (b *MinerChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 		return false
 	}
 
-	return b.ProcessOrphans(&block.PrevBlock, blockchain.BFNone) == nil
+	err,_ := b.ProcessOrphans(&block.PrevBlock, blockchain.BFNone)
+	return err == nil
 }
 
 // processOrphans determines if there are any orphans which depend on the passed
@@ -103,20 +104,28 @@ func (b *MinerChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 // are needed to pass along to maybeAcceptBlock.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.BehaviorFlags) error {
-	b.Orphans.ProcessOrphans(hash, func(processHash *chainhash.Hash, blk interface{}) bool {
+func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.BehaviorFlags) (error, *chainhash.Hash) {
+	_, h := b.Orphans.ProcessOrphans(hash, func(processHash *chainhash.Hash, blk interface{}) (bool, *chainhash.Hash) {
 		parent := b.index.LookupNode(processHash)
 		block := (*wire.MinerBlock)(blk.(*orphanBlock))
 		if !b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) {
-			return true
+			return true, nil
+		}
+
+		if block.MsgBlock().Version >= chaincfg.Version2 {
+			if r, _, hreq := b.checkV2(block, parent, flags); !r {
+				return true, hreq
+			}
+		} else if len(block.MsgBlock().ViolationReport) > 0 {
+			return true, nil
 		}
 
 		// Potentially accept the block into the block chain.
 		_, err := b.maybeAcceptBlock(block, flags)
-		return err != nil
+		return err != nil, nil
 	})
 
-	return nil
+	return nil, h
 }
 
 func (b *MinerChain) CheckSideChain(hash *chainhash.Hash) {
@@ -305,17 +314,17 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// Accept any orphan blocks that depend on this block (they are
 	// no longer orphans) and repeat for those accepted blocks until
 	// there are no more.
-	err = b.ProcessOrphans(blockHash, flags)
+	err, h := b.ProcessOrphans(blockHash, flags)
 	if err != nil {
 //		log.Infof("b.ProcessOrphans error %s", err)
-		return false, false, err, nil
+		return false, false, err, h
 	}
 
 	log.Infof("miner.ProcessBlock finished with height = %d (%d) tx height = %d orphans = %d",
 		b.BestSnapshot().Height, block.Height(),
 		b.blockChain.BestSnapshot().Height, b.Orphans.Count())
 
-	return isMainChain, false, nil, nil
+	return isMainChain, false, nil, h
 }
 
 // checkBlockSanity performs some preliminary checks on a block to ensure it is

@@ -91,7 +91,7 @@ type MinerChain interface {
 	BlockByHeight (height int32) (*wire.MinerBlock, error)
 	CheckConnectBlockTemplate (*wire.MinerBlock) error
 	CalcNextRequiredDifficulty (timestamp time.Time) (uint32, uint32, error)
-	ProcessOrphans (* chainhash.Hash, BehaviorFlags) error
+	ProcessOrphans (* chainhash.Hash, BehaviorFlags) (error, * chainhash.Hash)
 	IsCurrent () bool
 	Subscribe(callback NotificationCallback)
 	Tip() *wire.MinerBlock

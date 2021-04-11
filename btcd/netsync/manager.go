@@ -1063,8 +1063,10 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	b2 := sm.chain.Miners.BestSnapshot()
 
 	if h != nil {
+		log.Info("Requesting missing tx block %s to %s", h.String(), peer.String())
 		sm.AddSyncJob(peer,
-			sm.chain.BlockLocatorFromHash(&zeroHash),
+//			sm.chain.BlockLocatorFromHash(&zeroHash),
+			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
 			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
 			h, &zeroHash,
 			[2]int32{b1.Height, b2.Height})

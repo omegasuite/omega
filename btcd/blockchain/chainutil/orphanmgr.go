@@ -218,7 +218,7 @@ func (b *Orphans) AddOrphanBlock(block Orphaned) {
 // are needed to pass along to maybeAcceptBlock.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *Orphans) ProcessOrphans(hash *chainhash.Hash, handler func(*chainhash.Hash, interface{}) bool) error {
+func (b *Orphans) ProcessOrphans(hash *chainhash.Hash, handler func(*chainhash.Hash, interface{}) (bool, *chainhash.Hash)) (error, *chainhash.Hash) {
 	// Start with processing at least the passed hash.  Leave a little room
 	// for additional orphan blocks that need to be processed without
 	// needing to grow the array in the common case.
@@ -244,7 +244,12 @@ func (b *Orphans) ProcessOrphans(hash *chainhash.Hash, handler func(*chainhash.H
 				continue
 			}
 
-			if handler(processHash, orphan.block) {
+			t,h := handler(processHash, orphan.block)
+			if h != nil {
+				return nil, h
+			}
+
+			if t {
 				continue
 			}
 
@@ -260,7 +265,7 @@ func (b *Orphans) ProcessOrphans(hash *chainhash.Hash, handler func(*chainhash.H
 			processHashes = append(processHashes, orphanHash)
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 func (b *Orphans) OnNewMinerNode(handler func(*chainhash.Hash, *chainhash.Hash, bool) bool) bool {
