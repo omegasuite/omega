@@ -949,10 +949,20 @@ func (b *BlockChain) initChainState() error {
 				return err
 			}
 
-			var serialized [chainhash.HashSize+4]byte
+			// ad hoc getting best state to avoid circular importation
+			chainStateKeyName := []byte("chainstate")
+			serializedData := dbTx.Metadata().Get(chainStateKeyName)
+			if serializedData == nil {
+					return nil
+				}
+			var hash chainhash.Hash
+			copy(hash[:], serializedData[0:chainhash.HashSize])
 
-			indexesBucket := dbTx.Metadata().Bucket([]byte("idxtips"))
-			return indexesBucket.Put(addrUseIndexKey, serialized[:])
+			h,_ := DbFetchHeaderByHash(dbTx, &hash)
+			if h.Version < wire.Version2 {
+				indexesBucket := dbTx.Metadata().Bucket([]byte("idxtips"))
+				return indexesBucket.Put(addrUseIndexKey, serializedData)
+			}
 
 			return nil
 		})
@@ -960,6 +970,7 @@ func (b *BlockChain) initChainState() error {
 			return err
 		}
 	}
+
 	if !hascomptx {
 		err := b.db.Update(func(dbTx database.Tx) error {
 			if _, err = dbTx.Metadata().CreateBucket(compendatedBucketName); err != nil {
