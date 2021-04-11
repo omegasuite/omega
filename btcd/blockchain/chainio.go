@@ -948,6 +948,12 @@ func (b *BlockChain) initChainState() error {
 			if _, err = dbTx.Metadata().CreateBucket(addrUseIndexKey); err != nil {
 				return err
 			}
+
+			var serialized [chainhash.HashSize+4]byte
+
+			indexesBucket := dbTx.Metadata().Bucket([]byte("idxtips"))
+			return indexesBucket.Put(addrUseIndexKey, serialized[:])
+
 			return nil
 		})
 		if err != nil {

@@ -204,7 +204,7 @@ func (m *Manager) maybeCreateIndexes(dbTx database.Tx) error {
 	for _, indexer := range m.enabledIndexes {
 		// Nothing to do if the index tip already exists.
 		idxKey := indexer.Key()
-		if indexesBucket.Get(idxKey) != nil || bytes.Compare(idxKey, []byte("usebyaddridx")) == 0 {
+		if indexesBucket.Get(idxKey) != nil {
 			continue
 		}
 
