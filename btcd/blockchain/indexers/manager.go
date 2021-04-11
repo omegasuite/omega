@@ -284,9 +284,6 @@ func (m *Manager) Init(chain *blockchain.BlockChain, interrupt <-chan struct{}) 
 		err := m.db.View(func(dbTx database.Tx) error {
 			idxKey := indexer.Key()
 			hash, height, err = dbFetchIndexerTip(dbTx, idxKey)
-			if bytes.Compare(idxKey, []byte("usebyaddridx")) == 0 {
-				return nil
-			}
 			return err
 		})
 		if err != nil {
