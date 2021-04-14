@@ -82,7 +82,7 @@ func newBestState(node *chainutil.BlockNode, blockSize, numTxns,
 }
 
 type MinerChain interface {
-	ProcessBlock (*wire.MinerBlock, BehaviorFlags) (bool, bool, error, *chainhash.Hash)
+	ProcessBlock (*wire.MinerBlock, BehaviorFlags) (bool, bool, error, wire.Message)
 	BestSnapshot () *BestState
 	BlockByHash (hash *chainhash.Hash) (*wire.MinerBlock, error)
 	DBBlockByHash (hash *chainhash.Hash) (*wire.MinerBlock, error)
@@ -91,7 +91,7 @@ type MinerChain interface {
 	BlockByHeight (height int32) (*wire.MinerBlock, error)
 	CheckConnectBlockTemplate (*wire.MinerBlock) error
 	CalcNextRequiredDifficulty (timestamp time.Time) (uint32, uint32, error)
-	ProcessOrphans (* chainhash.Hash, BehaviorFlags) (error, * chainhash.Hash)
+	ProcessOrphans (* chainhash.Hash, BehaviorFlags) (error, wire.Message)
 	IsCurrent () bool
 	Subscribe(callback NotificationCallback)
 	Tip() *wire.MinerBlock

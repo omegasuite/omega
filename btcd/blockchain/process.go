@@ -125,7 +125,7 @@ func (b *BlockChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) error {
-	b.Orphans.ProcessOrphans(hash, func(_ *chainhash.Hash, blk interface{}) (bool, *chainhash.Hash) {
+	b.Orphans.ProcessOrphans(hash, func(_ *chainhash.Hash, blk interface{}) (bool, wire.Message) {
 		block := (*btcutil.Block)(blk.(*orphanBlock))
 		if prevNode := b.NodeByHash(&block.MsgBlock().Header.PrevBlock); prevNode != nil {
 			block.SetHeight(prevNode.Height + 1)

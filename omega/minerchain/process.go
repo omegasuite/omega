@@ -24,6 +24,7 @@ import (
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
 )
 
 func (b *MinerChain) blockExistsSomewhere(hash *chainhash.Hash) (bool, error) {
@@ -104,8 +105,8 @@ func (b *MinerChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 // are needed to pass along to maybeAcceptBlock.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.BehaviorFlags) (error, *chainhash.Hash) {
-	_, h := b.Orphans.ProcessOrphans(hash, func(processHash *chainhash.Hash, blk interface{}) (bool, *chainhash.Hash) {
+func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.BehaviorFlags) (error, wire.Message) {
+	_, h := b.Orphans.ProcessOrphans(hash, func(processHash *chainhash.Hash, blk interface{}) (bool, wire.Message) {
 		parent := b.index.LookupNode(processHash)
 		block := (*wire.MinerBlock)(blk.(*orphanBlock))
 		if !b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) {
@@ -159,7 +160,7 @@ func (b *MinerChain) CheckSideChain(hash *chainhash.Hash) {
 	b.index.FlushToDB(dbStoreBlockNode)
 }
 
-func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode, flags blockchain.BehaviorFlags) (bool, error, *chainhash.Hash) {
+func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode, flags blockchain.BehaviorFlags) (bool, error, wire.Message) {
 	// if it is in side chain, skip these tests below as they depends on chain state
 	for p, i := parent, 0; i <= wire.ViolationReportDeadline && p != nil; i++ {
 		if p.Data.GetVersion() < chaincfg.Version2 {
@@ -188,7 +189,7 @@ func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode
 			if !b.blockChain.HaveNode(&tb) {
 				// if we have node of the hash, it is in main chain or side chain
 				// otherwise, it is missing and we need to request it
-				return false, nil, &p.Blocks[j]
+				return false, ruleError(ErrViolationReport, "Missing block in violation report"), &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, p.Blocks[j]}}}
 			}
 		}
 	}
@@ -208,7 +209,7 @@ func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode
 // whether or not the block is an orphan.
 //
 // This function is safe for concurrent access.
-func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.BehaviorFlags) (bool, bool, error, *chainhash.Hash) {
+func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.BehaviorFlags) (bool, bool, error, wire.Message) {
 //	log.Infof("MinerChain.ProcessBlock: ChainLock.RLock")
 	b.chainLock.Lock()
 	defer b.chainLock.Unlock()
@@ -233,7 +234,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, false, ruleError(ErrDuplicateBlock, str), nil
 	}
 
-	// Perform preliminary sanity checks on the block and its transactions.
+	// Perform preliminary sanity checks on the block.
 	err = CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags | blockchain.BFNoPoWCheck)
 	if err != nil {
 		return false, false, err, nil
@@ -263,6 +264,12 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
 
 		return false, true, nil, nil
+	}
+
+	existblk,_ := b.blockChain.HaveBlock(&block.MsgBlock().BestBlock)
+	if !existblk {
+		log.Infof("best block does not exist")
+		return false, false, ruleError(ErrMissingBestBlock, "best block does not exist"),&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
 
 	parent := b.index.LookupNode(prevHash)
@@ -414,7 +421,7 @@ func (b *MinerChain) validateVioldationReports(block * wire.MinerBlock) error {
 			return fmt.Errorf("violation report exceeds time limit")
 		}
 		if bestnode.Height < v.Height {
-			return fmt.Errorf("Can not report a violation at hight higher than bestblock")
+			return ruleError(ErrViolationReport, "Can not report a violation at hight higher than bestblock")
 		}
 		if len(v.Blocks) < 2 {
 			return fmt.Errorf("A incident must include at least two blocks")
@@ -439,7 +446,7 @@ func (b *MinerChain) validateVioldationReports(block * wire.MinerBlock) error {
 				delete(vb[v.MRBlock], h)
 			}
 			if txb.Height() != v.Height {
-				return fmt.Errorf("Incorrect violation report height")
+				return ruleError(ErrViolationReport, "Incorrect violation report height")
 			}
 
 			signed := false
@@ -502,10 +509,10 @@ func (b *MinerChain) validateVioldationReports(block * wire.MinerBlock) error {
 			}
 
 			if !matched {
-				return fmt.Errorf("An orphan violation is reported")
+				return ruleError(ErrViolationReport, "An orphan violation is reported")
 			}
 			if !hasmainchain {
-				return fmt.Errorf("The report does not contain a best chain block")
+				return ruleError(ErrViolationReport, "The report does not contain a best chain block")
 			}
 		}
 	}

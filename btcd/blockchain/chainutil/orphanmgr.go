@@ -218,7 +218,7 @@ func (b *Orphans) AddOrphanBlock(block Orphaned) {
 // are needed to pass along to maybeAcceptBlock.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *Orphans) ProcessOrphans(hash *chainhash.Hash, handler func(*chainhash.Hash, interface{}) (bool, *chainhash.Hash)) (error, *chainhash.Hash) {
+func (b *Orphans) ProcessOrphans(hash *chainhash.Hash, handler func(*chainhash.Hash, interface{}) (bool, wire.Message)) (error, wire.Message) {
 	// Start with processing at least the passed hash.  Leave a little room
 	// for additional orphan blocks that need to be processed without
 	// needing to grow the array in the common case.

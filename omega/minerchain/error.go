@@ -234,6 +234,12 @@ const (
 
 	// ErrRotationViolation indicates that the miner is violating rotation rule.
 	ErrRotationViolation
+
+	// ErrMissingBestBlock indicates that the best block referred by a MR block does not exist
+	ErrMissingBestBlock
+
+	// ErrViolationReport indicates an error in violation report
+	ErrViolationReport
 )
 
 // Map of ErrorCode values back to their constant names for pretty printing.
