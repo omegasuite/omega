@@ -12,6 +12,7 @@ import (
 )
 
 const maxRcdPerMiner = 10		// max records we keep for each miner
+const CONTRACTTXRATIO = 1000		// when calculating TPS, every 1000 contract exec steps = 1 tx
 
 // TPHRecord houses information about miners's TPS record.
 //
@@ -154,7 +155,7 @@ func (b *BlockChain) TphNotice(t *Notification) {
 					p.current.StartBlock, p.current.StartTime, p.current.EndBlock = h, time.Now(), h
 				} else if p.current.EndBlock + 1 == h {
 					p.current.EndBlock, p.current.EndTime = h, time.Now()
-					p.current.TxTotal += uint32(len(block.MsgBlock().Transactions))
+					p.current.TxTotal += uint32(len(block.MsgBlock().Transactions)) + uint32(block.MsgBlock().Header.ContractExec / CONTRACTTXRATIO)
 				} else {
 					if p.current.TxTotal != 0 {
 						p.History = append(p.History, p.current)

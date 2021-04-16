@@ -374,6 +374,7 @@ func (m *CPUMiner) generateBlocks() {
 	defer ticker.Stop()
 
 	lastblkgen := time.Now().Unix()
+	firstWait := 20 * time.Second		// wait 20 sec the first timw, to prevent double sign if we restart immediately after having submitted signed block
 
 out:
 	for {
@@ -608,6 +609,11 @@ out:
 				m.g.Chain.ConsensusRange[0] = template.Height
 			}
 			m.g.Chain.ConsensusRange[1] = template.Height
+
+			if firstWait != 0 {
+				time.Sleep(firstWait)
+				firstWait = 0
+			}
 
 //			log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
 			if !m.submitBlock(block) {
