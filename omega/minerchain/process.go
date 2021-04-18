@@ -27,6 +27,7 @@ import (
 	"github.com/omegasuite/btcd/wire/common"
 )
 
+/*
 func (b *MinerChain) blockExistsSomewhere(hash *chainhash.Hash) (bool, error) {
 	// Check block index first (could be main chain or side chain blocks).
 	if b.index.HaveBlock(hash) {
@@ -42,6 +43,7 @@ func (b *MinerChain) blockExistsSomewhere(hash *chainhash.Hash) (bool, error) {
 	})
 	return exists, err
 }
+*/
 
 // blockExists determines whether a block with the given hash exists either in
 // the main chain or any side chains.
@@ -219,10 +221,10 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	log.Infof("miner Block hash %s\nprevhash %s", blockHash.String(), block.MsgBlock().PrevBlock.String())
 
 	// The block must not already exist in the main chain or side chains.
-	exists, err := b.blockExists(blockHash)
-	if err != nil {
-		return false, false, err, nil
-	}
+	exists := b.index.HaveBlock(blockHash)
+//	if err != nil {
+//		return false, false, err, nil
+//	}
 	if exists {
 		str := fmt.Sprintf("already have block %v", blockHash)
 		return false, false, ruleError(ErrDuplicateBlock, str), nil
@@ -235,7 +237,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	}
 
 	// Perform preliminary sanity checks on the block.
-	err = CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags | blockchain.BFNoPoWCheck)
+	err := CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags | blockchain.BFNoPoWCheck)
 	if err != nil {
 		return false, false, err, nil
 	}
@@ -254,11 +256,11 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// Handle orphan blocks.
 	prevHash := &blockHeader.PrevBlock
 
-	prevHashExists, err := b.blockExistsSomewhere(prevHash)
+	prevHashExists := b.index.HaveBlock(prevHash)
 
-	if err != nil {
-		return false, false, err, nil
-	}
+//	if err != nil {
+//		return false, false, err, nil
+//	}
 	if !prevHashExists {
 		log.Infof("block prevHash does not Exists Adding orphan block %s with parent %s", blockHash.String(), prevHash.String())
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
@@ -275,8 +277,8 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	parent := b.index.LookupNode(prevHash)
 	if !b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) {
 		log.Infof("block and parent tx reference not in the same chain.")
-		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-		return false, true, nil, nil
+//		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+		return false, false, fmt.Errorf("block and parent tx reference not in the same chain."), nil
 	}
 
 	if block.MsgBlock().Version >= chaincfg.Version2 {
