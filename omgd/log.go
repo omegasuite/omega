@@ -103,7 +103,7 @@ func init() {
 
 	mempool.UseLogger(btclog.Disabled)	// txmpLog)
 	ovm.UseLogger(ovmLog)
-	consensus.UseLogger(btclog.Disabled)	// consensusLog)
+	consensus.UseLogger(consensusLog)
 	minerchain.UseLogger(minerLog)
 	token.UseLogger(btclog.Disabled)	// tokenLog)
 
@@ -143,6 +143,7 @@ var subsystemLoggers = map[string]btclog.Logger{
 	"SRVR": srvrLog,
 	"SYNC": syncLog,
 	"TXMP": txmpLog,
+	"CNSS": consensusLog,
 }
 
 // initLogRotator initializes the logging rotater to write logs to logFile and

@@ -1516,7 +1516,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	ok := true
 
 	// Start from the end of the main chain and work backwards until
-	// the node whose bestblock is the tx chain's last block.
+	// the node whose bestblock is in the tx main chain
 	n := mtop
 	h := NodetoHeader(n).BestBlock
 	detachNodes := list.New()
