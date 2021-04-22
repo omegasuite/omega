@@ -698,7 +698,7 @@ func (self *Syncer) Signature(msg * wire.MsgSignature) bool {
 			self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts[:1]
 	}
 
-	if !UpdateLastWritten(self.Height) {	// nenver sign if height is not higher than last signed block
+	if !UpdateLastWritten(self.Height) && self.sigGiven != tree {	// nenver sign if height is not higher than last signed block
 		return false
 	}
 
@@ -760,7 +760,7 @@ func (self *Syncer) Consensus(msg * wire.MsgConsensus) bool {
 	self.CommitteeCastMG(&sigmsg)
 
 	if self.sigGiven == -1 {
-		if !UpdateLastWritten(self.Height) {	// nenver sign if height is not higher than last signed block
+		if !UpdateLastWritten(self.Height) && self.sigGiven != self.agreed {	// nenver sign if height is not higher than last signed block
 			return false
 		}
 		self.sigGiven = self.agreed
@@ -839,7 +839,7 @@ func (self *Syncer) ckconsensus() {
 	hash := blockchain.MakeMinerSigHash(self.Height, self.forest[self.Me].hash)
 
 	if privKey := miner.server.GetPrivKey(self.Me); privKey != nil && self.sigGiven == -1 {
-		if !UpdateLastWritten(self.Height) {	// nenver sign if height is not higher than last signed block
+		if !UpdateLastWritten(self.Height) && self.sigGiven != self.Myself {	// nenver sign if height is not higher than last signed block
 			return
 		}
 		self.sigGiven = self.Myself

@@ -259,17 +259,20 @@ func dbPutAddrIndexEntry(bucket internalBucket, addrKey [addrKeySize]byte, block
 }
 
 // dbFetchAddrIndexEntries returns block regions for transactions referenced by
-// the given address key and the number of entries skipped since it could have
+// the given address key and the height of blocks skipped since it could have
 // been less in the case where there are less total entries than the requested
 // number of entries to skip.
 func dbFetchAddrIndexEntries(bucket internalBucket, addrKey [addrKeySize]byte, blocksToSkip, numRequested uint32, reverse bool, fetchBlockHash fetchBlockHashFunc) ([]database.BlockRegion, []uint32, uint32, error) {
-	// When the reverse flag is not set, all levels need to be fetched
-	// because numToSkip and numRequested are counted from the oldest
-	// transactions (highest level) and thus the total count is needed.
-	// However, when the reverse flag is set, only enough records to satisfy
-	// the requested amount are needed.
+	// When the reverse flag is not set, we will fetch the oldest txs first.
+	// when it is set, we will fetch the most recent txs first.
+	// blocksToSkip represents the last skipped block (height), after this point are the
+	// blocks in which txs are returned, with exception of blocksToSkip=0, which means nothing
+	// to skip. we always return all the tx in one block reradless whether numRequested is met.
+
 	var level uint8
 	var serialized []byte
+
+enough:
 	for true {
 //	for !reverse || len(serialized) < int(numToSkip+numRequested)*txEntrySize {
 		curLevelKey := keyForLevel(addrKey, level)
@@ -277,6 +280,23 @@ func dbFetchAddrIndexEntries(bucket internalBucket, addrKey [addrKeySize]byte, b
 		if levelData == nil {
 			// Stop when there are no more levels.
 			break
+		}
+
+		if blocksToSkip != 0 {
+			if reverse {
+				// don't prepend if block height of first entry is greater than blocksToSkip
+				h := byteOrder.Uint32(levelData)
+				if h >= blocksToSkip {
+					level++
+					continue
+				}
+			} else {
+				// done if block height of last entry is smaller than blocksToSkip
+				h := byteOrder.Uint32(levelData[len(levelData) - txEntrySize:])
+				if h <= blocksToSkip {
+					break enough
+				}
+			}
 		}
 
 		// Higher levels contain older transactions, so prepend them.
@@ -287,36 +307,19 @@ func dbFetchAddrIndexEntries(bucket internalBucket, addrKey [addrKeySize]byte, b
 		level++
 	}
 
-	// When the requested number of entries to skip is larger than the
-	// number available, skip them all and return now with the actual number
-	// skipped.
 	numEntries := uint32(len(serialized) / txEntrySize)
-//	if numToSkip >= numEntries {
-//		return nil, numEntries, nil
-//	}
-
-	// Nothing more to do when there are no requested entries.
-//	if numRequested == 0 {
-//		return nil, numToSkip, nil
-//	}
-
-	// Limit the number to load based on the number of available entries,
-	// the number to skip, and the number requested.
-//	numToLoad := numEntries - numToSkip
-//	if numToLoad > numRequested {
-//		numToLoad = numRequested
-//	}
 
 	// Start the offset after all skipped entries and load the calculated
 	// number.
 	results := make([]database.BlockRegion, 0, numRequested)
 	heights := make([]uint32, 0, numRequested)
-	lastheight := uint32(0)
 	loaded := uint32(0)
 	stopheight := uint32(0)
-	var lastitem database.BlockRegion
+	var item database.BlockRegion
 
-	for i := uint32(0); i <= numEntries; i++ {
+	on := (blocksToSkip == 0)
+
+	for i := uint32(0); i < numEntries; i++ {
 		// Calculate the read offset according to the reverse flag.
 		var offset uint32
 		if reverse {
@@ -325,36 +328,22 @@ func dbFetchAddrIndexEntries(bucket internalBucket, addrKey [addrKeySize]byte, b
 			offset = i * txEntrySize
 		}
 
-		if i > 0 {
-			if loaded >= numRequested && lastheight != stopheight {
-				break
+		h := byteOrder.Uint32(serialized[offset:])
+		if !on {
+			if !(reverse && h <= blocksToSkip) && !(!reverse && h >= blocksToSkip) {
+				continue
 			}
-			if reverse {
-				if lastheight < blocksToSkip {
-					results = append(results, lastitem)
-					heights = append(heights, lastheight)
-					loaded++
-				}
-			} else {
-				if lastheight > blocksToSkip {
-					results = append(results, lastitem)
-					heights = append(heights, lastheight)
-					loaded++
-				}
-			}
-			if loaded == numRequested {
-				stopheight = lastheight
-			}
+			on = true
 		}
 
-		if i == numEntries {
+		loaded++
+		if loaded > numRequested && h != stopheight {
 			break
 		}
 
-		lastheight = byteOrder.Uint32(serialized[offset:])
-
+		stopheight = h
 		// Deserialize and populate the result.
-		err := deserializeAddrIndexEntry(serialized[offset:], &lastitem, fetchBlockHash)
+		err := deserializeAddrIndexEntry(serialized[offset:], &item, fetchBlockHash)
 		if err != nil {
 			// Ensure any deserialization errors are returned as
 			// database corruption errors.
@@ -369,6 +358,9 @@ func dbFetchAddrIndexEntries(bucket internalBucket, addrKey [addrKeySize]byte, b
 
 			return nil, nil, 0, err
 		}
+
+		results = append(results, item)
+		heights = append(heights, h)
 	}
 
 	return results, heights, stopheight, nil

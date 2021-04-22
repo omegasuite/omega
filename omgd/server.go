@@ -1864,7 +1864,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 		sp.continueHash = nil
 	}
 
-	peerLog.Infof("sending block %d", msgBlock.Transactions[0].TxIn[0].PreviousOutPoint.Index)
+//	peerLog.Infof("sending block %d", msgBlock.Transactions[0].TxIn[0].PreviousOutPoint.Index)
 
 	sp.QueueMessageWithEncoding(&msgBlock, doneChan, encoding)	// | wire.FullEncoding)
 

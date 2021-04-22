@@ -62,7 +62,7 @@ type Miner struct {
 	name [][20]byte
 
 	lastSignedBlock int32
-	lwbFile string
+	lwbFile * os.File
 
 	cfg *chaincfg.Params
 
@@ -180,20 +180,14 @@ func handleConnNotice(c interface{}) {
 
 func UpdateLastWritten(last int32) bool {
 	// write last sign block height to file instead of DB to ensure it is not cached/buffered
-	fp, err := os.OpenFile(miner.lwbFile,
-		os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0600)
-	if err != nil {
-		log.Infof("UpdateLastWritten: unable to open %s", miner.lwbFile)
-		return false
-	}
-	defer fp.Close()
+	writer := bufio.NewWriter(miner.lwbFile)
 
-	writer := bufio.NewWriter(fp)
+	miner.lwbFile.Seek(0, io.SeekStart)
 	if last > miner.lastSignedBlock {
 		miner.lastSignedBlock = last
 		fmt.Fprintf(writer, "%d\n", last)
 		writer.Flush()
-		fp.Sync()		// do a file flush here
+		miner.lwbFile.Sync()		// do a file flush here
 		return true
 	}
 	log.Infof("UpdateLastWritten: rejected because %d <= %d", last, miner.lastSignedBlock)
@@ -207,17 +201,24 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	miner.updateheight = make(chan int32, 20)
 	miner.lastSignedBlock = 0
 
-	miner.lwbFile = dataDir + "/lastsignedblock"
+	lwbFile := dataDir + "/lastsignedblock"
 
-	fp, err := os.Open(miner.lwbFile)
-	defer fp.Close()
-
+	fp, err := os.Open(lwbFile)
 	if fp != nil && err != io.EOF {
 		reader := bufio.NewReader(fp)
 		line, err := reader.ReadString('\n')
 		if err == nil {
 			fmt.Sscanf(line, "%d", &miner.lastSignedBlock)
 		}
+	}
+	fp.Close()
+
+	miner.lwbFile, err = os.OpenFile(lwbFile, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0600)
+	defer miner.lwbFile.Close()
+
+	if err != nil {
+		log.Infof("UpdateLastWritten: unable to open %s", lwbFile)
+		return
 	}
 
 	s.SubscribeChain(miner.notice)
