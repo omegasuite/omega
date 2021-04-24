@@ -163,6 +163,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getcfilter":            handleGetCFilter,
 	"getcfilterheader":      handleGetCFilterHeader,
 	"getconnectioncount":    handleGetConnectionCount,
+	"resetconnection":       handleResetConnection,
 	"getcurrentnet":         handleGetCurrentNet,
 	"getdifficulty":         handleGetDifficulty,
 	"getgenerate":           handleGetGenerate,
@@ -192,7 +193,6 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"submitblock":           handleSubmitBlock,
 	"uptime":                handleUptime,
 	"validateaddress":       handleValidateAddress,
-	"verifychain":           handleVerifyChain,
 	"verifymessage":         handleVerifyMessage,
 	"version":               handleVersion,
 	"shutdownserver":        handleShutdown,
@@ -2008,11 +2008,11 @@ func handleGetBlockHash(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	c := cmd.(*btcjson.GetBlockHashCmd)
 	hash, err := s.cfg.Chain.BlockHashByHeight(int32(c.Index))
 	if err != nil {
-//		fmt.Printf("handleGetBlockHash = %s", err.Error())
+		s := fmt.Sprintf("Block number %d out of range", c.Index)
 //		return nil, err
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCOutOfRange,
-			Message: "Block number out of range",
+			Message: s,
 		}
 	}
 
@@ -2975,6 +2975,16 @@ func handleGetCFilterHeader(s *rpcServer, cmd interface{}, closeChan <-chan stru
 // handleGetConnectionCount implements the getconnectioncount command.
 func handleGetConnectionCount(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	return s.cfg.ConnMgr.ConnectedCount(), nil
+}
+
+// handleResetConnection implements the resetconnection command.
+func handleResetConnection(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	cons := s.cfg.ConnMgr.ConnectedPeers()
+	for _, c := range cons {
+		s.cfg.ConnMgr.DisconnectByID(c.ToPeer().ID())
+	}
+
+	return "Done", nil
 }
 
 // handleGetCurrentNet implements the getcurrentnet command.
@@ -4668,124 +4678,6 @@ func handleValidateAddress(s *rpcServer, cmd interface{}, closeChan <-chan struc
 	result.IsValid = true
 
 	return result, nil
-}
-
-func verifyChain(s *rpcServer, level, depth int32) (string, error) {
-	chain := s.cfg.Chain
-	best := chain.BestSnapshot()
-	finishHeight := best.Height - depth
-	if finishHeight < 0 {
-		finishHeight = 0
-	}
-	rpcsLog.Infof("Verifying chain for %d blocks at level %d",
-		best.Height-finishHeight, level)
-
-	pows := 0
-
-	for height := best.Height; height > finishHeight; height-- {
-		// Level 0 just looks up the block.
-		block, err := chain.BlockByHeight(height)
-		if err != nil {
-			rpcsLog.Errorf("Verify is unable to fetch block at "+
-				"height %d: %s", height, err.Error())
-			return err.Error(), err
-		}
-
-		// Level 1 does basic chain sanity checks.
-		if level > 0 {
-			err := blockchain.CheckBlockSanity(block,
-				s.cfg.ChainParams.PowLimit, s.cfg.TimeSource)
-			if err != nil {
-				rpcsLog.Errorf("Verify is unable to validate "+
-					"block at hash %s height %d: %s",
-					block.Hash().String(), height, err.Error())
-				return err.Error(), err
-			}
-			if len(block.MsgBlock().Transactions) > wire.MaxTxPerBlock {
-				err = fmt.Errorf("serialized block is too big - got %d, "+
-					"max %d", block.Size(), wire.MaxTxPerBlock)
-				return err.Error(), err
-			}
-		}
-
-		// check signature
-		if block.MsgBlock().Header.Nonce < 0 {
-			if len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
-				rpcsLog.Errorf("Verify is unable to validate "+
-					"block at hash %s height %d: insufficient signatures",
-					block.Hash().String(), height)
-				return err.Error(), err
-			}
-			if len(block.MsgBlock().Transactions[0].SignatureScripts[1]) <= btcec.PubKeyBytesLenCompressed {
-				rpcsLog.Errorf("Verify is unable to validate "+
-					"block at hash %s height %d: incorrect signatures",
-					block.Hash().String(), height)
-				return err.Error(), err
-			}
-		} else {
-			pows++
-		}
-	}
-
-	result := fmt.Sprintf("tx Chain verify completed successfully for blocks from %d to %d. POW blocks: %d.", finishHeight + 1, best.Height, pows)
-
-	mchain := s.cfg.Chain.Miners.(*minerchain.MinerChain)
-	best = mchain.BestSnapshot()
-	mfinishHeight := best.Height - depth
-	if mfinishHeight < 0 {
-		mfinishHeight = 0
-	}
-	rpcsLog.Infof("Verifying miner chain for %d blocks at level %d",
-		best.Height-mfinishHeight, level)
-
-	for height := best.Height; height > mfinishHeight; height-- {
-		// Level 0 just looks up the block.
-		block, err := mchain.BlockByHeight(height)
-		if err != nil {
-			rpcsLog.Errorf("Verify is unable to fetch miner block at "+
-				"height %d: %s", height, err.Error())
-			return err.Error(), err
-		}
-
-		// Level 1 does basic chain sanity checks.
-		err = minerchain.CheckBlockSanity(block, s.cfg.ChainParams.PowLimit, s.cfg.TimeSource, blockchain.BFNone)
-		if err != nil {
-			rpcsLog.Errorf("Verify is unable to validate miner block at hash %s height %d: %s",
-				block.Hash().String(), height, err.Error())
-			return err.Error(), err
-		}
-
-		if len(block.MsgBlock().Connection) == 0 {
-			return "Empty Connection", fmt.Errorf("Empty Connection")
-		}
-
-		bblk,_ := chain.BlockByHash(&block.MsgBlock().BestBlock)
-		if bblk == nil {
-			t := fmt.Sprintf("BestBlock %s does not exist in tx chain @ height %d", block.MsgBlock().BestBlock.String(), height)
-			rpcsLog.Errorf("BestBlock %s does not exist in tx chain @ height %d", block.MsgBlock().BestBlock.String(), height)
-			return t, nil
-		}
-	}
-	rpcsLog.Infof("Chain verify completed successfully")
-
-	result += fmt.Sprintf("\n<br>miner Chain verify completed successfully for blocks from %d to %d.", mfinishHeight + 1, best.Height)
-
-	return result, nil
-}
-
-// handleVerifyChain implements the verifychain command.
-func handleVerifyChain(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.VerifyChainCmd)
-
-	var checkLevel, checkDepth int32
-	if c.CheckLevel != nil {
-		checkLevel = *c.CheckLevel
-	}
-	if c.CheckDepth != nil {
-		checkDepth = *c.CheckDepth
-	}
-
-	return verifyChain(s, checkLevel, checkDepth)
 }
 
 // handleVerifyMessage implements the verifymessage command.

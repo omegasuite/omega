@@ -681,7 +681,7 @@ func (w *Wallet) recovery(chainClient chain.Interface,
 	// NOTE: We purposefully don't update our best height since we assume
 	// that a wallet rescan will be performed from the wallet's tip, which
 	// will be of bestHeight after completing the recovery process.
-	var blocks []*waddrmgr.BlockStamp
+//	var blocks []*waddrmgr.BlockStamp
 	startHeight := w.Manager.SyncedTo().Height
 
 	if birthdayBlock == nil {
@@ -695,12 +695,14 @@ func (w *Wallet) recovery(chainClient chain.Interface,
 		// state to disk.
 		err := walletdb.Update(w.db, func(tx walletdb.ReadWriteTx) error {
 			ns := tx.ReadWriteBucket(waddrmgrNamespaceKey)
+/*
 			for _, block := range blocks {
 				err := w.Manager.SetSyncedTo(ns, block)
 				if err != nil {
 					return err
 				}
 			}
+ */
 			_, err := w.recoverDefaultScopes(
 				chainClient, tx, ns, int(height), int(height) + recoveryBatchSize,
 				recoveryMgr.State(),
@@ -854,6 +856,7 @@ func (w *Wallet) recoverScopedAddresses(
 				}
 
 				for highest < int(tx.Height) {
+					// force loading blocks to the point before tx.Height
 					startHash, err := chainClient.GetBlockHash(int64(highest))
 					if err != nil {
 						return int32(highest), err
@@ -870,7 +873,7 @@ func (w *Wallet) recoverScopedAddresses(
 					}
 					err = w.Manager.SetSyncedTo(ns, &block)
 					if err != nil {
-						log.Infof("SetSyncedTo ar point A %d", highest)
+						log.Infof("SetSyncedTo at point A %d", highest)
 						return int32(highest), err
 					}
 					highest++
@@ -929,13 +932,13 @@ func (w *Wallet) recoverScopedAddresses(
 					}
 					err = w.Manager.SetSyncedTo(ns, &bs)
 					if err != nil {
-						log.Infof("SetSyncedTo ar point B %d", tx.Height)
+						log.Infof("SetSyncedTo at point B %d", tx.Height)
 						return int32(highest), err
 					}
 
 					highest++
 				}
-				log.Infof("addRelevantTx %s @ %d", outPoint.Hash.String(), tx.Height)
+//				log.Infof("addRelevantTx %s @ %d", outPoint.Hash.String(), tx.Height)
 			}
 		}
 	}
@@ -943,11 +946,11 @@ func (w *Wallet) recoverScopedAddresses(
 	for highest <= end {
 		startHash, err := chainClient.GetBlockHash(int64(highest))
 		if err != nil {
-			return int32(highest), err
+			return int32(highest), nil
 		}
 		startHeader, err := chainClient.GetBlockHeader(startHash)
 		if err != nil {
-			return int32(highest), err
+			return int32(highest), nil
 		}
 
 		block := waddrmgr.BlockStamp{
@@ -957,7 +960,7 @@ func (w *Wallet) recoverScopedAddresses(
 		}
 		err = w.Manager.SetSyncedTo(ns, &block)
 		if err != nil {
-			log.Infof("SetSyncedTo ar point C %d", highest)
+			log.Infof("SetSyncedTo at point C %d", highest)
 			return int32(highest), err
 		}
 		highest++
