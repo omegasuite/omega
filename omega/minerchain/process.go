@@ -221,7 +221,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	log.Infof("miner Block hash %s\nprevhash %s", blockHash.String(), block.MsgBlock().PrevBlock.String())
 
 	// The block must not already exist in the main chain or side chains.
-	exists := b.index.HaveBlock(blockHash)
+	exists := b.MainChainHasBlock(blockHash)		// index.HaveBlock(blockHash)
 //	if err != nil {
 //		return false, false, err, nil
 //	}

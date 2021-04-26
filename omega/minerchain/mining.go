@@ -823,7 +823,8 @@ func (b *MinerChain) choiceOfChain() (*chainutil.BlockNode, int32) {
 	n := b.BestChain.Tip()
 
 	h := NodetoHeader(n)
-	bestBlk := b.blockChain.BestChain.Tip()
+	bestBlk := b.blockChain.LongestTip()
+//		b.blockChain.BestChain.Tip()
 	if b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
 		h := b.blockChain.BestSnapshot().LastRotation
 		d := n.Height - int32(h)

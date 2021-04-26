@@ -723,11 +723,23 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 
 		if block.MsgBlock().Version >= chaincfg.Version2 {
-			if r, _, _ := b.checkV2(block, newBest, blockchain.BFNone); !r {
+			if r, err, _ := b.checkV2(block, newBest, blockchain.BFNone); !r {
+				if err != nil {
+					log.Infof("checkV2 failed for attaching block: %s", err.Error())
+				} else {
+					log.Infof("checkV2 failed for attaching block")
+				}
 				break
 			}
 		}
-		if b.checkProofOfWork(block.MsgBlock(), b.chainParams.PowLimit, blockchain.BFNone) != nil {
+
+		xf := blockchain.BFNone
+		if block.Height() > 2200 || block.MsgBlock().Version >= 0x20000 {
+			xf = blockchain.BFWatingFactor
+		}
+
+		if err := b.checkProofOfWork(block.MsgBlock(), b.chainParams.PowLimit, blockchain.BFNone | xf); err != nil {
+			log.Infof("checkProofOfWork failed for attaching block: %s", err.Error())
 			break
 		}
 
@@ -755,8 +767,8 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		newBest = n
 	}
 
-	if detachNodes.Len() >= len(attachBlocks) {
-		return fmt.Errorf("Detach more than attach.")
+	if detachNodes.Len() > len(attachBlocks) {
+		return fmt.Errorf("Detach (%d) more than attach (%d).", detachNodes.Len(), len(attachBlocks))
 	}
 
 	// Disconnect blocks from the main chain.
@@ -1805,6 +1817,14 @@ func (g *MinerChain) reportFromDB(miner [20]byte) []rv {
 
 func (g *MinerChain) reportNotice(n *blockchain.Notification) {
 	if block, ok := n.Data.(*wire.MinerBlock); ok {
+		switch n.Type {
+		case blockchain.NTBlockConnected:
+		case blockchain.NTBlockDisconnected:
+
+		default:
+			return
+		}
+
 		checked := make(map[[20]byte]struct{})
 		node := g.NodeByHash(&block.MsgBlock().PrevBlock)
 		for _, r := range block.MsgBlock().TphReports {

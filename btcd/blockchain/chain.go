@@ -398,6 +398,17 @@ func (b *BlockChain) TotalRotate(lst * list.List) int32 {
 	return s
 }
 
+func (b *BlockChain) LongestTip() *chainutil.BlockNode {
+	s := b.BestChain.Tip()
+
+	for _, t := range b.index.Tips {
+		if t.Height > s.Height {
+			s = t
+		}
+	}
+	return s
+}
+
 func (b *BlockChain) GetReorganizeSideChain(hash chainhash.Hash) (*list.List, *list.List) {
 	attachNodes := list.New()
 	detachNodes := list.New()
@@ -413,12 +424,7 @@ func (b *BlockChain) GetReorganizeSideChain(hash chainhash.Hash) (*list.List, *l
 	bs := node
 
 	// we may need to access b.index.Tips in FetchMissingNodes, so dup to avoid concurrent access to a map
-	tips := make([]*chainutil.BlockNode, 0, len(b.index.Tips))
 	for _, t := range b.index.Tips {
-		tips = append(tips, t)
-	}
-
-	for _, t := range tips {
 		if t.Height <= bs.Height {
 			continue
 		}
