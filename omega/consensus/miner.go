@@ -271,37 +271,37 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
  */
 
 		case height := <-miner.updateheight:
-			log.Infof("updateheight %d", height)
+//			log.Infof("updateheight %d", height)
 			miner.syncMutex.Lock()
 			cleaner(height)
 			for _, t := range miner.Sync {
 				t.UpdateChainHeight(height)
 			}
 			miner.syncMutex.Unlock()
-			log.Infof("updateheight done")
+//			log.Infof("updateheight done")
 
 		case c := <- connNotice:
-			log.Info("Consensus connNotice")
+//			log.Info("Consensus connNotice")
 			handleConnNotice(c)
 
 		case blk := <-newblockch:
 			top := miner.server.BestSnapshot().Height
 			bh := blk.block.Height()
-			log.Infof("miner received newblock %s at %d vs. %d",
-				blk.block.Hash().String(), top, bh)
+//			log.Infof("miner received newblock %s at %d vs. %d",
+//				blk.block.Hash().String(), top, bh)
 
 			if len(blk.block.MsgBlock().Transactions) > 1 {
 				log.Infof("non-trivial block")
 			}
 
 			if bh <= top {
-				log.Infof("newblock ignored")
+//				log.Infof("newblock ignored")
 				continue
 			}
 
 			if len(blk.block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
 				// should never gets here
-				log.Infof("Block is a consensus. Accept it and close processing for height %d.", bh)
+//				log.Infof("Block is a consensus. Accept it and close processing for height %d.", bh)
 				continue
 			}
 
@@ -322,10 +322,10 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 				}
 			}
 			snr.BlockInit(blk.block)
-			log.Infof("newblock initialized")
+//			log.Infof("newblock initialized")
 
 		case <- Quit:
-			log.Info("consensus received Quit")
+//			log.Info("consensus received Quit")
 			polling = false
 //			ticker.Stop()
 //			DebugInfo()

@@ -1060,7 +1060,7 @@ func (self *Syncer) candidacy() {
 
 	msg.Sign(miner.server.GetPrivKey(self.Me))
 
-	log.Infof("candidacy: Announce candicacy")
+//	log.Infof("candidacy: Announce candicacy")
 
 	self.CommitteeCastMG(msg)
 }
@@ -1262,7 +1262,7 @@ func (self *Syncer) validateMsg(finder [20]byte, m * chainhash.Hash, msg Message
 			block:   nil,
 		}
 
-		log.Infof("Pull block %s from %d", m.String(), c)
+//		log.Infof("Pull block %s from %d", m.String(), c)
 		self.pull(*m, c)
 		return true
 	}
@@ -1385,7 +1385,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 
 	self.setCommittee()
 
-	log.Infof("syner initialized block %s, sending to newtree", block.Hash().String())
+//	log.Infof("syner initialized block %s, sending to newtree", block.Hash().String())
 
 	if r,ok := self.forest[adr]; !ok || r.block == nil {
 		self.newtree <- tree{
@@ -1407,16 +1407,16 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 	if _,ok := self.pulling[from]; !ok || self.pulling[from] == 0 {
 		// pull block
 		msg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, hash}}}
-		log.Infof("Pull request: to %d hash %s", from+self.Base, hash.String())
+//		log.Infof("Pull request: to %d hash %s", from+self.Base, hash.String())
 		if self.CommitteeMsg(self.Names[from], &msg) {
-			log.Infof("Pull request sent to %d", from)
+//			log.Infof("Pull request sent to %d", from)
 			self.pulling[from] = 5
 		} else {
 			log.Infof("Fail to Pull !!!!!!!!")
 		}
 	} else {
 		self.pulling[from]--
-		log.Infof("Have pulled for %d at height %d", from, self.Height)
+//		log.Infof("Have pulled for %d at height %d", from, self.Height)
 	}
 }
 
