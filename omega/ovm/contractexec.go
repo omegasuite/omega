@@ -77,7 +77,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ctx.BlockTime = func() uint32 { return 0 }
 //	ctx.Block = func() *btcutil.Block { return nil }
-	ctx.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
+	ctx.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
 
 	ovm := NewSigVM(chainParams)
@@ -188,7 +188,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 					ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 					ovm.BlockTime = func() uint32 { return 0 }
 //					ovm.Block = func() *btcutil.Block { return nil }
-					ovm.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
+					ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
 					ovm.NoLoop = true
 					ovm.interpreter.readOnly = true
 
@@ -429,7 +429,7 @@ func (ovm * OVM) ContractCall(addr Address, input []byte) ([]byte, error) {
 	ovm.GetTx = func () * btcutil.Tx { return nil }
 	ovm.AddTxOutput = func(t wire.TxOut) int {	return -1 }
 	ovm.Spend = func(t wire.OutPoint, _ []byte) bool { return false }
-	ovm.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
+	ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
 
 	ovm.NoLoop = false
@@ -470,7 +470,7 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 	ovm.BlockTime = func() uint32 {
 		return uint32(time.Now().Unix())
 	}
-	ovm.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash {
+	ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash {
 		if coinbase {
 			return ovm.GetCoinBase().AddDef(t)
 		}
@@ -577,7 +577,7 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 	}
 
 	ovm.Init(tx, ovm.views)
-	ovm.AddRight = func(t token.Definition, coinbase bool) chainhash.Hash {
+	ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash {
 		if coinbase {
 			return ovm.GetCoinBase().AddDef(t)
 		}

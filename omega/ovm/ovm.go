@@ -48,9 +48,9 @@ type (
 	// and is used by the ADDTXIN EVM op code.
 	SpendFunc func(wire.OutPoint, []byte) bool
 
-	// AddRight adds an right definition to the transaction template for currect transaction
+	// AddDef adds an right definition to the transaction template for currect transaction
 	// and is used by the ADDTXIN EVM op code.
-	AddRightFunc func(token.Definition, bool) chainhash.Hash
+	AddDefFunc func(token.Definition, bool) chainhash.Hash
 
 	// AddTxOutput adds an output to  the transaction template for currect transaction
 	// and is used by the ADDTXOUT EVM op code.
@@ -80,14 +80,14 @@ func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
 // Context provides the OVM with auxiliary information. Once provided
 // it shouldn't be modified.
 type Context struct {
-	GetCoinBase GetCoinBaseFunc
-	GetTx GetTxFunc
-	Spend SpendFunc
-	AddTxOutput AddTxOutputFunc
-	AddRight AddRightFunc
-	GetUtxo GetUtxoFunc
+	GetCoinBase      GetCoinBaseFunc
+	GetTx            GetTxFunc
+	Spend            SpendFunc
+	AddTxOutput      AddTxOutputFunc
+	AddDef           AddDefFunc
+	GetUtxo          GetUtxoFunc
 	GetCurrentOutput GetCurrentOutputFunc
-	AddCoinBase AddCoinBaseFunc
+	AddCoinBase      AddCoinBaseFunc
 
 	// Block information
 	StepLimit   int64              // Step LIMIT policy

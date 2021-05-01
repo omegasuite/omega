@@ -55,17 +55,17 @@ const (
 	TXFEE		// min tx fee for current tx
 	GETCOIN		// GETTXIN. coin received for the current call
 	NOP
-	SPEND		// add tx in
-	ADDRIGHTDEF	// add def
-	ADDTXOUT	// add tx out
-	GETDEFINITION	// get def
-	GETUTXO			// get any utxo
-	MINT		// mint a coin
-	META		// get contract meta Data
-	TIME		// timestamp in block
-	HEIGHT		// block height
-	TXIOCOUNT	// current io count of this tx
-	VERSION		// get tx version
+	SPEND         // add tx in
+	ADDDEF        // add def
+	ADDTXOUT      // add tx out
+	GETDEFINITION // get def
+	GETUTXO       // get any utxo
+	MINT          // mint a coin
+	META          // get contract meta Data
+	TIME          // timestamp in block
+	HEIGHT        // block height
+	TXIOCOUNT     // current io count of this tx
+	VERSION       // get tx version
 	
 	STOP	 OpCode = 0x7A	//  "z"
 )
@@ -103,17 +103,17 @@ var opCodeToString = map[OpCode]string{
 //	GETTXIN:        "GETTXIN",
 //	GETTXOUT:        "GETTXOUT",
 	SPEND:         "SPEND",
-	ADDRIGHTDEF:     "ADDRIGHTDEF",
-	ADDTXOUT: "ADDTXOUT",
-	GETDEFINITION:    "GETDEFINITION",
-	GETCOIN:     "GETCOIN",
-	NOP: "NOP",
-	GETUTXO:    "GETUTXO",
-	SELFDESTRUCT:   "SELFDESTRUCT",
-	REVERT:    "REVERT",
-	RETURN:    "RETURN",
-	MINT:    "MINT",
-	TIME:    "TIME",
+	ADDDEF:        "ADDDEF",
+	ADDTXOUT:      "ADDTXOUT",
+	GETDEFINITION: "GETDEFINITION",
+	GETCOIN:       "GETCOIN",
+	NOP:           "NOP",
+	GETUTXO:       "GETUTXO",
+	SELFDESTRUCT:  "SELFDESTRUCT",
+	REVERT:        "REVERT",
+	RETURN:        "RETURN",
+	MINT:          "MINT",
+	TIME:          "TIME",
 	HEIGHT:    "HEIGHT",
 	META:    "META",
 	VERSION: "VERSION",
@@ -157,18 +157,18 @@ var stringToOp = map[string]OpCode{
 	"TXIOCOUNT": TXIOCOUNT,
 //	"GETTXIN": GETTXIN,
 //	"GETTXOUT": GETTXOUT,
-	"SPEND": SPEND,
-	"ADDRIGHTDEF": ADDRIGHTDEF,
-	"ADDTXOUT": ADDTXOUT,
+	"SPEND":         SPEND,
+	"ADDDEF":   ADDDEF,
+	"ADDTXOUT":      ADDTXOUT,
 	"GETDEFINITION": GETDEFINITION,
-	"GETCOIN": GETCOIN,
-	"NOP": NOP,
-	"GETUTXO": GETUTXO,
-	"SELFDESTRUCT":   SELFDESTRUCT,
-	"REVERT":         REVERT,
-	"RETURN":         RETURN,
-	"MINT": MINT,
-	"META": META,
+	"GETCOIN":       GETCOIN,
+	"NOP":           NOP,
+	"GETUTXO":       GETUTXO,
+	"SELFDESTRUCT":  SELFDESTRUCT,
+	"REVERT":        REVERT,
+	"RETURN":        RETURN,
+	"MINT":          MINT,
+	"META":          META,
 	"TIME": TIME,
 	"HEIGHT": HEIGHT,
 	"VERSION": VERSION,

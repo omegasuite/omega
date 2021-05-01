@@ -3063,9 +3063,9 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return fmt.Errorf("Spend failed")
 }
 
-func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opAddDef(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	if contract.pure &NODEFINE != 0 {
-		return fmt.Errorf("AddRight instruction restricted by contract right")
+		return fmt.Errorf("AddDef instruction restricted by contract right")
 	}
 
 	param := contract.GetBytes(*pc)
@@ -3107,6 +3107,12 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var tk token.Definition
 
 	switch defType {
+	case token.DefTypeBorder:
+		tk = &token.BorderDef{}
+
+	case token.DefTypePolygon:
+		tk = &token.PolygonDef{}
+
 	case token.DefTypeRight:
 		tk = &token.RightDef{}
 
@@ -3125,7 +3131,7 @@ func opAddRight(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		return err
 	}
 
-	hash := evm.AddRight(tk, coinbase)
+	hash := evm.AddDef(tk, coinbase)
 
 	if dest != pointer(0) {
 		stack.saveHash(&dest, hash)

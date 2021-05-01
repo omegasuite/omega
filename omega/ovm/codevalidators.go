@@ -535,15 +535,15 @@ func opSpendValidator(param []byte) int {
 	}
 }
 
-var formatAddRight = []formatDesc{
+var formatAddDef = []formatDesc{
 	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
 }
 
-func opAddRightValidator(param []byte) int {
+func opAddDefValidator(param []byte) int {
 	if param[len(param) - 1] == 'C' {
-		return formatParser(formatAddRight, param[:len(param) - 1])
+		return formatParser(formatAddDef, param[:len(param) - 1])
 	}
-	return formatParser(formatAddRight, param)
+	return formatParser(formatAddDef, param)
 }
 
 var formatAddTXO = []formatDesc{

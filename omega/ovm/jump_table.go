@@ -148,9 +148,9 @@ func NewOmegaInstructionSet() [256]operation {
 			valid:         true,
 			writes:        true,
 		},
-		ADDRIGHTDEF:  operation{
-			execute:       opAddRight,
-			valid:         true,
+		ADDDEF:  operation{
+			execute: opAddDef,
+			valid:   true,
 		},
 		ADDTXOUT: operation{
 			execute:       opAddTxOut,
