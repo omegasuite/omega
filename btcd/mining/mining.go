@@ -260,7 +260,9 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 
 	prevPows := uint(0)
 	adj := int64(0)
+/*
 	best := chain.BestSnapshot()
+
 	for pw := chain.BestChain.Tip(); pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
 		prevPows++
 	}
@@ -268,7 +270,7 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 		adj = blockchain.CalcBlockSubsidy(best.Height, params, 0) -
 			blockchain.CalcBlockSubsidy(best.Height, params, prevPows)
 	}
-
+*/
 	award := blockchain.CalcBlockSubsidy(nextBlockHeight, params, prevPows)
 	if award < params.MinimalAward {
 		award = params.MinimalAward
@@ -482,6 +484,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	rotate := best.LastRotation
 	s, err := g.Chain.Miners.BlockByHeight(int32(rotate))
 	if err != nil || s == nil {
+		time.Sleep(5 * time.Second)
 		return nil, fmt.Errorf("Miner chain not ready.")
 	}
 

@@ -178,11 +178,14 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 	// detected and all work on the stale block is halted to start work on
 	// a new block, but the check only happens periodically, so it is
 	// possible a block was found and submitted in between.
+/*
 	msgBlock := block.MsgBlock()
+
 	if !msgBlock.PrevBlock.IsEqual(&m.g.BestMinerSnapshot().Hash) {
 		log.Infof("PrevHash %s is not the best hash %s", msgBlock.PrevBlock.String(), m.g.BestMinerSnapshot().Hash.String())
 		return false
 	}
+ */
 
 	// Process this block using the same rules as blocks coming from other
 	// nodes.  This will in turn relay it to the network like normal.

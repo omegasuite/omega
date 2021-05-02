@@ -8,6 +8,7 @@ package blockchain
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
@@ -1514,7 +1515,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 
 	paidstoragefees := make(map[[20]byte]int64)
 
-	var totalFees int64
+	totalFees := int64(0)
 	for i, tx := range transactions {
 		txFee := int64(0)
 
@@ -1634,7 +1635,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// mining the block.  It is safe to ignore overflow and out of range
 	// errors here because those error conditions would have already been
 	// caught by checkTransactionSanity.
-	var totalHaoOut int64
+	totalHaoOut := int64(0)
 
 	for _, txOut := range transactions[0].MsgTx().TxOut {
 		if txOut.IsSeparator() {
@@ -1646,6 +1647,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	}
 
 	prevPows := uint(0)
+/*
 	if node.Data.GetNonce() > 0 {
 		for pw := node.Parent; pw != nil && pw.Data.GetNonce() > 0; pw = b.ParentNode(pw) {
 			prevPows++
@@ -1658,17 +1660,20 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		adj = CalcBlockSubsidy(best.Height, b.ChainParams, 0) -
 			CalcBlockSubsidy(best.Height, b.ChainParams, prevPows)
 	}
-
+*/
 	award := CalcBlockSubsidy(node.Height, b.ChainParams, prevPows)
 	if award < b.ChainParams.MinimalAward {
 		award = b.ChainParams.MinimalAward
 	}
 
-	expectedHaoOut := award + adj + totalFees
+	expectedHaoOut := award + totalFees	//  + adj
 	if totalHaoOut > expectedHaoOut {
-		str := fmt.Sprintf("coinbase transaction for block pays %v "+
-			"which is more than expected value of %v",
-			totalHaoOut, expectedHaoOut)
+		var w bytes.Buffer
+		block.Transactions()[0].MsgTx().Serialize(&w)
+		s := hex.EncodeToString(w.Bytes())
+		str := fmt.Sprintf("coinbase transaction for block %s pays %v "+
+			"which is more than expected value of %v\nblock has %d txs\n%s", block.Hash().String(),
+			totalHaoOut, expectedHaoOut, len(block.MsgBlock().Transactions), s)
 		return ruleError(ErrBadCoinbaseValue, str)
 	}
 

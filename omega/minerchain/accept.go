@@ -488,16 +488,19 @@ func (b *MinerChain) CheckConnectBlockTemplate(block *wire.MinerBlock) error {
 
 	// Skip the proof of work check as this is just a block template.
 	flags := blockchain.BFNoPoWCheck
+	tip := b.BestChain.Tip()
 
+/*
 	// This only checks whether the block can be connected to the tip of the
 	// current chain.
-	tip := b.BestChain.Tip()
 	header := block.MsgBlock()
+
 	if tip.Hash != header.PrevBlock {
 		str := fmt.Sprintf("previous block must be the current chain tip %v, "+
 			"instead got %v", tip.Hash, header.PrevBlock)
 		return ruleError(ErrPrevBlockNotBest, str)
 	}
+ */
 
 	err := CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
