@@ -2074,7 +2074,7 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		p++
 	}
 
-	log.Debugf("loading %x = %x (%d)", h, d, n)
+//	log.Debugf("loading %x = %x (%d)", h, d, n)
 
 	return nil
 }
@@ -3021,8 +3021,8 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	if p.Hash.IsEqual(&chainhash.Hash{}) && p.Index == 0 && sig == 0 {
-		// it is ok to add a separator
+	if p.Hash.IsEqual(&chainhash.Hash{}) && sig == 0 {
+		// it is ok to add a separator (p.Index == 0) or padding (p.Index != 0)
 		evm.Spend(p, nil)
 	} else if sig == pointer(0) {
 		// validate outpoint: it belongs to this contract
@@ -3049,12 +3049,12 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			return nil
 		}
 	} else {
-		d, err := stack.toInt32(&sig)
+		d, err := stack.toInt32(&sig)	// len of sig
 		if err != nil {
 			return err
 		}
 		sig += 4
-		loc := int32(sig & 0xFFFFFFFF)
+		loc := int32(sig & 0xFFFFFFFF)	// begininning of sig data
 		if evm.Spend(p, stack.data[int32(int64(sig) >> 32)].space[loc : loc + d]) {
 			return nil
 		}

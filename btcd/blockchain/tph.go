@@ -12,7 +12,7 @@ import (
 )
 
 const maxRcdPerMiner = 10		// max records we keep for each miner
-const CONTRACTTXRATIO = 1000		// when calculating TPS, every 1000 contract exec steps = 1 tx
+const CONTRACTTXRATIO = 30		// when calculating TPS, every 30 contract exec steps = 1 sig
 
 // TPHRecord houses information about miners's TPS record.
 //
@@ -83,6 +83,8 @@ func (b *BlockChain) updateTPS(miner [20]byte, t *TPHRecord) {
 	if tm > idealtime {
 		f = tm * 10 / idealtime
 	}
+	// if less than 3 sec/block, take it as if 3 sec/block.
+	// we don't want it faster than block/3 sec
 
 	if tm < 3600 {
 		t.TPHscore = tx * 10 / uint32(f)
@@ -155,7 +157,11 @@ func (b *BlockChain) TphNotice(t *Notification) {
 					p.current.StartBlock, p.current.StartTime, p.current.EndBlock = h, time.Now(), h
 				} else if p.current.EndBlock + 1 == h {
 					p.current.EndBlock, p.current.EndTime = h, time.Now()
-					p.current.TxTotal += uint32(len(block.MsgBlock().Transactions)) + uint32(block.MsgBlock().Header.ContractExec / CONTRACTTXRATIO)
+					var sigs = 1	// coinbase counts as 1, all other sigs counts as 10
+					for _,tx := range block.MsgBlock().Transactions[1:] {
+						sigs += 10 * len(tx.SignatureScripts)
+					}
+					p.current.TxTotal += uint32(sigs) + 10 * uint32(block.MsgBlock().Header.ContractExec / CONTRACTTXRATIO)
 				} else {
 					if p.current.TxTotal != 0 {
 						p.History = append(p.History, p.current)

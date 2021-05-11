@@ -132,7 +132,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 		if tin.IsSeparator() {
 			break
 		}
-		if tin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+		if tin.IsSepadding() {
 			continue
 		}
 

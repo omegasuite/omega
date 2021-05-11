@@ -229,6 +229,18 @@ func (t *TxIn) IsSeparator() bool {
 	// for output, padding is done by a 0 value with pay none for any address
 }
 
+func (t *TxIn) IsPadding() bool {
+	z := chainhash.Hash{}
+	return t.PreviousOutPoint.Hash.IsEqual(&z) && t.PreviousOutPoint.Index == 0 &&
+		t.SignatureIndex == 0xFFFFFFFF && t.Sequence == 0
+}
+
+func (t *TxIn) IsSepadding() bool {
+	z := chainhash.Hash{}
+	return t.PreviousOutPoint.Hash.IsEqual(&z) && t.PreviousOutPoint.Index == 0 &&
+		(t.SignatureIndex == 0 || t.SignatureIndex == 0xFFFFFFFF) && t.Sequence == 0
+}
+
 // NewTxIn returns a new bitcoin transaction input with the provided
 // previous outpoint point and signature script with a default sequence of
 // MaxTxInSequenceNum.

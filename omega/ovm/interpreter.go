@@ -292,7 +292,9 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		in.evm.depth--
 	}()
 
-	log.Infof("Contract run()")
+	if debugging {
+		log.Infof("Contract run()")
+	}
 
 	// Reset the previous call's return Data. It's unimportant to preserve the old buffer
 	// as every returning call will return new Data anyway.
@@ -337,8 +339,8 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 			attaching = make(chan struct{}, 10)
 		}
 		setdbgcontract(contract, stack);
+		log.Info("contract going")
 	}
-	log.Info("contract going")
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
@@ -374,7 +376,9 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		}
 
 		// execute the operation
-		fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
+		if debugging {
+			fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
+		}
 		
 		err = operation.execute(&pc, in.evm, contract, stack)
 		ln := binary.LittleEndian.Uint32(stack.data[0].space)

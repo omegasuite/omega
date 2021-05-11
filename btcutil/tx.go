@@ -100,8 +100,12 @@ func (s *Tx) AddTxIn(t wire.OutPoint, sig []byte) {
 	}
 	if len(sig) == 0 {
 		if t.Index == 0 && t.Hash.IsEqual(&chainhash.Hash{}) {
-			// add a separator
-			s.msgTx.AddTxIn(&wire.TxIn{})
+			// add a padding. contract can add padding, not separator
+			s.msgTx.AddTxIn(&wire.TxIn{
+				PreviousOutPoint: t,
+				Sequence:         0,
+				SignatureIndex:   0xFFFFFFFF,
+			})
 		} else {
 			s.msgTx.AddTxIn(&wire.TxIn{
 				PreviousOutPoint: t,

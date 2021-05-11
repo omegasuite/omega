@@ -2432,7 +2432,7 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		// when multiple inputs reference the same transaction.
 		dependsMap := make(map[int64]struct{})
 		for _, txIn := range tx.TxIn {
-			if !txIn.IsSeparator() && !txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			if !txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
 					dependsMap[idx] = struct{}{}
 				}

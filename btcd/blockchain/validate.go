@@ -945,14 +945,14 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 		// actually check definitions only
 		return err
 	}
-	var zerohash chainhash.Hash
+//	var zerohash chainhash.Hash
 
 	totalIns := make(map[uint64]int64)
 	for txInIndex, txIn := range tx.MsgTx().TxIn {
 		if txIn.IsSeparator() {
 			break
 		}
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) && txIn.SignatureIndex == 0xFFFFFFFF {
+		if txIn.IsSepadding() {
 			continue
 		}
 

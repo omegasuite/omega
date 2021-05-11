@@ -121,7 +121,7 @@ func (vm * Context) Init(tx *btcutil.Tx, views * viewpoint.ViewPointSet) {
 			return false
 		}
 		// it has already been verified that the coin either belongs to the contract
-		// or has a signature
+		// or has a signature (will verify after contract exec)
 		tx.AddTxIn(t, sig)
 		return true
 	}

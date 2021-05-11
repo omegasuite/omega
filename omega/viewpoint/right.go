@@ -230,7 +230,10 @@ func (view * RightViewpoint) SetBestHash(hash *chainhash.Hash) {
 // not exist in the view or is otherwise not available such as when it has been
 // disconnected during a reorg.
 func (view * RightViewpoint) LookupRightEntry(p chainhash.Hash) * RightEntry {
-	r := view.entries[p]
+	r, ok := view.entries[p]
+	if !ok {
+		return nil
+	}
 	switch r.(type) {
 	case *RightEntry:
 		return r.(*RightEntry)
@@ -526,6 +529,9 @@ func (view * RightViewpoint) fetchRightMain(db database.DB, b map[chainhash.Hash
 }
 
 func (view * RightViewpoint) GetRight(db database.DB, hash chainhash.Hash) interface{} {
+	if hash.IsEqual(&zerohash) {
+		return nil
+	}
 	e := view.LookupRightEntry(hash)
 	if e != nil {
 		return e

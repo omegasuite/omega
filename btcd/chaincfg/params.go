@@ -278,7 +278,7 @@ var MainNetParams = Params{
 	PowLimit:                 mainPowLimit,
 	PowLimitBits:             0x1e00fff0,
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
-	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
+	SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
 	MinimalAward: 			  1171875,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
