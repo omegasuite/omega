@@ -156,6 +156,8 @@ type MinerChain struct {
 
 	violations []*wire.Violations
 	blacklist map[[20]byte][]int32
+
+	TxIndex   blockchain.IndexManager
 }
 
 func (b *MinerChain) DSReport(p *wire.Violations) {
@@ -1506,6 +1508,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
 		violations:		     make([]*wire.Violations, 0),
 		blacklist:		     make(map[[20]byte][]int32),
+		TxIndex:			 config.IndexManager,
 	}
 
 	// Initialize the chain state from the passed database.  When the db

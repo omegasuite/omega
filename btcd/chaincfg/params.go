@@ -106,6 +106,10 @@ const (
 	// combining collecteral amount and TPS score.
 	DeploymentVersion2
 
+	// DeploymentVersion3 includes: adjusting requirement for collateral based on
+	// min coll actually offered in the prev adj cycle.
+	DeploymentVersion3
+
 	// DefinedDeployments is the number of currently defined deployments.
 	// It must always come last since it is used to determine how many
 	// defined deployments there currently are.
@@ -115,6 +119,7 @@ const (
 const (
 	Version1 = 0x10000
 	Version2 = 0x20000
+	Version3 = 0x30000
 )
 
 type forfeitureContract struct {
@@ -312,6 +317,12 @@ var MainNetParams = Params{
 			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  uint64(time.Date(2021, 3, 28, 0, 0, 0, 0, time.UTC).Unix()),
 		},
+		DeploymentVersion3: {
+			PrevVersion: 0x20000,
+			FeatureMask: 0x4,
+			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 7, 17, 0, 0, 0, 0, time.UTC).Unix()),
+		},
 	},
 
 	// Mempool parameters
@@ -397,6 +408,12 @@ var RegressionNetParams = Params{
 			FeatureMask: 0x3,
 			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  uint64(time.Date(2021, 2, 28, 0, 0, 0, 0, time.UTC).Unix()),
+		},
+		DeploymentVersion3: {
+			PrevVersion: 0x20000,
+			FeatureMask: 0x4,
+			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 7, 17, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 
@@ -488,6 +505,12 @@ var TestNet3Params = Params{
 			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  uint64(time.Date(2021, 2, 28, 0, 0, 0, 0, time.UTC).Unix()),
 		},
+		DeploymentVersion3: {
+			PrevVersion: 0x20000,
+			FeatureMask: 0x4,
+			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 7, 17, 0, 0, 0, 0, time.UTC).Unix()),
+		},
 	},
 
 	// Mempool parameters
@@ -578,6 +601,12 @@ var SimNetParams = Params{
 			FeatureMask: 0x3,
 			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  uint64(time.Date(2021, 2, 28, 0, 0, 0, 0, time.UTC).Unix()),
+		},
+		DeploymentVersion3: {
+			PrevVersion: 0x20000,
+			FeatureMask: 0x4,
+			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 7, 17, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 

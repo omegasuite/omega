@@ -37,7 +37,7 @@ const (
 // version (in block) is a uint32, consists of 2 parts:
 // high 16 bits is a odd number increases with each code revision
 // low 16 bits is for version bits scheme to be voted on.
-var	CodeVersion = uint32(0x10000) // current version of code.
+var	CodeVersion = uint32(0x20000) // current version of code.
 
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.
 // Version 4 bytes + Timestamp 4 bytes + Bits 4 bytes + Nonce 4 bytes +

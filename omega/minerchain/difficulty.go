@@ -9,8 +9,11 @@
 package minerchain
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/omega/token"
 	"math/big"
 	"time"
 
@@ -203,6 +206,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	}
 
 	v2 := lastNode.Data.GetVersion() >= chaincfg.Version2
+	v3 := lastNode.Data.GetVersion() >= chaincfg.Version3
 
 //	b.blocksPerRetarget = 10		// temp, to be removed in final release
 	// Return the previous block's difficulty requirements if this block
@@ -256,7 +260,35 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 //		b.blockChain.HeaderByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
 		block := pb.Data.(*blockchainNodeData).block
 		bb := b.blockChain.NodeByHash(&block.BestBlock)
-		if block.Collateral < coll {
+		if v3 {
+			var op = block.Utxos
+			// it could have been spent, so we get the raw tx and find out its value
+			blockRegion, err := b.TxIndex.TxBlockRegion(&op.Hash)
+
+			if err != nil || blockRegion == nil {
+				panic("Failed to retrieve transaction location")
+			}
+
+			// Load the raw transaction bytes from the database.
+			var txBytes []byte
+			err = b.db.View(func(dbTx database.Tx) error {
+				var err error
+				txBytes, err = dbTx.FetchBlockRegion(blockRegion)
+				return err
+			})
+
+			if err != nil {
+				panic("Failed to retrieve transaction")
+			}
+
+			// Deserialize the transaction
+			var msgTx wire.MsgTx
+			err = msgTx.Deserialize(bytes.NewReader(txBytes))
+			v := msgTx.TxOut[op.Index].Value.(*token.NumToken).Val / 1e8
+			if uint32(v) < coll {
+				coll = uint32(v)
+			}
+		} else if block.Collateral < coll {
 			coll = block.Collateral
 		}
 /*

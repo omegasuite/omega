@@ -278,6 +278,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 
 	// Initial state.
 	hashesCompleted := uint64(0)
+	rotation := m.g.Chain.BestSnapshot().LastRotation
 
 	for true {
 		// Search through the entire nonce range for a solution while
@@ -291,6 +292,11 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 			case <-ticker.C:
 				m.updateHashes <- hashesCompleted
 				hashesCompleted = 0
+
+				if rotation != m.g.Chain.BestSnapshot().LastRotation {
+					log.Infof("quit solving block because a rotation occurred in TX chain")
+					return false
+				}
 
 				// The current block is stale if the best block
 				// has changed.

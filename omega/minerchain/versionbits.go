@@ -119,7 +119,7 @@ func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (uint32
 	// Set the appropriate bits for each actively defined rule deployment
 	// that is either in the process of being voted on, or locked in for the
 	// activation at the next threshold window change.
-	expectedVersion := wire.CodeVersion	// uint32(0x10000)		// current version
+	expectedVersion := wire.CodeVersion	// uint32(0x20000)		// current version
 	for id := 0; id < len(b.chainParams.Deployments); id++ {
 		deployment := &b.chainParams.Deployments[id]
 
