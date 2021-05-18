@@ -1927,6 +1927,9 @@ func (b *BlockChain) NodeByHeight(blockHeight int32) *chainutil.BlockNode {
 		}
 		node = b.NodeByHash(h)
 	}
+	if node == nil {
+		return nil
+	}
 	node.Height = blockHeight
 	return node
 }
@@ -2220,6 +2223,56 @@ func (b *BlockChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 	}
 }
 
+func (b *BlockChain) locateUncachedBlocks(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxHashes uint32) []chainhash.Hash {
+	// Find the node after the first known block in the locator and the
+	// total number of nodes after it needed while respecting the stop hash
+	// and max entries.
+
+	var height int32
+	var hash *chainhash.Hash
+	var total int
+
+	if len(locator) == 0 && (hashStop == nil || hashStop.IsEqual(&zerohash)) {
+		height, total, hash = 0, 500, b.ChainParams.GenesisHash
+	} else if len(locator) == 0 {
+		height = b.dbHeightofHash(*hashStop)
+		if height < 0 {
+			return nil
+		} else {
+			return []chainhash.Hash{*hashStop}
+		}
+	} else {
+		height, total = -1, 500
+		for _,h := range locator {
+			height = b.dbHeightofHash(*h)
+			if height >= 0 {
+				hh := *h
+				hash = &hh
+				break
+			}
+		}
+		if height < 0 {
+			return nil
+		}
+	}
+
+	// Populate and return the found hashes.
+	hashes := make([]chainhash.Hash, 0, total)
+
+	for i := 0; i < total; i++ {
+		hashes = append(hashes, *hash)
+		if hashStop != nil && hash.IsEqual(hashStop) {
+			return hashes
+		}
+		height++
+		hash = b.dbHashByHeight(height)
+		if hash == nil {
+				return hashes
+			}
+	}
+	return hashes
+}
+
 // LocateBlocks returns the hashes of the blocks after the first known block in
 // the locator until the provided stop hash is reached, or up to the provided
 // max number of block hashes.
@@ -2236,10 +2289,36 @@ func (b *BlockChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 func (b *BlockChain) LocateBlocks(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxHashes uint32) []chainhash.Hash {
 //	log.Infof("LocateBlocks: ChainLock.RLock")
 	b.ChainLock.RLock()
-	hashes := b.locateBlocks(locator, hashStop, maxHashes)
+	// if we can locate it from cache, use locateBlocks
+	// otherwise, use locateUncachedBlocks to avoid locing chain for long time
+	cached := b.locatorCached(locator, hashStop)
+	if cached {
+		hashes := b.locateBlocks(locator, hashStop, maxHashes)
+		b.ChainLock.RUnlock()
+		return hashes
+	}
 	b.ChainLock.RUnlock()
+
+	hashes := b.locateUncachedBlocks(locator, hashStop, maxHashes)
 //	log.Infof("LocateBlocks: ChainLock.RUnlock")
 	return hashes
+}
+
+func (b *BlockChain) locatorCached(locator chainhash.BlockLocator, hashStop *chainhash.Hash) bool {
+	if len(locator) > 0 {
+		for _,h := range locator {
+			node := b.index.LookupNode(h)
+			if node != nil && node.Height != 0 {
+				return true
+			}
+		}
+		return false
+	}
+	if hashStop != nil && !hashStop.IsEqual(&zerohash) {
+		node := b.index.LookupNode(hashStop)
+		return node != nil
+	}
+	return true
 }
 
 // locateHeaders returns the headers of the blocks after the first known block

@@ -1158,7 +1158,6 @@ func (b *MinerChain) BlockHashByHeight(blockHeight int32) (*chainhash.Hash, erro
 	if node == nil {
 		str := fmt.Sprintf("no miner miner block at height %d exists", blockHeight)
 		return nil, bccompress.ErrNotInMainChain(str)
-
 	}
 
 	return &node.Hash, nil
@@ -1372,6 +1371,10 @@ func (b *MinerChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 	node, total := b.locateInventory(locator, hashStop, maxHashes)
 	if total == 0 {
 		return nil
+	}
+	if node.Parent != nil {
+		node = node.Parent
+		total++
 	}
 
 	// Populate and return the found hashes.
@@ -1712,10 +1715,10 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 		}
 		score := int32(q.TPHscore)
 		if p,ok := rptmemap[w]; myscore > 0 && ok {
-			if p.val > myscore {	// 2% courtesy
-				score += int32(p.val - myscore) * 2 / 100
-			} else {		// 80% retaliation
-				score -= int32(myscore - p.val) * 80 / 100
+			if p.val < myscore {	// 2% courtesy
+//				score += score * int32(p.val - myscore) * 2 / (100 * int32(myscore))
+//			} else {		// 80% retaliation
+				score -= score * int32(myscore - p.val) * 80 / (100 * int32(myscore))
 				if score < int32(minscore) {
 					score = int32(minscore)
 				}
