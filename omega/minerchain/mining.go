@@ -421,8 +421,14 @@ out:
 		// this would otherwise end up building a new block template on
 		// a block that is in the process of becoming stale.
 		m.submitBlockLock.Lock()
-		curHeight := m.g.Chain.Miners.BestSnapshot().Height
 		isCurrent := m.cfg.IsCurrent()
+		curHeight := m.g.Chain.Miners.BestSnapshot().Height
+
+		if curHeight == 0 && !isCurrent {
+			time.Sleep(time.Minute * 10)
+			curHeight = m.g.Chain.Miners.BestSnapshot().Height
+		}
+
 		if curHeight != 0 && !isCurrent {
 			m.submitBlockLock.Unlock()
 			m.Stale = true

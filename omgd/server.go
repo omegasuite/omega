@@ -796,7 +796,7 @@ func (sp *serverPeer) OnHeaders(_ *peer.Peer, msg *wire.MsgHeaders) {
 	sp.server.syncManager.QueueHeaders(msg, sp.Peer)
 }
 
-// handleGetData is invoked when a peer receives a getdata bitcoin message and
+// handleGetData is invoked when a peer receives a getdata message and
 // is used to deliver block and transaction information.
 func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	numAdded := 0
@@ -904,19 +904,19 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 
 	if sp.continueHash != nil && !sp.continueHash.IsEqual(&zeroHash) {
 		hashList = chain.LocateBlocks([]*chainhash.Hash{sp.continueHash}, &msg.TxHashStop,
-			wire.MaxBlocksPerMsg)
+			wire.MaxBlocksPerMsg - 20)
 	} else if len(msg.TxBlockLocatorHashes) > 0 {
 		hashList = chain.LocateBlocks(msg.TxBlockLocatorHashes, &msg.TxHashStop,
-			wire.MaxBlocksPerMsg)
+			wire.MaxBlocksPerMsg - 20)
 	} else {
 		hashList = make([]chainhash.Hash, 0)
 	}
 	if sp.continueMinerHash != nil && !sp.continueMinerHash.IsEqual(&zeroHash) {
 		mhashList = mchain.LocateBlocks([]*chainhash.Hash{sp.continueMinerHash}, &msg.MinerHashStop,
-			wire.MaxBlocksPerMsg)
+			wire.MaxBlocksPerMsg - 20)
 	} else if len(msg.MinerBlockLocatorHashes) > 0 {
 		mhashList = mchain.LocateBlocks(msg.MinerBlockLocatorHashes, &msg.MinerHashStop,
-			wire.MaxBlocksPerMsg)
+			wire.MaxBlocksPerMsg - 20)
 	} else {
 		mhashList = make([]chainhash.Hash, 0)
 	}
@@ -2609,6 +2609,25 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 // instance, associates it with the connection, and starts a goroutine to wait
 // for disconnection.
 func (s *server) inboundPeerConnected(conn net.Conn) {
+/*
+	// check if we will accept this conn. there is a max limit of 5 conn./peer host
+	// temp fix for too many conn from one address. we should fix from the other end:
+	// not to initiate conn at the first place
+	n := 0
+	t := strings.Split(conn.RemoteAddr().String(), ":")
+	for _, p := range s.peerState.inboundPeers {
+		s := strings.Split(p.Addr(), ":")
+		if s[0] == t[0] {
+			n++
+		}
+	}
+	if n >= 5 {
+		srvrLog.Infof("Reject connection from %s because too many from the host", t[0])
+		conn.Close()
+		return
+	}
+*/
+
 	sp := newServerPeer(s, false)
 	sp.isWhitelisted = isWhitelisted(conn.RemoteAddr())
 	sp.Peer = peer.NewInboundPeer(newPeerConfig(sp))

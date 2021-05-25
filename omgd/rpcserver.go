@@ -291,8 +291,8 @@ var rpcLimited = map[string]struct{}{
 	"getblockheader":        {},
 	"getminerblockcount":    {},
 	"getminerblockhash":     {},
-	"getcfilter":            {},
-	"getcfilterheader":      {},
+//	"getcfilter":            {},
+//	"getcfilterheader":      {},
 	"getcurrentnet":         {},
 	"getdifficulty":         {},
 	"getheaders":            {},
@@ -5478,7 +5478,7 @@ func newRPCServer(config *rpcserverConfig) (*rpcServer, error) {
 		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(login))
 		rpc.authsha = sha256.Sum256([]byte(auth))
 	}
-	if cfg.RPCLimitUser != "" && cfg.RPCLimitPass != "" {
+	if cfg.RPCLimitUser != "" {		// && cfg.RPCLimitPass != "" {
 		login := cfg.RPCLimitUser + ":" + cfg.RPCLimitPass
 		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(login))
 		rpc.limitauthsha = sha256.Sum256([]byte(auth))

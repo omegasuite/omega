@@ -202,10 +202,18 @@ func btcdMain(serverChan chan<- *server) error {
 		// read from stdin. for security.
 		// expect user to do something like: echo privkey | btcd
 		fmt.Printf("Private Key in GIF ... ")
-		var pvk [80]byte
-		n, err := os.Stdin.Read(pvk[:])
-		if err == nil {
-			dwif, err := btcutil.DecodeWIF(string(pvk[:n]))
+		input := make(chan string)
+		go func () {
+			var pvk [80]byte
+			n, err := os.Stdin.Read(pvk[:])
+			if err == nil {
+				input <- string(pvk[:n])
+			}
+		} ()
+
+		select {
+		case pvk := <- input:
+			dwif, err := btcutil.DecodeWIF(pvk)
 			if err == nil {
 				privKey := dwif.PrivKey
 				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
@@ -218,6 +226,9 @@ func btcdMain(serverChan chan<- *server) error {
 					}
 				}
 			}
+
+		case <- time.After(time.Second * 30):
+			// time out, ignore input
 		}
 	}
 

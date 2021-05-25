@@ -345,7 +345,7 @@ func (self *Syncer) run() {
 	self.repeating = make(chan struct{}, 10)
 	self.debug = make(chan struct{}, 2)
 
-	begin := time.Now().Unix()
+//	begin := time.Now().Unix()
 
 	self.mutex.Lock()
 	for going {
@@ -549,12 +549,12 @@ func (self *Syncer) run() {
 
 		case <-ticker.C:
 			self.mutex.Lock()
-			if 	time.Now().Unix() - begin > 600 {
-				log.Infof("sync %d exceeded time limit", self.Height)
-				going = false
-			} else {
+//			if 	time.Now().Unix() - begin > 600 {
+//				log.Infof("sync %d exceeded time limit", self.Height)
+//				going = false
+//			} else {
 				self.repeating <- struct{}{}
-			}
+//			}
 		}
 		self.handeling = ""
 	}

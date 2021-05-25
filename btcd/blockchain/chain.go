@@ -2233,11 +2233,11 @@ func (b *BlockChain) locateUncachedBlocks(locator chainhash.BlockLocator, hashSt
 	var total int
 
 	if len(locator) == 0 && (hashStop == nil || hashStop.IsEqual(&zerohash)) {
-		height, total, hash = 0, 500, b.ChainParams.GenesisHash
+		height, total, hash = 0, 480, b.ChainParams.GenesisHash
 	} else if len(locator) == 0 {
 		height = b.dbHeightofHash(*hashStop)
 		if height < 0 {
-			return nil
+			height, total, hash = 0, 10, b.ChainParams.GenesisHash
 		} else {
 			return []chainhash.Hash{*hashStop}
 		}
@@ -2251,8 +2251,11 @@ func (b *BlockChain) locateUncachedBlocks(locator chainhash.BlockLocator, hashSt
 				break
 			}
 		}
-		if height < 0 {
-			return nil
+		if height <= 0 {
+			height, total, hash = 0, 10, b.ChainParams.GenesisHash
+		} else {
+			height--
+			hash = b.dbHashByHeight(height)
 		}
 	}
 
@@ -2260,15 +2263,15 @@ func (b *BlockChain) locateUncachedBlocks(locator chainhash.BlockLocator, hashSt
 	hashes := make([]chainhash.Hash, 0, total)
 
 	for i := 0; i < total; i++ {
+		if hash == nil {
+			return hashes
+		}
 		hashes = append(hashes, *hash)
 		if hashStop != nil && hash.IsEqual(hashStop) {
 			return hashes
 		}
 		height++
 		hash = b.dbHashByHeight(height)
-		if hash == nil {
-				return hashes
-			}
 	}
 	return hashes
 }
