@@ -1,7 +1,0 @@
-============================================================================
-User visible changes for omgwallet
-  A wallet daemon for omgd, written in Go
-============================================================================
-
-Initial Release 0.1.0 (Sat Jul 4 2020)
-  - Initial release

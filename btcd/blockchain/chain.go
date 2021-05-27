@@ -1410,6 +1410,13 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest * chainhash.
 		return 0, fmt.Errorf("Insufficient Collateral.")
 	}
 
+	if block.MsgBlock().Version >= chaincfg.Version3 {
+		pks := e.PkScript()
+		if bytes.Compare(pks[1:21], block.MsgBlock().Miner[:]) != 0 {
+			return 0, fmt.Errorf("Collateral belongs to someone else.")
+		}
+	}
+
 	return uint32(e.Amount.(*token.NumToken).Val/1e8), nil
 }
 
