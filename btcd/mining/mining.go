@@ -1079,12 +1079,22 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		coll = 0
 	}
 
-	cbest := g.Chain.BestSnapshot()
-	bh := cbest.Height
+	bestblk := g.Chain.BestChain.Tip()
+
+//	cbest := g.Chain.BestSnapshot()
+//	bh := cbest.Height
 
 	h0,_ := g.Chain.BlockHeightByHash(&lastBlk.BestBlock)
-	if bh < h0  {
+	if bestblk.Height < h0  {
 		return nil, nil
+	}
+
+	var ch = bestblk.Hash
+
+	// new rule: a miner block must not refer POW block to prevent cut line by POW blocks
+	for ; bestblk != nil && bestblk.Data.GetNonce() > 0; {
+		bestblk = g.Chain.ParentNode(bestblk)
+		ch = bestblk.Hash
 	}
 
 	var uc * wire.OutPoint
@@ -1115,7 +1125,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	// and max ContractExec between BestBlocks of prev and this MR blocks
 	// it that is less than chain param, it could be 0 implying the chain
 	// defauly limit
-	contractlim := 2 * g.Chain.MaxContractExec(lastBlk.BestBlock, cbest.Hash)
+	contractlim := 2 * g.Chain.MaxContractExec(lastBlk.BestBlock, ch)
 	if contractlim < lastBlk.ContractLimit * 95 / 100 && contractlim > 10000000 {
 		contractlim = lastBlk.ContractLimit * 95 / 100
 	} else if contractlim < lastBlk.ContractLimit {
@@ -1132,7 +1142,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		Timestamp:       ts,
 		Bits:            reqDifficulty,
 		Collateral:      coll,
-		BestBlock:       cbest.Hash,
+		BestBlock:       ch,
 		Utxos:           uc,
 		ViolationReport: make([]*wire.Violations, 0),
 		ContractLimit: contractlim,

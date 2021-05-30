@@ -268,10 +268,14 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, true, nil, nil
 	}
 
-	existblk,_ := b.blockChain.HaveBlock(&block.MsgBlock().BestBlock)
-	if !existblk {
+	bestblk := b.blockChain.NodeByHash(&block.MsgBlock().BestBlock)	//.HaveBlock(&block.MsgBlock().BestBlock)
+	if bestblk == nil {
 		log.Infof("best block does not exist")
 		return false, false, ruleError(ErrMissingBestBlock, "best block does not exist"),&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
+	}
+	if block.MsgBlock().Version >= chaincfg.Version3 && bestblk.Data.GetNonce() >= 0 {
+		log.Infof("best block is not a signed block")
+		return false, false, ruleError(ErrMissingBestBlock, "best block is not a signed block"),&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
 
 	parent := b.index.LookupNode(prevHash)

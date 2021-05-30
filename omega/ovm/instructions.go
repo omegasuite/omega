@@ -3677,7 +3677,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		zeroHash := chainhash.Hash{}
 		toissue = (!h.IsEqual(&zeroHash))
 	}
-	if tokentype & 2 == 2 {
+	if toissue && (tokentype & 2 == 2) {
 		if top != 4 {
 			return fmt.Errorf("Incorrect number of parameters for mint inst.")
 		}

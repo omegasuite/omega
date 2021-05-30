@@ -586,6 +586,9 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	// the only input must come from a pkh address so we can identify the creator
 	ovm.views.Utxo.FetchUtxosMain(ovm.DB, map[wire.OutPoint]struct{}{tx.MsgTx().TxIn[0].PreviousOutPoint: struct {}{}})
 	e := ovm.views.Utxo.LookupEntry(tx.MsgTx().TxIn[0].PreviousOutPoint)
+	if e == nil {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation input is not available.")
+	}
 	version, addr, _, _ := parsePkScript(e.PkScript())
 	if version != ovm.chainConfig.PubKeyHashAddrID {
 		return nil, omega.ScriptError(omega.ErrInternal, "Contract creator must be a pubkeyhash address.")

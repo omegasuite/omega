@@ -300,7 +300,7 @@ var rpcLimited = map[string]struct{}{
 	"getnettotals":          {},
 	"getnetworkhashps":      {},
 	"getrawmempool":         {},
-	"clearmempool":          {},
+//	"clearmempool":          {},	this is admin command
 	"getrawtransaction":     {},
 	"gettxout":              {},
 	"listutxos":             {},
