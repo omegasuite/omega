@@ -5206,7 +5206,7 @@ func (s *rpcServer) Start() {
 		}
 		if r.Method == "OPTIONS" {
 			w.Header().Set("Connection", "keep-alive")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization")
+			w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, Access-Control-Allow-Origin")
 			r.Close = false
 		} else {
 			w.Header().Set("Connection", "close")
