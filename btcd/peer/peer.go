@@ -2098,6 +2098,16 @@ func (p *Peer) Disconnect(s string) {
 	close(p.quit)
 }
 
+const MAX_NEW_CON_PER_IP = 5
+const FREQPERIOD = 60
+
+type recentState struct {
+	lasttime uint32
+	latests [MAX_NEW_CON_PER_IP]int32
+}
+
+var recentConns = make(map[string]recentState)
+
 // readRemoteVersionMsg waits for the next message to arrive from the remote
 // peer.  If the next message is not a version message or the version is not
 // acceptable then return an error.
@@ -2117,6 +2127,37 @@ func (p *Peer) readRemoteVersionMsg() error {
 			reason)
 		_ = p.writeMessage(rejectMsg, wire.LatestEncoding)
 		return errors.New(reason)
+	}
+
+	// check dup conn from same IP & latest state, if more than 5 recently, reject it
+	if r, ok := recentConns[p.na.IP.String()]; ok {
+		i := 0
+		samelatest := true
+		for ; i < MAX_NEW_CON_PER_IP; i++ {
+			if r.latests[i] == 0 {
+				r.lasttime = uint32(time.Now().Unix())
+				r.latests[i] = msg.LastBlock
+				break
+			}
+			samelatest = samelatest && r.latests[i] == msg.LastBlock
+		}
+		if i >= MAX_NEW_CON_PER_IP && samelatest && uint32(time.Now().Unix()) - r.lasttime < FREQPERIOD {
+			// reject it
+			reason := "too many connects from seemingly the same node"
+			rejectMsg := wire.NewMsgReject(msg.Command(), common.RejectMalformed,
+				reason)
+			_ = p.writeMessage(rejectMsg, wire.LatestEncoding)
+			return errors.New(reason)
+		} else if i >= MAX_NEW_CON_PER_IP && samelatest {
+			r.lasttime = uint32(time.Now().Unix())
+		} else if i >= MAX_NEW_CON_PER_IP {
+			r.latests[4], r.latests[4], r.latests[2], r.latests[2], r.latests[0] =
+				msg.LastBlock, r.latests[4], r.latests[3], r.latests[2], r.latests[1]
+		} else {
+			r.latests[i] = msg.LastBlock
+		}
+	} else {
+		recentConns[p.na.IP.String()] = recentState {uint32(time.Now().Unix()), [MAX_NEW_CON_PER_IP]int32{msg.LastBlock,0,0,0,0}}
 	}
 
 	// Detect self connections.

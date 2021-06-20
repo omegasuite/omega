@@ -2014,15 +2014,11 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
-//	if stack.Data[stack.callTop].pure & 0x8 != 0 {
-//		return fmt.Errorf("Load forbidden in lib %x", stack.Data[stack.callTop].inlib)
-//	}
-
 	param := contract.GetBytes(*pc)
 	ln := len(param)
 
 	num := int64(0)
-	dataType := []byte{0xFF, 'Q'}
+	dataType := []byte{0xFF, 'Q', 'Z'}
 	var err error
 	var tl int
 	var h []byte
@@ -2034,10 +2030,17 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
-			if num, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
-				return err
-			}
-			if dataType[top] == 'Q' {
+			if dataType[top] == 'Z' {
+				var hash chainhash.Hash
+				if hash, tl, err = stack.getHash(param[j:]); err != nil {
+					return err
+				} else {
+					h = hash[:]
+				}
+			} else if dataType[top] == 'Q' {
+				if num, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
+					return err
+				}
 				if num >= 0 && num < (1 << 32) {
 					h = make([]byte, 4)
 					binary.LittleEndian.PutUint32(h, uint32(num))
@@ -2046,10 +2049,16 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					binary.LittleEndian.PutUint64(h, uint64(num))
 				}
 			} else {
+				if num, tl, err = stack.getNum(param[j:], dataType[top]); err != nil {
+					return err
+				}
 				store = pointer(num)
 			}
 			top++
 			j += tl
+
+		case 'Z', 'z':
+			top++
 		}
 	}
 
@@ -2106,8 +2115,12 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
-		case 'i', 'g':
-			dt = dts[top]
+		case 'i', 'g', 'z', 'Z':
+			if param[j] == 'g' || param[j] == 'i' {
+				dt = dts[top]
+			} else {
+				dt = 'h'
+			}
 			fallthrough
 
 		case '0', '1', '2', '3', '4', '5',
@@ -2176,8 +2189,6 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	evm.SetState(contract.self.Address(), string(scratch[0]), scratch[1][:fdlen])
-
-	log.Debugf("storing %x = %x (%d)", scratch[0], scratch[1][:fdlen], fdlen)
 
 	return nil
 }
@@ -3623,6 +3634,10 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 			}
 			top++
 		}
+	}
+
+	if tokentype >= (0x1 << 48) {
+		return fmt.Errorf("The tokentype %d exceeds the max limit.", tokentype)
 	}
 
 	if mtype, _ := ovm.StateDB[address].GetMint(); mtype == -1 {

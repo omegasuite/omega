@@ -580,24 +580,26 @@ mempoolLoop:
 		tx.MsgTx().Strip()
 		tx.HasIns, tx.HasDefs, tx.HasOuts = false, false, false
 		if blockchain.IsCoinBase(tx) {
-			log.Tracef("Skipping coinbase tx %s", tx.Hash())
+			log.Infof("Skipping coinbase tx %s", tx.Hash())
 			continue
 		}
 		log.Infof("mempoolLoop processing tx %s", tx.Hash())
 
 		if s.MsgBlock().Version &^ 0xFFFF >= chaincfg.Version2 {
 			var locked = false
+			locks := ""
 			for _, txin := range tx.MsgTx().TxIn {
 				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
 				if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
 					locked = true
+					locks = txin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", txin.PreviousOutPoint.Index)
 					break
 				}
 			}
 			if locked {
-				log.Tracef("Skipping tx %s that spends locked UTXO", tx.Hash())
+				log.Infof("Skipping tx %s that spends locked UTXO %s", tx.Hash(), locks)
 				continue
 			}
 		}
@@ -605,7 +607,7 @@ mempoolLoop:
 		if !blockchain.IsFinalizedTransaction(tx, nextBlockHeight,
 			g.timeSource.AdjustedTime()) {
 
-			log.Tracef("Skipping non-finalized tx %s", tx.Hash())
+			log.Infof("Skipping non-finalized tx %s", tx.Hash())
 			continue
 		}
 
@@ -750,7 +752,7 @@ mempoolLoop:
 //		txWeight := uint32(blockchain.GetTransactionWeight(tx))
 		blockPlusTxWeight := blockWeight + 1
 		if blockPlusTxWeight >= wire.MaxTxPerBlock {
-			log.Tracef("Skipping tx %s because it would exceed "+
+			log.Infof("Skipping tx %s because it would exceed "+
 				"the allowed max block transactions", tx.Hash())
 			logSkippedDeps(tx, deps)
 			continue
@@ -761,14 +763,14 @@ mempoolLoop:
 		sigOpCost, err := blockchain.GetSigOpCost(tx, false,
 			blockUtxos, true, true)
 		if err != nil {
-			log.Tracef("Skipping tx %s due to error in "+
+			log.Infof("Skipping tx %s due to error in "+
 				"GetSigOpCost: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
 		}
 		if blockSigOpCost+int64(sigOpCost) < blockSigOpCost ||
 			blockSigOpCost+int64(sigOpCost) > chaincfg.MaxBlockSigOpsCost {
-			log.Tracef("Skipping tx %s because it would "+
+			log.Infof("Skipping tx %s because it would "+
 				"exceed the maximum sigops per block", tx.Hash())
 			logSkippedDeps(tx, deps)
 			continue
@@ -793,7 +795,7 @@ mempoolLoop:
 				}
 			}
 			if !qualified || blockPlusTxWeight >= g.Policy.MinBlockWeight {
-				log.Tracef("Skipping tx %s with feePerKB %d "+
+				log.Infof("Skipping tx %s with feePerKB %d "+
 					"< TxMinFreeFee %d and block weight %d >= "+
 					"MinBlockWeight %d", tx.Hash(), prioItem.feePerKB,
 					g.Policy.TxMinFreeFee, blockPlusTxWeight,
@@ -837,7 +839,7 @@ mempoolLoop:
 			views, g.chainParams)
 		if err != nil {
 			// we should roll back result of last contract execution here
-			log.Tracef("Skipping tx %s due to error in "+
+			log.Infof("Skipping tx %s due to error in "+
 				"CheckTransactionInputs: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
@@ -882,7 +884,7 @@ mempoolLoop:
 			views, g.chainParams)
 		if err != nil {
 			// we should roll back result of last contract execution here
-			log.Tracef("Skipping tx %s due to error in "+
+			log.Infof("Skipping tx %s due to error in "+
 				"CheckTransactionInputs: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
@@ -894,7 +896,7 @@ mempoolLoop:
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			// we should roll back result of last contract execution here
-			log.Tracef("Skipping tx %s due to error in "+
+			log.Infof("Skipping tx %s due to error in "+
 				"CheckTransactionIntegrity: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
@@ -905,7 +907,7 @@ mempoolLoop:
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-			log.Tracef("Skipping tx %s due to error in "+
+			log.Infof("Skipping tx %s due to error in "+
 				"CheckTransactionFeess: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
@@ -913,7 +915,7 @@ mempoolLoop:
 
 		// check block size
 		if blksz + coinbaseTx.MsgTx().SerializeSize() + tx.MsgTx().SerializeSize() > wire.MaxBlockPayload {
-			log.Tracef("Skipping tx %s because it would make block size exceeding the max", tx.Hash())
+			log.Infof("Skipping tx %s because it would make block size exceeding the max", tx.Hash())
 			logSkippedDeps(tx, deps)
 			continue
 		}
@@ -1113,7 +1115,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 			p = p.Parent
 		}
 		if len(usable) == 0 {
-			return nil, fmt.Errorf("No qualified collateral available.")
+			return nil, fmt.Errorf("No qualified collateral available out of %d collaterals.", len(g.Collateral))
 		}
 		for c,_ := range usable {
 			uc = &c

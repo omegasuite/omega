@@ -312,7 +312,7 @@ func opCallValidator(param []byte) int {
 
 var formatLoad = []formatDesc{
 	{addrOperand, 0xffffffff},
-	{patOperand, 0},
+	{regexp.MustCompile(`^@*[zZBWDQkKrR@ngi]*(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`), 0},
 }
 
 func opLoadValidator(param []byte) int {
@@ -320,7 +320,9 @@ func opLoadValidator(param []byte) int {
 }
 
 var formatStore = []formatDesc{
-	{patOperand, 0}, {regexp.MustCompile(`^[rRBWDQHhkK]|(L[0-9]+,)|(g?i*[0-9]+('[0-9]+)?("[0-9]+)?,)`), 0}, {patOperand, 0},
+	{regexp.MustCompile(`^@*[zZBWDQkKrR@ngi]*(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`), 0},
+	{regexp.MustCompile(`^[rRBWDQHhkK]|(L[0-9]+,)|(g?i*[0-9]+('[0-9]+)?("[0-9]+)?,)`), 0},
+	{patOperand, 0},
 }
 
 func opStoreValidator(param []byte) int {

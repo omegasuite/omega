@@ -151,6 +151,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"genmultisigaddr":		 handleGenMultiSigAddr,
 
 	"getminerblock":         handleGetMinerBlock,	// New
+	"getminerblockheight":   handleGetMinerBlockHeight,	// New
 	"getminerblockcount":    handleGetMinerBlockCount,	// New
 	"getminerblockhash":     handleGetMinerBlockHash,	// New
 	"getblocktxhashes":      handleGetBlockTxHases,	// New
@@ -275,6 +276,7 @@ var rpcLimited = map[string]struct{}{
 	"help": {},
 
 	// HTTP/S-only commands
+	"getblockchaininfo":     {},		// Changed: get info. for both chains
 	"createrawtransaction":  {},
 	"decoderawtransaction":  {},
 	"decodescript":          {},
@@ -284,6 +286,7 @@ var rpcLimited = map[string]struct{}{
 	"getbestminerblockhash": {},
 	"getblock":              {},
 	"getminerblock":         {},
+	"getminerblockheight":	 {},
 	"getblockcount":         {},
 	"getblockhash":          {},
 	"getblocktxhashes":      {},
@@ -307,7 +310,7 @@ var rpcLimited = map[string]struct{}{
 	"getdefine":             {},
 	"searchrawtransactions": {},
 	"sendrawtransaction":    {},
-	"submitblock":           {},
+//	"submitblock":           {},
 	"uptime":                {},
 	"validateaddress":       {},
 	"verifymessage":         {},
@@ -1771,6 +1774,19 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	}
 
 	return blockReply, nil
+}
+
+// handleGetMinerBlock implements the getminerblock command.
+func handleGetMinerBlockHeight(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetMinerBlockHeightCmd)
+
+	// Load the raw block bytes from the database.
+	hash, err := chainhash.NewHashFromStr(c.Hash)
+	if err != nil {
+		return nil, rpcDecodeHexError(c.Hash)
+	}
+
+	return s.cfg.Chain.Miners.NodeByHash(hash).Height, nil
 }
 
 // handleGetMinerBlock implements the getminerblock command.
@@ -4483,6 +4499,12 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		}
 	}
 
+	for _,s := range msgTx.SignatureScripts {
+		if len(s) == 0 {
+			return nil, internalRPCError("Incomplete signatures", "")
+		}
+	}
+
 	// Use 0 for the tag to represent local node.
 	tx := btcutil.NewTx(&msgTx)
 	acceptedTxs, err := s.cfg.TxMemPool.ProcessTransaction(tx, false, false, 0)
@@ -4556,7 +4578,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		if t := <- ch; t != nil {
 			cf.Stop()
 			if t.Version == 0 {
-				msg += fmt.Sprintf("\nTransaction rejected.")
+				return nil, internalRPCError("TX rejected after processing.", "")
 			}
 		} else {
 			msg += fmt.Sprintf("\nNo confirmation after %d seconds.", *c.WaitConfirm)

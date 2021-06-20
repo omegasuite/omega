@@ -338,6 +338,21 @@ func NewAddMiningKeyCmd(k string, ktype bool) *AddMiningKeyCmd {
 	}
 }
 
+type GetMinerBlockHeightCmd struct {
+	Hash      string
+}
+
+// NewGetBlockCmd returns a new instance which can be used to issue a getblock
+// JSON-RPC command.
+//
+// The parameters which are pointers indicate they are optional.  Passing nil
+// for optional parameters will use the default value.
+func NewGetBlockHeightCmd(hash string) *GetMinerBlockHeightCmd {
+	return &GetMinerBlockHeightCmd{
+		Hash:      hash,
+	}
+}
+
 type GetMinerBlockCmd struct {
 	Hash      string
 	Verbose   *bool `jsonrpcdefault:"true"`

@@ -91,7 +91,7 @@ func init() {
 //	chanLog.SetLevel(btclog.LevelTrace)
 
 	indexers.UseLogger(btclog.Disabled)	// indxLog)
-	mining.UseLogger(btclog.Disabled)	// minrLog)
+	mining.UseLogger(minrLog)
 	cpuminer.UseLogger(minrLog)
 	peer.UseLogger(peerLog)
 //	peerLog.SetLevel(btclog.LevelTrace)

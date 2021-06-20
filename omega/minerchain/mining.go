@@ -468,24 +468,27 @@ out:
 
 		mtch := false
 		qc := chainChoice
+		es := ""
 		for i := 0; i < wire.MinerGap && qc != nil; i++ {
 			p := NodetoHeader(qc)
 			qc = qc.Parent
 			for _,s := range m.cfg.ExternalIPs {
 				if bytes.Compare(p.Connection, []byte(s)) == 0 {
 					mtch = true
+					es += s
 				}
 			}
 			for _,s := range m.cfg.MiningAddrs {
 				if bytes.Compare(p.Miner[:], s.ScriptAddress()) == 0 {
 					mtch = true
+					es += s.String()
 				}
 			}
 		}
 
 		if mtch {
 			m.submitBlockLock.Unlock()
-			log.Infof("miner.generateBlocks won't mine because I am in GAP before the best block %d", curHeight)
+			log.Infof("miner.generateBlocks won't mine because I am in GAP before the best block %d. %s", curHeight, es)
 			time.Sleep(5 * time.Second)
 			continue
 		}
@@ -835,10 +838,14 @@ func NewMiner(cfg *Config) *CPUMiner {
 }
 
 func (b *MinerChain) choiceOfChain() (*chainutil.BlockNode, int32) {
+	// choose a branch that will allow us to refer the longest tx chain (sign block)
 	n := b.BestChain.Tip()
 
 	h := NodetoHeader(n)
 	bestBlk := b.blockChain.LongestTip()
+	for bestBlk.Data.GetNonce() > 0 {
+		bestBlk = bestBlk.Parent
+	}
 //		b.blockChain.BestChain.Tip()
 	if b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
 		h := b.blockChain.BestSnapshot().LastRotation

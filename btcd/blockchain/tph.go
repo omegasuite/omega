@@ -5,6 +5,8 @@
 package blockchain
 
 import (
+	"bytes"
+	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
@@ -148,6 +150,19 @@ func (b *BlockChain) TphNotice(t *Notification) {
 
 			miner := mb.MsgBlock().Miner
 
+			// only if the miner has signed the block. this is to punish free-riders who generate MR blocks only
+			// and rely on others to generate TX blocks and yet receive awards
+			signed := false
+			for _,cb := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+				k, _ := btcec.ParsePubKey(cb[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+				pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.ChainParams)
+				pk.SetFormat(btcutil.PKFCompressed)
+				addr := pk.AddressPubKeyHash()
+				if bytes.Compare(addr.ScriptAddress(), miner[:]) == 0 {
+					signed = true
+				}
+			}
+
 //			log.Infof("TphNotice: miner = %x at %d", miner, h)
 
 			p := b.GetMinerTPS(miner)
@@ -161,7 +176,12 @@ func (b *BlockChain) TphNotice(t *Notification) {
 					for _,tx := range block.MsgBlock().Transactions[1:] {
 						sigs += 10 * len(tx.SignatureScripts)
 					}
-					p.current.TxTotal += uint32(sigs) + 10 * uint32(block.MsgBlock().Header.ContractExec / CONTRACTTXRATIO)
+					if signed {
+						p.current.TxTotal += uint32(sigs) + 10*uint32(block.MsgBlock().Header.ContractExec/CONTRACTTXRATIO)
+					} else {
+						// if the miner has not signed the block, he gets the min score
+						p.current.TxTotal++
+					}
 				} else {
 					if p.current.TxTotal != 0 {
 						p.History = append(p.History, p.current)

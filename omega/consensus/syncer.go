@@ -80,6 +80,7 @@ type Syncer struct {
 
 //	pending map[string][]Message
 	pulling map[int32]int
+	pulltime map[int32]int64
 
 	messages chan Message
 	repeating chan struct{}
@@ -383,6 +384,7 @@ func (self *Syncer) run() {
 			}
 
 			self.handeling = "New tree"
+			c := self.Members[tree.creator]
 
 			if _, ok := self.forest[tree.creator]; !ok || self.forest[tree.creator].block == nil {
 				// each creator may submit only one tree
@@ -394,8 +396,14 @@ func (self *Syncer) run() {
 				}
 				self.Malice[tree.creator] = struct {}{}
 				delete(self.forest, tree.creator)
-				c := self.Members[tree.creator]
 				self.knowledges.Malice(c)
+			}
+
+			if tree.block != nil {
+				if _,ok := self.pulltime[c]; ok {
+					delete(self.pulltime, c)
+					delete(self.pulling, c)
+				}
 			}
 
 			if bytes.Compare(tree.creator[:], self.Me[:]) == 0 {
@@ -527,6 +535,7 @@ func (self *Syncer) run() {
 //				log.Infof("MsgSignature: From = %x\nHeight = %d\nM = %s",
 //					k.From, k.Height, k.M.String())
 				if self.Signature(k) {
+					time.Sleep(time.Second)		// wait 1 second to allow all members to sign
 					going = false
 				}
 
@@ -564,16 +573,16 @@ func (self *Syncer) run() {
 	ticker.Stop()
 
 	for true {
-		select {
+		select {		// drain all msgs
 		case <-self.newtree:
 		case m := <- self.messages:
 			switch m.(type) {
-			case *wire.MsgSignature:
+			case *wire.MsgSignature:	// take all pending signatures
 //				log.Info("handling MsgSignature on quit")
 				self.Signature(m.(*wire.MsgSignature))
 			}
 
-		default:
+		default:	// no more msg pending. pub & quit
 			if self.sigGiven != -1 {
 				owner := self.Names[self.sigGiven]
 				if self.Runnable && self.forest[owner] != nil && self.forest[owner].block != nil &&
@@ -1046,6 +1055,24 @@ func (self *Syncer) candidacy() {
 		return
 	}
 
+	// we may announce candidacy only if we have all trees in or time to pull has expired
+	ready := true
+	for m, t := range self.forest {
+		if t.block != nil {
+			continue
+		}
+		if d,ok := self.pulltime[self.Members[m]]; ok {
+			if time.Now().Unix() < 30 + d {
+				ready = false
+			}
+		} else {
+			ready = false
+		}
+	}
+	if !ready {
+		return
+	}
+
 	mp := self.Myself
 	self.agreed = mp
 
@@ -1158,6 +1185,7 @@ func CreateSyncer(h int32) *Syncer {
 	p.newtree = make(chan tree, wire.CommitteeSize * 3)	// will hold trees before runnable
 	p.messages = make(chan Message, wire.CommitteeSize * 10)
 	p.pulling = make(map[int32]int)
+	p.pulltime = make(map[int32]int64)
 	p.agrees = make(map[int32]struct{})
 //	p.asked = make(map[int32]struct{})
 	p.signed = make(map[[20]byte]struct{})
@@ -1411,6 +1439,7 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 		if self.CommitteeMsg(self.Names[from], &msg) {
 //			log.Infof("Pull request sent to %d", from)
 			self.pulling[from] = 5
+			self.pulltime[from] = time.Now().Unix()
 		} else {
 			log.Infof("Fail to Pull !!!!!!!!")
 		}

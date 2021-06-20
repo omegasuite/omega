@@ -3009,7 +3009,7 @@ func (s *server) Start() {
 		s.cpuMiner.Start()
 	}
 	if cfg.GenerateMiner {
-		btcdLog.Info("Start minging miner blocks.")
+		btcdLog.Info("Start minging miner blocks with %d collaterals.", len(cfg.collateral))
 		s.minerMiner.Start(cfg.collateral)
 	}
 }
