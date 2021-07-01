@@ -325,17 +325,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		return nil
 	}
 
-	nextBlockVersion, err := b.NextBlockVersion(prevNode)
 	header := block.MsgBlock()
-
-	if err != nil || (header.Version & 0xFFFF0000) < (nextBlockVersion & 0xFFFF0000) ||
-		header.Version > nextBlockVersion {
-//		(header.Version & 0xFFFF0000) > ((nextBlockVersion + 0xFFFF) & 0xFFFF0000) ||
-//		(header.Version > nextBlockVersion && (header.Version & 0xFFFF0000) == (nextBlockVersion & 0xFFFF0000)){
-		// fail if: 1. major version is less than expected
-		// 2. version is larger than expected
-		return fmt.Errorf("Incorrect block version")
-	}
 
 	for p, i := prevNode, 0; p != nil && i < wire.MinerGap; i++ {
 		h := NodetoHeader(p)
@@ -471,6 +461,16 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 				return ruleError(ErrBlackList, fmt.Errorf("Invalid report: %s", tx.String()).Error())
 			}
 		}
+	}
+
+	nextBlockVersion, err := b.NextBlockVersion(prevNode)
+	if err != nil || (header.Version & 0xFFFF0000) < (nextBlockVersion & 0xFFFF0000) ||
+		header.Version > nextBlockVersion {
+		//		(header.Version & 0xFFFF0000) > ((nextBlockVersion + 0xFFFF) & 0xFFFF0000) ||
+		//		(header.Version > nextBlockVersion && (header.Version & 0xFFFF0000) == (nextBlockVersion & 0xFFFF0000)){
+		// fail if: 1. major version is less than expected
+		// 2. version is larger than expected
+		return fmt.Errorf("Incorrect block version")
 	}
 
 	return nil

@@ -9,6 +9,7 @@
 package minerchain
 
 import (
+	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 
 	"github.com/omegasuite/btcd/chaincfg"
@@ -119,7 +120,7 @@ func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (uint32
 	// Set the appropriate bits for each actively defined rule deployment
 	// that is either in the process of being voted on, or locked in for the
 	// activation at the next threshold window change.
-	expectedVersion := wire.CodeVersion	// uint32(0x20000)		// current version
+	expectedVersion := uint32(0)	// wire.CodeVersion	// uint32(0x20000)		// current version
 	for id := 0; id < len(b.chainParams.Deployments); id++ {
 		deployment := &b.chainParams.Deployments[id]
 
@@ -140,6 +141,11 @@ func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (uint32
 			expectedVersion = (deployment.PrevVersion + (1 << vbNumBits)) &^ ((1 << vbNumBits) - 1)
 		}
 	}
+
+	if expectedVersion > wire.CodeVersion {
+		return expectedVersion, fmt.Errorf("Code version is older than expected")
+	}
+
 	return expectedVersion, nil
 }
 
