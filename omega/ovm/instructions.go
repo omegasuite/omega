@@ -3102,6 +3102,8 @@ func opAddDef(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 			j += tl
 
+		case '@':	// @
+
 		case 'C':
 			coinbase = true
 
@@ -3296,6 +3298,9 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error 
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
+		case '@':
+			dataType[top] = 0xFF
+
 		case '0', '1', '2', '3', '4', '5',
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
@@ -3375,6 +3380,8 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error 
 }
 
 func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+	// dest, hash, [index type], index, [scriptlen]
+
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -3458,7 +3465,10 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	dest += 4
-	return stack.saveBytes(&dest, t.PkScript)
+	if len(t.PkScript) <= int(num) {
+		return stack.saveBytes(&dest, t.PkScript)
+	}
+	return stack.saveBytes(&dest, t.PkScript[:num])
 }
 
 func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
@@ -3597,7 +3607,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	var r chainhash.Hash		// right hash
 	var tokentype uint64
 
-	dataType := []byte{0xFF, 'Q', 'D', 'h'}
+	dataType := []byte{0xFF, 'Q', 'Q', 'h'}
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
@@ -3700,6 +3710,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		if zeroHash.IsEqual(&r) {
 			return fmt.Errorf("Zero hash as right set in mint inst.")
 		}
+/*		This will be checked later in normal tx processing
 		h, err := ovm.views.FetchRightEntry(&r)
 		if err != nil {
 			return err
@@ -3707,6 +3718,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		if h == nil {
 			return fmt.Errorf("Undefined right set in mint inst.")
 		}
+ */
 
 		issued.Rights = &r
 	}

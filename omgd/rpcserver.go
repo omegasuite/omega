@@ -11,12 +11,11 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	//	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/omegasuite/omega/viewpoint"
-	"os"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/blockchain/indexers"
@@ -35,6 +34,7 @@ import (
 	"github.com/omegasuite/omega/minerchain"
 	"github.com/omegasuite/omega/ovm"
 	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/omega/viewpoint"
 	"github.com/omegasuite/websocket"
 	"io"
 	"io/ioutil"
@@ -42,6 +42,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -159,6 +160,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"contractcall":   		 handleContractCall,	// New
 	"trycontract":   		 handleTryContract,	// New
 	"miningpolicy":   		 handleMiningPolicy,	// New. miner specific policy
+	"tokenaddress":   		 handleTokenAddress,	// New
 
 //	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
@@ -795,6 +797,30 @@ func messageToHex(msg wire.Message) (string, error) {
 	return hex.EncodeToString(buf.Bytes()), nil
 }
 
+// handleTokenAddress handles tokenaddress commands.
+func handleTokenAddress(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.TokenAddressCmd)
+
+	var addr []byte
+	var IssuedTokenTypes = []byte("issuedTokens")
+
+	s.cfg.DB.View(func(dbTx database.Tx) error {
+		var mtk [8]byte
+		common.LittleEndian.PutUint64(mtk[:], c.TokenType)
+
+		bucket := dbTx.Metadata().Bucket(IssuedTokenTypes)
+		addr = bucket.Get(mtk[:])
+		return nil
+	})
+	if addr == nil {
+		return nil, fmt.Errorf("Tokentype 0x%x is not used.", c.TokenType)
+	}
+
+	address,_ := btcutil.NewAddressContract(addr, s.cfg.ChainParams)
+
+	return address.EncodeAddress(), nil
+}
+
 // handleTryContract handles TryContract commands.
 func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.TryContractCmd)
@@ -1106,7 +1132,12 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
-		disbuf := hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+		var disbuf string
+		var hexs string
+		if mtx.SignatureScripts != nil && mtx.SignatureScripts[txIn.SignatureIndex] != nil {
+			disbuf = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+			hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+		}
 		vinEntry := &vinList[j]
 		j++
 		vinEntry.Txid = txIn.PreviousOutPoint.Hash.String()
@@ -1114,7 +1145,7 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		vinEntry.Sequence = txIn.Sequence
 		vinEntry.ScriptSig = &btcjson.ScriptSig{
 			Asm: disbuf,
-			Hex: hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex]),
+			Hex: hexs,
 		}
 
 		vinEntry.SignatureIndex = txIn.SignatureIndex
@@ -2114,7 +2145,7 @@ func handleGetBlockHeader(s *rpcServer, cmd interface{}, closeChan <-chan struct
 		MerkleRoot:    blockHeader.MerkleRoot.String(),
 		NextHash:      nextHashString,
 		PreviousHash:  blockHeader.PrevBlock.String(),
-		Nonce:         uint64(blockHeader.Nonce),
+		Nonce:         int64(blockHeader.Nonce),
 		Time:          blockHeader.Timestamp.Unix(),
 //		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
 //		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),

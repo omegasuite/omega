@@ -1112,7 +1112,7 @@ func (to * Token) Read(r io.Reader, pver uint32, version int32) error {
 
 	if (to.TokenType & 2) != 0 {
 		to.Rights = &chainhash.Hash{}
-		err = common.ReadElement(r, &to.Rights)
+		err = common.ReadElement(r, to.Rights)
 		if err != nil {
 			return err
 		}

@@ -948,7 +948,20 @@ func NewSearchRawTransactionsCmd(address string, verbose, skip, count *int, vinE
 	}
 }
 
-// CreateRawTransactionCmd defines the createrawtransaction JSON-RPC command.
+// TokenAddressCmd defines the tokenaddress JSON-RPC command.
+type TokenAddressCmd struct {
+	TokenType         uint64
+}
+
+// NewTokenAddressCmd returns a new instance which can be used to issue a
+// TokenAddressCmd JSON-RPC command.
+func NewTokenAddressCmd(tokentype uint64) *TokenAddressCmd {
+	return &TokenAddressCmd{
+		TokenType:         tokentype,
+	}
+}
+
+// TryContractCmd defines the trycontract JSON-RPC command.
 type TryContractCmd struct {
 	HexTx         string
 }
@@ -1125,6 +1138,7 @@ func init() {
 	MustRegisterCmd("getblocktxhashes", (*GetBlockTxHashesCmd)(nil), flags)
 	MustRegisterCmd("searchborder", (*SearchBorderCmd)(nil), flags)
 	MustRegisterCmd("contractcall", (*ContractCallCmd)(nil), flags)
+	MustRegisterCmd("tokenaddress", (*TokenAddressCmd)(nil), flags)
 	MustRegisterCmd("trycontract", (*TryContractCmd)(nil), flags)
 	MustRegisterCmd("getminerblock", (*GetMinerBlockCmd)(nil), flags)
 	MustRegisterCmd("getblockchaininfo", (*GetBlockChainInfoCmd)(nil), flags)
@@ -1133,6 +1147,7 @@ func init() {
 	MustRegisterCmd("getminerblockcount", (*GetMinerBlockCountCmd)(nil), flags)
 	MustRegisterCmd("getblockhash", (*GetBlockHashCmd)(nil), flags)
 	MustRegisterCmd("getminerblockhash", (*GetMinerBlockHashCmd)(nil), flags)
+	MustRegisterCmd("getminerblockheight", (*GetMinerBlockHeightCmd)(nil), flags)
 	MustRegisterCmd("getblockheader", (*GetBlockHeaderCmd)(nil), flags)
 	MustRegisterCmd("getblocktemplate", (*GetBlockTemplateCmd)(nil), flags)
 	MustRegisterCmd("getcfilter", (*GetCFilterCmd)(nil), flags)

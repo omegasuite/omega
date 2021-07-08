@@ -272,7 +272,7 @@ func (view * ViewPointSet) contractExists(contract []byte) bool {
 }
 
 // addRight adds the specified right to the view.
-func (view * ViewPointSet) addRight(b *token.RightDef) bool {
+func (view * ViewPointSet) AddRight(b *token.RightDef) bool {
 	h := b.Hash()
 	entry := view.Rights.LookupRightEntry(h)
 	if entry == nil {
@@ -330,7 +330,7 @@ func (view * ViewPointSet) addRight(b *token.RightDef) bool {
 }
 
 // addVertex adds the specified right to the view.
-func (view * RightViewpoint) addRightSet(b *token.RightSetDef) bool {
+func (view * RightViewpoint) AddRightSet(b *token.RightSetDef) bool {
 	h := b.Hash()
 	entry := view.LookupRightSetEntry(h)
 	if entry == nil {
@@ -351,12 +351,12 @@ func (view * ViewPointSet) AddRights(tx *btcutil.Tx) bool {
 	for _, txVtx := range tx.MsgTx().TxDef {
 		switch txVtx.(type) {
 		case *token.RightDef:
-			if !view.addRight(txVtx.(*token.RightDef)) {
+			if !view.AddRight(txVtx.(*token.RightDef)) {
 				return false
 			}
 			break
 		case *token.RightSetDef:
-			view.Rights.addRightSet(txVtx.(*token.RightSetDef))
+			view.Rights.AddRightSet(txVtx.(*token.RightSetDef))
 			break
 		}
 	}

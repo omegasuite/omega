@@ -267,6 +267,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		}
 	}
 
+	// check welformness of defitions w/i this tx (regardless reference)
 	if err := validate.CheckDefinitions(msgTx); err != nil {
 		return err
 	}
@@ -1100,23 +1101,72 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 		}
 	}
 
+	return nil
+}
+
+func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// check definitions in TxOuts
 	// recheck CheckDefinitions
 
-	err, newrights, newrightsets := validate.ScanDefinitions(tx.MsgTx())
-	if err != nil {
-		return err
+	for _,rt := range tx.MsgTx().TxDef {
+		hash := rt.Hash()
+		e := views.Rights.GetRight(views.Db, hash)
+
+		switch e.(type) {
+		case *viewpoint.RightSetEntry:
+			if e != (*viewpoint.RightSetEntry)(nil) {
+				str := fmt.Sprintf("Rightset duplicated in tx %s.", tx.MsgTx().TxHash().String())
+				return ruleError(1, str)
+			}
+			dup := make(map[chainhash.Hash]struct{})
+			for _, r := range rt.(*token.RightSetDef).Rights {
+				if _,ok := dup[r]; ok {
+					str := fmt.Sprintf("Duplicated right in rightset in tx %s.", tx.MsgTx().TxHash().String())
+					return ruleError(1, str)
+				}
+				dup[r] = struct{}{}
+				e2 := views.Rights.GetRight(views.Db, r).(*viewpoint.RightEntry)
+				if e2 == nil {
+					str := fmt.Sprintf("Right undefined in tx %s.", tx.MsgTx().TxHash().String())
+					return ruleError(1, str)
+				}
+			}
+			
+			views.Rights.AddRightSet(rt.(*token.RightSetDef))
+			
+		case *viewpoint.RightEntry:
+			if e != (*viewpoint.RightEntry)(nil) {
+				str := fmt.Sprintf("Right duplicated in tx %s.", tx.MsgTx().TxHash().String())
+				return ruleError(1, str)
+			}
+			if !rt.(*token.RightDef).Father.IsEqual(&chainhash.Hash{}) {
+				e3 := views.Rights.GetRight(views.Db, rt.(*token.RightDef).Father).(*viewpoint.RightEntry)
+				if e3 == nil {
+					str := fmt.Sprintf("Parent right missing in tx %s.", tx.MsgTx().TxHash().String())
+					return ruleError(1, str)
+				}
+			}
+			if !views.AddRight(rt.(*token.RightDef)) {
+				str := fmt.Sprintf("Invalid right definition in tx %s.", tx.MsgTx().TxHash().String())
+				return ruleError(1, str)
+			}
+		}
 	}
 
-	var righttrees = make(map[chainhash.Hash]chainhash.Hash)
+//	err, newrights, newrightsets := validate.ScanDefinitions(tx.MsgTx())
+//	if err != nil {
+//		return err
+//	}
+
+//	var righttrees = make(map[chainhash.Hash]chainhash.Hash)
 
 	for i,to := range tx.MsgTx().TxOut {
 		if to.IsSeparator() || !to.HasRight() {
 			continue
 		}
 
-		var rights = make(map[chainhash.Hash]*token.RightDef)
-
+//		var rights = make(map[chainhash.Hash]*token.RightDef)
+/*
 		if _, ok := newrightsets[*to.Rights]; ok {
 			for _, r := range newrightsets[*to.Rights].Rights {
 				e := views.Rights.GetRight(views.Db, r).(*viewpoint.RightEntry)
@@ -1137,32 +1187,28 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 			}
 			rights[*to.Rights] = newrights[*to.Rights]
 		} else {
+ */
 			e := views.Rights.GetRight(views.Db, *to.Rights)
-			if e != nil {
-				switch e.(type) {
-				case *viewpoint.RightSetEntry:
-					for _, r := range e.(*viewpoint.RightSetEntry).Rights {
-						e := views.Rights.GetRight(views.Db, r).(*viewpoint.RightEntry)
-						if e == nil {
-							str := fmt.Sprintf("Right undefined in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
-							return ruleError(1, str)
-						} else if rights[r] != nil {
-							str := fmt.Sprintf("Right duplicated in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
-							return ruleError(1, str)
-						} else {
-							rights[r] = e.ToToken()
-						}
-					}
-				case *viewpoint.RightEntry:
-					if rights[*to.Rights] != nil {
-						str := fmt.Sprintf("Right duplicated in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
-						return ruleError(1, str)
-					} else {
-						rights[*to.Rights] = e.(*viewpoint.RightEntry).ToToken()
-					}
+			switch e.(type) {
+			case *viewpoint.RightSetEntry:
+				if e == (*viewpoint.RightSetEntry)(nil) {
+					str := fmt.Sprintf("Rightset undefined in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+					return ruleError(1, str)
+				}
+/*
+				for _, r := range e.(*viewpoint.RightSetEntry).Rights {
+					e := views.Rights.GetRight(views.Db, r).(*viewpoint.RightEntry)
+					rights[r] = e.ToToken()
+				}
+ */
+			case *viewpoint.RightEntry:
+				if e == (*viewpoint.RightEntry)(nil) {
+					str := fmt.Sprintf("Right does not exists in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+					return ruleError(1, str)
 				}
 			}
-		}
+//		}
+/*
 		zh := chainhash.Hash{}
 		for h,p := range rights {
 			if _,ok := righttrees[h]; ok {
@@ -1195,6 +1241,7 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 				return ruleError(1, str)
 			}
 		}
+ */
 	}
 
 	return nil
@@ -1477,10 +1524,13 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// against all the inputs when the signature operations are out of
 	// bounds.
 
+	var oldcoinBase * btcutil.Tx
 	var coinBase * btcutil.Tx
 
 	if Vm != nil {
-		coinBase = btcutil.NewTx(transactions[0].MsgTx().Stripped())
+		oldcoinBase = btcutil.NewTx(transactions[0].MsgTx().Copy())
+		coinBase = transactions[0]
+		coinBase.MsgTx().Strip()
 		coinBase.SetIndex(transactions[0].Index())
 		coinBaseHash := *coinBase.Hash()
 
@@ -1554,6 +1604,11 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				return err
 			}
 
+			err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
+			if err != nil {
+				return err
+			}
+
 			err = CheckTransactionIntegrity(tx, views)
 			if err != nil {
 				return err
@@ -1577,6 +1632,11 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			}
 		} else {
 			err := CheckTransactionInputs(tx, node.Height, views, b.ChainParams)
+			if err != nil {
+				return err
+			}
+
+			err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
 			if err != nil {
 				return err
 			}
@@ -1604,7 +1664,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		if Vm.StepLimit != 0 {
 			return fmt.Errorf("Incorrect contract execution cost.")
 		}
-		if !block.Transactions()[0].Match(coinBase) {
+		if !block.Transactions()[0].Match(oldcoinBase) {
 			//			Vm.AbortRollback()
 			return fmt.Errorf("Mismatch contract execution result")
 		}
