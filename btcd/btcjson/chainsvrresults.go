@@ -23,7 +23,7 @@ type GetBlockHeaderVerboseResult struct {
 	VersionHex    string  `json:"versionHex"`
 	MerkleRoot    string  `json:"merkleroot"`
 	Time          int64   `json:"time"`
-	Nonce         uint64  `json:"nonce"`
+	Nonce         int64  `json:"nonce"`
 //	Bits          string  `json:"bits"`
 //	Difficulty    float64 `json:"difficulty"`
 	PreviousHash  string  `json:"previousblockhash,omitempty"`
@@ -581,7 +581,7 @@ type MiningPolicy struct {
 // MultiSigAddr
 type MultiSigAddr struct {
 	Address      string `json:"address"`
-	Script     	 string `json:"script"`			// Fee per top border
+	Script     	 string `json:"script"`
 }
 
 // SearchRawTransactionsResult models the data from the searchrawtransaction

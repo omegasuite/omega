@@ -471,6 +471,21 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 		return uint32(time.Now().Unix())
 	}
 	ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash {
+		h := t.Hash()
+		e := ovm.views.Rights.GetRight(ovm.DB, h)
+		switch e.(type) {
+		case *viewpoint.RightSetEntry:
+			if e.(*viewpoint.RightSetEntry) != nil {
+				return h
+			}
+			ovm.views.Rights.AddRightSet(t.(*token.RightSetDef))
+		case *viewpoint.RightEntry:
+			if e.(*viewpoint.RightEntry) != nil {
+				return h
+			}
+			ovm.views.AddRight(t.(*token.RightDef))
+		}
+
 		if coinbase {
 			return ovm.GetCoinBase().AddDef(t)
 		}
@@ -578,6 +593,21 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 
 	ovm.Init(tx, ovm.views)
 	ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash {
+		h := t.Hash()
+		e := ovm.views.Rights.GetRight(ovm.DB, h)
+		switch e.(type) {
+		case *viewpoint.RightSetEntry:
+			if e.(*viewpoint.RightSetEntry) != nil {
+				return h
+			}
+			ovm.views.Rights.AddRightSet(t.(*token.RightSetDef))
+		case *viewpoint.RightEntry:
+			if e.(*viewpoint.RightEntry) != nil {
+				return h
+			}
+			ovm.views.AddRight(t.(*token.RightDef))
+		}
+
 		if coinbase {
 			return ovm.GetCoinBase().AddDef(t)
 		}

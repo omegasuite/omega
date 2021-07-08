@@ -538,7 +538,7 @@ func opSpendValidator(param []byte) int {
 }
 
 var formatAddDef = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
+	{patOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
 }
 
 func opAddDefValidator(param []byte) int {
@@ -581,7 +581,7 @@ func opGetCoinValidator(param []byte) int {
 
 var formatGetUTXO = []formatDesc{
 	{addrOperand, 0xFFFFFFFF}, {patOperand, 0},
-	{patOperand, 0xffffffff}, {patOperand, 1},
+	{patOperand, 0xffffffff}, {patOperand, 0xffffffff},
 }
 
 func opGetUtxoValidator(param []byte) int {

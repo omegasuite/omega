@@ -174,7 +174,7 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 			}
 			break;
 		case *token.RightDef:
-			view.addRight(d.(*token.RightDef))
+			view.AddRight(d.(*token.RightDef))
 			break;
 		}
 	}
