@@ -1033,6 +1033,8 @@ func (b *BlockChain) initChainState() error {
 		var lastNode *chainutil.BlockNode
 		cursor = blockIndexBucket.Cursor()
 		var peekh = int32(-1)
+
+		badblocks := make(map[chainhash.Hash]struct{})
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			header, status, err := deserializeBlockRow(cursor.Value())
 			if err != nil {
@@ -1058,6 +1060,11 @@ func (b *BlockChain) initChainState() error {
 				// previous header processed is the parent.
 				parent = lastNode
 				parentheight = parent.Height
+			} else if header.PrevBlock.IsEqual(&chainhash.Hash{}) {
+				continue
+			} else if _,bad := badblocks[header.PrevBlock]; bad {
+				badblocks[header.BlockHash()] = struct {}{}
+				continue
 			} else {
 				parent = b.index.LookupNode(&header.PrevBlock)
 				if parent == nil {
@@ -1069,8 +1076,9 @@ func (b *BlockChain) initChainState() error {
 							}
 						}
 						if parentheight < 0 {
-							return AssertError(fmt.Sprintf("initChainState: Could "+
-								"not find parent for block %s", header.BlockHash()))
+							continue
+//							return AssertError(fmt.Sprintf("initChainState: Could "+
+//								"not find parent for block %s", header.BlockHash()))
 						}
 					}
 				} else {
@@ -1088,7 +1096,7 @@ func (b *BlockChain) initChainState() error {
 				buffer[buffertop%5000] = struct {
 					hash   chainhash.Hash
 					height int32
-				}{hash: header.PrevBlock, height: peekh - 1}
+				} {hash: header.PrevBlock, height: peekh - 1}
 				buffertop++
 
 				delete(unloaded, header.PrevBlock)

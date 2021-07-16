@@ -2161,7 +2161,12 @@ func (b *BlockChain) locateInventory(locator chainhash.BlockLocator, hashStop *c
 	// Start at the block after the most recently known block.  When there
 	// is no next block it means the most recently known block is the tip of
 	// the best chain, so there is nothing more to do.
-	if startNode.Height > int32(b.index.Cutoff) {
+	if startNode.Height > int32(b.index.Cutoff + 10) {
+		for i := 0; i < 10; i++ {
+			if startNode.Parent != nil {
+				startNode = startNode.Parent
+			}
+		}
 		startNode = b.BestChain.Next(startNode)
 	} else {
 		startNode = b.NodeByHeight(startNode.Height + 1)
