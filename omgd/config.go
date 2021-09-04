@@ -425,6 +425,7 @@ func loadConfig() (*config, []string, error) {
 		TxIndex:              defaultTxIndex,
 		AddrIndex:            defaultAddrIndex,
 		ChainCurrentStd:	  24,
+		MinBlockWeight:		  4,
 	}
 
 	// Service options which are only added on Windows.
@@ -753,7 +754,7 @@ func loadConfig() (*config, []string, error) {
 
 	// Validate the the minrelaytxfee.
 	cfg.minRelayTxFee, err = btcutil.NewAmount(cfg.MinRelayTxFee, 0)
-	cfg.MinBorderFee = cfg.MinBorderFee
+//	cfg.MinBorderFee = cfg.MinBorderFee
 
 	if err != nil {
 		str := "%s: invalid minrelaytxfee: %v"

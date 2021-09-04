@@ -9,11 +9,11 @@
 package minerchain
 
 import (
-	"fmt"
+//	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 
 	"github.com/omegasuite/btcd/chaincfg"
-	"github.com/omegasuite/btcd/wire"
+//	"github.com/omegasuite/btcd/wire"
 )
 
 const (
@@ -141,11 +141,11 @@ func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (uint32
 			expectedVersion = (deployment.PrevVersion + (1 << vbNumBits)) &^ ((1 << vbNumBits) - 1)
 		}
 	}
-
+/*
 	if expectedVersion > wire.CodeVersion {
 		return expectedVersion, fmt.Errorf("Code version is older than expected")
 	}
-
+*/
 	return expectedVersion, nil
 }
 

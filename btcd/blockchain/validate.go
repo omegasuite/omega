@@ -484,7 +484,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		}
 
 		if len(awardto) != wire.CommitteeSize && block.MsgBlock().Header.Version < chaincfg.Version2 {
-			return fmt.Errorf("Coinbase award error."), false
+			return fmt.Errorf("Version error."), false
 		}
 
 		// examine signatures
@@ -510,11 +510,12 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			mb := mbs[i - (rotate - wire.CommitteeSize + 1)]
 			if _,err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
 				if _,ok := awardto[mb.MsgBlock().Miner]; ok {
-					return fmt.Errorf("Coinbase award error."), false
+					return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
 				}
 			} else if block.MsgBlock().Header.Version >= chaincfg.Version2 {
+				// should check black list here
 				if _,ok := awardto[mb.MsgBlock().Miner]; !ok {
-					return fmt.Errorf("Coinbase award error."), false
+					return nil, true
 				}
 			}
 
@@ -532,7 +533,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			}
 		}
 		if len(awardto) != 0 {
-			return fmt.Errorf("Coinbase award error."), false
+			return nil, true
 		}
 
 		tbr := make([]int, 0, 3)
