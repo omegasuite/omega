@@ -231,9 +231,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 		if txin.IsSeparator() {	// never
 			break
 		}
-		if txin.SignatureIndex == 0xFFFFFFFF {
-			continue
-		}
+
 		tinidx := txinidx + skip
 
 		// get utxo
@@ -262,6 +260,13 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 		if method[0] == OP_PAY2NONE {
 			final <- false
 			break
+		}
+		if version == param.PubKeyHashAddrID && method[0] == OP_PAY2PKH && txin.SignatureIndex == 0xFFFFFFFF {
+			final <- false
+			break
+		}
+		if txin.SignatureIndex == 0xFFFFFFFF {
+			continue
 		}
 		if txin.SignatureIndex >= uint32(len(tx.MsgTx().SignatureScripts)) ||
 			len(tx.MsgTx().SignatureScripts[txin.SignatureIndex]) < btcec.MinSigLen {
@@ -347,7 +352,10 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 
 		copy(code[:], method)
 		copy(code[4:], addr)
-		copy(code[4 + len(addr):], excode[4:])
+
+		if (len(excode) > 4) {
+			copy(code[4+len(addr):], excode[4:])
+		}
 
 		if pks, ok := sharedSigs[txin.SignatureIndex]; ok {
 			switch pks.skip {

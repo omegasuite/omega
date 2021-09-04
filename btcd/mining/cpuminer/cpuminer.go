@@ -327,7 +327,7 @@ func (m *CPUMiner) Notice (notification *blockchain.Notification) {
 		return
 	}
 	switch notification.Type {
-	case blockchain.NTBlockConnected, blockchain.NTBlockRejected:
+	case blockchain.NTBlockConnected:	// , blockchain.NTBlockRejected:
 		if len(m.connch) > 50 {
 			<- m.connch
 		}

@@ -15,6 +15,7 @@ import (
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/omega/token"
 	"math/big"
+	"strconv"
 	"time"
 
 	"github.com/omegasuite/btcd/blockchain/chainutil"
@@ -266,7 +267,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			blockRegion, err := b.TxIndex.TxBlockRegion(&op.Hash)
 
 			if err != nil || blockRegion == nil {
-				panic("Failed to retrieve transaction location")
+				panic("Failed to retrieve transaction location for tx: " + op.Hash.String())
 			}
 
 			// Load the raw transaction bytes from the database.
@@ -278,15 +279,33 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			})
 
 			if err != nil {
-				panic("Failed to retrieve transaction")
-			}
-
-			// Deserialize the transaction
-			var msgTx wire.MsgTx
-			err = msgTx.Deserialize(bytes.NewReader(txBytes))
-			v := msgTx.TxOut[op.Index].Value.(*token.NumToken).Val / 1e8
-			if uint32(v) < coll {
-				coll = uint32(v)
+				blk,err := b.blockChain.BlockByHash(blockRegion.Hash)
+				if err != nil {
+					panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " for " + err.Error())
+				}
+				fd := false
+				for _,tx := range blk.Transactions() {
+					if tx.Hash().IsEqual(&op.Hash) {
+						v := tx.MsgTx().TxOut[op.Index].Value.(*token.NumToken).Val / 1e8
+						if uint32(v) < coll {
+							coll = uint32(v)
+						}
+						fd = true
+						break
+					}
+				}
+				if !fd {
+					panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " at " + blockRegion.Hash.String() + " " + strconv.Itoa(int(blockRegion.Len)) + " : " + strconv.Itoa(int(blockRegion.Offset)))
+				}
+//				panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " at " + blockRegion.Hash.String() + " " + strconv.Itoa(int(blockRegion.Len)) + " : " + strconv.Itoa(int(blockRegion.Offset)))
+			} else {
+				// Deserialize the transaction
+				var msgTx wire.MsgTx
+				err = msgTx.Deserialize(bytes.NewReader(txBytes))
+				v := msgTx.TxOut[op.Index].Value.(*token.NumToken).Val / 1e8
+				if uint32(v) < coll {
+					coll = uint32(v)
+				}
 			}
 		} else if block.Collateral < coll {
 			coll = block.Collateral

@@ -484,7 +484,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		}
 
 		if len(awardto) != wire.CommitteeSize && block.MsgBlock().Header.Version < chaincfg.Version2 {
-			return fmt.Errorf("Coinbase award error."), false
+			return fmt.Errorf("Version error."), false
 		}
 
 		// examine signatures
@@ -510,11 +510,12 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			mb := mbs[i - (rotate - wire.CommitteeSize + 1)]
 			if _,err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
 				if _,ok := awardto[mb.MsgBlock().Miner]; ok {
-					return fmt.Errorf("Coinbase award error."), false
+					return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
 				}
 			} else if block.MsgBlock().Header.Version >= chaincfg.Version2 {
+				// should check black list here
 				if _,ok := awardto[mb.MsgBlock().Miner]; !ok {
-					return fmt.Errorf("Coinbase award error."), false
+					return nil, true
 				}
 			}
 
@@ -532,7 +533,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			}
 		}
 		if len(awardto) != 0 {
-			return fmt.Errorf("Coinbase award error."), false
+			return nil, true
 		}
 
 		tbr := make([]int, 0, 3)
@@ -960,10 +961,13 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 		// Ensure the referenced input transaction is available.
 		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
 		if utxo == nil || utxo.IsSpent() {
-			str := fmt.Sprintf("output %v referenced from "+
+			var wbuf bytes.Buffer
+			tx.MsgTx().SerializeFull(&wbuf)
+
+			str := fmt.Sprintf("validate: output %v referenced from "+
 				"transaction %s:%d either does not exist or "+
-				"has already been spent", txIn.PreviousOutPoint,
-				tx.Hash(), txInIndex)
+				"has already been spent. tx = %s", txIn.PreviousOutPoint,
+				tx.Hash(), txInIndex, hex.EncodeToString(wbuf.Bytes()))
 			return ruleError(ErrMissingTxOut, str)
 		}
 
@@ -1258,7 +1262,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 	inputs := make([]token.Token, len(tx.MsgTx().TxIn))
 	for i, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
+			break
 		}
 		out := txIn.PreviousOutPoint
 		x := views.Utxo.LookupEntry(out)
@@ -1266,6 +1270,10 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 			r := make(map[wire.OutPoint]struct{})
 			r[out] = struct{}{}
 			x = views.Utxo.LookupEntry(out)
+		}
+		if x == nil {
+			str := fmt.Sprintf("A Tx input does not exist: %s", txIn.PreviousOutPoint.String())
+			return ruleError(ErrSpendTooHigh, str)
 		}
 		inputs[i] = x.ToTxOut().Token
 	}
@@ -1670,7 +1678,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 	if block.MsgBlock().Header.Version >= chaincfg.Version2 {
-		err = b.CheckForfeit(block, node.Parent)
+		err = b.CheckForfeit(block, node.Parent, views)
 		if err != nil {
 			return err
 		}

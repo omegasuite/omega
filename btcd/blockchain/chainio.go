@@ -909,8 +909,7 @@ func (b *BlockChain) initChainState() error {
 	var initialized, hasBlockIndex, hasminertps, hascomptx, hasaddrusage bool
 	var addrUseIndexKey = []byte("usebyaddridx")
 
-	err := b.db.View(func(dbTx database.Tx) error {
-
+	err := b.db.Update(func(dbTx database.Tx) error {
 		initialized = dbTx.Metadata().Get(chainStateKeyName) != nil
 		hasBlockIndex = dbTx.Metadata().Bucket(blockIndexBucketName) != nil
 		hasminertps = dbTx.Metadata().Bucket(minerTPSBucketName) != nil
@@ -991,7 +990,9 @@ func (b *BlockChain) initChainState() error {
 	buffertop := 0
 
 	// Attempt to load the chain state from the database.
-	err = b.db.View(func(dbTx database.Tx) error {
+	gobackone := false
+
+	exec := func(dbTx database.Tx) error {
 		// Fetch the stored chain state from the database metadata.
 		// When it doesn't exist, it means the database hasn't been
 		// initialized for use with chain yet, so break out now to allow
@@ -1137,6 +1138,11 @@ func (b *BlockChain) initChainState() error {
 			return AssertError(fmt.Sprintf("initChainState: cannot find "+
 				"chain tip %s in block index", state.hash))
 		}
+		if gobackone {
+			b.index.SetStatusFlags(tip, chainutil.StatusValidateFailed)
+			tip = tip.Parent
+			state.hash = tip.Hash
+		}
 
 		b.BestChain.SetTip(tip)
 
@@ -1174,12 +1180,27 @@ func (b *BlockChain) initChainState() error {
 		blockSize := uint64(len(blockBytes))
 		numTxns := uint64(len(block.Transactions))
 
-		b.stateSnapshot = newBestState(tip, blockSize,
-			numTxns, state.totalTxns, tip.CalcPastMedianTime(), // state.bits,
-			state.rotation)
+		if gobackone {
+			b.stateSnapshot = newBestState(tip, blockSize,
+				numTxns, state.totalTxns - numTxns, tip.CalcPastMedianTime(), // state.bits,
+				state.rotation - 2)
+			if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
+				return err
+			}
+		} else {
+			b.stateSnapshot = newBestState(tip, blockSize,
+				numTxns, state.totalTxns, tip.CalcPastMedianTime(), // state.bits,
+				state.rotation)
+		}
 
 		return nil
-	})
+	}
+
+	if gobackone {
+		err = b.db.View(exec);
+	} else {
+		err = b.db.Update(exec);
+	}
 
 	if err != nil {
 		return err

@@ -293,6 +293,9 @@ func (p *pay2pkh) Run(input []byte, vunits []vunit) ([]byte, error) {
 	//		  publick key
 	//		  signature
 	//	      text - text to be signed (in chucks of 0-padded 32-bytes units)
+	if (len(input) < 20) {
+		return []byte{0}, nil
+	}
 
 	pkh := input[:20]
 

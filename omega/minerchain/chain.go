@@ -1547,6 +1547,12 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	}
 
 	if !ok {
+		for rl := detachNodes.Len(); n.Parent != nil && rl > 0; rl-- {
+			detachNodes.PushBack(n)
+			n = n.Parent
+			h = NodetoHeader(n).BestBlock
+		}
+
 		log.Warnf("miner chain is corrupted. roll back %d blocks", detachNodes.Len())
 		b.chainLock.Lock()
 		// Disconnect blocks from the main chain.
@@ -1578,9 +1584,12 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		b.chainLock.Unlock()
 
 		detachNodes := list.New()
-		for m := s.BestChain.Tip(); m.Hash != NodetoHeader(n).BestBlock; m = m.Parent {
-			detachNodes.PushBack(n)
+		for m := s.BestChain.Tip(); m.Hash != h; m = m.Parent {
+			detachNodes.PushBack(m)
 		}
+		detachNodes.PushBack(h)
+
+		log.Warnf("roll back %d tx blocks", detachNodes.Len())
 		s.ChainLock.Lock()
 		s.ReorganizeChain(detachNodes, list.New())
 		s.ChainLock.Unlock()

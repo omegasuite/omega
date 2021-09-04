@@ -15,6 +15,7 @@ import (
 	"github.com/omegasuite/omega/token"
 	"sync"
 	"time"
+	"encoding/hex"
 
 	"github.com/omegasuite/btcd/blockchain/bccompress"
 	"github.com/omegasuite/btcd/chaincfg"
@@ -287,10 +288,13 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 		}
 		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
 		if utxo == nil {
+			var wbuf bytes.Buffer
+			tx.MsgTx().SerializeFull(&wbuf)
+
 			str := fmt.Sprintf("output %v referenced from "+
 				"transaction %s:%d either does not exist or "+
-				"has already been spent", txIn.PreviousOutPoint,
-				tx.Hash(), txInIndex)
+				"has already been spent. tx = %s", txIn.PreviousOutPoint,
+				tx.Hash(), txInIndex, hex.EncodeToString(wbuf.Bytes()))
 			return sequenceLock, ruleError(ErrMissingTxOut, str)
 		}
 
@@ -963,9 +967,26 @@ func skipList(lst * list.List, y * list.Element) {
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error {
+	detachable, attachable, err := b.doReorganizeChain(detachNodes, attachNodes)
+
+	if detachable != detachNodes.Len() {
+		return err
+	}
+	if attachable == attachNodes.Len() || attachable == 0 {
+		return err
+	}
+	frac := list.New()
+	for e, i := attachNodes.Front(), 1; e != nil && i < attachable; e, i = e.Next(), i + 1 {
+		frac.PushBack(e.Value)
+	}
+	_, _, err = b.doReorganizeChain(detachNodes, frac)
+	return err
+}
+
+func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List) (int, int, error) {
 	// Nothing to do if no reorganize nodes were provided.
 	if detachNodes.Len() == 0 && attachNodes.Len() == 0 {
-		return nil
+		return 0, 0, nil
 	}
 
 	// Ensure the provided nodes match the current best chain.
@@ -973,7 +994,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	if detachNodes.Len() != 0 {
 		firstDetachNode := detachNodes.Front().Value.(*chainutil.BlockNode)
 		if firstDetachNode.Hash != tip.Hash {
-			return AssertError(fmt.Sprintf("reorganize nodes to detach are "+
+			return 0, 0, AssertError(fmt.Sprintf("reorganize nodes to detach are "+
 				"not for the current best chain -- first detach node %v, "+
 				"current chain %v", &firstDetachNode.Hash, &tip.Hash))
 		}
@@ -984,7 +1005,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		firstAttachNode := attachNodes.Front().Value.(*chainutil.BlockNode)
 		lastDetachNode := detachNodes.Back().Value.(*chainutil.BlockNode)
 		if firstAttachNode.Parent.Hash != lastDetachNode.Parent.Hash {
-			return AssertError(fmt.Sprintf("reorganize nodes do not have the "+
+			return 0, 0, AssertError(fmt.Sprintf("reorganize nodes do not have the "+
 				"same fork point -- first attach parent %v, last detach "+
 				"parent %v", &firstAttachNode.Parent.Hash,
 				&lastDetachNode.Parent.Hash))
@@ -1027,10 +1048,10 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		})
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 		if n.Hash != *block.Hash() {
-			return AssertError(fmt.Sprintf("detach block node hash %v (height "+
+			return 0, 0, AssertError(fmt.Sprintf("detach block node hash %v (height "+
 				"%v) does not match previous parent block hash %v", &n.Hash,
 				n.Height, block.Hash()))
 		}
@@ -1039,7 +1060,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		// already in the view.
 		err = views.FetchInputUtxos(block)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 
 		// Load all of the spent txos for the block from the spend
@@ -1050,7 +1071,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		})
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 
 		// Store the loaded block and spend journal entry for later.
@@ -1059,7 +1080,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 		err = views.DisconnectTransactions(b.db, block, stxos)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 
 		if n.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
@@ -1104,6 +1125,9 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 //	prevNode := forkNode
 	skipped := false
+	var attachable = 0
+	var detachable = detachNodes.Len()
+
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 
@@ -1114,12 +1138,14 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		})
 		if err != nil {
-			return err
+			log.Infof("dbFetchBlockByNode error: " + err.Error())
+			return detachable, attachable, err
 		}
 
 		if !b.signedBy(block, miners) {
 			skipList(attachNodes, e)
 			skipped = true
+			attachable++
 			continue
 		}
 
@@ -1145,7 +1171,8 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 					}
 					miners[j] = &blk.MsgBlock().Miner
 				} else if shift == 1 {
-					return fmt.Errorf("Incorrect rotation")
+					log.Infof("Incorrect rotation")
+					return detachable, attachable, fmt.Errorf("Incorrect rotation")
 				}
 				j++
 			}
@@ -1176,6 +1203,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 					b.index.SetStatusFlags(dn, chainutil.StatusInvalidAncestor)
 				}
 			}
+			log.Infof("checkProofOfWork error: " + err.Error())
 			break
 		}
 
@@ -1183,10 +1211,12 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		attachBlocks = append(attachBlocks, block)
 
 		newBest = n
+		attachable++
 	}
 
 	if skipped && attachNodes.Len() <= detachNodes.Len() {
-		return fmt.Errorf("attach block failed to pass consistency check")
+		log.Infof("attach block failed to pass consistency check")
+		return detachable, attachable, fmt.Errorf("attach block failed to pass consistency check")
 	}
 
 	// Reset the view for the actual connection code below.  This is
@@ -1213,20 +1243,19 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		// already in the view.
 		err := views.FetchInputUtxos(block)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 
 		// Update the view to unspend all of the spent txos and remove
 		// the utxos created by the block.
 		if err = views.DisconnectTransactions(b.db, block,	detachSpentTxOuts[i]); err != nil {
-			return err
+			return 0, 0, err
 		}
 
 		// Update the database and chain state.
 		if err = b.disconnectBlock(n, block, views); err != nil {
-			return err
+			return 0, 0, err
 		}
-
 
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
@@ -1236,7 +1265,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 
 		if err = Vm.Rollback(); err != nil { // roll back contract state in DB
-			return err
+			return 0, 0, err
 		}
 
 		for *block.Hash() == b.Miners.Tip().MsgBlock().BestBlock {
@@ -1247,6 +1276,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 
 	// Connect the new best chain blocks.
 	e := attachNodes.Front()
+	attachable = 0
 	for i := 0; e != nil && i < len(attachBlocks); i, e = i+1, e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 
@@ -1256,7 +1286,8 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		// already in the view.
 		err := views.FetchInputUtxos(block)
 		if err != nil {
-			return err		// should panic. this should never happend and would potentially corrupt the database
+			log.Infof("FetchInputUtxos error: " + err.Error())
+			return detachable, attachable, err		// should panic. this should never happend and would potentially corrupt the database
 		}
 
 		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
@@ -1294,18 +1325,22 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 			err = Vm.ExecContract(newtx, block.Height())
 			if err != nil {
 				//				Vm.AbortRollback()
-				return err
+				log.Infof("ExecContract error: " + err.Error())
+				return  detachable, attachable, err
 			}
 
 			if !tx.Match(newtx) {
-				return fmt.Errorf("Mismatch contract execution result")
+				log.Infof("Mismatch contract execution result")
+				return  detachable, attachable, fmt.Errorf("Mismatch contract execution result")
 			}
 		}
 		if !block.Transactions()[0].Match(coinBase) {
-			return fmt.Errorf("Mismatch contract execution result")
+			log.Infof("Mismatch coinbase contract execution result")
+			return  detachable, attachable, fmt.Errorf("Mismatch coinbase contract execution result")
 		}
 		if Vm.StepLimit != 0 {
-			return fmt.Errorf("Incorrect contract execution cost.")
+			log.Infof("Incorrect contract execution cost.")
+			return  detachable, attachable, fmt.Errorf("Incorrect contract execution cost.")
 		}
 
 		// Update the view to mark all utxos referenced by the block
@@ -1315,18 +1350,21 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
 		err = views.ConnectTransactions(block, &stxos)
 		if err != nil {
-			return err		// should panic. this should never happend and would potentially corrupt the database
+			log.Infof("ConnectTransactions error: " + err.Error())
+			return  detachable, attachable, err		// should panic. this should never happend and would potentially corrupt the database
 		}
 
 		// Update the database and chain state.
 		err = b.connectBlock(n, block, views, stxos, Vm)
 		if err != nil {
-			return err		// should panic. this should never happend and would potentially corrupt the database
+			log.Infof("connectBlock error: " + err.Error())
+			return  detachable, attachable, err		// should panic. this should never happend and would potentially corrupt the database
 		}
 
 		Vm.Commit()	// commit state change & establish a rollback point
 
 		b.index.SetStatusFlags(n, chainutil.StatusValid)
+		attachable++
 	}
 
 	// Log the point where the chain forked and old and new best chain
@@ -1340,7 +1378,7 @@ func (b *BlockChain) ReorganizeChain(detachNodes, attachNodes *list.List) error 
 	log.Infof("REORGANIZE: New best chain head is %v (height %v)",
 		newBest.Hash, newBest.Height)
 
-	return nil
+	return  detachable, attachable, nil
 }
 
 // checkBlockSanity check whether the miner has provided sufficient collateral

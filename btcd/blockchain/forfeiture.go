@@ -16,6 +16,7 @@ import (
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/ovm"
 	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/omega/viewpoint"
 )
 
 type reportedblk struct {
@@ -31,7 +32,7 @@ type txfee struct {
 }
 
 // CompTxs is the main function to genrate compensation transactions.
-func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, error) {
+func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.ViewPointSet) ([]*wire.MsgTx, error) {
 	// prevNode is the node in tx chain just before us. it normally is tip of chain
 
 	// we only do compensation in the first block after rotation. i.e., nonce of prev block
@@ -95,7 +96,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, erro
 	for _, blk := range reportee {
 		// process one violator at a time. stx contains the awards to reporters. x is the list
 		// of victims to be compensated
-		stx, x, err := g.processviolator(blk, mrblks)
+		stx, x, err := g.processviolator(blk, mrblks, views)
 		if err != nil {
 			return nil, err
 		}
@@ -291,7 +292,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode) ([]*wire.MsgTx, erro
 
 // process violation by one miner (blk). the reports are in mrblks
 // returns: 1. a transaction giving awards to reporters 2. a list of victim txs to be compansated
-func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.MingingRightBlock) (*wire.MsgTx, map[chainhash.Hash]*txfee, error) {
+func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.MingingRightBlock, views *viewpoint.ViewPointSet) (*wire.MsgTx, map[chainhash.Hash]*txfee, error) {
 	reportblks := make(map[[20]byte]int)
 	totalblks := 0
 	totaltxs := 0
@@ -309,7 +310,25 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 			if !bhash.IsEqual(&r.MRBlock)  {
 				continue
 			}
+			// if collateral is gone, skip it
 
+			mrb, err := g.Miners.BlockByHash(&r.MRBlock)
+			if err != nil || mrb == nil {
+				continue
+			}
+			op := mrb.MsgBlock().Utxos
+
+			e := views.Utxo.LookupEntry(*op)
+/*			if e == nil {
+				ftchs := make(map[wire.OutPoint]struct{})
+				ftchs[*op] = struct{}{}
+				views.Utxo.FetchUtxosMain(views.Db, ftchs)
+				e = views.Utxo.LookupEntry(*op)
+			}
+ */
+			if e == nil {
+				continue
+			}
 			totalblks += len(r.Blocks) - 1
 			reportblks[u.Miner] = reportblks[u.Miner] + len(r.Blocks) - 1
 			for i, _ := range r.Blocks {
@@ -633,19 +652,19 @@ func (b *BlockChain) PrepForfeit(prevNode *chainutil.BlockNode) ([]reportedblk, 
 	return forfeiture, rbase, nil
 }
 
-func (b *BlockChain) CheckForfeit(block *btcutil.Block, prevNode *chainutil.BlockNode) error {
+func (b *BlockChain) CheckForfeit(block *btcutil.Block, prevNode *chainutil.BlockNode, views *viewpoint.ViewPointSet) error {
 	nonce := prevNode.Data.GetNonce()
 	if nonce < 0 && nonce > -wire.MINER_RORATE_FREQ {
 		// this is not a block after rotation, make sure there is no Forfeit tx
 		for _,tx := range block.MsgBlock().Transactions[1:] {
 			if tx.IsForfeit() {
-				return fmt.Errorf("Incorrect forfeiture txs")
+				return fmt.Errorf("Incorrect forfeiture txs. Forfeit in a son of non rotation signed block at height %d.", block.Height())
 			}
 		}
 		return nil
 	}
 
-	ftxs, err := b.CompTxs(prevNode)
+	ftxs, err := b.CompTxs(prevNode, views)
 	if err != nil {
 		return err
 	}
@@ -655,12 +674,13 @@ func (b *BlockChain) CheckForfeit(block *btcutil.Block, prevNode *chainutil.Bloc
 	for i,tx := range block.MsgBlock().Transactions[1:] {
 		if !tx.IsForfeit() {
 			if len(ftxs) > i {
-				return fmt.Errorf("Incorrect forfeiture txs")
+				return fmt.Errorf("Incorrect forfeiture txs. Less forfeiture txs than required %d. Forfeited UTXO: %s",
+					len(ftxs), ftxs[i].TxIn[0].PreviousOutPoint.String())
 			}
 			return nil
 		}
 		if len(ftxs) < i + 1 {
-			return fmt.Errorf("Incorrect forfeiture txs")
+			return fmt.Errorf("Incorrect forfeiture txs. More forfeiture txs than required %d", len(ftxs))
 		}
 		cnt++
 
@@ -673,12 +693,18 @@ func (b *BlockChain) CheckForfeit(block *btcutil.Block, prevNode *chainutil.Bloc
 			return err
 		}
 		if bytes.Compare(w1.Bytes(), w2.Bytes()) != 0 {
-			return fmt.Errorf("Incorrect forfeiture txs")
+			return fmt.Errorf("Incorrect forfeiture txs. ")
 		}
 	}
 
 	if len(ftxs) != cnt {
-		return fmt.Errorf("Incorrect forfeiture txs")
+		t := ""
+		if len(ftxs) > cnt {
+			t = "missing" + ftxs[cnt].TxIn[0].PreviousOutPoint.String()
+		}
+
+		return fmt.Errorf("Incorrect forfeiture txs. Block has %d forfeiture tx while %d is expected. %s",
+			cnt, len(ftxs), t)
 	}
 
 	return nil

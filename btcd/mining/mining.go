@@ -12,6 +12,7 @@ import (
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/omega/ovm"
 	"time"
+	"encoding/hex"
 
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
@@ -518,7 +519,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 
 	var comptx []*wire.MsgTx
 	if s.MsgBlock().Version >= chaincfg.Version2 {
-		comptx, err = g.Chain.CompTxs(g.Chain.BestChain.Tip())
+		comptx, err = g.Chain.CompTxs(g.Chain.BestChain.Tip(), views)
 		if err != nil {
 			return nil, err
 		}
