@@ -11,8 +11,9 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/omega/ovm"
+	"math/rand"
 	"time"
-	"encoding/hex"
+//	"encoding/hex"
 
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
@@ -1064,6 +1065,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	if ts.Before(ts2) {
 		ts = ts2
 	}
+	ts = ts.Add(time.Duration(rand.Intn(60)) * time.Second)
 
 	reqDifficulty, coll, err := g.Chain.Miners.NextRequiredDifficulty(last, ts)
 

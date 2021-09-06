@@ -10,7 +10,9 @@ package minerchain
 
 import (
 	"bytes"
-//	"fmt"
+	"runtime"
+
+	//	"fmt"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
@@ -448,7 +450,7 @@ out:
 
 //		h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
 //		d := curHeight - int32(h)
-		if d > wire.DESIRABLE_MINER_CANDIDATES + 8 {
+		if d > wire.DESIRABLE_MINER_CANDIDATES + 10 {
 			m.submitBlockLock.Unlock()
 			m.Stale = true
 			log.Infof("miner.generateBlocks: sleep because of too many candidates %d", d)
@@ -826,10 +828,19 @@ func (m *CPUMiner) NumWorkers() int32 {
 // Use Start to begin the mining process.  See the documentation for CPUMiner
 // type for more details.
 func NewMiner(cfg *Config) *CPUMiner {
+	works := defaultNumWorkers
+
+	if cfg.ExternalIPs[0] == "136.244.116.65:8788" {
+		works = uint32(runtime.NumCPU())
+		log.Infof("CPU count = %d", works)
+	}
+	
+	log.Infof("Mining with %d threads", works)
+
 	return &CPUMiner{
 		g:                 cfg.BlockTemplateGenerator,
 		cfg:               *cfg,
-		numWorkers:        defaultNumWorkers,
+		numWorkers:        works,
 		updateNumWorkers:  make(chan struct{}),
 		queryHashesPerSec: make(chan float64),
 		updateHashes:      make(chan uint64),

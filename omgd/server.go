@@ -3005,11 +3005,11 @@ func (s *server) Start() {
 
 	// Start the CPU miner if generation is enabled.
 	if cfg.Generate {
-		btcdLog.Info("Start minging blocks.")
+		btcdLog.Infof("Start minging blocks.")
 		s.cpuMiner.Start()
 	}
 	if cfg.GenerateMiner {
-		btcdLog.Info("Start minging miner blocks with %d collaterals.", len(cfg.collateral))
+		btcdLog.Infof("Start minging miner blocks with %d collaterals.", len(cfg.collateral))
 		s.minerMiner.Start(cfg.collateral)
 	}
 }
@@ -3549,8 +3549,10 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 			} else {
 				mcfg.MiningAddrs = cfg.miningAddrs
 			}
-		} else {
+		} else if len(cfg.signAddress) > 0 {
 			mcfg.MiningAddrs = cfg.signAddress
+		} else {
+			mcfg.MiningAddrs = cfg.miningAddrs
 		}
 		s.minerMiner = minerchain.NewMiner(mcfg)
 	} else {
