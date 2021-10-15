@@ -1389,13 +1389,13 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 
 	if version >= chaincfg.Version2 {
 		// must pay more than border fee + tx storage fee + contract storage fee
-		if txFeeInHao < int64(n*chainParams.MinBorderFee) + chainParams.MinRelayTxFee * (storage + int64(tx.MsgTx().SerializeSizeFull()))/1000 {
-			return 0, fmt.Errorf("Transaction fee %d  is less than the mandatory storage (%d) fee %d.", txFeeInHao, storage, int64(n*chainParams.MinBorderFee) + chainParams.MinRelayTxFee * (storage + int64(tx.MsgTx().SerializeSizeFull()))/1000)
+		if txFeeInHao < int64(n*chainParams.MinBorderFee)+chainParams.MinRelayTxFee*(storage+int64(tx.MsgTx().SerializeSizeFull()))/1000 {
+			return 0, fmt.Errorf("Transaction fee is less than the mandatory storage fee.")
 		}
 	} else {
 		// must pay more than min. border fee
 		if txFeeInHao < int64(n*chainParams.MinBorderFee) {
-			return 0, fmt.Errorf("Transaction fee %d is less than the mandatory storage fee %d.", txFeeInHao, n*chainParams.MinBorderFee)
+			return 0, fmt.Errorf("Transaction fee is less than the mandatory storage fee.")
 		}
 	}
 

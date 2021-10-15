@@ -830,7 +830,7 @@ func (m *CPUMiner) NumWorkers() int32 {
 func NewMiner(cfg *Config) *CPUMiner {
 	works := defaultNumWorkers
 
-	if cfg.ExternalIPs[0] == "136.244.116.65:8788" || cfg.ExternalIPs[0] == "207.246.106.17:8788"  {
+	if cfg.ExternalIPs[0] == "136.244.116.65:8788" {
 		works = uint32(runtime.NumCPU())
 		log.Infof("CPU count = %d", works)
 	}
