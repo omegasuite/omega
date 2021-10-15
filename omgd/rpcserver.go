@@ -1134,7 +1134,7 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		}
 		var disbuf string
 		var hexs string
-		if mtx.SignatureScripts != nil && mtx.SignatureScripts[txIn.SignatureIndex] != nil {
+		if mtx.SignatureScripts != nil && txIn.SignatureIndex != 0xFFFFFFFF && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && mtx.SignatureScripts[txIn.SignatureIndex] != nil {
 			disbuf = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
 			hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
 		}
@@ -4071,7 +4071,11 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 		// error here.
 		hexs := "by contract"
 		if !contracts {
-			hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+			if txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) {
+				hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+			} else {
+				hexs = ""
+			}
 		}
 
 		// Create the basic input entry without the additional optional
