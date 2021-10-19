@@ -2821,9 +2821,17 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				dest = pointer(num)
 
 			case 1:
-				tx := evm.GetTx();
+				tx := evm.GetTx()
 				msgTx := tx.MsgTx()
-				serializedSize := int64(msgTx.SerializeSize())
+				serializedSize := int64(msgTx.SerializeSizeFull())
+/*
+				n := 0
+				for _,d := range msgTx.TxDef {
+					if d.DefType() == token.DefTypeBorder && d.(*token.BorderDef).Father.IsEqual(&zeroHash) {
+						n++
+					}
+				}
+*/
 
 				if num & 1 != 0 {
 					serializedSize += 44	// add an input
@@ -2831,6 +2839,13 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				if num & 2 != 0 {
 					serializedSize += 35	// add an output
 				}
+/*				
+				paidstoragefees := make(map[[20]byte]int64)
+
+				storage := ContractNewStorage(msgTx, evm, paidstoragefees)
+
+				txFeeInHao := int64(n * chainParams.MinBorderFee) + chainParams.MinRelayTxFee*(storage + serializedSize)/1000
+*/
 
 				minFee := (serializedSize * int64(evm.chainConfig.MinRelayTxFee)) / 1000
 

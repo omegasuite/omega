@@ -881,7 +881,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	}
 }
 
-// OnGetBlocks is invoked when a peer receives a getblocks bitcoin
+// OnGetBlocks is invoked when a peer receives a getblocks
 // message.
 func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
  	invMsg := wire.NewMsgInv()
@@ -913,10 +913,10 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 	}
 	if sp.continueMinerHash != nil && !sp.continueMinerHash.IsEqual(&zeroHash) {
 		mhashList = mchain.LocateBlocks([]*chainhash.Hash{sp.continueMinerHash}, &msg.MinerHashStop,
-			wire.MaxBlocksPerMsg - 20)
+			wire.MaxBlocksPerMsg - 400)
 	} else if len(msg.MinerBlockLocatorHashes) > 0 {
 		mhashList = mchain.LocateBlocks(msg.MinerBlockLocatorHashes, &msg.MinerHashStop,
-			wire.MaxBlocksPerMsg - 20)
+			wire.MaxBlocksPerMsg - 400)
 	} else {
 		mhashList = make([]chainhash.Hash, 0)
 	}
