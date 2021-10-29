@@ -133,7 +133,7 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 
 	// Lock time of zero means the transaction is finalized.
 	lockTime := msgTx.LockTime
-	if lockTime == 0 {
+	if (msgTx.Version & wire.TxExpire != 0) || lockTime == 0 {
 		return true
 	}
 
@@ -190,6 +190,10 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 	// A transaction must have at least one input.
 	msgTx := tx.MsgTx()
 
+	if (msgTx.Version & (wire.TxExpire | wire.TxNoLock)) == (wire.TxExpire | wire.TxNoLock) {
+		return ruleError(ErrNoTxInputs, "transaction has conflicting version flags")
+	}
+
 	forfeit := msgTx.Version & wire.TxTypeMask == wire.ForfeitTxVersion
 
 	contract := false
@@ -200,7 +204,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		contract = contract || to.PkScript[0] == 0x88 // IsContract(to.PkScript[0])
 	}
 
-	if (forfeit || contract) && msgTx.LockTime != 0 {
+	if (forfeit || contract) && (msgTx.Version & wire.TxExpire) == 0 && msgTx.LockTime != 0 {
 		return ruleError(ErrBadTxInput, "transaction has contract call and LockTime is not 0")
 	}
 
@@ -719,10 +723,16 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	// Do some preliminary checks on each transaction to ensure they are
 	// sane before continuing.
 	for _, tx := range transactions {
+		if (tx.MsgTx().Version & wire.TxExpire) != 0 && tx.MsgTx().LockTime > uint32(header.Timestamp.Unix()) {
+			// tx lock time must not after block time
+			str := fmt.Sprintf("block contains transaction whose execution time has expired")
+			return ruleError(ErrExpiredTx, str)
+		}
+
 		err := CheckTransactionSanity(tx)
 		if err != nil {
-				return err
-			}
+			return err
+		}
 	}
 
 	// There are two hashes in a full block. One in header and one as coinbase's first
@@ -886,6 +896,12 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 		// using the current median time past of the past block's
 		// timestamps for all lock-time based checks.
 		blockTime := header.Timestamp
+
+		if header.Version >= wire.Version4 && blockTime.Unix() < prevNode.Data.TimeStamp() {
+			str := fmt.Sprintf("block time is older than the previous block's: %s", header.BlockHash().String())
+			return ruleError(ErrBlockTimeOutOfOrder, str)
+		}
+
 		blockTime = prevNode.CalcPastMedianTime()
 
 		// The height of this block is one more than the referenced

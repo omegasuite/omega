@@ -274,6 +274,8 @@ func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 	return res[:]
 }
 
+// handle monitored tokens. In a Tx, if any token has monitored right, then all the input/output must have
+// monitored right, monitor, or a father of monitored right
 func monitored(r * token.RightSetDef, views *viewpoint.ViewPointSet) bool {
 	for _,d := range r.Rights {
 		e, _ := views.FetchRightEntry(&d)
@@ -284,23 +286,35 @@ func monitored(r * token.RightSetDef, views *viewpoint.ViewPointSet) bool {
 	return false
 }
 
-// handle monitored tokens. In a Tx, if any token has monitored right, then all the input/output must have
-// monitored right, monitor, or a father of monitored right
 func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (bool, error) {
 	checkPolygon := true
+	zerohash := chainhash.Hash{}
+	polyhash := chainhash.Hash{}
 
-	for _, txDef := range tx.MsgTx().TxDef {
+	msgtx := tx.MsgTx()
+
+	for _, txOut := range msgtx.TxOut {
+		if txOut.IsSeparator() || (txOut.TokenType & 3) != 0 {
+			continue
+		}
+		if (txOut.TokenType & 1) != 0 && txOut.Token.Value.(*token.HashToken).Hash.IsEqual(&zerohash) {
+			return false, fmt.Errorf("Hash token value is zero hash")
+		}
+		if (txOut.TokenType & 2) != 0 && (txOut.Token.Rights == nil || txOut.Token.Rights.IsEqual(&zerohash)) {
+			return false, fmt.Errorf("Right is zero hash")
+		}
+	}
+
+	for _, txDef := range msgtx.TxDef {
 		switch txDef.(type) {
 		case *token.PolygonDef:
 			checkPolygon = false
 		}
 	}
 
-	zerohash := chainhash.Hash{}
-	polyhash := chainhash.Hash{}
 	if checkPolygon {
 		// is there more than one polygon?
-		for _, txOut := range tx.MsgTx().TxOut {
+		for _, txOut := range msgtx.TxOut {
 			if txOut.IsSeparator() {
 				continue
 			}
@@ -314,12 +328,16 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (bool, error
 		}
 	}
 	if checkPolygon {
-		for _, txIn := range tx.MsgTx().TxIn {
+		for _, txIn := range msgtx.TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
 			txin := views.Utxo.LookupEntry(txIn.PreviousOutPoint).ToTxOut()
-			if txin.TokenType == 3 && checkPolygon && txin.Rights != nil {
+			if txin.TokenType == 3 && checkPolygon {
+				if txin.Rights == nil {
+					str := fmt.Sprintf("Tx %s input contains zero rights.", tx.Hash().String())
+					return false, ruleError(1, str)
+				}
 				rt := views.Rights.LookupEntry(*txin.Rights)
 				var m bool
 				switch rt.(type) {

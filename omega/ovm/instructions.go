@@ -21,6 +21,7 @@ import (
 	"math"
 	"math/big"
 	"time"
+	"github.com/omegasuite/btcd/chaincfg"
 
 	"bytes"
 	"encoding/binary"
@@ -2805,6 +2806,8 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var tl int
 	var err error
 	dataType := []byte{0xFF, 'B'}
+	
+	zeroHash := chainhash.Hash{}
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
@@ -2823,31 +2826,68 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			case 1:
 				tx := evm.GetTx()
 				msgTx := tx.MsgTx()
-				serializedSize := int64(msgTx.SerializeSizeFull())
-/*
+				serializedSize := int64(msgTx.SerializeSize())
+
 				n := 0
-				for _,d := range msgTx.TxDef {
-					if d.DefType() == token.DefTypeBorder && d.(*token.BorderDef).Father.IsEqual(&zeroHash) {
-						n++
+				storage := int64(0)		// storage fees need to be paid by this tx
+
+//				v2 := blockversion >= chaincfg.Version2
+				v2 := evm.BlockNumber() >= 5463957		// since we don't have all block info., we hard code height where vwesion 2 begins
+				minFee := int64(0)
+
+				if v2 {
+					serializedSize = int64(msgTx.SerializeSizeFull())
+					for _,d := range msgTx.TxDef {
+						if d.DefType() == token.DefTypeBorder && d.(*token.BorderDef).Father.IsEqual(&zeroHash) {
+							n++
+						}
 					}
+
+					storagefees := make(map[[20]byte]int64)
+					paidstoragefees := make(map[[20]byte]int64)
+
+					for _, txOut := range msgTx.TxOut {
+						if txOut.IsSeparator() || !chaincfg.IsContractAddrID(txOut.PkScript[0]) {
+							continue
+						}
+
+						var addr [20]byte
+						copy(addr[:], txOut.PkScript[1:21])
+						if _,ok := storagefees[addr]; !ok {
+							storagefees[addr] = int64(evm.NewUage(addr))
+						}
+					}
+
+					for addr,t := range storagefees {
+						if t <= 0 {
+							continue
+						}
+						if s, ok := paidstoragefees[addr]; ok {
+							if t <= s {
+								continue
+							}
+							storage += t - s
+						} else {
+							storage += t
+						}
+						paidstoragefees[addr] = t
+					}
+					if num & 1 != 0 {
+						serializedSize += 256	// add an input
+					}
+					if num & 2 != 0 {
+						serializedSize += 140	// add an output
+					}
+					minFee = int64(n * evm.chainConfig.MinBorderFee) + evm.chainConfig.MinRelayTxFee*(storage + serializedSize)/1000
+				} else {
+					if num & 1 != 0 {
+						serializedSize += 44	// add an input
+					}
+					if num & 2 != 0 {
+						serializedSize += 35	// add an output
+					}
+					minFee = (serializedSize * int64(evm.chainConfig.MinRelayTxFee))/1000
 				}
-*/
-
-				if num & 1 != 0 {
-					serializedSize += 44	// add an input
-				}
-				if num & 2 != 0 {
-					serializedSize += 35	// add an output
-				}
-/*				
-				paidstoragefees := make(map[[20]byte]int64)
-
-				storage := ContractNewStorage(msgTx, evm, paidstoragefees)
-
-				txFeeInHao := int64(n * chainParams.MinBorderFee) + chainParams.MinRelayTxFee*(storage + serializedSize)/1000
-*/
-
-				minFee := (serializedSize * int64(evm.chainConfig.MinRelayTxFee)) / 1000
 
 				if minFee == 0 && evm.chainConfig.MinRelayTxFee > 0 {
 					minFee = int64(evm.chainConfig.MinRelayTxFee)
@@ -3888,6 +3928,54 @@ func opVersion(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		m = tx.MsgTx().Version
 	}
 	return stack.saveInt32(&dest, m)
+}
+
+func opTokenContract(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+	param := contract.GetBytes(*pc)
+
+	ln := len(param)
+
+	top := 0
+	num := int64(0)
+	var dest pointer
+	var tl int
+	var err error
+	var addr []byte
+
+	dataType := []byte{0xFF, 'Q'}
+
+	for j := 0; j < ln; j++ {
+		switch param[j] {
+		case '0', '1', '2', '3', '4', '5',
+			'6', '7', '8', '9', 'a', 'b', 'c',
+			'd', 'e', 'f', 'x', 'i', 'g':
+			num, tl, err = stack.getNum(param[j:], dataType[top])
+			if err != nil { return err }
+			j += tl
+
+			switch top {
+			case 0:
+				dest = pointer(num)
+			}
+			top++
+		}
+	}
+
+	ovm.DB.View(func(dbTx database.Tx) error {
+		var mtk [8]byte
+		common.LittleEndian.PutUint64(mtk[:], uint64(num))
+
+		var IssuedTokenTypes = []byte("issuedTokens")
+
+		bucket := dbTx.Metadata().Bucket(IssuedTokenTypes)
+		addr = bucket.Get(mtk[:])
+		return nil
+	})
+	if addr == nil {
+		addr = make([]byte, 20)
+	}
+
+	return stack.saveBytes(&dest, addr)
 }
 /*
 func opSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {

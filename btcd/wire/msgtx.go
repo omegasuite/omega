@@ -26,6 +26,8 @@ const (
 	ForfeitTxVersion = 2
 	TxNoLock = 0x10			// feature: the tx does not have time lock
 	TxNoDefine = 0x20		// feature: the tx does not have definition
+	TxExpire = 0x40			// feature: time lock is treated as expiration time
+							// in seconds since genesis
 
 	// MaxTxInSequenceNum is the maximum sequence number the sequence field
 	// of a transaction input can be.

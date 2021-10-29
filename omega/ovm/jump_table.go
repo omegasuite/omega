@@ -215,6 +215,10 @@ func NewOmegaInstructionSet() [256]operation {
 			execute:       opVersion,
 			valid:         true,
 		},
+		TOKENCONTRACT: {
+			execute:       opTokenContract,
+			valid:         true,
+		},
 /*
 		SIGNTEXT: operation{
 			execute:       opSignText,

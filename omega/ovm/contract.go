@@ -245,6 +245,7 @@ var validators = map[OpCode]codeValidator {
 	TIME:          opTimeValidator,
 	HEIGHT: opHeightValidator,
 	VERSION: opVersionValidator,
+	TOKENCONTRACT: opTokenContractValidator,
 }
 
 func ByteCodeValidator(code []inst) error {

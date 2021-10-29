@@ -66,6 +66,7 @@ const (
 	HEIGHT        // block height
 	TXIOCOUNT     // current io count of this tx
 	VERSION       // get tx version
+	TOKENCONTRACT	// contract address issuing a type of token
 	
 	STOP	 OpCode = 0x7A	//  "z"
 )
@@ -117,6 +118,7 @@ var opCodeToString = map[OpCode]string{
 	HEIGHT:    "HEIGHT",
 	META:    "META",
 	VERSION: "VERSION",
+	TOKENCONTRACT: "TOKENCONTRACT",
 }
 
 func (o OpCode) String() string {
@@ -169,9 +171,10 @@ var stringToOp = map[string]OpCode{
 	"RETURN":        RETURN,
 	"MINT":          MINT,
 	"META":          META,
-	"TIME": TIME,
-	"HEIGHT": HEIGHT,
-	"VERSION": VERSION,
+	"TIME":			 TIME,
+	"HEIGHT": 		 HEIGHT,
+	"VERSION": 		 VERSION,
+	"TOKENCONTRACT": TOKENCONTRACT,
 }
 
 func StringToOp(str string) OpCode {

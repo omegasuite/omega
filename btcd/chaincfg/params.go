@@ -110,6 +110,12 @@ const (
 	// min coll actually offered in the prev adj cycle.
 	DeploymentVersion3
 
+	// DeploymentVersion4 includes: check 0-hash for polygons and its rights (bug fix); add
+	// token-to-contract OVM instructions; mandate new block having timestamp not before
+	// previous block; add tx expire time - a tx will not be in a block if block time is
+	// after the expire time
+	DeploymentVersion4
+
 	// DefinedDeployments is the number of currently defined deployments.
 	// It must always come last since it is used to determine how many
 	// defined deployments there currently are.
@@ -120,6 +126,7 @@ const (
 	Version1 = 0x10000
 	Version2 = 0x20000
 	Version3 = 0x30000
+	Version4 = 0x40000
 )
 
 type forfeitureContract struct {
@@ -264,6 +271,7 @@ type Params struct {
 
 	// forfeiture
 	Forfeit		forfeitureContract
+	ViolationReportDeadline	int32
 }
 
 // MainNetParams defines the network parameters for the main Omega network.
@@ -323,6 +331,12 @@ var MainNetParams = Params{
 			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  uint64(time.Date(2021, 7, 17, 0, 0, 0, 0, time.UTC).Unix()),
 		},
+		DeploymentVersion4: {
+			PrevVersion: 0x30000,
+			FeatureMask: 0x4,
+			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2021, 12, 21, 0, 0, 0, 0, time.UTC).Unix()),
+		},
 	},
 
 	// Mempool parameters
@@ -357,6 +371,7 @@ var MainNetParams = Params{
 		Filing:		[4]byte{0xb2, 0x18, 0x16, 0x5a},
 		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
+	ViolationReportDeadline:	100,
 }
 
 // RegressionNetParams defines the network parameters for the regression test
@@ -407,13 +422,19 @@ var RegressionNetParams = Params{
 			PrevVersion: 0x10000,
 			FeatureMask: 0x3,
 			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 2, 28, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
 		},
 		DeploymentVersion3: {
 			PrevVersion: 0x20000,
 			FeatureMask: 0x4,
 			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 7, 17, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
+		DeploymentVersion4: {
+			PrevVersion: 0x30000,
+			FeatureMask: 0x4,
+			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
 		},
 	},
 
@@ -450,6 +471,7 @@ var RegressionNetParams = Params{
 		Filing:		[4]byte{0xb2,0x18,0x16,0x5a},
 		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
+	ViolationReportDeadline: 10,
 }
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
@@ -503,13 +525,19 @@ var TestNet3Params = Params{
 			PrevVersion: 0x10000,
 			FeatureMask: 0x3,
 			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 2, 28, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
 		},
 		DeploymentVersion3: {
 			PrevVersion: 0x20000,
 			FeatureMask: 0x4,
 			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 7, 17, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
+		DeploymentVersion4: {
+			PrevVersion: 0x30000,
+			FeatureMask: 0x4,
+			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
 		},
 	},
 
@@ -546,6 +574,7 @@ var TestNet3Params = Params{
 		Filing:		[4]byte{0xb2,0x18,0x16,0x5a},
 		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
+	ViolationReportDeadline: 10,
 }
 
 // SimNetParams defines the network parameters for the simulation test Bitcoin
@@ -600,13 +629,19 @@ var SimNetParams = Params{
 			PrevVersion: 0x10000,
 			FeatureMask: 0x3,
 			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 2, 28, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
 		},
 		DeploymentVersion3: {
 			PrevVersion: 0x20000,
 			FeatureMask: 0x4,
 			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 7, 17, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
+		DeploymentVersion4: {
+			PrevVersion: 0x30000,
+			FeatureMask: 0x4,
+			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
 		},
 	},
 
@@ -643,6 +678,7 @@ var SimNetParams = Params{
 		Filing:		[4]byte{0xb2,0x18,0x16,0x5a},
 		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
+	ViolationReportDeadline: 10,
 }
 
 var (

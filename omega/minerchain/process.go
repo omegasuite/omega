@@ -164,7 +164,7 @@ func (b *MinerChain) CheckSideChain(hash *chainhash.Hash) {
 
 func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode, flags blockchain.BehaviorFlags) (bool, error, wire.Message) {
 	// if it is in side chain, skip these tests below as they depends on chain state
-	for p, i := parent, 0; i <= wire.ViolationReportDeadline && p != nil; i++ {
+	for p, i := parent, int32(0); i <= b.chainParams.ViolationReportDeadline && p != nil; i++ {
 		if p.Data.GetVersion() < chaincfg.Version2 {
 			break
 		}
@@ -423,7 +423,7 @@ func (b *MinerChain) validateVioldationReports(block * wire.MinerBlock) error {
 			return fmt.Errorf("reports are not in ascending order")
 		}
 		hoder = v.Height
-		if block.Height()-mb.Height >= wire.ViolationReportDeadline {
+		if block.Height()-mb.Height >= b.chainParams.ViolationReportDeadline {
 			return fmt.Errorf("violation report exceeds time limit")
 		}
 		if bestnode.Height < v.Height {
@@ -489,7 +489,7 @@ func (b *MinerChain) validateVioldationReports(block * wire.MinerBlock) error {
 				matched = true // keep going to check dup of h
 			}
 		matching:
-			for j, w := 0, mynode; j < wire.ViolationReportDeadline; j++ {
+			for j, w := int32(0), mynode; j < b.chainParams.ViolationReportDeadline; j++ {
 				y := w.Data.(*blockchainNodeData).block
 				if j > 0 {
 					// check h is a new report

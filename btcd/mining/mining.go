@@ -1111,7 +1111,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 			usable[*c] = struct{}{}
 		}
 
-		for p, i := last, 0; i <= wire.ViolationReportDeadline && p != nil; i++ {
+		for p, i := last, int32(0); i <= g.chainParams.ViolationReportDeadline && p != nil; i++ {
 			if q := g.Chain.Miners.NodetoHeader(p).Utxos; q != nil {
 				delete(usable, *q)
 			}

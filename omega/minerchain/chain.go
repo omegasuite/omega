@@ -474,7 +474,7 @@ func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBl
 		tbr = false
 		for i,u := range b.violations {
 			mb := b.NodeByHash(&u.MRBlock)
-			if node.Height - mb.Height >= wire.ViolationReportDeadline {
+			if node.Height - mb.Height >= b.chainParams.ViolationReportDeadline {
 				tbr = true
 				b.violations = append(b.violations[:i], b.violations[i+1:]...)
 				break

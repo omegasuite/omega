@@ -198,13 +198,13 @@ func (b *BlockChain) InitCollateral() {
 //	b.LockedCollaterals = make(map[wire.OutPoint]struct{})
 
 	rot := b.BestSnapshot().LastRotation
-	for i := 0; i < wire.ViolationReportDeadline; i++ {
+	for i := 0; i < int(b.ChainParams.ViolationReportDeadline); i++ {
 		mb,_ := b.Miners.BlockByHeight(int32(rot) - int32(i))
 		if mb == nil || mb.MsgBlock().Utxos == nil {
 			return
 		}
 		c := *mb.MsgBlock().Utxos
-		b.collaterals[wire.ViolationReportDeadline - 1 - i] = c
+		b.collaterals[int(b.ChainParams.ViolationReportDeadline) - 1 - i] = c
 		b.LockedCollaterals[c] = struct{}{}
 	}
 }
@@ -834,11 +834,11 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	}
 
 	for i := 0; i < m; i++ {
-		c := b.collaterals[wire.ViolationReportDeadline-1]
+		c := b.collaterals[b.ChainParams.ViolationReportDeadline-1]
 		delete(b.LockedCollaterals, c)
-		b.collaterals = b.collaterals[:wire.ViolationReportDeadline-1]
+		b.collaterals = b.collaterals[:b.ChainParams.ViolationReportDeadline-1]
 
-		mb, _ := b.Miners.BlockByHeight(int32(rot) - wire.ViolationReportDeadline - int32(i))
+		mb, _ := b.Miners.BlockByHeight(int32(rot) - b.ChainParams.ViolationReportDeadline - int32(i))
 		if mb == nil || mb.MsgBlock().Utxos == nil {
 			b.collaterals = append([]wire.OutPoint{wire.OutPoint{}}, b.collaterals...)
 			continue
@@ -2585,7 +2585,7 @@ func New(config *Config) (*BlockChain, error) {
 		MinerTPH:          make(map[[20]byte]*TPHRecord),
 		ConsensusRange:    [2]int32{-1,-1},
 		AddrUsage:         config.AddrUsage,
-		collaterals:       make([]wire.OutPoint, wire.ViolationReportDeadline),
+		collaterals:       make([]wire.OutPoint, params.ViolationReportDeadline),
 		LockedCollaterals: make(map[wire.OutPoint]struct{}),
 	}
 

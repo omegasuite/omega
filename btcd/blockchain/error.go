@@ -222,6 +222,10 @@ const (
 	ErrPrevBlockNotBest
 
 	ErrExcessContractExec
+
+	ErrBlockTimeOutOfOrder
+
+	ErrExpiredTx
 )
 
 // Map of ErrorCode values back to their constant names for pretty printing.

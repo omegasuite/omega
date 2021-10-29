@@ -537,7 +537,7 @@ out:
 
 				// check dup report
 				inrange := false
-				for p, i := chainChoice, 0; i < wire.ViolationReportDeadline; i++ {
+				for p, i := chainChoice, int32(0); i < m.cfg.ChainParams.ViolationReportDeadline; i++ {
 					if v.MRBlock == p.Data.(*blockchainNodeData).block.BlockHash() {
 						inrange = true
 					}

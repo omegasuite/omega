@@ -633,3 +633,11 @@ func opHeightValidator(param []byte) int {
 func opVersionValidator(param []byte) int {
 	return formatParser(formatHeight, param)
 }
+
+var formatTokenContract = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {patOperand, 0},
+}
+
+func opTokenContractValidator(param []byte) int {
+	return formatParser(formatTokenContract, param)
+}

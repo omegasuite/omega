@@ -47,13 +47,16 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 	// MR blocks. the violator is the 100-th block (or two blocks) before the just-rotated-in MR block
 	if nonce < -wire.MINER_RORATE_FREQ {
 		pmh = -(nonce + wire.MINER_RORATE_FREQ)
+		if pmh <= g.ChainParams.ViolationReportDeadline {
+			return nil, nil
+		}
 		prevminer = g.Miners.NodeByHeight(pmh - 1)
-		mb, err := g.Miners.BlockByHeight(pmh - wire.ViolationReportDeadline)
+		mb, err := g.Miners.BlockByHeight(pmh - g.ChainParams.ViolationReportDeadline)
 		if err != nil {
 			return nil, err
 		}
-		reportee[pmh-wire.ViolationReportDeadline] = mb
-		rbase = pmh - wire.ViolationReportDeadline
+		reportee[pmh-g.ChainParams.ViolationReportDeadline] = mb
+		rbase = pmh - g.ChainParams.ViolationReportDeadline
 	} else if nonce > 0 {
 		q, m := prevNode, 0
 		for ; q != nil && q.Data.GetNonce() > -wire.MINER_RORATE_FREQ; q = q.Parent {
@@ -64,7 +67,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 		if q != nil {
 			pmh = - (q.Data.GetNonce() + wire.MINER_RORATE_FREQ) + int32(m)
 			prevminer = g.Miners.NodeByHeight(pmh - 1)
-			rbase = pmh - wire.ViolationReportDeadline - int32(m)
+			rbase = pmh - g.ChainParams.ViolationReportDeadline - int32(m)
 			for j, h := 0, rbase; j < m; j++ {
 				mb, err := g.Miners.BlockByHeight(h)
 				if err != nil {
@@ -81,9 +84,9 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 	// MR blocks to be scanned for reports. to make them in ascending order by height
 	// get the MR blocks between the violator and the rotated-in MR blocks. the violation reports
 	// if any are in these blocks
-	mrblks := make([]wire.MingingRightBlock, wire.ViolationReportDeadline+wire.POWRotate)
-	for i := 0; i < wire.ViolationReportDeadline+wire.POWRotate; i++ {
-		mrblks[wire.ViolationReportDeadline+wire.POWRotate-i-1] = g.Miners.NodetoHeader(prevminer)
+	mrblks := make([]wire.MingingRightBlock, g.ChainParams.ViolationReportDeadline+wire.POWRotate)
+	for i := 0; i < int(g.ChainParams.ViolationReportDeadline+wire.POWRotate); i++ {
+		mrblks[int(g.ChainParams.ViolationReportDeadline+wire.POWRotate)-i-1] = g.Miners.NodetoHeader(prevminer)
 		prevminer = prevminer.Parent
 	}
 
@@ -179,7 +182,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 		if avgtx < 0 {
 			// get 200 block avergae txs in the reporting period. we will decide allocation unit based on this
 			// reporting period = ViolationReportDeadline (100) * MINER_RORATE_FREQ (200)
-			for i, p := 0, prevNode; i < wire.ViolationReportDeadline * wire.MINER_RORATE_FREQ; i++ {
+			for i, p := 0, prevNode; i < int(g.ChainParams.ViolationReportDeadline) * wire.MINER_RORATE_FREQ; i++ {
 				t,_ := g.BlockByHash(&p.Hash)
 				if t == nil {
 					return nil, nil
@@ -187,7 +190,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 				avgtx += len(t.MsgBlock().Transactions) - 1
 				p = p.Parent
 			}
-			avgtx /= wire.ViolationReportDeadline		// should we use avg txs in 1 rotation , or 2, or 3?
+			avgtx /= int(g.ChainParams.ViolationReportDeadline)		// should we use avg txs in 1 rotation , or 2, or 3?
 			if avgtx < 10 {
 				avgtx = 10
 			}
@@ -585,12 +588,12 @@ func (b *BlockChain) PrepForfeit(prevNode *chainutil.BlockNode) ([]reportedblk, 
 
 	if nonce < -wire.MINER_RORATE_FREQ {
 		pmh = -(nonce + wire.MINER_RORATE_FREQ)
-		mb,err := b.Miners.BlockByHeight(pmh - wire.ViolationReportDeadline)
+		mb,err := b.Miners.BlockByHeight(pmh - b.ChainParams.ViolationReportDeadline)
 		if err != nil {
 			return nil, 0, err
 		}
-		reportee[pmh - wire.ViolationReportDeadline] = mb
-		rbase = pmh - wire.ViolationReportDeadline
+		reportee[pmh - b.ChainParams.ViolationReportDeadline] = mb
+		rbase = pmh - b.ChainParams.ViolationReportDeadline
 		prevminer = b.Miners.NodeByHeight(pmh - 1)
 	} else if nonce > 0	{
 		q, m := prevNode, wire.POWRotate
@@ -602,7 +605,7 @@ func (b *BlockChain) PrepForfeit(prevNode *chainutil.BlockNode) ([]reportedblk, 
 		if q != nil {
 			pmh = int32(m + 1) - (q.Data.GetNonce() + wire.MINER_RORATE_FREQ)
 			prevminer = b.Miners.NodeByHeight(pmh - 1)
-			rbase = pmh - wire.ViolationReportDeadline - wire.POWRotate + 1
+			rbase = pmh - b.ChainParams.ViolationReportDeadline - wire.POWRotate + 1
 			for j, h := 0, rbase; j < wire.POWRotate; j++ {
 				mb, err := b.Miners.BlockByHeight(h)
 				if err != nil {
@@ -617,10 +620,10 @@ func (b *BlockChain) PrepForfeit(prevNode *chainutil.BlockNode) ([]reportedblk, 
 	}
 
 	// MR blocks to be scanned for reports
-	mrblks := make([]wire.MingingRightBlock, wire.ViolationReportDeadline + wire.POWRotate)
+	mrblks := make([]wire.MingingRightBlock, b.ChainParams.ViolationReportDeadline + wire.POWRotate)
 
-	for i := 0; i < wire.ViolationReportDeadline + wire.POWRotate; i++ {
-		mrblks[wire.ViolationReportDeadline+wire.POWRotate-i-i] = b.Miners.NodetoHeader(prevminer)
+	for i := int32(0); i < b.ChainParams.ViolationReportDeadline + wire.POWRotate; i++ {
+		mrblks[b.ChainParams.ViolationReportDeadline+wire.POWRotate-i-i] = b.Miners.NodetoHeader(prevminer)
 		prevminer = prevminer.Parent
 	}
 	for _, blk := range mrblks {
