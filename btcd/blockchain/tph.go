@@ -75,10 +75,10 @@ func (b *BlockChain) updateTPS(miner [20]byte, t *TPHRecord) {
 	tm := int64(0)
 	tx := uint32(0)
 	idealtime := int64(0)
-	for _,p := range t.History {
+	for _, p := range t.History {
 		tm += p.EndTime.Unix() - p.StartTime.Unix()
 		tx += p.TxTotal
-		idealtime += 3 * int64(p.EndBlock - p.StartBlock)
+		idealtime += 3 * int64(p.EndBlock-p.StartBlock)
 	}
 
 	f := int64(10)
@@ -91,7 +91,7 @@ func (b *BlockChain) updateTPS(miner [20]byte, t *TPHRecord) {
 	if tm < 3600 {
 		t.TPHscore = tx * 10 / uint32(f)
 	} else {
-		t.TPHscore = tx * 36000 / uint32(tm * f)
+		t.TPHscore = tx * 36000 / uint32(tm*f)
 		if t.TPHscore == 0 {
 			t.TPHscore = 1
 		}
@@ -134,13 +134,46 @@ func (b *BlockChain) TphNotice(t *Notification) {
 	switch t.Data.(type) {
 	case *btcutil.Block:
 		block := t.Data.(*btcutil.Block)
-		if block.MsgBlock().Header.Nonce > 0 {
-			return
-		}
 
 		h := uint32(block.Height())
 		rot := b.Rotation(block.MsgBlock().Header.PrevBlock)
 		if rot <= wire.CommitteeSize {
+			return
+		}
+
+		if block.MsgBlock().Header.Nonce > 0 {
+			prev := b.NodeByHash(&block.MsgBlock().Header.PrevBlock)
+			if prev.Data.GetNonce() > 0 {
+				return
+			}
+
+			punishable := make([][20]uint8, 0, wire.CommitteeSize)
+
+			if prev.Data.GetNonce() < -wire.MINER_RORATE_FREQ {
+				// if stall immediately after a rotation, we blame the new committee member
+				mb, _ := b.Miners.BlockByHeight(-prev.Data.GetNonce() - wire.MINER_RORATE_FREQ)
+				punishable = append(punishable, mb.MsgBlock().Miner)
+			} else {
+				// if interrupted by a POW node, it mean the committee is stalling.
+				// all members gets lowest score as punishment
+				for i := 0; i < wire.CommitteeSize; i++ {
+					mb, _ := b.Miners.BlockByHeight(rot)
+					rot--
+
+					punishable = append(punishable, mb.MsgBlock().Miner)
+				}
+			}
+
+			for _, miner := range punishable {
+				p := b.GetMinerTPS(miner)
+				if len(p.History) > 0 {
+					p.History[len(p.History)-1].TxTotal = 1
+					p.current.TxTotal = 0
+					p.current.StartBlock = 0
+
+					b.updateTPS(miner, p)
+				}
+			}
 			return
 		}
 

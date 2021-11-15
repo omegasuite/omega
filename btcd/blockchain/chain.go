@@ -989,6 +989,9 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List) (int
 		return 0, 0, nil
 	}
 
+	// protect the node referenced by the best miner
+	protect := b.Miners.Tip().MsgBlock().BestBlock
+
 	// Ensure the provided nodes match the current best chain.
 	tip := b.BestChain.Tip()
 	if detachNodes.Len() != 0 {
@@ -1040,6 +1043,9 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List) (int
 		if n.Parent == nil {
 			// never remove genesis block
 			continue
+		}
+		if protect.IsEqual(&n.Hash) {
+			return 0, 0, fmt.Errorf("Try to detach protected node")
 		}
 		var block *btcutil.Block
 		err := b.db.View(func(dbTx database.Tx) error {
@@ -1263,6 +1269,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List) (int
 		Vm.BlockTime = func() uint32 {
 			return uint32(block.MsgBlock().Header.Timestamp.Unix())
 		}
+		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
 
 		if err = Vm.Rollback(); err != nil { // roll back contract state in DB
 			return 0, 0, err
@@ -1312,6 +1319,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List) (int
 		Vm.BlockTime = func() uint32 {
 			return uint32(block.MsgBlock().Header.Timestamp.Unix())
 		}
+		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
 
 		Vm.StepLimit = block.MsgBlock().Header.ContractExec
 		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
@@ -1472,6 +1480,7 @@ func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm
 		Vm.BlockTime = func() uint32 {
 			return uint32(block.MsgBlock().Header.Timestamp.Unix())
 		}
+		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
 //		Vm.Block = func() *btcutil.Block { return block }
 		Vm.SetCoinBaseOp(
 			func(txo wire.TxOut) wire.OutPoint {

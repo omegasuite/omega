@@ -276,6 +276,15 @@ func main() {
 				log.Printf("getrawmempool: %s", s.String())
 			}
 			break
+		case "clearmempool":
+			h, err := client.ClearMempool()
+			if err != nil {
+				log.Print(err)
+			}
+			for _,s := range h {
+				log.Printf("clearmempool: %s", s.String())
+			}
+			break
 		case "gettxout":
 			fmt.Println("UTXO(!) tx hash -> ")
 			s, _ := reader.ReadString('\n')

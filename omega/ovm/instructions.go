@@ -3664,6 +3664,10 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 
 	dataType := []byte{0xFF, 'Q', 'Q', 'h'}
 
+	if ovm.BlockVersion() < wire.Version2 {
+		dataType[2] = 'D'
+	}
+
 	for j := 0; j < ln; j++ {
 		switch param[j] {
 		case '0', '1', '2', '3', '4', '5',
@@ -4141,13 +4145,19 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 
 	case SigHashSingle, SigHashDouble, SigHashTriple, SigHashQuardruple:
 		if inidx < uint32(SigHashType(it) & SigHashMask) - uint32(SigHashSingle) ||
-			int(inidx) >= len(t.TxOut) || int(inidx) >= len(t.TxIn){
+			int(inidx) >= len(t.TxOut) || int(inidx) >= len(t.TxIn) {
 			return fmt.Errorf("Insufficient data for line signature")
 		}
 
 		start = inidx + uint32(SigHashSingle) - uint32(SigHashType(it)&SigHashMask)
 		t.TxOut = t.TxOut[start:inidx+1]
 		t.TxIn = t.TxIn[start:inidx+1]
+
+		if ovm.Context.BlockVersion() >= wire.Version3 {
+			for i := 0; i < len(t.TxIn); i++ {
+				t.TxIn[i].SignatureIndex = 0
+			}
+		}
 
 		it = it &^ byte(SigHashAnyOneCanPay)		// to skip SigHashAnyOneCanPay check below
 

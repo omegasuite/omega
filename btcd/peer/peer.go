@@ -2107,6 +2107,7 @@ type recentState struct {
 }
 
 var recentConns = make(map[string]recentState)
+var cntconlock sync.Mutex
 
 // readRemoteVersionMsg waits for the next message to arrive from the remote
 // peer.  If the next message is not a version message or the version is not
@@ -2130,6 +2131,7 @@ func (p *Peer) readRemoteVersionMsg() error {
 	}
 
 	// check dup conn from same IP & latest state, if more than 5 recently, reject it
+	cntconlock.Lock()
 	if r, ok := recentConns[p.na.IP.String()]; ok {
 		i := 0
 		samelatest := true
@@ -2147,6 +2149,7 @@ func (p *Peer) readRemoteVersionMsg() error {
 			rejectMsg := wire.NewMsgReject(msg.Command(), common.RejectMalformed,
 				reason)
 			_ = p.writeMessage(rejectMsg, wire.LatestEncoding)
+			cntconlock.Unlock()
 			return errors.New(reason)
 		} else if i >= MAX_NEW_CON_PER_IP && samelatest {
 			r.lasttime = uint32(time.Now().Unix())
@@ -2159,6 +2162,7 @@ func (p *Peer) readRemoteVersionMsg() error {
 	} else {
 		recentConns[p.na.IP.String()] = recentState {uint32(time.Now().Unix()), [MAX_NEW_CON_PER_IP]int32{msg.LastBlock,0,0,0,0}}
 	}
+	cntconlock.Unlock()
 
 	// Detect self connections.
 	if !allowSelfConns && sentNonces.Exists(msg.Nonce) {

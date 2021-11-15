@@ -1197,9 +1197,9 @@ func (b *BlockChain) initChainState() error {
 	}
 
 	if gobackone {
-		err = b.db.View(exec);
-	} else {
 		err = b.db.Update(exec);
+	} else {
+		err = b.db.View(exec);
 	}
 
 	if err != nil {
@@ -1525,9 +1525,22 @@ func dbStoreBlockNode(dbTx database.Tx, node *chainutil.BlockNode) error {
 	}
 	value := w.Bytes()
 
+	bucket := dbTx.Metadata().Bucket(hashIndexBucketName)
+
+	var serializedHeight [4]byte
+	byteOrder.PutUint32(serializedHeight[:], uint32(node.Height))
+
+	// Add the block hash to height mapping to the index. It might be a dup op, but necessary
+	if err := bucket.Put(node.Hash[:], serializedHeight[:]); err != nil {
+		return err
+	}
+
 	// Write block header data to block index bucket.
 	blockIndexBucket := dbTx.Metadata().Bucket(blockIndexBucketName)
-	key := BlockIndexKey(&node.Hash, uint32(node.Height))
+	key := BlockIndexKey(&node.Hash, uint32(0xFFFFFFFF))
+	blockIndexBucket.Delete(key)	// remove invalid data that might be there
+
+	key = BlockIndexKey(&node.Hash, uint32(node.Height))
 	return blockIndexBucket.Put(key, value)
 }
 

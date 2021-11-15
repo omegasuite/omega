@@ -852,6 +852,7 @@ func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	vm.BlockNumber = func() uint64 { return uint64(best.Height + 1) }
 	nt := time.Now().Unix()
 	vm.BlockTime = func() uint32 { return uint32(nt) }
+	vm.BlockVersion = func() uint32 { return wire.Version4 }
 
 	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
 	if mb.Data.GetContractExec() > vm.StepLimit {
@@ -1134,7 +1135,7 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		}
 		var disbuf string
 		var hexs string
-		if mtx.SignatureScripts != nil && mtx.SignatureScripts[txIn.SignatureIndex] != nil {
+		if mtx.SignatureScripts != nil && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && mtx.SignatureScripts[txIn.SignatureIndex] != nil {
 			disbuf = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
 			hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
 		}
@@ -1610,6 +1611,7 @@ func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	best := s.cfg.Chain.BestSnapshot()
 	vm.BlockTime = func() uint32 { return uint32(best.MedianTime.Unix()) }
 	vm.BlockNumber = func() uint64 { return uint64(best.Height) }
+	vm.BlockVersion = func() uint32 { return wire.Version4 }
 
 	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
 	if mb.Data.GetContractExec() > vm.StepLimit {

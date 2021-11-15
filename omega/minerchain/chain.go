@@ -1584,10 +1584,15 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		b.chainLock.Unlock()
 
 		detachNodes := list.New()
+		var p *chainutil.BlockNode
+		p = nil
 		for m := s.BestChain.Tip(); m.Hash != h; m = m.Parent {
 			detachNodes.PushBack(m)
+			p = m
 		}
-		detachNodes.PushBack(h)
+		detachNodes.PushBack(p.Parent)
+
+//		detachNodes.PushBack(h)
 
 		log.Warnf("roll back %d tx blocks", detachNodes.Len())
 		s.ChainLock.Lock()

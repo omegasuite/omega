@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/omega/consensus"
-	"math/big"
-	"math/rand"
 	"github.com/omegasuite/btcd/wire/common"
+	//	"math/big"
+	"math/rand"
+	"runtime"
+
 	//	"runtime"
 	"sync"
 	"time"
@@ -52,7 +54,7 @@ var (
 	// since we are in development phase, use 1 miner to free CPU do other work
 	// in final release we may want to keep it this way if most people would
 	// use hardware mining
-	defaultNumWorkers = uint32(1)	// uint32(runtime.NumCPU())
+	defaultNumWorkers = uint32(runtime.NumCPU())
 )
 
 // Config is a descriptor containing the cpu miner configuration.
@@ -67,10 +69,10 @@ type Config struct {
 
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
-	MiningAddrs []btcutil.Address
-	SignAddress []btcutil.Address
-	PrivKeys    []*btcec.PrivateKey
-	EnablePOWMining bool
+	MiningAddrs      []btcutil.Address
+	SignAddress      []btcutil.Address
+	PrivKeys         []*btcec.PrivateKey
+	DisablePOWMining bool
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -107,12 +109,12 @@ type CPUMiner struct {
 	sync.Mutex
 	g                 *mining.BlkTmplGenerator
 	cfg               Config
-//	numWorkers        uint32
+	numWorkers        uint32
 	started           bool
 	discreteMining    bool
 //	connLock          sync.Mutex
 	wg                sync.WaitGroup
-//	updateNumWorkers  chan struct{}
+	updateNumWorkers  chan struct{}
 //	queryHashesPerSec chan float64
 //	updateHashes      chan uint64
 //	speedMonitorQuit  chan struct{}
@@ -238,17 +240,18 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 // stale block such as a new block showing up or periodically when there are
 // new transactions and enough time has elapsed without finding a solution.
 func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
-	ticker *time.Ticker, quit chan struct{}) bool {
+	ticker *time.Ticker, quit chan struct{}) int32 {
 
 	// Create some convenience variables.
 	msgBlock := template.Block.(*wire.MsgBlock)
 	header := &msgBlock.Header
 
 	targetDifficulty := blockchain.CompactToBig(template.Bits)
-
+/*
 	if template.Height < 383300 {
 		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(wire.DifficultyRatio))
 	}
+ */
 
 	// Initial state.
 	lastGenerated := time.Now()
@@ -259,26 +262,30 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 		// Search through the entire nonce range for a solution while
 		// periodically checking for early quit and stale block
 		// conditions along with updates to the speed monitor.
-		for i := uint32(1); i <= maxNonce; i++ {
+	pow := func (start uint32, endpow chan int32) int32 {
+		for i := start; i <= maxNonce; i += m.numWorkers {
 			select {
-			case <-quit:
-				return false
+			case <-endpow:
+				return 0
 
-			case <- m.connch:
-				return false
+			case <-quit:
+				return 0
+
+			case <-m.connch:
+				return 0
 
 			case <-consensus.POWStopper:
-				return false
+				return 0
 
 			case <-ticker.C:
-//				m.updateHashes <- hashesCompleted
-//				hashesCompleted = 0
+				//				m.updateHashes <- hashesCompleted
+				//				hashesCompleted = 0
 
 				// The current block is stale if the best block
 				// has changed.
 				best := m.g.BestSnapshot()
 				if !header.PrevBlock.IsEqual(&best.Hash) {
-					return false
+					return 0
 				}
 
 				// The current block is stale if the memory pool
@@ -287,8 +294,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 				// minute.
 				if lastTxUpdate != m.g.TxSource().LastUpdated() &&
 					time.Now().After(lastGenerated.Add(time.Minute)) {
-
-					return false
+					return 0
 				}
 
 			default:
@@ -301,25 +307,49 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 			// attempt accordingly.
 			header.Nonce = int32(i)
 			hash := header.BlockHash()
-//			hashesCompleted += 2
+			//			hashesCompleted += 2
 
 			// The block is solved when the new block hash is less
 			// than the target difficulty.  Yay!
 			hashNum := blockchain.HashToBig(&hash)
+/*			we have pased this point
 			if template.Height >= 383300 && header.Version < chaincfg.Version2 {
 				hashNum = hashNum.Mul(hashNum, big.NewInt(wire.DifficultyRatio))
 			}
+ */
 
 			if hashNum.Cmp(targetDifficulty) <= 0 {
 				log.Info("Block solved ", hash, " vs ", targetDifficulty)
-//				m.updateHashes <- hashesCompleted
-				return true
+				//				m.updateHashes <- hashesCompleted
+				return header.Nonce
 			}
 		}
-//		m.g.UpdateBlockTime(msgBlock)
-//	}
+		return 0
+	}
 
-	return false
+	quitt := make(chan int32)
+	closing := false
+
+	var mt sync.Mutex
+	for i := uint32(0); i < m.numWorkers; i++ {
+		go func () {
+			r := pow(i+1, quitt)
+
+			mt.Lock()
+			if !closing {
+				quitt <- r
+			}
+			mt.Unlock()
+		} ()
+	}
+	b := <-quitt
+
+	mt.Lock()
+	closing = true
+	close(quitt)
+	mt.Unlock()
+
+	return b
 }
 
 func (m *CPUMiner) Notice (notification *blockchain.Notification) {
@@ -653,7 +683,7 @@ out:
 		lastblkgen = time.Now().Unix()
 		m.minedBlock = nil
 
-		if !m.cfg.EnablePOWMining {
+		if m.cfg.DisablePOWMining {
 			select {
 			case <-consensus.POWStopper:
 
@@ -665,13 +695,14 @@ out:
 //			log.Infof("Retry because POW Mining disabled.")
 			continue
 		}
-
+/*
 		pows := 0
 		blk := m.g.Chain.BestChain.Tip()
 		for blk != nil && blk.Data.GetNonce() > 0 && pows < 7 {
 			pows++
 			blk = blk.Parent
 		}
+ */
 
 		select {
 		case <-m.connch:
@@ -683,18 +714,38 @@ out:
 		case <-m.quit:
 			break out
 
-		case <-time.After(time.Second * time.Duration(2*wire.TimeGap+(1<<pows))):
+		default:
+
+//		case <-time.After(time.Second * time.Duration(2*wire.TimeGap+(1<<pows))):
 		}
 
-		
 		fmt.Printf("Try to solve block ")
 
 		// Attempt to solve the block.  The function will exit early
 		// with false when conditions that trigger a stale block, so
 		// a new block template can be generated.  When the return is
 		// true a solution was found, so submit the solved block.
-		if m.solveBlock(template, curHeight+1, ticker, m.quit) {
+		b := m.solveBlock(template, curHeight+1, ticker, m.quit)
+
+		if b > 0 {
+			if 2 * wire.TimeGap > (time.Now().Unix() - lastblkgen) {
+				time.Sleep(time.Second * (2 * wire.TimeGap - time.Duration(time.Now().Unix() - lastblkgen)))
+				select {
+				case <-m.connch:
+					continue
+
+				case <-consensus.POWStopper:
+					continue
+
+				case <-m.quit:
+					break out
+
+				default:
+				}
+			}
+
 			wb := * template.Block.(*wire.MsgBlock)
+			wb.Header.Nonce = b
 			block := btcutil.NewBlock(&wb)
 			log.Infof("New POW block produced nonce = %s at %d", block.MsgBlock().Header.Nonce, template.Height)
 			block.SetHeight(template.Height)
@@ -843,7 +894,7 @@ func (m *CPUMiner) HashesPerSecond() float64 {
 // cause all CPU mining to be stopped.
 //
 // This function is safe for concurrent access.
-/*
+
 func (m *CPUMiner) SetNumWorkers(numWorkers int32) {
 	if numWorkers == 0 {
 		m.Stop()
@@ -867,19 +918,17 @@ func (m *CPUMiner) SetNumWorkers(numWorkers int32) {
 		m.updateNumWorkers <- struct{}{}
 	}
 }
- */
 
 // NumWorkers returns the number of workers which are running to solve blocks.
 //
 // This function is safe for concurrent access.
-/*
+
 func (m *CPUMiner) NumWorkers() int32 {
 	m.Lock()
 	defer m.Unlock()
 
 	return int32(m.numWorkers)
 }
- */
 
 // GenerateNBlocks generates the requested number of blocks. It is self
 // contained in that it creates block templates and attempts to solve them while
@@ -980,8 +1029,8 @@ func New(cfg *Config) *CPUMiner {
 	m := &CPUMiner{
 		g:                 cfg.BlockTemplateGenerator,
 		cfg:               *cfg,
-//		numWorkers:        defaultNumWorkers,
-//		updateNumWorkers:  make(chan struct{}),
+		numWorkers:        defaultNumWorkers,
+		updateNumWorkers:  make(chan struct{}),
 //		queryHashesPerSec: make(chan float64),
 //		updateHashes:      make(chan uint64),
 		connch: 		   make(chan int32, 100),

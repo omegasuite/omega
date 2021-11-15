@@ -422,6 +422,9 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	// newTarget since conversion to the compact representation loses
 	// precision.
 	newTargetBits := BigToCompact(newTarget)
+	if v2 && coll < 100 {
+		coll = 100
+	}
 	coll = (coll * 7) >> 3
 	if coll == 0 {
 		coll = 1

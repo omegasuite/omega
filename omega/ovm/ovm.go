@@ -59,6 +59,7 @@ type (
 	// GetBlockNumberFunc returns the block numer of the block of current execution environment
 	GetBlockNumberFunc func() uint64
 	GetBlockTimeFunc func() uint32
+	GetBlockVersionFunc func() uint32
 //	GetBlockFunc func() * btcutil.Block
 
 	AddCoinBaseFunc func(wire.TxOut) wire.OutPoint
@@ -93,6 +94,7 @@ type Context struct {
 	StepLimit   int64              // Step LIMIT policy
 	BlockNumber GetBlockNumberFunc // Provides information for NUMBER
 	BlockTime   GetBlockTimeFunc
+	BlockVersion   GetBlockVersionFunc
 
 	exeout []bool
 //	Block 		GetBlockFunc

@@ -76,6 +76,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	ctx.AddTxOutput = func(t wire.TxOut) int { return -1	}
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ctx.BlockTime = func() uint32 { return 0 }
+	ctx.BlockVersion = func() uint32 { return wire.Version4 }
 //	ctx.Block = func() *btcutil.Block { return nil }
 	ctx.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut {	return nil	}
@@ -187,6 +188,8 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 					ovm.AddTxOutput = func(t wire.TxOut) int { return -1 }
 					ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 					ovm.BlockTime = func() uint32 { return 0 }
+					ovm.BlockVersion = func() uint32 { return wire.Version4 }
+
 //					ovm.Block = func() *btcutil.Block { return nil }
 					ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
 					ovm.NoLoop = true
@@ -230,6 +233,9 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 	for txinidx, txin := range tx.MsgTx().TxIn[skip:] {
 		if txin.IsSeparator() {	// never
 			break
+		}
+		if txin.IsSepadding() {
+			continue
 		}
 
 		tinidx := txinidx + skip
@@ -348,6 +354,9 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 		}
 
 		pkslen := len(utxo.PkScript())
+		if pkslen < 25 {
+			pkslen = 25
+		}
 		code := make([]byte,  pkslen - 1)
 
 		copy(code[:], method)
@@ -478,6 +487,7 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 	ovm.BlockTime = func() uint32 {
 		return uint32(time.Now().Unix())
 	}
+	ovm.BlockVersion = func() uint32 { return wire.Version4 }
 	ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash {
 		h := t.Hash()
 		e := ovm.views.Rights.GetRight(ovm.DB, h)

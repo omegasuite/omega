@@ -286,22 +286,24 @@ func monitored(r * token.RightSetDef, views *viewpoint.ViewPointSet) bool {
 	return false
 }
 
-func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (bool, error) {
+func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) (bool, error) {
 	checkPolygon := true
 	zerohash := chainhash.Hash{}
 	polyhash := chainhash.Hash{}
 
 	msgtx := tx.MsgTx()
 
-	for _, txOut := range msgtx.TxOut {
-		if txOut.IsSeparator() || (txOut.TokenType & 3) != 0 {
-			continue
-		}
-		if (txOut.TokenType & 1) != 0 && txOut.Token.Value.(*token.HashToken).Hash.IsEqual(&zerohash) {
-			return false, fmt.Errorf("Hash token value is zero hash")
-		}
-		if (txOut.TokenType & 2) != 0 && (txOut.Token.Rights == nil || txOut.Token.Rights.IsEqual(&zerohash)) {
-			return false, fmt.Errorf("Right is zero hash")
+	if ver >= wire.Version4 {
+		for _, txOut := range msgtx.TxOut {
+			if txOut.IsSeparator() || (txOut.TokenType&3) != 0 {
+				continue
+			}
+			if (txOut.TokenType&1) != 0 && txOut.Token.Value.(*token.HashToken).Hash.IsEqual(&zerohash) {
+				return false, fmt.Errorf("Hash token value is zero hash")
+			}
+			if (txOut.TokenType&2) != 0 && (txOut.Token.Rights == nil || txOut.Token.Rights.IsEqual(&zerohash)) {
+				return false, fmt.Errorf("Right is zero hash")
+			}
 		}
 	}
 

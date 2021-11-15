@@ -122,27 +122,31 @@ type config struct {
 	DbType             string   `long:"dbtype" description:"Database backend to use for the Block Chain"`
 	Profile            string   `long:"profile" description:"Enable HTTP profiling on given port -- NOTE port must be between 1024 and 65536"`
 	CPUProfile         string   `long:"cpuprofile" description:"Write CPU profile to the specified file"`
-	DebugLevel         string   `short:"d" long:"debuglevel" description:"Logging level for all subsystems {trace, debug, info, warn, error, critical} -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems -- Use show to list available subsystems"`
-	Upnp               bool     `long:"upnp" description:"Use UPnP to map our listening port outside of NAT"`
-	MinRelayTxFee      float64  `long:"minrelaytxfee" description:"The minimum transaction fee in OMC/kB to be considered a non-zero fee."`
-	MinBorderFee         float64       `long:"minborderfee" description:"The minimum polygon storage fee in OMC/kB to be considered a non-zero fee."`
-	FreeTxRelayLimit     float64       `long:"limitfreerelay" description:"Limit relay of transactions with no transaction fee to the given amount in thousands of bytes per minute"`
-	NoRelayPriority      bool          `long:"norelaypriority" description:"Do not require free or low-fee transactions to have high priority for relaying"`
-	TrickleInterval      time.Duration `long:"trickleinterval" description:"Minimum time between attempts to send new inventory to a connected peer"`
-	MaxOrphanTxs         int           `long:"maxorphantx" description:"Max number of orphan transactions to keep in memory"`
-	Generate             bool          `long:"generate" description:"Generate (mine) bitcoins using the CPU"`
-	GenerateMiner        bool          `long:"generateminer" description:"Generate (mine) miner blocks using the CPU"`
-	EnablePOWMining		 bool          `long:"enablepowmining" description:"Enable generation of POW blocks"`
-	MiningAddrs          []string      `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
-	PrivKeys  	         []string      `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
-	RsaPrivateKey		 string		   `long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
-	BlockPrioritySize    uint32        `long:"blockprioritysize" description:"Size in bytes for high-priority/low-fee transactions when creating a block"`
-	MinBlockWeight	     uint32        `long:"minblockweight" description:"Minimal desired transactions in a block"`
-	UserAgentComments    []string      `long:"uacomment" description:"Comment to add to the user agent -- See BIP 14 for more information."`
-	NoPeerBloomFilters   bool          `long:"nopeerbloomfilters" description:"Disable bloom filtering support"`
-	NoCFilters           bool          `long:"nocfilters" description:"Disable committed filtering (CF) support"`
-	DropCfIndex          bool          `long:"dropcfindex" description:"Deletes the index used for committed filtering (CF) support from the database on start up and then exits."`
-	SigCacheMaxSize      uint          `long:"sigcachemaxsize" description:"The maximum number of entries in the signature verification cache"`
+	DebugLevel         string        `short:"d" long:"debuglevel" description:"Logging level for all subsystems {trace, debug, info, warn, error, critical} -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems -- Use show to list available subsystems"`
+	Upnp               bool          `long:"upnp" description:"Use UPnP to map our listening port outside of NAT"`
+	MinRelayTxFee      float64       `long:"minrelaytxfee" description:"The minimum transaction fee in OMC/kB to be considered a non-zero fee."`
+	MinBorderFee       float64       `long:"minborderfee" description:"The minimum polygon storage fee in OMC/kB to be considered a non-zero fee."`
+	FreeTxRelayLimit   float64       `long:"limitfreerelay" description:"Limit relay of transactions with no transaction fee to the given amount in thousands of bytes per minute"`
+	NoRelayPriority    bool          `long:"norelaypriority" description:"Do not require free or low-fee transactions to have high priority for relaying"`
+	TrickleInterval    time.Duration `long:"trickleinterval" description:"Minimum time between attempts to send new inventory to a connected peer"`
+	MaxOrphanTxs       int           `long:"maxorphantx" description:"Max number of orphan transactions to keep in memory"`
+	Generate           bool          `long:"generate" description:"Generate (mine) bitcoins using the CPU"`
+	GenerateMiner      bool          `long:"generateminer" description:"Generate (mine) miner blocks using the CPU"`
+	DisablePOWMining   bool          `long:"disablepowmining" description:"Disable generation of POW blocks"`
+
+	// no longer use EnablePOWMining, but keep it here for compatibility
+	EnablePOWMining    bool          `long:"enablepowmining" description:"Enable generation of POW blocks"`
+
+	MiningAddrs        []string      `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
+	PrivKeys           []string      `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
+	RsaPrivateKey      string        `long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
+	BlockPrioritySize  uint32        `long:"blockprioritysize" description:"Size in bytes for high-priority/low-fee transactions when creating a block"`
+	MinBlockWeight     uint32        `long:"minblockweight" description:"Minimal desired transactions in a block"`
+	UserAgentComments  []string      `long:"uacomment" description:"Comment to add to the user agent -- See BIP 14 for more information."`
+	NoPeerBloomFilters bool          `long:"nopeerbloomfilters" description:"Disable bloom filtering support"`
+	NoCFilters         bool          `long:"nocfilters" description:"Disable committed filtering (CF) support"`
+	DropCfIndex        bool          `long:"dropcfindex" description:"Deletes the index used for committed filtering (CF) support from the database on start up and then exits."`
+	SigCacheMaxSize    uint          `long:"sigcachemaxsize" description:"The maximum number of entries in the signature verification cache"`
 	BlocksOnly           bool          `long:"blocksonly" description:"Do not accept transactions from remote peers."`
 	TxIndex              bool          `long:"txindex" description:"Maintain a full hash-based transaction index which makes all transactions available via the getrawtransaction RPC"`
 	DropTxIndex    bool          `long:"droptxindex" description:"Deletes the hash-based transaction index from the database on start up and then exits."`
@@ -411,21 +415,21 @@ func loadConfig() (*config, []string, error) {
 		DataDir:              defaultDataDir,
 		LogDir:               defaultLogDir,
 		DbType:               defaultDbType,
-		RPCKey:               defaultRPCKeyFile,
-		RPCCert:              defaultRPCCertFile,
-		MinRelayTxFee:        mempool.DefaultMinRelayTxFee.ToOMC(),
-		FreeTxRelayLimit:     defaultFreeTxRelayLimit,
-		TrickleInterval:      defaultTrickleInterval,
-		BlockPrioritySize:    mempool.DefaultBlockPrioritySize,
-		MaxOrphanTxs:         defaultMaxOrphanTransactions,
-		SigCacheMaxSize:      defaultSigCacheMaxSize,
-		Generate:             defaultGenerate,
-		GenerateMiner:        defaultGenerate,
-		EnablePOWMining:	  true,
-		TxIndex:              defaultTxIndex,
-		AddrIndex:            defaultAddrIndex,
-		ChainCurrentStd:	  24,
-		MinBlockWeight:		  4,
+		RPCKey:            defaultRPCKeyFile,
+		RPCCert:           defaultRPCCertFile,
+		MinRelayTxFee:     mempool.DefaultMinRelayTxFee.ToOMC(),
+		FreeTxRelayLimit:  defaultFreeTxRelayLimit,
+		TrickleInterval:   defaultTrickleInterval,
+		BlockPrioritySize: mempool.DefaultBlockPrioritySize,
+		MaxOrphanTxs:      defaultMaxOrphanTransactions,
+		SigCacheMaxSize:   defaultSigCacheMaxSize,
+		Generate:          defaultGenerate,
+		GenerateMiner:     defaultGenerate,
+		DisablePOWMining:  false,
+		TxIndex:           defaultTxIndex,
+		AddrIndex:         defaultAddrIndex,
+		ChainCurrentStd:   24,
+		MinBlockWeight:    4,
 	}
 
 	// Service options which are only added on Windows.

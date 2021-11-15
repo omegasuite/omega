@@ -85,7 +85,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 	// get the MR blocks between the violator and the rotated-in MR blocks. the violation reports
 	// if any are in these blocks
 	mrblks := make([]wire.MingingRightBlock, g.ChainParams.ViolationReportDeadline+wire.POWRotate)
-	for i := 0; i < int(g.ChainParams.ViolationReportDeadline+wire.POWRotate); i++ {
+	for i := 0; i < int(g.ChainParams.ViolationReportDeadline+wire.POWRotate) && prevminer != nil; i++ {
 		mrblks[int(g.ChainParams.ViolationReportDeadline+wire.POWRotate)-i-1] = g.Miners.NodetoHeader(prevminer)
 		prevminer = prevminer.Parent
 	}

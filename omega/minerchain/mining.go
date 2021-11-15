@@ -830,7 +830,9 @@ func (m *CPUMiner) NumWorkers() int32 {
 func NewMiner(cfg *Config) *CPUMiner {
 	works := defaultNumWorkers
 
-	if cfg.ExternalIPs[0] == "136.244.116.65:8788" {
+	fast := map[string]struct{}{"136.244.116.65:8788": {}, "136.244.115.27":{}, "140.82.54.243":{}, "45.63.115.174": {} }
+
+	if _,ok := fast[cfg.ExternalIPs[0]]; ok {
 		works = uint32(runtime.NumCPU())
 		log.Infof("CPU count = %d", works)
 	}
@@ -858,11 +860,11 @@ func (b *MinerChain) choiceOfChain() (*chainutil.BlockNode, int32) {
 		bestBlk = bestBlk.Parent
 	}
 //		b.blockChain.BestChain.Tip()
-	if b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
-		h := b.blockChain.BestSnapshot().LastRotation
-		d := n.Height - int32(h)
+//	if b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
+		h2 := b.blockChain.BestSnapshot().LastRotation
+		d := n.Height - int32(h2)
 		return n, d
-	}
+//	}
 
 	for !b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
 		n = n.Parent
@@ -881,7 +883,7 @@ func (b *MinerChain) choiceOfChain() (*chainutil.BlockNode, int32) {
 	}
 
 	// waiting list length of the choice
-	d := n.Height - int32(b.blockChain.BestSnapshot().LastRotation)
+	d = n.Height - int32(b.blockChain.BestSnapshot().LastRotation)
 
 	return n, d
 }

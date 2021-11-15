@@ -825,7 +825,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
 //	log.Infof("netsyc ProcessBlock %s at %d", bmsg.block.Hash().String(), bmsg.block.Height())
-	isMainchain, isOrphan, err, missing := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
+	isMainchain, isOrphan, err, missing, orp := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
 	b1 := sm.chain.BestSnapshot()
 	b2 := sm.chain.Miners.BestSnapshot()
@@ -843,6 +843,11 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
 			h,
 			&zeroHash, &zeroHash, [2]int32{b1.Height, b2.Height})
+	}
+	if orp != nil {
+		log.Infof("Requesting block %s", orp.String())
+//		peer.PushGetBlocksMsg(chainhash.BlockLocator(make([]*chainhash.Hash, 0)), chainhash.BlockLocator(make([]*chainhash.Hash, 0)), orp, &zeroHash)
+		peer.QueueMessage(&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *orp}}}, nil)
 	}
 
 	if err != nil {
@@ -1860,8 +1865,7 @@ out:
 				msg.reply <- peerID
 
 			case processBlockMsg:
-				main, isOrphan, err,_ := sm.chain.ProcessBlock(
-					msg.block, msg.flags)
+				main, isOrphan, err,_,_ := sm.chain.ProcessBlock(msg.block, msg.flags)
 				if msg.reply != nil {
 					sm.lastBlockOp += " ... waiting reply from sm.chain.ProcessBlock "
 					if err != nil {

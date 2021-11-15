@@ -1010,7 +1010,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 		// a transaction are in a unit value known as a hao.  One
 		// bitcoin is a quantity of hao as defined by the
 		// HaoPerBitcoin constant.
-		if utxo.TokenType & 3 != 0 {
+		if utxo.TokenType & 1 != 0 {
 			continue
 		}
 
@@ -1020,7 +1020,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 				"value of %v", btcutil.Amount(originTxHao))
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if originTxHao > btcutil.MaxHao {
+		if utxo.TokenType == 0 && originTxHao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v",
 				btcutil.Amount(originTxHao),
@@ -1034,7 +1034,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 		lastHaoIn := totalIns[utxo.TokenType]
 		totalIns[utxo.TokenType] += originTxHao
 		if totalIns[utxo.TokenType] < lastHaoIn ||
-			totalIns[utxo.TokenType] > btcutil.MaxHao {
+			(utxo.TokenType == 0 && totalIns[utxo.TokenType] > btcutil.MaxHao) {
 			str := fmt.Sprintf("total value of all transaction "+
 				"inputs is %v which is higher than max "+
 				"allowed value of %v", totalIns[utxo.TokenType],
@@ -1088,7 +1088,7 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 		// a transaction are in a unit value known as a hao.  One
 		// bitcoin is a quantity of hao as defined by the
 		// HaoPerBitcoin constant.
-		if utxo.TokenType & 3 != 0 {
+		if utxo.TokenType & 1 != 0 {
 			continue
 		}
 
@@ -1098,7 +1098,7 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 				"value of %v", btcutil.Amount(originTxHao))
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if originTxHao > btcutil.MaxHao {
+		if utxo.TokenType == 0 && originTxHao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v",
 				btcutil.Amount(originTxHao),
@@ -1112,7 +1112,7 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 		lastHaoIn := totalIns[utxo.TokenType]
 		totalIns[utxo.TokenType] += originTxHao
 		if totalIns[utxo.TokenType] < lastHaoIn ||
-			totalIns[utxo.TokenType] > btcutil.MaxHao {
+			(utxo.TokenType == 0 && totalIns[utxo.TokenType] > btcutil.MaxHao) {
 			str := fmt.Sprintf("total value of all transaction "+
 				"inputs is %v which is higher than max "+
 				"allowed value of %v", totalIns[utxo.TokenType],
@@ -1267,7 +1267,7 @@ func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views * viewpoin
 	return nil
 }
 
-func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) error {
+func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, version uint32) error {
 	if IsCoinBase(tx) {
 		return nil
 	}
@@ -1296,7 +1296,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet) 
 //	ntx := tx.Copy() // Deep copy
 //	ntx.Spends = append(inputs, ntx.Spends...)
 
-	res, err := validate.QuickCheckRight(tx, views)
+	res, err := validate.QuickCheckRight(tx, views, version)
 	if res {
 		return nil
 	}
@@ -1333,7 +1333,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		// a transaction are in a unit value known as a hao.  One
 		// bitcoin is a quantity of hao as defined by the
 		// HaoPerBitcoin constant.
-		if utxo.TokenType & 3 != 0 {
+		if utxo.TokenType & 1 != 0 {
 			continue
 		}
 
@@ -1342,8 +1342,9 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		// The total of all outputs must not be more than the max
 		// allowed per transaction.  Also, we could potentially overflow
 		// the accumulator so check for overflow.
-		lastHaoIn := totalIns[utxo.TokenType]
+//		lastHaoIn := totalIns[utxo.TokenType]
 		totalIns[utxo.TokenType] += originTxHao
+/*		already checked elsewhere
 		if totalIns[utxo.TokenType] < lastHaoIn ||
 			totalIns[utxo.TokenType] > btcutil.MaxHao {
 			str := fmt.Sprintf("total value of all transaction "+
@@ -1352,6 +1353,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 				btcutil.MaxHao)
 			return 0, ruleError(ErrBadTxOutValue, str)
 		}
+ */
 	}
 
 	// Calculate the total output amount for this transaction.  It is safe
@@ -1580,11 +1582,13 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		Vm.BlockTime = func() uint32 {
 			return uint32(block.MsgBlock().Header.Timestamp.Unix())
 		}
+		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
 		//	Vm.Block = func() *btcutil.Block { return block }
 		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
 		Vm.BlockTime = func() uint32 {
 			return uint32(block.MsgBlock().Header.Timestamp.Unix())
 		}
+		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
 	}
 
 	paidstoragefees := make(map[[20]byte]int64)
@@ -1633,7 +1637,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				return err
 			}
 
-			err = CheckTransactionIntegrity(tx, views)
+			err = CheckTransactionIntegrity(tx, views, block.MsgBlock().Header.Version)
 			if err != nil {
 				return err
 			}

@@ -157,7 +157,7 @@ func (b *Orphans) removeOrphanBlock(orphan *orphanBlock) {
 // It also imposes a maximum limit on the number of outstanding orphan
 // blocks and will remove the oldest received orphan block if the limit is
 // exceeded.
-func (b *Orphans) AddOrphanBlock(block Orphaned) {
+func (b *Orphans) AddOrphanBlock(block Orphaned) *chainhash.Hash {
 	// Remove expired orphan blocks.
 	for _, oBlock := range b.orphans {
 		if time.Now().After(oBlock.expiration) {
@@ -200,13 +200,23 @@ func (b *Orphans) AddOrphanBlock(block Orphaned) {
 		if block.NeedUpdate(ob.block) {
 			b.orphans[hash].block = block
 		}
-		return
+		return nil
 	}
 	b.orphans[hash] = oBlock
 
 	// Add to previous hash lookup index for faster dependency lookups.
 	prevHash := block.PrevBlock()
 	b.prevOrphans[*prevHash] = append(b.prevOrphans[*prevHash], oBlock)
+
+	if _,ok := b.orphans[*prevHash]; !ok {
+		return prevHash
+	}
+
+	return nil
+
+	// iterate to the top
+//	for ob,ok := b.orphans[*prevHash]; ok; prevHash = ob.block.PrevBlock() {}
+//	return prevHash
 }
 
 // ProcessOrphans determines if there are any orphans which depend on the passed

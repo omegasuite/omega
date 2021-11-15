@@ -587,6 +587,19 @@ mempoolLoop:
 		}
 		log.Infof("mempoolLoop processing tx %s", tx.Hash())
 
+		if tx.MsgTx().IsForfeit() {
+//		if prev.Data.GetNonce() < 0 && prev.Data.GetNonce() > -wire.MINER_RORATE_FREQ && tx.MsgTx().IsForfeit() {
+//			continue
+//		}
+//		if tx.MsgTx().IsForfeit() {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+
+			// we should roll back result of last contract execution here
+			log.Infof("Reject standalone Forfeiture tx %s", tx.Hash())
+			continue
+		}
+
 		if s.MsgBlock().Version &^ 0xFFFF >= chaincfg.Version2 {
 			var locked = false
 			locks := ""
@@ -601,7 +614,11 @@ mempoolLoop:
 				}
 			}
 			if locked {
-				log.Infof("Skipping tx %s that spends locked UTXO %s", tx.Hash(), locks)
+				g.txSource.RemoveTransaction(tx, true)
+				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+
+				// we should roll back result of last contract execution here
+				log.Infof("Reject tx %s that spends locked UTXO %s", tx.Hash(), locks)
 				continue
 			}
 		}
@@ -733,6 +750,7 @@ mempoolLoop:
 	Vm.BlockTime = func() uint32 {
 		return uint32(ts.Unix())
 	}
+	Vm.BlockVersion = func() uint32 { return s.MsgBlock().Version &^ 0xFFFF }
 //	Vm.Block = func() *btcutil.Block { return nil }
 	Vm.GetCoinBase = func() *btcutil.Tx { return coinbaseTx }
 	Vm.CheckExecCost = true
@@ -892,7 +910,7 @@ mempoolLoop:
 			continue
 		}
 
-		err = blockchain.CheckTransactionIntegrity(tx, views)
+		err = blockchain.CheckTransactionIntegrity(tx, views, s.MsgBlock().Version &^ 0xFFFF)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)

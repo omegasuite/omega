@@ -46,6 +46,8 @@ const (
 
 	BFWatingFactor
 
+	BFAlreadyInChain
+
 	// BFNone is a convenience value to specifically indicate no flags.
 	BFNone BehaviorFlags = 0
 )
@@ -86,11 +88,13 @@ func (b *BlockChain) blockExists(hash *chainhash.Hash) (bool, error) {
 		// Ultimately the entire block index should be serialized
 		// instead of only the current main chain so it can be consulted
 		// directly.
+/*
 		_, err = DbFetchHeightByHash(dbTx, hash)
 		if IsNotInMainChainErr(err) {
 			exists = false
 			return nil
 		}
+ */
 		return err
 	})
 	return exists, err
@@ -233,7 +237,7 @@ func (b * orphanBlock) NeedUpdate(ob chainutil.Orphaned) bool {
 // whether or not the block is an orphan.
 //
 // This function is safe for concurrent access.
-func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error, int32) {
+func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error, int32, *chainhash.Hash) {
 	if block.MsgBlock().Header.Nonce > 0 {
 		// if it is a POW block, wait 10 seconds. Thus if the committee if functioning
 		// they will generate signed blocks during this period and supersedes this block
@@ -248,88 +252,95 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	prevHash := &blockHeader.PrevBlock
 	prevHashExists, err := b.blockExists(prevHash)
 	if err != nil {
-		return false, false, err, -1
+		return false, false, err, -1, nil
 	}
 	if !prevHashExists {
 		log.Infof("block %s: prevHash block %s does not exist", block.Hash().String(), prevHash.String())
+		var orp *chainhash.Hash
+		orp = nil
 		if flags & BFNoConnect == 0 {
 			if block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index > uint32(b.BestChain.Height()) + 500 {
 				err := fmt.Errorf("Skipping future block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
-				return false, false, err, -1
+				return false, false, err, -1, nil
 			} else {
 				log.Infof("Adding orphan block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
-				b.Orphans.AddOrphanBlock((* orphanBlock)(block))
+				orp = b.Orphans.AddOrphanBlock((* orphanBlock)(block))
 			}
 		}
-		return false, true, nil, -1
+		return false, true, nil, -1, orp
 	}
 
 	prevNode := b.NodeByHash(prevHash)
 
 	if prevNode == nil {
 		str := fmt.Sprintf("previous block %s is unknown", prevHash)
-		return false, false, ruleError(ErrPreviousBlockUnknown, str), -1
+		return false, false, ruleError(ErrPreviousBlockUnknown, str), -1, nil
 	} else if b.index.NodeStatus(prevNode).KnownInvalid() {
 		str := fmt.Sprintf("previous block %s is known to be invalid", prevHash)
-		return false, false, ruleError(ErrInvalidAncestorBlock, str), -1
+		return false, false, ruleError(ErrInvalidAncestorBlock, str), -1, prevHash
 	}
 
 	blockHeight := prevNode.Height + 1
 
 	if blockHeight <= int32(b.index.Cutoff) {
-		return false, false, ruleError(ErrInvalidAncestorBlock, "Block height is in locked area"), -1
+		if prevNode.Height <= 0 {
+			return false, false, ruleError(ErrInvalidAncestorBlock, "Block height is in locked area"), -1, prevHash
+		}
+		return false, false, ruleError(ErrInvalidAncestorBlock, "Block height is in locked area"), -1, nil
 	}
 
 	block.SetHeight(blockHeight)
 
 	if blockHeight != int32(block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index) {
-		return false, false, ruleError(ErrInvalidAncestorBlock, "Block height inconsistent with ostensible height"), -1
+		return false, false, ruleError(ErrInvalidAncestorBlock, "Block height inconsistent with ostensible height"), -1, nil
 	}
 
 //	fastAdd := flags&BFFastAdd == BFFastAdd
 	blockHash := block.Hash()
 
-	// The block must not already exist in the main chain or side chains.
+	// The block must not already exist as valid in the main chain or side chains.
 	exists, err := b.blockExists(blockHash)
 	if err != nil {
-		return false, false, err, -1
+		return false, false, err, -1, nil
 	}
 
 	if exists {
-		if block.Height() > b.BestChain.Height() {
-			// do we need to reorg?
-			node := b.NodeByHash(blockHash)
-			detachNodes, attachNodes := b.getReorganizeNodes(node)
+		node := b.NodeByHash(blockHash)
+		if !b.index.NodeStatus(node).KnownInvalid() && node.Height == block.Height() {
+			if block.Height() > b.BestChain.Height() {
+				// do we need to reorg?
+				detachNodes, attachNodes := b.getReorganizeNodes(node)
 
-			if attachNodes.Len() != 0 {
-				// Reorganize the chain.
-				if err = b.ReorganizeChain(detachNodes, attachNodes); err != nil {
-					return false, true, err, -1
-				}
-				if writeErr := b.index.FlushToDB(dbStoreBlockNode); writeErr != nil {
-					log.Warnf("Error flushing block index changes to disk: %v", writeErr)
+				if attachNodes.Len() != 0 {
+					// Reorganize the chain.
+					if err = b.ReorganizeChain(detachNodes, attachNodes); err != nil {
+						return false, true, err, -1, nil
+					}
+					if writeErr := b.index.FlushToDB(dbStoreBlockNode); writeErr != nil {
+						log.Warnf("Error flushing block index changes to disk: %v", writeErr)
+					}
 				}
 			}
-		}
-		return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1
+			return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
+		}	// re-examine it otherwise
 	}
 
 	// The block must not already exist as an orphan.
 	if !b.Orphans.CheckOrphan(blockHash, (*orphanBlock)(block)) {
 		str := fmt.Sprintf("already have block (orphan) %v", blockHash)
-		return false, true, ruleError(ErrDuplicateBlock, str), -1
+		return false, true, ruleError(ErrDuplicateBlock, str), -1, nil
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
 	err = checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
-		return false, false, err, -1
+		return false, false, err, -1, nil
 	}
 
 	if block.Size() > wire.MaxBlockPayload {
 		str := fmt.Sprintf("serialized block is too big - got %d, "+
 			"max %d", block.Size(), wire.MaxBlockPayload)
-		return false, false, ruleError(ErrBlockTooBig, str), -1
+		return false, false, ruleError(ErrBlockTooBig, str), -1, nil
 	}
 
 	// Find the previous checkpoint and perform some additional checks based
@@ -340,7 +351,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// work requirements since the previous checkpoint are met.
 	checkpointNode, err := b.findPreviousCheckpoint()
 	if err != nil {
-		return false, false, err, -1
+		return false, false, err, -1, nil
 	}
 	if checkpointNode != nil {
 		// Ensure the block timestamp is after the checkpoint timestamp.
@@ -349,7 +360,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 			str := fmt.Sprintf("block %v has timestamp %v before "+
 				"last checkpoint timestamp %v", blockHash,
 				blockHeader.Timestamp, checkpointTime)
-			return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1
+			return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1, nil
 		}
 	}
 
@@ -360,7 +371,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	if flags & BFNoConnect == BFNoConnect {
 		// this mark an pre-consus block
 //		b.AddOrphanBlock(block)
-		return isMainChain, false, nil, -1
+		return isMainChain, false, nil, -1, nil
 	}
 
 	if prevNode == b.BestChain.Tip() {
@@ -368,33 +379,33 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		// would cause a reorg, pow check will be done in reorg
 		err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
 		if err != nil {
-			return isMainChain, true, err, -1
+			return isMainChain, true, err, -1, nil
 		}
 		if mkorphan {
 			log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
-			b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-			return isMainChain, true, nil, -1
+			orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+			return isMainChain, true, nil, -1, orp
 		}
 	} else {
 		switch {
 		case block.MsgBlock().Header.Nonce == -1:
 			if prevNode.Data.GetNonce() > -wire.MINER_RORATE_FREQ && prevNode.Data.GetNonce() < 0 {
-				return isMainChain, false, fmt.Errorf("Bad nonce sequence"), -1
+				return isMainChain, false, fmt.Errorf("Bad nonce sequence"), -1, nil
 			}
 
 		case block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ:
 			if 1 - wire.MINER_RORATE_FREQ != prevNode.Data.GetNonce() {
-				return isMainChain, false, fmt.Errorf("Bad nonce sequence"), -1
+				return isMainChain, false, fmt.Errorf("Bad nonce sequence"), -1, nil
 			}
 		}
 	}
 
 	isMainChain, err, missing := b.maybeAcceptBlock(block, flags)
 	if missing > 0 {
-		return false, false, err, missing
+		return false, false, err, missing, nil
 	}
 	if err != nil {
-		return false, false, err, -1
+		return false, false, err, -1, nil
 	}
 
 	if isMainChain {
@@ -457,7 +468,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	log.Infof("ProcessBlock finished with height = %d Miner height = %d Orphans = %d", b.BestSnapshot().Height,
 		b.Miners.BestSnapshot().Height, b.Orphans.Count())
 
-	return isMainChain, false, nil, -1
+	return isMainChain, false, nil, -1, nil
 }
 
 func (b *BlockChain) consistent(block *btcutil.Block, parent * chainutil.BlockNode) bool {

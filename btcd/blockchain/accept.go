@@ -36,30 +36,33 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		return false, err, -1
 	}
 
-	if flags & BFNoConnect == BFNoConnect {
+	if flags&BFNoConnect == BFNoConnect {
 		// now we have passed all the tests
 		return true, nil, -1
 	}
 
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
 		// make sure the rotate in Miner block is there
-		if prevNode.Data.GetNonce() != -wire.MINER_RORATE_FREQ + 1 {
-			return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ + 1), -1
+		if prevNode.Data.GetNonce() != -wire.MINER_RORATE_FREQ+1 {
+			return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ+1), -1
 		}
 		if mb, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ); err != nil || mb == nil {
 			return false, err, -block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ
 		}
 	}
 
-	// Insert the block into the database if it's not already there.  Even
-	// though it is possible the block will ultimately fail to connect, it
-	// has already passed all proof-of-work and validity tests which means
-	// it would be prohibitively expensive for an attacker to fill up the
-	// disk with a bunch of blocks that fail to connect.  This is necessary
-	// since it allows block download to be decoupled from the much more
-	// expensive connection logic.  It also has some other nice properties
-	// such as making blocks that never become part of the main chain or
-	// blocks that fail to connect available for further analysis.
+	// Create a new block node for the block and add it to the node index. Even
+	// if the block ultimately gets connected to the main chain, it starts out
+	// on a side chain.
+	blockHeader := &block.MsgBlock().Header
+
+	newNode := b.NodeByHash(block.Hash())
+
+	// Insert the block into the database if it's not already there.
+	// This is necessary since it allows block download to be decoupled
+	// from the much more expensive connection logic.  It is also
+	// necessary to blocks that never become part of the main chain or
+	// blocks that fail to connect available for forfeture and compensation.
 	err = b.db.Update(func(dbTx database.Tx) error {
 		return dbStoreBlock(dbTx, block)
 	})
@@ -68,17 +71,29 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		return false, err, -1
 	}
 
-	// Create a new block node for the block and add it to the node index. Even
-	// if the block ultimately gets connected to the main chain, it starts out
-	// on a side chain.
-	blockHeader := &block.MsgBlock().Header
-	newNode := NewBlockNode(blockHeader, prevNode)
-	newNode.Status = chainutil.StatusDataStored
+	if newNode == nil {
+		newNode = NewBlockNode(blockHeader, prevNode)
+		newNode.Status = chainutil.StatusDataStored
+		b.index.AddNode(newNode)
+	} else {
+		newNode.Height = block.Height()
+		if newNode.Height <= 0 {
+			return false, err, -1
+		}
+		b.index.UnsetStatusFlags(newNode, chainutil.BlockStatus(0xFF))
+		b.index.SetStatusFlags(newNode, chainutil.StatusDataStored)
+		newNode.Parent = prevNode
+		b.index.AddNodeDirect(newNode)
 
-	b.index.AddNode(newNode)
+		flags |= BFAlreadyInChain
+	}
 	err = b.index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
 		return false, err, -1
+	}
+
+	if flags & BFAlreadyInChain == BFAlreadyInChain {
+		return false, nil, -1
 	}
 
 	isMainChain := false

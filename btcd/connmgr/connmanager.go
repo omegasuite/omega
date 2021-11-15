@@ -550,12 +550,16 @@ func (cm *ConnManager) Remove(id uint64) {
 // run as a goroutine.
 func (cm *ConnManager) listenHandler(listener net.Listener) {
 	log.Infof("Server listening on %s", listener.Addr())
+	rep := true
 	for atomic.LoadInt32(&cm.stop) == 0 {
 		conn, err := listener.Accept()
 		if err != nil {
 			// Only log the error if not forcibly shutting down.
 			if atomic.LoadInt32(&cm.stop) == 0 {
-				log.Errorf("Can't accept connection: %v", err)
+				if rep {
+					log.Errorf("Can't accept connection: %v", err)
+					rep = false
+				}
 			}
 			continue
 		}

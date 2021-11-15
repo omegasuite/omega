@@ -270,7 +270,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 
 	bestblk := b.blockChain.NodeByHash(&block.MsgBlock().BestBlock)	//.HaveBlock(&block.MsgBlock().BestBlock)
 	if bestblk == nil {
-		log.Infof("best block does not exist")
+		log.Infof("best block %s does not exist", block.MsgBlock().BestBlock.String())
 		return false, false, ruleError(ErrMissingBestBlock, "best block does not exist"),&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
 	if block.MsgBlock().Version >= chaincfg.Version3 && bestblk.Data.GetNonce() >= 0 {
