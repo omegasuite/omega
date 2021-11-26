@@ -2875,6 +2875,7 @@ func chainErrToGBTErrString(err error) string {
 // deals with block proposals.
 //
 // See https://en.bitcoin.it/wiki/BIP_0023 for more details.
+/*
 func handleGetBlockTemplateProposal(s *rpcServer, request *btcjson.TemplateRequest) (interface{}, error) {
 	hexData := request.Data
 	if hexData == "" {
@@ -2931,6 +2932,7 @@ func handleGetBlockTemplateProposal(s *rpcServer, request *btcjson.TemplateReque
 
 	return nil, nil
 }
+ */
 
 // handleGetBlockTemplate implements the getblocktemplate command.
 //
@@ -4579,7 +4581,11 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	ch := make(chan *wire.MsgTx, 1)
 	if *c.WaitConfirm != 0 {
 		s.statusLock.Lock()
-		s.sendcmdconfirmation[*tx.Hash()] = ch
+		x := uint32(0xFFFFFFFF)
+		if (tx.MsgTx().Version & wire.TxExpire) != 0 {
+			x = tx.MsgTx().LockTime
+		}
+		s.sendcmdconfirmation[*tx.Hash()] = confirmMsg{ch: ch, expire: x}
 		s.statusLock.Unlock()
 	}
 
@@ -4610,6 +4616,9 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 
 		if t := <- ch; t != nil {
 			cf.Stop()
+			if t.Version == wire.TxExpire && tx.MsgTx().LockTime < t.LockTime {
+				return nil, internalRPCError("TX rejected after expiration.", "")
+			}
 			if t.Version == 0 {
 				return nil, internalRPCError("TX rejected after processing.", "")
 			}
@@ -4817,6 +4826,11 @@ func handleShutdown(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	return true, nil
 }
 
+type confirmMsg struct {
+	ch 		chan *wire.MsgTx
+	expire	uint32
+}
+
 // rpcServer provides a concurrent safe RPC server to a chain server.
 type rpcServer struct {
 	started                int32
@@ -4832,7 +4846,7 @@ type rpcServer struct {
 	gbtWorkState           *gbtWorkState
 	helpCacher             *helpCacher
 	requestProcessShutdown chan struct{}
-	sendcmdconfirmation	   map[chainhash.Hash]chan *wire.MsgTx
+	sendcmdconfirmation	   map[chainhash.Hash] confirmMsg
 	quit                   chan int
 
 	Rpcactivity 		   chan struct{}
@@ -5244,7 +5258,7 @@ func (s *rpcServer) Start() {
 		return
 	}
 
-	s.sendcmdconfirmation = make(map[chainhash.Hash]chan *wire.MsgTx)
+	s.sendcmdconfirmation = make(map[chainhash.Hash]confirmMsg)
 
 	rpcsLog.Trace("Starting RPC server")
 	rpcServeMux := http.NewServeMux()
@@ -5572,8 +5586,14 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 			s.statusLock.Lock()
 			for _,tx := range blk.Transactions() {
 				if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
-					ch <- tx.MsgTx()
+					ch.ch <- tx.MsgTx()
 					delete(s.sendcmdconfirmation, *tx.Hash())
+				}
+			}
+			for h, c := range s.sendcmdconfirmation {
+				if c.expire < uint32(blk.Height()) {
+					c.ch <- &wire.MsgTx{Version: wire.TxExpire, LockTime: uint32(blk.Height()) }
+					delete(s.sendcmdconfirmation, h)
 				}
 			}
 			s.statusLock.Unlock()
@@ -5607,7 +5627,7 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 		case *btcutil.Tx:
 			tx := *notification.Data.(*btcutil.Tx)
 			if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
-				ch <- &wire.MsgTx{Version: 0}
+				ch.ch <- &wire.MsgTx{Version: 0}
 				delete(s.sendcmdconfirmation, *tx.Hash())
 			}
 		}

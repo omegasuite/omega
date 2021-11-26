@@ -1708,7 +1708,7 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 		minscore = 1
 	}
 
-	for n,m := 0,0; n < rpts && m < 100 * rpts; m++ {
+	for n,m := 0,0; n < rpts && m < 100 * rpts && last.Height > 0; m++ {
 		w := last.Data.(*blockchainNodeData).block.Miner
 		if w == me {
 			break

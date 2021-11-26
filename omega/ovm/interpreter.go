@@ -140,6 +140,7 @@ func intrepdebug() {
 			case Breakpoint:
 				inst := common.LittleEndian.Uint32(ctrl.Data)
 				breakpoints[int(inst)] = true
+				stepping = true
 
 			case Unbreak:
 				inst := common.LittleEndian.Uint32(ctrl.Data)
@@ -147,9 +148,6 @@ func intrepdebug() {
 
 			case Stepping:
 				stepping = true
-				fallthrough
-
-			case Gorun:
 				breakat = 0
 
 				waitingchan = ctrl.Reply
@@ -160,10 +158,23 @@ func intrepdebug() {
 				} else {
 					inspector <- ctrl
 				}
+
+			case Gorun:
+				breakat = 0
 				stepping = false
+
+				waitingchan = ctrl.Reply
+
+				if !readysent {
+					readysent = true
+					attaching <- struct{}{}
+				} else {
+					inspector <- ctrl
+				}
 
 			case Breaked:
 				breakat = int(common.LittleEndian.Uint32(ctrl.Data))
+				stepping = true
 
 				if waitingchan != nil {
 					waitingchan <- append([]byte{byte(Breaked)}, ctrl.Data...)

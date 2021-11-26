@@ -587,15 +587,18 @@ mempoolLoop:
 		}
 		log.Infof("mempoolLoop processing tx %s", tx.Hash())
 
+		if (tx.MsgTx().Version & wire.TxExpire) != 0 && tx.MsgTx().LockTime < uint32(nextBlockHeight) {
+			// we don't send notice here because this tx could be included in a block by other node
+			// that has an earlier timestamp
+			g.txSource.RemoveTransaction(tx, true)
+			log.Infof("Reject expired tx %s", tx.Hash())
+			continue
+		}
+
 		if tx.MsgTx().IsForfeit() {
-//		if prev.Data.GetNonce() < 0 && prev.Data.GetNonce() > -wire.MINER_RORATE_FREQ && tx.MsgTx().IsForfeit() {
-//			continue
-//		}
-//		if tx.MsgTx().IsForfeit() {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-			// we should roll back result of last contract execution here
 			log.Infof("Reject standalone Forfeiture tx %s", tx.Hash())
 			continue
 		}
@@ -1115,7 +1118,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	var ch = bestblk.Hash
 
 	// new rule: a miner block must not refer POW block to prevent cut line by POW blocks
-	for ; bestblk != nil && bestblk.Data.GetNonce() > 0; {
+	for ; bestblk != nil && bestblk.Data.GetNonce() > 0 && bestblk.Height > 0; {
 		bestblk = g.Chain.ParentNode(bestblk)
 		ch = bestblk.Hash
 	}

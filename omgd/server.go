@@ -3004,10 +3004,10 @@ func (s *server) Start() {
 	}
 
 	// Start the CPU miner if generation is enabled.
-	if cfg.Generate {
+//	if cfg.Generate {
 		btcdLog.Infof("Start minging blocks.")
 		s.cpuMiner.Start()
-	}
+//	}
 	if cfg.GenerateMiner {
 		btcdLog.Infof("Start minging miner blocks with %d collaterals.", len(cfg.collateral))
 		s.minerMiner.Start(cfg.collateral)
@@ -3524,6 +3524,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 			fp.Close()
 			return true
 		},
+		Generate:	cfg.Generate,
 	})
 
 	// This is the miner for miner chain

@@ -273,7 +273,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		log.Infof("best block %s does not exist", block.MsgBlock().BestBlock.String())
 		return false, false, ruleError(ErrMissingBestBlock, "best block does not exist"),&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
-	if block.MsgBlock().Version >= chaincfg.Version3 && bestblk.Data.GetNonce() >= 0 {
+	if block.MsgBlock().Version >= chaincfg.Version3 && bestblk.Data.GetNonce() >= 0 && bestblk.Height > 0 {
 		log.Infof("best block is not a signed block")
 		return false, false, ruleError(ErrMissingBestBlock, "best block is not a signed block"),&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
@@ -384,7 +384,7 @@ func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource cha
 		if k > wire.MaxTPSReports {
 			return fmt.Errorf("Reported more than max allowed TPS items")
 		}
-		if k < wire.MinTPSReports {
+		if k < wire.MinTPSReports && header.Height() > wire.MinTPSReports {
 			return fmt.Errorf("Reported less than min required TPS items")
 		}
 		for _,v := range header.MsgBlock().TphReports {

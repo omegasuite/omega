@@ -1903,6 +1903,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var libAddr Address
 	var err error
 	var tl int
+	var abi uint32
 
 	offset := 0
 
@@ -2001,6 +2002,13 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 		} else {
 			target = contract.libs[libAddr].address
+			if evm.BlockVersion() >= wire.Version3 {
+				copy(stack.data[f.gbase].space, f.space)
+				if len (stack.data[f.gbase].space) < len(f.space) {
+					append(stack.data[f.gbase].space, f.space[len (stack.data[f.gbase].space):]...)
+				}
+				f.space = f.space[:0]
+			}
 		}
 		*pc = int(target)
 		stack.callTop++
@@ -3299,8 +3307,8 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	var zeroaddr [20]byte
-	if tk.TokenType != token.DefTypeSeparator && bytes.Compare(tk.PkScript[1:21], zeroaddr[:]) == 0 {
-		return fmt.Errorf("Address is all zero.")
+	if tk.TokenType != token.DefTypeSeparator && (len(tk.PkScript) < 21 || bytes.Compare(tk.PkScript[1:21], zeroaddr[:]) == 0) {
+		return fmt.Errorf("Address is invalid.")
 	}
 
 	if isContract(tk.PkScript[0]) {

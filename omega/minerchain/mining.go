@@ -412,7 +412,7 @@ out:
 			continue
 		}
 
-		if len(m.cfg.MiningAddrs) == 0 {
+		if len(m.cfg.MiningAddrs) == 0 || m.g.Chain.IsPacking {
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -853,19 +853,20 @@ func NewMiner(cfg *Config) *CPUMiner {
 func (b *MinerChain) choiceOfChain() (*chainutil.BlockNode, int32) {
 	// choose a branch that will allow us to refer the longest tx chain (sign block)
 	n := b.BestChain.Tip()
-
+/*
 	h := NodetoHeader(n)
 	bestBlk := b.blockChain.LongestTip()
 	for bestBlk.Data.GetNonce() > 0 {
 		bestBlk = bestBlk.Parent
 	}
+ */
 //		b.blockChain.BestChain.Tip()
 //	if b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
 		h2 := b.blockChain.BestSnapshot().LastRotation
 		d := n.Height - int32(h2)
 		return n, d
 //	}
-
+/*
 	for !b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
 		n = n.Parent
 		h = NodetoHeader(n)
@@ -886,4 +887,5 @@ func (b *MinerChain) choiceOfChain() (*chainutil.BlockNode, int32) {
 	d = n.Height - int32(b.blockChain.BestSnapshot().LastRotation)
 
 	return n, d
+ */
 }

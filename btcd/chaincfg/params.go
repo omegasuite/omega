@@ -9,6 +9,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"runtime"
 	"strings"
 	"time"
 
@@ -362,7 +363,7 @@ var MainNetParams = Params{
 	// address generation.
 	HDCoinType: 0,
 	ContractExecLimit: 10000,		// min limit of total contract execution steps in a block
-	SigVeriConcurrency: 1,
+	SigVeriConcurrency: runtime.NumCPU(),
 	ContractExecFee: 1,
 	Forfeit:	forfeitureContract {
 		Contract: 	[21]byte{0x88, 0x1a, 0x52, 0x0f, 0xa9, 0x4d, 0x8e, 0x07,

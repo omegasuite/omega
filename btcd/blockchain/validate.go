@@ -723,7 +723,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	// Do some preliminary checks on each transaction to ensure they are
 	// sane before continuing.
 	for _, tx := range transactions {
-		if (tx.MsgTx().Version & wire.TxExpire) != 0 && tx.MsgTx().LockTime > uint32(header.Timestamp.Unix()) {
+		if (tx.MsgTx().Version & wire.TxExpire) != 0 && tx.MsgTx().LockTime < uint32(block.Height()) {
 			// tx lock time must not after block time
 			str := fmt.Sprintf("block contains transaction whose execution time has expired")
 			return ruleError(ErrExpiredTx, str)

@@ -188,6 +188,9 @@ type BlockChain struct {
 
 	// running consensus in this range
 	ConsensusRange [2]int32
+	
+	// are we packing tx blocks?
+	IsPacking	bool
 
 	// address usage index. use in forfeiture
 	AddrUsage func (address btcutil.Address) uint32
@@ -1209,7 +1212,9 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List) (int
 					b.index.SetStatusFlags(dn, chainutil.StatusInvalidAncestor)
 				}
 			}
-			log.Infof("checkProofOfWork error: " + err.Error())
+			if err != nil {
+				log.Infof("checkProofOfWork error: " + err.Error())
+			}
 			break
 		}
 
@@ -2596,6 +2601,7 @@ func New(config *Config) (*BlockChain, error) {
 		AddrUsage:         config.AddrUsage,
 		collaterals:       make([]wire.OutPoint, params.ViolationReportDeadline),
 		LockedCollaterals: make(map[wire.OutPoint]struct{}),
+		IsPacking:			false,
 	}
 
 	// Initialize the chain state from the passed database.  When the db

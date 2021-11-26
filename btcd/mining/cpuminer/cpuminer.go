@@ -97,6 +97,8 @@ type Config struct {
 
 	// call back to add priv key to .conf
 	AppendPrivKey	  func (*btcec.PrivateKey) bool
+
+	Generate	bool
 }
 
 // CPUMiner provides facilities for solving blocks (mining) using the CPU in
@@ -189,8 +191,7 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 
 	best := m.g.BestSnapshot()
 	if !msgBlock.Header.PrevBlock.IsEqual(&best.Hash) {
-		log.Infof("Block submitted via CPU miner with previous "+
-			"block %s is stale", msgBlock.Header.PrevBlock)
+		log.Infof("Block submitted via CPU miner with previous block %s is stale", msgBlock.Header.PrevBlock)
 		return false
 	}
 
@@ -203,19 +204,19 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 	}
 	coinbaseTx := block.MsgBlock().Transactions[0].TxOut[0]
 
+	log.Infof("Block nonce = ", block.MsgBlock().Header.Nonce)
+
 	isOrphan, err := m.cfg.ProcessBlock(block, flag)
 
 	if err != nil {
 		// Anything other than a rule violation is an unexpected error,
 		// so log that error as an internal error.
 		if _, ok := err.(blockchain.RuleError); !ok {
-			log.Infof("Unexpected error while processing "+
-				"block submitted via CPU miner: %v", err)
+			log.Infof("Unexpected error while processing block submitted via CPU miner: %v", err)
 			return false
 		}
 
 		log.Infof("Block submitted via CPU miner rejected: %s", err.Error())
-//		log.Info("Block submitted via CPU miner rejected: %v", err)
 		return false
 	}
 
@@ -242,9 +243,14 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	ticker *time.Ticker, quit chan struct{}) int32 {
 
+	mp := m.numWorkers / 3
+	if mp < 1 {
+		mp = 1
+	}
+
 	// Create some convenience variables.
 	msgBlock := template.Block.(*wire.MsgBlock)
-	header := &msgBlock.Header
+	header := msgBlock.Header
 
 	targetDifficulty := blockchain.CompactToBig(template.Bits)
 /*
@@ -263,10 +269,13 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 		// periodically checking for early quit and stale block
 		// conditions along with updates to the speed monitor.
 	pow := func (start uint32, endpow chan int32) int32 {
-		for i := start; i <= maxNonce; i += m.numWorkers {
+		for i := start; i <= maxNonce; i += mp {
 			select {
-			case <-endpow:
-				return 0
+			case r, ok := <-endpow:
+				if !ok {
+					return 0
+				}
+				return r;
 
 			case <-quit:
 				return 0
@@ -319,19 +328,19 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
  */
 
 			if hashNum.Cmp(targetDifficulty) <= 0 {
-				log.Info("Block solved ", hash, " vs ", targetDifficulty)
+				log.Info("Block solved nonce= ", i, " hash= ", hash, " vs targetDifficulty = ", targetDifficulty)
 				//				m.updateHashes <- hashesCompleted
-				return header.Nonce
+				return int32(i)
 			}
 		}
 		return 0
 	}
 
-	quitt := make(chan int32)
+	quitt := make(chan int32, mp + 1)
 	closing := false
 
 	var mt sync.Mutex
-	for i := uint32(0); i < m.numWorkers; i++ {
+	for i := uint32(0); i < mp; i++ {
 		go func () {
 			r := pow(i+1, quitt)
 
@@ -405,8 +414,15 @@ func (m *CPUMiner) generateBlocks() {
 
 	lastblkgen := time.Now().Unix()
 
+	nopow := false
+
 out:
-	for {
+	for ; true ; m.g.Chain.IsPacking = false {
+		if !m.cfg.Generate && nopow {
+			m.wg.Done()
+			return
+		}
+
 		// Quit when the miner is stopped.
 		select {
 			case _, ok := <-m.connch: // prevent chan full & blocking
@@ -580,6 +596,8 @@ out:
 			nonce = 1
 		}
 
+		m.g.Chain.IsPacking = !powMode
+
 		template, err := m.g.NewBlockTemplate(payToAddress, nonce)
 		if err != nil {
 //			errStr := fmt.Sprintf("Failed to create new block template: %v", err)
@@ -639,6 +657,8 @@ out:
 			}
 			m.g.Chain.ConsensusRange[1] = template.Height
 
+			nopow = true
+
 //			log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
 			if !m.submitBlock(block) {
 				continue
@@ -680,10 +700,12 @@ out:
 			continue
 		}
 
+		m.g.Chain.IsPacking = false
+
 		lastblkgen = time.Now().Unix()
 		m.minedBlock = nil
 
-		if m.cfg.DisablePOWMining {
+		if m.cfg.DisablePOWMining && nopow {
 			select {
 			case <-consensus.POWStopper:
 
