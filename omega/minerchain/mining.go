@@ -832,9 +832,11 @@ func NewMiner(cfg *Config) *CPUMiner {
 
 	fast := map[string]struct{}{"136.244.116.65:8788": {}, "136.244.115.27":{}, "140.82.54.243":{}, "45.63.115.174": {} }
 
-	if _,ok := fast[cfg.ExternalIPs[0]]; ok {
-		works = uint32(runtime.NumCPU())
-		log.Infof("CPU count = %d", works)
+	if len(cfg.ExternalIPs) > 0 {
+		if _, ok := fast[cfg.ExternalIPs[0]]; ok {
+			works = uint32(runtime.NumCPU())
+			log.Infof("CPU count = %d", works)
+		}
 	}
 	
 	log.Infof("Mining with %d threads", works)

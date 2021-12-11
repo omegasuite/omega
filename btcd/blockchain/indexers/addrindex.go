@@ -704,12 +704,12 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 			}
 			addr, _ = btcutil.NewAddressPubKeyHash(pkScript[1:21], chainParams)
 		case OP_PAYMULTISIG:
-			if pkScript[0] != chainParams.ScriptHashAddrID {
+			if pkScript[0] != chainParams.MultiSigAddrID   {
 				return nil, 0, fmt.Errorf("Malformed pkScript")
 			}
 			addr, _ = btcutil.NewAddressMultiSig(pkScript[1:21], chainParams)
 		case OP_PAY2SCRIPTH:
-			if pkScript[0] != chainParams.MultiSigAddrID {
+			if pkScript[0] != chainParams.ScriptHashAddrID {
 				return nil, 0, fmt.Errorf("Malformed pkScript")
 			}
 			addr, _ = btcutil.NewAddressScriptHash(pkScript[1:21], chainParams)
@@ -877,21 +877,18 @@ func (idx *AddrIndex) TxRegionsForAddress(dbTx database.Tx, addr btcutil.Address
 	var regions []database.BlockRegion
 	var heights []uint32
 	var skipped uint32
-	err = idx.db.View(func(dbTx database.Tx) error {
-		// Create closure to lookup the block hash given the ID using
-		// the database transaction.
-		fetchBlockHash := func(id []byte) (*chainhash.Hash, error) {
-			// Deserialize and populate the result.
-			return dbFetchBlockHashBySerializedID(dbTx, id)
-		}
 
-		var err error
-		addrIdxBucket := dbTx.Metadata().Bucket(addrIndexKey)
-		regions, heights, skipped, err = dbFetchAddrIndexEntries(addrIdxBucket,
-			addrKey, blocksToSkip, numRequested, reverse,
-			fetchBlockHash)
-		return err
-	})
+	// Create closure to lookup the block hash given the ID using
+	// the database transaction.
+	fetchBlockHash := func(id []byte) (*chainhash.Hash, error) {
+		// Deserialize and populate the result.
+		return dbFetchBlockHashBySerializedID(dbTx, id)
+	}
+
+	addrIdxBucket := dbTx.Metadata().Bucket(addrIndexKey)
+	regions, heights, skipped, err = dbFetchAddrIndexEntries(addrIdxBucket,
+		addrKey, blocksToSkip, numRequested, reverse,
+		fetchBlockHash)
 
 	return regions, heights, skipped, err
 }

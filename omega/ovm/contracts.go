@@ -123,19 +123,19 @@ type pay2multisig struct {
 
 // multiple address multiple key
 func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
-	_, r, hash, e := p.run(vunits)
-	m := common.LittleEndian.Uint16(input[22:])
+	_, b, hash, e := p.run(vunits)
+//	m := common.LittleEndian.Uint16(input[20:])
 
-	if r < m || e != nil {
+	if e != nil {
 		return []byte{0}, e
 	}
-	if bytes.Compare(input[:20], hash) != 0 {
+	if !b || bytes.Compare(input[:20], hash) != 0 {
 		return []byte{0}, nil
 	}
 	return []byte{1},e
 }
 
-func (p *pay2multisig) run(vunits []vunit) (int, uint16, []byte, error) {
+func (p *pay2multisig) run(vunits []vunit) (int, bool, []byte, error) {
 	// input - hash of multi-sig descriptor (20-byte value)
 	// vunits[0].Data: multi-sig descriptor
 	//			 bytes 0 - 1: M - number of scripts
@@ -146,61 +146,62 @@ func (p *pay2multisig) run(vunits []vunit) (int, uint16, []byte, error) {
 	// in forfeit mode, all contract calls will pass
 	genericerr := fmt.Errorf("Multisignature format error")
 
-	if len(vunits[0].data) < 3 {
-		return 0, 0, nil, genericerr	// never. should have been verified in tx validity
+	if len(vunits[0].data) != 5 || vunits[0].data[0] != 4 {
+		return 0, false, nil, genericerr
 	}
 	m := int(common.LittleEndian.Uint16(vunits[0].data[1:3]))
+	n := int(common.LittleEndian.Uint16(vunits[0].data[3:5]))
 
-	sigcnt := uint16(0)
+	b, x, y, z := p.hashval(m, n, vunits[1:])
+	return x, b, y, z
+}
+
+func (p *pay2multisig) hashval(m int, n int, vunits []vunit) (bool, int, []byte, error) {
+	sigcnt := 0
 	h := make([]byte, 0, 21 * m + 5)
-	h = append(h, []byte{byte(PUSH), byte(len(vunits[0].data))}...)
+	h = append(h, byte(PUSH))
+	h = append(h, 4)
 	h = append(h, vunits[0].data[:]...)
 	h = append(h, []byte{byte(SIGNTEXT), 0}...)
 
-	for i := 1; i < len(vunits); i++ {
-		v := vunits[i]
-		if v.data[0] == p.ovm.chainConfig.MultiSigAddrXID {
-			// redeem script for recursive multisig
-			var req = uint16(0)
-			req = common.LittleEndian.Uint16(vunits[0].data[1:3])
+	genericerr := fmt.Errorf("Multisignature format error")
 
-			mm, n, hash, err := p.run(vunits[i+1:])
+	i := 1
+
+	for ; i < len(vunits) && m > 0; i++ {
+		v := vunits[i]
+		m--
+		if v.data[0] == 0 && v.data[3] == p.ovm.chainConfig.MultiSigAddrXID {
+			// redeem script for recursive multisig
+			x, b, hash, err := p.run(vunits[i + 1:])
 			if err != nil {
-				return m, 0, nil, err
+				return false, 0, nil, err
 			}
-			if n >= req {
+
+			if b {
 				sigcnt++
 			}
-			h = append(h, []byte{byte(PUSH), 25}...)
+			h = append(h, []byte{byte(PUSH), 21}...)
 			h = append(h, p.ovm.chainConfig.MultiSigAddrID)
 			h = append(h, hash...)
-			h = append(h, []byte{OP_PAYMULTISIG,0,0,0}...)
-			common.LittleEndian.PutUint16(h[len(h)-2:], req)
-			h = append(h, []byte{byte(SIGNTEXT), byte(SigMultiSigMark)}...)
-			i += mm + 1
-			m += mm + 1
+			h = append(h, []byte{byte(SIGNTEXT), 0}...)
+			i += x
 			continue
-		} else if len(v.data) == 25 && v.data[0] == p.ovm.chainConfig.MultiSigAddrID {
+		} else if len(v.data) == 21 && (v.data[0] == p.ovm.chainConfig.MultiSigAddrID || v.data[0] == p.ovm.chainConfig.PubKeyHashAddrID ||
+				v.data[0] == p.ovm.chainConfig.ScriptHashAddrID) {
 			// recursive multisig
-			h = append(h, []byte{byte(PUSH), 25}...)
+			h = append(h, []byte{byte(PUSH), 21}...)
 			h = append(h, v.data...)
 			h = append(h, []byte{byte(SIGNTEXT), byte(SigMultiSigMark)}...)
 			continue
-		} else if len(v.data) == 25 && v.data[0] == p.ovm.chainConfig.PubKeyHashAddrID {
-			// a PubKeyHashAddrID not signed. but, if it is pay anyone scripts, it is counted as signed
-			h = append(h, v.data...)
+		} else if v.data[0] == 0 && v.data[3] ==  p.ovm.chainConfig.ScriptAddrID {
+			h = append(h, []byte{byte(PUSH), 21}...)
+			m := int(common.LittleEndian.Uint16(v.data[1:3]))
+
+			hash := chainhash.HashB(v.data[3 : m + 2])
+			h = append(h, hash...)
 			h = append(h, []byte{byte(SIGNTEXT), 0}...)
-			continue
-		} else if len(v.data) >= 25 && v.data[0] == p.ovm.chainConfig.ScriptHashAddrID {
-			h = append(h, []byte{byte(PUSH), 25}...)
-			h = append(h, v.data[:21]...)
-			h = append(h, []byte{byte(SIGNTEXT), 0}...)
-			if len(v.data) > 29 {
-				hash := chainhash.HashB(v.data[29:])
-				if bytes.Compare(v.data[1:21], hash) == 0 {
-					sigcnt++
-				}
-			}
+			sigcnt++		// assume a match, if not, it will result in a mismatch in final hash/address
 			continue
 		}
 
@@ -214,18 +215,18 @@ func (p *pay2multisig) run(vunits []vunit) (int, uint16, []byte, error) {
 		kpos++
 
 		if siglen == 0 {
-			return m, 0, nil, genericerr
+			return false, 0, nil, genericerr
 		}
 
 		if inlen < kpos + int(siglen) {
-			return m, 0, nil, genericerr
+			return false, 0, nil, genericerr
 		}
 
 		sigBytes := v.data[kpos : kpos+int(siglen)]
 
 		pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
 		if err != nil {
-			return m, 0, nil, err
+			return false, 0, nil, err
 		}
 
 		var signature *btcec.Signature
@@ -233,7 +234,7 @@ func (p *pay2multisig) run(vunits []vunit) (int, uint16, []byte, error) {
 		signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
 
 		if err != nil {
-			return m, 0, nil, err
+			return false, 0, nil, err
 		}
 
 		hash := chainhash.DoubleHashB(v.text)
@@ -250,11 +251,11 @@ func (p *pay2multisig) run(vunits []vunit) (int, uint16, []byte, error) {
 		h = append(h, ph...)
 		h = append(h, []byte{byte(SIGNTEXT), 0}...)
 	}
-	h = append(h, []byte{byte(SIGNTEXT), byte(SigMultiSigMark)}...)
+//	h = append(h, []byte{byte(SIGNTEXT), byte(SigMultiSigMark)}...)
 
 	hash := btcutil.Hash160(h)
 
-	return m, sigcnt, hash, nil
+	return sigcnt>=n, i, hash, nil
 }
 
 type pay2scripth struct {}
@@ -375,6 +376,7 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 			// execute the operation
 			v := vunit{}
 			if op == SIGNTEXT {
+				// prev op is SIGNTEXT
 				ln := binary.LittleEndian.Uint32(stack.data[0].space)
 
 				if ln > 0 {
@@ -392,6 +394,7 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 			err := operation.execute(&pc, in.evm, contract, stack)
 
 			if op == SIGNTEXT {
+				// current op is SIGNTEXT
 				ln := binary.LittleEndian.Uint32(stack.data[0].space)
 
 				if ln > 0 {

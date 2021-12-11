@@ -1903,7 +1903,6 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var libAddr Address
 	var err error
 	var tl int
-	var abi uint32
 
 	offset := 0
 
@@ -2004,9 +2003,9 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			target = contract.libs[libAddr].address
 			if evm.BlockVersion() >= wire.Version3 {
 				copy(stack.data[f.gbase].space, f.space)
-				if len (stack.data[f.gbase].space) < len(f.space) {
-					append(stack.data[f.gbase].space, f.space[len (stack.data[f.gbase].space):]...)
-				}
+//				if len (stack.data[f.gbase].space) < len(f.space) {
+//					append(stack.data[f.gbase].space, f.space[len (stack.data[f.gbase].space):]...)
+//				}
 				f.space = f.space[:0]
 			}
 		}
@@ -4079,20 +4078,30 @@ parser:
 // Below are signature VM engine insts. They are in binary formats.
 func opPush(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	param := contract.Code[0].param
-	dest, unused := stack.malloc(int(param[0]))
 
-	if err := stack.saveBytes(&dest, param[1 : 1 + param[0]]); err != nil {
+	var sz int
+	offset := 1
+	if param[0] == 0 {
+		sz = int(param[1]) + ((int(param[2])) << 8)
+		offset = 3
+	} else {
+		sz = int(param[0])
+	}
+
+	dest, unused := stack.malloc(sz)
+
+	if err := stack.saveBytes(&dest, param[offset : offset + sz]); err != nil {
 		return err
 	}
-	unused -= int(param[0])
+	unused -= sz
 	if unused > 0 {
 		stack.shrink(unused)
 	}
 
-	u := int(param[0]) + 1
+	u := sz + offset
 
 	m := binary.LittleEndian.Uint32(stack.data[0].space)
-	m += uint32(param[0])
+	m += uint32(sz)
 	binary.LittleEndian.PutUint32(stack.data[0].space, m)
 
 	nextop(contract, u)

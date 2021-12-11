@@ -249,6 +249,7 @@ type Params struct {
 	MultiSigAddrID          byte // First byte of a multisig address
 	MultiSigAddrXID         byte // First byte of a multisig redeem script
 	ScriptHashAddrID        byte // First byte of a P2SH address
+	ScriptAddrID   		    byte // First byte of a P2SH address
 	ContractAddrID	        byte // First byte of a P2C address
 	PrivateKeyID            byte // First byte of a WIF private key
 
@@ -353,6 +354,7 @@ var MainNetParams = Params{
 	MultiSigAddrXID:		 0xC3,
 
 	ScriptHashAddrID:        0x05, // starts with 3
+	ScriptAddrID:			 0x13,
 	ContractAddrID:			 0x88, // start with 8
 	PrivateKeyID:            0x80, // starts with 5 (uncompressed) or K (compressed)
 
@@ -452,6 +454,7 @@ var RegressionNetParams = Params{
 	MultiSigAddrXID:  0xC3,
 
 	ScriptHashAddrID: 0xc4, // starts with 2
+	ScriptAddrID:	  0x13,
 	ContractAddrID:	  0x88, // start with 8
 	PrivateKeyID:     0xef, // starts with 9 (uncompressed) or c (compressed)
 
@@ -555,6 +558,7 @@ var TestNet3Params = Params{
 	MultiSigAddrXID:		 0xC3,
 
 	ScriptHashAddrID:        0xc4, // starts with 2
+	ScriptAddrID:			 0x13,
 	ContractAddrID:	 		 0x88, // start with 8
 	PrivateKeyID:            0xef, // starts with 9 (uncompressed) or c (compressed)
 
@@ -659,6 +663,7 @@ var SimNetParams = Params{
 	MultiSigAddrXID:		 0xC3,
 
 	ScriptHashAddrID:        0x7b, // starts with s
+	ScriptAddrID:			 0x13,
 	ContractAddrID:			 0x88, // start with 8
 	PrivateKeyID:            0x64, // starts with 4 (uncompressed) or F (compressed)
 
