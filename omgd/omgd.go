@@ -8,8 +8,8 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/omegasuite/omega/consensus"
 	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/omega/consensus"
 	//	"log"
 	"net"
 	"net/http"

@@ -1,6 +1,6 @@
 set GOARCH=amd64
 set GOOS=linux
-set GOPATH=F:\Gopath
+set GOPATH=c:\Gopath
 
 @REM set CGO_ENABLED=1
 @REM -race

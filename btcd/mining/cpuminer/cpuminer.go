@@ -699,7 +699,8 @@ out:
 
 			continue
 		}
-
+time.Sleep(time.Minute)
+continue
 		m.g.Chain.IsPacking = false
 
 		lastblkgen = time.Now().Unix()
