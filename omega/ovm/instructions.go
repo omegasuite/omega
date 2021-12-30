@@ -1989,9 +1989,11 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		f.pure = stack.data[stack.callTop].pure | contract.libs[libAddr].pure
 		if isself {
 			libAddr = stack.data[stack.callTop].inlib
+		} else {
+			binary.LittleEndian.PutUint32(f.space[4:8], uint32(contract.libs[libAddr].base))
 		}
-		f.inlib = libAddr
 		f.gbase = contract.libs[libAddr].base
+		f.inlib = libAddr
 
 		var target int32
 		if isself {

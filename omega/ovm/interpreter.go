@@ -389,10 +389,13 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		}
 
 		// execute the operation
-		if debugging {
+//		if debugging {
 			fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
-		}
-		
+//		}
+
+if pc == 1711 {
+	fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
+}
 		err = operation.execute(&pc, in.evm, contract, stack)
 		ln := binary.LittleEndian.Uint32(stack.data[0].space)
 

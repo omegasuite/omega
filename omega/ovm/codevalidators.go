@@ -14,7 +14,6 @@ import (
 
 var patOperand = regexp.MustCompile(`^@*[BWDQkKrR@ngi]*(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
 var addrOperand = regexp.MustCompile(`^@*[gi]*i(([xa-f][0-9a-f]+)|([0-9]+))(\'[0-9]+)?(\"[0-9]+)?,`)
-var numOperand = regexp.MustCompile(`^n?(([kKrR]?[xa-f][0-9a-f]+)|([0-9]+)),`)
 var patNum = regexp.MustCompile(`[0-9a-f]+`)
 var patHex = regexp.MustCompile(`[xa-f]`)
 var dataType = regexp.MustCompile(`^[rRBWDQHhkK]|(L[0-9]+,)`)
@@ -417,7 +416,7 @@ func opCopyValidator(param []byte) int {
 }
 
 var formatImm = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {dataType, 0}, {numOperand, 0},
+	{addrOperand, 0xFFFFFFFF}, {dataType, 0}, {regexp.MustCompile(`x?([0-9a-f]+),`), 0},
 }
 
 func opCopyImmValidator(param []byte) int {

@@ -146,11 +146,11 @@ func (p *pay2multisig) run(vunits []vunit) (int, bool, []byte, error) {
 	// in forfeit mode, all contract calls will pass
 	genericerr := fmt.Errorf("Multisignature format error")
 
-	if len(vunits[0].data) != 5 || vunits[0].data[0] != 4 {
+	if len(vunits[0].data) != 4 {
 		return 0, false, nil, genericerr
 	}
-	m := int(common.LittleEndian.Uint16(vunits[0].data[1:3]))
-	n := int(common.LittleEndian.Uint16(vunits[0].data[3:5]))
+	m := int(common.LittleEndian.Uint16(vunits[0].data[:2]))
+	n := int(common.LittleEndian.Uint16(vunits[0].data[2:]))
 
 	b, x, y, z := p.hashval(m, n, vunits[1:])
 	return x, b, y, z
@@ -161,12 +161,17 @@ func (p *pay2multisig) hashval(m int, n int, vunits []vunit) (bool, int, []byte,
 	h := make([]byte, 0, 21 * m + 5)
 	h = append(h, byte(PUSH))
 	h = append(h, 4)
-	h = append(h, vunits[0].data[:]...)
+
+	var d [4]byte
+	common.LittleEndian.PutUint16(d[:], uint16(m))
+	common.LittleEndian.PutUint16(d[2:], uint16(n))
+
+	h = append(h, d[:]...)
 	h = append(h, []byte{byte(SIGNTEXT), 0}...)
 
 	genericerr := fmt.Errorf("Multisignature format error")
 
-	i := 1
+	i := 0
 
 	for ; i < len(vunits) && m > 0; i++ {
 		v := vunits[i]
