@@ -25,6 +25,7 @@ func atype(netID byte) (itype string, convto []byte) {
 		convto = []byte{0xc4, 0x7b}
 	case 0x88:	// ContractAddrID
 		itype = "ContractAddr"
+		convto = []byte{0x88, 0x88}
 	case 0x80:	// mainnet PrivateKeyID
 		itype = "mainnet PrivateKey"
 		convto = []byte{0xef, 0x64}

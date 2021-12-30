@@ -706,15 +706,8 @@ continue
 		lastblkgen = time.Now().Unix()
 		m.minedBlock = nil
 
-		if m.cfg.DisablePOWMining && nopow {
-			select {
-			case <-consensus.POWStopper:
-
-			case <-m.quit:
-				break out
-
-			case <-time.After(time.Second * wire.TimeGap):
-			}
+		if m.cfg.DisablePOWMining && (nopow || m.cfg.ChainParams.Net == common.TestNet) {
+			time.Sleep(time.Second * wire.TimeGap)
 //			log.Infof("Retry because POW Mining disabled.")
 			continue
 		}
@@ -725,7 +718,6 @@ continue
 			pows++
 			blk = blk.Parent
 		}
- */
 
 		select {
 		case <-m.connch:
@@ -741,6 +733,7 @@ continue
 
 //		case <-time.After(time.Second * time.Duration(2*wire.TimeGap+(1<<pows))):
 		}
+*/
 
 		fmt.Printf("Try to solve block ")
 

@@ -874,8 +874,7 @@ mempoolLoop:
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			// we should roll back result of last contract execution here
-			log.Infof("Remove tx %s due to error in "+
-				"VerifySigs: %v", tx.Hash(), err)
+			log.Infof("Remove tx %s due to error in VerifySigs: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
 		}
@@ -893,8 +892,7 @@ mempoolLoop:
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-			log.Infof("Remove tx %s due to error in "+
-				"ExecContract: %v", tx.Hash(), err)
+			log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
 		}
@@ -907,8 +905,7 @@ mempoolLoop:
 			views, g.chainParams)
 		if err != nil {
 			// we should roll back result of last contract execution here
-			log.Infof("Skipping tx %s due to error in "+
-				"CheckTransactionInputs: %v", tx.Hash(), err)
+			log.Infof("Skipping tx %s due to error in CheckTransactionInputs: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
 		}
