@@ -413,10 +413,24 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 				target = target.Mul(target, big.NewInt(wire.DifficultyRatio))
 			} else if block.MsgBlock().Header.Version < chaincfg.Version2 {
 				hashNum = hashNum.Mul(hashNum, big.NewInt(wire.DifficultyRatio))
+			} else if block.MsgBlock().Header.Version >= wire.Version2 {
+/*
+				s, _ := b.Miners.BlockByHeight(int32(best.LastRotation))
+				blk := b.NodeByHash(&s.MsgBlock().BestBlock)
+
+				for blk != nil && blk.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
+					blk = blk.Parent
+				}
+				pows := int32(best.LastRotation) + (blk.Data.GetNonce() + wire.MINER_RORATE_FREQ) - wire.DESIRABLE_MINER_CANDIDATES
+				if pows < 0 {
+					pows = 0
+				}
+ */
+				target = target.Mul(target, big.NewInt(20))
 			}
+
 			if hashNum.Cmp(target) > 0 {
-				str := fmt.Sprintf("block hash of %064x is higher than "+
-					"expected max of %064x", hashNum, target)
+				str := fmt.Sprintf("block hash of %064x is higher than expected max of %064x", hashNum, target)
 				return ruleError(ErrHighHash, str), false
 			}
 		}

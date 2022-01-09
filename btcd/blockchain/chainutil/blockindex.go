@@ -188,7 +188,7 @@ type BlockIndex struct {
 	index map[chainhash.Hash]*BlockNode
 	dirty map[*BlockNode]bool
 
-	Unloaded []chainhash.Hash		// unloaded blocks. sorted by hash
+//	Unloaded []chainhash.Hash		// unloaded blocks. sorted by hash
 
 	Cutoff uint32
 //	Unloaded map[chainhash.Hash]int32

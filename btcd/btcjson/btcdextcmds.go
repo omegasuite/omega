@@ -157,18 +157,15 @@ type VersionCmd struct{}
 // github.com/decred/dcrd/dcrjson.
 func NewVersionCmd() *VersionCmd { return new(VersionCmd) }
 
-// VersionCmd defines the version JSON-RPC command.
-//
-// NOTE: This is a btcsuite extension ported from
-// github.com/decred/dcrd/dcrjson.
-type ShutdownServerCmd struct{}
-
 // NewVersionCmd returns a new instance which can be used to issue a JSON-RPC
 // version command.
 //
 // NOTE: This is a btcsuite extension ported from
 // github.com/decred/dcrd/dcrjson.
-func NewShutdownServerCmd() *ShutdownServerCmd { return new(ShutdownServerCmd) }
+func NewShutdownServerCmd(cmt bool) *ShutdownCmd {
+	bv := cmt
+	return &ShutdownCmd{NoneCommittee: &bv}
+}
 
 func init() {
 	// No special flags for commands in this file.
@@ -182,6 +179,6 @@ func init() {
 	MustRegisterCmd("getcurrentnet", (*GetCurrentNetCmd)(nil), flags)
 	MustRegisterCmd("getheaders", (*GetHeadersCmd)(nil), flags)
 	MustRegisterCmd("version", (*VersionCmd)(nil), flags)
-	MustRegisterCmd("shutdownserver", (*ShutdownServerCmd)(nil), flags)
+	MustRegisterCmd("shutdownserver", (*ShutdownCmd)(nil), flags)
 	MustRegisterCmd("vmdebug", (*VMDebugCmd)(nil), flags)
 }

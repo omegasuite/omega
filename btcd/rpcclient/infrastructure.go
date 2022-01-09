@@ -1021,12 +1021,12 @@ func (c *Client) Shutdown() {
 type FutureShutdownServerResult chan *Response
 
 // Shutdown shuts down the btcd servers.
-func (c *Client) ShutdownServer() error {
-	return c.ShutdownServerAsync().Receive()
+func (c *Client) ShutdownServer(cmt bool) error {
+	return c.ShutdownServerAsync(cmt).Receive()
 }
 
-func (c *Client) ShutdownServerAsync() FutureShutdownServerResult {
-	cmd := btcjson.NewShutdownServerCmd()
+func (c *Client) ShutdownServerAsync(cmt bool) FutureShutdownServerResult {
+	cmd := btcjson.NewShutdownServerCmd(cmt)
 	return c.sendCmd(cmd)
 }
 

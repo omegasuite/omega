@@ -111,11 +111,21 @@ func main() {
 			break
 		case "shutdown":
 			// Shutdown shuts down the btcd server
-			err = client.ShutdownServer()
+			err = client.ShutdownServer(false)
 			if err != nil {
 				log.Printf("ShutdownServer: %s\n", err)
 			} else {
 				log.Printf("Server shut down\n")
+				os.Exit(1)
+			}
+			break
+		case "quit":
+			// Shutdown shuts down the btcd server
+			err = client.ShutdownServer(true)
+			if err != nil {
+				log.Printf("Quit: %s\n", err)
+			} else {
+				log.Printf("Server quit\n")
 				os.Exit(1)
 			}
 			break
@@ -166,6 +176,7 @@ func main() {
 			}
 			log.Printf("Count: %d", count)
 			break
+/*
 		case "verifychain":	// ( checklevel numblocks )
 			b, err := client.VerifyChain()
 			if err != nil {
@@ -173,6 +184,7 @@ func main() {
 			}
 			log.Printf("VerifyChain: %s", b)
 			break
+ */
 		case "getaddednodeinfo":	// dns ( "node" )
 			b, err := client.GetAddedNodeInfo("")
 			if err != nil {
@@ -276,6 +288,7 @@ func main() {
 				log.Printf("getrawmempool: %s", s.String())
 			}
 			break
+/*
 		case "clearmempool":
 			h, err := client.ClearMempool()
 			if err != nil {
@@ -285,6 +298,7 @@ func main() {
 				log.Printf("clearmempool: %s", s.String())
 			}
 			break
+ */
 		case "gettxout":
 			fmt.Println("UTXO(!) tx hash -> ")
 			s, _ := reader.ReadString('\n')

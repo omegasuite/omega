@@ -738,6 +738,7 @@ type GetRawTransactionCmd struct {
 	Txid    string
 	Verbose *int `jsonrpcdefault:"0"`
 	IncludeMempool *bool `jsonrpcdefault:"true"`
+	InMainChain *bool `jsonrpcdefault:"true"`
 }
 
 // NewGetRawTransactionCmd returns a new instance which can be used to issue a
@@ -1090,6 +1091,11 @@ func NewValidateAddressCmd(address string) *ValidateAddressCmd {
 	return &ValidateAddressCmd{
 		Address: address,
 	}
+}
+
+// ShutdownCmd defines the shutdown JSON-RPC command.
+type ShutdownCmd struct {
+	NoneCommittee   *bool  `jsonrpcdefault:"false"`
 }
 
 // VerifyMessageCmd defines the verifymessage JSON-RPC command.

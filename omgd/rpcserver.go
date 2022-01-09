@@ -3377,6 +3377,9 @@ func handleGetRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan str
 	if c.Verbose != nil {
 		verbose = *c.Verbose != 0
 	}
+	if *c.InMainChain {
+		*c.IncludeMempool = false
+	}
 
 	// Try to fetch the transaction from the memory pool and if that fails,
 	// try the block database.
@@ -3419,12 +3422,6 @@ func handleGetRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan str
 			return nil, rpcNoTxInfoError(txHash)
 		}
 
-		blkHash = blockRegion.Hash
-		blkHeight, err = s.cfg.Chain.BlockHeightByHash(blkHash)
-		// Deserialize the transaction
-		var msgTx wire.MsgTx
-		err = msgTx.Deserialize(bytes.NewReader(txBytes))
-
 		// When the verbose flag isn't set, simply return the serialized
 		// transaction as a hex-encoded string.  This is done here to
 		// avoid deserializing it only to reserialize it again later.
@@ -3432,16 +3429,24 @@ func handleGetRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan str
 			return hex.EncodeToString(txBytes), nil
 		}
 
-		// Grab the block height.
-		if err != nil {
-			context := "Failed to retrieve block height"
-			return nil, internalRPCError(err.Error(), context)
-		}
-
+		blkHash = blockRegion.Hash
+		// Deserialize the transaction
+		var msgTx wire.MsgTx
+		err = msgTx.Deserialize(bytes.NewReader(txBytes))
 		if err != nil {
 			context := "Failed to deserialize transaction"
 			return nil, internalRPCError(err.Error(), context)
 		}
+
+		blkHeight, err = s.cfg.Chain.BlockHeightByHash(blkHash)
+		// Grab the block height.
+		if *c.InMainChain && err != nil {
+			context := "Block not in main chain"
+			return nil, internalRPCError(err.Error(), context)
+		} else if err != nil {
+			blkHeight = -1
+		}
+
 		mtx = &msgTx
 	} else {
 		// When the verbose flag isn't set, simply return the
@@ -4822,6 +4827,30 @@ func handleVersion(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 //
 // NOTE: This is a btcsuite extension ported from github.com/decred/dcrd.
 func handleShutdown(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.ShutdownCmd)
+	if *c.NoneCommittee {
+		// wait until we are not in committee
+		ip := s.cfg.ChainParams.ExternalIPs
+		check := true
+		for check {
+			r := s.cfg.Chain.BestSnapshot().LastRotation
+			check = false
+checkip:
+			for i := int32(0); i < wire.CommitteeSize; i++ {
+				m, _ := s.cfg.Chain.Miners.BlockByHeight(int32(r) - i)
+				if m == nil {
+					continue
+				}
+				for _, p := range ip {
+					if p == string(m.MsgBlock().Connection) {
+						check = true
+						time.Sleep(10 * time.Minute)
+						break checkip
+					}
+				}
+			}
+		}
+	}
 	s.requestProcessShutdown<-struct{}{}
 	return true, nil
 }

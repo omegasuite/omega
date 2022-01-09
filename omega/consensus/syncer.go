@@ -1569,7 +1569,7 @@ func (self *Syncer) better(left, right int32) bool {
 	if !ok {
 		return true
 	}
-	return l.fees > r.fees || (l.fees == r.fees && left > right)
+	return l.fees > r.fees || (l.fees == r.fees && left < right)
 }
 
 func (self *Syncer) best() int32 {
@@ -1583,7 +1583,7 @@ func (self *Syncer) best() int32 {
 			}
 		} else {
 			if l.block != nil && (l.fees > self.forest[*seld].fees ||
-				(l.fees == self.forest[*seld].fees && self.Members[left] > self.Members[*seld])) {
+				(l.fees == self.forest[*seld].fees && self.Members[left] < self.Members[*seld])) {
 				copy(seld[:], left[:])
 			}
 		}

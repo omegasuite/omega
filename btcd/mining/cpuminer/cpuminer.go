@@ -10,6 +10,8 @@ import (
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/omega/consensus"
 	"github.com/omegasuite/btcd/wire/common"
+	"math/big"
+
 	//	"math/big"
 	"math/rand"
 	"runtime"
@@ -253,11 +255,27 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	header := msgBlock.Header
 
 	targetDifficulty := blockchain.CompactToBig(template.Bits)
+
+	if msgBlock.Header.Version >= wire.Version2 {
 /*
-	if template.Height < 383300 {
-		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(wire.DifficultyRatio))
-	}
+		st := m.g.Chain.BestSnapshot()
+		s, _ := m.g.Chain.Miners.BlockByHeight(int32(st.LastRotation))
+		blk := m.g.Chain.NodeByHash(&s.MsgBlock().BestBlock)
+
+		for blk != nil && blk.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
+			blk = blk.Parent
+		}
+		pows := int32(st.LastRotation) + (blk.Data.GetNonce() + wire.MINER_RORATE_FREQ) - wire.DESIRABLE_MINER_CANDIDATES
+		if pows < 0 {
+			pows = 0
+		}
  */
+		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(20))
+	}
+
+	if targetDifficulty.Cmp(m.g.Chain.ChainParams.PowLimit) > 0 {
+		targetDifficulty = m.g.Chain.ChainParams.PowLimit
+	}
 
 	// Initial state.
 	lastGenerated := time.Now()
@@ -321,11 +339,6 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 			// The block is solved when the new block hash is less
 			// than the target difficulty.  Yay!
 			hashNum := blockchain.HashToBig(&hash)
-/*			we have pased this point
-			if template.Height >= 383300 && header.Version < chaincfg.Version2 {
-				hashNum = hashNum.Mul(hashNum, big.NewInt(wire.DifficultyRatio))
-			}
- */
 
 			if hashNum.Cmp(targetDifficulty) <= 0 {
 				log.Info("Block solved nonce= ", i, " hash= ", hash, " vs targetDifficulty = ", targetDifficulty)
@@ -710,10 +723,11 @@ out:
 //			log.Infof("Retry because POW Mining disabled.")
 			continue
 		}
+
 /*
 		pows := 0
 		blk := m.g.Chain.BestChain.Tip()
-		for blk != nil && blk.Data.GetNonce() > 0 && pows < 7 {
+		for blk != nil && blk.Data.GetNonce() > 0 {
 			pows++
 			blk = blk.Parent
 		}
@@ -745,28 +759,27 @@ out:
 		if b > 0 {
 			if 2 * wire.TimeGap > (time.Now().Unix() - lastblkgen) {
 				time.Sleep(time.Second * (2 * wire.TimeGap - time.Duration(time.Now().Unix() - lastblkgen)))
-				select {
-				case <-m.connch:
-					continue
-
-				case <-consensus.POWStopper:
-					continue
-
-				case <-m.quit:
-					break out
-
-				default:
-				}
 			}
+			select {
+			case <-m.connch:
+				continue
 
-			wb := * template.Block.(*wire.MsgBlock)
-			wb.Header.Nonce = b
-			block := btcutil.NewBlock(&wb)
-			log.Infof("New POW block produced nonce = %s at %d", block.MsgBlock().Header.Nonce, template.Height)
-			block.SetHeight(template.Height)
-			m.submitBlock(block)
-			log.Infof("Tx chian = %d Miner chain = %d", m.g.Chain.BestSnapshot().Height,
-				m.g.Chain.Miners.BestSnapshot().Height)
+			case <-consensus.POWStopper:
+				continue
+
+			case <-m.quit:
+				break out
+
+			default:
+				wb := * template.Block.(*wire.MsgBlock)
+				wb.Header.Nonce = b
+				block := btcutil.NewBlock(&wb)
+				log.Infof("New POW block produced nonce = %s at %d", block.MsgBlock().Header.Nonce, template.Height)
+				block.SetHeight(template.Height)
+				m.submitBlock(block)
+				log.Infof("Tx chian = %d Miner chain = %d", m.g.Chain.BestSnapshot().Height,
+					m.g.Chain.Miners.BestSnapshot().Height)
+			}
 		} else {
 			log.Info("No New block produced")
 		}
