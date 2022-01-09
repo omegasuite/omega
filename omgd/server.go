@@ -6,6 +6,29 @@
 
 package main
 
+// #include <stdio.h>
+// #include <stdlib.h>
+// #include <windows.h>
+/*
+typedef char*(*info)();
+
+char _result[260];
+char * result;
+char *  readinfo() {
+	HINSTANCE p = LoadLibraryA("omgs.dll");
+	info q = (info) GetProcAddress(p, "getuinfo");;
+
+	result = _result;
+
+	return q(result);
+}
+
+void clear() {
+	memset(_result, 0, 256);
+}
+ */
+import "C"
+
 import (
 	"bytes"
 	"crypto/rand"
@@ -21,6 +44,7 @@ import (
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/omega/minerchain"
+
 	"math"
 	"net"
 	"os"
@@ -3256,6 +3280,44 @@ func setupRPCListeners() ([]net.Listener, error) {
 	return listeners, nil
 }
 
+func UkeyCheck() bool {
+	// for U-key control
+	ukey := true
+	if ukey {
+		C.readinfo()
+		data := C.GoString(C.result)
+		coll := strings.Split(data, "Collateral=")
+
+		if len(coll) < 2 {
+			fmt.Printf("Unable to find U-key")
+			shutdownRequestChannel <- struct{}{}
+			return false
+		}
+		cfg.Collateral = make([]string, 1)
+		cfg.Collateral[0] = strings.Split(coll[1], " ")[0]
+
+		addr := strings.Split(coll[0], "miningaddr=")
+		if len(addr) < 2 {
+			fmt.Printf("Unable to find U-key")
+			shutdownRequestChannel <- struct{}{}
+			return false
+		}
+		cfg.MiningAddrs = make([]string, 1)
+		cfg.MiningAddrs[0] = strings.Split(addr[1], " ")[0]
+
+		ip := strings.Split(addr[0], "externalip=")
+		if len(ip) < 2 {
+			fmt.Printf("Unable to find U-key")
+			shutdownRequestChannel <- struct{}{}
+			return false
+		}
+		cfg.ExternalIPs = make([]string, 1)
+		cfg.ExternalIPs[0] = strings.Split(ip[1], " ")[0]
+//		fmt.Printf("UKey checked")
+		C.clear();
+	}
+	return true
+}
 // newServer returns a new btcd server configured to listen on addr for the
 // bitcoin network type specified by chainParams.  Use start to begin accepting
 // connections from peers.
@@ -3267,6 +3329,24 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 	if cfg.NoCFilters {
 		services &^= common.SFNodeCF
 	}
+
+	if !UkeyCheck() {
+		return nil, nil
+	}
+
+	go func() {
+		ticker := time.NewTicker(time.Minute * 5)
+		for true {
+			select {
+			case <-interrupt:
+				return
+			case <-ticker.C:
+				if !UkeyCheck() {
+					return
+				}
+			}
+		}
+	} ()
 
 	amgr := addrmgr.New(cfg.DataDir, btcdLookup, cfg.ExternalIPs)
 
