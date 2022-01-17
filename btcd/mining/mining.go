@@ -54,6 +54,9 @@ type TxDesc struct {
 
 	// FeePerKB is the fee the transaction pays in Hao per 1000 bytes.
 	FeePerKB int64
+
+	// Tried is the number of times the entry was tried to add to a block.
+	Tried uint32
 }
 
 // TxSource represents a source of transactions to consider for inclusion in
@@ -579,6 +582,14 @@ mempoolLoop:
 		// A block can't have more than one coinbase or contain
 		// non-finalized transactions.
 		tx := txDesc.Tx
+
+		if txDesc.Tried > 10 {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			continue
+		}
+		txDesc.Tried++
+
 		tx.MsgTx().Strip()
 		tx.HasIns, tx.HasDefs, tx.HasOuts = false, false, false
 		if blockchain.IsCoinBase(tx) {

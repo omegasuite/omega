@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	//	"github.com/omegasuite/btcd/peer"
+//	"github.com/omegasuite/btcd/peer"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
 )

@@ -97,6 +97,7 @@ type Syncer struct {
 //	wg          sync.WaitGroup
 	idles		int
 	handeling   string
+	repeats int
 }
 
 func (self *Syncer) CommitteeMsgMG(p [20]byte, m wire.Message) {
@@ -138,6 +139,13 @@ func (self *Syncer) repeater() {
 	}()
 
 	miner.server.CommitteePolling()
+
+	self.repeats++
+	if (self.repeats % 5)  == 0 {
+		// reset connections
+		miner.server.ResetConnections()
+		return
+	}
 
 	// enough sigs to conclude?
 	if self.agreed != -1 && len(self.signed) >= wire.CommitteeSigs {
@@ -1196,6 +1204,7 @@ func CreateSyncer(h int32) *Syncer {
 
 	p.agreed = -1
 	p.sigGiven = -1
+	p.repeats = 0
 
 	p.handeling = ""
 //	p.mutex = sync.Mutex{}

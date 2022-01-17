@@ -560,6 +560,7 @@ func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.
 			Height:   height,
 			Fee:      fee,
 			FeePerKB: fee * 1000 / blockchain.GetTransactionWeight(tx),
+			Tried:	  0,
 		},
 		StartingPriority: mining.CalcPriority(tx.MsgTx(), utxoView, height),
 	}

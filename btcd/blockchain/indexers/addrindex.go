@@ -692,6 +692,9 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 	var addr btcutil.Address
 
 	if IsContract(pkScript[0]) {
+		if len(pkScript) < 21 {
+			return nil, 0, fmt.Errorf("Incorrect contract address")
+		}
 		addr, _ = btcutil.NewAddressContract(pkScript[1:21], chainParams)
 	} else {
 //		if len(pkScript) < 25 {

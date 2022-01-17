@@ -236,6 +236,18 @@ func (sm *SyncManager) resetHeaderState(newestHash *chainhash.Hash, newestHeight
 	}
 }
 
+func (sm *SyncManager) ResetConnections() {
+	if len(sm.peerStates) < 100 {
+		return
+	}
+
+	log.Infof("       ResetConnections peers = %d", len(sm.peerStates))
+
+	for p,_ := range sm.peerStates {
+		p.Disconnect("Reset")
+	}
+}
+
 // findNextHeaderCheckpoint returns the next checkpoint after the passed height.
 // It returns nil when there is not one either because the height is already
 // later than the final checkpoint or some other reason such as disabled

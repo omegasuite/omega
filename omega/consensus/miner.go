@@ -52,6 +52,7 @@ type PeerNotifier interface {
 	SubscribeChain(func(*blockchain.Notification))
 	CommitteePolling()
 	ChainSync(chainhash.Hash, [20]byte)
+	ResetConnections()
 }
 
 type Miner struct {

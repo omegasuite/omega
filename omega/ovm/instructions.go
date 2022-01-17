@@ -2003,13 +2003,15 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 		} else {
 			target = contract.libs[libAddr].address
+/*
 			if evm.BlockVersion() >= wire.Version3 {
-				copy(stack.data[f.gbase].space, f.space)
+				copy(stack.data[f.gbase].space[8:], f.space[8:])
 //				if len (stack.data[f.gbase].space) < len(f.space) {
 //					append(stack.data[f.gbase].space, f.space[len (stack.data[f.gbase].space):]...)
 //				}
 				f.space = f.space[:0]
 			}
+ */
 		}
 		*pc = int(target)
 		stack.callTop++
@@ -2530,6 +2532,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					var bn [4]byte
 					binary.LittleEndian.PutUint32(bn[:], uint32(OP_INIT)) // entry point for init()
 					f.space = append(f.space, bn[:]...)
+					f.space = append(f.space, []byte{0, 0, 0, 0}...)
 					f.pc = *pc
 					f.pure = pure | stack.data[stack.callTop].pure
 					f.inlib = d
@@ -2616,6 +2619,15 @@ func opMAalloc(pc *int, evm *OVM, contract *Contract, stack *Stack, glob bool) e
 
 			case 1:
 				var p pointer
+
+				total := uint64(num)
+				for _,k := range stack.data {
+					total += uint64(len(k.space))
+				}
+				if total >= 0x40000000 {
+					return fmt.Errorf("Memory requested exceeds 1GB")
+				}
+
 				if glob {
 					p, _ = stack.malloc(int(num))
 				} else {
@@ -3409,30 +3421,34 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error 
 	case token.DefTypeBorder:
 		b, err := evm.views.FetchBorderEntry(&hash)
 		if err != nil {
-			return err
+			t = token.NewBorderDef(token.VertexDef{}, token.VertexDef{} , chainhash.Hash{})
+		} else {
+			t = token.Definition(b.ToToken())
 		}
-		t = token.Definition(b.ToToken())
 
 	case token.DefTypePolygon:
 		b, err := evm.views.FetchPolygonEntry(&hash)
 		if err != nil {
-			return err
+			t = token.NewPolygonDef(make([]token.LoopDef, 0))
+		} else {
+			t = token.Definition(b.ToToken())
 		}
-		t = token.Definition(b.ToToken())
 
 	case token.DefTypeRight:
 		b, err := evm.views.FetchRightEntry(&hash)
 		if err != nil {
-			return err
+			t = token.NewRightDef(chainhash.Hash{}, []byte{}, 0)
+		} else {
+			t = token.Definition(b.(*viewpoint.RightEntry).ToToken())
 		}
-		t = token.Definition(b.(*viewpoint.RightEntry).ToToken())
 
 	case token.DefTypeRightSet:
 		b, err := evm.views.FetchRightEntry(&hash)
 		if err != nil {
-			return err
+			t = token.NewRightSetDef([]chainhash.Hash{})
+		} else {
+			t = token.Definition(b.(*viewpoint.RightSetEntry).ToToken())
 		}
-		t = token.Definition(b.(*viewpoint.RightSetEntry).ToToken())
 
 	default:
 		return fmt.Errorf("Unknown definition type")
@@ -3770,25 +3786,26 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 		zeroHash := chainhash.Hash{}
 		toissue = (!h.IsEqual(&zeroHash))
 	}
-	if toissue && (tokentype & 2 == 2) {
+	if (tokentype & 2) == 2 {
 		if top != 4 {
 			return fmt.Errorf("Incorrect number of parameters for mint inst.")
 		}
 		zeroHash := chainhash.Hash{}
 		if zeroHash.IsEqual(&r) {
-			return fmt.Errorf("Zero hash as right set in mint inst.")
-		}
-/*		This will be checked later in normal tx processing
-		h, err := ovm.views.FetchRightEntry(&r)
-		if err != nil {
-			return err
-		}
-		if h == nil {
-			return fmt.Errorf("Undefined right set in mint inst.")
-		}
+			if toissue {
+				return fmt.Errorf("Zero hash as right set in mint inst.")
+			}
+		} else {
+/*
+			h, err := ovm.views.FetchRightEntry(&r)
+			if err != nil || h == nil {
+				toissue = true
+			}
  */
+			toissue = true
 
-		issued.Rights = &r
+			issued.Rights = &r
+		}
 	}
 
 	if err = stack.saveInt64(&dest, int64(tokentype)); err != nil {
