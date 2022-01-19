@@ -566,7 +566,6 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 			debugchan = make(chan []byte, 50)
 		}
 
-
 		ovm.DebugSetup(true, debugchan)
 		pendattach = true
 		d := <-debugchan
@@ -675,6 +674,23 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 		}
 
 		return stack, nil
+
+	case "evaluate":
+		var buf [12]byte
+		hlen, _ := hex.Decode(buf[:], []byte(*c.Param))
+		if hlen == 0 {
+			return nil, nil
+		}
+		common.LittleEndian.PutUint32(buf[8:], uint32(*c.Value))
+		ovm.Control <- &ovm.DebugCmd {
+			Cmd: ovm.Evaluate,
+			Data: buf[:],
+			Reply: reply,
+		}
+
+		d := <- reply
+
+		return hex.EncodeToString(d), nil
 	}
 	return nil, nil
 }

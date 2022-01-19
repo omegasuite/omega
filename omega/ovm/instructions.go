@@ -3609,12 +3609,18 @@ func opNul(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		return nil
 	}
 
-	if breakpoints[*pc] || stepping {
+	if dbgcontract == nil {
+		c := stack.data[stack.callTop].gbase
+		setdbgcontract(contract, Address(stack.data[c].inlib), stack)
+		log.Info("contract going")
+	}
+
+	if breakpoints[(*pc) - dbgcodebase] || stepping {
 		var buf [4]byte
 
 		log.Infof("opNul: break at %d", *pc)
 
-		common.LittleEndian.PutUint32(buf[:], uint32(*pc))
+		common.LittleEndian.PutUint32(buf[:], uint32((*pc) - dbgcodebase))
 		Control <- &DebugCmd{Reply: nil, Data: buf[:], Cmd: Breaked}
 
 		log.Infof("opNul: waiting inspector")

@@ -1603,84 +1603,108 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			return uint32(block.MsgBlock().Header.Timestamp.Unix())
 		}
 		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
+	} else {
+		oldcoinBase = transactions[0]
 	}
 
 	paidstoragefees := make(map[[20]byte]int64)
+	storages := make([]int64, len(transactions) - 1)
+
+	for i, tx := range transactions[1:] {
+		if runScripts {
+			err = ovm.VerifySigs(tx, node.Height, b.ChainParams, 0, views)
+			if err != nil {
+				return err
+			}
+		}
+
+		if Vm != nil {
+			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
+			newtx.SetIndex(tx.Index())
+			newtx.HasIns, newtx.HasDefs, newtx.HasOuts = false, false, false
+
+			err = Vm.ExecContract(newtx, node.Height)
+			if err != nil {
+				return err
+			}
+
+			if !newtx.Match(tx) {
+				return fmt.Errorf("Mismatch contract execution result")
+			}
+
+			transactions[i + 1] = newtx
+
+			storages[i] = ContractNewStorage(newtx, Vm, paidstoragefees)
+		}
+	}
+
+	if Vm != nil {
+		if Vm.StepLimit != 0 {
+			return fmt.Errorf("Incorrect contract execution cost.")
+		}
+		if !block.Transactions()[0].Match(oldcoinBase) {
+			//			Vm.AbortRollback()
+			return fmt.Errorf("Mismatch contract execution result in coinbase")
+		}
+	}
 
 	totalFees := int64(0)
-	for i, tx := range transactions {
-		txFee := int64(0)
+	txFee := int64(0)
 
-		if i != 0 {
-			if runScripts {
-				err = ovm.VerifySigs(tx, node.Height, b.ChainParams, 0, views)
-				if err != nil {
-					return err
+	views.Rights = viewpoint.NewRightViewpoint()
+	views.Polygon = viewpoint.NewPolygonViewpoint()
+	views.Border = viewpoint.NewBorderViewpoint()
+
+	err = CheckTransactionInputs(oldcoinBase, node.Height, views, b.ChainParams)
+	if err != nil {
+		return err
+	}
+
+	err = CheckAdditionalDefinitions(oldcoinBase, node.Height, views, b.ChainParams)
+	if err != nil {
+		return err
+	}
+
+	err = views.ConnectTransaction(oldcoinBase, node.Height, stxos)
+	if err != nil {
+		return err
+	}
+
+	for i, tx := range transactions[1:] {
+		err := CheckTransactionInputs(tx, node.Height, views, b.ChainParams)
+		if err != nil {
+			return err
+		}
+
+		err = CheckAdditionalTransactionInputs(tx, node.Height, views, b.ChainParams)
+		if err != nil {
+			return err
+		}
+
+		err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
+		if err != nil {
+			return err
+		}
+
+		err = CheckTransactionIntegrity(tx, views, block.MsgBlock().Header.Version)
+		if err != nil {
+			return err
+		}
+
+		txFee, err = CheckTransactionFees(tx, block.MsgBlock().Header.Version, storages[i], views, b.ChainParams)
+		if err != nil {
+			return err
+		}
+
+		// check locked collateral
+		if block.MsgBlock().Header.Version >= chaincfg.Version2 {
+			for _, txin := range tx.MsgTx().TxIn {
+				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					continue
 				}
-			}
-			storage := int64(0)
-
-			if Vm != nil {
-				newtx := btcutil.NewTx(tx.MsgTx().Stripped())
-				newtx.SetIndex(tx.Index())
-				newtx.HasIns, newtx.HasDefs, newtx.HasOuts = false, false, false
-
-				err := CheckTransactionInputs(newtx, node.Height, views, b.ChainParams)
-				if err != nil {
-					return err
+				if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; ok {
+					return fmt.Errorf("Try to spend locked collateral")
 				}
-
-				err = Vm.ExecContract(newtx, node.Height)
-				if err != nil {
-					return err
-				}
-
-				transactions[i] = newtx
-				tx = newtx
-
-				storage = ContractNewStorage(tx, Vm, paidstoragefees)
-			}
-
-			err = CheckAdditionalTransactionInputs(tx, node.Height, views, b.ChainParams)
-			if err != nil {
-				return err
-			}
-
-			err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
-			if err != nil {
-				return err
-			}
-
-			err = CheckTransactionIntegrity(tx, views, block.MsgBlock().Header.Version)
-			if err != nil {
-				return err
-			}
-
-			txFee, err = CheckTransactionFees(tx, block.MsgBlock().Header.Version, storage, views, b.ChainParams)
-			if err != nil {
-				return err
-			}
-
-			// check locked collateral
-			if block.MsgBlock().Header.Version >= chaincfg.Version2 {
-				for _, txin := range tx.MsgTx().TxIn {
-					if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-						continue
-					}
-					if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; ok {
-						return fmt.Errorf("Try to spend locked collateral")
-					}
-				}
-			}
-		} else {
-			err := CheckTransactionInputs(tx, node.Height, views, b.ChainParams)
-			if err != nil {
-				return err
-			}
-
-			err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
-			if err != nil {
-				return err
 			}
 		}
 
@@ -1702,15 +1726,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			return err
 		}
 	}
-	if Vm != nil {
-		if Vm.StepLimit != 0 {
-			return fmt.Errorf("Incorrect contract execution cost.")
-		}
-		if !block.Transactions()[0].Match(oldcoinBase) {
-			//			Vm.AbortRollback()
-			return fmt.Errorf("Mismatch contract execution result")
-		}
-	}
+
 	if block.MsgBlock().Header.Version >= chaincfg.Version2 {
 		err = b.CheckForfeit(block, node.Parent, views)
 		if err != nil {

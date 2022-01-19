@@ -34,6 +34,7 @@ const (
 	Breaked
 	Terminate
 	Terminated
+	Evaluate
 )
 type DebugCmd struct {
 	Cmd   DebugCommand
@@ -100,12 +101,10 @@ func NewInterpreter(evm *OVM) *Interpreter {
 var dbgcontract *Contract
 var dbgstack *Stack
 var readysent = false
+var dbgcodebase int
 
-func setdbgcontract(contract *Contract, stack *Stack) {
-	dbgcontract, dbgstack = contract, stack
-
-	var addr Address
-	addr = dbgcontract.self.Address()
+func setdbgcontract(contract *Contract, addr Address, stack *Stack) {
+	dbgcontract, dbgstack, dbgcodebase = contract, stack, int(contract.libs[addr].address)
 
 	inspector = make(chan *DebugCmd, 10)
 
@@ -192,6 +191,18 @@ func intrepdebug() {
 				if !readysent {
 					readysent = true
 					attaching <- struct{}{}
+				}
+
+			case Evaluate:
+				v := common.LittleEndian.Uint64(ctrl.Data)
+				l := common.LittleEndian.Uint32(ctrl.Data[8:])
+				if int(uint32(v)) >= len(dbgstack.data[int32(v>>32)].space) {
+					ctrl.Reply <- []byte{}
+				} else {
+					if int(uint32(v)+l) > len(dbgstack.data[int32(v>>32)].space) {
+						l = uint32(len(dbgstack.data[int32(v>>32)].space)) - uint32(v)
+					}
+					ctrl.Reply <- dbgstack.data[int32(v>>32)].space[uint32(v) : uint32(v)+l]
 				}
 
 			case Getdata:
@@ -349,8 +360,6 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		if attaching == nil {
 			attaching = make(chan struct{}, 10)
 		}
-		setdbgcontract(contract, stack);
-		log.Info("contract going")
 	}
 
 //	debugging = true

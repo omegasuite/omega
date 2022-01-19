@@ -1061,7 +1061,7 @@ func New(cfg *Config) *CPUMiner {
 		updateNumWorkers:  make(chan struct{}),
 //		queryHashesPerSec: make(chan float64),
 //		updateHashes:      make(chan uint64),
-		connch: 		   make(chan int32, 100),
+		connch: 		   make(chan int32, 1000),
 		miningkeys:		   make(chan *btcec.PrivateKey),
 		addkeyresult:	   make(chan bool),
 	}
