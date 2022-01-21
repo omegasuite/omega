@@ -28,6 +28,7 @@ const (
 	Breakpoint = DebugCommand(iota)
 	Unbreak
 	Stepping
+	GoUp
 	Gorun
 	Getdata
 	Getstack
@@ -46,7 +47,7 @@ type Interpreter struct {
 
 	JumpTable [256]operation
 
-	readOnly   bool   // Whether to throw on stateful modifications
+//	readOnly   bool   // Whether to throw on stateful modifications
 	returnData []byte // Last CALL's return Data for subsequent reuse
 }
 
@@ -59,6 +60,7 @@ var inspector	chan *DebugCmd // chan for inspect inst to prog. code
 var stepping 	bool            // whether we are stepping
 var stop		bool
 var attaching	chan struct{}
+var dbgreturn bool				// where user has clicked 'up'
 
 func DebugSetup(enable bool, comm chan []byte) {
 	if comm == nil {
@@ -72,8 +74,8 @@ func DebugSetup(enable bool, comm chan []byte) {
 		attaching = make(chan struct{}, 10)
 	}
 
-	stepping = false
-	stop = false
+	stepping, dbgreturn, stop = false, false, false
+
 	debugging = enable
 	if enable {
 		debugNotifier = comm
@@ -148,6 +150,20 @@ func intrepdebug() {
 			case Stepping:
 				stepping = true
 				breakat = 0
+
+				waitingchan = ctrl.Reply
+
+				if !readysent {
+					readysent = true
+					attaching <- struct{}{}
+				} else {
+					inspector <- ctrl
+				}
+
+			case GoUp:
+				breakat = 0
+				stepping = false
+				dbgreturn = true
 
 				waitingchan = ctrl.Reply
 
@@ -245,7 +261,7 @@ func NewSigInterpreter(evm *OVM) *Interpreter {
 }
 
 func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack *Stack) error {
-	if in.readOnly {
+	if (stack.data[stack.callTop].pure &^ INHERIT) != 0 {	// in.readOnly {
 		// If the interpreter is operating in readonly mode, make sure no
 		// state-modifying operation is performed.
 		if operation.writes {

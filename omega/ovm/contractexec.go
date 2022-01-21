@@ -85,7 +85,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	ovm.SetContext(ctx)
 
 //	ovm.interpreter = NewSigInterpreter(ovm, cfg)
-	ovm.interpreter.readOnly = true
+//	ovm.interpreter.readOnly = true
 	ovm.NoLoop = true
 	ovm.StepLimit = chainParams.ContractExecLimit
 
@@ -193,7 +193,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 //					ovm.Block = func() *btcutil.Block { return nil }
 					ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
 					ovm.NoLoop = true
-					ovm.interpreter.readOnly = true
+//					ovm.interpreter.readOnly = true
 
 					ovm.GetCurrentOutput = func() wire.OutPoint {
 						return code.outpoint
@@ -446,11 +446,37 @@ func (ovm * OVM) ContractCall(addr Address, input []byte) ([]byte, error) {
 	ovm.GetTx = func () * btcutil.Tx { return nil }
 	ovm.AddTxOutput = func(t wire.TxOut) int {	return -1 }
 	ovm.Spend = func(t wire.OutPoint, _ []byte) bool { return false }
-	ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
 	ovm.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
 
+	ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
+	ovm.BlockNumber = func() uint64 {
+		return 0
+	}
+	ovm.BlockTime = func() uint32 {
+		return uint32(time.Now().Unix())
+	}
+	ovm.BlockVersion = func() uint32 { return wire.Version4 }
+
+	cb := wire.MsgTx{}
+	coinBase := btcutil.NewTx(&cb)
+	coinBaseHash := * coinBase.Hash()
+	ovm.AddCoinBase =
+		func(txo wire.TxOut) wire.OutPoint {
+			if !coinBase.HasOuts {
+				// this servers as a separater. only TokenType is serialized
+				to := wire.TxOut{}
+				to.Token = token.Token{TokenType: token.DefTypeSeparator}
+				coinBase.MsgTx().AddTxOut(&to)
+				coinBase.HasOuts = true
+			}
+			coinBase.MsgTx().AddTxOut(&txo)
+			op := wire.OutPoint { coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
+			return op
+		}
+	ovm.GetCoinBase = func() *btcutil.Tx { return coinBase }
+
 	ovm.NoLoop = false
-	ovm.interpreter.readOnly = true
+//	ovm.interpreter.readOnly = false	// true
 
 	if _,ok := ovm.StateDB[addr]; !ok {
 		t := NewStateDB(ovm.views.Db, addr)
@@ -529,7 +555,7 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 	ovm.GetCoinBase = func() *btcutil.Tx { return coinBase }
 
 	ovm.NoLoop = false
-	ovm.interpreter.readOnly = false
+//	ovm.interpreter.readOnly = false
 	ovm.writeback = false
 
 	anew := false
@@ -634,7 +660,7 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 
 	ovm.NoLoop = false
-	ovm.interpreter.readOnly = false
+//	ovm.interpreter.readOnly = false
 	ovm.writeback = true
 
 	anew := false

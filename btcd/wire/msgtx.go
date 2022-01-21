@@ -299,7 +299,10 @@ func (t *TxOut) IsNopaying() bool {
 	if t.TokenType & 1 == 0 && t.Token.Value.(*token.NumToken).Val == 0 {
 		return true
 	}
-	if t.PkScript[0] != 0x88 && (t.PkScript[21] == OP_PAY2NONE && (len(t.PkScript) == 22 || bytes.Compare(t.PkScript[22:25], []byte{0,0,0}) == 0)) {
+	if t.PkScript[0] == 0x88 {
+		return false
+	}
+	if len(t.PkScript) < 22 || (t.PkScript[21] == OP_PAY2NONE && (len(t.PkScript) == 22 || bytes.Compare(t.PkScript[22:25], []byte{0,0,0}) == 0)) {
 		return true
 	}
 	return false

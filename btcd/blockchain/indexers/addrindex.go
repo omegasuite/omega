@@ -697,9 +697,9 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 		}
 		addr, _ = btcutil.NewAddressContract(pkScript[1:21], chainParams)
 	} else {
-//		if len(pkScript) < 25 {
-//			return nil, 0, fmt.Errorf("Malformed pkScript")
-//		}
+		if len(pkScript) < 22 {
+			return nil, 0, fmt.Errorf("Malformed pkScript")
+		}
 		switch pkScript[21] {
 		case OP_PAY2PKH:
 			if pkScript[0] != chainParams.PubKeyHashAddrID {

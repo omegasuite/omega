@@ -558,7 +558,7 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 
 	c := cmd.(*btcjson.VMDebugCmd)
 
-	gotype := map[string]ovm.DebugCommand{"go":ovm.Gorun, "step":ovm.Stepping, "clearbreakpoint":ovm.Unbreak, "breakpoint":ovm.Breakpoint}
+	gotype := map[string]ovm.DebugCommand{"go":ovm.Gorun, "step":ovm.Stepping, "Up":ovm.GoUp, "clearbreakpoint":ovm.Unbreak, "breakpoint":ovm.Breakpoint}
 
 	switch c.DbgCmd {
 	case "attach":
@@ -602,7 +602,7 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 	reply := make(chan []byte)
 
 	switch c.DbgCmd {
-	case "go", "step":
+	case "go", "step", "up":
 		ovm.Control <- &ovm.DebugCmd {
 			Cmd: gotype[c.DbgCmd],
 			Data: nil,
@@ -1174,8 +1174,15 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 }
 
 func pubKeyTypes(script []byte) string {
+	if len(script) < 21 {
+		return "unknown"
+	}
 	if chaincfg.IsContractAddrID(script[0]) {
 		return "contracthash"
+	}
+
+	if len(script) < 22 {
+		return "unknown"
 	}
 
 	if script[21] == 0x45 {
@@ -1331,8 +1338,15 @@ func handleDecodeRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 }
 
 func DisasmScript(script []byte) string {
+	if len(script) < 21 {
+		return ""
+	}
 	if script[0] == 0x88 {
 		return "contract(" + hex.EncodeToString(script[:21]) + ")"
+	}
+
+	if len(script) < 22 {
+		return ""
 	}
 
 	switch script[21] {

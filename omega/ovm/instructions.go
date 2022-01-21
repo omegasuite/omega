@@ -3051,6 +3051,29 @@ func opReturn(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 //	contract.pure = stack.Data[stack.callTop].pure
 	delete(stack.data, stack.callTop)
 	stack.callTop--
+
+	if !debugging || !dbgreturn {
+		return nil
+	}
+
+	dbgreturn = false
+
+	var buf [4]byte
+
+	log.Infof("opReturn: break at %d", *pc)
+
+	common.LittleEndian.PutUint32(buf[:], uint32((*pc) - dbgcodebase))
+	Control <- &DebugCmd{Reply: nil, Data: buf[:], Cmd: Breaked}
+
+	log.Infof("opReturn: waiting inspector")
+
+	select {
+	case <-inspector:
+	case <-time.After(5 * time.Minute):
+		// if no activity in 5 min., cancel debugging
+		debugging = false
+	}
+
 	return nil
 }
 
