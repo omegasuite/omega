@@ -1989,7 +1989,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		f.pure = stack.data[stack.callTop].pure | contract.libs[libAddr].pure
 		if isself {
 			libAddr = stack.data[stack.callTop].inlib
-		} else {
+		} else if evm.BlockVersion() >= wire.Version2 {
 			binary.LittleEndian.PutUint32(f.space[4:8], uint32(contract.libs[libAddr].base))
 		}
 		f.gbase = contract.libs[libAddr].base
