@@ -1854,6 +1854,12 @@ func (g *MinerChain) reportNotice(n *blockchain.Notification) {
 
 		checked := make(map[[20]byte]struct{})
 		node := g.NodeByHash(&block.MsgBlock().PrevBlock)
+		if node == nil {	// it is in a side chain, no need to record it
+			if g.index.LookupNode(&block.MsgBlock().PrevBlock) == nil {
+				panic("Irrecoverable error in chain data")
+			}
+			return
+		}
 		for _, r := range block.MsgBlock().TphReports {
 			w := node.Data.(*blockchainNodeData).block.Miner
 			_, ok := checked[w]

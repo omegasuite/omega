@@ -2310,7 +2310,7 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			'6', '7', '8', '9', 'a', 'b', 'c',
 			'd', 'e', 'f', 'x', 'i', 'g':
 			if dataType == 'r' {
-				bl, tl, err = stack.getBytes(param[j:], 'r', 20)
+				bl, tl, err = stack.getBytes(param[j:], 'r', 0)
 //			} else if dataType == 0x48 {
 //				bnum, tl, err = stack.getBig(param[j:])
 			} else {
@@ -2339,10 +2339,6 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					}
 					r.Reset(stack.data[int32(num>>32)].space[num&0xFFFFFFFF:])
 					value.Read(&r, 0, 0)
-
-					if value.TokenType & 1 == 0 && value.Value.(*token.NumToken).Val == 0 {
-						value = nil
-					}
 				}
 
 			case 4:
@@ -2366,16 +2362,16 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	pks := make([]byte, 25 + len(args))
-	pks[0] = 1
+	pks[0] = 0x88
 	copy(pks[1:], toAddr[:])
 	copy(pks[21:], args)
 
 	pure |= stack.data[stack.callTop].pure
 
-	if pure != 0x1F || (value != nil && (value.TokenType & 1 != 0 ||
-		(value.TokenType & 1 == 0 && value.Value.(*token.NumToken).Val != 0))) {
+	if (pure & 0x1F) != 0x1F || (value.TokenType & 1 != 0 ||
+		(value.TokenType & 1 == 0 && value.Value.(*token.NumToken).Val != 0)) {
 		// if allowed to write something, will add a txout. note: can't decide
-		// whther to add txout based on value given to the contract only, because
+		// whether to add txout based on value given to the contract only, because
 		// we determine Rollback Data based on presence of contract in txout
 		tx := evm.GetTx()
 		msg := tx.MsgTx()

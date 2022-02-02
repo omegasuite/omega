@@ -353,7 +353,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
-	if header.Version >= chaincfg.Version2 && header.Collateral != coll {
+	if header.Version >= chaincfg.Version4 && header.Collateral != coll {
 		str := "block collateral of %d is not the expected value of %d"
 		str = fmt.Sprintf(str, header.Collateral, coll)
 		return ruleError(ErrUnexpectedDifficulty, str)

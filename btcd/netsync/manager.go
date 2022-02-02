@@ -402,6 +402,11 @@ func (sm *SyncManager) StartSync() bool {
 	return true
 }
 
+func (sm *SyncManager) ClearSync() {
+	sm.syncPeer = nil
+	sm.syncjobs = sm.syncjobs[:0]
+}
+
 // startSync will choose the best peer among the available candidate peers to
 // download/sync the blockchain from.  When syncing is already running, it
 // simply returns.  It also examines the candidates for any which are no longer
@@ -533,7 +538,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 				sm.nextCheckpoint.Height, bestPeer.Addr())
 		}
 		if deferexec == 0 {
-			log.Infof("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
+//			log.Infof("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
 			bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 		} else {
 			time.AfterFunc(deferexec, func () {
@@ -541,7 +546,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 					sm.startSync(nil)
 					return
 				}
-				log.Debugf("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
+//				log.Debugf("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
 				bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 			})
 		}
@@ -685,7 +690,7 @@ func (sm *SyncManager) handleTxMsg(tmsg *txMsg) {
 	// Process the transaction to include validation, insertion in the
 	// memory pool, orphan handling, etc.
 	acceptedTxs, err := sm.txMemPool.ProcessTransaction(tmsg.tx,
-		true, true, mempool.Tag(peer.ID()))
+		true, true, mempool.Tag(peer.ID()), false)
 
 	// Remove transaction from request maps. Either the mempool/chain
 	// already knows about it and as such we shouldn't have any more
@@ -1021,7 +1026,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	locator := chainhash.BlockLocator([]*chainhash.Hash{blockHash})
 	mlocator := chainhash.BlockLocator([]*chainhash.Hash{mblockHash})
-	log.Debugf("handleBlockMsg: PushGetBlocksMsg from %s because  -- switching to normal mode", peer.Addr())
+//	log.Debugf("handleBlockMsg: PushGetBlocksMsg from %s because  -- switching to normal mode", peer.Addr())
 	err = peer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 	if err != nil {
 		log.Warnf("Failed to send getblocks message to peer %s: %v",

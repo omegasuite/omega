@@ -429,7 +429,6 @@ func (s * server) makeInvitation(me int32, miner []byte) (* wire.Invitation, * b
 	}
 
 	for j,sa := range s.signAddress {
-
 		if bytes.Compare(miner, sa.ScriptAddress()) != 0 {
 			continue
 		}
@@ -596,6 +595,8 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 	}
 }
 
+var prevMe int32
+
 func (s *server) handleCommitteRotation(r int32) {
 	b := s.chain
 	best := b.BestSnapshot()
@@ -617,8 +618,16 @@ func (s *server) handleCommitteRotation(r int32) {
 
 	me := s.MyPlaceInCommittee(r)
 	if me == 0 {
+		if prevMe != 0 && s.rpcServer != nil {
+			// clean connections
+			handleResetConnection(s.rpcServer, nil, nil)
+			s.syncManager.ClearSync()
+		}
+		prevMe = 0
 		return
 	}
+
+	prevMe = me
 
 	minerTop := s.chain.Miners.BestSnapshot().Height
 

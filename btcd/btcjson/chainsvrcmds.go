@@ -995,6 +995,7 @@ type SendRawTransactionCmd struct {
 	HexTx         string
 	AllowHighFees *bool `jsonrpcdefault:"false"`
 	WaitConfirm   *int `jsonrpcdefault:"0"`
+	FulllValidate *bool `jsonrpcdefault:"false"`
 }
 
 // NewSendRawTransactionCmd returns a new instance which can be used to issue a
@@ -1035,6 +1036,17 @@ func NewSetGenerateCmd(generate bool, genProcLimit *int) *SetGenerateCmd {
 	return &SetGenerateCmd{
 		Generate:     generate,
 		GenProcLimit: genProcLimit,
+	}
+}
+
+// ConfirmationsCmd defines the Confirmations JSON-RPC command.
+type ConfirmationsCmd struct {
+	TxHash         string
+}
+
+func NewConfirmationsCmd(hash string) *ConfirmationsCmd {
+	return &ConfirmationsCmd{
+		TxHash:         hash,
 	}
 }
 
@@ -1188,6 +1200,7 @@ func init() {
 	MustRegisterCmd("reconsiderblock", (*ReconsiderBlockCmd)(nil), flags)
 	MustRegisterCmd("searchrawtransactions", (*SearchRawTransactionsCmd)(nil), flags)
 	MustRegisterCmd("sendrawtransaction", (*SendRawTransactionCmd)(nil), flags)
+	MustRegisterCmd("confirmations", (*ConfirmationsCmd)(nil), flags)
 	MustRegisterCmd("checkfork", (*CheckForkCmd)(nil), flags)
 	MustRegisterCmd("recastrawtransaction", (*RecastRawTransactionCmd)(nil), flags)
 	MustRegisterCmd("setgenerate", (*SetGenerateCmd)(nil), flags)

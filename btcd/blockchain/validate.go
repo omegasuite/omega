@@ -1612,7 +1612,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 
 	for i, tx := range transactions[1:] {
 		if runScripts {
-			err = ovm.VerifySigs(tx, node.Height, b.ChainParams, 0, views)
+			err = ovm.VerifySigs(tx, b.ChainParams, 0, views)
 			if err != nil {
 				return err
 			}

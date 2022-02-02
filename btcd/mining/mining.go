@@ -879,7 +879,7 @@ mempoolLoop:
 			continue
 		}
 
-		err = ovm.VerifySigs(tx, nextBlockHeight, g.chainParams, 0, views)
+		err = ovm.VerifySigs(tx, g.chainParams, 0, views)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)

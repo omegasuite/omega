@@ -120,7 +120,7 @@ func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, er
 // sig verification includes all pk script type, e.g. multi sig, pkscripthash
 var zerohash chainhash.Hash
 
-func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int, views *viewpoint.ViewPointSet) error {
+func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoint.ViewPointSet) error {
 	if tx.IsCoinBase() {
 		return nil
 	}
@@ -186,7 +186,7 @@ func VerifySigs(tx *btcutil.Tx, txHeight int32, param *chaincfg.Params, skip int
 					ovm.GetCoinBase = func() *btcutil.Tx { return nil }
 					ovm.Spend = func(t wire.OutPoint, _ []byte) bool { return false }
 					ovm.AddTxOutput = func(t wire.TxOut) int { return -1 }
-					ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
+					ovm.BlockNumber = func() uint64 { return 0 }	// uint64(txHeight) }
 					ovm.BlockTime = func() uint32 { return 0 }
 					ovm.BlockVersion = func() uint32 { return wire.Version4 }
 
@@ -750,7 +750,7 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 			}
 		}
 		if needsv {
-			err := VerifySigs(tx, txHeight, ovm.chainConfig, intx, ovm.views)
+			err := VerifySigs(tx, ovm.chainConfig, intx, ovm.views)
 			if err != nil {
 				return err
 			}

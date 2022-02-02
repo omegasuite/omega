@@ -81,7 +81,7 @@ var newblockch chan newblock
 // var newheadch chan newhead
 
 func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
-	if miner.shutdown {
+	if miner == nil || miner.shutdown {
 		return
 	}
 
@@ -490,6 +490,9 @@ func VerifyMsg(msg wire.OmegaMessage, pubkey * btcec.PublicKey) bool {
 
 func DebugInfo() {
 	top := int32(0)
+	if miner == nil {
+		return
+	}
 	miner.syncMutex.Lock()
 	for h,_ := range miner.Sync {
 		if h > top {

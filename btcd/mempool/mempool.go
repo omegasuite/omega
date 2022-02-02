@@ -8,6 +8,9 @@ package mempool
 import (
 	"container/list"
 	"fmt"
+	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/omega/ovm"
+
 	//	"github.com/omegasuite/omega/token"
 	"math"
 	"sync"
@@ -678,7 +681,7 @@ func (mp *TxPool) FetchTransaction(txHash *chainhash.Hash) (*btcutil.Tx, error) 
 // more details.
 //
 // This function MUST be called with the mempool lock held (for writes).
-func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejectDupOrphans bool) ([]*chainhash.Hash, *TxDesc, error) {
+func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejectDupOrphans bool, fulllValidate bool) ([]*chainhash.Hash, *TxDesc, error) {
 	txHash := tx.Hash()
 
 	// Don't accept the transaction if it already exists in the pool.  This
@@ -764,6 +767,8 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		return nil, nil, err
 	}
 
+	contract := false
+
 	// Don't allow the transaction if it exists in the main chain and is not
 	// not already fully spent.
 	prevOut := wire.OutPoint{Hash: *txHash}
@@ -772,12 +777,9 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 			continue
 		}
 
-		// check if any out to black list
-//		var name [20]byte
-//		copy(name[:], txOut.PkScript[1:21])
-//		if mp.Blacklist.IsGrey(name) {
-//			return nil, nil, fmt.Errorf("Blacklised txo")
-//		}
+		if txOut.PkScript[0] == 0x88 {
+			contract = true
+		}
 
 		prevOut.Index = uint32(txOutIdx)
 		entry := utxoView.LookupEntry(prevOut)
@@ -787,7 +789,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		}
 		utxoView.RemoveEntry(prevOut)
 	}
-
+/*
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
@@ -805,6 +807,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 //			return nil, nil, fmt.Errorf("Blacklised input")
 //		}
 	}
+ */
 
 	// Transaction is an orphan if any of the referenced transaction outputs
 	// don't exist or are already spent.  Adding orphans to the orphan pool
@@ -856,7 +859,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	}
 
 	txFee, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, 0, views,  mp.cfg.ChainParams)
-	if err != nil && !tx.ContainContract() {
+	if err != nil && !contract {
 		if cerr, ok := err.(blockchain.RuleError); ok {
 			return nil, nil, chainRuleError(cerr)
 		}
@@ -904,67 +907,107 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		return nil, nil, txRuleError(common.RejectNonstandard, str)
 	}
 
-	// Don't allow transactions with fees too low to get into a mined block.
-	//
-	// Most miners allow a free transaction area in blocks they mine to go
-	// alongside the area used for high-priority transactions as well as
-	// transactions with fees.  A transaction size of up to 1000 bytes is
-	// considered safe to go into this section.  Further, the minimum fee
-	// calculated below on its own would encourage several small
-	// transactions to avoid fees rather than one single larger transaction
-	// which is more desirable.  Therefore, as long as the size of the
-	// transaction does not exceeed 1000 less than the reserved space for
-	// high-priority transactions, don't require a fee for it.
-	serializedSize := blockchain.GetTransactionWeight(tx)
-	minFee := CalcMinRequiredTxRelayFee(serializedSize,
-		mp.cfg.Policy.MinRelayTxFee)
-	if tx.ContainContract() && txFee < minFee {	// assume a contract will pay the minFee at least
-		txFee = minFee
-	}
-	if serializedSize >= (DefaultBlockPrioritySize-1000) && txFee < minFee {
-		str := fmt.Sprintf("transaction %v has %d fees which is under "+
-			"the required amount of %d", txHash, txFee,
-			minFee)
-		return nil, nil, txRuleError(common.RejectInsufficientFee, str)
-	}
+	if !contract {
+		// Don't allow transactions with fees too low to get into a mined block.
+		//
+		// Most miners allow a free transaction area in blocks they mine to go
+		// alongside the area used for high-priority transactions as well as
+		// transactions with fees.  A transaction size of up to 1000 bytes is
+		// considered safe to go into this section.  Further, the minimum fee
+		// calculated below on its own would encourage several small
+		// transactions to avoid fees rather than one single larger transaction
+		// which is more desirable.  Therefore, as long as the size of the
+		// transaction does not exceeed 1000 less than the reserved space for
+		// high-priority transactions, don't require a fee for it.
+		serializedSize := blockchain.GetTransactionWeight(tx)
+		minFee := CalcMinRequiredTxRelayFee(serializedSize,
+			mp.cfg.Policy.MinRelayTxFee)
 
-	// Require that free transactions have sufficient priority to be mined
-	// in the next block.  Height which are being added back to the
-	// memory pool from blocks that have been disconnected during a reorg
-	// are exempted.
-	if isNew && !mp.cfg.Policy.DisableRelayPriority && txFee < minFee {
-		currentPriority := mining.CalcPriority(tx.MsgTx(), utxoView,
-			nextBlockHeight)
-		if currentPriority <= mining.MinHighPriority {
-			str := fmt.Sprintf("transaction %v has insufficient "+
-				"priority (%g <= %g)", txHash,
-				currentPriority, mining.MinHighPriority)
+		if serializedSize >= (DefaultBlockPrioritySize-1000) && txFee < minFee {
+			str := fmt.Sprintf("transaction %v has %d fees which is under "+
+				"the required amount of %d", txHash, txFee,
+				minFee)
 			return nil, nil, txRuleError(common.RejectInsufficientFee, str)
+		}
+
+		// Require that free transactions have sufficient priority to be mined
+		// in the next block.  Height which are being added back to the
+		// memory pool from blocks that have been disconnected during a reorg
+		// are exempted.
+		if isNew && !mp.cfg.Policy.DisableRelayPriority && txFee < minFee {
+			currentPriority := mining.CalcPriority(tx.MsgTx(), utxoView,
+				nextBlockHeight)
+			if currentPriority <= mining.MinHighPriority {
+				str := fmt.Sprintf("transaction %v has insufficient "+
+					"priority (%g <= %g)", txHash,
+					currentPriority, mining.MinHighPriority)
+				return nil, nil, txRuleError(common.RejectInsufficientFee, str)
+			}
+		}
+
+		// Free-to-relay transactions are rate limited here to prevent
+		// penny-flooding with tiny transactions as a form of attack.
+		if rateLimit && txFee < minFee {
+			nowUnix := time.Now().Unix()
+			// Decay passed data with an exponentially decaying ~10 minute
+			// window - matches bitcoind handling.
+			mp.pennyTotal *= math.Pow(1.0-1.0/600.0,
+				float64(nowUnix-mp.lastPennyUnix))
+			mp.lastPennyUnix = nowUnix
+
+			// Are we still over the limit?
+			if mp.pennyTotal >= mp.cfg.Policy.FreeTxRelayLimit*10*1000 {
+				str := fmt.Sprintf("transaction %v has been rejected "+
+					"by the rate limiter due to low fees", txHash)
+				return nil, nil, txRuleError(common.RejectInsufficientFee, str)
+			}
+			oldTotal := mp.pennyTotal
+
+			mp.pennyTotal += float64(serializedSize)
+			log.Tracef("rate limit: curTotal %v, nextTotal: %v, "+
+				"limit %v", oldTotal, mp.pennyTotal,
+				mp.cfg.Policy.FreeTxRelayLimit*10*1000)
 		}
 	}
 
-	// Free-to-relay transactions are rate limited here to prevent
-	// penny-flooding with tiny transactions as a form of attack.
-	if rateLimit && txFee < minFee {
-		nowUnix := time.Now().Unix()
-		// Decay passed data with an exponentially decaying ~10 minute
-		// window - matches bitcoind handling.
-		mp.pennyTotal *= math.Pow(1.0-1.0/600.0,
-			float64(nowUnix-mp.lastPennyUnix))
-		mp.lastPennyUnix = nowUnix
-
-		// Are we still over the limit?
-		if mp.pennyTotal >= mp.cfg.Policy.FreeTxRelayLimit*10*1000 {
-			str := fmt.Sprintf("transaction %v has been rejected "+
-				"by the rate limiter due to low fees", txHash)
-			return nil, nil, txRuleError(common.RejectInsufficientFee, str)
+	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
 		}
-		oldTotal := mp.pennyTotal
-
-		mp.pennyTotal += float64(serializedSize)
-		log.Tracef("rate limit: curTotal %v, nextTotal: %v, "+
-			"limit %v", oldTotal, mp.pennyTotal,
-			mp.cfg.Policy.FreeTxRelayLimit*10*1000)
+		// Ensure the referenced input transaction is available.
+		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
+		if utxo == nil || utxo.IsSpent() {
+			return nil, nil, fmt.Errorf("Input does not exist")
+		}
+		if utxo.PkScript()[0] == 0x88 {
+			continue
+		}
+		if txIn.SignatureIndex >= uint32(len(tx.MsgTx().SignatureScripts)) {
+			return nil, nil, fmt.Errorf("Incorrect signature index")
+		}
+	}
+	for i,sig := range tx.MsgTx().SignatureScripts {
+		if len(sig) < btcec.MinSigLen {
+			return nil, nil, fmt.Errorf("Incorrect signature")
+		}
+		m := false
+		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			if txIn.SignatureIndex == uint32(i) {
+				m = true
+			}
+		}
+		if !m {
+			return nil, nil, fmt.Errorf("Tx contains unrefernced signature")
+		}
+	}
+	if fulllValidate {
+		err = ovm.VerifySigs(tx, mp.cfg.ChainParams, 0, views)
+		if err != nil {
+			return nil,nil, err
+		}
 	}
 
 	// Add to transaction pool.
@@ -990,7 +1033,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 func (mp *TxPool) MaybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit bool) ([]*chainhash.Hash, *TxDesc, error) {
 	// Protect concurrent access.
 	mp.mtx.Lock()
-	hashes, txD, err := mp.maybeAcceptTransaction(tx, isNew, rateLimit, true)
+	hashes, txD, err := mp.maybeAcceptTransaction(tx, isNew, rateLimit, true, false)
 	mp.mtx.Unlock()
 
 	return hashes, txD, err
@@ -1036,7 +1079,7 @@ func (mp *TxPool) processOrphans(acceptedTx *btcutil.Tx) []*TxDesc {
 			// Potentially accept an orphan into the tx pool.
 			for _, tx := range orphans {
 				missing, txD, err := mp.maybeAcceptTransaction(
-					tx, true, true, false)
+					tx, true, true, false, false)
 				if err != nil {
 					// The orphan is now invalid, so there
 					// is no way any other orphans which
@@ -1111,7 +1154,7 @@ func (mp *TxPool) ProcessOrphans(acceptedTx *btcutil.Tx) []*TxDesc {
 // the passed one being accepted.
 //
 // This function is safe for concurrent access.
-func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool, tag Tag) ([]*TxDesc, error) {
+func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool, tag Tag, fulllValidate bool) ([]*TxDesc, error) {
 	log.Tracef("Processing transaction %v", tx.Hash())
 
 	// Protect concurrent access.
@@ -1120,7 +1163,7 @@ func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool
 
 	// Potentially accept the transaction to the memory pool.
 	missingParents, txD, err := mp.maybeAcceptTransaction(tx, true, rateLimit,
-		true)
+		true, fulllValidate)
 	if err != nil {
 		return nil, err
 	}

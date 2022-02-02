@@ -141,9 +141,35 @@ func (self *Syncer) repeater() {
 	miner.server.CommitteePolling()
 
 	self.repeats++
-	if (self.repeats % 5)  == 0 {
+	if (self.repeats % 3)  == 0 {
 		// reset connections
 		miner.server.ResetConnections()
+		if self.sigGiven == -1 && self.agreed == -1 {
+			// clear data
+			self.pulling = make(map[int32]int)
+			self.pulltime = make(map[int32]int64)
+			self.agrees = make(map[int32]struct{})
+			self.signed = make(map[[20]byte]struct{})
+			self.Malice = make(map[[20]byte]struct{})
+			self.knows = make(map[[20]byte][]*wire.MsgKnowledge)
+
+			self.handeling = ""
+
+			for i, f := range self.forest {
+				self.forest[i] = nil
+				if i == self.Me {
+					self.newtree <- *f
+				}
+			}
+
+			self.knowRevd = make([]int32, wire.CommitteeSize)
+			self.candRevd = make([]int32, wire.CommitteeSize)
+			self.consRevd = make([]int32, wire.CommitteeSize)
+			for i := 0; i < wire.CommitteeSize; i++ {
+				self.knowRevd[i], self.candRevd[i], self.consRevd[i] = -1, -1, -1
+			}
+			self.knowledges = CreateKnowledge(self)
+		}
 		return
 	}
 

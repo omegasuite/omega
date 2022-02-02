@@ -190,6 +190,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"searchrawtransactions": handleSearchRawTransactions,
 	"checkfork":		 	 handleCheckFork,
 	"sendrawtransaction":    handleSendRawTransaction,
+	"confirmations":		 handleConfirmations,
 	"recastrawtransaction":  handleRecastRawTransaction,
 	"setgenerate":           handleSetGenerate,
 	"stop":                  handleStop,
@@ -4577,7 +4578,11 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 
 	// Use 0 for the tag to represent local node.
 	tx := btcutil.NewTx(&msgTx)
-	acceptedTxs, err := s.cfg.TxMemPool.ProcessTransaction(tx, false, false, 0)
+	sigcheck := false
+	if c.FulllValidate != nil && *c.FulllValidate {
+		sigcheck = true
+	}
+	acceptedTxs, err := s.cfg.TxMemPool.ProcessTransaction(tx, false, false, 0, sigcheck)
 	if err != nil {
 		// When the error is a rule error, it means the transaction was
 		// simply rejected as opposed to something actually going wrong,
@@ -4663,6 +4668,45 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	}
 
 	return msg, nil
+}
+
+func handleConfirmations(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.ConfirmationsCmd)
+
+	// Convert the provided transaction hash hex to a Hash.
+	txHash, err := chainhash.NewHashFromStr(c.TxHash)
+	if err != nil {
+		return nil, rpcDecodeHexError(c.TxHash)
+	}
+
+	if s.cfg.TxIndex == nil {
+			return nil, &btcjson.RPCError{
+				Code: btcjson.ErrRPCNoTxInfo,
+				Message: "The transaction index must be " +
+					"enabled to query the blockchain " +
+					"(specify --txindex)",
+			}
+		}
+
+	// Look up the location of the transaction.
+	blockRegion, err := s.cfg.TxIndex.TxBlockRegion(txHash)
+	if err != nil {
+		context := "Failed to retrieve transaction location"
+		return nil, internalRPCError(err.Error(), context)
+	}
+	if blockRegion == nil {
+		return nil, rpcNoTxInfoError(txHash)
+	}
+
+	h := s.cfg.Chain.NodeByHash(blockRegion.Hash)
+	if h == nil {
+		return nil, rpcNoTxInfoError(txHash)
+	}
+
+	bst := s.cfg.Chain.BestSnapshot()
+	d := bst.Height - h.Height
+
+	return d, nil
 }
 
 // handleSetGenerate implements the setgenerate command.

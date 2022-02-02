@@ -928,17 +928,16 @@ func (p *Peer) PushGetBlocksMsg(locator, mlocator chainhash.BlockLocator, stopHa
 
 	// Filter duplicate getblocks requests.
 	p.prevGetBlocksMtx.Lock()
-	isDuplicate := p.prevGetBlocksStop != nil && p.prevGetBlocksBegin != nil &&
-		beginHash != nil && stopHash.IsEqual(p.prevGetBlocksStop) &&
-		beginHash.IsEqual(p.prevGetBlocksBegin) &&
-		p.prevGetMinerBlocksStop != nil && p.prevGetMinerBlocksBegin != nil &&
-		beginHash != nil && stopHash.IsEqual(p.prevGetMinerBlocksStop) &&
-		beginHash.IsEqual(p.prevGetMinerBlocksBegin)
+	isDuplicate :=
+		((p.prevGetBlocksStop == nil && stopHash == nil) || (p.prevGetBlocksStop != nil && stopHash != nil && stopHash.IsEqual(p.prevGetBlocksStop))) &&
+		((p.prevGetBlocksBegin == nil && beginHash == nil) || (p.prevGetBlocksBegin != nil && beginHash != nil && beginHash.IsEqual(p.prevGetBlocksBegin))) &&
+		((p.prevGetMinerBlocksStop == nil && mstopHash == nil) || (p.prevGetMinerBlocksStop != nil && mstopHash != nil && mstopHash.IsEqual(p.prevGetMinerBlocksStop))) &&
+		((p.prevGetMinerBlocksBegin == nil && mbeginHash == nil) || (p.prevGetMinerBlocksBegin != nil && mbeginHash != nil && mbeginHash.IsEqual(p.prevGetMinerBlocksBegin)))
+
 	p.prevGetBlocksMtx.Unlock()
 
 	if isDuplicate {
-		log.Tracef("Filtering duplicate [getblocks] with begin "+
-			"hash %, stop hash %v", beginHash, stopHash)
+		log.Tracef("Filtering duplicate [getblocks] with begin hash %v, stop hash %v", beginHash, stopHash)
 		return nil
 	}
 
