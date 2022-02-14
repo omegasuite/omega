@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/omega"
 	"sync/atomic"
 
 	"bytes"
@@ -27,7 +28,7 @@ type vunit struct {
 
 // PrecompiledContract is the basic interface for native Go contracts.
 type PrecompiledContract interface {
-	Run(input []byte, vunits []vunit) ([]byte, error) // Run runs the precompiled contract
+	Run(input []byte, vunits []vunit) ([]byte, omega.Err) // Run runs the precompiled contract
 }
 
 // Create creates a new contract
@@ -105,13 +106,13 @@ var PrecompiledContracts = map[[4]byte]func(evm * OVM, contract *Contract) Preco
 
 type payanyone struct {}
 
-func (p *payanyone) Run(input []byte, vunits []vunit) ([]byte, error) {
+func (p *payanyone) Run(input []byte, vunits []vunit) ([]byte, omega.Err) {
 	return []byte{1}, nil
 }
 
 type payreturn struct {}
 
-func (p *payreturn) Run(input []byte, vunits []vunit) ([]byte, error) {
+func (p *payreturn) Run(input []byte, vunits []vunit) ([]byte, omega.Err) {
 	// spend it !!!
 	return []byte{0}, nil
 }
@@ -122,7 +123,7 @@ type pay2multisig struct {
 }
 
 // multiple address multiple key
-func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
+func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, omega.Err) {
 	_, b, hash, e := p.run(vunits)
 //	m := common.LittleEndian.Uint16(input[20:])
 
@@ -135,7 +136,7 @@ func (p *pay2multisig) Run(input []byte, vunits []vunit) ([]byte, error) {
 	return []byte{1},e
 }
 
-func (p *pay2multisig) run(vunits []vunit) (int, bool, []byte, error) {
+func (p *pay2multisig) run(vunits []vunit) (int, bool, []byte, omega.Err) {
 	// input - hash of multi-sig descriptor (20-byte value)
 	// vunits[0].Data: multi-sig descriptor
 	//			 bytes 0 - 1: M - number of scripts
@@ -144,7 +145,7 @@ func (p *pay2multisig) run(vunits []vunit) (int, bool, []byte, error) {
 	// vunits[1:].text - text to be signed (in chucks of 0-padded 32-bytes units)
 
 	// in forfeit mode, all contract calls will pass
-	genericerr := fmt.Errorf("Multisignature format error")
+	genericerr := omega.ScriptError(omega.ErrInternal,"Multisignature format error")
 
 	if len(vunits[0].data) != 4 {
 		return 0, false, nil, genericerr
@@ -156,7 +157,7 @@ func (p *pay2multisig) run(vunits []vunit) (int, bool, []byte, error) {
 	return x, b, y, z
 }
 
-func (p *pay2multisig) hashval(m int, n int, vunits []vunit) (bool, int, []byte, error) {
+func (p *pay2multisig) hashval(m int, n int, vunits []vunit) (bool, int, []byte, omega.Err) {
 	sigcnt := 0
 	h := make([]byte, 0, 21 * m + 5)
 	h = append(h, byte(PUSH))
@@ -169,7 +170,7 @@ func (p *pay2multisig) hashval(m int, n int, vunits []vunit) (bool, int, []byte,
 	h = append(h, d[:]...)
 	h = append(h, []byte{byte(SIGNTEXT), 0}...)
 
-	genericerr := fmt.Errorf("Multisignature format error")
+	genericerr := omega.ScriptError(omega.ErrInternal,"Multisignature format error")
 
 	i := 0
 
@@ -231,7 +232,7 @@ func (p *pay2multisig) hashval(m int, n int, vunits []vunit) (bool, int, []byte,
 
 		pubKey, err := btcec.ParsePubKey(pkBytes, btcec.S256())
 		if err != nil {
-			return false, 0, nil, err
+			return false, 0, nil, omega.ScriptError(omega.ErrInternal, err.Error())
 		}
 
 		var signature *btcec.Signature
@@ -239,7 +240,7 @@ func (p *pay2multisig) hashval(m int, n int, vunits []vunit) (bool, int, []byte,
 		signature, err = btcec.ParseSignature(sigBytes, btcec.S256())
 
 		if err != nil {
-			return false, 0, nil, err
+			return false, 0, nil, omega.ScriptError(omega.ErrInternal, err.Error())
 		}
 
 		hash := chainhash.DoubleHashB(v.text)
@@ -265,7 +266,7 @@ func (p *pay2multisig) hashval(m int, n int, vunits []vunit) (bool, int, []byte,
 
 type pay2scripth struct {}
 
-func (p *pay2scripth) Run(input []byte, _ []vunit) ([]byte, error) {
+func (p *pay2scripth) Run(input []byte, _ []vunit) ([]byte, omega.Err) {
 	// All input fields are 32-byte padded
 	// input: pkh - script hash (32-bytes)
 	//	      text - script
@@ -294,7 +295,7 @@ func (p *pay2scripth) Run(input []byte, _ []vunit) ([]byte, error) {
 
 type pay2pkh struct {}
 
-func (p *pay2pkh) Run(input []byte, vunits []vunit) ([]byte, error) {
+func (p *pay2pkh) Run(input []byte, vunits []vunit) ([]byte, omega.Err) {
 	// vunits: input - public key hash (20-byte value)
 	//		  publick key
 	//		  signature
@@ -347,7 +348,7 @@ func (p *pay2pkh) Run(input []byte, vunits []vunit) ([]byte, error) {
 }
 
 // RunPrecompiledContract runs and evaluates the output of a precompiled contract.
-func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byte, contract *Contract) (ret []byte, err error) {
+func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byte, contract *Contract) (ret []byte, err omega.Err) {
 	var (
 		op    OpCode        // current opcode
 		stack = Newstack()  // local stack
@@ -368,14 +369,14 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 			op = contract.GetOp(pc)
 			operation := in.JumpTable[op]
 			if !operation.valid {
-				return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
+				return nil, omega.ScriptError(omega.ErrInternal, fmt.Sprintf("invalid opcode 0x%x", int(op)))
 			}
 
 			if operation.writes {
-				return nil, fmt.Errorf("State modification is not allowed")
+				return nil, omega.ScriptError(omega.ErrInternal, "State modification is not allowed")
 			}
 			if operation.jumps {
-				return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
+				return nil, omega.ScriptError(omega.ErrInternal, fmt.Sprintf("invalid opcode 0x%x", int(op)))
 			}
 
 			// execute the operation
@@ -438,14 +439,14 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 	return p.Run(input, vuints)
 }
 
-func (c *create) Run(input []byte, _ []vunit) ([]byte, error) {
+func (c *create) Run(input []byte, _ []vunit) ([]byte, omega.Err) {
 	return c.ovm.Create(input[4:], c.contract)
 }
 
-func (c *meta) Run(input []byte, _ []vunit) ([]byte, error) {
+func (c *meta) Run(input []byte, _ []vunit) ([]byte, omega.Err) {
 	return c.ovm.GetMeta(c.contract.self.Address(), string(input[4:])), nil
 }
 
-func (c *codebytes) Run(input []byte, _ []vunit) ([]byte, error) {
+func (c *codebytes) Run(input []byte, _ []vunit) ([]byte, omega.Err) {
 	return c.ovm.GetCode(c.contract.self.Address()), nil
 }

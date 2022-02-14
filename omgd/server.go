@@ -6,7 +6,8 @@
 
 package main
 
-import "C"
+// import "C"
+
 import (
 	"bytes"
 	"crypto/rand"
@@ -34,7 +35,7 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/addrmgr"
-	// "github.com/omegasuite/omgd/ukey"
+	"github.com/omegasuite/omgd/ukey"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/blockchain/indexers"
 	"github.com/omegasuite/btcd/chaincfg"
@@ -69,8 +70,6 @@ const (
 	// retries when connecting to persistent peers.  It is adjusted by the
 	// number of retries such that there is a retry backoff.
 	connectionRetryInterval = time.Second * 5
-
-	useUKey = false		// to use ukey, set UkeyChecker value below
 )
 
 var (
@@ -806,7 +805,10 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	numAdded := 0
 	notFound := wire.NewMsgNotFound()
 
-	btcdLog.Infof("OnGetData: getting %d items starting %s", len(msg.InvList), msg.InvList[0].Hash.String())
+	btcdLog.Infof("OnGetData: getting %d items starting %s for %s", len(msg.InvList), msg.InvList[0].Hash.String(), sp.Addr())
+	defer func () {
+		btcdLog.Infof("OnGetData Done")
+	} ()
 
 	length := len(msg.InvList)
 	// A decaying ban score increase is applied to prevent exhausting resources
@@ -852,8 +854,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 //		case common.InvTypeFilteredBlock:
 //			err = sp.server.pushMerkleBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding | wire.FullEncoding)
 		default:
-			peerLog.Warnf("Unknown type in inventory request %d",
-				iv.Type)
+			peerLog.Warnf("Unknown type in inventory request %d", iv.Type)
 			continue
 		}
 		if err != nil {
@@ -1757,8 +1758,10 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 	if err != nil {
 		// now check orphans
 		s.chain.ChainLock.RLock()
+		peerLog.Tracef("lock to fetch orphan block")
 		m := s.chain.Orphans.GetOrphanBlock(hash)
 		s.chain.ChainLock.RUnlock()
+		peerLog.Tracef("unlocked")
 
 		if m != nil {
 			peerLog.Tracef("fetch orphan block %s", hash.String())
@@ -2088,9 +2091,14 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	}
 
 	if state.Count(pt) >= cfg.MaxPeers {
+		srvrLog.Infof("Max peers reached [%d] - ResetConnections", cfg.MaxPeers)
 		btcdLog.Infof("%v", newLogClosure(func() string {
 			return spew.Sdump(state)
 		}))
+
+		s.syncManager.ResetConnections(false)
+		return false
+/*
 
 		// kill some inbound connections
 		delpeer := 0
@@ -2102,29 +2110,14 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 				break
 			}
 		}
-/*
-		skip := false
 
-		if sp.Peer.Committee <= 0 {	// this is not a committee connection
-			skip = true
-		} else {
-			for _, q := range state.persistentPeers {
-				if q.connReq.Addr.String() == sp.connReq.Addr.String() {
-					skip = true
-					break
-				}
-			}
-		}
-
-		if skip {
- */
 			srvrLog.Infof("Max peers reached [%d] - disconnecting peer %s",
 				cfg.MaxPeers, sp)
 			sp.Disconnect("handleAddPeerMsg @ MaxPeers")
 			// TODO: how to handle permanent peers here?
 			// they should be rescheduled.
 			return false
-//		}
+ */
 	}
 
 	// Add the new peer and start it.
@@ -2609,7 +2602,7 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 }
 
 func (s *server) ResetConnections() {
-	s.syncManager.ResetConnections()
+	s.syncManager.ResetConnections(true)
 }
 
 // inboundPeerConnected is invoked by the connection manager when a new inbound
@@ -3278,8 +3271,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 
 	var UkeyChecker func() bool
 
-	if useUKey {
-/*
+	if ukey.UseUKey {
 		UkeyChecker = func() bool {
 			// for U-key control
 			data := ukey.Readinfo()
@@ -3314,7 +3306,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 
 			return true
 		}
- */
 
 		if !UkeyChecker() {
 			return nil, nil
@@ -3328,7 +3319,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 			case <-interrupt:
 				return
 			case <-ticker.C:
-				if useUKey {
+				if ukey.UseUKey {
 					if !UkeyChecker() {
 						return
 					}

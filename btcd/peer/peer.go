@@ -936,7 +936,7 @@ func (p *Peer) PushGetBlocksMsg(locator, mlocator chainhash.BlockLocator, stopHa
 
 	p.prevGetBlocksMtx.Unlock()
 
-	if isDuplicate {
+	if isDuplicate && p.lastSend + 180 > time.Now().Unix() {
 		log.Tracef("Filtering duplicate [getblocks] with begin hash %v, stop hash %v", beginHash, stopHash)
 		return nil
 	}

@@ -141,10 +141,12 @@ func (self *Syncer) repeater() {
 	miner.server.CommitteePolling()
 
 	self.repeats++
-	if (self.repeats % 3)  == 0 {
+	if (self.repeats % 10)  == 0 {
 		// reset connections
 		miner.server.ResetConnections()
-		if self.sigGiven == -1 && self.agreed == -1 {
+		log.Infof("ResetConnections after repeating %s times", self.repeats)
+/*
+		if self.sigGiven == -1 {
 			// clear data
 			self.pulling = make(map[int32]int)
 			self.pulltime = make(map[int32]int64)
@@ -152,13 +154,15 @@ func (self *Syncer) repeater() {
 			self.signed = make(map[[20]byte]struct{})
 			self.Malice = make(map[[20]byte]struct{})
 			self.knows = make(map[[20]byte][]*wire.MsgKnowledge)
+			self.agreed = -1
 
 			self.handeling = ""
 
 			for i, f := range self.forest {
-				self.forest[i] = nil
 				if i == self.Me {
 					self.newtree <- *f
+				} else {
+					delete(self.forest, i)
 				}
 			}
 
@@ -170,6 +174,7 @@ func (self *Syncer) repeater() {
 			}
 			self.knowledges = CreateKnowledge(self)
 		}
+ */
 		return
 	}
 
@@ -380,7 +385,7 @@ func (self *Syncer) run() {
 	self.repeating = make(chan struct{}, 10)
 	self.debug = make(chan struct{}, 2)
 
-//	begin := time.Now().Unix()
+	begin := time.Now()
 
 	self.mutex.Lock()
 	for going {
@@ -569,8 +574,11 @@ func (self *Syncer) run() {
 //				log.Infof("MsgSignature: From = %x\nHeight = %d\nM = %s",
 //					k.From, k.Height, k.M.String())
 				if self.Signature(k) {
-					time.Sleep(time.Second)		// wait 1 second to allow all members to sign
-					going = false
+					if len(self.signed) == wire.CommitteeSize || time.Now().Sub(begin) >= time.Second {
+						going = false
+					} else {
+						time.Sleep(time.Millisecond)		// wait 1 millisecond to allow all members to sign
+					}
 				}
 
 			default:
@@ -592,6 +600,9 @@ func (self *Syncer) run() {
 
 		case <-ticker.C:
 			self.mutex.Lock()
+			for len(ticker.C) > 0 {
+				<-ticker.C
+			}
 //			if 	time.Now().Unix() - begin > 600 {
 //				log.Infof("sync %d exceeded time limit", self.Height)
 //				going = false

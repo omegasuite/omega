@@ -426,7 +426,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 					pows = 0
 				}
  */
-				target = target.Mul(target, big.NewInt(20))
+				target = target.Mul(target, big.NewInt(40))
 			}
 
 			if hashNum.Cmp(target) > 0 {
@@ -1623,7 +1623,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			newtx.SetIndex(tx.Index())
 			newtx.HasIns, newtx.HasDefs, newtx.HasOuts = false, false, false
 
-			err = Vm.ExecContract(newtx, node.Height)
+			_,err = Vm.ExecContract(newtx, node.Height)
 			if err != nil {
 				return err
 			}

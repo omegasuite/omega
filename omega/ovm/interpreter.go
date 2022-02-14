@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"encoding/binary"
 	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/omega"
 	"time"
 
 	//	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -260,7 +261,7 @@ func NewSigInterpreter(evm *OVM) *Interpreter {
 	}
 }
 
-func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack *Stack) error {
+func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack *Stack) omega.Err {
 	if (stack.data[stack.callTop].pure &^ INHERIT) != 0 {	// in.readOnly {
 		// If the interpreter is operating in readonly mode, make sure no
 		// state-modifying operation is performed.
@@ -299,13 +300,13 @@ func (in *Interpreter) Step(code *inst) ([]byte, error) {
 	op := code.op
 	operation := in.JumpTable[op]
 	if !operation.valid {
-			return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
+			return nil, omega.ScriptError(omega.ErrInternal,fmt.Sprintf("invalid opcode 0x%x", int(op)))
 		}
 	if err := in.enforceRestrictions(op, operation, stack); err != nil {
 			return nil, err
 		}
 	if operation.writes {
-			return nil, fmt.Errorf("State modification is not allowed")
+			return nil, omega.ScriptError(omega.ErrInternal,"State modification is not allowed")
 		}
 
 	err := operation.execute(&pc, nil, contract, stack)
@@ -319,7 +320,7 @@ func (in *Interpreter) Step(code *inst) ([]byte, error) {
 // It's important to note that any errors returned by the interpreter should be
 // considered a revert-and-consume-all-gas operation except for
 // errExecutionReverted which means revert-and-keep-gas-left.
-func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err error) {
+func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err omega.Err) {
 	// Increment the call depth which is restricted to 1024
 	// this is exec call depth, not func call depth
 	in.evm.depth++
@@ -364,12 +365,13 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		copy(stack.data[0].space[8:], input)
 	}
 
-	cost := int64(0)
+/*	cost := int64(0)
 	allowance := in.evm.Paidfees * 100000
 
 	if in.evm.chainConfig.ContractExecFee == 0 {
 		in.evm.CheckExecCost = false
 	}
+ */
 
 	if debugging && in.evm.chainConfig.Net == common.TestNet {
 		log.Info("start intrepdebug")
@@ -387,21 +389,26 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 	for atomic.LoadInt32(&in.evm.abort) == 0 {
 		in.evm.StepLimit--
 		if in.evm.StepLimit < 0 {
-			return nil, fmt.Errorf("Exceeded operation limit")
+			err := omega.ScriptError(omega.ErrInternal, "Exceeded operation limit")
+			err.ErrorLevel = omega.RecoverableLevel
+			return nil, err
 		}
+/*
 		if in.evm.CheckExecCost {
 			cost += in.evm.chainConfig.ContractExecFee
 			if cost > allowance {
-				return nil, fmt.Errorf("Exceeded gas limit")
+				return nil, omega.ScriptError(omega.ErrInternal,"Exceeded gas limit")
 			}
 		}
+ */
 
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
 		op = contract.GetOp(pc)
 		operation := in.JumpTable[op]
 		if !operation.valid {
-			return nil, fmt.Errorf("invalid opcode 0x%x", int(op))
+			err := omega.ScriptError(omega.ErrInternal, fmt.Sprintf("invalid opcode 0x%x", int(op)))
+			return nil, err
 		}
 
 		// If the operation is valid, enforce any write restrictions
@@ -410,13 +417,13 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 		}
 
 		if contract.pure & NOWRITE != 0 && operation.writes {
-			return nil, fmt.Errorf("State modification is not allowed")
+			return nil, omega.ScriptError(omega.ErrInternal,"State modification is not allowed")
 		}
 
 		// execute the operation
-//		if debugging {
+		if debugging {
 			fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
-//		}
+		}
 
 		err = operation.execute(&pc, in.evm, contract, stack)
 		ln := binary.LittleEndian.Uint32(stack.data[0].space)
@@ -446,7 +453,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err er
 			if pc + 1 < int(contract.libs[stack.data[stack.callTop].inlib].end) {
 				pc++
 			} else {
-				return nil, fmt.Errorf("Instruction out of range.")
+				return nil, omega.ScriptError(omega.ErrInternal,"Instruction out of range.")
 			}
 		}
 	}

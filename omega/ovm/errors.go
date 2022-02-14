@@ -8,10 +8,12 @@
 
 package ovm
 
-import "errors"
+import (
+	"github.com/omegasuite/omega"
+)
 
 var (
-	ErrDepth                    = errors.New("max call depth exceeded")
-	ErrTraceLimitReached        = errors.New("the number of logs reached the specified limit")
-	ErrContractAddressCollision = errors.New("contract address collision")
+	ErrDepth                    = omega.ScriptError(omega.ErrInternal,"max call depth exceeded")
+	ErrTraceLimitReached        = omega.ScriptError(omega.ErrInternal,"the number of logs reached the specified limit")
+	ErrContractAddressCollision = omega.ScriptError(omega.ErrInternal,"contract address collision")
 )

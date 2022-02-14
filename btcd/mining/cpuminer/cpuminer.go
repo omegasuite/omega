@@ -613,11 +613,12 @@ out:
 
 		template, err := m.g.NewBlockTemplate(payToAddress, nonce)
 		if err != nil {
-//			errStr := fmt.Sprintf("Failed to create new block template: %v", err)
-			log.Info(err.Error())
-//			log.Error(errStr)
+			errStr := fmt.Sprintf("Failed to create new block template: %s", err.Error())
+//			log.Info(err.Error())
+			log.Infof(errStr)
 			continue
 		}
+		log.Infof("new block template created")
 
 		wb := template.Block.(*wire.MsgBlock)
 		block := btcutil.NewBlock(wb)

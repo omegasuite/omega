@@ -11,7 +11,9 @@ package ovm
 import (
 	"encoding/hex"
 	"fmt"
-//	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/omega"
+
+	//	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/omega/token"
 	"math/big"
 )
@@ -161,9 +163,11 @@ func (c *Contract) Value() *token.Token {
 
 // SetCallCode sets the code of the contract and address of the backing Data
 // object
-func (self *Contract) SetCallCode(addr []byte, code []byte) error {
+func (self *Contract) SetCallCode(addr []byte, code []byte) omega.Err {
 	if code == nil {
-		return fmt.Errorf("code not found")
+		err := omega.ScriptError(omega.ErrInternal, "code not found")
+		err.ErrorLevel = omega.RecoverableLevel
+		return err
 	}
 	self.Code = ByteCodeParser(code)
 //	self.CodeHash = hash
@@ -248,15 +252,15 @@ var validators = map[OpCode]codeValidator {
 	TOKENCONTRACT: opTokenContractValidator,
 }
 
-func ByteCodeValidator(code []inst) error {
+func ByteCodeValidator(code []inst) omega.Err {
 	for i, c := range code {
 		if v, ok := validators[c.op]; ok {
 			offset := v(c.param)
 			if i+offset < 0 || i+offset > len(code) {
-				return fmt.Errorf("Illegal instruction %c %s in contract code.", c.op, string(c.param))
+				return omega.ScriptError(omega.ErrInternal,fmt.Sprintf("Illegal instruction %c %s in contract code.", c.op, string(c.param)))
 			}
 		} else {
-			return fmt.Errorf("Illegal instruction %c in contract code.", c.op)
+			return omega.ScriptError(omega.ErrInternal,fmt.Sprintf("Illegal instruction %c in contract code.", c.op))
 		}
 	}
 

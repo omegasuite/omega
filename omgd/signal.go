@@ -8,10 +8,10 @@ package main
 import (
 	"bytes"
 	"os"
-	"os/exec"
+//	"os/exec"
 	"os/signal"
 	"runtime/pprof"
-	"syscall"
+//	"syscall"
 	"time"
 )
 
@@ -91,15 +91,6 @@ func interruptListener() <-chan struct{} {
 			pprof.Lookup("mutex").WriteTo(&wbuf, 1)
 			pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
 			btcdLog.Infof("pprof Info: \n%s", wbuf.String())
-
-			if rerun {
-				binary, lookErr := exec.LookPath("omgd")
-				if lookErr == nil {
-					args := []string{"omgd", "--configfile=" + cfg.ConfigFile}
-					env := os.Environ()
-					syscall.Exec(binary, args, env)
-				}
-			}
 
 			// forced exit if not shutdown 5 mnin after receiving signal to shutdown
 			os.Exit(9)

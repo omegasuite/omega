@@ -11,6 +11,7 @@ package ovm
 import (
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/omega"
 	"math/big"
 )
 
@@ -41,8 +42,8 @@ type Stack struct {
 	data map[int32]*frame
 }
 
-var outofmemory = fmt.Errorf("Out of memory")
-var outofstack = fmt.Errorf("Out of stack")
+var outofmemory = omega.ScriptError(omega.ErrInternal,"Out of memory")
+var outofstack = omega.ScriptError(omega.ErrInternal,"Out of stack")
 
 func (s *Stack) malloc(n int) (pointer, int) {
 	t := s.data[s.libTop].gbase
@@ -73,7 +74,7 @@ func (s *Stack) shrink(n int) {	// it is only used by sig engine and there is no
 	s.data[0].space = s.data[0].space[:len(s.data[0].space) - n]
 }
 
-func (s *Stack) toBig(p * pointer) (* big.Int, error) {
+func (s *Stack) toBig(p * pointer) (* big.Int, omega.Err) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 	if _,ok := s.data[area]; !ok {
@@ -89,12 +90,12 @@ func (s *Stack) toBig(p * pointer) (* big.Int, error) {
 	return &num, nil
 }
 
-func (s *Stack) toPointer(p * pointer) (pointer, error) {
+func (s *Stack) toPointer(p * pointer) (pointer, omega.Err) {
 	d,err := s.toInt64(p)
 	return pointer(d), err
 }
 
-func (s *Stack) toByte(p * pointer) (byte, error) {
+func (s *Stack) toByte(p * pointer) (byte, omega.Err) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -108,7 +109,7 @@ func (s *Stack) toByte(p * pointer) (byte, error) {
 	return 0, outofmemory
 }
 
-func (s *Stack) toBytesLen(p * pointer, n int) ([]byte, error) {
+func (s *Stack) toBytesLen(p * pointer, n int) ([]byte, omega.Err) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -121,7 +122,7 @@ func (s *Stack) toBytesLen(p * pointer, n int) ([]byte, error) {
 	return nil, outofmemory
 }
 
-func (s *Stack) toBytes(p * pointer) ([]byte, error) {
+func (s *Stack) toBytes(p * pointer) ([]byte, omega.Err) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -134,7 +135,7 @@ func (s *Stack) toBytes(p * pointer) ([]byte, error) {
 	return nil, outofmemory
 }
 
-func (s *Stack) toInt16(p * pointer) (int16, error) {
+func (s *Stack) toInt16(p * pointer) (int16, omega.Err) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -147,7 +148,7 @@ func (s *Stack) toInt16(p * pointer) (int16, error) {
 	return 0, outofmemory
 }
 
-func (s *Stack) toInt32(p * pointer) (int32, error) {
+func (s *Stack) toInt32(p * pointer) (int32, omega.Err) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -163,7 +164,7 @@ func (s *Stack) toInt32(p * pointer) (int32, error) {
 	return 0, outofmemory
 }
 
-func (s *Stack) toInt64(p * pointer) (int64, error) {
+func (s *Stack) toInt64(p * pointer) (int64, omega.Err) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -183,7 +184,7 @@ func (s *Stack) toInt64(p * pointer) (int64, error) {
 	return 0, outofmemory
 }
 
-func (s *Stack) toHash(p * pointer) (chainhash.Hash, error) {
+func (s *Stack) toHash(p * pointer) (chainhash.Hash, omega.Err) {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -197,11 +198,11 @@ func (s *Stack) toHash(p * pointer) (chainhash.Hash, error) {
 	return chainhash.Hash{}, outofmemory
 }
 
-func (s *Stack) savePointer(p * pointer, d pointer) error {
+func (s *Stack) savePointer(p * pointer, d pointer) omega.Err {
 	return s.saveInt64(p, int64(d))
 }
 
-func (s *Stack) saveByte(p * pointer, b byte) error {
+func (s *Stack) saveByte(p * pointer, b byte) omega.Err {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -215,7 +216,7 @@ func (s *Stack) saveByte(p * pointer, b byte) error {
 	return outofmemory
 }
 
-func (s *Stack) saveBytes(p * pointer, b []byte) error {
+func (s *Stack) saveBytes(p * pointer, b []byte) omega.Err {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -229,7 +230,7 @@ func (s *Stack) saveBytes(p * pointer, b []byte) error {
 	return outofmemory
 }
 
-func (s *Stack) saveInt16(p * pointer, b int16) error {
+func (s *Stack) saveInt16(p * pointer, b int16) omega.Err {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -244,7 +245,7 @@ func (s *Stack) saveInt16(p * pointer, b int16) error {
 	return outofmemory
 }
 
-func (s *Stack) saveInt32(p * pointer, b int32) error {
+func (s *Stack) saveInt32(p * pointer, b int32) omega.Err {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -260,7 +261,7 @@ func (s *Stack) saveInt32(p * pointer, b int32) error {
 	return outofmemory
 }
 
-func (s *Stack) saveInt64(p * pointer, b int64) error {
+func (s *Stack) saveInt64(p * pointer, b int64) omega.Err {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 
@@ -276,7 +277,7 @@ func (s *Stack) saveInt64(p * pointer, b int64) error {
 	return outofmemory
 }
 
-func (s *Stack) saveHash(p * pointer, h chainhash.Hash) error {
+func (s *Stack) saveHash(p * pointer, h chainhash.Hash) omega.Err {
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 

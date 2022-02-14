@@ -8,22 +8,25 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/omegasuite/btcd/btcjson"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/consensus"
+	"io/ioutil"
+//	"strconv"
+//	"strings"
+
 	//	"log"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"os/exec"
+//	"os/exec"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
-	"syscall"
+//	"syscall"
 	"time"
-
-	//	"time"
 
 	"github.com/omegasuite/btcd/blockchain/indexers"
 	"github.com/omegasuite/btcd/database"
@@ -50,8 +53,6 @@ var winServiceMain func() (bool, error)
 var CompileTime string
 // go build -ldflags "-X main.CompileTime='$(date)'"
 
-var rerun bool
-
 // btcdMain is the real main function for btcd.  It is necessary to work around
 // the fact that deferred functions do not run when os.Exit() is called.  The
 // optional serverChan parameter is mainly used by the service code to be
@@ -67,7 +68,6 @@ func btcdMain(serverChan chan<- *server) error {
 	}
 
 	debugLevel()
-	rerun = false
 
 	cfg = tcfg
 	defer func() {
@@ -80,26 +80,6 @@ func btcdMain(serverChan chan<- *server) error {
 	// triggered either from an OS signal such as SIGINT (Ctrl+C) or from
 	// another subsystem such as the RPC server.
 	interrupt := interruptListener()
-	defer func() {
-		// re-run
-		if rerun {
-			env := os.Environ()
-			if runtime.GOOS == "windows" {
-				binary, lookErr := exec.LookPath("omgd.exe")
-				if lookErr == nil {
-					args := []string{"omgd.exe", "/configfile", cfg.ConfigFile}
-					syscall.Exec(binary, args, env)
-				}
-			} else {
-				binary, lookErr := exec.LookPath("omgd")
-				if lookErr == nil {
-					args := []string{"omgd", "--configfile=" + cfg.ConfigFile}
-					syscall.Exec(binary, args, env)
-				}
-			}
-		}
-		btcdLog.Info("Shutdown complete")
-	} ()
 
 	// Show version at startup.
 	btcdLog.Infof("Version %s", version())
@@ -301,8 +281,36 @@ func btcdMain(serverChan chan<- *server) error {
 
 			btcdLog.Infof("Voluntary shutdown after no new block for 10 min.")
 
-			rerun = true
 			shutdownRequestChannel <- struct{}{}
+		}()
+	}
+
+	fmt.Printf("The system is %s", runtime.GOOS)
+
+	if cfg.MemLimit != 0 && runtime.GOOS == "linux" {
+		pid := os.Getpid()
+		stat := fmt.Sprintf("/proc/%d/statm", pid)
+
+		go func() {
+			for {
+				select {
+				case <-time.After(10 * time.Minute):
+					contents, err := ioutil.ReadFile(stat)
+
+					if err != nil {
+						continue
+					}
+
+					var mem uint32
+					fmt.Sscanf("%d", string(contents), &mem)
+					if mem > cfg.MemLimit {
+						btcdLog.Infof("Voluntary shutdown for exceeding memory limit (%d).", mem)
+
+						w := true
+						handleShutdown(server.rpcServer, &btcjson.ShutdownCmd{&w}, nil)
+					}
+				}
+			}
 		}()
 	}
 

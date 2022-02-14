@@ -9,7 +9,6 @@
 package ovm
 
 import (
-	"errors"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/database"
@@ -88,7 +87,7 @@ var sizeOfType = map[byte]uint32 {'R':21, 'r':20,
 	'B':1, 'W':2, 'D':4, 'Q':8, 'H':32, 'h': 32,
 	'k': 33, 'K': 65}
 
-func (stack * Stack) getNum(param []byte, dataType byte) (int64, int, error) {
+func (stack * Stack) getNum(param []byte, dataType byte) (int64, int, omega.Err) {
 	ln := len(param)
 	hex := false
 	nums := [3]int64{0, 0, 0}
@@ -123,7 +122,7 @@ func (stack * Stack) getNum(param []byte, dataType byte) (int64, int, error) {
 		case 'i':	// i
 			indirect++
 			if indirect > 6 {
-				return 0, ln, fmt.Errorf("Malformed operand")
+				return 0, ln, omega.ScriptError(omega.ErrInternal,"Malformed operand")
 			}
 
 		case 'g':	// g
@@ -154,7 +153,7 @@ func (stack * Stack) getNum(param []byte, dataType byte) (int64, int, error) {
 			if indirect > 0 {	// || dataType == 0xFF {
 				p := pointer((t << 32) | nums[0])
 				if indirect > 0 {
-					var err error
+					var err omega.Err
 					p, err = stack.addressing(indirect, global, hasoffset, nums[:], dataType != 0xFF)
 					if err != nil {
 						return 0, 0, err
@@ -197,13 +196,13 @@ func (stack * Stack) getNum(param []byte, dataType byte) (int64, int, error) {
 			return num, j, nil
 
 		default:
-			return 0, j - 1, fmt.Errorf("Malformed operand")
+			return 0, j - 1, omega.ScriptError(omega.ErrInternal,"Malformed operand")
 		}
 	}
-	return 0, ln, fmt.Errorf("Malformed operand")
+	return 0, ln, omega.ScriptError(omega.ErrInternal,"Malformed operand")
 }
 
-func opEval8(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opEval8(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -218,12 +217,12 @@ func opEval8(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var store pointer
 	var r bool
 	var tl int
-	var err error
+	var err omega.Err
 
 	for j := 0; j < ln; j++ {
 		if d, ok := checkTop[param[j]]; ok {
 			if top <= d {
-				return fmt.Errorf("Malformed expression. Evaluation stack underflow.")
+				return omega.ScriptError(omega.ErrInternal,"Malformed expression. Evaluation stack underflow.")
 			}
 			top -= d
 		}
@@ -252,7 +251,7 @@ func opEval8(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '@':
 			if top != 0 {
-				return fmt.Errorf("Malformed expression.")
+				return omega.ScriptError(omega.ErrInternal,"Malformed expression.")
 			}
 
 		case 'B', 'W', 'D', 'Q', 'H':
@@ -281,7 +280,7 @@ func opEval8(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '/':	// /
 			if scratch[top] == 0 {
-				return fmt.Errorf("Divided by 0")
+				return omega.ScriptError(omega.ErrInternal,"Divided by 0")
 			}
 			if unsigned {
 				scratch[top-1] = int8(uint8(scratch[top-1]) / uint8(scratch[top]))
@@ -291,7 +290,7 @@ func opEval8(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '%':	// %
 			if scratch[top] == 0 {
-				return fmt.Errorf("Divided by 0")
+				return omega.ScriptError(omega.ErrInternal,"Divided by 0")
 			}
 			if unsigned {
 				scratch[top-1] = int8(uint8(scratch[top-1]) % uint8(scratch[top]))
@@ -404,7 +403,7 @@ func opEval8(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveByte(&store, byte(scratch[0]))
 }
 
-func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -419,12 +418,12 @@ func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var store pointer
 	var r bool
 	var tl int
-	var err error
+	var err omega.Err
 
 	for j := 0; j < ln; j++ {
 		if d, ok := checkTop[param[j]]; ok {
 			if top <= d {
-				return fmt.Errorf("Malformed expression. Evaluation stack underflow.")
+				return omega.ScriptError(omega.ErrInternal,"Malformed expression. Evaluation stack underflow.")
 			}
 			top -= d
 		}
@@ -450,7 +449,7 @@ func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '@':
 			if top != 0 {
-				return fmt.Errorf("Malformed expression.")
+				return omega.ScriptError(omega.ErrInternal,"Malformed expression.")
 			}
 
 		case 'B':
@@ -485,7 +484,7 @@ func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '/':	// /
 			if scratch[top] == 0 {
-				return fmt.Errorf("Divided by 0")
+				return omega.ScriptError(omega.ErrInternal,"Divided by 0")
 			}
 			if unsigned {
 				scratch[top-1] = int16(uint16(scratch[top-1]) / uint16(scratch[top]))
@@ -495,7 +494,7 @@ func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '%':	// %
 			if scratch[top] == 0 {
-				return fmt.Errorf("Divided by 0")
+				return omega.ScriptError(omega.ErrInternal,"Divided by 0")
 			}
 			if unsigned {
 				scratch[top-1] = int16(uint16(scratch[top-1]) % uint16(scratch[top]))
@@ -601,7 +600,7 @@ func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 
 		default:
-			return fmt.Errorf("Malformed expression")
+			return omega.ScriptError(omega.ErrInternal,"Malformed expression")
 		}
 		if param[j] != 0x75 {
 			unsigned = false
@@ -611,7 +610,7 @@ func opEval16(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveInt16(&store, scratch[0])
 }
 
-func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -624,13 +623,13 @@ func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	unsigned := false
 	num := int64(0)
 	var store pointer
-	var err error
+	var err omega.Err
 	var tl int
 
 	for j := 0; j < ln; j++ {
 		if d, ok := checkTop[param[j]]; ok {
 			if top <= d {
-				return fmt.Errorf("Malformed expression. Evaluation stack underflow.")
+				return omega.ScriptError(omega.ErrInternal,"Malformed expression. Evaluation stack underflow.")
 			}
 			top -= d
 		}
@@ -656,7 +655,7 @@ func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '@':
 			if top != 0 {
-				return fmt.Errorf("Malformed expression.")
+				return omega.ScriptError(omega.ErrInternal,"Malformed expression.")
 			}
 
 		case 'B', 'W':
@@ -691,7 +690,7 @@ func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '/':	// /
 			if scratch[top] == 0 {
-				return fmt.Errorf("Divided by 0")
+				return omega.ScriptError(omega.ErrInternal,"Divided by 0")
 			}
 			if unsigned {
 				scratch[top-1] = int32(uint32(scratch[top-1]) / uint32(scratch[top]))
@@ -701,7 +700,7 @@ func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '%':	// %
 			if scratch[top] == 0 {
-				return fmt.Errorf("Divided by 0")
+				return omega.ScriptError(omega.ErrInternal,"Divided by 0")
 			}
 			if unsigned {
 				scratch[top-1] = int32(uint32(scratch[top-1]) % uint32(scratch[top]))
@@ -812,7 +811,7 @@ func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 
 		default:
-			return fmt.Errorf("Malformed expression")
+			return omega.ScriptError(omega.ErrInternal,"Malformed expression")
 		}
 		if param[j] != 0x75 {
 			unsigned = false
@@ -822,7 +821,7 @@ func opEval32(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveInt32(&store, scratch[0])
 }
 
-func opEval64(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opEval64(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -835,13 +834,13 @@ func opEval64(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	unsigned := false
 	num := int64(0)
 	var r bool
-	var err error
+	var err omega.Err
 	var tl int
 
 	for j := 0; j < ln; j++ {
 		if d, ok := checkTop[param[j]]; ok {
 			if top <= d {
-				return fmt.Errorf("Malformed expression. Evaluation stack underflow.")
+				return omega.ScriptError(omega.ErrInternal,"Malformed expression. Evaluation stack underflow.")
 			}
 			top -= d
 		}
@@ -903,7 +902,7 @@ func opEval64(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '/':	// /
 			if scratch[top] == 0 {
-				return fmt.Errorf("Divided by 0")
+				return omega.ScriptError(omega.ErrInternal,"Divided by 0")
 			}
 			if unsigned {
 				scratch[top-1] = int64(uint64(scratch[top-1]) / uint64(scratch[top]))
@@ -913,7 +912,7 @@ func opEval64(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '%':	// %
 			if scratch[top] == 0 {
-				return fmt.Errorf("Divided by 0")
+				return omega.ScriptError(omega.ErrInternal,"Divided by 0")
 			}
 			if unsigned {
 				scratch[top-1] = int64(uint64(scratch[top-1]) % uint64(scratch[top]))
@@ -1019,7 +1018,7 @@ func opEval64(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 
 		default:
-			return fmt.Errorf("Malformed expression")
+			return omega.ScriptError(omega.ErrInternal,"Malformed expression")
 		}
 		if param[j] != 0x75 {
 			unsigned = false
@@ -1037,7 +1036,7 @@ var (
 	bigNegOne = big.NewInt(-1)
 )
 
-func (stack * Stack) addressing(indirect int, global byte, hasoffset int, offsets []int64, notaddr bool) (pointer, error) {
+func (stack * Stack) addressing(indirect int, global byte, hasoffset int, offsets []int64, notaddr bool) (pointer, omega.Err) {
 	if indirect <= 0 {
 		return 0, nil
 	}
@@ -1051,7 +1050,7 @@ func (stack * Stack) addressing(indirect int, global byte, hasoffset int, offset
 	}
 
 	p := pointer((t << 32) | offsets[0])
-	var err error
+	var err omega.Err
 
 	for ; indirect > 1; indirect-- {
 		if p,err = stack.toPointer(&p); err != nil {
@@ -1065,17 +1064,17 @@ func (stack * Stack) addressing(indirect int, global byte, hasoffset int, offset
 	}
 
 	if _,ok := stack.data[int32(p >> 32)]; !ok {
-		return 0, fmt.Errorf("Memory address fault")
+		return 0, omega.ScriptError(omega.ErrInternal,"Memory address fault")
 	}
 
 	if notaddr && int(p & 0xFFFFFFFF) >= len(stack.data[int32(p >> 32)].space) {
-		return 0, fmt.Errorf("Memory address fault")
+		return 0, omega.ScriptError(omega.ErrInternal,"Memory address fault")
 	}
 
 	return p, nil
 }
 
-func (stack * Stack) getBig(param []byte) (*big.Int, int, error) {
+func (stack * Stack) getBig(param []byte) (*big.Int, int, omega.Err) {
 	ln := len(param)
 	hex := false
 	num := *bigZero
@@ -1122,7 +1121,7 @@ func (stack * Stack) getBig(param []byte) (*big.Int, int, error) {
 		case 'i':	// i
 			indirect++
 			if indirect > 6 {
-				return bigZero, ln, fmt.Errorf("Malformed operand")
+				return bigZero, ln, omega.ScriptError(omega.ErrInternal,"Malformed operand")
 			}
 
 		case 'g':	// g
@@ -1162,13 +1161,13 @@ func (stack * Stack) getBig(param []byte) (*big.Int, int, error) {
 			return &num, j, nil
 
 		default:
-			return nil, j - 1, fmt.Errorf("Malformed operand")
+			return nil, j - 1, omega.ScriptError(omega.ErrInternal,"Malformed operand")
 		}
 	}
-	return nil, ln, fmt.Errorf("Malformed operand")
+	return nil, ln, omega.ScriptError(omega.ErrInternal,"Malformed operand")
 }
 
-func (stack * Stack) getHash(param []byte) (chainhash.Hash, int, error) {
+func (stack * Stack) getHash(param []byte) (chainhash.Hash, int, omega.Err) {
 	ln := len(param)
 	hex := false
 	var num [64]byte
@@ -1209,7 +1208,7 @@ func (stack * Stack) getHash(param []byte) (chainhash.Hash, int, error) {
 		case 'i':	// i
 			indirect++
 			if indirect > 6 {
-				return chainhash.Hash{}, ln, fmt.Errorf("Malformed operand")
+				return chainhash.Hash{}, ln, omega.ScriptError(omega.ErrInternal,"Malformed operand")
 			}
 
 		case 'g':	// g
@@ -1259,13 +1258,13 @@ func (stack * Stack) getHash(param []byte) (chainhash.Hash, int, error) {
 			}
 
 		default:
-			return chainhash.Hash{}, j - 1, fmt.Errorf("Malformed hash operand")
+			return chainhash.Hash{}, j - 1, omega.ScriptError(omega.ErrInternal,"Malformed hash operand")
 		}
 	}
-	return chainhash.Hash{}, ln, fmt.Errorf("Malformed hash operand")
+	return chainhash.Hash{}, ln, omega.ScriptError(omega.ErrInternal,"Malformed hash operand")
 }
 
-func (stack * Stack) getBytesLen(param []byte, dlen uint32) ([]byte, int, error) {
+func (stack * Stack) getBytesLen(param []byte, dlen uint32) ([]byte, int, omega.Err) {
 	ln := len(param)
 	tmp := make([]byte, 0, 66)		// byte buffer
 	t := byte(0)					// current byte
@@ -1311,7 +1310,7 @@ func (stack * Stack) getBytesLen(param []byte, dlen uint32) ([]byte, int, error)
 		case 'i':	// i
 			indirect++
 			if indirect > 6 {
-				return nil, ln, fmt.Errorf("Malformed operand")
+				return nil, ln, omega.ScriptError(omega.ErrInternal,"Malformed operand")
 			}
 
 		case 'g':	// g
@@ -1340,24 +1339,24 @@ func (stack * Stack) getBytesLen(param []byte, dlen uint32) ([]byte, int, error)
 				}
 				s := uint32(p & 0xFFFFFFFF)
 				if _,ok := stack.data[int32(p >> 32)]; !ok {
-					return nil, j - 1, fmt.Errorf("Memory address fault")
+					return nil, j - 1, omega.ScriptError(omega.ErrInternal,"Memory address fault")
 				}
 				tmp = stack.data[int32(p >> 32)].space[s : s + dlen]
 			}
 			return tmp, j, nil
 
 		default:
-			return nil, j - 1, fmt.Errorf("Malformed operand")
+			return nil, j - 1, omega.ScriptError(omega.ErrInternal,"Malformed operand")
 		}
 	}
-	return nil, ln, fmt.Errorf("Malformed operand")
+	return nil, ln, omega.ScriptError(omega.ErrInternal,"Malformed operand")
 }
 
-func (stack * Stack) getBytes(param []byte, dataType byte, dln uint32) ([]byte, int, error) {
+func (stack * Stack) getBytes(param []byte, dataType byte, dln uint32) ([]byte, int, omega.Err) {
 	return stack.getBytesLen(param, sizeOfType[dataType] + dln)
 }
 
-func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -1368,14 +1367,14 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	top := 0
 	var num * big.Int
 	var store pointer
-	var err error
+	var err omega.Err
 	var tl int
 	dataType := byte(0xFF)
 
 	for j := 0; j < ln; j++ {
 		if d, ok := checkTop[param[j]]; ok {
 			if top <= d {
-				return fmt.Errorf("Malformed expression. Evaluation stack underflow.")
+				return omega.ScriptError(omega.ErrInternal,"Malformed expression. Evaluation stack underflow.")
 			}
 			top -= d
 		}
@@ -1448,13 +1447,13 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		case '/':	// /
 			if scratch[top].Cmp(bigZero) == 0 {
-				return fmt.Errorf("Divided by 0")
+				return omega.ScriptError(omega.ErrInternal,"Divided by 0")
 			}
 			scratch[top-1] = scratch[top-1].Div(scratch[top-1], scratch[top])
 
 		case '%':	// %
 			if scratch[top].Cmp(bigZero) == 0 {
-				return fmt.Errorf("Divided by 0")
+				return omega.ScriptError(omega.ErrInternal,"Divided by 0")
 			}
 			scratch[top-1] = scratch[top-1].Mod(scratch[top-1], scratch[top])
 
@@ -1539,7 +1538,7 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			}
 
 		default:
-			return fmt.Errorf("Malformed expression")
+			return omega.ScriptError(omega.ErrInternal,"Malformed expression")
 		}
 	}
 
@@ -1570,7 +1569,7 @@ type convOperand struct {
 	p pointer
 }
 
-func opConv(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opConv(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	var scratch [2]convOperand
@@ -1581,7 +1580,7 @@ func opConv(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	dtype := byte(0)
 	num := int64(0)
 	unsigned := false
-	var err error
+	var err omega.Err
 	var tl int
 
 	for j := 0; j < ln; j++ {
@@ -1621,10 +1620,10 @@ func opConv(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	p0 := int32(scratch[0].p >> 32)
 	p1 := int32(scratch[1].p >> 32)
 	if _,ok := stack.data[p0]; !ok {
-		return fmt.Errorf("Memory address fault")
+		return omega.ScriptError(omega.ErrInternal,"Memory address fault")
 	}
 	if _,ok := stack.data[p1]; !ok {
-		return fmt.Errorf("Memory address fault")
+		return omega.ScriptError(omega.ErrInternal,"Memory address fault")
 	}
 
 	if srcType == destType {
@@ -1646,13 +1645,13 @@ func opConv(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		if unsigned || stack.data[p0].space[uint32(scratch[0].p) + m - 1] & 0x80 == 0 {
 			for i := m; i < n; i++ {
 				if stack.data[p0].space[uint32(scratch[0].p) + i] != 0 {
-					return fmt.Errorf("Numeric overflow in conversion.")
+					return omega.ScriptError(omega.ErrInternal,"Numeric overflow in conversion.")
 				}
 			}
 		} else {
 			for i := m; i < n; i++ {
 				if stack.data[p0].space[uint32(scratch[0].p)+i] != 0xFF {
-					return fmt.Errorf("Numeric overflow in conversion.")
+					return omega.ScriptError(omega.ErrInternal,"Numeric overflow in conversion.")
 				}
 			}
 		}
@@ -1663,7 +1662,7 @@ func opConv(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
-func opHash(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opHash(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 	// dest, src, len
 
@@ -1672,7 +1671,7 @@ func opHash(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	top := 0
 	num := int64(0)
-	var err error
+	var err omega.Err
 	var tl int
 
 	dataType := []byte{0xFF, 0xFF, 0x44}
@@ -1696,14 +1695,14 @@ func opHash(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	a := t & 0xFFFFFFFF
 	b := a + (scratch[2] & 0xFFFFFFFF)
 	if _,ok := stack.data[int32(t>>32)]; !ok {
-		return fmt.Errorf("Memory address fault")
+		return omega.ScriptError(omega.ErrInternal,"Memory address fault")
 	}
 	hash := chainhash.HashB(stack.data[int32(t >> 32)].space[a:b])
 
 	return stack.saveBytes(&scratch[0], hash)
 }
 
-func opHash160(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opHash160(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 	// dest, src, len, ripemd160 only flag
 
@@ -1712,7 +1711,7 @@ func opHash160(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	top := 0
 	num := int64(0)
-	var err error
+	var err omega.Err
 	var tl int
 
 	dataType := []byte{0xFF, 0xFF, 0x44}
@@ -1736,7 +1735,7 @@ func opHash160(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	a := t & 0xFFFFFFFF
 	b := a + (scratch[2] & 0xFFFFFFFF)
 	if _,ok := stack.data[int32(t>>32)]; !ok || len(stack.data[int32(t>>32)].space) < int(b) {
-		return fmt.Errorf("Memory address fault")
+		return omega.ScriptError(omega.ErrInternal,"Memory address fault")
 	}
 
 	var hash []byte
@@ -1753,7 +1752,7 @@ func opHash160(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveBytes(&scratch[0], hash)
 }
 
-func opSigCheck(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opSigCheck(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 //	{addrOperand, 0xffffffff}, - retVal
 //	{patOperand, 0}, - hash
 //	{addrOperand, 0xFFFFFFFF}, - pubKey
@@ -1767,7 +1766,7 @@ func opSigCheck(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var hash chainhash.Hash
 	var pubKey []byte
 	var sig []byte
-	var err error
+	var err omega.Err
 	var tl int
 
 	ln := len(param)
@@ -1804,7 +1803,7 @@ func opSigCheck(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			case 2:
 				format := pubKey[0]
 				if format != btcec.PubKeyBytesLenCompressed && format != btcec.PubKeyBytesLenHybrid {
-					return fmt.Errorf("invalid magic in pubkey str: %d", format)
+					return omega.ScriptError(omega.ErrInternal,fmt.Sprintf("invalid magic in pubkey str: %d", format))
 				}
 
 				pubKey = pubKey[1:format + 1]
@@ -1838,7 +1837,7 @@ func opSigCheck(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveByte(&retVal, result)
 }
 
-func opIf(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opIf(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -1847,7 +1846,7 @@ func opIf(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	top := 0
 	num := int64(0)
-	var err error
+	var err omega.Err
 	var tl int
 
 	dataType := []byte{0x42, 0x44}
@@ -1882,14 +1881,14 @@ func opIf(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	inlib := stack.data[stack.callTop].inlib
 	if target < int(contract.libs[inlib].address) || target >= int(contract.libs[inlib].end) {
-		return fmt.Errorf("Out of range jump")
+		return omega.ScriptError(omega.ErrInternal,"Out of range jump")
 	}
 	*pc = target
 
 	return nil
 }
 
-func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 	// base, entry, params
 	// if address == 0, entry is relative to pc, target must be in current code seg
@@ -1901,7 +1900,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	num := int64(0)
 	var bnum []byte
 	var libAddr Address
-	var err error
+	var err omega.Err
 	var tl int
 
 	offset := 0
@@ -1955,7 +1954,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			case 0:
 				copy(libAddr[:], bnum)
 				if _, ok := contract.libs[libAddr]; !ok {
-					return fmt.Errorf("Lib not loaded")
+					return omega.ScriptError(omega.ErrInternal,"Lib not loaded")
 				}
 				isself = allZero(libAddr[:]) || bytes.Compare(libAddr[:], stack.data[stack.callTop].inlib[:]) == 0
 				top++
@@ -1999,7 +1998,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		if isself {
 			target = int32(*pc + offset)
 			if target < contract.libs[libAddr].address || target >= contract.libs[libAddr].end {
-				return fmt.Errorf("Out of range func call")
+				return omega.ScriptError(omega.ErrInternal,"Out of range func call")
 			}
 		} else {
 			target = contract.libs[libAddr].address
@@ -2017,21 +2016,21 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		stack.callTop++
 		stack.data[stack.callTop] = f
 		if stack.callTop > 1024 {
-			return fmt.Errorf("Call stack depth exceeds the max 1024 limit")
+			return omega.ScriptError(omega.ErrInternal,"Call stack depth exceeds the max 1024 limit")
 		}
 		return nil
 	}
 
-	return fmt.Errorf("Malformed function call")
+	return omega.ScriptError(omega.ErrInternal,"Malformed function call")
 }
 
-func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 	ln := len(param)
 
 	num := int64(0)
 	dataType := []byte{0xFF, 'Q', 'Z'}
-	var err error
+	var err omega.Err
 	var tl int
 	var h []byte
 	var store pointer
@@ -2100,12 +2099,12 @@ func opLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
-func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 //	{patOperand, 0}, - key
 //	{dataType, 0}, - Data type/length
 //	{patOperand, 0}, - Data
 	if stack.data[stack.callTop].pure & NOWRITE != 0 {
-		return fmt.Errorf("Store forbidden in lib %x", stack.data[stack.callTop].inlib)
+		return omega.ScriptError(omega.ErrInternal,fmt.Sprintf("Store forbidden in lib %x", stack.data[stack.callTop].inlib))
 	}
 
 	param := contract.GetBytes(*pc)
@@ -2113,7 +2112,7 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	num := chainhash.Hash{}
 	var tl int
-	var err error
+	var err omega.Err
 	var scratch [3][]byte
 	top := 0		// indicate where we are wrt source syntax. 0 - key 1 - Data type/length 2 - Data
 	idx := 0		// position in Data stack (scratch)
@@ -2205,14 +2204,14 @@ func opStore(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
-func opDel(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opDel(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
 
 	var tl int
 
-	var err error
+	var err omega.Err
 	var d [8]byte
 	var k []byte
 	var dt byte
@@ -2245,7 +2244,7 @@ func opDel(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
-func opReceived(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+func opReceived(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	outpoint := ovm.GetCurrentOutput()
 
 	param := contract.GetBytes(*pc)
@@ -2253,7 +2252,7 @@ func opReceived(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 
 	num := int64(0)
 	var tl int
-	var err error
+	var err omega.Err
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
@@ -2280,7 +2279,7 @@ func opReceived(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
-func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	// format: exec contract_addr,pure,return_receiver,coin,param_len,params
 	param := contract.GetBytes(*pc)
 	ln := len(param)
@@ -2295,7 +2294,7 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var data pointer
 	var datalen int32
 	var tl int
-	var err error
+	var err omega.Err
 	var args []byte
 	var bl []byte
 
@@ -2335,7 +2334,7 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					value = &token.Token{}
 					var r bytes.Reader
 					if _,ok := stack.data[int32(num>>32)]; !ok {
-						return fmt.Errorf("Memory address fault")
+						return omega.ScriptError(omega.ErrInternal,"Memory address fault")
 					}
 					r.Reset(stack.data[int32(num>>32)].space[num&0xFFFFFFFF:])
 					value.Read(&r, 0, 0)
@@ -2347,15 +2346,15 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			case 5:
 				data = pointer(num)
 				if _,ok := stack.data[int32(data>>32)]; !ok {
-					return fmt.Errorf("Memory address fault")
+					return omega.ScriptError(omega.ErrInternal,"Memory address fault")
 				}
 				if int(int64(data) & 0xFFFFFFFF) + int(datalen) > len(stack.data[int32(data >> 32)].space) {
-					return fmt.Errorf("Memory address fault")
+					return omega.ScriptError(omega.ErrInternal,"Memory address fault")
 				}
 				args = stack.data[int32(data >> 32)].space[data & 0xFFFFFFFF:int32(int64(data) & 0xFFFFFFFF) + datalen]
 
 			default:
-				return fmt.Errorf("Malformed parameters")
+				return omega.ScriptError(omega.ErrInternal,"Malformed parameters")
 			}
 			top++
 		}
@@ -2389,7 +2388,7 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	for _,d := range evm.contractStack {
 		if d == toAddr {
-			return fmt.Errorf("Circular contract calls.")
+			return omega.ScriptError(omega.ErrInternal,"Circular contract calls.")
 		}
 	}
 	evm.contractStack = append(evm.contractStack, toAddr)
@@ -2410,7 +2409,7 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			p,_ = stack.malloc(m)
 		}
 		if _,ok := stack.data[int32(p>>32)]; !ok {
-			return fmt.Errorf("Memory address fault")
+			return omega.ScriptError(omega.ErrInternal,"Memory address fault")
 		}
 		copy(stack.data[int32(p >> 32)].space[p & 0xFFFFFFFF:], ret)
 		if err := stack.saveInt64(&retspace, int64(p)); err != nil {
@@ -2425,7 +2424,7 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return err
 }
 
-func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -2436,7 +2435,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	pure := byte(0)
 	var tl int
-	var err error
+	var err omega.Err
 
 	paramTypes := []byte{'B', 'L', 'Q'}
 	f := newFrame()
@@ -2494,7 +2493,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 					existence := sd.Exists(true)
 					if !existence {
-						return fmt.Errorf("The library does not exist")
+						return omega.ScriptError(omega.ErrInternal,"The library does not exist")
 					}
 					evm.StateDB[d] = sd
 //				}
@@ -2505,7 +2504,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				if pure & INHERIT == 0 {
 					stack.libTop--
 					if stack.libTop < -1024 {
-						return fmt.Errorf("Lib loaded exceeds the max 1024 limit")
+						return omega.ScriptError(omega.ErrInternal,"Lib loaded exceeds the max 1024 limit")
 					}
 
 					contract.libs[d] = lib{
@@ -2537,7 +2536,7 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 					stack.callTop++
 					stack.data[stack.callTop] = f
 				} else if stack.callTop != 0 || stack.libTop != 0 {
-					return fmt.Errorf("Improper use of contract inheritance")
+					return omega.ScriptError(omega.ErrInternal,"Improper use of contract inheritance")
 				} else {
 					contract.libs[d] = lib{
 						address: entry,
@@ -2570,21 +2569,21 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	if top == 2 {
 		return nil
 	}
-	return fmt.Errorf("Malformed parameters")
+	return omega.ScriptError(omega.ErrInternal,"Malformed parameters")
 }
 
-func opMalloc(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opMalloc(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	return opMAalloc(pc, evm, contract, stack, true)
 }
 
-func opMAalloc(pc *int, evm *OVM, contract *Contract, stack *Stack, glob bool) error {
+func opMAalloc(pc *int, evm *OVM, contract *Contract, stack *Stack, glob bool) omega.Err {
 	param := contract.GetBytes(*pc)
 	ln := len(param)
 
 	num := int64(0)
 	top := 0
 	var tl int
-	var err error
+	var err omega.Err
 
 	var retspace pointer
 	paramType := []byte{0xFF, 'D'}
@@ -2621,7 +2620,7 @@ func opMAalloc(pc *int, evm *OVM, contract *Contract, stack *Stack, glob bool) e
 					total += uint64(len(k.space))
 				}
 				if total >= 0x40000000 {
-					return fmt.Errorf("Memory requested exceeds 1GB")
+					return omega.ScriptError(omega.ErrInternal,"Memory requested exceeds 1GB")
 				}
 
 				if glob {
@@ -2639,14 +2638,14 @@ func opMAalloc(pc *int, evm *OVM, contract *Contract, stack *Stack, glob bool) e
 			top++
 		}
 	}
-	return fmt.Errorf("Malformed parameters")
+	return omega.ScriptError(omega.ErrInternal,"Malformed parameters")
 }
 
-func opAlloc(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opAlloc(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	return opMAalloc(pc, evm, contract, stack, false)
 }
 
-func opCopy(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opCopy(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -2657,7 +2656,7 @@ func opCopy(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var src pointer
 	var dest pointer
 	var tl int
-	var err error
+	var err omega.Err
 
 	var dtype = []byte{0xFF, 0xFF, 0x44}
 
@@ -2705,10 +2704,10 @@ func opCopy(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			top++
 		}
 	}
-	return fmt.Errorf("Malformed parameters")
+	return omega.ScriptError(omega.ErrInternal,"Malformed parameters")
 }
 
-func opCopyImm(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opCopyImm(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -2717,7 +2716,7 @@ func opCopyImm(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	var dest pointer
 	var tl int
-	var err error
+	var err omega.Err
 	var h []byte
 	var hash chainhash.Hash
 	var dlen int64;
@@ -2811,7 +2810,7 @@ func opCopyImm(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
-func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -2821,7 +2820,7 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	var dest pointer
 	var tl int
-	var err error
+	var err omega.Err
 	dataType := []byte{0xFF, 'B'}
 	
 	zeroHash := chainhash.Hash{}
@@ -2923,12 +2922,12 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			top++
 		}
 	}
-	return fmt.Errorf("Malformed parameters")
+	return omega.ScriptError(omega.ErrInternal,"Malformed parameters")
 }
 
-func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	if contract.pure != 0 {
-		return fmt.Errorf("Suicide instruction restricted by contract right")
+		return omega.ScriptError(omega.ErrInternal,"Suicide instruction restricted by contract right")
 	}
 
 	param := contract.GetBytes(*pc)
@@ -2936,7 +2935,7 @@ func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	ln := len(param)
 
 	var tl int
-	var err error
+	var err omega.Err
 	var h []byte
 	var dlen int64;
 	top := 0
@@ -2994,7 +2993,7 @@ func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		for _,toAddr := range evm.contractStack {
 			if d == toAddr {
-				return fmt.Errorf("Circular contract calls.")
+				return omega.ScriptError(omega.ErrInternal,"Circular contract calls.")
 			}
 		}
 
@@ -3024,22 +3023,22 @@ func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			return err
 		}
 	} else if dlen != 0 || h != nil {
-		return fmt.Errorf("Bad suicide instruction")
+		return omega.ScriptError(omega.ErrInternal,"Bad suicide instruction")
 	}
 
 	evm.StateDB[contract.Address()].Suicide()
 	return nil
 }
 
-func opRevert(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opRevert(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	return nil
 }
 
-func opStop(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opStop(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	return nil
 }
 
-func opReturn(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opReturn(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	if stack.callTop <= 0 {
 		return nil
 	}
@@ -3078,9 +3077,9 @@ var negHash = chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, }
 
-func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	if stack.data[stack.callTop].pure & NOSPENDING != 0 {
-		return fmt.Errorf("Spend instruction restricted by contract right")
+		return omega.ScriptError(omega.ErrInternal,"Spend instruction restricted by contract right")
 	}
 
 	param := contract.GetBytes(*pc)
@@ -3140,7 +3139,7 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			if bytes.Compare(p.Hash[:], negHash[:]) == 0 || bytes.Compare(p.Hash[:], (*cbh)[:]) == 0 {
 				pks = cb.MsgTx().TxOut[p.Index].PkScript
 			} else {
-				return fmt.Errorf("Contract try to spend what does not exist.")
+				return omega.ScriptError(omega.ErrInternal,"Contract try to spend what does not exist.")
 			}
 		} else {
 			pks = u.PkScript
@@ -3148,7 +3147,7 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 		addr := contract.Address()
 		if !isContract(pks[0]) || bytes.Compare(pks[1:21], addr[:]) != 0 {
-			return fmt.Errorf("Contract try to spend what does not belong to it.")
+			return omega.ScriptError(omega.ErrInternal,"Contract try to spend what does not belong to it.")
 		}
 
 		if evm.Spend(p, nil) {
@@ -3166,12 +3165,12 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	return fmt.Errorf("Spend failed")
+	return omega.ScriptError(omega.ErrInternal,"Spend failed")
 }
 
-func opAddDef(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opAddDef(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	if contract.pure &NODEFINE != 0 {
-		return fmt.Errorf("AddDef instruction restricted by contract right")
+		return omega.ScriptError(omega.ErrInternal,"AddDef instruction restricted by contract right")
 	}
 
 	param := contract.GetBytes(*pc)
@@ -3180,7 +3179,7 @@ func opAddDef(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	num := int64(0)
 	var tl int
-	var err error
+	var err omega.Err
 	var defType byte
 	dest := pointer(0)
 
@@ -3203,12 +3202,12 @@ func opAddDef(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			coinbase = true
 
 		default:
-			return fmt.Errorf("Malformed expression")
+			return omega.ScriptError(omega.ErrInternal,"Malformed expression")
 		}
 	}
 
 	if _,ok := stack.data[int32(num >> 32)]; !ok {
-		return fmt.Errorf("Memory address fault")
+		return omega.ScriptError(omega.ErrInternal,"Memory address fault")
 	}
 
 	defType = stack.data[int32(num >> 32)].space[num & 0xFFFFFFFF]
@@ -3228,7 +3227,7 @@ func opAddDef(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		tk = &token.RightSetDef{}
 
 	default:
-		return fmt.Errorf("Unknown definition type")
+		return omega.ScriptError(omega.ErrInternal,"Unknown definition type")
 	}
 
 	var r bytes.Reader
@@ -3236,7 +3235,8 @@ func opAddDef(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	num++
 	r.Reset(stack.data[int32(num >> 32)].space[num & 0xFFFFFFFF:])
 	if err := tk.MemRead(&r, 0); err != nil {
-		return err
+		e := omega.ScriptError(omega.ErrInternal, err.Error())
+		return e
 	}
 
 	hash := evm.AddDef(tk, coinbase)
@@ -3248,12 +3248,12 @@ func opAddDef(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
-func opGetIOCount(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opGetIOCount(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
 	num := int64(0)
-	var err error
+	var err omega.Err
 	var dest pointer
 
 	for j := 0; j < ln; j++ {
@@ -3279,12 +3279,12 @@ func opGetIOCount(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		}
 	}
 
-	return fmt.Errorf("Malformed expression")
+	return omega.ScriptError(omega.ErrInternal,"Malformed expression")
 }
 
-func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	if stack.data[stack.callTop].pure & NOOUTPUT != 0 {
-		return fmt.Errorf("AddTxOut forbidden in lib %x", stack.data[stack.callTop].inlib)
+		return omega.ScriptError(omega.ErrInternal,fmt.Sprintf("AddTxOut forbidden in lib %x", stack.data[stack.callTop].inlib))
 	}
 
 	param := contract.GetBytes(*pc)
@@ -3293,7 +3293,7 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	num := int64(0)
 	var tl int
-	var err error
+	var err omega.Err
 	top := 0
 	var dest pointer
 	var src pointer
@@ -3313,14 +3313,14 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 			if top == 1 {
 				dest = src
 			} else if top > 1 {
-				return fmt.Errorf("Malformed expression")
+				return omega.ScriptError(omega.ErrInternal,"Malformed expression")
 			}
 
 			src = pointer(num)
 			top++
 
 		default:
-			return fmt.Errorf("Malformed expression")
+			return omega.ScriptError(omega.ErrInternal,"Malformed expression")
 		}
 	}
 
@@ -3330,24 +3330,25 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var r bytes.Reader
 
 	if _,ok := stack.data[int32(num >> 32)]; !ok {
-		return fmt.Errorf("Memory address fault")
+		return omega.ScriptError(omega.ErrInternal,"Memory address fault")
 	}
 
 	r.Reset(stack.data[int32(num>>32)].space[num&0xFFFFFFFF : (num&0xFFFFFFFF)+100])
 	if err := tk.Read(&r, 0, 0, wire.SignatureEncoding); err != nil {
-		return err
+		e := omega.ScriptError(omega.ErrInternal, err.Error())
+		return e
 	}
 
 	var zeroaddr [20]byte
 	if tk.TokenType != token.DefTypeSeparator && (len(tk.PkScript) < 21 || bytes.Compare(tk.PkScript[1:21], zeroaddr[:]) == 0) {
-		return fmt.Errorf("Address is invalid.")
+		return omega.ScriptError(omega.ErrInternal,"Address is invalid.")
 	}
 
 	if isContract(tk.PkScript[0]) {
 		me := contract.self.Address()
 
 		if bytes.Compare(tk.PkScript[1:21], me[:]) != 0 {
-			return fmt.Errorf("Contract may not add a txout outside scope")
+			return omega.ScriptError(omega.ErrInternal,"Contract may not add a txout outside scope")
 		}
 	} else if tk.TokenType != token.DefTypeSeparator {
 		// check address is valid type & net
@@ -3357,14 +3358,15 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 		isMSig := evm.chainConfig.MultiSigAddrID == netID
 
 		if !isP2PKH && !isP2SH && !isMSig {
-			return btcutil.ErrUnknownAddressType
+			e := omega.ScriptError(omega.ErrInternal, btcutil.ErrUnknownAddressType.Error())
+			return e
 		}
 	}
 
 	seq := evm.AddTxOutput(tk)
 
 	if seq < 0 {
-		return fmt.Errorf("Malformed expression")
+		return omega.ScriptError(omega.ErrInternal,"Malformed expression")
 	}
 
 	if dest != 0 && top == 2 {
@@ -3376,7 +3378,7 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
-func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -3404,7 +3406,10 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error 
 			} else {
 				num, tl, err = stack.getNum(param[j:], dataType[top])
 			}
-			if err != nil { return err }
+			if err != nil {
+				e := omega.ScriptError(omega.ErrInternal, err.Error())
+				return e
+			}
 			j += tl
 
 			switch top {
@@ -3418,7 +3423,7 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error 
 			top++
 
 		default:
-			return fmt.Errorf("Malformed expression")
+			return omega.ScriptError(omega.ErrInternal,"Malformed expression")
 		}
 	}
 
@@ -3470,7 +3475,7 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error 
 		}
 
 	default:
-		return fmt.Errorf("Unknown definition type")
+		return omega.ScriptError(omega.ErrInternal,"Unknown definition type")
 	}
 
 	var w bytes.Buffer
@@ -3478,7 +3483,7 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) error 
 	return stack.saveBytes(&dest, w.Bytes())
 }
 
-func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	// dest, hash, [index type], index, [scriptlen]
 
 	param := contract.GetBytes(*pc)
@@ -3491,7 +3496,7 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	var tx chainhash.Hash
 	var seq int32
 	var tl int
-	var err error
+	var err omega.Err
 
 	doscript := false
 
@@ -3514,7 +3519,8 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 				tx, tl, err = stack.getHash(param[j:])
 			}
 			if err != nil {
-				return err
+				e := omega.ScriptError(omega.ErrInternal, err.Error())
+				return e
 			}
 			j += tl
 
@@ -3546,7 +3552,8 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 
 	var w bytes.Buffer
 	if err := coin.Write(&w, 0, 0); err != nil {
-		return err
+		e := omega.ScriptError(omega.ErrInternal, err.Error())
+		return e
 	}
 	if err := stack.saveBytes(&dest, w.Bytes()); err != nil {
 		return err
@@ -3570,12 +3577,12 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveBytes(&dest, t.PkScript[:num])
 }
 
-func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	num := int64(0)
 	var dest pointer
-	var err error
+	var err omega.Err
 
 	num, _, err = stack.getNum(param[:], 0xFF)
 	if err != nil {
@@ -3586,7 +3593,7 @@ func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	tx := evm.GetTx()
 
 	if tx == nil {
-		return fmt.Errorf("No transaction exists. Running in call mode instead of transaction mode?")
+		return omega.ScriptError(omega.ErrInternal,"No transaction exists. Running in call mode instead of transaction mode?")
 	}
 
 	op := evm.GetCurrentOutput()
@@ -3621,7 +3628,7 @@ func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
-func opNul(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opNul(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	// this instruction is for debugging purpose, so we can insert a nul op in contract
 	// and set a break point here
 	if !debugging {
@@ -3656,10 +3663,10 @@ func opNul(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
 }
 
 var (
-	errWriteProtection       = errors.New("evm: write protection")
-	errReturnDataOutOfBounds = errors.New("evm: return Data out of bounds")
-	errExecutionReverted     = errors.New("evm: execution reverted")
-	errMaxCodeSizeExceeded   = errors.New("evm: max code size exceeded")
+	errWriteProtection       = omega.ScriptError(omega.ErrInternal,"evm: write protection")
+	errReturnDataOutOfBounds = omega.ScriptError(omega.ErrInternal,"evm: return Data out of bounds")
+	errExecutionReverted     = omega.ScriptError(omega.ErrInternal,"evm: execution reverted")
+	errMaxCodeSizeExceeded   = omega.ScriptError(omega.ErrInternal,"evm: max code size exceeded")
 )
 
 const (
@@ -3688,9 +3695,9 @@ func Exp(base, exponent *big.Int) *big.Int {
 	return result
 }
 
-func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	if stack.data[stack.callTop].pure & NOMINT != 0 || stack.data[stack.callTop].gbase != 0 {
-		return fmt.Errorf("Unauthorized minting.")
+		return omega.ScriptError(omega.ErrInternal,"Unauthorized minting.")
 	}
 //	{addrOperand, 0xFFFFFFFF}, - return Data place holder
 //	{patOperand, 0}, - tokentype
@@ -3707,7 +3714,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	var dest pointer
 	var tl int
 	var md uint64				// numeric value
-	var err error
+	var err omega.Err
 	var h chainhash.Hash		// hash token's hash
 	var r chainhash.Hash		// right hash
 	var tokentype uint64
@@ -3728,7 +3735,10 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 			} else {
 				num, tl, err = stack.getNum(param[j:], dataType[top])
 			}
-			if err != nil { return err }
+			if err != nil {
+				e := omega.ScriptError(omega.ErrInternal, err.Error())
+				return e
+			}
 			j += tl
 
 			switch top {
@@ -3756,7 +3766,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	}
 
 	if tokentype >= (0x1 << 48) {
-		return fmt.Errorf("The tokentype %d exceeds the max limit.", tokentype)
+		return omega.ScriptError(omega.ErrInternal,fmt.Sprintf("The tokentype %d exceeds the max limit.", tokentype))
 	}
 
 	if mtype, _ := ovm.StateDB[address].GetMint(); mtype == -1 {
@@ -3790,12 +3800,12 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 				ovm.setMeta(address, "mint", c[:])
 				return nil
 			}
-			return fmt.Errorf("The tokentype %d has already been used by another smart contract.")
+			return omega.ScriptError(omega.ErrInternal,"The tokentype %d has already been used by another smart contract.")
 		}
 	}
 
 	if !ovm.setMint(address, tokentype, md) {
-		return fmt.Errorf("Unable to mint.")
+		return omega.ScriptError(omega.ErrInternal,"Unable to mint.")
 	}
 
 	issued := token.Token{
@@ -3813,12 +3823,12 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	}
 	if (tokentype & 2) == 2 {
 		if top != 4 {
-			return fmt.Errorf("Incorrect number of parameters for mint inst.")
+			return omega.ScriptError(omega.ErrInternal,"Incorrect number of parameters for mint inst.")
 		}
 		zeroHash := chainhash.Hash{}
 		if zeroHash.IsEqual(&r) {
 			if toissue {
-				return fmt.Errorf("Zero hash as right set in mint inst.")
+				return omega.ScriptError(omega.ErrInternal,"Zero hash as right set in mint inst.")
 			}
 		} else {
 /*
@@ -3857,7 +3867,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	return nil
 }
 
-func opMeta(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+func opMeta(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 	address := contract.self.Address()
 
@@ -3868,7 +3878,7 @@ func opMeta(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	slen := int64(0)
 	var dest pointer
 	var tl int
-	var err error
+	var err omega.Err
 	var key string
 	var r []byte
 
@@ -3910,7 +3920,7 @@ func opMeta(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveBytes(&dest, m)
 }
 
-func opTime(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+func opTime(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -3933,7 +3943,7 @@ func opTime(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveInt32(&dest, int32(m))
 }
 
-func opHeight(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+func opHeight(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -3957,7 +3967,7 @@ func opHeight(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveInt32(&dest, int32(m))
 }
 
-func opVersion(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+func opVersion(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -3985,7 +3995,7 @@ func opVersion(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	return stack.saveInt32(&dest, m)
 }
 
-func opTokenContract(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+func opTokenContract(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -3994,7 +4004,7 @@ func opTokenContract(pc *int, ovm *OVM, contract *Contract, stack *Stack) error 
 	num := int64(0)
 	var dest pointer
 	var tl int
-	var err error
+	var err omega.Err
 	var addr []byte
 
 	dataType := []byte{0xFF, 'Q'}
@@ -4033,7 +4043,7 @@ func opTokenContract(pc *int, ovm *OVM, contract *Contract, stack *Stack) error 
 	return stack.saveBytes(&dest, addr)
 }
 /*
-func opSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+func opSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -4092,7 +4102,7 @@ parser:
 					break parser
 
 				default:
-					return fmt.Errorf("Unknown text coding")
+					return omega.ScriptError(omega.ErrInternal,"Unknown text coding")
 				}
 			}
 		}
@@ -4120,7 +4130,7 @@ parser:
  */
 
 // Below are signature VM engine insts. They are in binary formats.
-func opPush(pc *int, evm *OVM, contract *Contract, stack *Stack) error {
+func opPush(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.Code[0].param
 
 	var sz int
@@ -4162,14 +4172,14 @@ func nextop(contract *Contract, u int) {
 	}
 }
 
-func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
+func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.Code[0].param
 
 	it := param[0]
 	tx := ovm.GetTx()
 	
 	if tx == nil {
-		return fmt.Errorf("Missing tx")
+		return omega.ScriptError(omega.ErrInternal,"Missing tx")
 	}
 
 	t := tx.MsgTx().Stripped()		// deep copy w/o contract added items
@@ -4207,7 +4217,7 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) error {
 	case SigHashSingle, SigHashDouble, SigHashTriple, SigHashQuardruple:
 		if inidx < uint32(SigHashType(it) & SigHashMask) - uint32(SigHashSingle) ||
 			int(inidx) >= len(t.TxOut) || int(inidx) >= len(t.TxIn) {
-			return fmt.Errorf("Insufficient data for line signature")
+			return omega.ScriptError(omega.ErrInternal,"Insufficient data for line signature")
 		}
 
 		start = inidx + uint32(SigHashSingle) - uint32(SigHashType(it)&SigHashMask)

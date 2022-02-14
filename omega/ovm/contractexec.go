@@ -120,7 +120,9 @@ func calcSignatureHash(txinidx int, script []byte, vm * OVM) (chainhash.Hash, er
 // sig verification includes all pk script type, e.g. multi sig, pkscripthash
 var zerohash chainhash.Hash
 
-func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoint.ViewPointSet) error {
+var e error
+
+func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoint.ViewPointSet) omega.Err {
 	if tx.IsCoinBase() {
 		return nil
 	}
@@ -629,10 +631,10 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 	return nil
 }
 
-func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
+func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) (bool, omega.Err) {
 	// no need to make a copy of tx, if exec fails, the tx (even a block) will be abandoned
 	if tx.IsCoinBase() {
-		return nil
+		return false, nil
 	}
 
 	ovm.Init(tx, ovm.views)
@@ -660,20 +662,19 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 	ovm.BlockNumber = func() uint64 { return uint64(txHeight) }
 
 	ovm.NoLoop = false
-//	ovm.interpreter.readOnly = false
 	ovm.writeback = true
 
-	anew := false
+	anew, executed := false, false
 
 	// do some validation w/o execution
 	for _, txOut := range tx.MsgTx().TxOut {
 		version, addr, method, _ := parsePkScript(txOut.PkScript)
 
 		if addr == nil {
-			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+			return false, omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 		if zeroaddr(addr) {
-			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+			return false, omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 		if !isContract(version) {
 			continue
@@ -690,15 +691,17 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 			t := NewStateDB(ovm.views.Db, d)
 
 			if !t.Exists(true) && !creation {
-				return omega.ScriptError(omega.ErrInternal, "Contract does not exist.")
+				err := omega.ScriptError(omega.ErrInternal, "Contract does not exist.")
+				err.ErrorLevel = omega.RecoverableLevel
+				return false, err
 			}
 			if t.Exists(false) && creation {
-				return omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
+				return false, omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
 			}
 
 			ovm.StateDB[d] = t
 		} else if creation {
-			return omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
+			return false, omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
 		}
 	}
 
@@ -731,14 +734,16 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 			// we need to restore Tx
 			tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
 			*tx.MsgTx() = savedTx
-			return err
+			return false, err
 		}
+
+		executed = true
 	}
 
 	if len(tx.MsgTx().TxOut) > wire.MaxTxOutPerMessage || len(tx.MsgTx().TxIn) > wire.MaxTxInPerMessage {
 		tx.HasDefs, tx.HasIns, tx.HasOuts = haves[0], haves[1], haves[2]
 		*tx.MsgTx() = savedTx
-		return omega.ScriptError(omega.ErrInternal, "Tx in/out exceeds the max.")
+		return false, omega.ScriptError(omega.ErrInternal, "Tx in/out exceeds the max.")
 	}
 
 	if intx < len(tx.MsgTx().TxIn) {
@@ -752,7 +757,7 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 		if needsv {
 			err := VerifySigs(tx, ovm.chainConfig, intx, ovm.views)
 			if err != nil {
-				return err
+				return false, err
 			}
 		}
 	}
@@ -761,7 +766,7 @@ func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) error {
 		tx.Executed = true
 	}
 
-	return nil
+	return executed, nil
 }
 
 var byteOrder = binary.LittleEndian

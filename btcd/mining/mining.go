@@ -10,6 +10,7 @@ import (
 	"container/heap"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/omega"
 	"github.com/omegasuite/omega/ovm"
 	"math/rand"
 	"time"
@@ -672,7 +673,7 @@ mempoolLoop:
 					g.txSource.RemoveTransaction(tx, true)
 					g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 					
-					log.Tracef("Skipping tx %s because it "+
+					log.Tracef("Remove tx %s because it "+
 						"references unspent output %s "+
 						"which is not available",
 						tx.Hash(), txIn.PreviousOutPoint)
@@ -767,12 +768,13 @@ mempoolLoop:
 	Vm.BlockVersion = func() uint32 { return s.MsgBlock().Version &^ 0xFFFF }
 //	Vm.Block = func() *btcutil.Block { return nil }
 	Vm.GetCoinBase = func() *btcutil.Tx { return coinbaseTx }
-	Vm.CheckExecCost = true
+//	Vm.CheckExecCost = true
 
 	paidstoragefees := make(map[[20]byte]int64)
 	blksz := wire.MaxBlockHeaderPayload
 
 	// Choose which transactions make it into the block.
+skiprest:
 	for priorityQueue.Len() > 0 {
 		// Grab the highest priority (or highest fee per kilobyte
 		// depending on the sort order) transaction.
@@ -812,27 +814,25 @@ mempoolLoop:
 
 		// Skip free transactions once the block is larger than the
 		// minimum txs which is 10 txs.
-		if sortedByFee &&
-			prioItem.feePerKB < int64(g.Policy.TxMinFreeFee) {
+		if sortedByFee && prioItem.feePerKB < int64(g.Policy.TxMinFreeFee) {
 			// free tx Policy only apply to simple small txs
-			qualified := len(tx.MsgTx().TxDef) == 0
-			if qualified {
-				sum := int64(0)
-				for _, txo := range tx.MsgTx().TxOut {
-					if txo.IsSeparator() || txo.TokenType != 0 || txo.PkScript[0] == g.chainParams.ContractAddrID {
-						qualified = false
-					}
+			qualified, sum := false, int64(0)
+			for _, txo := range tx.MsgTx().TxOut {
+				if txo.IsSeparator() || txo.PkScript[0] == g.chainParams.ContractAddrID {
+					qualified = true
+				} else if txo.TokenType == 0 {
 					sum += txo.Token.Value.(*token.NumToken).Val
-				}
-				if sum > 200 * int64(g.Policy.TxMinFreeFee) {
-					qualified = false
+				} else {
+					qualified = true
 				}
 			}
-			if !qualified || blockPlusTxWeight >= g.Policy.MinBlockWeight {
-				log.Infof("Skipping tx %s with feePerKB %d "+
-					"< TxMinFreeFee %d and block weight %d >= "+
-					"MinBlockWeight %d", tx.Hash(), prioItem.feePerKB,
-					g.Policy.TxMinFreeFee, blockPlusTxWeight,
+			if !qualified && sum < 200 * int64(g.Policy.TxMinFreeFee) {
+				qualified = len(tx.MsgTx().TxDef) == 0
+			}
+
+			if !qualified && blockPlusTxWeight >= g.Policy.MinBlockWeight {
+				log.Infof("Skipping tx %s with !qualified %v && block weight %d >= "+
+					"MinBlockWeight %d", tx.Hash().String(), qualified, blockPlusTxWeight,
 					g.Policy.MinBlockWeight)
 				logSkippedDeps(tx, deps)
 				continue
@@ -873,14 +873,13 @@ mempoolLoop:
 			views, g.chainParams)
 		if err != nil {
 			// we should roll back result of last contract execution here
-			log.Infof("Skipping tx %s due to error in "+
-				"CheckTransactionInputs: %v", tx.Hash(), err)
+			log.Infof("Skipping tx %s due to error in CheckTransactionInputs: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
 		}
 
-		err = ovm.VerifySigs(tx, g.chainParams, 0, views)
-		if err != nil {
+		vmerr := ovm.VerifySigs(tx, g.chainParams, 0, views)
+		if vmerr != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
@@ -894,18 +893,21 @@ mempoolLoop:
 		// in transaction, a new copy of tx will be returned.
 		savedCoinBase := *coinbaseTx.MsgTx().Copy()
 		newcoins := coinbaseTx.HasOuts
-		Vm.Paidfees = prioItem.fee
-		err = Vm.ExecContract(tx, nextBlockHeight)
-		if err != nil {
+//		Vm.Paidfees = prioItem.fee + 10
+		executed, vmerr := Vm.ExecContract(tx, nextBlockHeight)
+		if vmerr != nil {
 			coinbaseTx.HasOuts = newcoins
 			*coinbaseTx.MsgTx() = savedCoinBase
 
-			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			if vmerr.Level() == omega.FatalLevel {
+				g.txSource.RemoveTransaction(tx, true)
+				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-			log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), err)
+				log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), err)
+			}
 			logSkippedDeps(tx, deps)
-			continue
+			break skiprest		// skip rest so we don't waste time on on more contracts
+//			continue
 		}
 
 		storage := blockchain.ContractNewStorage(tx, Vm, paidstoragefees)
@@ -915,9 +917,17 @@ mempoolLoop:
 		err = blockchain.CheckAdditionalTransactionInputs(tx, nextBlockHeight,
 			views, g.chainParams)
 		if err != nil {
-			// we should roll back result of last contract execution here
-			log.Infof("Skipping tx %s due to error in CheckTransactionInputs: %v", tx.Hash(), err)
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+
 			logSkippedDeps(tx, deps)
+			if executed {
+				coinbaseTx.HasOuts = newcoins
+				*coinbaseTx.MsgTx() = savedCoinBase
+				break skiprest // skip rest so we don't waste time on on more contracts
+			}
+
+			log.Infof("Skipping tx %s due to error in CheckTransactionInputs: %v", tx.Hash(), err)
 			continue
 		}
 
@@ -926,10 +936,14 @@ mempoolLoop:
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-			// we should roll back result of last contract execution here
-			log.Infof("Skipping tx %s due to error in "+
-				"CheckTransactionIntegrity: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
+			if executed {
+				coinbaseTx.HasOuts = newcoins
+				*coinbaseTx.MsgTx() = savedCoinBase
+				break skiprest // skip rest so we don't waste time on on more contracts
+			}
+
+			log.Infof("Skipping tx %s due to error in CheckTransactionIntegrity: %v", tx.Hash(), err)
 			continue
 		}
 
@@ -938,16 +952,28 @@ mempoolLoop:
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-			log.Infof("Skipping tx %s due to error in "+
-				"CheckTransactionFeess: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
+			if executed {
+				coinbaseTx.HasOuts = newcoins
+				*coinbaseTx.MsgTx() = savedCoinBase
+				break skiprest // skip rest so we don't waste time on on more contracts
+			}
+
+			log.Infof("Skipping tx %s due to error in CheckTransactionFeess: %v", tx.Hash(), err)
 			continue
 		}
 
 		// check block size
 		if blksz + coinbaseTx.MsgTx().SerializeSize() + tx.MsgTx().SerializeSize() > wire.MaxBlockPayload {
 			log.Infof("Skipping tx %s because it would make block size exceeding the max", tx.Hash())
+
 			logSkippedDeps(tx, deps)
+			if executed {
+				coinbaseTx.HasOuts = newcoins
+				*coinbaseTx.MsgTx() = savedCoinBase
+				break skiprest // skip rest so we don't waste time on on more contracts
+			}
+
 			continue
 		}
 

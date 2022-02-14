@@ -66,7 +66,7 @@ type (
 )
 
 // run runs the given contract and takes care of running precompiles with a fallback to the byte code interpreter.
-func run(evm *OVM, contract *Contract, input []byte) ([]byte, error) {
+func run(evm *OVM, contract *Contract, input []byte) ([]byte, omega.Err) {
 	if contract.CodeAddr != nil {
 		var abi [4]byte
 		copy(abi[:], contract.CodeAddr)
@@ -230,8 +230,8 @@ type OVM struct {
 
 	DB database.DB
 
-	CheckExecCost	bool	// whether we will check execution cost. This will be true only when packing blocks, not wen validating
-	Paidfees int64
+//	CheckExecCost	bool	// whether we will check execution cost. This will be true only when packing blocks, not wen validating
+//	Paidfees int64
 }
 
 // NewOVM returns a new OVM. The returned OVM is not thread safe and should
@@ -243,7 +243,7 @@ func NewOVM(chainConfig *chaincfg.Params) *OVM {
 		ExistingTokenTypes:  make(map[uint64]Address),
 		chainConfig: chainConfig,
 		lastBlock: 0,
-		CheckExecCost: false,
+//		CheckExecCost: false,
 	}
 	evm.StepLimit = chainConfig.ContractExecLimit // step limit the contract can run, node decided policy
 
@@ -495,7 +495,7 @@ func (evm *OVM) Cancel() {
 // Call executes the contract associated with the addr with the given input as
 // parameters. It also takes the necessary steps to reverse the state in case of an
 // execution error.
-func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte, pure byte) (ret []byte, err error) {
+func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte, pure byte) (ret []byte, err omega.Err) {
 	if evm.NoRecursion && evm.depth > 0 {
 		return nil, nil
 	}
@@ -517,7 +517,9 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 	contract := evm.NewContract(d, sent)
 
 	if contract == nil {
-		return nil, fmt.Errorf("Contract does not exist")
+		err := omega.ScriptError(omega.ErrInternal, "Contract does not exist")
+		err.ErrorLevel = omega.RecoverableLevel
+		return nil, err
 	}
 	if bytes.Compare(method, []byte{0,0,0,0}) != 0 {
 		if err := contract.SetCallCode(method, evm.GetCode(d)); err != nil {
@@ -565,7 +567,7 @@ func (ovm *OVM) NewContract(d Address, value *token.Token) *Contract {
 }
 
 // Create creates a new contract using code as deployment code.
-func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
+func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, omega.Err) {
 	var d = contract.self.Address()
 
 	if _,ok := ovm.StateDB[d]; !ok {
@@ -611,7 +613,7 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, error) {
 	hash := ripemd160.Sum(nil)
 
 	if bytes.Compare(hash, d[:]) != 0 {
-		return nil, fmt.Errorf("contract address does not match code hash")
+		return nil, omega.ScriptError(omega.ErrInternal,"contract address does not match code hash")
 	}
 
 	ovm.setAddress(d, contract.self.(AccountRef))

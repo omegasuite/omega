@@ -171,6 +171,7 @@ type config struct {
 	collateral    []*wire.OutPoint
 	ExitOnStall   bool          `long:"exitonstall" description:"Exit program when no activity in 30 minutes."`
 	ChainCurrentStd int		   `long:"chaincurrentstd" description:"Hours beyond which chain is considered not current"`
+	MemLimit	  uint32		`long:"memlimit" description:"Memory limit (K), exceeding it will cause program to exit gracefully"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -430,6 +431,7 @@ func loadConfig() (*config, []string, error) {
 		AddrIndex:         defaultAddrIndex,
 		ChainCurrentStd:   24,
 		MinBlockWeight:    4,
+		MemLimit:		   200000,
 	}
 
 	// Service options which are only added on Windows.
@@ -672,6 +674,14 @@ func loadConfig() (*config, []string, error) {
 			}
 			cfg.whitelists = append(cfg.whitelists, ipnet)
 		}
+	}
+
+	if cfg.GenerateMiner && cfg.ShareMining && len(cfg.PrivKeys) == 0 {
+		if len(cfg.ExternalIPs) == 0 {
+			return nil, nil, fmt.Errorf("ExternalIP is required")
+		}
+		cfg.ConnectPeers = make([]string, 1)
+		cfg.ConnectPeers[0] = cfg.ExternalIPs[0]
 	}
 
 	// --addPeer and --connect do not mix.

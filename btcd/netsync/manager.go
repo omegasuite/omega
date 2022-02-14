@@ -101,6 +101,13 @@ type getSyncPeerMsg struct {
 	reply chan int32
 }
 
+// resetConnMsg is a message type to be sent across the message channel for
+// reset connections.
+type resetConnMsg struct {
+	all bool
+	reply chan struct{}
+}
+
 // processBlockResponse is a response sent to the reply channel of a
 // processBlockMsg.
 type processBlockResponse struct {
@@ -142,6 +149,11 @@ type processMinerBlockMsg struct {
 // currently connected peers.
 type isCurrentMsg struct {
 	reply chan bool
+}
+
+// startSyncMsg is a message type to trig sync job.
+type startSyncMsg struct {
+	reply chan struct{}
 }
 
 // pauseMsg is a message type to be sent across the message channel for
@@ -215,6 +227,9 @@ type SyncManager struct {
 	// An optional fee estimator.
 	feeEstimator *mempool.FeeEstimator
 
+	// blocks already processed for consensus. we cache them to avoid double processing
+	cachedBlocks map[chainhash.Hash]uint32	// block hash=>height
+
 	syncjobs []*pendginGetBlocks
 	lastBlockOp string	// for debug
 	bshutdown bool
@@ -236,16 +251,22 @@ func (sm *SyncManager) resetHeaderState(newestHash *chainhash.Hash, newestHeight
 	}
 }
 
-func (sm *SyncManager) ResetConnections() {
-	if len(sm.peerStates) < 100 {
+func (sm *SyncManager) ResetConnections(all bool) {
+	ch := make(chan struct{}, 1)
+	sm.msgChan <- resetConnMsg{all, ch}
+}
+
+func (sm *SyncManager) resetConnections(all bool) {
+	if !all && len(sm.peerStates) < 100 {
 		return
 	}
 
-	log.Infof("       ResetConnections peers = %d", len(sm.peerStates))
+	log.Infof("ResetConnections peers = %d", len(sm.peerStates))
 
 	for p,_ := range sm.peerStates {
 		p.Disconnect("Reset")
 	}
+	sm.clearSync()
 }
 
 // findNextHeaderCheckpoint returns the next checkpoint after the passed height.
@@ -395,14 +416,7 @@ func (sm *SyncManager) updateSyncPeer() {
 	sm.startSync(p)
 }
 
-func (sm *SyncManager) StartSync() bool {
-	if sm.syncPeer == nil {
-		return sm.startSync(nil)
-	}
-	return true
-}
-
-func (sm *SyncManager) ClearSync() {
+func (sm *SyncManager) clearSync() {
 	sm.syncPeer = nil
 	sm.syncjobs = sm.syncjobs[:0]
 }
@@ -543,7 +557,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 		} else {
 			time.AfterFunc(deferexec, func () {
 				if !bestPeer.Connected() {
-					sm.startSync(nil)
+					sm.msgChan <- startSyncMsg{ reply: nil }
 					return
 				}
 //				log.Debugf("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
@@ -842,64 +856,81 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
 //	log.Infof("netsyc ProcessBlock %s at %d", bmsg.block.Hash().String(), bmsg.block.Height())
-	isMainchain, isOrphan, err, missing, orp := sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
-	b1 := sm.chain.BestSnapshot()
-	b2 := sm.chain.Miners.BestSnapshot()
+	var isMainchain, isOrphan bool
+	var b1, b2 *blockchain.BestState
+	var err error
+	var missing int32
+	var orp *chainhash.Hash
 
-	if missing > 0 {
-		var h chainhash.BlockLocator
-		if missing <= sm.chain.Miners.BestSnapshot().Height {
-			mb, _ := sm.chain.Miners.BlockByHeight(missing - 1)
-			h = chainhash.BlockLocator([]*chainhash.Hash{&mb.MsgBlock().PrevBlock})
-		} else {
-			h = sm.chain.Miners.(*minerchain.MinerChain).BlockLocatorFromHash(&zeroHash)
-		}
+	if _,ok := sm.cachedBlocks[*blockHash]; behaviorFlags & blockchain.BFNoConnect != blockchain.BFNoConnect || !ok {
+		isMainchain, isOrphan, err, missing, orp = sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
-		sm.AddSyncJob(peer,
-			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
-			h,
-			&zeroHash, &zeroHash, [2]int32{b1.Height, b2.Height})
-	}
-	if orp != nil {
-		log.Infof("Requesting block %s", orp.String())
-//		peer.PushGetBlocksMsg(chainhash.BlockLocator(make([]*chainhash.Hash, 0)), chainhash.BlockLocator(make([]*chainhash.Hash, 0)), orp, &zeroHash)
-		peer.QueueMessage(&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *orp}}}, nil)
-	}
+		b1 = sm.chain.BestSnapshot()
+		b2 = sm.chain.Miners.BestSnapshot()
 
-	if err != nil {
-		// When the error is a rule error, it means the block was simply
-		// rejected as opposed to something actually going wrong, so log
-		// it as such.  Otherwise, something really did go wrong, so log
-		// it as an actual error.
-		if _, ok := err.(blockchain.RuleError); ok {
-			log.Debugf("Rejected tx block %s at %d from %s: %v", blockHash.String(),
-				bmsg.block.Height(), peer, err)
-			if err.(blockchain.RuleError).ErrorCode == blockchain.ErrDuplicateBlock {
-				// still need to update height
-				peer.UpdateLastBlockHeight(bmsg.block.Height())
-				return
+		if missing > 0 {
+			var h chainhash.BlockLocator
+			if missing <= sm.chain.Miners.BestSnapshot().Height {
+				mb, _ := sm.chain.Miners.BlockByHeight(missing - 1)
+				h = chainhash.BlockLocator([]*chainhash.Hash{&mb.MsgBlock().PrevBlock})
+			} else {
+				h = sm.chain.Miners.(*minerchain.MinerChain).BlockLocatorFromHash(&zeroHash)
 			}
-		} else {
-			log.Errorf("Failed to process block %v: %v",
-				blockHash, err)
+
+			sm.AddSyncJob(peer,
+				chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
+				h,
+				&zeroHash, &zeroHash, [2]int32{b1.Height, b2.Height})
 		}
-		if dbErr, ok := err.(database.Error); ok && dbErr.ErrorCode ==
-			database.ErrCorruption {
-			panic(dbErr)
+		if orp != nil {
+			log.Infof("Requesting block %s", orp.String())
+			//		peer.PushGetBlocksMsg(chainhash.BlockLocator(make([]*chainhash.Hash, 0)), chainhash.BlockLocator(make([]*chainhash.Hash, 0)), orp, &zeroHash)
+			peer.QueueMessage(&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *orp}}}, nil)
 		}
 
-		// Convert the error into an appropriate reject message and
-		// send it.
-		code, reason := mempool.ErrToRejectErr(err)
-		peer.PushRejectMsg(wire.CmdBlock, code, reason, blockHash, false)
-		return
+		if err != nil {
+			// When the error is a rule error, it means the block was simply
+			// rejected as opposed to something actually going wrong, so log
+			// it as such.  Otherwise, something really did go wrong, so log
+			// it as an actual error.
+			if _, ok := err.(blockchain.RuleError); ok {
+				log.Debugf("Rejected tx block %s at %d from %s: %v", blockHash.String(),
+					bmsg.block.Height(), peer, err)
+				if err.(blockchain.RuleError).ErrorCode == blockchain.ErrDuplicateBlock {
+					// still need to update height
+					peer.UpdateLastBlockHeight(bmsg.block.Height())
+					return
+				}
+			} else {
+				log.Errorf("Failed to process block %v: %v",
+					blockHash, err)
+			}
+			if dbErr, ok := err.(database.Error); ok && dbErr.ErrorCode ==
+				database.ErrCorruption {
+				panic(dbErr)
+			}
+
+			// Convert the error into an appropriate reject message and
+			// send it.
+			code, reason := mempool.ErrToRejectErr(err)
+			peer.PushRejectMsg(wire.CmdBlock, code, reason, blockHash, false)
+			return
+		}
 	}
 
+	ht := bmsg.block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index
 	if behaviorFlags & blockchain.BFNoConnect == blockchain.BFNoConnect {
 		// passing it consus
+		sm.cachedBlocks[*blockHash] = ht
 		consensus.ProcessBlock(bmsg.block, behaviorFlags)
 		return
+	}
+
+	for hash,h := range sm.cachedBlocks {
+		if h < ht {
+			delete(sm.cachedBlocks, hash)
+		}
 	}
 
 	// Meta-data about the new block this peer is reporting. We use this
@@ -924,7 +955,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 			// We've just received an orphan block from a peer. In order
 			// to update the height of the peer, we try to extract the
 			// block height from the scriptSig of the coinbase transaction.
-			heightUpdate = int32(bmsg.block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
+			heightUpdate = int32(ht)
 			blkHashUpdate = blockHash
 
 			// add a sync jon
@@ -1923,8 +1954,18 @@ out:
 					}
 				}
 
+			case resetConnMsg:
+				sm.resetConnections(msg.all)
+				msg.reply <- struct{}{}
+
 			case isCurrentMsg:
 				msg.reply <- sm.current(0) && sm.current(1)
+
+			case startSyncMsg:
+				sm.startSync(nil)
+				if msg.reply != nil {
+					msg.reply <- struct{}{}
+				}
 
 			case pauseMsg:
 				// Wait until the sender unpauses the manager.
@@ -2270,6 +2311,7 @@ func New(config *Config) (*SyncManager, error) {
 		headerList:      list.New(),
 		quit:            make(chan struct{}),
 		feeEstimator:    config.FeeEstimator,
+		cachedBlocks:	 make(map[chainhash.Hash]uint32),
 		syncjobs:		 make([]*pendginGetBlocks, 0),
 		syncPeer: nil,
 	}

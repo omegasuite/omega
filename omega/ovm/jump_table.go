@@ -8,7 +8,9 @@
 
 package ovm
 
-type executionFunc func(pc *int, env *OVM, contract *Contract, stack *Stack) error
+import "github.com/omegasuite/omega"
+
+type executionFunc func(pc *int, env *OVM, contract *Contract, stack *Stack) omega.Err
 
 type operation struct {
 	// op is the operation function

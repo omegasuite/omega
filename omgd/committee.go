@@ -618,10 +618,9 @@ func (s *server) handleCommitteRotation(r int32) {
 
 	me := s.MyPlaceInCommittee(r)
 	if me == 0 {
-		if prevMe != 0 && s.rpcServer != nil {
+		if prevMe != 0 {
 			// clean connections
-			handleResetConnection(s.rpcServer, nil, nil)
-			s.syncManager.ClearSync()
+			s.syncManager.ResetConnections(true)
 		}
 		prevMe = 0
 		return

@@ -10,6 +10,14 @@ import (
 
 // ErrorCode identifies a kind of error.
 type ErrorCode int
+type ErrorLevel int
+
+const (
+	FatalLevel ErrorLevel = iota
+	RecoverableLevel
+	WarningLevel
+	InfoLevel
+)
 
 // These constants are used to identify a specific Error.
 const (
@@ -432,7 +440,14 @@ func (e ErrorCode) String() string {
 // to check for a specific error code.
 type Error struct {
 	ErrorCode   ErrorCode
+	ErrorLevel	ErrorLevel
 	Description string
+}
+
+type Err interface {
+	Error() string
+	Level() ErrorLevel
+	SetLevel(ErrorLevel)
 }
 
 // Error satisfies the error interface and prints human-readable errors.
@@ -442,7 +457,16 @@ func (e Error) Error() string {
 
 // scriptError creates an Error given a set of arguments.
 func ScriptError(c ErrorCode, desc string) Error {
-	return Error{ErrorCode: c, Description: desc}
+	return Error{ErrorCode: c, ErrorLevel:FatalLevel, Description: desc}
+}
+
+// scriptError creates an Error given a set of arguments.
+func (e Error) Level() ErrorLevel {
+	return e.ErrorLevel
+}
+
+func (e Error) SetLevel(er ErrorLevel) {
+	e.ErrorLevel = er
 }
 
 // IsErrorCode returns whether or not the provided error is a script error with

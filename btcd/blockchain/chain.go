@@ -1335,7 +1335,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List) (int
 			}
 			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
 			newtx.SetIndex(tx.Index())
-			err = Vm.ExecContract(newtx, block.Height())
+			_, err = Vm.ExecContract(newtx, block.Height())
 			if err != nil {
 				//				Vm.AbortRollback()
 				log.Infof("ExecContract error: " + err.Error())

@@ -948,31 +948,30 @@ func ReadDefinition(r io.Reader, pver uint32, version int32) (Definition, error)
 		c := VertexDef{}
 		err = c.Read(r, pver)
 		return &c, err
-		break;
+
 	case DefTypeBorder:
 		c := BorderDef{}
 		err = c.Read(r, pver)
 		return &c, err
-		break;
+
 	case DefTypePolygon:
 		c := PolygonDef{}
 		err = c.Read(r, pver)
 		return &c, err
-		break;
+
 	case DefTypeRight:
 		c := RightDef{}
 		err = c.Read(r, pver)
 		return &c, err
-		break;
+
 	case DefTypeRightSet:
 		c := RightDef{}
 		err = c.Read(r, pver)
 		return &c, err
-		break;
+
 	case DefTypeSeparator:
 		c := SeparatorDef{}
 		return &c, nil
-		break;
 	}
 
 	str := fmt.Sprintf("Unrecognized definition type %d", t)

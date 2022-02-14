@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/omega"
 )
 
 func VerifySigScript(sign, hash []byte, chainParams *chaincfg.Params) (*AddressPubKeyHash, error) {
@@ -33,20 +34,20 @@ func VerifySigScript(sign, hash []byte, chainParams *chaincfg.Params) (*AddressP
 	return pk.AddressPubKeyHash(), nil
 }
 
-func VerifySigScript2(sign, hash, kubkey []byte, chainParams *chaincfg.Params) error {
+func VerifySigScript2(sign, hash, kubkey []byte, chainParams *chaincfg.Params) omega.Err {
 	k, err := NewAddressPubKey(kubkey, chainParams)
 
 	if err != nil {
-		return fmt.Errorf("Incorrect Miner signature. pubkey error")
+		return omega.ScriptError(omega.ErrInternal,"Incorrect Miner signature. pubkey error")
 	}
 
 	s, err := btcec.ParseSignature(sign, btcec.S256())
 	if err != nil {
-		return fmt.Errorf("Incorrect signature. Signature parse error")
+		return omega.ScriptError(omega.ErrInternal,"Incorrect signature. Signature parse error")
 	}
 
 	if !s.Verify(hash, k.PubKey()) {
-		return fmt.Errorf("Incorrect signature. Verification doesn't match")
+		return omega.ScriptError(omega.ErrInternal,"Incorrect signature. Verification doesn't match")
 	}
 
 	return nil
