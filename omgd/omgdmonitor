@@ -1,0 +1,26 @@
+#!/bin/sh
+
+memval=$(ps -au | grep -w ctrl | grep -w root | awk '{print $1;}')
+cd /root
+
+if [ $memval != "root" ]
+then
+date
+./ctrl > /dev/null &
+exit
+fi
+
+memval=$(ps -Al | grep -w omgd | awk '{print $10;}')
+
+for i in $memval
+do
+if [ $i -ge 200000 ]
+then
+date
+echo $i
+cli <<!
+quit
+!
+echo omgd stopped
+fi
+done
