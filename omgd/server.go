@@ -2502,29 +2502,24 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 		}
 
 		// Check outbound peers.
-//		btcdLog.Infof("cmutex.Lock @ disconnectNodeMsg")
-		state.cmutex.Lock()
-		found = disconnectPeer(state.outboundPeers, msg.cmp, func(sp *serverPeer) {
-			// Keep group counts ok since we remove from
-			// the list now.
-			state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
-		})
-//		btcdLog.Infof("cmutex.Unlock")
-		state.cmutex.Unlock()
+		found = true
+		real := false
 
-		if found {
-			// If there are multiple outbound connections to the same
-			// ip:port, continue disconnecting them all until no such
-			// peers are found.
-			for found {
+		// If there are multiple outbound connections to the same
+		// ip:port, continue disconnecting them all until no such
+		// peers are found.
+		for found {
 //				btcdLog.Infof("cmutex.Lock @ disconnectNodeMsg")
-				state.cmutex.Lock()
-				found = disconnectPeer(state.outboundPeers, msg.cmp, func(sp *serverPeer) {
-					state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
-				})
+			state.cmutex.Lock()
+			found = disconnectPeer(state.outboundPeers, msg.cmp, func(sp *serverPeer) {
+				state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
+			})
+			real = real || found
 //				btcdLog.Infof("cmutex.Unlock")
-				state.cmutex.Unlock()
-			}
+			state.cmutex.Unlock()
+		}
+
+		if real {
 			msg.reply <- nil
 			return
 		}
