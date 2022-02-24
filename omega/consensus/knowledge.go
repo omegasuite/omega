@@ -154,7 +154,8 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 
 	for i, q := range self.Knowledge[mp] {
 		if int32(i) != me && (ng || (res &^ q != 0)) {
-			self.syncer.CommitteeMsgMG(self.syncer.Names[int32(i)], &lmg)
+			self.sendout(&lmg, mp, me, int32(i))
+//			self.syncer.CommitteeMsgMG(self.syncer.Names[int32(i)], &lmg)
 		}
 	}
 

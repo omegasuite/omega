@@ -31,22 +31,19 @@ const maxFailedAttempts = 25
 func (p * peerState) CommitteeOut(s * committeeState) {
 	var msg wire.Message
 	var ok bool
-	var connecting bool
-
-	retryCount := time.Duration(1)
+	done := make(chan bool)
 
 	for {
 		if msg, ok = <-s.queue; !ok {
 			return
 		}
 
-		done := make(chan bool)
 		sent := false
 		for _,sp := range s.peers {
 			if !sent && sp.Connected() {
 				btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), sp.Addr())
 				sp.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
-				sent, connecting, retryCount = true, false, 1
+				sent = true
 			}
 		}
 		if !sent {
@@ -68,10 +65,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 			if len(s.peers) > 0 {
 				btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), s.peers[0].Addr())
 				s.peers[0].QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
-				sent, connecting, retryCount = true, false, 1
-			} else if connecting || retryCount > maxFailedAttempts {
-				continue
-			} else {	// if len(s.address) > 0
+			} else if !s.connecting {	// if len(s.address) > 0
 				tcp, err := net.ResolveTCPAddr("", s.address)
 				if err != nil {
 					btcdLog.Infof("CommitteeOut: can not resolve %s", s.address)
@@ -80,7 +74,9 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 
 				btcdLog.Infof("CommitteeOut: make a connection for %s to %s.", msg.Command(), tcp.String())
 
-				connecting = true
+				s.retry++
+				connected := make(chan bool, 2)
+				s.connecting = true
 
 				go p.connManager.Connect(&connmgr.ConnReq{
 					Addr:      tcp,
@@ -89,14 +85,27 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 					Miner: s.member,
 					Initcallback: func(sp connmgr.ServerPeer) {
 						s.peers = append(s.peers, sp.(*serverPeer))
+						connected <- true
 					},
 				})
 
-				time.AfterFunc(retryCount * connectionRetryInterval, func () {
-					connecting = false
-				})
+				select {
+				case <-connected:
+					s.retry = 0
 
-				retryCount++
+				case <-time.After(time.Duration(s.retry) * time.Second):
+					// time out, treat it as a connection failure
+					if s.retry > maxFailedAttempts {
+						s.retry = maxFailedAttempts
+					}
+				}
+/*
+				p.cmutex.Lock()
+				s.queue <- msg
+				p.cmutex.Unlock()
+ */
+
+				s.connecting = false
 
 				continue
 			}
@@ -385,7 +394,11 @@ func (s *server) phaseoutCommittee(r int32) {
 	for i, p := range s.peerState.committee {
 		if p.minerHeight != 0 && p.minerHeight < r {
 			delete(s.peerState.committee, i)
+
+			s.peerState.qmutex.Lock()
+			p.closed = true
 			close(p.queue)
+			s.peerState.qmutex.Unlock()
 		}
 	}
 	s.peerState.cmutex.Unlock()
@@ -579,8 +592,10 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 			}
 		})
 
-		if !isin {
+		if !isin && !m.connecting {
 			btcdLog.Debugf("makeConnection: new %s", addr)
+
+			m.connecting = true
 
 			go s.connManager.Connect(&connmgr.ConnReq{
 				Addr:      tcp,
@@ -589,8 +604,13 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 				Miner: miner,
 				Initcallback: func(sp connmgr.ServerPeer) {
 					m.peers = append(m.peers, sp.(*serverPeer))
+					m.connecting = false
 				},
 			})
+			select {
+			case <-time.After(2 * time.Second):
+				m.connecting = false
+			}
 		}
 	}
 }
@@ -695,10 +715,13 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 
 	s.peerState.cmutex.Lock()
 	sp,ok := s.peerState.committee[p]
-	if ok {
+	s.peerState.cmutex.Unlock()
+
+	s.peerState.qmutex.Lock()
+	if ok && !sp.closed {
 		sp.queue <- m
 	}
-	s.peerState.cmutex.Unlock()
+	s.peerState.qmutex.Unlock()
 
 	if !ok {
 		mb,_ := s.chain.Miners.BlockByHeight(h)
@@ -709,6 +732,16 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 		btcdLog.Infof("CommitteeMsgMG makeConnection to %s %d", mb.MsgBlock().Connection, mb.Height())
 
 		s.makeConnection(mb.MsgBlock().Connection, p, mb.Height())
+
+		s.peerState.cmutex.Lock()
+		sp,ok := s.peerState.committee[p]
+		s.peerState.cmutex.Unlock()
+
+		s.peerState.qmutex.Lock()
+		if ok && !sp.closed {
+			sp.queue <- m
+		}
+		s.peerState.qmutex.Unlock()
 	}
 }
 
@@ -759,23 +792,7 @@ func (s *server) CommitteeMsg(p [20]byte, h int32, m wire.Message) bool {
 	sp,ok := s.peerState.committee[p]
 	s.peerState.cmutex.Unlock()
 
-	if ok {
-		for _,r := range sp.peers {
-			if r.Connected() {
-				btcdLog.Infof("sending %s to %s (remote = %s)", m.Command(), r.Peer.LocalAddr().String(), r.Peer.Addr())
-				r.QueueMessageWithEncoding(m, done, wire.SignatureEncoding)
-				return <-done
-			}
-		}
-		btcdLog.Infof("No Connected peer in %x (%d) for sending %s", p, len(sp.peers), m.Command())
-
-		if len(sp.address) > 0 {
-			btcdLog.Infof("%x is at %d. makeConnection", p, h)
-			s.makeConnection([]byte(sp.address), p, h)
-		}
-	} else {
-		btcdLog.Infof("%x not in committee yet, add it", p)
-
+	if !ok || len(sp.address) == 0 {
 		blk, _ := s.chain.Miners.BlockByHeight(h)
 
 		if p != blk.MsgBlock().Miner {
@@ -785,7 +802,18 @@ func (s *server) CommitteeMsg(p [20]byte, h int32, m wire.Message) bool {
 
 		btcdLog.Infof("%x is at %d. makeConnection", p, h)
 		s.makeConnection(blk.MsgBlock().Connection, p, blk.Height())
+
+		return false
 	}
+
+	for _,r := range sp.peers {
+		if r.Connected() {
+			btcdLog.Infof("sending %s to %s (remote = %s)", m.Command(), r.Peer.LocalAddr().String(), r.Peer.Addr())
+			r.QueueMessageWithEncoding(m, done, wire.SignatureEncoding)
+			return <-done
+		}
+	}
+	btcdLog.Infof("No Connected peer in %x (%d) for sending %s", p, len(sp.peers), m.Command())
 
 	return false
 }

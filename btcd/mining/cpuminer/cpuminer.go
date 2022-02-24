@@ -245,7 +245,10 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	ticker *time.Ticker, quit chan struct{}) int32 {
 
-	mp := m.numWorkers / 3
+	mp := m.numWorkers
+	if len(m.cfg.SignAddress) != 0 {
+		mp /= 3
+	}
 	if mp < 1 {
 		mp = 1
 	}
@@ -270,7 +273,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 			pows = 0
 		}
  */
-		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(20))
+		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(40))
 	}
 
 	if targetDifficulty.Cmp(m.g.Chain.ChainParams.PowLimit) > 0 {
@@ -703,7 +706,7 @@ out:
 					}
 
 //					log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
-					consensus.DebugInfo()
+//					consensus.DebugInfo()
 				}
 			}
 
@@ -719,7 +722,9 @@ out:
 		lastblkgen = time.Now().Unix()
 		m.minedBlock = nil
 
-		if m.cfg.DisablePOWMining && (nopow || m.cfg.ChainParams.Net == common.TestNet) {
+		mh := m.g.Chain.Miners.BestSnapshot().Height
+
+		if m.cfg.DisablePOWMining && (nopow || m.cfg.ChainParams.Net == common.TestNet) || mh - int32(bs.LastRotation) < 2 {
 			time.Sleep(time.Second * wire.TimeGap)
 //			log.Infof("Retry because POW Mining disabled.")
 			continue

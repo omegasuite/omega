@@ -502,6 +502,7 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 
 	var (
 		snapshot = make(map[Address]*stateDB)
+		steplimit = evm.StepLimit
 	)
 	for adr, db := range evm.StateDB {
 		t := db.Copy()
@@ -534,10 +535,10 @@ func (evm *OVM) Call(d Address, method []byte, sent * token.Token, params []byte
 
 	ret, err = run(evm, contract, params)
 
-	// When an error was returned by the EVM or when setting the creation code
-	// above we revert to the snapshot and consume any gas remaining. Additionally
-	// when we're in homestead this also counts for code storage gas errors.
 	if err != nil || !evm.writeback {
+		if err != nil {
+			evm.StepLimit = steplimit
+		}
 		evm.StateDB = snapshot
 	}
 	return ret, err

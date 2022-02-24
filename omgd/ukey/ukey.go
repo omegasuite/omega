@@ -2,6 +2,9 @@
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
+// build flags: -i -ldflags "-X 'main.CompileTime=`%date%`'" -tags=usekey
+// remove  -tags=usekey to build normal version
+
 // +build usekey
 
 package ukey

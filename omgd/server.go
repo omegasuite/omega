@@ -167,8 +167,11 @@ type committeeState struct {
 	peers []*serverPeer
 	member [20]byte
 	queue chan wire.Message
+	closed bool
 	address string
 	minerHeight int32
+	connecting bool
+	retry uint32
 }
 
 // peerState maintains state of inbound, persistent, outbound peers as well
@@ -183,6 +186,7 @@ type peerState struct {
 
 	// committee members.
 	cmutex			sync.Mutex
+	qmutex			sync.Mutex
 	committee       map[[20]byte]*committeeState
 }
 
@@ -196,9 +200,12 @@ func (p * peerState) NewCommitteeState(m [20]byte, h int32, addr string) * commi
 	t := &committeeState{
 		peers: make([]*serverPeer, 0),
 		queue: make(chan wire.Message, 50),
+		closed: false,
 		member: m,
 		minerHeight: h,
 		address: adr,
+		connecting: false,
+		retry: 0,
 	}
 
 	go p.CommitteeOut(t)
@@ -2135,10 +2142,9 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 				if sp.Addr() == dup.Addr() {
 					if dup.Connected() {
 						state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
-						sp.Disconnect("handleAddPeerMsg @ dup conn")
+						dup.Disconnect("handleAddPeerMsg @ persistent dup conn")
 						delete(state.persistentPeers, r)
 						state.RemovePeer(dup)
-						sp = dup
 					}
 				}
 			}
@@ -2147,8 +2153,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 			for r,dup := range state.outboundPeers {
 				if sp.Addr() == dup.Addr() {
 					state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
-					sp.Disconnect("handleAddPeerMsg @ dup conn")
-					sp = dup
+					dup.Disconnect("handleAddPeerMsg @ outboundPeers dup conn")
 					delete(state.outboundPeers, r)
 					state.RemovePeer(dup)
 				}
@@ -2217,7 +2222,11 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 		list = state.outboundPeers
 	}
 
+	srvrLog.Infof("handleDonePeerMsg for peer %s", sp.String())
+
 	state.cmutex.Lock()
+	state.RemovePeer(sp)
+
 	if _, ok := list[sp.ID()]; ok {
 		if !sp.Inbound() && sp.VersionKnown() {
 			state.outboundGroups[addrmgr.GroupKey(sp.NA())]--
@@ -2226,12 +2235,12 @@ func (s *server) handleDonePeerMsg(state *peerState, sp *serverPeer) {
 			s.connManager.Disconnect(sp.connReq.ID())
 		}
 		delete(list, sp.ID())
-		state.RemovePeer(sp)
 		state.cmutex.Unlock()
 
 		srvrLog.Infof("Removed peer %s", sp)
 		return
 	}
+
 	state.cmutex.Unlock()
 
 	if sp.connReq != nil {
@@ -2597,7 +2606,7 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 }
 
 func (s *server) ResetConnections() {
-	s.syncManager.ResetConnections(true)
+	s.syncManager.ResetConnections(false)
 }
 
 // inboundPeerConnected is invoked by the connection manager when a new inbound
@@ -2943,8 +2952,7 @@ out:
 
 			// Process at a random time up to 30mins (in seconds)
 			// in the future.
-			timer.Reset(time.Second *
-				time.Duration(randomUint16Number(1800)))
+			timer.Reset(time.Second * time.Duration(randomUint16Number(1800)))
 
 		case <-s.quit:
 			break out

@@ -86,10 +86,7 @@ func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 	}
 
 	flags |= blockchain.BFNoConnect
-	log.Infof("Consensus.ProcessBlock for block %s at %d, flags=%x",
-		block.Hash().String(), block.Height(), flags)
-
-	log.Infof("newblockch.len = %d", len(newblockch))
+	log.Infof("Consensus.ProcessBlock for block %s at %d, flags=%x", block.Hash().String(), block.Height(), flags)
 
 	block.ClearSize()
 	if newblockch != nil {
@@ -169,13 +166,13 @@ func handleConnNotice(c interface{}) {
 		if next != 0x7FFFFFFF && !miner.Sync[next].Runnable {
 			sny = miner.Sync[next]
 		}
-		miner.syncMutex.Unlock()
 		if sny != nil {
 			log.Infof("SetCommittee for next syner %d", sny.Height)
 			sny.SetCommittee()
 		} else {
 			log.Infof("No pending syners")
 		}
+		miner.syncMutex.Unlock()
 	}
 }
 
@@ -249,60 +246,26 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	out:
 	for polling {
 		select {
-/*
-		case <-ticker.C:
-			best := miner.server.BestSnapshot()
-			log.Infof("Best tx chain height: %d Last rotation: %d", best.Height, best.LastRotation)
-
-			top := int32(-1)
-			var tr *Syncer
-
-			miner.syncMutex.Lock()
-			for h, s := range miner.Sync {
-				if h > top {
-					top = h
-				}
-				if s.Runnable {
-					if tr == nil || s.Height > tr.Height {
-						tr = s
-					}
-				}
-			}
-			miner.syncMutex.Unlock()
- */
-
 		case height := <-miner.updateheight:
-//			log.Infof("updateheight %d", height)
 			miner.syncMutex.Lock()
 			cleaner(height)
 			for _, t := range miner.Sync {
 				t.UpdateChainHeight(height)
 			}
 			miner.syncMutex.Unlock()
-//			log.Infof("updateheight done")
 
 		case c := <- connNotice:
-//			log.Info("Consensus connNotice")
 			handleConnNotice(c)
 
 		case blk := <-newblockch:
 			top := miner.server.BestSnapshot().Height
 			bh := blk.block.Height()
-//			log.Infof("miner received newblock %s at %d vs. %d",
-//				blk.block.Hash().String(), top, bh)
-
-			if len(blk.block.MsgBlock().Transactions) > 1 {
-				log.Infof("non-trivial block")
-			}
 
 			if bh <= top {
-//				log.Infof("newblock ignored")
 				continue
 			}
 
 			if len(blk.block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
-				// should never gets here
-//				log.Infof("Block is a consensus. Accept it and close processing for height %d.", bh)
 				continue
 			}
 
@@ -323,13 +286,9 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 				}
 			}
 			snr.BlockInit(blk.block)
-//			log.Infof("newblock initialized")
 
 		case <- Quit:
-//			log.Info("consensus received Quit")
 			polling = false
-//			ticker.Stop()
-//			DebugInfo()
 			break out
 		}
 	}
@@ -380,16 +339,14 @@ func HandleMessage(m Message) (bool, * chainhash.Hash) {
 		log.Infof("syncer has finished with %h. Ignore this message", h)
 		return false, nil
 	}
-	miner.syncMutex.Unlock()
-	
-//	log.Infof("miner dispatching Message for height %d", m.Block())
 
 	s.SetCommittee()
+	miner.syncMutex.Unlock()
 
 	var hash * chainhash.Hash
 
 	if !s.Runnable {
-		log.Infof("syncer is not ready for height %d, message will be queued. Current que len = %d", h, len(s.messages))
+		log.Infof("syncer is not ready for height %d, message will be queued. Current que len = %d", h, len(s.commands))
 
 		switch m.(type) {
 		case *wire.MsgKnowledge:
@@ -411,24 +368,24 @@ func HandleMessage(m Message) (bool, * chainhash.Hash) {
 			hash = &m.(*wire.MsgSignature).M
 		}
 
-		if len(s.messages) > 1 {
+		if len(s.commands) > 1 {
 			hash = nil
 		}
 
-		if len(s.messages) > (wire.CommitteeSize - 1) * 10 {
+		if len(s.commands) > (wire.CommitteeSize - 1) * 10 {
 			log.Infof("too many messages are queued. Discard oldest one.")
-			<- s.messages
+			<- s.commands
 		}
 	}
 
-	if len(s.messages) > (wire.CommitteeSize - 1) * 10 {
-		log.Infof("Runnable syner %d has too many (%d) messages queued. Discard oldest one.", s.Height, len(s.messages))
-		<- s.messages
+	if len(s.commands) > (wire.CommitteeSize - 1) * 10 {
+		log.Infof("Runnable syner %d has too many (%d) messages queued. Discard oldest one.", s.Height, len(s.commands))
+		<- s.commands
 		s.DebugInfo()
 //		return false, nil
 	}
 
-	s.messages <- m
+	s.commands <- m
 
 	return false, hash
 }
@@ -463,7 +420,7 @@ func Shutdown() {
 		s.Quit()
 	}
 
-	DebugInfo()
+//	DebugInfo()
 
 	select {
 	case <-Quit:
@@ -509,10 +466,6 @@ func DebugInfo() {
 	}
 	log.Infof("\nDone examing syner heights")
 	if s,ok := miner.Sync[top]; ok {
-		if len(s.repeating) == 0 && s.Runnable {
-			log.Infof("\nSendng repeating to %d", top)
-			s.repeating <- struct{}{}
-		}
 		s.DebugInfo()
 	}
 	miner.syncMutex.Unlock()

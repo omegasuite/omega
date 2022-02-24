@@ -34,6 +34,8 @@ func interruptListener() <-chan struct{} {
 		interruptChannel := make(chan os.Signal, 1)
 		signal.Notify(interruptChannel, interruptSignals...)
 
+		var wbuf bytes.Buffer
+
 		// Listen for initial shutdown signal and close the returned
 		// channel to notify the caller.
 //	shutdown:
@@ -47,11 +49,19 @@ func interruptListener() <-chan struct{} {
 //				}
 //				last = t
 
-				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
+				pprof.Lookup("mutex").WriteTo(&wbuf, 1)
+				pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
+				btcdLog.Infof("pprof Info: \n%s", wbuf.String())
+
+//				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 //				consensus.CommitteePolling()
 
 			case <-shutdownRequestChannel:
 				btcdLog.Info("Shutdown requested.  Shutting down...")
+				pprof.Lookup("mutex").WriteTo(&wbuf, 1)
+				pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
+				btcdLog.Infof("pprof Info: \n%s", wbuf.String())
+
 //				pprof.Lookup("goroutine").WriteTo(os.Stdout, 1)
 //				consensus.CommitteePolling()
 //				break shutdown
@@ -87,7 +97,6 @@ func interruptListener() <-chan struct{} {
 		time.AfterFunc(5 * time.Minute, func() {
 			btcdLog.Infof("Forced exit 5 min. after shutdown notice.")
 
-			var wbuf bytes.Buffer
 			pprof.Lookup("mutex").WriteTo(&wbuf, 1)
 			pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
 			btcdLog.Infof("pprof Info: \n%s", wbuf.String())

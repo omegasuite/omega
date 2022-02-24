@@ -247,7 +247,10 @@ func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 {	// *big.I
 // stale block such as a new block showing up or periodically when there are
 // new transactions and enough time has elapsed without finding a solution.
 func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h int64,
-	ticker *time.Ticker, quit chan struct{}) bool {
+	quit chan struct{}) bool {
+
+	ticker := time.NewTicker(time.Second * 5)
+	defer ticker.Stop()
 
 	// Create some convenience variables.
 	targetDifficulty := blockchain.CompactToBig(header.Bits)
@@ -280,7 +283,8 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 
 	// Initial state.
 	hashesCompleted := uint64(0)
-	rotation := m.g.Chain.BestSnapshot().LastRotation
+	tbest := m.g.Chain.BestSnapshot()
+	rotation := tbest.LastRotation
 
 	for true {
 		// Search through the entire nonce range for a solution while
@@ -295,7 +299,8 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 				m.updateHashes <- hashesCompleted
 				hashesCompleted = 0
 
-				if rotation != m.g.Chain.BestSnapshot().LastRotation {
+				tbest = m.g.Chain.BestSnapshot()
+				if rotation != tbest.LastRotation {
 					log.Infof("quit solving block because a rotation occurred in TX chain")
 					return false
 				}
@@ -381,8 +386,6 @@ func (m *CPUMiner) ChangeMiningKey(miningAddr btcutil.Address) {
 func (m *CPUMiner) generateBlocks(quit chan struct{}) {
 	// Start a ticker which is used to signal checks for stale work and
 	// updates to the speed monitor.
-	ticker := time.NewTicker(time.Second * hashUpdateSecs)
-	defer ticker.Stop()
 out:
 	for {
 		// Quit when the miner is stopped.
@@ -636,7 +639,7 @@ out:
 		}
 
 		log.Infof("miner Trying to solve block at %d with difficulty %d", template.Height, template.Bits)
-		if m.solveBlock(template, curHeight+1, h1 + h2, ticker, quit) {
+		if m.solveBlock(template, curHeight+1, h1 + h2, quit) {
 			log.Infof("New miner block produced by %x at %d", signAddr.ScriptAddress(), template.Height)
 			m.submitBlock(block)
 		} else {
