@@ -903,10 +903,15 @@ skiprest:
 				g.txSource.RemoveTransaction(tx, true)
 				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-				log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), err)
+				log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
+				logSkippedDeps(tx, deps)
+				continue
+			} else {
+				log.Infof("Skip tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
+				logSkippedDeps(tx, deps)
+				break skiprest	// skip rest so we don't waste time on on more contracts because this error
+						// could be caused by exec limit
 			}
-			logSkippedDeps(tx, deps)
-			break skiprest		// skip rest so we don't waste time on on more contracts
 //			continue
 		}
 
