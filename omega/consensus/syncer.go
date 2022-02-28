@@ -137,6 +137,8 @@ func (self *Syncer) repeater() {
 		return
 	}
 
+	self.debugging()
+
 	self.repeats++
 	if (self.repeats % 3)  == 0 {
 		// reset connections
@@ -434,6 +436,7 @@ loop:
 				if _, ok := self.forest[tree.creator]; !ok || self.forest[tree.creator].block == nil {
 					// each creator may submit only one tree
 					self.forest[tree.creator] = tree
+					self.repeats = 0
 				} else if (self.forest[tree.creator].hash != chainhash.Hash{}) && tree.hash != self.forest[tree.creator].hash {
 					if self.Me == tree.creator {
 						log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
@@ -465,7 +468,7 @@ loop:
 			case Message:
 				m := cmd.(Message)
 				self.handeling = m.Command()
-				//			log.Infof("processing %s message at %d", m.Command(), m.Block())
+
 				switch m.(type) {
 				case *wire.MsgKnowledge: // passing knowledge
 					if self.sigGiven >= 0 {
@@ -476,8 +479,6 @@ loop:
 
 					self.knowRevd[self.Members[k.From]] = self.Members[k.From]
 
-					//				log.Infof("MsgKnowledge: Finder = %x\nFrom = %x\nHeight = %d\nM = %s\nK = [%v]",
-					//					k.Finder, k.From, k.Height, k.M.String(), k.K)
 					if !self.validateMsg(k.Finder, &k.M, m) {
 						log.Infof("MsgKnowledge invalid")
 						continue
@@ -494,8 +495,8 @@ loop:
 							self.knows[k.Finder] = make([]*wire.MsgKnowledge, 0)
 						}
 						self.knows[k.Finder] = append(self.knows[k.Finder], k)
+						self.repeats = 0
 					}
-					//				log.Infof("MsgKnowledge processed")
 
 				case *wire.MsgKnowledgeDone:
 					if self.sigGiven >= 0 {
@@ -506,6 +507,7 @@ loop:
 
 					if self.knowledges.ProcKnowledgeDone((*wire.MsgKnowledge)(k)) {
 						self.candidacy()
+						self.repeats = 0
 					}
 
 				case *wire.MsgCandidate: // announce candidacy
@@ -538,8 +540,7 @@ loop:
 					if !self.validateMsg(k.From, nil, m) {
 						continue
 					}
-					//				log.Infof("candidateResp: From = %x\nHeight = %d\nM = %s %s",
-					//					k.From, k.Height, k.M.String(), k.Reply)
+
 					self.candidateResp(k)
 
 				case *wire.MsgRelease: // grant a release from duty
@@ -550,9 +551,9 @@ loop:
 					if !self.validateMsg(k.From, nil, m) {
 						continue
 					}
-					//				log.Infof("MsgRelease: From = %x\nHeight = %d\nM = %s",
-					//					k.From, k.Height, k.M.String())
+
 					self.Release(k)
+					self.repeats = 0
 
 				case *wire.MsgConsensus: // announce consensus reached
 					if self.sigGiven >= 0 {
@@ -569,21 +570,20 @@ loop:
 					}
 
 					self.consRevd[self.Members[k.From]] = self.Members[k.From]
+					self.repeats = 0
 					if self.Consensus(k) {
 						break loop
 					}
-					//				log.Infof("MsgConsensus: From = %x\nHeight = %d\nM = %s",
-					//					k.From, k.Height, k.M.String())
 
 				case *wire.MsgSignature: // received signature
 					k := m.(*wire.MsgSignature)
-					//				log.Infof("MsgSignature: From = %x\nHeight = %d\nM = %s",
-					//					k.From, k.Height, k.M.String())
+					self.repeats = 0
+
 					if self.Signature(k) {
 						if len(self.signed) == wire.CommitteeSize || time.Now().Sub(begin) >= time.Second {
 							break loop
 						} else {
-							time.Sleep(time.Millisecond) // wait 1 millisecond to allow all members to sign
+							time.Sleep(500 * time.Millisecond) // wait 500 millisecond to allow all members to sign
 						}
 					}
 
@@ -608,7 +608,6 @@ loop:
 		case m := <- self.commands:
 			switch m.(type) {
 			case *wire.MsgSignature:	// take all pending signatures
-//				log.Info("handling MsgSignature on quit")
 				self.Signature(m.(*wire.MsgSignature))
 			}
 
@@ -996,9 +995,11 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 			self.agrees[self.Members[msg.From]] = struct{}{}
 			self.ckconsensus()
 		}
+		self.repeats = 0
 	} else if msg.Reply == "cnst" && self.agreed == -1 {
 //		log.Infof("consent received from %x but I am not taking it", msg.From)
 		self.CommitteeMsgMG(msg.From, self.makeRelease(self.agreed))
+		self.repeats = 0
 	} else if msg.Reply == "rjct" && self.agreed == self.Myself {
 //		log.Infof("rejection received from %x", msg.From)
 		self.knowledges.Rejected(self.Members[msg.From])
@@ -1187,6 +1188,7 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 //		log.Infof("Candidate: Consent candicacy by %x", self.Names[fmp])
 
 		self.CommitteeMsgMG(self.Names[fmp], &d)
+		self.repeats = 0
 		return
 	}
 

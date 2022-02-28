@@ -152,10 +152,11 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 	ng, res := self.gain(mp, lmg.K)
 	lmg.From = self.syncer.Me
 
+	self.Knowledge[mp][me] |= res
+
 	for i, q := range self.Knowledge[mp] {
 		if int32(i) != me && (ng || (res &^ q != 0)) {
 			self.sendout(&lmg, mp, me, int32(i))
-//			self.syncer.CommitteeMsgMG(self.syncer.Names[int32(i)], &lmg)
 		}
 	}
 
@@ -175,7 +176,6 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 }
 
 func (self *Knowledgebase) ProcKnowledgeDone(msg *wire.MsgKnowledge) bool {
-//	k := msg.K
 	finder := msg.Finder
 	mp := self.syncer.Members[finder]
 	from := msg.From
@@ -219,7 +219,6 @@ func (self *Knowledgebase) improve(fact int32, k []int64, to int32) bool {
 func (self *Knowledgebase) sendout(msg *wire.MsgKnowledge, mp int32, me int32, q int32) bool {
 	if !self.syncer.CommitteeMsg(self.syncer.Names[q], msg) {
 		log.Infof("Fail to send knowledge to %d. Knowledge %v about %x", q, msg.K, msg.M)
-		// fail to send
 		return false
 	}
 

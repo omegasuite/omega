@@ -837,7 +837,10 @@ func NewMiner(cfg *Config) *CPUMiner {
 
 	if len(cfg.ExternalIPs) > 0 {
 		if _, ok := fast[cfg.ExternalIPs[0]]; ok {
-			works = uint32(runtime.NumCPU())
+			works = uint32(runtime.NumCPU()) - 1
+			if works <= 0 {
+				works = 1
+			}
 			log.Infof("CPU count = %d", works)
 		}
 	}

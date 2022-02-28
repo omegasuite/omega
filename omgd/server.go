@@ -1618,6 +1618,10 @@ func (sp *serverPeer) OnWrite(_ *peer.Peer, bytesWritten int, msg wire.Message, 
 func (sp *serverPeer) OnReject(p *peer.Peer, msg *wire.MsgReject) {
 }
 
+func (sp *serverPeer) OnAlert(p *peer.Peer, msg *wire.MsgAlert) {
+	
+}
+
 // PushGetBlock is invoked when consensus handler receives a moot consensus message
 // which indicates a consensus peer is behind us.
 func (sp *serverPeer) PushGetBlock(p *peer.Peer) {
@@ -2588,7 +2592,7 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 			OnWrite:        sp.OnWrite,
 			PushGetBlock:	sp.PushGetBlock,
 			OnReject:		sp.OnReject,
-			OnAlert:		nil,
+			OnAlert:		sp.OnAlert,
 		},
 		NewestBlock:       sp.newestBlock,
 		NewestMinerBlock:  sp.newestMinerBlock,
