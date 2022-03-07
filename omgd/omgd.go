@@ -212,6 +212,8 @@ func btcdMain(serverChan chan<- *server) error {
 		}
 	}
 
+	activeNetParams.Params.ExternalIPs = tcfg.ExternalIPs
+
 	activeNetParams.Params.ChainCurrentStd = time.Hour * time.Duration(tcfg.ChainCurrentStd)
 
 	// Create server and start it.
@@ -256,6 +258,7 @@ func btcdMain(serverChan chan<- *server) error {
 			h := state.Height
 			before := h
 			server.rpcServer.Rpcactivity = make(chan struct{})
+
 			for {
 				select {
 				case <- server.rpcServer.Rpcactivity:

@@ -233,7 +233,7 @@ func (self *Syncer) repeater() {
 		}
 	}
 
-	if tree,ok := self.forest[self.Me]; ok {
+	if tree,ok := self.forest[self.Me]; ok && len(self.commands) < (wire.CommitteeSize - 1) * 10 {
 		k := wire.NewMsgKnowledge()
 		k.From = self.Me
 		k.Height = self.Height
@@ -254,7 +254,9 @@ func (self *Syncer) repeater() {
 
 	for _, tree := range self.forest {
 		if tree.block == nil {
-			self.pull(tree.hash, self.Myself)
+			if _,ok := self.Members[tree.creator]; ok {
+				self.pull(tree.hash, self.Members[tree.creator])
+			}
 		}
 	}
 
@@ -309,16 +311,8 @@ func (self *Syncer) repeater() {
 
 	if self.idles > 2 {
 		self.idles = 0
-		// resend candidacy
-		if self.agreed == self.Myself {
-			log.Infof("Repeater: cast my candidacy %d", self.agreed)
-			msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
-			msg.Sign(miner.server.GetPrivKey(self.Me))
-			self.CommitteeCastMG(msg)
-		}
-
-		// resend signatures
 		if self.sigGiven != -1 {
+			// resend signatures
 			privKey := miner.server.GetPrivKey(self.Me)
 			if privKey == nil {
 				return
@@ -346,24 +340,43 @@ func (self *Syncer) repeater() {
 			copy(sigmsg.Signature[btcec.PubKeyBytesLenCompressed:], s)
 
 			self.CommitteeCastMG(&sigmsg)
-		} else {
-			// resend consensus
-			log.Infof("Repeater: reckconsensus")
-			self.ckconsensus()
-		}
+		} else if self.ckconsensus() {
+			return
+		} else if self.agreed == self.Myself {
+			log.Infof("Repeater: cast my candidacy %d", self.agreed)
+			msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
+			msg.Sign(miner.server.GetPrivKey(self.Me))
+			self.CommitteeCastMG(msg)
+		} else if self.agreed != -1 {
+			// resend agreement
+			M := self.forest[self.Names[self.agreed]].hash
+			d := wire.MsgCandidateResp{Height: self.Height, K: []int64{}, From: self.Me, M: M}
 
-		for k, ok := range self.asked {
-			if int32(k) == self.Myself || !ok {
-				continue
+			d.Reply = "cnst"
+			d.Better = self.agreed
+			d.Sign(miner.server.GetPrivKey(self.Me))
+
+			self.CommitteeMsgMG(self.Names[self.agreed], &d)
+		} else if _,ok := self.forest[self.Me]; ok {
+			// no agreement has reached, volunteer for it
+			log.Infof("Repeater: volunteer for candidacy")
+			msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
+			msg.Sign(miner.server.GetPrivKey(self.Me))
+			self.CommitteeCastMG(msg)
+		} else {
+			for k, ok := range self.asked {
+				if int32(k) == self.Myself || !ok {
+					continue
+				}
+				n := self.Names[int32(k)]
+				if self.forest[n] == nil {
+					continue
+				}
+				if self.forest[n].block != nil {
+					continue
+				}
+				self.pull(self.forest[n].hash, int32(k))
 			}
-			n := self.Names[int32(k)]
-			if self.forest[n] == nil {
-				continue
-			}
-			if self.forest[n].block != nil {
-				continue
-			}
-			self.pull(self.forest[n].hash, int32(k))
 		}
 	}
 }
@@ -865,20 +878,20 @@ func (self *Syncer) reckconsensus() {
 	}
 }
 
-func (self *Syncer) ckconsensus() {
+func (self *Syncer) ckconsensus() bool {
 	if self.agreed != self.Myself || len(self.agrees) + 1 < wire.CommitteeSigs {
-		return
+		return false
 	}
 
 	if self.forest[self.Me] == nil || self.forest[self.Me].block == nil {
-		return
+		return false
 	}
 
 	hash := blockchain.MakeMinerSigHash(self.Height, self.forest[self.Me].hash)
 
 	if privKey := miner.server.GetPrivKey(self.Me); privKey != nil && self.sigGiven == -1 {
 		if !UpdateLastWritten(self.Height) && self.sigGiven != self.Myself {	// nenver sign if height is not higher than last signed block
-			return
+			return false
 		}
 		self.sigGiven = self.Myself
 
@@ -906,7 +919,10 @@ func (self *Syncer) ckconsensus() {
 //		log.Infof("ckconsensus: cast Consensus")
 
 		self.CommitteeCastMG(&msg)
+
+		return true
 	}
+	return false
 }
 
 func (self *Syncer) makeRelease(better int32) *wire.MsgRelease {
@@ -1374,6 +1390,16 @@ func (self *Syncer) setCommittee() {
 
 		for _,n := range miner.name {
 			if bytes.Compare(n[:], blk.MsgBlock().Miner[:]) == 0 {
+				inc := false
+				for _, ip := range miner.cfg.ExternalIPs {
+					if ip == string(blk.MsgBlock().Connection) {
+						inc = true
+					}
+				}
+				if !inc {
+					continue
+				}
+
 				copy(self.Me[:], n[:])
 				self.Myself = who
 				in = true
@@ -1387,6 +1413,7 @@ func (self *Syncer) setCommittee() {
 	self.knowledges = CreateKnowledge(self)
 
 	if in {
+		log.Infof("Run consensus protocol at %d", self.Height)
 		go self.run()
 	} else {
 		self.Runnable = false
@@ -1483,7 +1510,11 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 func (self *Syncer) Quit() {
 	self.Done = true
 	select {
-	case <-self.quit:
+	case _,ok := <-self.quit:
+		if ok {
+			close(self.quit)
+		}
+
 	default:
 		close(self.quit)
 	}
@@ -1516,7 +1547,7 @@ func (self *Syncer) print() {
 }
 
 func (self *Syncer) DebugInfo() {
-	if !self.Done {
+	if !self.Done && len(self.commands) < (wire.CommitteeSize - 1) * 10 {
 		self.commands <- &debugtype{}
 	}
 }

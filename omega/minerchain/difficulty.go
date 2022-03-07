@@ -262,11 +262,11 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		block := pb.Data.(*blockchainNodeData).block
 		bb := b.blockChain.NodeByHash(&block.BestBlock)
 
-		if block.Collateral < coll {
+		if block.Collateral < coll && block.Version < chaincfg.Version5 {
 			coll = block.Collateral
 		}
 
-		if v3 && block.Version >= chaincfg.Version2 && block.Utxos != nil {
+		if v3 && block.Version >= chaincfg.Version5 && block.Utxos != nil {
 			var op = block.Utxos
 
 			// it could have been spent, so we get the raw tx and find out its value
@@ -279,32 +279,32 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			// Load the raw transaction bytes from the database.
 			var txBytes []byte
 			err = b.db.View(func(dbTx database.Tx) error {
-					var err error
-					txBytes, err = dbTx.FetchBlockRegion(blockRegion)
-					return err
-				})
+				var err error
+				txBytes, err = dbTx.FetchBlockRegion(blockRegion)
+				return err
+			})
 
 			if err != nil {
-					blk, err := b.blockChain.BlockByHash(blockRegion.Hash)
-					if err != nil {
+				blk, err := b.blockChain.BlockByHash(blockRegion.Hash)
+				if err != nil {
 						panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " for " + err.Error())
 					}
-					fd := false
-					for _, tx := range blk.Transactions() {
-						if tx.Hash().IsEqual(&op.Hash) {
-							v := tx.MsgTx().TxOut[op.Index].Value.(*token.NumToken).Val / 1e8
-							if uint32(v) < coll {
-								coll = uint32(v)
-							}
-							fd = true
-							break
+				fd := false
+				for _, tx := range blk.Transactions() {
+					if tx.Hash().IsEqual(&op.Hash) {
+						v := tx.MsgTx().TxOut[op.Index].Value.(*token.NumToken).Val / 1e8
+						if uint32(v) < coll {
+							coll = uint32(v)
 						}
+						fd = true
+						break
 					}
-					if !fd {
-						panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " at " + blockRegion.Hash.String() + " " + strconv.Itoa(int(blockRegion.Len)) + " : " + strconv.Itoa(int(blockRegion.Offset)))
-					}
-					//				panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " at " + blockRegion.Hash.String() + " " + strconv.Itoa(int(blockRegion.Len)) + " : " + strconv.Itoa(int(blockRegion.Offset)))
-				} else {
+				}
+				if !fd {
+					panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " at " + blockRegion.Hash.String() + " " + strconv.Itoa(int(blockRegion.Len)) + " : " + strconv.Itoa(int(blockRegion.Offset)))
+				}
+				//				panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " at " + blockRegion.Hash.String() + " " + strconv.Itoa(int(blockRegion.Len)) + " : " + strconv.Itoa(int(blockRegion.Offset)))
+			} else {
 				// Deserialize the transaction
 				var msgTx wire.MsgTx
 				err = msgTx.Deserialize(bytes.NewReader(txBytes))

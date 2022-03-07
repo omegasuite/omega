@@ -117,6 +117,10 @@ const (
 	// after the expire time
 	DeploymentVersion4
 
+	// DeploymentVersion5 includes: new way to calculate collateral requirement (7/8 of min.
+	// collateral provided in the previous adj. period)
+	DeploymentVersion5
+
 	// DefinedDeployments is the number of currently defined deployments.
 	// It must always come last since it is used to determine how many
 	// defined deployments there currently are.
@@ -128,6 +132,7 @@ const (
 	Version2 = 0x20000
 	Version3 = 0x30000
 	Version4 = 0x40000
+	Version5 = 0x50000
 )
 
 type forfeitureContract struct {
@@ -339,6 +344,12 @@ var MainNetParams = Params{
 			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  uint64(time.Date(2021, 12, 21, 0, 0, 0, 0, time.UTC).Unix()),
 		},
+		DeploymentVersion5: {
+			PrevVersion: 0x40000,
+			FeatureMask: 0x8,
+			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2022, 5, 2, 0, 0, 0, 0, time.UTC).Unix()),
+		},
 	},
 
 	// Mempool parameters
@@ -437,6 +448,12 @@ var RegressionNetParams = Params{
 			PrevVersion: 0x30000,
 			FeatureMask: 0x4,
 			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
+		DeploymentVersion5: {
+			PrevVersion: 0x40000,
+			FeatureMask: 0x8,
+			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  math.MaxInt64, // Never expires
 		},
 	},
@@ -543,6 +560,12 @@ var TestNet3Params = Params{
 			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  math.MaxInt64, // Never expires
 		},
+		DeploymentVersion5: {
+			PrevVersion: 0x40000,
+			FeatureMask: 0x8,
+			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
 	},
 
 	// Mempool parameters
@@ -646,6 +669,12 @@ var SimNetParams = Params{
 			PrevVersion: 0x30000,
 			FeatureMask: 0x4,
 			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
+		DeploymentVersion5: {
+			PrevVersion: 0x40000,
+			FeatureMask: 0x8,
+			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  math.MaxInt64, // Never expires
 		},
 	},

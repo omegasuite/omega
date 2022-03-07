@@ -7,7 +7,6 @@ package main
 import (
 	"bytes"
 	"crypto/rsa"
-	"crypto/sha256"
 	"encoding/json"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
@@ -44,6 +43,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 				btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), sp.Addr())
 				sp.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 				sent = true
+				break
 			}
 		}
 		if !sent {
@@ -65,6 +65,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 			if len(s.peers) > 0 {
 				btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), s.peers[0].Addr())
 				s.peers[0].QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
+				sent = true
 			} else if !s.connecting {	// if len(s.address) > 0
 				tcp, err := net.ResolveTCPAddr("", s.address)
 				if err != nil {
@@ -110,12 +111,14 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 				continue
 			}
 		}
-		r := <- done
-		m, ok := msg.(*wire.MsgKnowledge)
-		if ok && r {
-			reply := wire.MsgKnowledgeDone(*m)
-			reply.From = s.member
-			consensus.HandleMessage(&reply)
+		if sent {
+			r := <-done
+			m, ok := msg.(*wire.MsgKnowledge)
+			if ok && r {
+				reply := wire.MsgKnowledgeDone(*m)
+				reply.From = s.member
+				consensus.HandleMessage(&reply)
+			}
 		}
 	}
 }
@@ -422,6 +425,15 @@ func (s *server) MyPlaceInCommittee(r int32) int32 {
 		miner := mb.MsgBlock().Miner
 		for _,sa := range s.signAddress {
 			if bytes.Compare(miner[:], sa.ScriptAddress()) == 0 {
+				in := false
+				for _, ip := range s.chainParams.ExternalIPs {
+					if ip == string(mb.MsgBlock().Connection) {
+						in = true
+					}
+				}
+				if !in {
+					continue
+				}
 				return i
 			}
 		}
@@ -502,10 +514,11 @@ func (s * server) makeInvitationMsg(me int32, miner []byte, conn []byte) * wire.
 		return nil
 	}
 
-	m.Msg, err = rsa.EncryptOAEP(sha256.New(), nil, &pubkey, w.Bytes(), []byte("invitation"))
+	m.Msg, err = encrypt(w.Bytes(), &pubkey)
 	if err != nil {
 		return nil
 	}
+
 	return &m
 }
 
@@ -667,6 +680,17 @@ func (s *server) handleCommitteRotation(r int32) {
 			break
 		}
 
+		rc := false
+		conn := mb.MsgBlock().Connection
+		for _,c := range s.chainParams.ExternalIPs {
+			if string(conn) == c {
+				rc = true
+			}
+		}
+		if rc {
+			continue
+		}
+
 		s.peerState.cmutex.Lock()
 		_, ok := s.peerState.committee[mb.MsgBlock().Miner]
 		s.peerState.cmutex.Unlock()
@@ -704,8 +728,6 @@ func (s *server) handleCommitteRotation(r int32) {
 		// check its connection info.
 		// if it is an IP address, connect directly,
 		// otherwise, broadcast q request for connection msg.
-		conn := mb.MsgBlock().Connection
-
 		s.makeConnection(conn, mb.MsgBlock().Miner, j)
 	}
 }
@@ -718,7 +740,7 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 	s.peerState.cmutex.Unlock()
 
 	s.peerState.qmutex.Lock()
-	if ok && !sp.closed {
+	if ok && !sp.closed && len(sp.queue) < 50 {
 		sp.queue <- m
 	}
 	s.peerState.qmutex.Unlock()
@@ -738,7 +760,7 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 		s.peerState.cmutex.Unlock()
 
 		s.peerState.qmutex.Lock()
-		if ok && !sp.closed {
+		if ok && !sp.closed && len(sp.queue) < 50 {
 			sp.queue <- m
 		}
 		s.peerState.qmutex.Unlock()

@@ -532,25 +532,25 @@ out:
 		// check whether the address is allowed to mine a POW block
 		// the rule is that we don't do POW mining while in committee
 
-		var payToAddr * btcutil.Address
+		var payToAddr btcutil.Address
 
 		tip := m.g.Chain.BestChain.Tip()
 		pb := tip.Data.GetNonce()
 		height := tip.Height
 
-		committee := m.g.Committee()
+		committee, in := m.g.Committee()
 
 		var adr [20]byte
 		powMode := true
 		var sigaddr *btcec.PrivateKey
 
-//		log.Infof("committee size = %d.", len(committee))
+		log.Infof("committee size = %d. I am %v", len(committee), in)
 
-		if len(m.cfg.SignAddress) != 0 && len(committee) == wire.CommitteeSize {
+		if len(m.cfg.SignAddress) != 0 && len(committee) == wire.CommitteeSize && in {
 			for j,pt := range m.cfg.SignAddress {
 				copy(adr[:], pt.ScriptAddress())
 				if _, ok := committee[adr]; ok {
-					payToAddr = &pt
+					payToAddr = m.cfg.SignAddress[j]
 					sigaddr = m.cfg.PrivKeys[j]
 					powMode = false
 					break
@@ -560,16 +560,16 @@ out:
 
 		if powMode {
 			// pick one from address list
-			payToAddr = &m.cfg.MiningAddrs[rand.Int()%len(m.cfg.MiningAddrs)]
+			payToAddr = m.cfg.MiningAddrs[rand.Int()%len(m.cfg.MiningAddrs)]
 		}
 
 		// Create a new block template using the available transactions
 		// in the memory pool as a source of transactions to potentially
 		// include in the block.
 
-		payToAddress := []btcutil.Address{*payToAddr}
+		payToAddress := []btcutil.Address{payToAddr}
 
-//		log.Infof("powMode = %v.", powMode)
+		log.Infof("powMode = %v.", powMode)
 
 		nonce := pb
 		if !powMode {
@@ -591,19 +591,19 @@ out:
 
 			if wire.CommitteeSize > 1 {
 				// check collateral. kick out those not qualified.
-				payToAddress = m.coinbaseByCommittee(*payToAddr)
+				payToAddress = m.coinbaseByCommittee(payToAddr)
 				if len(payToAddress) == 0 {
 					// My this address is not qualified. Use a random in POW mode.
-//					log.Infof("Change to POW mining because my address is not qualified.")
+					log.Infof("Change to POW mining because my address is not qualified.")
 					powMode = true
-					payToAddr = &m.cfg.MiningAddrs[rand.Int() % len(m.cfg.MiningAddrs)]
-					payToAddress = []btcutil.Address{*payToAddr}
+					payToAddr = m.cfg.MiningAddrs[rand.Int() % len(m.cfg.MiningAddrs)]
+					payToAddress = []btcutil.Address{payToAddr}
 					nonce = 1
 				} else if len(payToAddress) <= wire.CommitteeSize / 2 {
 					// impossible to form a qualified consensus
-//					log.Infof("Change to POW mining because insufficient committee members.")
+					log.Infof("Change to POW mining because insufficient committee members.")
 					powMode = true
-					payToAddress = []btcutil.Address{*payToAddr}
+					payToAddress = []btcutil.Address{payToAddr}
 					nonce = 1
 				}
 			}
@@ -621,13 +621,14 @@ out:
 			log.Infof(errStr)
 			continue
 		}
-		log.Infof("new block template created")
+		log.Infof("new block template created at %d", template.Height)
 
 		wb := template.Block.(*wire.MsgBlock)
 		block := btcutil.NewBlock(wb)
 		block.SetHeight(template.Height)
 
 		if template.Height != height + 1 {
+			log.Infof("height %d is not uptodate", template.Height)
 			// a new block got inserted between we get tip ino and gen template
 			continue
 		}
@@ -639,7 +640,7 @@ out:
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
 				mining.AddSignature(block, sigaddr)
 			} else {
-				block.ClearSize()
+//				block.ClearSize()
 				block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
 			}
 			m.minedBlock = block
@@ -676,18 +677,19 @@ out:
 
 			nopow = true
 
-//			log.Infof("New committee block produced by %s nonce = %d at %d", (*payToAddr).String(), block.MsgBlock().Header.Nonce, template.Height)
+			log.Infof("Submit block produced by %s nonce = %d at %d", payToAddr.String(), block.MsgBlock().Header.Nonce, template.Height)
 			if !m.submitBlock(block) {
+				log.Infof("Submit block failed")
 				continue
 			}
-//			log.Infof("Waiting for block connected at %d", block.Height())
+			log.Infof("Waiting for block connected at %d", block.Height())
 
 		connected:
 			for true {
 				select {
 				case blk,ok := <-m.connch:
-//					log.Infof("Noticed of new connected block %d", blk)
 					if !ok || blk >= block.Height() {
+						log.Infof("Noticed of new connected block %d", blk)
 						break connected
 					}
 					
@@ -699,21 +701,22 @@ out:
 				case <-m.quit:
 					m.minedBlock = nil
 					break out
-
+/*
 				case <-time.After(time.Second * 5):
 					if m.g.Chain.BestSnapshot().Height >= block.Height() || time.Now().Unix() - lastblkgen > 600 {
+						log.Infof("5 sec consensus timeout at block %d", block.Height())
 						break connected
 					}
 
-//					log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
+					log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
 //					consensus.DebugInfo()
+ */
 				}
 			}
 
 			m.minedBlock = nil
 
-//			log.Infof("Proceed to generate next block")
-
+			log.Infof("Proceed to generate next block")
 			continue
 		}
 
@@ -754,7 +757,7 @@ out:
 		}
 */
 
-		fmt.Printf("Try to solve block ")
+		log.Info("Try to solve block")
 
 		// Attempt to solve the block.  The function will exit early
 		// with false when conditions that trigger a stale block, so

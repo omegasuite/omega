@@ -2,4 +2,4 @@
 SHELL=/bin/bash
 PATH=/sbin:/bin:/usr/sbin:/usr/bin
 MAILTO=root
-*/10 * * * * root /root/omgdmonitor
+*/1 * * * * root /root/omgdmonitor

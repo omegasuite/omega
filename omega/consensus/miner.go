@@ -88,6 +88,11 @@ func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 	flags |= blockchain.BFNoConnect
 	log.Infof("Consensus.ProcessBlock for block %s at %d, flags=%x", block.Hash().String(), block.Height(), flags)
 
+	if block.Height() < 0 {
+		block.SetHeight(int32(block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index))
+		log.Infof("Force height to %d", block.Height())
+	}
+
 	block.ClearSize()
 	if newblockch != nil {
 		newblockch <- newblock{block, flags}
@@ -196,7 +201,7 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	miner = &Miner{}
 	miner.server = s
 	miner.cfg = cfg
-	miner.updateheight = make(chan int32, 20)
+	miner.updateheight = make(chan int32, 200)
 	miner.lastSignedBlock = 0
 
 	lwbFile := dataDir + "/lastsignedblock"

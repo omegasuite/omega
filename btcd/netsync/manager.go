@@ -2247,15 +2247,17 @@ func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.Behav
 
 	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		log.Debugf("procssing a comittee block, height = %d", block.Height())
-			sm.msgChan <- processBlockMsg{block: block, flags: flags | blockchain.BFSubmission, reply: reply}
+		sm.msgChan <- processBlockMsg{block: block, flags: flags | blockchain.BFSubmission, reply: reply}
 
 		response := <-reply
 		if response.err != nil {
-				return false, response.err
-			}
+			fmt.Printf("netsync.ProcessBlock processBlockMsg got error: %s", response.err.Error())
+			return false, response.err
+		}
 
 		// for local consensus generation
-		log.Debugf("send for consensus generation")
+//		log.Infof("send for consensus generation at %d", block.Height())
+		fmt.Printf("send for consensus generation at %d", block.Height())
 		sm.msgChan <- processConsusMsg{block: block, flags: flags }
 		// treating these blocks as orphans because we may need to pull them upon request
 		return false, nil

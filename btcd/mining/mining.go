@@ -704,8 +704,7 @@ mempoolLoop:
 		// Calculate the final transaction priority using the input
 		// value age sum as well as the adjusted transaction size.  The
 		// formula is: sum(inputValue * inputAge) / adjustedTxSize
-		prioItem.priority = CalcPriority(tx.MsgTx(), utxos,
-			nextBlockHeight)
+		prioItem.priority = CalcPriority(tx.MsgTx(), utxos, nextBlockHeight)
 
 		// Calculate the fee in Hao/kB.
 		prioItem.feePerKB = txDesc.FeePerKB
@@ -723,8 +722,7 @@ mempoolLoop:
 //		mergeUtxoView(blockUtxos, utxos)
 	}
 
-	log.Tracef("Priority queue len %d, dependers len %d",
-		priorityQueue.Len(), len(dependers))
+	log.Tracef("Priority queue len %d, dependers len %d", priorityQueue.Len(), len(dependers))
 
 	// The starting block size is the size of the block header plus the max
 	// possible transaction count size, plus the size of the coinbase
@@ -1334,20 +1332,29 @@ func (g *BlkTmplGenerator) ActiveMiner(address btcutil.Address) bool {
 	return false
 }
 
-func (g *BlkTmplGenerator) Committee() map[[20]byte]struct{} {
+func (g *BlkTmplGenerator) Committee() (map[[20]byte]struct{}, bool) {
 	h := g.BestSnapshot().LastRotation		// .Chain.LastRotation(g.BestSnapshot().Hash)
 
 	log.Infof("Get committee at last rotation = %d", h)
 
-	adrs := make(map[[20]byte]struct{})
+	adrs, in := make(map[[20]byte]struct{}), false
 
 	for n := h - wire.CommitteeSize + 1; n <= h; n++ {
 		if m,_ := g.Chain.Miners.BlockByHeight(int32(n)); m != nil {
 			adrs[m.MsgBlock().Miner] = struct{}{}
+			for _, ip := range g.chainParams.ExternalIPs {
+				if ip == string(m.MsgBlock().Connection) {
+					in = true
+				}
+			}
 		}
 	}
 
-	return adrs
+	if !in {
+		return nil, false
+	}
+
+	return adrs, in
 }
 
 func AddSignature(block * btcutil.Block, privkey *btcec.PrivateKey) {
