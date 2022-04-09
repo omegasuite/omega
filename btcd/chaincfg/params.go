@@ -103,7 +103,7 @@ const (
 	DeploymentTestDummy = iota
 
 	// DeploymentVersion2 includes: requirement for collateral, treating tx fees
-	// as insurance and conpensate seller using collateral; new POW adjust scheme
+	// as insurance and compensate seller using collateral; new POW adjust scheme
 	// combining collecteral amount and TPS score.
 	DeploymentVersion2
 

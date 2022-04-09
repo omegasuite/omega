@@ -8,7 +8,6 @@ package btcjson
 import (
 	"encoding/json"
 	"github.com/omegasuite/btcd/wire"
-
 	//	"github.com/btcsuite/btcd/wire"
 )
 
@@ -343,6 +342,10 @@ type RightDefinition struct {
 	Desc		   string   `json:"desc"`		// a wire.Vertex
 	Attrib         uint32   `json:"attrib"`
 }
+type RightSetDefinition struct {
+	Kind		   int32   `json:"kind"`		// 5
+	Rights		   []string   `json:"rights"`
+}
 
 // GetTxOutResult models the data from the getdefine command.
 type GetDefineResult struct {
@@ -374,6 +377,16 @@ type Vin struct {
 	ScriptSig *ScriptSig `json:"scriptSig"`
 	Sequence  uint32     `json:"sequence"`
 	SignatureIndex   uint32   `json:"signatureIndex"`
+}
+
+type Vdef struct {
+	Type	  uint8		 `json:"type"`
+	// definition
+	Father	  string	 `json:"father"`
+	Desc	  string	 `json:"desc"`
+	Attrib	  uint8	 	 `json:"attrib"`
+	Hashes	  []string	 `json:"hashes"`
+	Script	  string	 `json:"script"`
 }
 
 // IsCoinBase returns a bool to show if a Vin is a Coinbase one or not.
@@ -554,6 +567,7 @@ type TxRawResult struct {
 //	Vsize         int32  `json:"vsize,omitempty"`
 	Version       int32  `json:"version"`
 	LockTime      uint32 `json:"locktime"`
+	Vdef		  []Vdef `json:"vdef"`
 	Vin           []Vin  `json:"vin"`
 	Vout          []Vout `json:"vout"`
 	BlockHash     string `json:"blockhash,omitempty"`
@@ -615,6 +629,7 @@ type TxRawDecodeResult struct {
 	Txid     string `json:"txid"`
 	Version  int32  `json:"version"`
 	Locktime uint32 `json:"locktime"`
+	Vdef     []Vdef `json:"vdef"`
 	Vin      []Vin  `json:"vin"`
 	Vout     []Vout `json:"vout"`
 }

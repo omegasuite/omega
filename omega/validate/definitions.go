@@ -111,7 +111,12 @@ func ScanDefinitions(msgTx *wire.MsgTx) (error, map[chainhash.Hash]*token.RightD
 							refd = true
 						}
 					}
-					break
+
+				case *token.RightDef:
+					bd := b.(*token.RightDef)
+					if h.IsEqual(&bd.Father) {
+						refd = true
+					}
 				}
 			}
 			for _,to := range msgTx.TxOut {
@@ -131,11 +136,11 @@ func ScanDefinitions(msgTx *wire.MsgTx) (error, map[chainhash.Hash]*token.RightD
 			v := def.(*token.RightSetDef)
 			refd := false
 			h := v.Hash()
-			newrightsets[h] = v
 			if _,ok := newrightsets[h]; ok {
 				str := fmt.Sprintf("Duplicated right set definition.", h.String())
 				return ruleError(1, str), nil, nil
 			}
+			newrightsets[h] = v
 			for _,to := range msgTx.TxOut {
 				if to.IsSeparator() || !to.HasRight() {
 					continue

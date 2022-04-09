@@ -381,6 +381,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 	}
 
 //	debugging = true
+	var printInst = true	// debugging
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
@@ -421,7 +422,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 		}
 
 		// execute the operation
-		if debugging {
+		if printInst {
 			fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
 		}
 

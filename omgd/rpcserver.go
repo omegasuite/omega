@@ -8,9 +8,14 @@ package main
 
 import (
 	"bytes"
+	rrand "crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/subtle"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
+
 	//	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -145,6 +150,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getbestminerblockhash": handleGetBestMinerBlockHash,	// New
 	"getblock":              handleGetBlock,
 	"getblockchaininfo":     handleGetBlockChainInfo,		// Changed: get info. for both chains
+	"alert":			     handleAlert,
 	"addminingkey":			 handleAddMiningKey,
 	"getblockcount":         handleGetBlockCount,
 	"getblockhash":          handleGetBlockHash,
@@ -1127,6 +1133,43 @@ func handleDebugLevel(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 	return "Done.", nil
 }
 
+func createVdefList(mtx *wire.MsgTx) []btcjson.Vdef {
+	// Coinbase transactions only have a single txin by definition.
+	vinList := make([]btcjson.Vdef, len(mtx.TxDef))
+
+	j := 0
+	for _, txdef := range mtx.TxDef {
+		if txdef.IsSeparator() {
+			continue
+		}
+
+		vinEntry := &vinList[j]
+		j++
+		vinEntry.Type = txdef.DefType()
+
+		var w bytes.Buffer
+		txdef.Write(&w, 0)
+		vinEntry.Script = hex.EncodeToString(w.Bytes())
+
+		if vinEntry.Type == 4 {
+			t := txdef.(*token.RightDef)
+			vinEntry.Father = t.Father.String()
+			vinEntry.Desc = string(t.Desc)
+			vinEntry.Attrib = t.Attrib
+		} else if vinEntry.Type == 5 {
+			t := txdef.(*token.RightSetDef)
+			vinEntry.Hashes = make([]string, len(t.Rights))
+			for i := 0; i < len(t.Rights); i++ {
+				vinEntry.Hashes[i] = t.Rights[i].String()
+			}
+		}
+	}
+
+	vinList = vinList[:j]
+
+	return vinList
+}
+
 // createVinList returns a slice of JSON objects for the inputs of the passed
 // transaction.
 func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
@@ -1287,6 +1330,7 @@ func createTxRawResult(chainParams *chaincfg.Params, mtx *wire.MsgTx,
 		Hash:     mtx.TxHash().String(),	// tx hash does not include signature
 //		Hash:     mtx.SignatureHash().String(),
 		Size:     int32(mtx.SerializeSize()),
+		Vdef:	  createVdefList(mtx),
 //		Vsize:    int32(blockchain.GetTransactionWeight(btcutil.NewTx(mtx))),
 		Vin:      createVinList(mtx),
 		Vout:     createVoutList(mtx, chainParams, nil),
@@ -1332,6 +1376,7 @@ func handleDecodeRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 		Txid:     mtx.TxHash().String(),
 		Version:  mtx.Version,
 		Locktime: mtx.LockTime,
+		Vdef:	  createVdefList(&mtx),
 		Vin:      createVinList(&mtx),
 		Vout:     createVoutList(&mtx, s.cfg.ChainParams, nil),
 	}
@@ -3908,7 +3953,48 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			Definition: result,
 		}
 		return reply, nil
-		break
+
+	case token.DefTypeRightSet:
+		entry, err := s.cfg.Chain.FetchRightSetEntry(*hash)
+		if err != nil {
+			return nil, rpcDefinitionError(hash.String())
+		}
+		v := &token.RightSetDef{
+			Rights: entry.Rights,
+		}
+		result := make(map[string]interface{}, 0)
+		(*dup)[v.Hash().String()] = struct{}{}
+
+		rs := make([]string, len(entry.Rights))
+		for i := 0; i < len(v.Rights); i++ {
+			rs[i] = v.Rights[i].String()
+		}
+
+		result[v.Hash().String()] = &btcjson.RightSetDefinition{
+			Kind: 4,
+			Rights:rs,
+		}
+
+		if !rec {
+			reply := &btcjson.GetDefineResult{
+				Definition: result,
+			}
+			return reply, nil
+		}
+
+		for i := 0; i < len(v.Rights); i++ {
+			t, err := handleRecursiveGetDefine(s, token.DefTypeRight, &v.Rights[i], rec, dup)
+			if err != nil {
+				return nil, err
+			}
+			for h,u := range t.(*btcjson.GetDefineResult).Definition {
+				result[h] = u
+			}
+		}
+		reply := &btcjson.GetDefineResult{
+			Definition: result,
+		}
+		return reply, nil
 	}
 	return nil,rpcDefinitionError(hash.String())
 }

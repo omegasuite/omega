@@ -558,6 +558,10 @@ out:
 			}
 		}
 
+		if powMode == in {
+			log.Errorf("error: expected private key not found")
+		}
+
 		if powMode {
 			// pick one from address list
 			payToAddr = m.cfg.MiningAddrs[rand.Int()%len(m.cfg.MiningAddrs)]

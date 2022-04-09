@@ -9,12 +9,15 @@ package main
 // import "C"
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -23,9 +26,11 @@ import (
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/omega/minerchain"
+	"io"
 	"math"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -377,6 +382,7 @@ type server struct {
 	// broadcasted is the inventory of message we have broadcasted,
 	// the purpose is to prevent rebroadcast
 	Broadcasted map[chainhash.Hash]int64
+	alerted map[int32]struct{}
 }
 
 // serverPeer extends the peer to maintain state shared by the server and
@@ -2278,6 +2284,7 @@ func (s *server) handleBanPeerMsg(state *peerState, sp *serverPeer) {
 // handleRelayInvMsg deals with relaying inventory to peers that are not already
 // known to have it.  It is invoked from the peerHandler goroutine.
 func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
+	sps := make([]*serverPeer, 0)
 	state.ForAllPeers(func(sp *serverPeer) {
 		if !sp.Connected() {
 			return
@@ -2303,7 +2310,10 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 				return
 			}
 		}
+		sps = append(sps, sp)
+	})
 
+	for _,sp := range sps {
 		// If the inventory is a block and the peer prefers headers,
 		// generate and send a headers message instead of an inventory
 		// message.
@@ -2312,23 +2322,23 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 			if !ok {
 				peerLog.Warnf("Underlying data for headers" +
 					" is not a block header")
-				return
+				continue
 			}
 			msgHeaders := wire.NewMsgHeaders()
 			if err := msgHeaders.AddBlockHeader(&blockHeader); err != nil {
 				peerLog.Errorf("Failed to add block"+
 					" header: %v", err)
-				return
+				continue
 			}
 			sp.QueueMessage(msgHeaders, nil)
-			return
+			continue
 		}
 
 		if msg.invVect.Type == common.InvTypeTx {
 			// Don't relay the transaction to the peer when it has
 			// transaction relaying disabled.
 			if sp.relayTxDisabled() {
-				return
+				continue
 			}
 
 			txD, ok := msg.data.(*mempool.TxDesc)
@@ -2336,21 +2346,21 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 				peerLog.Warnf("Underlying data for tx inv "+
 					"relay is not a *mempool.TxDesc: %T",
 					msg.data)
-				return
+				continue
 			}
 
 			// Don't relay the transaction if the transaction fee-per-kb
 			// is less than the peer's feefilter.
 			feeFilter := atomic.LoadInt64(&sp.feeFilter)
 			if feeFilter > 0 && txD.FeePerKB < feeFilter {
-				return
+				continue
 			}
 
 			// Don't relay the transaction if there is a bloom
 			// filter loaded and the transaction doesn't match it.
 			if sp.filter.IsLoaded() {
 				if !sp.filter.MatchTxAndUpdate(txD.Tx) {
-					return
+					continue
 				}
 			}
 		}
@@ -2359,12 +2369,14 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 		// It will be ignored if the peer is already known to
 		// have the inventory.
 		sp.QueueInventory(msg.invVect)
-	})
+	}
 }
 
 // handleBroadcastMsg deals with broadcasting messages to peers.  It is invoked
 // from the peerHandler goroutine.
 func (s *server) handleBroadcastMsg(state *peerState, bmsg *broadcastMsg) {
+	sps := make([]*serverPeer, 0)
+
 	state.ForAllPeers(func(sp *serverPeer) {
 		if !sp.Connected() {
 			return
@@ -2376,8 +2388,11 @@ func (s *server) handleBroadcastMsg(state *peerState, bmsg *broadcastMsg) {
 			}
 		}
 
-		sp.QueueMessage(bmsg.message, nil)
+		sps = append(sps, sp)
 	})
+	for _,sp := range sps {
+		sp.QueueMessage(bmsg.message, nil)
+	}
 }
 
 type getConnCountMsg struct {
@@ -2447,12 +2462,14 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 		state.cmutex.Lock()
 		for _, peer := range state.persistentPeers {
 			if peer.Addr() == msg.addr {
+				var err error
 				if msg.permanent {
-					msg.reply <- errors.New("peer already connected")
+					err = errors.New("peer already connected")
 				} else {
-					msg.reply <- errors.New("peer exists as a permanent peer")
+					err = errors.New("peer exists as a permanent peer")
 				}
 				state.cmutex.Unlock()
+				msg.reply <- err
 				return
 			}
 		}
@@ -3741,6 +3758,11 @@ func newServer(listenAddrs []string, db, minerdb database.DB, chainParams *chain
 			FeeEstimator: s.feeEstimator,
 			ShareMining:  cfg.ShareMining,
 		})
+
+		if s.rsaPrivateKey != nil {
+			s.rpcServer.rsapubkey = &s.rsaPrivateKey.PublicKey
+		}
+
 		if err != nil {
 			return nil, err
 		}

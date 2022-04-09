@@ -858,12 +858,15 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		return nil, nil, err
 	}
 
-	txFee, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, 0, views,  mp.cfg.ChainParams)
-	if err != nil && !contract {
-		if cerr, ok := err.(blockchain.RuleError); ok {
-			return nil, nil, chainRuleError(cerr)
+	txFee := int64(0)
+	if !contract {
+		txFee, err = blockchain.CheckTransactionFees(tx, chaincfg.Version2, 0, views, mp.cfg.ChainParams)
+		if err != nil {
+			if cerr, ok := err.(blockchain.RuleError); ok {
+				return nil, nil, chainRuleError(cerr)
+			}
+			return nil, nil, err
 		}
-		return nil, nil, err
 	}
 
 	// Don't allow transactions with non-standard inputs if the network

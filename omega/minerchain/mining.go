@@ -474,7 +474,7 @@ out:
 		mtch := false
 		qc := chainChoice
 		es := ""
-		for i := 0; i < wire.MinerGap && qc != nil; i++ {
+		for i := 0; i < wire.MinerGap && qc != nil && !mtch; i++ {
 			p := NodetoHeader(qc)
 			qc = qc.Parent
 			for _,s := range m.cfg.ExternalIPs {

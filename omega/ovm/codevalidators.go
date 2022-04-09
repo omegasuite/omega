@@ -640,3 +640,11 @@ var formatTokenContract = []formatDesc{
 func opTokenContractValidator(param []byte) int {
 	return formatParser(formatTokenContract, param)
 }
+
+var formatLog = []formatDesc{
+	{addrOperand, 0xFFFFFFFF}, {regexp.MustCompile(`[BCWDQH]`), 0}, {patOperand, 0}, {patOperand, 0},
+}
+
+func opLogValidator(param []byte) int {
+	return formatParser(formatLog, param)
+}

@@ -644,6 +644,9 @@ loop:
 }
 
 func Sender(msg Message) []byte {
+	if msg == nil || miner == nil {
+		return nil
+	}
 	switch msg.(type) {
 	case *wire.MsgKnowledge:
 		return nil

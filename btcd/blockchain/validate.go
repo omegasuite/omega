@@ -13,6 +13,7 @@ import (
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/omega/ovm"
 	"math"
 	"math/big"
@@ -1147,11 +1148,20 @@ func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views * viewpoin
 		e := views.Rights.GetRight(views.Db, hash)
 
 		switch e.(type) {
+		case *viewpoint.RightEntry:
+			if e.(*viewpoint.RightEntry) != nil {
+				str := fmt.Sprintf("Right duplicated in tx %s.", tx.MsgTx().TxHash().String())
+				return ruleError(1, str)
+			}
 		case *viewpoint.RightSetEntry:
-			if e != (*viewpoint.RightSetEntry)(nil) {
+			if e.(*viewpoint.RightSetEntry) != nil {
 				str := fmt.Sprintf("Rightset duplicated in tx %s.", tx.MsgTx().TxHash().String())
 				return ruleError(1, str)
 			}
+		}
+
+		switch rt.(type) {
+		case *token.RightSetDef:
 			dup := make(map[chainhash.Hash]struct{})
 			for _, r := range rt.(*token.RightSetDef).Rights {
 				if _,ok := dup[r]; ok {
@@ -1168,11 +1178,7 @@ func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views * viewpoin
 			
 			views.Rights.AddRightSet(rt.(*token.RightSetDef))
 			
-		case *viewpoint.RightEntry:
-			if e != (*viewpoint.RightEntry)(nil) {
-				str := fmt.Sprintf("Right duplicated in tx %s.", tx.MsgTx().TxHash().String())
-				return ruleError(1, str)
-			}
+		case *token.RightDef:
 			if !rt.(*token.RightDef).Father.IsEqual(&chainhash.Hash{}) {
 				e3 := views.Rights.GetRight(views.Db, rt.(*token.RightDef).Father).(*viewpoint.RightEntry)
 				if e3 == nil {
@@ -1288,11 +1294,11 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 
 	// Check numeric token w/ rights. If no new geometry is introduced, we can
 	// make quick check geometry too by treating them as numeric token.
-
-	inputs := make([]token.Token, len(tx.MsgTx().TxIn))
-	for i, txIn := range tx.MsgTx().TxIn {
+/*
+	inputs := make(map[uint64][]token.Token)
+	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			break
+			continue
 		}
 		out := txIn.PreviousOutPoint
 		x := views.Utxo.LookupEntry(out)
@@ -1347,7 +1353,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		// a transaction are in a unit value known as a hao.  One
 		// bitcoin is a quantity of hao as defined by the
 		// HaoPerBitcoin constant.
-		if utxo.TokenType & 1 != 0 {
+		if utxo.TokenType & 3 != 0 {
 			continue
 		}
 
@@ -1376,19 +1382,17 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 	totalHaoOut := make(map[uint64]int64)
 
 	for _, txOut := range tx.MsgTx().TxOut {
-		if txOut.IsSeparator() {
+		if txOut.IsSeparator() || txOut.TokenType & 3 != 0 {
 			continue
 		}
 
-		if txOut.TokenType & 3 == 0 {
-			if txOut.Value == nil {
-				continue
-			}
-			if _, ok := totalHaoOut[txOut.TokenType]; ok {
-				totalHaoOut[txOut.TokenType] += txOut.Value.(*token.NumToken).Val
-			} else {
-				totalHaoOut[txOut.TokenType] = txOut.Value.(*token.NumToken).Val
-			}
+		if txOut.Value == nil {
+			continue
+		}
+		if _, ok := totalHaoOut[txOut.TokenType]; ok {
+			totalHaoOut[txOut.TokenType] += txOut.Value.(*token.NumToken).Val
+		} else {
+			totalHaoOut[txOut.TokenType] = txOut.Value.(*token.NumToken).Val
 		}
 	}
 
@@ -1403,6 +1407,18 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 			str := fmt.Sprintf("total %d type token value of all transaction inputs for "+
 				"transaction %v is %v which is not equal to the amount "+
 				"spent of %v", in, txHash, v, out)
+			return 0, ruleError(ErrSpendTooHigh, str)
+		}
+	}
+
+	for in,out := range totalIns {
+		if in == 0 {
+			continue
+		}
+		if v,ok := totalHaoOut[in]; !ok || v != out {
+			str := fmt.Sprintf("total %d type token value of all transaction inputs for "+
+				"transaction %v is %v which is not equal to the amount "+
+				"spent of %v", in, txHash, out, v)
 			return 0, ruleError(ErrSpendTooHigh, str)
 		}
 	}

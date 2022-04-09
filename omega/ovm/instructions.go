@@ -2367,8 +2367,10 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 
 	pure |= stack.data[stack.callTop].pure
 
-	if (pure & 0x1F) != 0x1F || (value.TokenType & 1 != 0 ||
-		(value.TokenType & 1 == 0 && value.Value.(*token.NumToken).Val != 0)) {
+	oldop := evm.GetCurrentOutput
+
+	if (pure & 0x1F) != 0x1F || (value != nil && (value.TokenType & 1 != 0 ||
+		(value.TokenType & 1 == 0 && value.Value.(*token.NumToken).Val != 0))) {
 		// if allowed to write something, will add a txout. note: can't decide
 		// whether to add txout based on value given to the contract only, because
 		// we determine Rollback Data based on presence of contract in txout
@@ -2383,7 +2385,11 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 			evm.exeout = append(evm.exeout, true)
 		}
 		evm.exeout = append(evm.exeout, true)
-		msg.AddTxOut(&wire.TxOut{PkScript: pks, Token: *value})
+		op := uint32(msg.AddTxOut(&wire.TxOut{PkScript: pks, Token: *value}))
+
+		evm.GetCurrentOutput = func() wire.OutPoint {
+			return wire.OutPoint{oldop().Hash, op}
+		}
 	}
 
 	for _,d := range evm.contractStack {
@@ -2396,23 +2402,29 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	ret, err := evm.Call(toAddr, args[:4], value, args, pure)		// nil=>value
 	evm.contractStack = evm.contractStack[:len(evm.contractStack) - 1]
 
+	evm.GetCurrentOutput = oldop
+
 	if err != nil {
 		return err
 	}
 
 	m := len(ret)
-	if retspace != 0 && m > 0 {
+	if retspace != 0 {
 		var p pointer
-		if int32(retspace >> 32) == stack.callTop {
-			p,_ = stack.alloc(m)
-		} else {
-			p,_ = stack.malloc(m)
-		}
-		if _,ok := stack.data[int32(p>>32)]; !ok {
-			return omega.ScriptError(omega.ErrInternal,"Memory address fault")
-		}
-		copy(stack.data[int32(p >> 32)].space[p & 0xFFFFFFFF:], ret)
-		if err := stack.saveInt64(&retspace, int64(p)); err != nil {
+		if m > 0 {
+			if int32(retspace>>32) == stack.callTop {
+				p, _ = stack.alloc(m)
+			} else {
+				p, _ = stack.malloc(m)
+			}
+			if _, ok := stack.data[int32(p>>32)]; !ok {
+				return omega.ScriptError(omega.ErrInternal, "Memory address fault")
+			}
+			copy(stack.data[int32(p>>32)].space[p&0xFFFFFFFF:], ret)
+			if err := stack.saveInt64(&retspace, int64(p)); err != nil {
+				return err
+			}
+		} else if err := stack.saveInt64(&retspace, 0); err != nil {
 			return err
 		}
 		retspace += 8
@@ -4041,6 +4053,92 @@ func opTokenContract(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.
 	}
 
 	return stack.saveBytes(&dest, addr)
+}
+
+func opLog(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
+	param := contract.GetBytes(*pc)
+
+	ln := len(param)
+
+	top := 0
+	num := int64(0)
+	var header pointer
+	var src pointer
+	var tl int
+	var err omega.Err
+	var dtype byte
+
+	dataType := []byte{0xFF, 'Q', 'D'}
+
+	for j := 0; j < ln; j++ {
+		switch param[j] {
+		case '0', '1', '2', '3', '4', '5',
+			'6', '7', '8', '9', 'a', 'b', 'c',
+			'd', 'e', 'f', 'x', 'i', 'g':
+			num, tl, err = stack.getNum(param[j:], dataType[top])
+			if err != nil { return err }
+			j += tl
+
+			switch top {
+			case 0:
+				header = pointer(num)
+
+			case 1:
+				src = pointer(num)
+			}
+			top++
+
+		case 'B', 'C', 'W', 'D', 'Q', 'H':
+			dtype = param[j]
+		}
+	}
+
+	// print header - 0-terminated string
+	for loop := true; loop; header++ {
+		c,_ := stack.toByte(&header)
+		if (c == 0) {
+			loop = false
+			continue
+		}
+		fmt.Printf("%c", c)
+	}
+
+	// print data
+	for i := int64(0); i < num; i++ {
+		switch (dtype) {
+		case 'C':
+			c,_ := stack.toByte(&src)
+			fmt.Printf("%c ", c)
+			src ++
+
+		case 'B':
+			c,_ := stack.toByte(&src)
+			fmt.Printf("%d ", c)
+			src++
+
+		case 'W':
+			c,_ := stack.toInt16(&src)
+			fmt.Printf("%d ", c)
+			src += 2
+
+		case 'D':
+			c,_ := stack.toInt32(&src)
+			fmt.Printf("%d ", c)
+			src += 4
+
+		case 'Q':
+			c,_ := stack.toInt32(&src)
+			fmt.Printf("0x%x ", c)
+			src += 8
+
+		case 'H':
+			c,_ := stack.toHash(&src)
+			fmt.Printf("%s ", c.String())
+			src += 32
+		}
+	}
+
+	return nil
 }
 /*
 func opSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {

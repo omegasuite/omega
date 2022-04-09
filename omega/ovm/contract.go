@@ -250,6 +250,7 @@ var validators = map[OpCode]codeValidator {
 	HEIGHT: opHeightValidator,
 	VERSION: opVersionValidator,
 	TOKENCONTRACT: opTokenContractValidator,
+	LOG: opLogValidator,
 }
 
 func ByteCodeValidator(code []inst) omega.Err {

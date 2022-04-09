@@ -965,7 +965,7 @@ func ReadDefinition(r io.Reader, pver uint32, version int32) (Definition, error)
 		return &c, err
 
 	case DefTypeRightSet:
-		c := RightDef{}
+		c := RightSetDef{}
 		err = c.Read(r, pver)
 		return &c, err
 

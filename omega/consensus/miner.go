@@ -252,6 +252,7 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	for polling {
 		select {
 		case height := <-miner.updateheight:
+			log.Infof("Consensus <-miner.updateheight %d", height)
 			miner.syncMutex.Lock()
 			cleaner(height)
 			for _, t := range miner.Sync {

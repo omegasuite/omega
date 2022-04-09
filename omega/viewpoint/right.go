@@ -150,6 +150,7 @@ func (entry * RightSetEntry) Clone() *RightSetEntry {
 
 	return &RightSetEntry{
 		Rights:   entry.Rights,
+		PackedFlags: entry.PackedFlags,
 	}
 }
 
@@ -336,8 +337,9 @@ func (view * RightViewpoint) AddRightSet(b *token.RightSetDef) bool {
 	if entry == nil {
 		entry = new(RightSetEntry)
 		entry.Rights = b.Rights
+		entry.PackedFlags = TfModified
 
-		view.entries[h] = &entry
+		view.entries[h] = entry
 
 		return true
 	}
@@ -479,12 +481,22 @@ func (view * RightViewpoint) Entries() map[chainhash.Hash]interface{} {
 // commit. this is to be called after data has been committed to db
 func (view * RightViewpoint) commit() {
 	for outpoint, entry := range view.entries {
-		if entry == nil || ((entry.(*RightEntry).PackedFlags & TfSpent) == TfSpent) {
-			delete(view.entries, outpoint)
-			continue
+		switch entry.(type) {
+		case *RightEntry:
+			if entry.(*RightEntry) == nil || ((entry.(*RightEntry).PackedFlags & TfSpent) == TfSpent) {
+				delete(view.entries, outpoint)
+				continue
+			}
+			entry.(*RightEntry).PackedFlags &^= TfModified
+
+		case *RightSetEntry:
+			if entry.(*RightSetEntry) == nil || ((entry.(*RightSetEntry).PackedFlags & TfSpent) == TfSpent) {
+				delete(view.entries, outpoint)
+				continue
+			}
+			entry.(*RightSetEntry).PackedFlags &^= TfModified
 		}
 
-		entry.(*RightEntry).PackedFlags &^= TfModified
 	}
 }
 
@@ -535,9 +547,19 @@ func (view * RightViewpoint) GetRight(db database.DB, hash chainhash.Hash) inter
 	e := view.LookupRightEntry(hash)
 	if e != nil {
 		return e
+	} else {
+		e := view.LookupRightSetEntry(hash)
+		if e != nil {
+			return e
+		}
 	}
 	view.FetchRight(db, map[chainhash.Hash]struct{}{hash: {}})
-	return view.LookupRightEntry(hash)
+	e = view.LookupRightEntry(hash)
+	if e != nil {
+		return e
+	} else {
+		return view.LookupRightSetEntry(hash)
+	}
 }
 
 // fetchVertex loads the vertices for the provided set into the view
@@ -625,14 +647,14 @@ func DbPutRightView(dbTx database.Tx, view *RightViewpoint) error {
 // for long-term storage.  The format is described in detail above.
 func serializeRightEntry(entry interface{}) ([]byte, error) {
 	// Spent outputs have no serialization.
-	if entry.(*RightEntry).toDelete() {
-		return nil, nil
-	}
-
 	var serialized []byte
 
 	switch entry.(type) {
 	case *RightEntry:
+		if entry.(*RightEntry).toDelete() {
+			return nil, nil
+		}
+
 		serialized = make([]byte, chainhash.HashSize * 2 + len(entry.(*RightEntry).Desc) + 6)
 		serialized[0] = 0
 		copy(serialized[1:], entry.(*RightEntry).Father[:])
@@ -642,6 +664,10 @@ func serializeRightEntry(entry interface{}) ([]byte, error) {
 		copy(serialized[chainhash.HashSize * 2 + 6:], entry.(*RightEntry).Desc[:])
 		break
 	case *RightSetEntry:
+		if entry.(*RightSetEntry).toDelete() {
+			return nil, nil
+		}
+
 		serialized = make([]byte, chainhash.HashSize * len(entry.(*RightSetEntry).Rights) + 1)
 		serialized[0] = 1
 		p := 1

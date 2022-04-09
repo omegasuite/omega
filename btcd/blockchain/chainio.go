@@ -1735,6 +1735,29 @@ func (b *BlockChain) FetchRightEntry(hash chainhash.Hash) (*viewpoint.RightEntry
 	return entry, nil
 }
 
+func (b *BlockChain) FetchRightSetEntry(hash chainhash.Hash) (*viewpoint.RightSetEntry, error) {
+	b.ChainLock.RLock()
+	defer b.ChainLock.RUnlock()
+
+	var entry *viewpoint.RightSetEntry
+	err := b.db.View(func(dbTx database.Tx) error {
+		var err error
+		e, err := viewpoint.DbFetchRight(dbTx, &hash)
+		if err != nil {
+			return err
+		}
+		entry = &viewpoint.RightSetEntry{
+			Rights: e.(*viewpoint.RightSetEntry).Rights,
+			PackedFlags: 0,
+		}
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return entry, nil
+}
 func (b *BlockChain) dbFetchVertex(blockHeight int32, tx int32, ind uint32) (*token.VertexDef, error) {
 	blk,err := b.BlockByHeight(blockHeight)
 	if err != nil {
