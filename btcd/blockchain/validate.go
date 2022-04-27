@@ -1294,8 +1294,10 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 
 	// Check numeric token w/ rights. If no new geometry is introduced, we can
 	// make quick check geometry too by treating them as numeric token.
-/*
-	inputs := make(map[uint64][]token.Token)
+
+	// we check numeric tokens in tx fee check, here we check hash only tokens
+	// and load view at the same time
+	inputs := make([]token.Token, 0)
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
@@ -1311,7 +1313,38 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 			str := fmt.Sprintf("A Tx input does not exist: %s", txIn.PreviousOutPoint.String())
 			return ruleError(ErrSpendTooHigh, str)
 		}
-		inputs[i] = x.ToTxOut().Token
+
+		t := x.ToTxOut().Token.TokenType
+
+		if t & 3 != 1 {
+			continue
+		}
+		inputs = append(inputs, x.ToTxOut().Token)
+	}
+	rem := len(inputs)
+	for _, txOut := range tx.MsgTx().TxOut {
+		t := txOut.TokenType
+		if txOut.IsSeparator() || t & 3 != 1 {
+			continue
+		}
+		match := false
+		for j, tk := range inputs {
+			if txOut.TokenType == tk.TokenType &&
+				txOut.Token.Value.(*token.HashToken).Hash.IsEqual(&tk.Value.(*token.HashToken).Hash) {
+				rem--
+				match = true
+				inputs[j].TokenType = 0		// no further matching
+				break
+			}
+		}
+		if !match {
+			str := fmt.Sprintf("The Tx is not geometrically integral")
+			return ruleError(ErrSpendTooHigh, str)
+		}
+	}
+	if rem != 0 {
+		str := fmt.Sprintf("The Tx is not geometrically integral")
+		return ruleError(ErrSpendTooHigh, str)
 	}
 //	ntx := tx.Copy() // Deep copy
 //	ntx.Spends = append(inputs, ntx.Spends...)
@@ -1398,7 +1431,11 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 
 	// Ensure the transaction does not spend more than its inputs.
 	for in,out := range totalHaoOut {
-		if v,ok := totalIns[in]; !ok || v < out {
+		v := int64(0)
+		if k,ok := totalIns[in]; ok {
+			v = k
+		}
+		if v < out {
 			str := fmt.Sprintf("total value of all transaction inputs for "+
 				"transaction %v is %v which is less than the amount "+
 				"spent of %v", txHash, v, out)
@@ -1415,7 +1452,11 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		if in == 0 {
 			continue
 		}
-		if v,ok := totalHaoOut[in]; !ok || v != out {
+		v := int64(0)
+		if k,ok := totalHaoOut[in]; ok {
+			v = k
+		}
+		if v != out {
 			str := fmt.Sprintf("total %d type token value of all transaction inputs for "+
 				"transaction %v is %v which is not equal to the amount "+
 				"spent of %v", in, txHash, out, v)

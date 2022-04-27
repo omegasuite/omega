@@ -598,6 +598,12 @@ type MultiSigAddr struct {
 	Script     	 string `json:"script"`
 }
 
+// Try result
+type TryResult struct {
+	Result	     string `json:"result"`
+	Tx	     	 string `json:"tx"`
+}
+
 // SearchRawTransactionsResult models the data from the searchrawtransaction
 // command.
 type SearchRawTransactionsResult struct {

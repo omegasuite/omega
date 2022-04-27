@@ -642,7 +642,7 @@ func opTokenContractValidator(param []byte) int {
 }
 
 var formatLog = []formatDesc{
-	{addrOperand, 0xFFFFFFFF}, {regexp.MustCompile(`[BCWDQH]`), 0}, {patOperand, 0}, {patOperand, 0},
+	{addrOperand, 0xFFFFFFFF}, {regexp.MustCompile(`[BCWDQHh]`), 0}, {patOperand, 0}, {patOperand, 0},
 }
 
 func opLogValidator(param []byte) int {

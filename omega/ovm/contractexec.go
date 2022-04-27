@@ -502,10 +502,10 @@ func (ovm * OVM) ContractCall(addr Address, input []byte) ([]byte, error) {
 	return ovm.Call(addr, input[:4], nil, input, PUREMASK)
 }
 
-func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
+func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) ([]byte, error) {
 	// no need to make a copy of tx, if exec fails, the tx (even a block) will be abandoned
 	if tx.IsCoinBase() {
-		return nil
+		return nil, nil
 	}
 
 	ovm.Init(tx, ovm.views)
@@ -571,10 +571,10 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 		version, addr, method, _ := parsePkScript(txOut.PkScript)
 
 		if addr == nil {
-			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+			return nil, omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 		if zeroaddr(addr) {
-			return omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
+			return nil, omega.ScriptError(omega.ErrInternal, "Incorrect pkScript format.")
 		}
 		if !isContract(version) {
 			continue
@@ -591,15 +591,15 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 			t := NewStateDB(ovm.views.Db, d)
 
 			if !t.Exists(true) && !creation {
-				return omega.ScriptError(omega.ErrInternal, "Contract does not exist.")
+				return nil, omega.ScriptError(omega.ErrInternal, "Contract does not exist.")
 			}
 			if t.Exists(false) && creation {
-				return omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
+				return nil, omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
 			}
 
 			ovm.StateDB[d] = t
 		} else if creation {
-			return omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
+			return nil, omega.ScriptError(omega.ErrInternal, "Attempt to recreate a contract.")
 		}
 	}
 
@@ -625,14 +625,10 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) error {
 
 		ovm.contractStack = []Address{d}
 
-		_, err := ovm.Call(d, method, &txOut.Token, param, 0)
-
-		if err != nil {
-			return err
-		}
+		return ovm.Call(d, method, &txOut.Token, param, 0)
 	}
 
-	return nil
+	return nil, nil
 }
 
 func (ovm * OVM) ExecContract(tx *btcutil.Tx, txHeight int32) (bool, omega.Err) {

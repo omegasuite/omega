@@ -130,14 +130,20 @@ func (entry * RightSetEntry) toDelete() bool {
 
 func (entry * RightSetEntry) ToToken() * token.RightSetDef {
 	t := token.RightSetDef {
-		Rights: entry.Rights,
+		Rights: make([]chainhash.Hash, len(entry.Rights)),
+	}
+	for i,r := range entry.Rights {
+		copy(t.Rights[i][:], r[:])
 	}
 	return &t
 }
 
 func (entry * RightSetEntry) toRightSet() * token.RightSetDef {
 	t := token.RightSetDef {
-		Rights: entry.Rights,
+		Rights: make([]chainhash.Hash, len(entry.Rights)),
+	}
+	for i,r := range entry.Rights {
+		copy(t.Rights[i][:], r[:])
 	}
 	return &t
 }
@@ -179,6 +185,7 @@ func SetOfRights(view * ViewPointSet, r interface{}) []*RightEntry {
 				rs = append(rs, p.(*RightEntry))
 			}
 		}
+		return rs
 	}
 	return nil
 }
@@ -336,7 +343,12 @@ func (view * RightViewpoint) AddRightSet(b *token.RightSetDef) bool {
 	entry := view.LookupRightSetEntry(h)
 	if entry == nil {
 		entry = new(RightSetEntry)
-		entry.Rights = b.Rights
+		entry.Rights = make([]chainhash.Hash, len(b.Rights))
+
+		for i,r := range b.Rights {
+			copy(entry.Rights[i][:], r[:])
+		}
+
 		entry.PackedFlags = TfModified
 
 		view.entries[h] = entry
@@ -732,6 +744,7 @@ func DbFetchRight(dbTx database.Tx, hash *chainhash.Hash) (interface{}, error) {
 
 		for i, p := 0, 1; p < len(serialized); p += chainhash.HashSize {
 			copy(d.Rights[i][:], serialized[p:])
+			i++
 		}
 
 		return &d, nil

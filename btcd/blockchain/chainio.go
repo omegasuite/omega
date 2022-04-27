@@ -1746,10 +1746,8 @@ func (b *BlockChain) FetchRightSetEntry(hash chainhash.Hash) (*viewpoint.RightSe
 		if err != nil {
 			return err
 		}
-		entry = &viewpoint.RightSetEntry{
-			Rights: e.(*viewpoint.RightSetEntry).Rights,
-			PackedFlags: 0,
-		}
+		entry = e.(*viewpoint.RightSetEntry)
+		entry.PackedFlags = 0
 		return err
 	})
 	if err != nil {

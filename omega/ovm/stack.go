@@ -75,17 +75,32 @@ func (s *Stack) shrink(n int) {	// it is only used by sig engine and there is no
 }
 
 func (s *Stack) toBig(p * pointer) (* big.Int, omega.Err) {
+	// Note: little-endian to big-endian
 	offset := int(*p & 0xFFFFFFFF)
 	area := int32(*p >> 32)
 	if _,ok := s.data[area]; !ok {
 		return nil, outofstack
 	}
 
-	num := *bigZero
+	var h chainhash.Hash
+
+	copy(h[:], s.data[area].space[offset:offset+32])
+	i, n := 31, 0
+	for ; i >= 0 && h[i] == 0; i-- { }
+	n = i + 1
+	for i = 0; i < n / 2; i++ {
+		s, t := h[i], h[n - 1 - i]
+		h[i], h[n - 1 - i] = t, s
+	}
+
+	num := big.Int{}
+	num.SetBytes(h[:n])
+/*
 	for j := int(31); j >= 0; j-- {
 		tmp := uint8(s.data[area].space[offset + j])
 		num = *num.Add(num.Mul(&num, big.NewInt(256)), big.NewInt(int64(tmp)))
 	}
+ */
 
 	return &num, nil
 }

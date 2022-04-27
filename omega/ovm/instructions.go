@@ -1150,7 +1150,12 @@ func (stack * Stack) getBig(param []byte) (*big.Int, int, omega.Err) {
 				}
 				if h, err := stack.toHash(&p); err != nil {
 						return nil, 0, err
-					} else {
+				} else {
+					// stored big numbers are little-endians, make it big-endian
+					for i := 0; i < 16; i++ {
+						s, t := h[i], h[31 - i]
+						h[i], h[31 - i] = t, s
+					}
 					num.SetBytes(h[:])
 					num = *num.Mul(&num, &sign)
 				}
@@ -1357,6 +1362,9 @@ func (stack * Stack) getBytes(param []byte, dataType byte, dln uint32) ([]byte, 
 }
 
 func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
+	// to contract, big numbers are little-endian. But in big.Int, numbers are
+	// big-endian. So for every math op, we need to do a conversion before and
+	// after op.
 	param := contract.GetBytes(*pc)
 
 	ln := len(param)
@@ -1547,7 +1555,15 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 	}
 
 	var h chainhash.Hash
-	copy(h[:], scratch[top-1].Bytes())
+
+	b := scratch[top-1].Bytes()
+	if len(b) > 32 {
+		return omega.ScriptError(omega.ErrInternal,"Big number overflow")
+	}
+	for i := len(b) - 1; i >= 0; i-- {
+		h[len(b) - 1 - i] = b[i]
+	}
+
 	store = pointer(scratch[0].Int64())
 
 	return stack.saveHash(&store, h)
@@ -4068,7 +4084,7 @@ func opLog(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	var err omega.Err
 	var dtype byte
 
-	dataType := []byte{0xFF, 'Q', 'D'}
+	dataType := []byte{'Q', 'Q', 'D'}
 
 	for j := 0; j < ln; j++ {
 		switch param[j] {
@@ -4088,12 +4104,13 @@ func opLog(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 			}
 			top++
 
-		case 'B', 'C', 'W', 'D', 'Q', 'H':
+		case 'B', 'C', 'W', 'D', 'Q', 'H', 'h':
 			dtype = param[j]
 		}
 	}
 
 	// print header - 0-terminated string
+	fmt.Printf("\n")
 	for loop := true; loop; header++ {
 		c,_ := stack.toByte(&header)
 		if (c == 0) {
@@ -4108,7 +4125,7 @@ func opLog(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 		switch (dtype) {
 		case 'C':
 			c,_ := stack.toByte(&src)
-			fmt.Printf("%c ", c)
+			fmt.Printf("%c", c)
 			src ++
 
 		case 'B':
@@ -4127,16 +4144,32 @@ func opLog(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 			src += 4
 
 		case 'Q':
-			c,_ := stack.toInt32(&src)
-			fmt.Printf("0x%x ", c)
+			c,_ := stack.toInt64(&src)
+			fmt.Printf("%d (0x%x) ", c, c)
 			src += 8
 
-		case 'H':
+		case 'h':
 			c,_ := stack.toHash(&src)
 			fmt.Printf("%s ", c.String())
 			src += 32
+
+		case 'H':
+			c,_ := stack.toHash(&src)
+			i := 31
+			for ; i >= 0 && c[i] == 0; i-- { }
+			n := i + 1
+			for i = 0; i < n / 2; i++ {
+				s, t := c[i], c[n - 1 - i]
+				c[i], c[n - 1 - i] = t, s
+			}
+			b := big.Int{}
+			b.SetBytes(c[:n])
+
+			fmt.Printf("%s ", b.String())
+			src += 32
 		}
 	}
+	fmt.Printf("\n\n")
 
 	return nil
 }

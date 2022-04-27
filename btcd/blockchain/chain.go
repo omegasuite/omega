@@ -2678,6 +2678,9 @@ func (b *BlockChain) MaxContractExec(lastBlk chainhash.Hash, cbest chainhash.Has
 		} else {
 			header := b.NodetoHeader(p)
 			p = b.NodeByHash(&header.PrevBlock)
+			if p == nil {
+				return m
+			}
 		}
 	}
 	return m

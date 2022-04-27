@@ -317,6 +317,8 @@ var rpcLimited = map[string]struct{}{
 	"gettxout":              {},
 	"listutxos":             {},
 	"getdefine":             {},
+	"contractcall":          {},
+	"trycontract":   		 {},
 	"searchrawtransactions": {},
 	"sendrawtransaction":    {},
 //	"submitblock":           {},
@@ -884,7 +886,7 @@ func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 	tx := btcutil.NewTx(&msgTx)
 
-	err = vm.TryContract(tx, best.Height)
+	result, err := vm.TryContract(tx, best.Height)
 	if err != nil {
 		return nil, err
 	}
@@ -897,7 +899,13 @@ func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	if err != nil {
 		return nil, err
 	}
-	return mtxHex, nil
+
+	reply := &btcjson.TryResult {
+		Result: hex.EncodeToString(result),
+		Tx: mtxHex,
+	}
+
+	return reply, nil
 }
 
 // handleMiningPolicy handles MiningPolicy commands.
@@ -3971,7 +3979,7 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		}
 
 		result[v.Hash().String()] = &btcjson.RightSetDefinition{
-			Kind: 4,
+			Kind: 5,
 			Rights:rs,
 		}
 
@@ -5039,6 +5047,8 @@ type rpcServer struct {
 	quit                   chan int
 
 	Rpcactivity 		   chan struct{}
+	alertresp			   chan *AlertCommand
+	rsapubkey			   *rsa.PublicKey
 }
 
 // httpStatusLine returns a response Status-Line (RFC 2616 Section 6.1)

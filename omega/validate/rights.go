@@ -22,6 +22,12 @@ type tokenElement struct {
 	right chainhash.Hash
 }
 
+type tokenRElement struct {
+	tokenType uint64
+	right chainhash.Hash
+	polygon chainhash.Hash
+}
+
 func decentOf(son * viewpoint.RightEntry, h * chainhash.Hash, anc * viewpoint.RightEntry, h2 * chainhash.Hash,
 	views *viewpoint.ViewPointSet) bool {
 	if !son.Root.IsEqual(&anc.Root) {
@@ -76,6 +82,8 @@ func TokenRights(views *viewpoint.ViewPointSet, x interface{}) []chainhash.Hash 
 			for _, r := range yy {
 				y = append(y, r.ToToken().Hash())
 			}
+		} else {
+			y = append(y, *rs)
 		}
 	}
 	return y
@@ -91,25 +99,24 @@ func parseRights(tx *btcutil.Tx, views *viewpoint.ViewPointSet, checkPolygon boo
 
 	txouts := make([]*wire.TxOut, 0, len(tx.MsgTx().TxOut) + len(tx.MsgTx().TxIn))
 
-	for i, n := 0, len(tx.MsgTx().TxOut); i < n; i++ {
-		if tx.MsgTx().TxOut[i].IsSeparator() {
+	for _,txo := range tx.MsgTx().TxOut {
+		if txo.IsSeparator() || txo.TokenType & 2 == 0 {
 			continue
 		}
-		txouts = append(txouts, tx.MsgTx().TxOut[i])
+		txouts = append(txouts, txo)
 	}
-	for i, n := 1, len(tx.MsgTx().TxIn); i < n; i++ {
-		if tx.MsgTx().TxIn[i].PreviousOutPoint.Hash.IsEqual(&zerohash) {
+	for _,txin := range tx.MsgTx().TxIn {
+		if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
-		txin := views.Utxo.LookupEntry(tx.MsgTx().TxIn[i].PreviousOutPoint)
-		txouts = append(txouts, txin.ToTxOut())
+		tin := views.Utxo.LookupEntry(txin.PreviousOutPoint).ToTxOut()
+		if tin.TokenType & 2 != 0 {
+			txouts = append(txouts, tin)
+		}
 	}
 
 	for _, txOut := range txouts {
 		if !checkPolygon && txOut.TokenType & 1 == uncheck {
-			continue
-		}
-		if txOut.TokenType & 2 == 0 {
 			continue
 		}
 
@@ -222,6 +229,11 @@ type tokennelement struct {
 	value token.TokenValue
 }
 
+type tokenrelement struct {
+	tokenRElement
+	value int64
+}
+
 var zerohash chainhash.Hash
 
 func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
@@ -232,14 +244,15 @@ func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 			continue
 		}
 		x := views.Utxo.LookupEntry(y.PreviousOutPoint).ToTxOut()
+		if x.TokenType & 2 == 0 {
+			continue
+		}
 		te := tokennelement{}
 		te.tokenType = x.TokenType
 		if x.TokenType & 1 == 1 {
 			te.polygon = x.Value.(*token.HashToken).Hash
 		}
-		if x.TokenType & 2 == 2 {
-			te.right = *x.Rights
-		}
+		te.right = *x.Rights
 		te.value = x.Value
 		res[0] = append(res[0], te)
 	}
@@ -257,7 +270,7 @@ func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 	}
  */
 	for _, x := range tx.MsgTx().TxOut {
-		if x.IsSeparator() {
+		if x.IsSeparator() || x.TokenType & 2 == 0 {
 			continue
 		}
 		te := tokennelement{}
@@ -265,13 +278,98 @@ func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 		if x.TokenType & 1 == 1 {
 			te.polygon = x.Value.(*token.HashToken).Hash
 		}
-		if x.TokenType & 2 == 2 {
-			te.right = *x.Rights
-		}
+		te.right = *x.Rights
 		te.value = x.Value
 		res[1] = append(res[1], te)
 	}
 	return res[:]
+}
+
+func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement]int64, error) {
+	res := make(map[tokenRElement]int64)
+	for _, y := range tx.MsgTx().TxIn {
+		if y.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		x := views.Utxo.LookupEntry(y.PreviousOutPoint).ToTxOut()
+		if x.TokenType & 2 == 0 {
+			continue
+		}
+		te := tokenRElement{}
+		te.tokenType = x.TokenType
+		v := int64(-1)
+		if x.TokenType & 1 == 1 {
+			te.polygon = x.Value.(*token.HashToken).Hash
+		} else {
+			v = -x.Value.(*token.NumToken).Val
+		}
+		p := views.Rights.LookupEntry(*x.Rights)
+		switch p.(type) {
+		case *viewpoint.RightEntry:
+			if p.(*viewpoint.RightEntry) == nil {
+				return nil, fmt.Errorf("Right undefined")
+			}
+			te.right = *x.Rights
+			if _,ok := res[te]; !ok {
+				res[te] = v
+			} else {
+				res[te] += v
+			}
+
+		case *viewpoint.RightSetEntry:
+			if p.(*viewpoint.RightSetEntry) == nil {
+				return nil, fmt.Errorf("Right undefined")
+			}
+			for _,r := range p.(*viewpoint.RightSetEntry).Rights {
+				te.right = r
+				if _, ok := res[te]; !ok {
+					res[te] = v
+				} else {
+					res[te] += v
+				}
+			}
+		}
+	}
+
+	for _, x := range tx.MsgTx().TxOut {
+		if x.IsSeparator() || x.TokenType & 2 == 0 {
+			continue
+		}
+		te := tokenRElement{}
+		te.tokenType = x.TokenType
+		v := int64(1)
+		if x.TokenType & 1 == 1 {
+			te.polygon = x.Value.(*token.HashToken).Hash
+		} else {
+			v = x.Value.(*token.NumToken).Val
+		}
+		te.right = *x.Rights
+		p := views.Rights.LookupEntry(*x.Rights)
+		switch p.(type) {
+		case *viewpoint.RightEntry:
+			if p.(*viewpoint.RightEntry) == nil {
+				return nil, fmt.Errorf("Right undefined")
+			}
+			if _, ok := res[te]; !ok {
+				res[te] = v
+			} else {
+				res[te] += v
+			}
+		case *viewpoint.RightSetEntry:
+			if p.(*viewpoint.RightSetEntry) == nil {
+				return nil, fmt.Errorf("Right undefined")
+			}
+			for _,r := range p.(*viewpoint.RightSetEntry).Rights {
+				te.right = r
+				if _, ok := res[te]; !ok {
+					res[te] = v
+				} else {
+					res[te] += v
+				}
+			}
+		}
+	}
+	return res, nil
 }
 
 // handle monitored tokens. In a Tx, if any token has monitored right, then all the input/output must have
@@ -287,6 +385,7 @@ func monitored(r * token.RightSetDef, views *viewpoint.ViewPointSet) bool {
 }
 
 func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) (bool, error) {
+	// we do polygon check here only if the tx involves one polygon
 	checkPolygon := true
 	zerohash := chainhash.Hash{}
 	polyhash := chainhash.Hash{}
@@ -295,7 +394,7 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 
 	if ver >= wire.Version4 {
 		for _, txOut := range msgtx.TxOut {
-			if txOut.IsSeparator() || (txOut.TokenType&3) != 0 {
+			if txOut.IsSeparator() || (txOut.TokenType & 3) != 0 {
 				continue
 			}
 			if (txOut.TokenType&1) != 0 && txOut.Token.Value.(*token.HashToken).Hash.IsEqual(&zerohash) {
@@ -350,121 +449,92 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 					m = monitored(&token.RightSetDef{Rights:[]chainhash.Hash{*txin.Rights}}, views)
 				}
 
-				if m {
-					checkPolygon = false
-				} else if polyhash.IsEqual(&zerohash) {
-					polyhash = txin.Token.Value.(*token.HashToken).Hash
-				} else if !txin.Token.Value.(*token.HashToken).Hash.IsEqual(&polyhash) {
+				if m || polyhash.IsEqual(&zerohash) || !txin.Token.Value.(*token.HashToken).Hash.IsEqual(&polyhash) {
 					checkPolygon = false
 				}
 			}
 		}
 	}
-
-	// we can treat polygon as a hash token only if there is no more than one polygon in IO
-	rset := parseRights(tx, views, checkPolygon,1)
-
-	ancester := getAncester(rset, views)
 
 	// Use superset method for right validation.
 	// calculate right sum, a right is expressed as its top ancester minus all the siblings of
 	// itself & other non-top ancesters
-	sumVals := make(map[tokenElement]int64)
-
-	tokens := ioTokens(tx, views)
-	fval := []int64{-1, 1}
-
-	for io, tks := range tokens {
-		for _, emt := range tks {
-			y := TokenRights(views, &emt)
-
-			for _, r := range y {
-				for i, s := range (*ancester)[r] {
-					f := fval[io]
-					g := views.Rights.LookupEntry(s)
-					if g == nil {
-						continue
-					}
-					e := g.(*viewpoint.RightEntry)
-//					if e.Attrib & token.Monitored != 0 && emt.tokenType != 3 {
-//						return false, fmt.Errorf("Non-polygon token can not have monitored right")
-//					}
-					if i == len((*ancester)[r])-1 {
-						f = - fval[io]
-						emt.right = s
-					} else {
-						emt.right = e.Sibling()
-					}
-					if emt.tokenType&1 == 0 {
-						f *= emt.value.(*token.NumToken).Val
-					}
-					if _, ok := sumVals[emt.tokenElement]; ok {
-						sumVals[emt.tokenElement] += f
-					} else {
-						sumVals[emt.tokenElement] = f
-					}
-				}
-			}
-		}
+	sumVals, err := ioRTokens(tx, views)
+	if err != nil {
+		return false, err
 	}
 
-	// Right merge
-	for merge := true; merge; {
-		// repeat until nothing to merge
-		merge = false
-		for r, g := range sumVals {
-			s := r
-			f := views.Rights.LookupEntry(r.right)
-			if f == nil {
+	siblingVals := make(map[tokenRElement]int64)
+
+	checking := true
+	for ; checking && len(sumVals) != 0; {
+		checking = false
+
+		for i, tks := range sumVals {
+			if tks == 0 {
+				checking = true
+				delete(sumVals, i)
 				continue
 			}
-			e := f.(*viewpoint.RightEntry)
-
-			s.right = e.Sibling()
-			p := r
-			if _, ok := sumVals[s]; !ok {
-				continue
+			g := views.Rights.LookupEntry(i.right)
+			switch g.(type) {
+			case *viewpoint.RightEntry:
+				if g.(*viewpoint.RightEntry) == nil {
+					return false, fmt.Errorf("Right undefined")
+				}
+			default:
+				return false, fmt.Errorf("Right undefined")
 			}
-			p.right = e.Father
-
-			if m, ok := sumVals[s]; ok {
-				if m * g < 0 {
-					// different sign, can not merge
-					continue
+			if g.(*viewpoint.RightEntry).Attrib & 1 != 0 {
+				checking = true
+				g.(*viewpoint.RightEntry).Attrib &= 0xFE
+				te := i
+				te.right = g.(*viewpoint.RightEntry).ToToken().Hash()
+				siblingVals[te] = tks
+				delete(sumVals, i)
+			}
+			if s, ok := siblingVals[i]; ok && siblingVals[i] * tks > 0 {
+				checking = true
+				m := tks
+				if abs(tks) < abs(s) {
+					m = s
 				}
-				if _, ok = sumVals[p]; !ok {
-					sumVals[p] = 0
-				}
-				if m == g {
-					delete(sumVals, r)
-					delete(sumVals, s)
-					sumVals[p] += m
+				siblingVals[i] -= m
+				sumVals[i] -= m
+				te := i
+				te.right = g.(*viewpoint.RightEntry).Father
+				g = views.Rights.LookupEntry(te.right)
+				if g.(*viewpoint.RightEntry).Attrib & 1 != 0 {
+					g.(*viewpoint.RightEntry).Attrib &= 0xFE
+					te.right = g.(*viewpoint.RightEntry).ToToken().Hash()
+					if _,ok := siblingVals[te]; !ok {
+						siblingVals[te] = m
+					} else {
+						siblingVals[te] += m
+					}
 				} else {
-					if iabs(m) > iabs(g) {
-						delete(sumVals, r)
-						sumVals[p] += g
+					if _,ok := sumVals[te]; !ok {
+						sumVals[te] = m
 					} else {
-						delete(sumVals, s)
-						sumVals[p] += m
+						sumVals[te] += m
 					}
 				}
-				merge = true
 			}
 		}
 	}
 
-	// is i/o balanced?
-	nz := 0
-	for emt,v := range sumVals {
-		if v != 0 && emt.tokenType & 0x1 == 0 {
-			str := fmt.Sprintf("Tx %v input does not match output in rights.", tx.Hash())
-			return false, ruleError(1, str)
-		} else if v != 0 {
-			nz++
+	for i,_ := range sumVals {
+		if i.tokenType != 3 {
+			return false, fmt.Errorf("The Tx is not integral")
+		}
+	}
+	for i,_ := range siblingVals {
+		if i.tokenType != 3 {
+			return false, fmt.Errorf("The Tx is not integral")
 		}
 	}
 
-	if nz == 0 && checkPolygon {
+	if len(sumVals) == 0 && len(siblingVals) == 0 && checkPolygon {
 		return true, nil
 	}
 
