@@ -427,6 +427,7 @@ func loadConfig() (*config, []string, error) {
 		Generate:          defaultGenerate,
 		GenerateMiner:     defaultGenerate,
 		DisablePOWMining:  false,
+		EnablePOWMining:   false,
 		TxIndex:           defaultTxIndex,
 		AddrIndex:         defaultAddrIndex,
 		ChainCurrentStd:   24,

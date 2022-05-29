@@ -321,6 +321,7 @@ var rpcLimited = map[string]struct{}{
 	"trycontract":   		 {},
 	"searchrawtransactions": {},
 	"sendrawtransaction":    {},
+	"confirmations":		 {},
 //	"submitblock":           {},
 	"uptime":                {},
 	"validateaddress":       {},
