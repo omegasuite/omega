@@ -10,7 +10,7 @@ import (
 	"container/heap"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
-	"github.com/omegasuite/omega"
+//	"github.com/omegasuite/omega"
 	"github.com/omegasuite/omega/ovm"
 	"math/rand"
 	"time"
@@ -600,11 +600,27 @@ mempoolLoop:
 		log.Infof("mempoolLoop processing tx %s", tx.Hash())
 
 		if (tx.MsgTx().Version & wire.TxExpire) != 0 && tx.MsgTx().LockTime < uint32(nextBlockHeight) {
-			// we don't send notice here because this tx could be included in a block by other node
-			// that has an earlier timestamp
 			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 			log.Infof("Reject expired tx %s", tx.Hash())
 			continue
+		}
+		if (tx.MsgTx().Version & wire.TxExpire) == 0 {
+			 // we reject txs that has no expiration and has contract exec
+			rjct := false
+			for _, txout := range tx.MsgTx().TxOut {
+				if txout.IsSeparator() || txout.PkScript[0] != 0x88 {
+					continue
+				}
+				g.txSource.RemoveTransaction(tx, true)
+				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+				log.Infof("Reject tx with contract %s for lacking expiration time", tx.Hash())
+				rjct = true
+				break
+			}
+			if rjct {
+				continue
+			}
 		}
 
 		if tx.MsgTx().IsForfeit() {
@@ -897,22 +913,31 @@ skiprest:
 			coinbaseTx.HasOuts = newcoins
 			*coinbaseTx.MsgTx() = savedCoinBase
 
-			if vmerr.Level() == omega.FatalLevel {
+//			if vmerr.Level() == omega.FatalLevel {
 				g.txSource.RemoveTransaction(tx, true)
 				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 				log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
 				logSkippedDeps(tx, deps)
 				continue
+/*
 			} else {
 				log.Infof("Skip tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
 				logSkippedDeps(tx, deps)
 				break skiprest	// skip rest so we don't waste time on on more contracts because this error
 						// could be caused by exec limit
 			}
+ */
 //			continue
 		}
-
+		for ip:=0; ip < len(tx.MsgTx().TxOut); ip++ {
+			if tx.MsgTx().TxOut[ip].IsSeparator() {
+				continue
+			}
+			if tx.MsgTx().TxOut[ip].PkScript[0] == 0x88 {
+				break
+			}
+		}
 		storage := blockchain.ContractNewStorage(tx, Vm, paidstoragefees)
 
 		tx.Executed = true

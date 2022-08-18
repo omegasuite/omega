@@ -209,7 +209,6 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	v2 := lastNode.Data.GetVersion() >= chaincfg.Version2
 	v3 := lastNode.Data.GetVersion() >= chaincfg.Version3
 
-//	b.blocksPerRetarget = 10		// temp, to be removed in final release
 	// Return the previous block's difficulty requirements if this block
 	// is not at a difficulty retarget interval.
 	if (lastNode.Height+1)%b.blocksPerRetarget != 0 {
@@ -273,8 +272,8 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			blockRegion, err := b.TxIndex.TxBlockRegion(&op.Hash)
 
 			if err != nil || blockRegion == nil {
-					panic("Failed to retrieve transaction location for tx: " + op.Hash.String())
-				}
+				panic("Failed to retrieve transaction location for tx: " + op.Hash.String())
+			}
 
 			// Load the raw transaction bytes from the database.
 			var txBytes []byte
@@ -287,8 +286,8 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			if err != nil {
 				blk, err := b.blockChain.BlockByHash(blockRegion.Hash)
 				if err != nil {
-						panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " for " + err.Error())
-					}
+					panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " for " + err.Error())
+				}
 				fd := false
 				for _, tx := range blk.Transactions() {
 					if tx.Hash().IsEqual(&op.Hash) {
@@ -373,7 +372,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			dt = dt << m
 		}
 
-	// do we need to cancel adjustments for collateral & TPS scores? no.
+		// do we need to cancel adjustments for collateral & TPS scores? no.
 		// because these adjustment is given on competition basis, so when we
 		// calculate average block time, winners and losers will cancel out
 		// each other.
@@ -413,15 +412,15 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	}
 
 	// Limit new value to the proof of work limit.
-	if newTarget.Cmp(b.chainParams.PowLimit) > 0 {
-		newTarget.Set(b.chainParams.PowLimit)
+	newTargetBits := b.chainParams.PowLimitBits
+	if newTarget.Cmp(b.chainParams.PowLimit) <= 0 {
+		newTargetBits = BigToCompact(newTarget)
 	}
 
 	// Log new target difficulty and return it.  The new target logging is
 	// intentionally converting the bits back to a number instead of using
 	// newTarget since conversion to the compact representation loses
 	// precision.
-	newTargetBits := BigToCompact(newTarget)
 	if v3 && coll < 100 {
 		coll = 100
 	}

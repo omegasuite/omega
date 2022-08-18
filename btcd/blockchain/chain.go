@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/omega/token"
 	"sync"
 	"time"
@@ -497,17 +498,19 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 		}
 	}
 
-	invalidChain := false
+//	invalidChain := false
 	for n := node; n != nil && n != forkNode; n = n.Parent {
 		if b.index.NodeStatus(n).KnownInvalid() {
-			invalidChain = true
-			break
+//			invalidChain = true
+			attachNodes = list.New()
+		} else {
+			attachNodes.PushFront(n)
 		}
-		attachNodes.PushFront(n)
 	}
 
 	// If any of the node's ancestors are invalid, unwind attachNodes, marking
 	// each one as invalid for future reference.
+/*
 	if invalidChain {
 		var next *list.Element
 		for e := attachNodes.Front(); e != nil; e = next {
@@ -519,6 +522,7 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 		}
 		return detachNodes, attachNodes
 	}
+*/
 
 	// Start from the end of the main chain and work backwards until the
 	// common ancestor adding each block to the list of nodes to detach from
@@ -1202,7 +1206,11 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List) (int
 		// check proof of work
 		var mkorphan bool
 		if err == nil {
-			err, mkorphan = b.checkProofOfWork(block, newBest, b.ChainParams.PowLimit, BFNone)
+			behaviorFlags := BFNone
+			if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet|| b.ChainParams.Net == common.RegNet {
+				behaviorFlags |= BFEasyBlocks
+			}
+			err, mkorphan = b.checkProofOfWork(block, newBest, b.ChainParams.PowLimit, behaviorFlags)
 		}
 		if err != nil || mkorphan {
 			if _, ok := err.(RuleError); ok {

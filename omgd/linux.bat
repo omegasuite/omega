@@ -1,8 +1,8 @@
 set GOARCH=amd64
 set GOOS=linux
-set GOPATH=c:\Gopath
+set GOPATH=f:\Gopath
 
-@REM set CGO_ENABLED=1
+set CGO_ENABLED=0
 @REM -race
 
 go build -i -v -ldflags "-X 'main.CompileTime=`%date%`'"

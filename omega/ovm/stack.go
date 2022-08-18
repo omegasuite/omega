@@ -81,6 +81,9 @@ func (s *Stack) toBig(p * pointer) (* big.Int, omega.Err) {
 	if _,ok := s.data[area]; !ok {
 		return nil, outofstack
 	}
+	if offset < 0 || (offset + 32) > len(s.data[area].space) {
+		return nil, outofstack
+	}
 
 	var h chainhash.Hash
 

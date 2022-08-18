@@ -237,6 +237,10 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	}
 
 	// Perform preliminary sanity checks on the block.
+	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet|| b.chainParams.Net == common.RegNet {
+		flags |= blockchain.BFEasyBlocks
+	}
+
 	err := CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags | blockchain.BFNoPoWCheck)
 	if err != nil {
 		return false, false, err, nil
@@ -265,7 +269,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		log.Infof("block prevHash does not Exists Adding orphan block %s with parent %s", blockHash.String(), prevHash.String())
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
 
-		return false, true, nil, nil
+		return false, true, nil, &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeMinerBlock, *prevHash}}}
 	}
 
 	bestblk := b.blockChain.NodeByHash(&block.MsgBlock().BestBlock)	//.HaveBlock(&block.MsgBlock().BestBlock)
@@ -349,9 +353,11 @@ func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource cha
 	// Ensure the proof of work bits in the block header is in min/max range
 	// and the block hash is less than the target value described by the
 	// bits.
-	err := checkProofOfWork(header.MsgBlock(), powLimit, flags)
-	if err != nil {
-		return err
+	if (flags & blockchain.BFEasyBlocks) == 0 {
+		err := checkProofOfWork(header.MsgBlock(), powLimit, flags)
+		if err != nil {
+			return err
+		}
 	}
 
 	// A block timestamp must not have a greater precision than one second.

@@ -11,6 +11,7 @@ import (
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -47,6 +48,8 @@ const (
 	BFWatingFactor
 
 	BFAlreadyInChain
+
+	BFEasyBlocks
 
 	// BFNone is a convenience value to specifically indicate no flags.
 	BFNone BehaviorFlags = 0
@@ -129,13 +132,18 @@ func (b *BlockChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) error {
+	behaviorFlags := BFNone
+	if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet|| b.ChainParams.Net == common.RegNet {
+		behaviorFlags |= BFEasyBlocks
+	}
+
 	b.Orphans.ProcessOrphans(hash, func(_ *chainhash.Hash, blk interface{}) (bool, wire.Message) {
 		block := (*btcutil.Block)(blk.(*orphanBlock))
 		if prevNode := b.NodeByHash(&block.MsgBlock().Header.PrevBlock); prevNode != nil {
 			block.SetHeight(prevNode.Height + 1)
 			// Potentially accept the block into the block chain.
 			if prevNode == b.BestChain.Tip() {
-				err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
+				err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags | behaviorFlags)
 				if err != nil || mkorphan {
 					return true, nil
 				}
@@ -377,7 +385,11 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	if prevNode == b.BestChain.Tip() {
 		// only check proof of work if it extends the best chain. if the block
 		// would cause a reorg, pow check will be done in reorg
-		err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags)
+		behaviorFlags := BFNone
+		if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet|| b.ChainParams.Net == common.RegNet {
+			behaviorFlags |= BFEasyBlocks
+		}
+		err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags | behaviorFlags)
 		if err != nil {
 			return isMainChain, true, err, -1, nil
 		}

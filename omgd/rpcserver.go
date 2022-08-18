@@ -12,9 +12,9 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/subtle"
-	"crypto/x509"
+//	"crypto/x509"
 	"encoding/base64"
-	"encoding/pem"
+//	"encoding/pem"
 
 	//	"encoding/binary"
 	"encoding/hex"
@@ -150,7 +150,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getbestminerblockhash": handleGetBestMinerBlockHash,	// New
 	"getblock":              handleGetBlock,
 	"getblockchaininfo":     handleGetBlockChainInfo,		// Changed: get info. for both chains
-	"alert":			     handleAlert,
+//	"alert":			     handleAlert,
 	"addminingkey":			 handleAddMiningKey,
 	"getblockcount":         handleGetBlockCount,
 	"getblockhash":          handleGetBlockHash,
@@ -1699,6 +1699,12 @@ func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	vm.BlockVersion = func() uint32 { return wire.Version4 }
 
 	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
+	if mb == nil {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCMisc,
+			Message: "Chain stalled.",
+		}
+	}
 	if mb.Data.GetContractExec() > vm.StepLimit {
 		vm.StepLimit = mb.Data.GetContractExec()
 	}
@@ -2048,6 +2054,28 @@ func handleAddMiningKey(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 		result.Status = -5
 	}
 	return result, nil
+}
+
+func encrypt(buf []byte, pubkey *rsa.PublicKey) ([]byte, error) {
+	n := 0
+	ciphered := make([]byte, 0, len(buf) + 4)
+
+	for len(buf) > n {
+		m := len(buf)
+		if len(buf) - n > 446 {
+			m = n + 446
+		}
+		t, err := rsa.EncryptOAEP(sha256.New(), rrand.Reader, pubkey, buf[n : m], []byte("alert"))
+		if err != nil {
+			return nil, err
+		}
+		n = m
+		var u[4]byte
+
+		common.LittleEndian.PutUint32(u[:], uint32(len(t)))
+		ciphered = append(append(ciphered, u[:]...), t...)
+	}
+	return ciphered, nil
 }
 
 // handleGetBlockChainInfo implements the getblockchaininfo command.
@@ -5048,7 +5076,7 @@ type rpcServer struct {
 	quit                   chan int
 
 	Rpcactivity 		   chan struct{}
-	alertresp			   chan *AlertCommand
+//	alertresp			   chan *AlertCommand
 	rsapubkey			   *rsa.PublicKey
 }
 

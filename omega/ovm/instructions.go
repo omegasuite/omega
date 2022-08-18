@@ -2391,6 +2391,10 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 		// whether to add txout based on value given to the contract only, because
 		// we determine Rollback Data based on presence of contract in txout
 		tx := evm.GetTx()
+
+		if tx == nil {
+			return omega.ScriptError(omega.ErrInternal,"Contract call not in a transaction.")
+		}
 		msg := tx.MsgTx()
 		if !tx.HasOuts {
 			// this servers as a separater. only TokenType is serialized
@@ -2869,6 +2873,9 @@ func opTxFee(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 
 			case 1:
 				tx := evm.GetTx()
+				if tx == nil {
+					return omega.ScriptError(omega.ErrInternal,"Contract call not in a transaction.")
+				}
 				msgTx := tx.MsgTx()
 				serializedSize := int64(msgTx.SerializeSize())
 
@@ -3026,6 +3033,9 @@ func opSuicide(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 		}
 
 		tx := evm.GetTx()
+		if tx == nil {
+			return omega.ScriptError(omega.ErrInternal,"Contract call not in a transaction.")
+		}
 		msg := tx.MsgTx()
 		if !tx.HasOuts {
 			// this servers as a separater. only TokenType is serialized
@@ -3297,6 +3307,9 @@ func opGetIOCount(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err
 			dest = pointer(num)
 
 			tx := evm.GetTx()
+			if tx == nil {
+				return omega.ScriptError(omega.ErrInternal,"Contract call not in a transaction.")
+			}
 			count := int32(len(tx.MsgTx().TxIn) | (len(tx.MsgTx().TxOut) << 16))
 
 			if dest != 0 {
@@ -3457,13 +3470,15 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.
 
 	tx := evm.GetTx()
 
-	for _, def := range tx.MsgTx().TxDef {
-		h := def.Hash()
-		if h.IsEqual(&hash) {
-			var w bytes.Buffer
-			def.MemWrite(&w, 0)
-			stack.saveBytes(&dest, w.Bytes())
-			return nil
+	if tx != nil {
+		for _, def := range tx.MsgTx().TxDef {
+			h := def.Hash()
+			if h.IsEqual(&hash) {
+				var w bytes.Buffer
+				def.MemWrite(&w, 0)
+				stack.saveBytes(&dest, w.Bytes())
+				return nil
+			}
 		}
 	}
 

@@ -19,6 +19,7 @@ import (
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/token"
 	"time"
+	"sync"
 )
 
 type tree struct {
@@ -67,6 +68,8 @@ type Syncer struct {
 	forest   map[[20]byte]*tree		// blocks mined
 	knows    map[[20]byte][]*wire.MsgKnowledge	// the knowledges we received organized by finders (i.e. fact)
 	signed   map[[20]byte]struct{}
+
+	forestLock  sync.Mutex
 
 	knowledges *Knowledgebase
 
@@ -411,8 +414,11 @@ func (self *Syncer) run() {
 
 loop:
 	for {
+		self.forestLock.Lock()
+
 		select {
 		case <-self.quit:
+			self.forestLock.Unlock()
 			break loop
 
 		case cmd := <-self.commands:
@@ -423,6 +429,7 @@ loop:
 			case *tree:
 				tree := cmd.(*tree)
 				if self.sigGiven >= 0 {
+					self.forestLock.Unlock()
 					continue
 				}
 				if tree.block != nil {
@@ -433,6 +440,7 @@ loop:
 
 				if !self.validateMsg(tree.creator, nil, nil) {
 					log.Infof("tree creator %x is not a member of committee", tree.creator)
+					self.forestLock.Unlock()
 					continue
 				}
 
@@ -453,6 +461,7 @@ loop:
 				} else if (self.forest[tree.creator].hash != chainhash.Hash{}) && tree.hash != self.forest[tree.creator].hash {
 					if self.Me == tree.creator {
 						log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
+						self.forestLock.Unlock()
 						continue
 					}
 					self.Malice[tree.creator] = struct{}{}
@@ -485,6 +494,7 @@ loop:
 				switch m.(type) {
 				case *wire.MsgKnowledge: // passing knowledge
 					if self.sigGiven >= 0 {
+						self.forestLock.Unlock()
 						continue
 					}
 
@@ -494,6 +504,7 @@ loop:
 
 					if !self.validateMsg(k.Finder, &k.M, m) {
 						log.Infof("MsgKnowledge invalid")
+						self.forestLock.Unlock()
 						continue
 					}
 
@@ -513,6 +524,7 @@ loop:
 
 				case *wire.MsgKnowledgeDone:
 					if self.sigGiven >= 0 {
+						self.forestLock.Unlock()
 						continue
 					}
 
@@ -528,6 +540,7 @@ loop:
 
 					if self.sigGiven >= 0 && self.Names[self.sigGiven] != k.F {
 						log.Infof("MsgCandidate declined. sig already given to %d", self.sigGiven)
+						self.forestLock.Unlock()
 						continue
 					}
 
@@ -535,6 +548,7 @@ loop:
 
 					if !self.validateMsg(k.F, &k.M, m) {
 						log.Infof("Invalid MsgCandidate message")
+						self.forestLock.Unlock()
 						continue
 					}
 
@@ -546,11 +560,13 @@ loop:
 
 				case *wire.MsgCandidateResp: // response to candidacy announcement
 					if self.sigGiven >= 0 {
+						self.forestLock.Unlock()
 						continue
 					}
 
 					k := m.(*wire.MsgCandidateResp)
 					if !self.validateMsg(k.From, nil, m) {
+						self.forestLock.Unlock()
 						continue
 					}
 
@@ -558,10 +574,12 @@ loop:
 
 				case *wire.MsgRelease: // grant a release from duty
 					if self.sigGiven >= 0 {
+						self.forestLock.Unlock()
 						continue
 					}
 					k := m.(*wire.MsgRelease)
 					if !self.validateMsg(k.From, nil, m) {
+						self.forestLock.Unlock()
 						continue
 					}
 
@@ -570,11 +588,13 @@ loop:
 
 				case *wire.MsgConsensus: // announce consensus reached
 					if self.sigGiven >= 0 {
+						self.forestLock.Unlock()
 						continue
 					}
 					k := m.(*wire.MsgConsensus)
 
 					if !self.validateMsg(k.From, nil, m) {
+						self.forestLock.Unlock()
 						continue
 					}
 
@@ -585,6 +605,7 @@ loop:
 					self.consRevd[self.Members[k.From]] = self.Members[k.From]
 					self.repeats = 0
 					if self.Consensus(k) {
+						self.forestLock.Unlock()
 						break loop
 					}
 
@@ -594,6 +615,7 @@ loop:
 
 					if self.Signature(k) {
 						if len(self.signed) == wire.CommitteeSize || time.Now().Sub(begin) >= time.Second {
+							self.forestLock.Unlock()
 							break loop
 						} else {
 							time.Sleep(500 * time.Millisecond) // wait 500 millisecond to allow all members to sign
@@ -611,6 +633,7 @@ loop:
 			}
 			self.repeater()
 		}
+		self.forestLock.Unlock()
 		self.handeling = ""
 	}
 
@@ -1475,7 +1498,8 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	}
 
 	self.setCommittee()
-
+	
+	self.forestLock.Lock()
 	if r,ok := self.forest[adr]; !ok || r.block == nil {
 		self.commands <- &tree{
 			creator: adr,
@@ -1485,6 +1509,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 			block:   block,
 		}
 	}
+	self.forestLock.Unlock()
 
 	if miner.server.BestSnapshot().Hash != block.MsgBlock().Header.PrevBlock {
 		miner.server.ChainSync(block.MsgBlock().Header.PrevBlock, adr)

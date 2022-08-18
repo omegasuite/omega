@@ -11,6 +11,7 @@ package minerchain
 import (
 	"container/list"
 	"fmt"
+	"github.com/omegasuite/btcd/wire/common"
 	"math/big"
 	"sort"
 	"sync"
@@ -738,6 +739,9 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		xf := blockchain.BFNone
 		if block.Height() > 2200 || block.MsgBlock().Version >= 0x20000 {
 			xf = blockchain.BFWatingFactor
+		}
+		if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet|| b.chainParams.Net == common.RegNet {
+			xf |= blockchain.BFEasyBlocks
 		}
 
 		if err := b.checkProofOfWork(block.MsgBlock(), b.chainParams.PowLimit, blockchain.BFNone | xf); err != nil {
@@ -1666,14 +1670,14 @@ func checkProofOfWork(header *wire.MingingRightBlock, powLimit *big.Int, flags b
 	// The target difficulty must be larger than zero.
 	target := CompactToBig(header.Bits)
 	if target.Sign() <= 0 {
-		str := fmt.Sprintf("block target difficulty of %064x is too low",
-			target)
+		str := fmt.Sprintf("checkProofOfWork: block target difficulty of %064x is too low", target)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
 
 	// The target difficulty must be less than the maximum allowed.
-	if target.Cmp(powLimit) > 0 {
-		str := fmt.Sprintf("block target difficulty of %064x is "+
+//	if target.Cmp(powLimit) > 0 {
+	if target.Cmp(powLimit) > 0 && flags & blockchain.BFEasyBlocks == 0 {
+		str := fmt.Sprintf("checkProofOfWork: block target difficulty of %064x is "+
 			"higher than max of %064x", target, powLimit)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}

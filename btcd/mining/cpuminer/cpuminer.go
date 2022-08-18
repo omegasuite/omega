@@ -75,6 +75,7 @@ type Config struct {
 	SignAddress      []btcutil.Address
 	PrivKeys         []*btcec.PrivateKey
 	DisablePOWMining bool
+	EnablePOWMining  bool
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -731,7 +732,7 @@ out:
 
 		mh := m.g.Chain.Miners.BestSnapshot().Height
 
-		if m.cfg.DisablePOWMining && (nopow || m.cfg.ChainParams.Net == common.TestNet) || mh - int32(bs.LastRotation) < 2 {
+		if m.cfg.DisablePOWMining && (m.cfg.EnablePOWMining || nopow || m.cfg.ChainParams.Net == common.TestNet) || mh - int32(bs.LastRotation) < 2 {
 			time.Sleep(time.Second * wire.TimeGap)
 //			log.Infof("Retry because POW Mining disabled.")
 			continue

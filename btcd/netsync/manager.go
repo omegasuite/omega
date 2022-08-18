@@ -1110,6 +1110,9 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	// handling, etc.
 
 	log.Tracef("sm.chain.Miners.ProcessBlock")
+	if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet|| sm.chainParams.Net == common.RegNet {
+		behaviorFlags |= blockchain.BFEasyBlocks
+	}
 	isMainchain, isOrphan, err, h := sm.chain.Miners.ProcessBlock(bmsg.block, behaviorFlags)
 
 	b1 := sm.chain.BestSnapshot()
@@ -1935,6 +1938,9 @@ out:
 				consensus.ProcessBlock(msg.block, msg.flags)
 
 			case processMinerBlockMsg:
+				if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet|| sm.chainParams.Net == common.RegNet {
+					msg.flags |= blockchain.BFEasyBlocks
+				}
 				main, isOrphan, err, _ := sm.chain.Miners.ProcessBlock(
 					msg.block, msg.flags)
 				if msg.reply != nil {

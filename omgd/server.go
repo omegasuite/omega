@@ -9,15 +9,15 @@ package main
 // import "C"
 
 import (
-	"bufio"
+	//	"bufio"
 	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
+	//	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
-	"encoding/hex"
+	//	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -26,11 +26,11 @@ import (
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/omega/minerchain"
-	"io"
+	//	"io"
 	"math"
 	"net"
 	"os"
-	"path/filepath"
+	//	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -40,7 +40,6 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/addrmgr"
-	"github.com/omegasuite/omgd/ukey"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/blockchain/indexers"
 	"github.com/omegasuite/btcd/chaincfg"
@@ -57,6 +56,7 @@ import (
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/btcutil/bloom"
 	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/omgd/ukey"
 )
 
 const (

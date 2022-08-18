@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
 	"sort"
 
@@ -55,7 +56,7 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	// The block must pass all of the validation rules which depend on the
 	// position of the block within the block chain.
 	err := b.checkBlockContext(block, prevNode, flags)
-	if err != nil {
+	if err != nil && (flags & blockchain.BFEasyBlocks) == 0{
 		if _,ok := err.(RuleError); ok {
 			return false, err
 		}
@@ -165,14 +166,13 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 	// The target difficulty must be larger than zero.
 	target := CompactToBig(header.Bits)
 	if target.Sign() <= 0 {
-		str := fmt.Sprintf("block target difficulty of %064x is too low",
-			target)
+		str := fmt.Sprintf("MinerChain.checkProofOfWork: block target difficulty of %064x is too low", target)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
 
 	// The target difficulty must be less than the maximum allowed.
-	if target.Cmp(powLimit) > 0 {
-		str := fmt.Sprintf("block target difficulty of %064x is "+
+	if target.Cmp(powLimit) > 0 && flags & blockchain.BFEasyBlocks == 0 {
+		str := fmt.Sprintf("MinerChain.checkProofOfWork: block target difficulty of %064x is "+
 			"higher than max of %064x", target, powLimit)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
@@ -380,6 +380,9 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	if block.Height() > 2200 || block.MsgBlock().Version >= 0x20000 {
 		xf = blockchain.BFWatingFactor
 	}
+	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet|| b.chainParams.Net == common.RegNet {
+		xf |= blockchain.BFEasyBlocks
+	}
 
 	if err := b.checkProofOfWork(header, b.chainParams.PowLimit, flags | xf); err != nil {
 		return err
@@ -488,6 +491,9 @@ func (b *MinerChain) CheckConnectBlockTemplate(block *wire.MinerBlock) error {
 
 	// Skip the proof of work check as this is just a block template.
 	flags := blockchain.BFNoPoWCheck
+	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet|| b.chainParams.Net == common.RegNet {
+		flags |= blockchain.BFEasyBlocks
+	}
 	tip := b.BestChain.Tip()
 
 /*

@@ -90,7 +90,8 @@ func init() {
 	blockchain.UseLogger(chanLog)
 //	chanLog.SetLevel(btclog.LevelTrace)
 
-	indexers.UseLogger(btclog.Disabled)	// indxLog)
+//	indexers.UseLogger(btclog.Disabled)	// indxLog)
+	indexers.UseLogger(indxLog)
 	mining.UseLogger(minrLog)
 	cpuminer.UseLogger(minrLog)
 	peer.UseLogger(peerLog)
@@ -102,11 +103,11 @@ func init() {
 //	syncLog.SetLevel(btclog.LevelTrace)
 
 	mempool.UseLogger(btclog.Disabled)	// txmpLog)
-//	ovm.UseLogger(ovmLog)
-	ovm.UseLogger(btclog.Disabled)
+	ovm.UseLogger(ovmLog)
+//	ovm.UseLogger(btclog.Disabled)
 	consensus.UseLogger(consensusLog)
-//	minerchain.UseLogger(minerLog)
-	minerchain.UseLogger(btclog.Disabled)
+	minerchain.UseLogger(minerLog)
+//	minerchain.UseLogger(btclog.Disabled)
 	token.UseLogger(btclog.Disabled)	// tokenLog)
 
 //	btcdLog.SetLevel(btclog.LevelTrace)

@@ -398,7 +398,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		}
 
 		// The target difficulty must be less than the maximum allowed.
-		if target.Cmp(powLimit) > 0 {
+		if target.Cmp(powLimit) > 0 && flags & BFEasyBlocks == 0  {
 			str := fmt.Sprintf("block target difficulty of %064x is "+
 				"higher than max of %064x", target, powLimit)
 			return ruleError(ErrUnexpectedDifficulty, str), false
@@ -592,7 +592,11 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 // difficulty is in min/max range and that the block hash is less than the
 // target difficulty as claimed.
 func (b *BlockChain) CheckProofOfWork(block *btcutil.Block, powLimit *big.Int) error {
-	err, _ := b.checkProofOfWork(block, b.BestChain.Tip(), powLimit, BFNone)
+	behaviorFlags := BFNone
+	if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet|| b.ChainParams.Net == common.RegNet {
+		behaviorFlags |= BFEasyBlocks
+	}
+	err, _ := b.checkProofOfWork(block, b.BestChain.Tip(), powLimit, behaviorFlags)
 	return err
 }
 
