@@ -430,6 +430,7 @@ func (m *CPUMiner) generateBlocks() {
 	defer ticker.Stop()
 
 	lastblkgen := time.Now().Unix()
+	lastblkrcv := lastblkgen
 
 	nopow := false
 
@@ -450,6 +451,7 @@ out:
 						<-m.connch
 					}
 					lastblkgen = time.Now().Unix()
+					lastblkrcv = lastblkgen
 				}
 
 			case <-m.quit:
@@ -697,6 +699,7 @@ out:
 						log.Infof("Noticed of new connected block %d", blk)
 						break connected
 					}
+					lastblkrcv = time.Now().Unix()
 					
 				case _,ok := <-consensus.POWStopper:
 					if !ok {
@@ -732,7 +735,7 @@ out:
 
 		mh := m.g.Chain.Miners.BestSnapshot().Height
 
-		if m.cfg.DisablePOWMining && (m.cfg.EnablePOWMining || nopow || m.cfg.ChainParams.Net == common.TestNet) || mh - int32(bs.LastRotation) < 2 {
+		if lastblkgen - lastblkrcv < 20 && m.cfg.DisablePOWMining && (m.cfg.EnablePOWMining || nopow || m.cfg.ChainParams.Net == common.TestNet) || mh - int32(bs.LastRotation) < 2 {
 			time.Sleep(time.Second * wire.TimeGap)
 //			log.Infof("Retry because POW Mining disabled.")
 			continue
@@ -776,6 +779,7 @@ out:
 			}
 			select {
 			case <-m.connch:
+				lastblkrcv = time.Now().Unix()
 				continue
 
 			case <-consensus.POWStopper:

@@ -172,6 +172,7 @@ type config struct {
 	ExitOnStall   bool          `long:"exitonstall" description:"Exit program when no activity in 30 minutes."`
 	ChainCurrentStd int		   `long:"chaincurrentstd" description:"Hours beyond which chain is considered not current"`
 	MemLimit	  uint32		`long:"memlimit" description:"Memory limit (K), exceeding it will cause program to exit gracefully"`
+	ContractReqExp	bool		`long:"contractreqexp" description:"Local rule, requiring expiration in tx with contract"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -676,7 +677,7 @@ func loadConfig() (*config, []string, error) {
 			cfg.whitelists = append(cfg.whitelists, ipnet)
 		}
 	}
-
+/*
 	if cfg.GenerateMiner && cfg.ShareMining && len(cfg.PrivKeys) == 0 {
 		if len(cfg.ExternalIPs) == 0 {
 			return nil, nil, fmt.Errorf("ExternalIP is required")
@@ -684,6 +685,7 @@ func loadConfig() (*config, []string, error) {
 		cfg.ConnectPeers = make([]string, 1)
 		cfg.ConnectPeers[0] = cfg.ExternalIPs[0]
 	}
+*/
 
 	// --addPeer and --connect do not mix.
 	if len(cfg.AddPeers) > 0 && len(cfg.ConnectPeers) > 0 {

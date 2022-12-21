@@ -55,6 +55,7 @@ const (
 )
 
 type ServerPeer interface{}
+var usePerm = false
 
 // ConnReq is the connection request to a network address. If permanent, the
 // connection will be retried on disconnection.
@@ -209,6 +210,9 @@ type ConnManager struct {
 // configured retry duration.
 func (cm *ConnManager) handleFailedConn(c *ConnReq) {
 	if atomic.LoadInt32(&cm.stop) != 0 {
+		return
+	}
+	if !c.Permanent && usePerm {
 		return
 	}
 	if c.Permanent || c.Committee > 0 {
@@ -456,6 +460,10 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 	if cm.dupChecker != nil && cm.dupChecker.IsConnected(c) {
 		log.Infof("Connect failed due to dupChecker")
 		return
+	}
+
+	if c.Permanent {
+		usePerm = true
 	}
 
 	if atomic.LoadUint64(&c.id) == 0 {

@@ -67,6 +67,10 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 				s.peers[0].QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
 				sent = true
 			} else if !s.connecting {	// if len(s.address) > 0
+				if len(p.persistentPeers) > 0 {
+					// if we have persistent peers, don't make any connection
+					continue
+				}
 				tcp, err := net.ResolveTCPAddr("", s.address)
 				if err != nil {
 					btcdLog.Infof("CommitteeOut: can not resolve %s", s.address)
@@ -605,10 +609,11 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 			}
 		})
 
-		if !isin && !m.connecting {
+		if !isin && !m.connecting && len(s.peerState.persistentPeers) == 0 {
 			btcdLog.Debugf("makeConnection: new %s", addr)
 
 			m.connecting = true
+
 
 			go s.connManager.Connect(&connmgr.ConnReq{
 				Addr:      tcp,

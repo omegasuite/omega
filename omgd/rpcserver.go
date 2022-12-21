@@ -3966,7 +3966,7 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		result[v.Hash().String()] = &btcjson.RightDefinition{
 			Kind: 4,
 			Father:entry.Father.String(),
-			Desc:string(entry.Desc),
+			Desc:hex.EncodeToString(entry.Desc),
 			Attrib:uint32(entry.Attrib),
 		}
 
@@ -3977,7 +3977,7 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			return reply, nil
 		}
 
-		if _,ok := (*dup)[v.Father.String()]; !ok {
+		if _,ok := (*dup)[v.Father.String()]; !ok && !v.Father.IsEqual(&zeroHash) {
 			t, err := handleRecursiveGetDefine(s, token.DefTypeRight, &v.Father, rec, dup)
 			if err != nil {
 				return nil, err

@@ -33,6 +33,7 @@ const (
 	Version2				   = 0x20000
 	Version3				   = 0x30000
 	Version4				   = 0x40000
+	Version5				   = 0x50000
 )
 
 // current code version

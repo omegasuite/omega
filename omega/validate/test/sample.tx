@@ -1,19 +1,17 @@
-{"inst":"beta","desc":"common edge test","loop":[[[-15.0,-15.0],[-15.0,20.0],[20.0,20.0],[20.0,-15.0]],[[0.0,-2.0],[0.0,0.0],[2.0,0.0]]],"expect":2}
-{"inst":"beta","desc":"common edge test","loop":[[[-50.0,-50.0],[-50.0,50.0],[20.0,20.0]],[[0.0,-2.0],[0.0,0.0],[2.0,0.0]]],"expect":0}
-{"inst":"beta","desc":"common edge test","loop":[[[-15.0,-15.0],[-15.0,20.0],[20.0,20.0]],[[0.0,-20.0],[0.0,0.0],[20.0,0.0]]],"expect":0}
-{"inst":"beta","desc":"common edge test","loop":[[[0.0,0.0],[0.0,10.0],[10.0,10.0],[10.0,0.0]],[[-15.0,-15.0],[-15.0,20.0],[20.0,20.0]]],"expect":2}
-{"inst":"beta","desc":"common edge test","loop":[[[0.0,0.0],[10.0,10.0],[20.0,0.0],[10.0,-10.0]],[[30.0,0.0],[-10.0,0.0],[0.0,30.0]]],"expect":2}
-{"inst":"beta","desc":"common edge test","loop":[[[0.0,0.0],[10.0,10.0],[20.0,0.0],[0.0,-20.0]],[[0.0,-20.0],[-20.0,-20.0],[0.0,20.0],[10.0,10.0]]],"expect":2}
-{"inst":"beta","desc":"common edge test","loop":[[[0.0,0.0],[10.0,10.0],[20.0,0.0],[10.0,-10.0]],[[10.0,-10.0],[10.0,10.0],[20.0,10.0],[20.0,-10.0]]],"expect":2}
-{"inst":"beta","desc":"common edge test","loop":[[[0.0,0.0],[10.0,10.0],[20.0,0.0],[10.0,-10.0]],[[0.0,0.0],[0.0,20.0],[20.0,20.0],[20.0,0.0]]],"expect":2}
-{"inst":"beta","desc":"common edge test","loop":[[[0.0,8.0],[30.0,30.0],[25.0,25.0],[22.0,20.0],[18.0,18.0],[4.0,4.0]],[[4.0,4.0],[40.0,40.0],[21.0,8.0]]],"expect":0}
-{"inst":"beta","desc":"common edge test","loop":[[[4.0,4.0],[40.0,40.0],[21.0,8.0]],[[0.0,8.0],[30.0,30.0],[25.0,25.0],[22.0,20.0],[18.0,18.0],[4.0,4.0]]],"expect":2}
-{"inst":"beta","desc":"common edge test","loop":[[[4.0,10.0],[4.0,40.0],[8.0,21.0]],[[0.0,0.0],[4.0,30.0],[4.0,25.0],[3.9,20.0],[4.0,15.0],[4.0,5.0]]],"expect":0}
-{"inst":"alpha","desc":"simple test","loop":[[[3.0,10.0],[3.0,20.0],[6.0,20.0]]],"expect":0}
-{"inst":"alpha","desc":"dup border test","loop":[[[4.0,10.0],[3.0,20.0],[6.0,20.0]]],"expect":2}
-{"inst":"alpha","desc":"simple out of bound test","loop":[[[3.0,170.0],[3.0,190.0],[6.0,190.0]]],"expect":2}
-{"inst":"alpha","desc":"clock wise test","loop":[[[3.0,10.0],[6.0,20.0],[3.0,20.0]]],"expect":2}
-{"inst":"beta","desc":"loop grouping test","loop":[[[4.0,10.0],[4.0,20.0],[7.0,20.0]],[[7.0,10.0],[7.0,20.0],[10.0,20.0]]],"expect":0}
-{"inst":"beta","desc":"intersection test","loop":[[[4.0,10.0],[4.0,20.0],[8.0,21.0]],[[7.0,10.0],[7.0,20.0],[10.0,20.0]]],"expect":2}
-{"inst":"alpha","desc":"dup vertex test","loop":[[[3.0,10.0],[3.0,20.0],[3.0,11.0],[3.0,10.0],[6.0,20.0],[6.0,21]]],"expect":2}
-{"inst":"beta","desc":"intersection test","loop":[[[4.0,10.0],[4.0,40.0],[8.0,21.0]],[[0.0,0.0],[4.0,10.0],[4.0,5.0]]],"expect":2}
+{"utxos":
+    {"6a12d38571a056197e60d54e0219acb524fa89adb2b6753560dc394e773b8f34:4":
+        {"TokenType":1145261314, "Value":1459549624687,"Rights":"909921b80ec5db809902ef1ef545025c59f9188e7ebbf2ef2c7df82e2fb95b8c"},
+     "07a1c83bf2f81031b3a590cda39effaa3acf5ef742f1ea537cd0ee2c8846e3f5:6":
+        {"TokenType":1145261314, "Value":1623376623, "Rights":"5cd4f0d4620f07807ba32e2ce0528055ff2088e5c351e368a736e8b14c5318f9"},
+     "07a1c83bf2f81031b3a590cda39effaa3acf5ef742f1ea537cd0ee2c8846e3f5:3":
+        {"TokenType":1145261314, "Value":1623376623, "Rights":"5cd4f0d4620f07807ba32e2ce0528055ff2088e5c351e368a736e8b14c5318f9"}},
+ "rights":[
+    {"Type":5,"Parent":"","Desc":"","Attrib":0,"Members": ["15ffd11741438873e0d821bd405094c376ee45eabc1a78a1ad7bd724b474942e","8d1546d3c6c056566a4dcf765f534ab2c7e2fdac85042fddad2fdede4b6b4f3f"]},
+    {"Type":5,"Parent":"","Desc":"","Attrib":0,"Members": ["8d1546d3c6c056566a4dcf765f534ab2c7e2fdac85042fddad2fdede4b6b4f3f","010b23ac51683f92374aaf6a65ab8b6ca9ea7b054ac2cba2e31dbcd9fb0cda95"]},
+    {"Type":4,"Parent":"0000000000000000000000000000000000000000000000000000000000000000","Desc":"526967687420666f722044434d20746f6b656e73202d2076382e2041204465436f6d20676f766572616e63652074","Attrib":128,"Members": []},
+    {"Type":4,"Parent":"4aa6edced253cea4574cf07a33343d82d3c0dc4fa8749eaedfbd8fe8089fda1f","Desc":"44434d20766f74696e672072696768742e","Attrib":128,"Members": []},
+    {"Type":4,"Parent":"2ad73dda013caef630083ee0a057073125310722400e4f2ab55d9709ab84d044","Desc":"205be300","Attrib":128,"Members": []},
+    {"Type":4,"Parent":"821a718f766b35a39d56ef483adca907019585f47fa0782b2ee02cd3e6136b97","Desc":"c0e1e400","Attrib":128,"Members": []},
+    {"Type":4,"Parent":"010b23ac51683f92374aaf6a65ab8b6ca9ea7b054ac2cba2e31dbcd9fb0cda95","Desc":"6068e600","Attrib":128,"Members": []}
+    ],
+  "inputs":[{"PreviousOutPoint": {"Hash":"6a12d38571a056197e60d54e0219acb524fa89adb2b6753560dc394e773b8f34", "Index":4}},{"PreviousOutPoint": {"Hash":"07a1c83bf2f81031b3a590cda39effaa3acf5ef742f1ea537cd0ee2c8846e3f5", "Index":6}},{"PreviousOutPoint": {"Hash":"07a1c83bf2f81031b3a590cda39effaa3acf5ef742f1ea537cd0ee2c8846e3f5", "Index":3}}],"outputs":[{"TokenType":1145261314, "Value":145954962468, "Rights":"909921b80ec5db809902ef1ef545025c59f9188e7ebbf2ef2c7df82e2fb95b8c"},{"TokenType":1145261314, "Value":729774812342, "Rights":"909921b80ec5db809902ef1ef545025c59f9188e7ebbf2ef2c7df82e2fb95b8c"},{"TokenType":1145261314, "Value":583819849877, "Rights":"909921b80ec5db809902ef1ef545025c59f9188e7ebbf2ef2c7df82e2fb95b8c"}]}

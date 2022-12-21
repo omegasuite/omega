@@ -3189,6 +3189,7 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 		}
 
 		if evm.Spend(p, nil) {
+			log.Debugf("Spend: %s:%d", p.Hash.String(), p.Index)
 			return nil
 		}
 	} else {
@@ -3199,6 +3200,7 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 		sig += 4
 		loc := int32(sig & 0xFFFFFFFF)	// begininning of sig data
 		if evm.Spend(p, stack.data[int32(int64(sig) >> 32)].space[loc : loc + d]) {
+			log.Debugf("Spend: %s:%d", p.Hash.String(), p.Index)
 			return nil
 		}
 	}
@@ -3414,7 +3416,7 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 		stack.saveInt32(&dest, int32(seq))
 	}
 
-	log.Debugf("Text out added as %d: value = %d to %x", seq, tk.Token.Value.(*token.NumToken).Val, tk.PkScript[1:21])
+	log.Debugf("Text out added as %d: type = %d value = %d to %x", seq, tk.TokenType, tk.Token.Value.(*token.NumToken).Val, tk.PkScript[1:21])
 
 	return nil
 }

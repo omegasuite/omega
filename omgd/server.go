@@ -2475,6 +2475,10 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 		}
 		state.cmutex.Unlock()
 
+		if len(state.persistentPeers) > 0 {
+			return
+		}
+
 		netAddr, err := addrStringToNetAddr(msg.addr)
 		if err != nil {
 			msg.reply <- err

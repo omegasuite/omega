@@ -605,7 +605,8 @@ mempoolLoop:
 			log.Infof("Reject expired tx %s", tx.Hash())
 			continue
 		}
-		if (tx.MsgTx().Version & wire.TxExpire) == 0 {
+
+		if g.chainParams.ContractReqExp && (tx.MsgTx().Version & wire.TxExpire) == 0 {
 			 // we reject txs that has no expiration and has contract exec
 			rjct := false
 			for _, txout := range tx.MsgTx().TxOut {
@@ -614,7 +615,7 @@ mempoolLoop:
 				}
 				g.txSource.RemoveTransaction(tx, true)
 				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
-				log.Infof("Reject tx with contract %s for lacking expiration time", tx.Hash())
+				log.Infof("Local policy: Reject tx with contract %s for lacking expiration time", tx.Hash())
 				rjct = true
 				break
 			}

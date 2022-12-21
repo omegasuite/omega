@@ -1311,6 +1311,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 		if x == nil {
 			r := make(map[wire.OutPoint]struct{})
 			r[out] = struct{}{}
+			views.Utxo.FetchUtxosMain(views.Db, r)
 			x = views.Utxo.LookupEntry(out)
 		}
 		if x == nil {
@@ -1320,7 +1321,11 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 
 		t := x.ToTxOut().Token.TokenType
 
-		if t & 3 != 1 {
+		if version >= wire.Version5 {
+			if t & 1 != 1 {
+				continue
+			}
+		} else if t & 3 != 1 {
 			continue
 		}
 		inputs = append(inputs, x.ToTxOut().Token)
@@ -1328,7 +1333,14 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 	rem := len(inputs)
 	for _, txOut := range tx.MsgTx().TxOut {
 		t := txOut.TokenType
-		if txOut.IsSeparator() || t & 3 != 1 {
+		if txOut.IsSeparator() {
+			continue
+		}
+		if version >= wire.Version5 {
+			if t & 1 != 1 {
+				continue
+			}
+		} else if t & 3 != 1 {
 			continue
 		}
 		match := false
@@ -1342,12 +1354,12 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 			}
 		}
 		if !match {
-			str := fmt.Sprintf("The Tx is not geometrically integral")
+			str := fmt.Sprintf("The Tx is not integral")
 			return ruleError(ErrSpendTooHigh, str)
 		}
 	}
 	if rem != 0 {
-		str := fmt.Sprintf("The Tx is not geometrically integral")
+		str := fmt.Sprintf("The Tx is not integral")
 		return ruleError(ErrSpendTooHigh, str)
 	}
 //	ntx := tx.Copy() // Deep copy
@@ -1440,9 +1452,9 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 			v = k
 		}
 		if v < out {
-			str := fmt.Sprintf("total value of all transaction inputs for "+
+			str := fmt.Sprintf("total type %d value of all transaction inputs for "+
 				"transaction %v is %v which is less than the amount "+
-				"spent of %v", txHash, v, out)
+				"spent of %v", in, txHash, v, out)
 			return 0, ruleError(ErrSpendTooHigh, str)
 		} else if in != 0 && v != out {
 			str := fmt.Sprintf("total %d type token value of all transaction inputs for "+

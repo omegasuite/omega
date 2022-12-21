@@ -9,7 +9,7 @@
 package consensus
 
 import (
-	"bufio"
+//	"bufio"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
@@ -17,7 +17,7 @@ import (
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
-	"io"
+//	"io"
 	"os"
 
 	//	"net/http"
@@ -182,6 +182,11 @@ func handleConnNotice(c interface{}) {
 }
 
 func UpdateLastWritten(last int32) bool {
+	if last > miner.lastSignedBlock {
+		miner.lastSignedBlock = last
+		return true
+	}
+/*
 	// write last sign block height to file instead of DB to ensure it is not cached/buffered
 	writer := bufio.NewWriter(miner.lwbFile)
 
@@ -194,6 +199,7 @@ func UpdateLastWritten(last int32) bool {
 		return true
 	}
 	log.Infof("UpdateLastWritten: rejected because %d <= %d", last, miner.lastSignedBlock)
+*/
 	return false
 }
 
@@ -204,6 +210,7 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	miner.updateheight = make(chan int32, 200)
 	miner.lastSignedBlock = 0
 
+/*
 	lwbFile := dataDir + "/lastsignedblock"
 
 	fp, err := os.Open(lwbFile)
@@ -223,7 +230,7 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 		log.Infof("UpdateLastWritten: unable to open %s", lwbFile)
 		return
 	}
-
+*/
 	s.SubscribeChain(miner.notice)
 
 	connNotice = make(chan interface{}, 10)

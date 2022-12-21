@@ -423,7 +423,11 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 
 		// execute the operation
 		if printInst {
-			fmt.Printf("%d: %s(%c) %s\n", pc, op.String(), op, string(contract.GetBytes(pc)))
+			s := ""
+			for i := int32(0); i < stack.callTop; i++ {
+				s += "    ";
+			}
+			fmt.Printf("%s%d: %s(%c) %s\n", s, pc, op.String(), op, string(contract.GetBytes(pc)))
 		}
 
 		err = operation.execute(&pc, in.evm, contract, stack)

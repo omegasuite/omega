@@ -1720,12 +1720,18 @@ func (b *BlockChain) FetchRightEntry(hash chainhash.Hash) (*viewpoint.RightEntry
 		if err != nil {
 			return err
 		}
-		entry = &viewpoint.RightEntry{
-			Father: e.(*viewpoint.RightEntry).Father,
-			Desc:e.(*viewpoint.RightEntry).Desc,
-			Attrib: e.(*viewpoint.RightEntry).Attrib,
-			PackedFlags: 0,
+		switch e.(type) {
+		case *viewpoint.RightEntry:
+			entry = &viewpoint.RightEntry{
+				Father: e.(*viewpoint.RightEntry).Father,
+				Desc:e.(*viewpoint.RightEntry).Desc,
+				Attrib: e.(*viewpoint.RightEntry).Attrib,
+				PackedFlags: 0,
+			}
+		default:
+			err = fmt.Errorf("hash is not a viewpoint.RightEntry")
 		}
+
 		return err
 	})
 	if err != nil {
@@ -1746,8 +1752,13 @@ func (b *BlockChain) FetchRightSetEntry(hash chainhash.Hash) (*viewpoint.RightSe
 		if err != nil {
 			return err
 		}
-		entry = e.(*viewpoint.RightSetEntry)
-		entry.PackedFlags = 0
+		switch e.(type) {
+		case *viewpoint.RightSetEntry:
+			entry = e.(*viewpoint.RightSetEntry)
+			entry.PackedFlags = 0
+		default:
+			err = fmt.Errorf("hash is not a viewpoint.RightSetEntry")
+		}
 		return err
 	})
 	if err != nil {

@@ -213,6 +213,7 @@ func btcdMain(serverChan chan<- *server) error {
 	}
 
 	activeNetParams.Params.ExternalIPs = tcfg.ExternalIPs
+	activeNetParams.Params.ContractReqExp = tcfg.ContractReqExp
 
 	activeNetParams.Params.ChainCurrentStd = time.Hour * time.Duration(tcfg.ChainCurrentStd)
 

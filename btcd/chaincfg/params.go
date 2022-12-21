@@ -279,6 +279,9 @@ type Params struct {
 	// forfeiture
 	Forfeit		forfeitureContract
 	ViolationReportDeadline	int32
+
+	// local rule: require expiration time set if tx has contract
+	ContractReqExp	bool
 }
 
 // MainNetParams defines the network parameters for the main Omega network.
@@ -348,7 +351,7 @@ var MainNetParams = Params{
 			PrevVersion: 0x40000,
 			FeatureMask: 0x8,
 			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2022, 5, 2, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2023, 5, 2, 0, 0, 0, 0, time.UTC).Unix()),
 		},
 	},
 
@@ -386,6 +389,7 @@ var MainNetParams = Params{
 		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
 	ViolationReportDeadline:	100,
+	ContractReqExp: false,
 }
 
 // RegressionNetParams defines the network parameters for the regression test
@@ -493,6 +497,7 @@ var RegressionNetParams = Params{
 		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
 	ViolationReportDeadline: 10,
+	ContractReqExp: false,
 }
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
@@ -603,6 +608,7 @@ var TestNet3Params = Params{
 		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
 	ViolationReportDeadline: 10,
+	ContractReqExp: false,
 }
 
 // SimNetParams defines the network parameters for the simulation test Bitcoin
@@ -714,6 +720,7 @@ var SimNetParams = Params{
 		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
 	ViolationReportDeadline: 10,
+	ContractReqExp: false,
 }
 
 var (
