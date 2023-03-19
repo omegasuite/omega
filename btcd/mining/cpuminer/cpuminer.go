@@ -615,6 +615,10 @@ out:
 				}
 			}
 		} else {
+			if m.cfg.DisablePOWMining && !m.cfg.EnablePOWMining {
+				time.Sleep(time.Second * wire.TimeGap)
+				continue
+			}
 //			log.Infof("POW mode")
 			nonce = 1
 		}

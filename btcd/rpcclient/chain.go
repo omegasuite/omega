@@ -881,20 +881,20 @@ func (r FutureGetTxOutResult) Receive() (*btcjson.GetTxOutResult, error) {
 // the returned instance.
 //
 // See GetTxOut for the blocking version and more details.
-func (c *Client) GetTxOutAsync(txHash *chainhash.Hash, index uint32, mempool bool) FutureGetTxOutResult {
+func (c *Client) GetTxOutAsync(txHash *chainhash.Hash, index uint32, mempool bool, locked bool) FutureGetTxOutResult {
 	hash := ""
 	if txHash != nil {
 		hash = txHash.String()
 	}
 
-	cmd := btcjson.NewGetTxOutCmd(hash, index, &mempool)
+	cmd := btcjson.NewGetTxOutCmd(hash, index, &mempool, &locked)
 	return c.sendCmd(cmd)
 }
 
 // GetTxOut returns the transaction output info if it's unspent and
 // nil, otherwise.
-func (c *Client) GetTxOut(txHash *chainhash.Hash, index uint32, mempool bool) (*btcjson.GetTxOutResult, error) {
-	return c.GetTxOutAsync(txHash, index, mempool).Receive()
+func (c *Client) GetTxOut(txHash *chainhash.Hash, index uint32, mempool bool, locked bool) (*btcjson.GetTxOutResult, error) {
+	return c.GetTxOutAsync(txHash, index, mempool, locked).Receive()
 }
 
 // FutureGetTxOutResult is a future promise to deliver the result of a

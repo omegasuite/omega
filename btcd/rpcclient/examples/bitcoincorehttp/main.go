@@ -307,8 +307,9 @@ func main() {
 			h,_ := chainhash.NewHashFromStr(s)
 
 			mp := false
+			locked := true
 
-			res, err := client.GetTxOut(h, 0, mp)
+			res, err := client.GetTxOut(h, 0, mp, locked)
 			if err != nil {
 				log.Print(err)
 			}

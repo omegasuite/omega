@@ -759,6 +759,7 @@ type GetTxOutCmd struct {
 	Txid           string
 	Vout           uint32
 	IncludeMempool *bool `jsonrpcdefault:"true"`
+	IncludeLocked  *bool `jsonrpcdefault:"true"`
 }
 
 // NewGetTxOutCmd returns a new instance which can be used to issue a gettxout
@@ -766,11 +767,12 @@ type GetTxOutCmd struct {
 //
 // The parameters which are pointers indicate they are optional.  Passing nil
 // for optional parameters will use the default value.
-func NewGetTxOutCmd(txHash string, vout uint32, includeMempool *bool) *GetTxOutCmd {
+func NewGetTxOutCmd(txHash string, vout uint32, includeMempool *bool, IncludeLocked *bool) *GetTxOutCmd {
 	return &GetTxOutCmd{
 		Txid:           txHash,
 		Vout:           vout,
 		IncludeMempool: includeMempool,
+		IncludeLocked: IncludeLocked,
 	}
 }
 

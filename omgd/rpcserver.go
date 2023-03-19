@@ -3790,6 +3790,13 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		isCoinbase = entry.IsCoinBase()
 	}
 
+	if !(*(c.IncludeLocked)) {
+		p := wire.OutPoint{Hash: *txHash, Index: c.Vout}
+		if _, ok := s.cfg.Chain.LockedCollaterals[p]; ok {
+			return nil, nil
+		}
+	}
+
 	// Disassemble script into single line printable format.
 	// The disassembled string will contain [error] inline if the script
 	// doesn't fully parse, so ignore the error here.
