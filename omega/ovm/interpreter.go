@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/omega"
+	"strings"
 	"time"
 
 	//	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -381,7 +382,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 	}
 
 //	debugging = true
-	var printInst = true	// debugging
+	var printInst = in.evm.chainConfig.Net == common.TestNet && strings.Contains(in.evm.chainConfig.ExternalIPs[0], ":8383")	// debugging
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
@@ -389,7 +390,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 	// parent context.
 	for atomic.LoadInt32(&in.evm.abort) == 0 {
 		in.evm.StepLimit--
-		if in.evm.StepLimit < 0 {
+		if in.evm.StepLimit < 0 && in.evm.chainConfig.Net == common.MainNet {
 			err := omega.ScriptError(omega.ErrInternal, "Exceeded operation limit")
 			err.ErrorLevel = omega.RecoverableLevel
 			return nil, err

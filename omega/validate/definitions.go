@@ -309,6 +309,8 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 		}
 	}
 
+	defdef := map[chainhash.Hash]struct{}{}
+
 	for _,d := range tx.MsgTx().TxDef {
 		h := d.Hash()
 		switch d.(type) {
@@ -393,11 +395,16 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 			case *token.RightDef:
 				f := &d.(*token.RightDef).Father
 				if !f.IsEqual(&chainhash.Hash{}) {
+					if _,ok := defdef[*f]; ok {
+						defdef[d.(*token.RightDef).Hash()] = struct{}{}
+						continue
+					}
 					ft,_ := views.FetchRightEntry(f)
 					if ft == nil || ft.(*viewpoint.RightEntry).Attrib & token.Unsplittable != 0 {		// father is indivisible
 						return ruleError(1, "Illegal Right definition.")
 					}
 				}
+				defdef[d.(*token.RightDef).Hash()] = struct{}{}
 
 			case *token.RightSetDef:
 				for _, r := range d.(*token.RightSetDef).Rights {

@@ -684,6 +684,11 @@ func (mp *TxPool) FetchTransaction(txHash *chainhash.Hash) (*btcutil.Tx, error) 
 func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejectDupOrphans bool, fulllValidate bool) ([]*chainhash.Hash, *TxDesc, error) {
 	txHash := tx.Hash()
 
+	if txHash.IsEqual(&zerohash) {
+		str := fmt.Sprintf("transaction txid is zero")
+		return nil, nil, txRuleError(common.RejectDuplicate, str)
+	}
+
 	// Don't accept the transaction if it already exists in the pool.  This
 	// applies to orphan transactions as well when the reject duplicate
 	// orphans flag is set.  This check is intended to be a quick check to

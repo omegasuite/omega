@@ -1095,6 +1095,10 @@ func (to * Token) Read(r io.Reader, pver uint32, version int32) error {
 	}
 	to.TokenType = t
 
+	if t == DefTypeSeparator {
+		return nil
+	}
+
 	if (t & 1) == 1 {
 		h := HashToken{}
 		err = common.ReadElement(r, &h.Hash)
@@ -1123,6 +1127,10 @@ func (to * Token) Read(r io.Reader, pver uint32, version int32) error {
 func (to * Token) Write(w io.Writer, pver uint32, version int32) error {
 	common.BinarySerializer.PutUint64(w, common.LittleEndian, to.TokenType)
 
+	if to.TokenType == DefTypeSeparator {
+		return nil
+	}
+
 	h, v := to.Value.Value()
 	var err error
 	if to.Value.IsNumeric() {
@@ -1146,6 +1154,10 @@ func (to * Token) Write(w io.Writer, pver uint32, version int32) error {
 
 func (to * Token) Copy(s * Token) {
 	s.TokenType = to.TokenType
+
+	if to.TokenType == DefTypeSeparator {
+		return
+	}
 	if to.Rights != nil {
 		s.Rights, _ = chainhash.NewHash((*to.Rights)[:])
 	}

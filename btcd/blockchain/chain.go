@@ -1559,7 +1559,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		if cnl == 0 {
 			cnl = b.ChainParams.ContractExecLimit
 		}
-		if block.MsgBlock().Header.ContractExec > cnl {
+		if block.MsgBlock().Header.ContractExec > cnl && b.ChainParams.Net == common.MainNet {
 			// contract execution must not exceed block limit
 			str := fmt.Sprintf("Contract execution steps exceeds block limit in %v", *block.Hash())
 			return false, ruleError(ErrExcessContractExec, str)

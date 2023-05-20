@@ -239,8 +239,8 @@ func (t *TxIn) IsPadding() bool {
 
 func (t *TxIn) IsSepadding() bool {
 	z := chainhash.Hash{}
-	return t.PreviousOutPoint.Hash.IsEqual(&z) && t.PreviousOutPoint.Index == 0 &&
-		(t.SignatureIndex == 0 || t.SignatureIndex == 0xFFFFFFFF) && t.Sequence == 0
+	return t.PreviousOutPoint.Hash.IsEqual(&z) && t.PreviousOutPoint.Index == 0
+//	&& (t.SignatureIndex == 0 || t.SignatureIndex == 0xFFFFFFFF) && t.Sequence == 0 changed 2023-5-9 by howard
 }
 
 // NewTxIn returns a new bitcoin transaction input with the provided

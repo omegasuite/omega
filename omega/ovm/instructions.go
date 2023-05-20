@@ -3416,7 +3416,11 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 		stack.saveInt32(&dest, int32(seq))
 	}
 
-	log.Debugf("Text out added as %d: type = %d value = %d to %x", seq, tk.TokenType, tk.Token.Value.(*token.NumToken).Val, tk.PkScript[1:21])
+	if (tk.TokenType & 1) == 0 {
+		log.Debugf("Text out added as %d: type = %d value = %d to %x", seq, tk.TokenType, tk.Token.Value.(*token.NumToken).Val, tk.PkScript[1:21])
+	} else {
+		log.Debugf("Text out added as %d: type = %d value = %s to %x", seq, tk.TokenType, tk.Token.Value.(*token.HashToken).Hash.String(), tk.PkScript[1:21])
+	}
 
 	return nil
 }
@@ -3606,20 +3610,27 @@ func opGetUtxo(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 
 	dest += pointer(w.Len())
 
-	var pkl = int32(len(t.PkScript))
-	if err := stack.saveInt32(&dest, pkl); err != nil {
-		return err
-	}
+	if t.PkScript != nil {
+		var pkl = int32(len(t.PkScript))
+		if err := stack.saveInt32(&dest, pkl); err != nil {
+			return err
+		}
 
-	if !doscript {
+		if !doscript {
+			return nil
+		}
+
+		dest += 4
+		if len(t.PkScript) <= int(num) {
+			return stack.saveBytes(&dest, t.PkScript)
+		}
+		return stack.saveBytes(&dest, t.PkScript[:num])
+	} else {
+		if err := stack.saveInt32(&dest, 0); err != nil {
+			return err
+		}
 		return nil
 	}
-
-	dest += 4
-	if len(t.PkScript) <= int(num) {
-		return stack.saveBytes(&dest, t.PkScript)
-	}
-	return stack.saveBytes(&dest, t.PkScript[:num])
 }
 
 func opGetCoin(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {

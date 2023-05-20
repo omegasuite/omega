@@ -191,6 +191,9 @@ func (b *MinerChain) NextRequiredDifficulty(lastNode *chainutil.BlockNode, newBl
 	return b.calcNextRequiredDifficulty(lastNode, newBlockTime)
 }
 
+var collaterals [2016] int
+var nextAdjustHeight = int32(-1)
+
 // calcNextRequiredDifficulty calculates the required difficulty for the block
 // after the passed previous block node based on the difficulty retarget rules.
 // This function differs from the exported CalcNextRequiredDifficulty in that
@@ -215,6 +218,73 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		// For networks that support it, allow special reduction of the
 		// required difficulty once too much time has elapsed without
 		// mining a block.
+		if nextAdjustHeight < 0 || nextAdjustHeight != (lastNode.Height+1) - ((lastNode.Height+1)%b.blocksPerRetarget) + b.blocksPerRetarget {
+			nextAdjustHeight = (lastNode.Height+1) - ((lastNode.Height+1)%b.blocksPerRetarget) + b.blocksPerRetarget
+			for i := 0; i < 2016; i++ {
+				collaterals[i] = 0
+			}
+		}
+		firstNode := lastNode.RelativeAncestor(b.blocksPerRetarget - 1)
+		if firstNode == nil || !v3 {
+			return lastNode.Data.(*blockchainNodeData).block.Bits, coll, nil
+		}
+
+		pb := firstNode
+
+		for i := 5; i >= 0; {
+			// to avoid long delay caused when adjustment is needed, we retrieve some collaterals each time
+			// to cause loading of missing nodes
+			//		b.blockChain.HeaderByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
+			block := pb.Data.(*blockchainNodeData).block
+			j := b.blocksPerRetarget - (nextAdjustHeight - pb.Height)
+			if j < 0 {
+				i = -1
+			} else if collaterals[j] == 0 && pb.Height < lastNode.Height - 7 {	// block is considered finalized after 7 confirmations
+				i--
+				if block.Version >= chaincfg.Version5 && block.Utxos != nil {
+					var op = block.Utxos
+
+					// it could have been spent, so we get the raw tx and find out its value
+					blockRegion, err := b.TxIndex.TxBlockRegion(&op.Hash)
+
+					if err != nil || blockRegion == nil {
+						panic("Failed to retrieve transaction location for tx: " + op.Hash.String())
+					}
+
+					// Load the raw transaction bytes from the database.
+					var txBytes []byte
+					err = b.db.View(func(dbTx database.Tx) error {
+						var err error
+						txBytes, err = dbTx.FetchBlockRegion(blockRegion)
+						return err
+					})
+
+					if err != nil {
+						blk, err := b.blockChain.BlockByHash(blockRegion.Hash)
+						if err != nil {
+							panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " for " + err.Error())
+						}
+						fd := false
+						for _, tx := range blk.Transactions() {
+							if tx.Hash().IsEqual(&op.Hash) {
+								collaterals[j] = int(tx.MsgTx().TxOut[op.Index].Value.(*token.NumToken).Val / 1e8)
+								fd = true
+								break
+							}
+						}
+						if !fd {
+							panic(strconv.Itoa(int(i)) + ": Failed to retrieve transaction " + op.Hash.String() + " at " + blockRegion.Hash.String() + " " + strconv.Itoa(int(blockRegion.Len)) + " : " + strconv.Itoa(int(blockRegion.Offset)))
+						}
+					} else {
+						// Deserialize the transaction
+						var msgTx wire.MsgTx
+						err = msgTx.Deserialize(bytes.NewReader(txBytes))
+						collaterals[j] = int(msgTx.TxOut[op.Index].Value.(*token.NumToken).Val / 1e8)
+					}
+				}
+			}
+			pb = pb.Parent
+		}
 /*
 		if b.chainParams.ReduceMinDifficulty {
 			// Return minimum difficulty when more than the desired
@@ -232,7 +302,6 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			return b.findPrevTestNetDifficulty(lastNode), coll, nil
 		}
  */
-
 		// For the main network (or any unrecognized networks), simply
 		// return the previous block's difficulty requirements.
 		return lastNode.Data.(*blockchainNodeData).block.Bits, coll, nil
@@ -265,7 +334,12 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			coll = block.Collateral
 		}
 
-		if v3 && block.Version >= chaincfg.Version5 && block.Utxos != nil {
+		j := pb.Height % b.blocksPerRetarget
+		if collaterals[j] != 0 {
+			if uint32(collaterals[j]) < coll {
+				coll = uint32(collaterals[j])
+			}
+		} else if v3 && block.Version >= chaincfg.Version5 && block.Utxos != nil {
 			var op = block.Utxos
 
 			// it could have been spent, so we get the raw tx and find out its value

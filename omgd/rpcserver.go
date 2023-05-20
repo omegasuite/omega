@@ -329,6 +329,16 @@ var rpcLimited = map[string]struct{}{
 	"version":               {},
 	"vmdebug":				 {},
 	"checkfork":			 {},
+	"tokenaddress":   		 {},	// New
+	"parserawtransaction":	 {},
+	"debuglevel":			 {},
+	"genmultisigaddr":		 {},
+	"miningpolicy":			 {},
+	"getmempoolinfo":		 {},
+	"getmininginfo":		 {},
+	"getpeerinfo":			 {},
+	"node":					 {},
+	"ping":					 {},
 }
 /*
 // builderScript is a convenience function which is used for hard-coded scripts
@@ -3793,7 +3803,10 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	if !(*(c.IncludeLocked)) {
 		p := wire.OutPoint{Hash: *txHash, Index: c.Vout}
 		if _, ok := s.cfg.Chain.LockedCollaterals[p]; ok {
-			return nil, nil
+			return nil, &btcjson.RPCError{
+				Code: btcjson.ErrRPCInvalidTxVout,
+				Message: "Locked collateral.",
+			}
 		}
 	}
 
@@ -4218,7 +4231,7 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 	// Lookup all of the referenced transaction outputs needed to populate
 	// the previous output information if requested.
 	var originOutputs map[wire.OutPoint]wire.TxOut
-	if vinExtra || len(filterAddrMap) > 0 {
+	if len(filterAddrMap) > 0 {	// vinExtra ||
 		var err error
 		originOutputs, err = fetchInputTxos(s, mtx)
 		if err != nil {
@@ -4311,6 +4324,7 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 
 		// Update the entry with previous output information if
 		// requested.
+/*
 		if vinExtra {
 			vinListEntry := &vinList[len(vinList)-1]
 			vinListEntry.PrevOut = &btcjson.PrevOut{
@@ -4318,6 +4332,7 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 				Value:     btcutil.Amount(originTxOut.Value.(*token.NumToken).Val).ToOMC(),
 			}
 		}
+ */
 	}
 
 	return vinList, nil
@@ -4395,9 +4410,9 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	// each input if needed.
 	c := cmd.(*btcjson.SearchRawTransactionsCmd)
 	vinExtra := false
-	if c.VinExtra != nil {
-		vinExtra = *c.VinExtra != 0
-	}
+//	if c.VinExtra != nil {
+//		vinExtra = *c.VinExtra != 0
+//	}
 
 	// Including the extra previous output information requires the
 	// transaction index.  Currently the address index relies on the

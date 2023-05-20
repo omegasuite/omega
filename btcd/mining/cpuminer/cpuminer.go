@@ -739,7 +739,7 @@ out:
 
 		mh := m.g.Chain.Miners.BestSnapshot().Height
 
-		if lastblkgen - lastblkrcv < 20 && m.cfg.DisablePOWMining && (m.cfg.EnablePOWMining || nopow || m.cfg.ChainParams.Net == common.TestNet) || mh - int32(bs.LastRotation) < 2 {
+		if lastblkgen - lastblkrcv < 20 && m.cfg.DisablePOWMining && (!m.cfg.EnablePOWMining || nopow || mh - int32(bs.LastRotation) < 2) { // m.cfg.ChainParams.Net == common.TestNet ||
 			time.Sleep(time.Second * wire.TimeGap)
 //			log.Infof("Retry because POW Mining disabled.")
 			continue

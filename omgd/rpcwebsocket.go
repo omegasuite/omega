@@ -918,7 +918,7 @@ func (m *wsNotificationManager) notifyForNewTx(clients map[chan struct{}]*wsClie
 
 	var amount int64
 	for _, txOut := range mtx.TxOut {
-		if txOut.IsSeparator() {
+		if txOut.IsSeparator() || txOut.TokenType != 0 {
 			continue
 		}
 		amount += txOut.Value.(*token.NumToken).Val

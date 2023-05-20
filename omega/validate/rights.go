@@ -121,10 +121,12 @@ func parseRights(tx *btcutil.Tx, views *viewpoint.ViewPointSet, checkPolygon boo
 		}
 
 		if txOut.Rights != nil {
-			p := views.Rights.LookupEntry(*txOut.Rights)
+//			p := views.Rights.LookupEntry(*txOut.Rights)
+			p := views.Rights.GetRight(views.Db, *txOut.Rights)
 			if p == nil {
 				views.FetchRightEntry(txOut.Rights)
-				p = views.Rights.LookupEntry(*txOut.Rights)
+//				p = views.Rights.LookupEntry(*txOut.Rights)
+				p = views.Rights.GetRight(views.Db, *txOut.Rights)
 			}
 
 			switch p.(type) {
@@ -188,7 +190,8 @@ func getAncester(rset * map[chainhash.Hash]struct{}, view * viewpoint.ViewPointS
 //		if r.IsEqual(&neg) {
 //			continue
 //		}
-		p := view.Rights.LookupEntry(r)
+//		p := view.Rights.LookupEntry(r)
+		p := view.Rights.GetRight(view.Db, r)
 		ok := true
 		for _,ok = (*rset)[p.(*viewpoint.RightEntry).Father]; !ok && p.(*viewpoint.RightEntry).Depth > roots[p.(*viewpoint.RightEntry).Root]; {
 			ancester[r] = append(ancester[r], p.(*viewpoint.RightEntry).Father)
@@ -285,7 +288,32 @@ func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 	return res[:]
 }
 
-func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement]int64, error) {
+func unirightfetch(views *viewpoint.ViewPointSet, right chainhash.Hash, defdrights map[chainhash.Hash] *viewpoint.RightEntry, defdrsets map[chainhash.Hash] *viewpoint.RightSetEntry) interface{} {
+	p := views.Rights.GetRight(views.Db, right)
+
+	isnil := false
+	switch p.(type) {
+	case *viewpoint.RightEntry:
+		isnil = p.(*viewpoint.RightEntry) == nil
+	case *viewpoint.RightSetEntry:
+		isnil = p.(*viewpoint.RightSetEntry) == nil
+	}
+	if isnil {
+		if u, ok := defdrights[right]; ok {
+			p = u
+		} else {
+			p = (*viewpoint.RightEntry) (nil)
+			if defdrsets != nil {
+				if u, ok := defdrsets[right]; ok {
+					p = u
+				}
+			}
+		}
+	}
+	return p;
+}
+
+func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement]int64, map[chainhash.Hash] *viewpoint.RightEntry, error) {
 	res := make(map[tokenRElement]int64)
 	for _, y := range tx.MsgTx().TxIn {
 		if y.PreviousOutPoint.Hash.IsEqual(&zerohash) {
@@ -303,11 +331,12 @@ func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement
 		} else {
 			v = -x.Value.(*token.NumToken).Val
 		}
-		p := views.Rights.LookupEntry(*x.Rights)
+		p := views.Rights.GetRight(views.Db, *x.Rights)
+//		p := views.Rights.LookupEntry(*x.Rights)
 		switch p.(type) {
 		case *viewpoint.RightEntry:
 			if p.(*viewpoint.RightEntry) == nil {
-				return nil, fmt.Errorf("Right undefined")
+				return nil, nil, fmt.Errorf("Right undefined")
 			}
 			te.right = *x.Rights
 			if _,ok := res[te]; !ok {
@@ -318,7 +347,7 @@ func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement
 
 		case *viewpoint.RightSetEntry:
 			if p.(*viewpoint.RightSetEntry) == nil {
-				return nil, fmt.Errorf("Right undefined")
+				return nil, nil, fmt.Errorf("Right undefined")
 			}
 			for _,r := range p.(*viewpoint.RightSetEntry).Rights {
 				te.right = r
@@ -327,6 +356,26 @@ func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement
 				} else {
 					res[te] += v
 				}
+			}
+		}
+	}
+
+	defdrights := map[chainhash.Hash] *viewpoint.RightEntry{}
+	defdrsets := map[chainhash.Hash] *viewpoint.RightSetEntry{}
+	for _, x := range tx.MsgTx().TxDef {
+		if x.DefType() == token.DefTypeRight {
+			defdrights[x.Hash()] = & viewpoint.RightEntry {
+				Father: x.(*token.RightDef).Father,
+				Root:   chainhash.Hash{},
+				Depth: 0,
+				Desc:  x.(*token.RightDef).Desc,
+				Attrib:   x.(*token.RightDef).Attrib,
+				PackedFlags: 0,
+			}
+		} else {
+			defdrsets[x.Hash()] = & viewpoint.RightSetEntry {
+				Rights: x.(*token.RightSetDef).Rights,
+				PackedFlags: 0,
 			}
 		}
 	}
@@ -344,11 +393,34 @@ func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement
 			v = x.Value.(*token.NumToken).Val
 		}
 		te.right = *x.Rights
-		p := views.Rights.LookupEntry(*x.Rights)
+//		p := views.Rights.LookupEntry(*x.Rights)
+		p := unirightfetch(views, *x.Rights, defdrights, defdrsets)
+/*
+		p := views.Rights.GetRight(views.Db, *x.Rights)
 		switch p.(type) {
 		case *viewpoint.RightEntry:
 			if p.(*viewpoint.RightEntry) == nil {
-				return nil, fmt.Errorf("Right undefined")
+				if u, ok := defdrights[*x.Rights]; ok {
+					p = u
+				} else if u, ok := defdrsets[*x.Rights]; ok {
+					p = u
+				}
+			}
+		case *viewpoint.RightSetEntry:
+			if p.(*viewpoint.RightSetEntry) == nil {
+				if u, ok := defdrights[*x.Rights]; ok {
+					p = u
+				} else if u, ok := defdrsets[*x.Rights]; ok {
+					p = u
+				}
+			}
+		}
+*/
+
+		switch p.(type) {
+		case *viewpoint.RightEntry:
+			if p.(*viewpoint.RightEntry) == nil {
+				return nil, nil, fmt.Errorf("Right undefined")
 			}
 			if _, ok := res[te]; !ok {
 				res[te] = v
@@ -357,7 +429,7 @@ func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement
 			}
 		case *viewpoint.RightSetEntry:
 			if p.(*viewpoint.RightSetEntry) == nil {
-				return nil, fmt.Errorf("Right undefined")
+				return nil, nil, fmt.Errorf("Right undefined")
 			}
 			for _,r := range p.(*viewpoint.RightSetEntry).Rights {
 				te.right = r
@@ -369,7 +441,7 @@ func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement
 			}
 		}
 	}
-	return res, nil
+	return res, defdrights, nil
 }
 
 // handle monitored tokens. In a Tx, if any token has monitored right, then all the input/output must have
@@ -439,7 +511,8 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 					str := fmt.Sprintf("Tx %s input contains zero rights.", tx.Hash().String())
 					return false, ruleError(1, str)
 				}
-				rt := views.Rights.LookupEntry(*txin.Rights)
+//				rt := views.Rights.LookupEntry(*txin.Rights)
+				rt := views.Rights.GetRight(views.Db, *txin.Rights)
 				var m bool
 				switch rt.(type) {
 				case *viewpoint.RightSetEntry:
@@ -459,7 +532,7 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 	// Use superset method for right validation.
 	// calculate right sum, a right is expressed as its top ancester minus all the siblings of
 	// itself & other non-top ancesters
-	sumVals, err := ioRTokens(tx, views)
+	sumVals, rts, err := ioRTokens(tx, views)
 	if err != nil {
 		return false, err
 	}
@@ -476,7 +549,16 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 				delete(sumVals, i)
 				continue
 			}
-			g := views.Rights.LookupEntry(i.right)
+			g := unirightfetch(views, i.right, rts, nil)
+/*
+//			g := views.Rights.LookupEntry(i.right)
+			g := views.Rights.GetRight(views.Db, i.right)
+			if g == nil {
+				if u, ok := rts[i.right]; ok {
+					g = u
+				}
+			}
+ */
 			switch g.(type) {
 			case *viewpoint.RightEntry:
 				if g.(*viewpoint.RightEntry) == nil {
@@ -485,26 +567,60 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 			default:
 				return false, fmt.Errorf("Right undefined")
 			}
+			te := i
 			if g.(*viewpoint.RightEntry).Attrib & 1 != 0 {
 				checking = true
+				g = g.(*viewpoint.RightEntry).Clone()
 				g.(*viewpoint.RightEntry).Attrib &= 0xFE
-				te := i
 				te.right = g.(*viewpoint.RightEntry).ToToken().Hash()
-				siblingVals[te] = tks
+				if _,ok := siblingVals[te]; ok {
+					siblingVals[te] += tks
+				} else {
+					siblingVals[te] = tks
+				}
 				delete(sumVals, i)
 			}
-			if s, ok := siblingVals[i]; ok && siblingVals[i] * tks > 0 {
+			for s, ok := siblingVals[te]; ok && siblingVals[te] * tks > 0; s, ok = siblingVals[te] {
 				checking = true
 				m := tks
-				if abs(tks) < abs(s) {
+				if abs(tks) > abs(s) {
 					m = s
 				}
-				siblingVals[i] -= m
-				sumVals[i] -= m
-				te := i
+
+				siblingVals[te] -= m
+				sumVals[te] -= m
+
+				if siblingVals[te] == 0 {
+					delete(siblingVals, te)
+				}
+				if sumVals[te] == 0 {
+					delete(sumVals, te)
+				}
+
 				te.right = g.(*viewpoint.RightEntry).Father
-				g = views.Rights.LookupEntry(te.right)
+//				g = views.Rights.LookupEntry(te.right)
+				g = unirightfetch(views, te.right, rts, nil)
+/*
+				g = views.Rights.GetRight(views.Db, te.right)
+
+				if g == nil {
+					if u, ok := rts[te.right]; ok {
+						g = u
+					}
+				}
+ */
+
+				switch g.(type) {
+				case *viewpoint.RightEntry:
+					if g.(*viewpoint.RightEntry) == nil {
+						return false, fmt.Errorf("Right undefined")
+					}
+				default:
+					return false, fmt.Errorf("Right undefined")
+				}
+
 				if g.(*viewpoint.RightEntry).Attrib & 1 != 0 {
+					g = g.(*viewpoint.RightEntry).Clone()
 					g.(*viewpoint.RightEntry).Attrib &= 0xFE
 					te.right = g.(*viewpoint.RightEntry).ToToken().Hash()
 					if _,ok := siblingVals[te]; !ok {
@@ -519,6 +635,7 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 						sumVals[te] += m
 					}
 				}
+				tks = sumVals[te]
 			}
 		}
 	}
