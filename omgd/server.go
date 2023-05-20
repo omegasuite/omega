@@ -1666,6 +1666,11 @@ func randomUint16Number(max uint16) uint16 {
 	}
 }
 
+func (s *server) GetTxBlock(h int32) *btcutil.Block {
+	b, _ := s.chain.BlockByHeight(h)
+	return b
+}
+
 // AddRebroadcastInventory adds 'iv' to the list of inventories to be
 // rebroadcasted at random intervals until they show up in a block.
 func (s *server) AddRebroadcastInventory(iv *wire.InvVect, data interface{}) {

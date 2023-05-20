@@ -9,7 +9,10 @@
 package consensus
 
 import (
-//	"bufio"
+	"bytes"
+	"time"
+
+	//	"bufio"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
@@ -53,6 +56,7 @@ type PeerNotifier interface {
 	CommitteePolling()
 	ChainSync(chainhash.Hash, [20]byte)
 	ResetConnections()
+	GetTxBlock(h int32) *btcutil.Block
 }
 
 type Miner struct {
@@ -77,7 +81,15 @@ type newblock struct {
 	flags blockchain.BehaviorFlags
 }
 
+type delayblock struct {
+	block *btcutil.Block
+	flags blockchain.BehaviorFlags
+	delay int64
+}
+
 var newblockch chan newblock
+var delayedblk chan delayblock
+
 // var newheadch chan newhead
 
 func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
@@ -95,10 +107,40 @@ func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 
 	block.ClearSize()
 	if newblockch != nil {
-		newblockch <- newblock{block, flags}
-	}
+		var adr [20]byte
+		copy(adr[:], block.MsgBlock().Transactions[0].SignatureScripts[1])
 
-	log.Infof("newblockch.len queued")
+		ours := false
+		for _, n := range miner.name {
+			if bytes.Compare(adr[:], n[:]) == 0 {
+				ours = true
+			}
+		}
+
+		if !ours {
+			newblockch <- newblock{block, flags}
+			log.Infof("newblockch.len queued")
+		} else {
+			// are we the first in committee?
+			r := miner.server.BestSnapshot().LastRotation
+			p := int32(0)
+			for i := int32(0); i < wire.CommitteeSize; i++ {
+				b, _ := miner.server.MinerBlockByHeight(int32(r) - i)
+				if bytes.Compare(adr[:], b.MsgBlock().Miner[:]) == 0 {
+					p = i
+				}
+			}
+			if p == wire.CommitteeSize - 1 {
+				// we are first, no delay
+				newblockch <- newblock{block, flags}
+				log.Infof("newblockch.len queued")
+			} else {
+				// add to a delay queue
+				delay := int64((wire.CommitteeSize - p - 1) * 5)
+				delayedblk <- delayblock{block, flags, delay + time.Now().Unix() }
+			}
+		}
+	}
 }
 
 func ServeBlock(h * chainhash.Hash) *btcutil.Block {
@@ -203,6 +245,21 @@ func UpdateLastWritten(last int32) bool {
 	return false
 }
 
+func handleDelayBlk() {
+	for true {
+		select {
+		case p := <-delayedblk:
+			if time.Now().Unix() > p.delay {
+				time.Sleep(time.Duration(time.Now().Unix() - p.delay) * time.Second)
+			}
+			newblockch <- newblock{p.block, p.flags}
+
+		case <- Quit:
+			return
+		}
+	}
+}
+
 func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chaincfg.Params) {
 	miner = &Miner{}
 	miner.server = s
@@ -244,6 +301,8 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	}
 
 	newblockch = make(chan newblock, 2 * wire.CommitteeSize)
+	delayedblk = make(chan delayblock, 20 * wire.CommitteeSize)
+
 	errMootBlock = fmt.Errorf("Moot block.")
 	errInvalidBlock = fmt.Errorf("Invalid block")
 	Quit = make(chan struct{})
@@ -253,6 +312,8 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 
 //	ticker := time.NewTicker(time.Second * 10)
 	defer miner.wg.Done()
+
+	go handleDelayBlk()
 
 	polling := true
 	out:
@@ -319,6 +380,7 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 		select {
 		case <-miner.updateheight:
 		case <-newblockch:
+		case <-delayedblk:
 		case <-connNotice:
 
 		default:
