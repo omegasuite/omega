@@ -317,6 +317,10 @@ type SearchBorderCmd struct {
 	Lod byte
 }
 
+type GetTPSViewCmd struct {
+	Address string
+}
+
 type ContractCallCmd struct {
 	Contract string
 	Input string
@@ -1157,6 +1161,7 @@ func init() {
 	MustRegisterCmd("getblock", (*GetBlockCmd)(nil), flags)
 	MustRegisterCmd("getblocktxhashes", (*GetBlockTxHashesCmd)(nil), flags)
 	MustRegisterCmd("searchborder", (*SearchBorderCmd)(nil), flags)
+	MustRegisterCmd("gettpsview", (*GetTPSViewCmd)(nil), flags)
 	MustRegisterCmd("contractcall", (*ContractCallCmd)(nil), flags)
 	MustRegisterCmd("tokenaddress", (*TokenAddressCmd)(nil), flags)
 	MustRegisterCmd("trycontract", (*TryContractCmd)(nil), flags)

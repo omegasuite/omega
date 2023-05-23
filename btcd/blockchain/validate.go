@@ -1321,11 +1321,11 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 
 		t := x.ToTxOut().Token.TokenType
 
-		if version >= wire.Version5 {
+/*		if version >= wire.Version5 {
 			if t & 1 != 1 {
 				continue
 			}
-		} else if t & 3 != 1 {
+		} else*/ if t & 3 != 1 {
 			continue
 		}
 		inputs = append(inputs, x.ToTxOut().Token)
@@ -1336,11 +1336,11 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 		if txOut.IsSeparator() {
 			continue
 		}
-		if version >= wire.Version5 {
+/*		if version >= wire.Version5 {
 			if t & 1 != 1 {
 				continue
 			}
-		} else if t & 3 != 1 {
+		} else*/ if t & 3 != 1 {
 			continue
 		}
 		match := false

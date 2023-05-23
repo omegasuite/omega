@@ -7,6 +7,7 @@ package main
 
 import (
 	"errors"
+	"github.com/omegasuite/btcd/blockchain"
 	"sort"
 	"strings"
 	"sync"
@@ -737,6 +738,7 @@ var rpcResultTypes = map[string][]interface{}{
 	"verifychain":           {(*bool)(nil)},
 	"verifymessage":         {(*bool)(nil)},
 	"version":               {(*map[string]btcjson.VersionResult)(nil)},
+	"getTPSView":			 {(*[]blockchain.TPHRecord)(nil)},
 
 	// Websocket commands.
 	"loadtxfilter":              nil,

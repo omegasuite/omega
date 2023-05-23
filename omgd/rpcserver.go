@@ -163,6 +163,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getminerblockhash":     handleGetMinerBlockHash,	// New
 	"getblocktxhashes":      handleGetBlockTxHases,	// New
 //	"searchborder":   		 handleSearchBorder,	// New
+	"gettpsview":			 handleGetTPSView,
 	"contractcall":   		 handleContractCall,	// New
 	"trycontract":   		 handleTryContract,	// New
 	"miningpolicy":   		 handleMiningPolicy,	// New. miner specific policy
@@ -317,6 +318,7 @@ var rpcLimited = map[string]struct{}{
 	"gettxout":              {},
 	"listutxos":             {},
 	"getdefine":             {},
+	"gettpsview":			 {},
 	"contractcall":          {},
 	"trycontract":   		 {},
 	"searchrawtransactions": {},
@@ -1694,6 +1696,28 @@ func getDifficultyRatio(bits uint32, params *chaincfg.Params) float64 {
 		return 0
 	}
 	return diff
+}
+
+func handleGetTPSView(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetTPSViewCmd)
+	addr, err := btcutil.DecodeAddress(c.Address, activeNetParams.Params)
+	if err != nil {
+		return nil, err
+	}
+
+	var miner [20]byte
+	copy(miner[:], addr.ScriptAddress())
+
+	r := s.cfg.Chain.GetMinerTPS(miner)
+
+	if r == nil {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCMisc,
+			Message: "No record for address " + c.Address,
+		}
+	}
+
+	return *r, nil
 }
 
 func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
