@@ -625,7 +625,11 @@ func (ovm * OVM) TryContract(tx *btcutil.Tx, txHeight int32) ([]byte, error) {
 
 		ovm.contractStack = []Address{d}
 
-		return ovm.Call(d, method, &txOut.Token, param, 0)
+		_, err := ovm.Call(d, method, &txOut.Token, param, 0)
+
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return nil, nil

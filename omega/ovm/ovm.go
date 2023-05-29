@@ -325,7 +325,7 @@ func (v * OVM) Commit() {
 		return dbTx.Metadata().Put(rbkey[:], s)
 	})
 
-	fmt.Printf("OVM.Commit rollback lastCommitBlock=%d:\n%s\n", v.BlockNumber(), spew.Sdump(rollBacks))
+//	fmt.Printf("OVM.Commit rollback lastCommitBlock=%d:\n%s\n", v.BlockNumber(), spew.Sdump(rollBacks))
 
 	v.StateDB = make(map[Address]*stateDB)
 	v.TokenTypes = make(map[uint64]Address)
@@ -354,7 +354,7 @@ func (d *OVM) Rollback() error {
 			return err
 		}
 
-		fmt.Printf("OVM.Rollback lastCommitBlock=%d:\n%s\n", d.lastBlock, spew.Sdump(rollBacks))
+//		fmt.Printf("OVM.Rollback lastCommitBlock=%d:\n%s\n", d.lastBlock, spew.Sdump(rollBacks))
 
 //		d.rollbacks[d.lastBlock] = &rollBacks
 		d.lastBlock = rollBacks.PrevBlock
