@@ -27,7 +27,7 @@ const (
 
 // GenMultiSigAddr defines the GenMultiSigAddr JSON-RPC command.
 type GenMultiSigAddr struct {
-	Addresses []string
+	Addresses  []string
 	RequireSig int
 }
 
@@ -38,9 +38,15 @@ type GenMultiSigAddr struct {
 // for optional parameters will use the default value.
 func NewGenMultiSigAddrCmd(addresses []string, req int) *GenMultiSigAddr {
 	return &GenMultiSigAddr{
-		Addresses: addresses,
+		Addresses:  addresses,
 		RequireSig: req,
 	}
+}
+
+// SetTipCmd defines the SetTip JSON-RPC command.
+type SetTipCmd struct {
+	TxTip    string
+	MinerTip string
 }
 
 // NodeCmd defines the dropnode JSON-RPC command.
@@ -52,15 +58,15 @@ type NodeCmd struct {
 
 // VMDebugCmd defines the debug command.
 type VMDebugCmd struct {
-	DbgCmd        string `json:"dbgcmd"`
-	Param		 *string `json:"param"`
-	Value		 *int `json:"value"`
+	DbgCmd string  `json:"dbgcmd"`
+	Param  *string `json:"param"`
+	Value  *int    `json:"value"`
 }
 
 func NewVMDebugCmd(dbgCmd string, param *string) *VMDebugCmd {
 	return &VMDebugCmd{
-		DbgCmd:       dbgCmd,
-		Param:        param,
+		DbgCmd: dbgCmd,
+		Param:  param,
 	}
 }
 
@@ -181,4 +187,6 @@ func init() {
 	MustRegisterCmd("version", (*VersionCmd)(nil), flags)
 	MustRegisterCmd("shutdownserver", (*ShutdownCmd)(nil), flags)
 	MustRegisterCmd("vmdebug", (*VMDebugCmd)(nil), flags)
+	MustRegisterCmd("blacklist", (*GetBlockChainInfoCmd)(nil), flags)
+	MustRegisterCmd("settip", (*SetTipCmd)(nil), flags)
 }

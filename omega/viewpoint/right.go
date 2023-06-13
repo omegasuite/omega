@@ -13,10 +13,10 @@ import (
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
-//	"github.com/omegasuite/btcd/wire"
+	//	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/token"
 	"github.com/omegasuite/omega"
+	"github.com/omegasuite/omega/token"
 )
 
 type RightEntry struct {
@@ -38,25 +38,25 @@ type RightEntry struct {
 
 // isModified returns whether or not the output has been modified since it was
 // loaded.
-func (entry * RightEntry) isModified() bool {
-	return entry.PackedFlags & TfModified == TfModified
+func (entry *RightEntry) isModified() bool {
+	return entry.PackedFlags&TfModified == TfModified
 }
 
-func (entry * RightEntry) toDelete() bool {
-	return entry.PackedFlags & TfSpent == TfSpent
+func (entry *RightEntry) toDelete() bool {
+	return entry.PackedFlags&TfSpent == TfSpent
 }
 
-func (entry * RightEntry) ToToken() * token.RightDef {
-	t := token.RightDef {
+func (entry *RightEntry) ToToken() *token.RightDef {
+	t := token.RightDef{
 		Father: entry.Father,
 		Attrib: entry.Attrib,
-		Desc: entry.Desc,
+		Desc:   entry.Desc,
 	}
 	return &t
 }
 
-func (entry * RightEntry) toRightSet() * token.RightSetDef {
-	t := token.RightSetDef {
+func (entry *RightEntry) toRightSet() *token.RightSetDef {
+	t := token.RightSetDef{
 		Rights: make([]chainhash.Hash, 1),
 	}
 	t.Rights[0] = entry.ToToken().Hash()
@@ -64,11 +64,11 @@ func (entry * RightEntry) toRightSet() * token.RightSetDef {
 	return &t
 }
 
-func (entry * RightEntry) Sibling() chainhash.Hash {
+func (entry *RightEntry) Sibling() chainhash.Hash {
 	s := entry.ToToken()
-	if s.Attrib & (token.Monitor | token.Monitored) == 0 {
+	if s.Attrib&(token.Monitor|token.Monitored) == 0 {
 		s.Attrib &^= token.NegativeRight
-	} else if s.Attrib & token.IsMonitorCall != 0 {
+	} else if s.Attrib&token.IsMonitorCall != 0 {
 		if (s.Attrib & token.Monitor) != 0 {
 			s.Attrib &^= token.Monitor
 			s.Attrib |= token.Monitored | token.NegativeRight
@@ -83,12 +83,12 @@ func (entry * RightEntry) Sibling() chainhash.Hash {
 	return s.Hash()
 }
 
-func (entry * RightEntry) Monitoring() chainhash.Hash {
+func (entry *RightEntry) Monitoring() chainhash.Hash {
 	s := entry.ToToken()
-	if s.Attrib & token.Monitored == 0 || s.Attrib & token.IsMonitorCall == 0 {
+	if s.Attrib&token.Monitored == 0 || s.Attrib&token.IsMonitorCall == 0 {
 		return chainhash.Hash{}
 	}
-	
+
 	s.Attrib |= token.Monitor
 	s.Attrib &^= token.NegativeRight | token.Monitored
 
@@ -96,17 +96,17 @@ func (entry * RightEntry) Monitoring() chainhash.Hash {
 }
 
 // Clone returns a shallow copy of the vertex entry.
-func (entry * RightEntry) Clone() *RightEntry {
+func (entry *RightEntry) Clone() *RightEntry {
 	if entry == nil {
 		return nil
 	}
 
 	return &RightEntry{
-		Father:   entry.Father,
-		Desc:     entry.Desc,
-		Attrib:   entry.Attrib,
-		Root:     entry.Root,
-		Depth:    entry.Depth,
+		Father:      entry.Father,
+		Desc:        entry.Desc,
+		Attrib:      entry.Attrib,
+		Root:        entry.Root,
+		Depth:       entry.Depth,
 		PackedFlags: entry.PackedFlags,
 	}
 }
@@ -120,42 +120,42 @@ type RightSetEntry struct {
 
 // isModified returns whether or not the output has been modified since it was
 // loaded.
-func (entry * RightSetEntry) isModified() bool {
-	return entry.PackedFlags & TfModified == TfModified
+func (entry *RightSetEntry) isModified() bool {
+	return entry.PackedFlags&TfModified == TfModified
 }
 
-func (entry * RightSetEntry) toDelete() bool {
-	return entry.PackedFlags & TfSpent == TfSpent
+func (entry *RightSetEntry) toDelete() bool {
+	return entry.PackedFlags&TfSpent == TfSpent
 }
 
-func (entry * RightSetEntry) ToToken() * token.RightSetDef {
-	t := token.RightSetDef {
+func (entry *RightSetEntry) ToToken() *token.RightSetDef {
+	t := token.RightSetDef{
 		Rights: make([]chainhash.Hash, len(entry.Rights)),
 	}
-	for i,r := range entry.Rights {
+	for i, r := range entry.Rights {
 		copy(t.Rights[i][:], r[:])
 	}
 	return &t
 }
 
-func (entry * RightSetEntry) toRightSet() * token.RightSetDef {
-	t := token.RightSetDef {
+func (entry *RightSetEntry) toRightSet() *token.RightSetDef {
+	t := token.RightSetDef{
 		Rights: make([]chainhash.Hash, len(entry.Rights)),
 	}
-	for i,r := range entry.Rights {
+	for i, r := range entry.Rights {
 		copy(t.Rights[i][:], r[:])
 	}
 	return &t
 }
 
 // Clone returns a shallow copy of the vertex entry.
-func (entry * RightSetEntry) Clone() *RightSetEntry {
+func (entry *RightSetEntry) Clone() *RightSetEntry {
 	if entry == nil {
 		return nil
 	}
 
 	return &RightSetEntry{
-		Rights:   entry.Rights,
+		Rights:      entry.Rights,
 		PackedFlags: entry.PackedFlags,
 	}
 }
@@ -170,7 +170,7 @@ func (entry *RightSetEntry) RollBack() {
 	entry.PackedFlags |= TfSpent | TfModified
 }
 
-func SetOfRights(view * ViewPointSet, r interface{}) []*RightEntry {
+func SetOfRights(view *ViewPointSet, r interface{}) []*RightEntry {
 	if r == nil {
 		return nil
 	}
@@ -180,7 +180,7 @@ func SetOfRights(view * ViewPointSet, r interface{}) []*RightEntry {
 	case *RightSetEntry:
 		rs := make([]*RightEntry, 0, len(r.(*RightSetEntry).Rights))
 		for _, r := range r.(*RightSetEntry).Rights {
-			p,_ := view.FetchRightEntry(&r)
+			p, _ := view.FetchRightEntry(&r)
 			if p != nil {
 				rs = append(rs, p.(*RightEntry))
 			}
@@ -190,11 +190,11 @@ func SetOfRights(view * ViewPointSet, r interface{}) []*RightEntry {
 	return nil
 }
 
-func InSet(view * ViewPointSet, r chainhash.Hash, s *chainhash.Hash) bool {
+func InSet(view *ViewPointSet, r chainhash.Hash, s *chainhash.Hash) bool {
 	if s == nil {
 		return false
 	}
-	p,_ := view.FetchRightEntry(s)
+	p, _ := view.FetchRightEntry(s)
 	if p == nil {
 		return false
 	}
@@ -211,6 +211,7 @@ func InSet(view * ViewPointSet, r chainhash.Hash, s *chainhash.Hash) bool {
 	}
 	return false
 }
+
 // VtxViewpoint represents a view into the set of vertex definition
 // from a specific point of view in the chain.  For example, it could be for
 // the end of the main chain, some point in the history of the main chain, or
@@ -223,13 +224,13 @@ type RightViewpoint struct {
 
 // BestHash returns the hash of the best block in the chain the view currently
 // respresents.
-func (view * RightViewpoint) BestHash() *chainhash.Hash {
+func (view *RightViewpoint) BestHash() *chainhash.Hash {
 	return &view.bestHash
 }
 
 // SetBestHash sets the hash of the best block in the chain the view currently
 // respresents.
-func (view * RightViewpoint) SetBestHash(hash *chainhash.Hash) {
+func (view *RightViewpoint) SetBestHash(hash *chainhash.Hash) {
 	view.bestHash = *hash
 }
 
@@ -237,7 +238,7 @@ func (view * RightViewpoint) SetBestHash(hash *chainhash.Hash) {
 // the current state of the view.  It will return nil if the passed vertex does
 // not exist in the view or is otherwise not available such as when it has been
 // disconnected during a reorg.
-func (view * RightViewpoint) LookupRightEntry(p chainhash.Hash) * RightEntry {
+func (view *RightViewpoint) LookupRightEntry(p chainhash.Hash) *RightEntry {
 	r, ok := view.entries[p]
 	if !ok {
 		return nil
@@ -249,7 +250,7 @@ func (view * RightViewpoint) LookupRightEntry(p chainhash.Hash) * RightEntry {
 	return nil
 }
 
-func (view * RightViewpoint) LookupRightSetEntry(p chainhash.Hash) * RightSetEntry {
+func (view *RightViewpoint) LookupRightSetEntry(p chainhash.Hash) *RightSetEntry {
 	r := view.entries[p]
 	switch r.(type) {
 	case *RightSetEntry:
@@ -258,15 +259,15 @@ func (view * RightViewpoint) LookupRightSetEntry(p chainhash.Hash) * RightSetEnt
 	return nil
 }
 
-func (view * RightViewpoint) LookupEntry(p chainhash.Hash) interface{} {
+func (view *RightViewpoint) LookupEntry(p chainhash.Hash) interface{} {
 	return view.entries[p]
 }
 
 func isContract(netid byte) bool {
-	return netid & 64 == 64
+	return netid&64 == 64
 }
 
-func (view * ViewPointSet) contractExists(contract []byte) bool {
+func (view *ViewPointSet) contractExists(contract []byte) bool {
 	err := view.Db.View(func(dbTx database.Tx) error {
 		bucket := dbTx.Metadata().Bucket([]byte("storage" + string(contract[:])))
 
@@ -280,26 +281,26 @@ func (view * ViewPointSet) contractExists(contract []byte) bool {
 }
 
 // addRight adds the specified right to the view.
-func (view * ViewPointSet) AddRight(b *token.RightDef) bool {
+func (view *ViewPointSet) AddRight(b *token.RightDef) bool {
 	h := b.Hash()
 	entry := view.Rights.LookupRightEntry(h)
 	if entry == nil {
-		if b.Attrib & (token.Monitored | token.Monitor) == (token.Monitored | token.Monitor) {
+		if b.Attrib&(token.Monitored|token.Monitor) == (token.Monitored | token.Monitor) {
 			// can't be both side, but can be neither
 			return false
 		}
 
-		if b.Attrib & (token.Monitored | token.Monitor | token.IsMonitorCall) == token.IsMonitorCall {
+		if b.Attrib&(token.Monitored|token.Monitor|token.IsMonitorCall) == token.IsMonitorCall {
 			// can't be both side, but can be neither
 			return false
 		}
 
-		if b.Attrib & (token.Monitor | token.Unsplittable) == token.Monitor {
+		if b.Attrib&(token.Monitor|token.Unsplittable) == token.Monitor {
 			// a monitor right must not be splittable
 			return false
 		}
 
-		if b.Attrib & token.IsMonitorCall != 0 && (len(b.Desc) < 25 ||
+		if b.Attrib&token.IsMonitorCall != 0 && (len(b.Desc) < 25 ||
 			!isContract(b.Desc[0]) || !view.contractExists(b.Desc[1:21])) {
 			// right description must be a contract call. check whether the contract exists
 			return false
@@ -319,10 +320,10 @@ func (view * ViewPointSet) AddRight(b *token.RightDef) bool {
 			if f == nil {
 				return false
 			}
-			if f.(*RightEntry).Attrib & token.Unsplittable != 0 {
+			if f.(*RightEntry).Attrib&token.Unsplittable != 0 {
 				return false
 			}
-			if f.(*RightEntry).Attrib & token.Monitor != 0 && b.Attrib & token.Monitor == 0 {
+			if f.(*RightEntry).Attrib&token.Monitor != 0 && b.Attrib&token.Monitor == 0 {
 				return false
 			}
 
@@ -338,14 +339,14 @@ func (view * ViewPointSet) AddRight(b *token.RightDef) bool {
 }
 
 // addVertex adds the specified right to the view.
-func (view * RightViewpoint) AddRightSet(b *token.RightSetDef) bool {
+func (view *RightViewpoint) AddRightSet(b *token.RightSetDef) bool {
 	h := b.Hash()
 	entry := view.LookupRightSetEntry(h)
 	if entry == nil {
 		entry = new(RightSetEntry)
 		entry.Rights = make([]chainhash.Hash, len(b.Rights))
 
-		for i,r := range b.Rights {
+		for i, r := range b.Rights {
 			copy(entry.Rights[i][:], r[:])
 		}
 
@@ -359,7 +360,7 @@ func (view * RightViewpoint) AddRightSet(b *token.RightSetDef) bool {
 }
 
 // AddVertices adds all vertex definitions in the passed transaction to the view.
-func (view * ViewPointSet) AddRights(tx *btcutil.Tx) bool {
+func (view *ViewPointSet) AddRights(tx *btcutil.Tx) bool {
 	// Loop all of the vertex definitions
 
 	for _, txVtx := range tx.MsgTx().TxDef {
@@ -378,11 +379,11 @@ func (view * ViewPointSet) AddRights(tx *btcutil.Tx) bool {
 }
 
 func (views *ViewPointSet) TokenRights(x *UtxoEntry) []chainhash.Hash {
-//	hasneg := []chainhash.Hash{{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
-//		0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,},}
+	//	hasneg := []chainhash.Hash{{0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
+	//		0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,},}
 
 	var tokenType uint64
-	var rs * chainhash.Hash
+	var rs *chainhash.Hash
 
 	tokenType = x.TokenType
 	rs = x.Rights
@@ -392,7 +393,7 @@ func (views *ViewPointSet) TokenRights(x *UtxoEntry) []chainhash.Hash {
 	}
 
 	var y []chainhash.Hash
-	if tokenType & 2 == 0 {
+	if tokenType&2 == 0 {
 		return []chainhash.Hash{}
 	} else {
 		t, _ := views.FetchRightEntry(rs)
@@ -409,7 +410,7 @@ func (views *ViewPointSet) TokenRights(x *UtxoEntry) []chainhash.Hash {
 // fetchEntry attempts to find any vertex for the given hash by
 // searching the entire view.  It checks the view first and then falls
 // back to the database if needed.
-func (view * ViewPointSet) FetchRightEntry(hash *chainhash.Hash) (interface{}, error) {
+func (view *ViewPointSet) FetchRightEntry(hash *chainhash.Hash) (interface{}, error) {
 	// First attempt to find a utxo with the provided hash in the view.
 	entry := view.Rights.LookupEntry(*hash)
 	if entry != nil {
@@ -425,7 +426,7 @@ func (view * ViewPointSet) FetchRightEntry(hash *chainhash.Hash) (interface{}, e
 			view.Rights.entries[*hash] = e
 			entry = e
 		}
-		return  err
+		return err
 	})
 	return entry, err
 }
@@ -445,15 +446,15 @@ func (entry *RightEntry) RollBack() {
 // disconnectTransactions updates the view by removing all of the transactions
 // created by the passed block, removing all vertices defined in the transactions,
 // and setting the best hash for the view to the block before the passed block.
-func (view * ViewPointSet) disconnectRightTransactions(block *btcutil.Block) error {
-	for _,tx := range block.Transactions() {
+func (view *ViewPointSet) disconnectRightTransactions(block *btcutil.Block) error {
+	for _, tx := range block.Transactions() {
 		for _, txDef := range tx.MsgTx().TxDef {
 			switch txDef.(type) {
 			case *token.RightDef:
 				h := txDef.Hash()
 				p := view.Rights.LookupEntry(h)
 				if p == nil {
-					p,_ = view.FetchRightEntry(&h)
+					p, _ = view.FetchRightEntry(&h)
 				}
 				if p != nil {
 					p.(*RightEntry).RollBack()
@@ -463,7 +464,7 @@ func (view * ViewPointSet) disconnectRightTransactions(block *btcutil.Block) err
 				h := txDef.Hash()
 				p := view.Rights.LookupEntry(h)
 				if p == nil {
-					p,_ = view.FetchRightEntry(&h)
+					p, _ = view.FetchRightEntry(&h)
 				}
 				if p != nil {
 					p.(*RightSetEntry).RollBack()
@@ -481,17 +482,17 @@ func (view * ViewPointSet) disconnectRightTransactions(block *btcutil.Block) err
 // RemoveEntry removes the given transaction output from the current state of
 // the view.  It will have no effect if the passed output does not exist in the
 // view.
-func (view * RightViewpoint) RemoveEntry(hash chainhash.Hash) {
+func (view *RightViewpoint) RemoveEntry(hash chainhash.Hash) {
 	delete(view.entries, hash)
 }
 
 // Entries returns the underlying map that stores of all the utxo entries.
-func (view * RightViewpoint) Entries() map[chainhash.Hash]interface{} {
+func (view *RightViewpoint) Entries() map[chainhash.Hash]interface{} {
 	return view.entries
 }
 
 // commit. this is to be called after data has been committed to db
-func (view * RightViewpoint) commit() {
+func (view *RightViewpoint) commit() {
 	for outpoint, entry := range view.entries {
 		switch entry.(type) {
 		case *RightEntry:
@@ -518,7 +519,7 @@ func (view * RightViewpoint) commit() {
 //
 // Upon completion of this function, the view will contain an entry for each
 // requested vertices.
-func (view * RightViewpoint) fetchRightMain(db database.DB, b map[chainhash.Hash]struct{}) error {
+func (view *RightViewpoint) fetchRightMain(db database.DB, b map[chainhash.Hash]struct{}) error {
 	// Nothing to do if there are no requested outputs.
 	if len(b) == 0 {
 		return nil
@@ -532,8 +533,9 @@ func (view * RightViewpoint) fetchRightMain(db database.DB, b map[chainhash.Hash
 	// so other code can use the presence of an entry in the store as a way
 	// to unnecessarily avoid attempting to reload it from the database.
 	return db.View(func(dbTx database.Tx) error {
-		for vtx,_ := range b {
+		for vtx, _ := range b {
 			e, err := DbFetchRight(dbTx, &vtx)
+
 			if e == nil || err != nil {
 				return err
 			}
@@ -552,7 +554,7 @@ func (view * RightViewpoint) fetchRightMain(db database.DB, b map[chainhash.Hash
 	})
 }
 
-func (view * RightViewpoint) GetRight(db database.DB, hash chainhash.Hash) interface{} {
+func (view *RightViewpoint) GetRight(db database.DB, hash chainhash.Hash) interface{} {
 	if hash.IsEqual(&zerohash) {
 		return nil
 	}
@@ -577,7 +579,7 @@ func (view * RightViewpoint) GetRight(db database.DB, hash chainhash.Hash) inter
 // fetchVertex loads the vertices for the provided set into the view
 // from the database as needed unless they already exist
 // in the view in which case they are ignored.
-func (view * RightViewpoint) FetchRight(db database.DB, b map[chainhash.Hash]struct{}) error {
+func (view *RightViewpoint) FetchRight(db database.DB, b map[chainhash.Hash]struct{}) error {
 	// Nothing to do if there are no requested vertices.
 	if len(b) == 0 {
 		return nil
@@ -599,7 +601,7 @@ func (view * RightViewpoint) FetchRight(db database.DB, b map[chainhash.Hash]str
 }
 
 // NewVtxViewpoint returns a new empty vertex view.
-func NewRightViewpoint() * RightViewpoint {
+func NewRightViewpoint() *RightViewpoint {
 	return &RightViewpoint{
 		entries: make(map[chainhash.Hash]interface{}),
 	}
@@ -634,7 +636,7 @@ func DbPutRightView(dbTx database.Tx, view *RightViewpoint) error {
 		}
 
 		// Remove the utxo entry if it is spent.
-		if  todel {
+		if todel {
 			if err := bucket.Delete(hash[:]); err != nil {
 				return err
 			}
@@ -667,23 +669,23 @@ func serializeRightEntry(entry interface{}) ([]byte, error) {
 			return nil, nil
 		}
 
-		serialized = make([]byte, chainhash.HashSize * 2 + len(entry.(*RightEntry).Desc) + 6)
+		serialized = make([]byte, chainhash.HashSize*2+len(entry.(*RightEntry).Desc)+6)
 		serialized[0] = 0
 		copy(serialized[1:], entry.(*RightEntry).Father[:])
-		serialized[chainhash.HashSize + 1] = entry.(*RightEntry).Attrib
-		copy(serialized[chainhash.HashSize + 2:], entry.(*RightEntry).Root[:])
-		byteOrder.PutUint32(serialized[chainhash.HashSize * 2 + 2:], uint32(entry.(*RightEntry).Depth))
-		copy(serialized[chainhash.HashSize * 2 + 6:], entry.(*RightEntry).Desc[:])
+		serialized[chainhash.HashSize+1] = entry.(*RightEntry).Attrib
+		copy(serialized[chainhash.HashSize+2:], entry.(*RightEntry).Root[:])
+		byteOrder.PutUint32(serialized[chainhash.HashSize*2+2:], uint32(entry.(*RightEntry).Depth))
+		copy(serialized[chainhash.HashSize*2+6:], entry.(*RightEntry).Desc[:])
 		break
 	case *RightSetEntry:
 		if entry.(*RightSetEntry).toDelete() {
 			return nil, nil
 		}
 
-		serialized = make([]byte, chainhash.HashSize * len(entry.(*RightSetEntry).Rights) + 1)
+		serialized = make([]byte, chainhash.HashSize*len(entry.(*RightSetEntry).Rights)+1)
 		serialized[0] = 1
 		p := 1
-		for _,r := range entry.(*RightSetEntry).Rights {
+		for _, r := range entry.(*RightSetEntry).Rights {
 			copy(serialized[p:], r[:])
 			p += chainhash.HashSize
 		}
@@ -697,7 +699,7 @@ func dbPutRight(dbTx database.Tx, d interface{}) error {
 	meta := dbTx.Metadata()
 	bkt := meta.Bucket(rightSetBucketName)
 
-	serialized,_ := serializeRightEntry(d)
+	serialized, _ := serializeRightEntry(d)
 
 	var h chainhash.Hash
 
@@ -727,20 +729,20 @@ func DbFetchRight(dbTx database.Tx, hash *chainhash.Hash) (interface{}, error) {
 		var d RightEntry
 
 		copy(d.Father[:], serialized[1:])
-		d.Attrib = serialized[chainhash.HashSize + 1]
+		d.Attrib = serialized[chainhash.HashSize+1]
 
-		copy(d.Root[:], serialized[chainhash.HashSize + 2:])
+		copy(d.Root[:], serialized[chainhash.HashSize+2:])
 
-		d.Depth = int32(byteOrder.Uint32(serialized[chainhash.HashSize * 2 + 2:]))
+		d.Depth = int32(byteOrder.Uint32(serialized[chainhash.HashSize*2+2:]))
 
-		d.Desc = make([]byte, len(serialized) - (chainhash.HashSize  * 2 + 6))
-		copy(d.Desc, serialized[chainhash.HashSize * 2 + 6:])
+		d.Desc = make([]byte, len(serialized)-(chainhash.HashSize*2+6))
+		copy(d.Desc, serialized[chainhash.HashSize*2+6:])
 
 		return &d, nil
 	case 1:
 		var d RightSetEntry
 
-		d.Rights = make([]chainhash.Hash, (len(serialized) - 1) / chainhash.HashSize)
+		d.Rights = make([]chainhash.Hash, (len(serialized)-1)/chainhash.HashSize)
 
 		for i, p := 0, 1; p < len(serialized); p += chainhash.HashSize {
 			copy(d.Rights[i][:], serialized[p:])

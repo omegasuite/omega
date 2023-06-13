@@ -8,13 +8,14 @@ package main
 
 import (
 	"bytes"
+	"container/list"
 	rrand "crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/subtle"
-//	"crypto/x509"
+	//	"crypto/x509"
 	"encoding/base64"
-//	"encoding/pem"
+	//	"encoding/pem"
 
 	//	"encoding/binary"
 	"encoding/hex"
@@ -102,7 +103,7 @@ var (
 	// overhead of creating a new object on every invocation for constant
 	// data.
 	gbtCoinbaseAux = &btcjson.GetBlockTemplateResultAux{
-		Flags: hex.EncodeToString([]byte{}),	// builderScript(txscript.NewScriptBuilder().AddData([]byte(mining.CoinbaseFlags)))),
+		Flags: hex.EncodeToString([]byte{}), // builderScript(txscript.NewScriptBuilder().AddData([]byte(mining.CoinbaseFlags)))),
 	}
 
 	// gbtCapabilities describes additional capabilities returned with a
@@ -138,38 +139,38 @@ var rpcHandlers map[string]commandHandler
 var rpcHandlersBeforeInit = map[string]commandHandler{
 	"addnode":               handleAddNode,
 	"createrawtransaction":  handleCreateRawTransaction,
-	"parserawtransaction":	 handleParseRawTransaction,
+	"parserawtransaction":   handleParseRawTransaction,
 	"debuglevel":            handleDebugLevel,
 	"decoderawtransaction":  handleDecodeRawTransaction,
 	"decodescript":          handleDecodeScript,
 	"estimatefee":           handleEstimateFee,
 	"generate":              handleGenerate,
 	"getaddednodeinfo":      handleGetAddedNodeInfo,
-	"getbestblock":          handleGetBestBlock,		// Changed: get the best block of both chains
+	"getbestblock":          handleGetBestBlock, // Changed: get the best block of both chains
 	"getbestblockhash":      handleGetBestBlockHash,
-	"getbestminerblockhash": handleGetBestMinerBlockHash,	// New
+	"getbestminerblockhash": handleGetBestMinerBlockHash, // New
 	"getblock":              handleGetBlock,
-	"getblockchaininfo":     handleGetBlockChainInfo,		// Changed: get info. for both chains
-//	"alert":			     handleAlert,
-	"addminingkey":			 handleAddMiningKey,
-	"getblockcount":         handleGetBlockCount,
-	"getblockhash":          handleGetBlockHash,
-	"getblockheader":        handleGetBlockHeader,
-	"genmultisigaddr":		 handleGenMultiSigAddr,
+	"getblockchaininfo":     handleGetBlockChainInfo, // Changed: get info. for both chains
+	//	"alert":			     handleAlert,
+	"addminingkey":    handleAddMiningKey,
+	"getblockcount":   handleGetBlockCount,
+	"getblockhash":    handleGetBlockHash,
+	"getblockheader":  handleGetBlockHeader,
+	"genmultisigaddr": handleGenMultiSigAddr,
 
-	"getminerblock":         handleGetMinerBlock,	// New
-	"getminerblockheight":   handleGetMinerBlockHeight,	// New
-	"getminerblockcount":    handleGetMinerBlockCount,	// New
-	"getminerblockhash":     handleGetMinerBlockHash,	// New
-	"getblocktxhashes":      handleGetBlockTxHases,	// New
-//	"searchborder":   		 handleSearchBorder,	// New
-	"gettpsview":			 handleGetTPSView,
-	"contractcall":   		 handleContractCall,	// New
-	"trycontract":   		 handleTryContract,	// New
-	"miningpolicy":   		 handleMiningPolicy,	// New. miner specific policy
-	"tokenaddress":   		 handleTokenAddress,	// New
+	"getminerblock":       handleGetMinerBlock,       // New
+	"getminerblockheight": handleGetMinerBlockHeight, // New
+	"getminerblockcount":  handleGetMinerBlockCount,  // New
+	"getminerblockhash":   handleGetMinerBlockHash,   // New
+	"getblocktxhashes":    handleGetBlockTxHases,     // New
+	//	"searchborder":   		 handleSearchBorder,	// New
+	"gettpsview":   handleGetTPSView,
+	"contractcall": handleContractCall, // New
+	"trycontract":  handleTryContract,  // New
+	"miningpolicy": handleMiningPolicy, // New. miner specific policy
+	"tokenaddress": handleTokenAddress, // New
 
-//	"getblocktemplate":      handleGetBlockTemplate,
+	//	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
 	"getcfilterheader":      handleGetCFilterHeader,
 	"getconnectioncount":    handleGetConnectionCount,
@@ -195,9 +196,9 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"node":                  handleNode,
 	"ping":                  handlePing,
 	"searchrawtransactions": handleSearchRawTransactions,
-	"checkfork":		 	 handleCheckFork,
+	"checkfork":             handleCheckFork,
 	"sendrawtransaction":    handleSendRawTransaction,
-	"confirmations":		 handleConfirmations,
+	"confirmations":         handleConfirmations,
 	"recastrawtransaction":  handleRecastRawTransaction,
 	"setgenerate":           handleSetGenerate,
 	"stop":                  handleStop,
@@ -207,7 +208,9 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"verifymessage":         handleVerifyMessage,
 	"version":               handleVersion,
 	"shutdownserver":        handleShutdown,
-	"vmdebug":				 handleVMDebug,
+	"vmdebug":               handleVMDebug,
+	"settip":                handleSetTip,
+	"blacklist":             handleBlackList,
 }
 
 // list of commands that we recognize, but for which btcd has no support because
@@ -286,7 +289,7 @@ var rpcLimited = map[string]struct{}{
 	"help": {},
 
 	// HTTP/S-only commands
-	"getblockchaininfo":     {},		// Changed: get info. for both chains
+	"getblockchaininfo":     {}, // Changed: get info. for both chains
 	"createrawtransaction":  {},
 	"decoderawtransaction":  {},
 	"decodescript":          {},
@@ -296,52 +299,54 @@ var rpcLimited = map[string]struct{}{
 	"getbestminerblockhash": {},
 	"getblock":              {},
 	"getminerblock":         {},
-	"getminerblockheight":	 {},
+	"getminerblockheight":   {},
 	"getblockcount":         {},
 	"getblockhash":          {},
 	"getblocktxhashes":      {},
-	"searchborder":			 {},
+	"searchborder":          {},
 	"getblockheader":        {},
 	"getminerblockcount":    {},
 	"getminerblockhash":     {},
-//	"getcfilter":            {},
-//	"getcfilterheader":      {},
-	"getcurrentnet":         {},
-	"getdifficulty":         {},
-	"getheaders":            {},
-	"getinfo":               {},
-	"getnettotals":          {},
-	"getnetworkhashps":      {},
-	"getrawmempool":         {},
-//	"clearmempool":          {},	this is admin command
+	//	"getcfilter":            {},
+	//	"getcfilterheader":      {},
+	"getcurrentnet":    {},
+	"getdifficulty":    {},
+	"getheaders":       {},
+	"getinfo":          {},
+	"getnettotals":     {},
+	"getnetworkhashps": {},
+	"getrawmempool":    {},
+	//	"clearmempool":          {},	this is admin command
 	"getrawtransaction":     {},
 	"gettxout":              {},
 	"listutxos":             {},
 	"getdefine":             {},
-	"gettpsview":			 {},
+	"gettpsview":            {},
 	"contractcall":          {},
-	"trycontract":   		 {},
+	"trycontract":           {},
 	"searchrawtransactions": {},
 	"sendrawtransaction":    {},
-	"confirmations":		 {},
-//	"submitblock":           {},
-	"uptime":                {},
-	"validateaddress":       {},
-	"verifymessage":         {},
-	"version":               {},
-	"vmdebug":				 {},
-	"checkfork":			 {},
-	"tokenaddress":   		 {},	// New
-	"parserawtransaction":	 {},
-	"debuglevel":			 {},
-	"genmultisigaddr":		 {},
-	"miningpolicy":			 {},
-	"getmempoolinfo":		 {},
-	"getmininginfo":		 {},
-	"getpeerinfo":			 {},
-	"node":					 {},
-	"ping":					 {},
+	"confirmations":         {},
+	//	"submitblock":           {},
+	"uptime":              {},
+	"validateaddress":     {},
+	"verifymessage":       {},
+	"version":             {},
+	"vmdebug":             {},
+	"checkfork":           {},
+	"tokenaddress":        {}, // New
+	"parserawtransaction": {},
+	"debuglevel":          {},
+	"genmultisigaddr":     {},
+	"miningpolicy":        {},
+	"getmempoolinfo":      {},
+	"getmininginfo":       {},
+	"getpeerinfo":         {},
+	"node":                {},
+	"ping":                {},
+	"blacklist":           {},
 }
+
 /*
 // builderScript is a convenience function which is used for hard-coded scripts
 // built with the script builder.   Any errors are converted to a panic since it
@@ -376,7 +381,6 @@ func rpcDefinitionError(gotHex string) *btcjson.RPCError {
 		fmt.Sprintf("The definition indicated by %q does not exist",
 			gotHex))
 }
-
 
 // rpcDecodeHexError is a convenience function for returning a nicely formatted
 // RPC error which indicates the provided hex string failed to decode.
@@ -471,28 +475,28 @@ func createMultiSigScript(scripts [][]byte, n uint16, chainParams *chaincfg.Para
 	builder.AddBytes(buf[:2])
 	builder.AddOp(ovm.SIGNTEXT, []byte{byte(ovm.SigHashNone)})
 
-	h := make([]byte, 0, 25 * len(scripts))
-	for _,pkh := range scripts {
+	h := make([]byte, 0, 25*len(scripts))
+	for _, pkh := range scripts {
 		k := len(pkh)
 		h = append(h, pkh...)
-		if k <= 255 {	// 21 for pkh, or a contract call less than 256 bytes
+		if k <= 255 { // 21 for pkh, or a contract call less than 256 bytes
 			builder.AddOp(ovm.PUSH, []byte{byte(k)}).AddBytes(pkh)
 		} else {
 			// long contract call scripts
 			for i := 0; i < k; {
-				if k - i > 255 + 25 {
-					builder.AddOp(ovm.PUSH, []byte{255}).AddBytes(pkh[i : i + 255])
+				if k-i > 255+25 {
+					builder.AddOp(ovm.PUSH, []byte{255}).AddBytes(pkh[i : i+255])
 					i += 255
-				} else if k - i < 255 {
-					builder.AddOp(ovm.PUSH, []byte{byte(k - i)}).AddBytes(pkh[i : k])
+				} else if k-i < 255 {
+					builder.AddOp(ovm.PUSH, []byte{byte(k - i)}).AddBytes(pkh[i:k])
 					i = k
 				} else {
 					j := (k - i) >> 1
 					if j == 25 {
 						j++
 					}
-					builder.AddOp(ovm.PUSH, []byte{byte(j)}).AddBytes(pkh[i : i + j])
-					builder.AddOp(ovm.PUSH, []byte{byte(k - (i + j))}).AddBytes(pkh[i + j : k])
+					builder.AddOp(ovm.PUSH, []byte{byte(j)}).AddBytes(pkh[i : i+j])
+					builder.AddOp(ovm.PUSH, []byte{byte(k - (i + j))}).AddBytes(pkh[i+j : k])
 					i = k
 				}
 			}
@@ -509,7 +513,7 @@ func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struc
 
 	scripts := make([][]byte, 0, len(c.Addresses))
 
-	for _,addr := range c.Addresses {
+	for _, addr := range c.Addresses {
 		if len(addr)%2 != 0 {
 			addr = "0" + addr
 		}
@@ -562,9 +566,9 @@ func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struc
 		return nil, err
 	}
 
-	reply := &btcjson.MultiSigAddr {
+	reply := &btcjson.MultiSigAddr{
 		Address: a.EncodeAddress(),
-		Script: hex.EncodeToString(script),
+		Script:  hex.EncodeToString(script),
 	}
 
 	return reply, nil
@@ -573,6 +577,86 @@ func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struc
 var debugchan chan []byte
 var pendattach bool
 
+func handleSetTip(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.SetTipCmd)
+
+	txtip, err := chainhash.NewHashFromStr(c.TxTip)
+	if err != nil || txtip == nil {
+		return nil, fmt.Errorf("Non-exist tx tip hash")
+	}
+	minertip, err := chainhash.NewHashFromStr(c.MinerTip)
+	if err != nil || minertip == nil {
+		return nil, fmt.Errorf("Non-exist miner tip hash")
+	}
+
+	txblk, err := s.cfg.Chain.HashToBlock(txtip)
+	if err != nil || txblk == nil {
+		return nil, fmt.Errorf("Non-exist tx tip")
+	}
+	minerblk, err := s.cfg.Chain.Miners.DBBlockByHash(minertip)
+	if err != nil || minerblk == nil {
+		return nil, fmt.Errorf("Non-exist miner tip")
+	}
+
+	state := s.cfg.Chain.BestSnapshot()
+	bestblk, _ := s.cfg.Chain.HashToBlock(&minerblk.MsgBlock().BestBlock)
+	bestheight := bestblk.Height()
+
+	mstate := s.cfg.Chain.Miners.BestSnapshot()
+
+	if !s.cfg.Chain.SameChain(*txtip, state.Hash) {
+		return nil, fmt.Errorf("New tx tip not in same chain as current tip")
+	}
+
+	pb := minerblk.MsgBlock().PrevBlock
+	for i := minerblk.Height() - 1; i != mstate.Height; i-- {
+		pbb, err := s.cfg.Chain.Miners.DBBlockByHash(&pb)
+		if err != nil || pbb == nil {
+			return nil, fmt.Errorf("New miner tip not in same chain as current tip")
+		}
+		if !s.cfg.Chain.SameChain(minerblk.MsgBlock().BestBlock, pbb.MsgBlock().BestBlock) {
+			return nil, fmt.Errorf("Best chain not in sync @ miner block %s width best block %s compare to current tip best block %s", pb.String(), pbb.MsgBlock().BestBlock.String(), minerblk.MsgBlock().BestBlock.String())
+		}
+		bestblk, _ := s.cfg.Chain.HashToBlock(&pbb.MsgBlock().BestBlock)
+		nbestheight := bestblk.Height()
+		if nbestheight > bestheight {
+			return nil, fmt.Errorf("Best not in order")
+		}
+		bestheight = nbestheight
+		pb = pbb.MsgBlock().PrevBlock
+	}
+	if !pb.IsEqual(&mstate.Hash) {
+		return nil, fmt.Errorf("New miner tip not in same chain as current tip")
+	}
+
+	attachNodes := list.New()
+
+	node := s.cfg.Chain.NodeByHash(txtip)
+	forkNode := s.cfg.Chain.NodeByHash(&state.Hash)
+	for n := node; n != nil && n != forkNode; n = n.Parent {
+		attachNodes.PushFront(n)
+	}
+	err = s.cfg.Chain.FastReorganizeChain(attachNodes)
+	if err != nil {
+		panic("Tx FastReorganizeChain failed: " + err.Error())
+	}
+
+	attachNodes = list.New()
+	mnode := s.cfg.Chain.Miners.NodeByHash(minertip)
+	mforkNode := s.cfg.Chain.Miners.NodeByHash(&mstate.Hash)
+	for n := mnode; n != nil && n != mforkNode; n = n.Parent {
+		attachNodes.PushFront(n)
+	}
+	err = s.cfg.Chain.Miners.FastReorganizeChain(attachNodes)
+	if err != nil {
+		panic("Miner FastReorganizeChain failed: " + err.Error())
+	}
+
+	s.requestProcessShutdown <- struct{}{}
+
+	return "Done", nil
+}
+
 func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	if s.cfg.ChainParams.Net != common.TestNet {
 		return nil, fmt.Errorf("Vm debugging is only enabled in testNet")
@@ -580,7 +664,7 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 
 	c := cmd.(*btcjson.VMDebugCmd)
 
-	gotype := map[string]ovm.DebugCommand{"go":ovm.Gorun, "step":ovm.Stepping, "Up":ovm.GoUp, "clearbreakpoint":ovm.Unbreak, "breakpoint":ovm.Breakpoint}
+	gotype := map[string]ovm.DebugCommand{"go": ovm.Gorun, "step": ovm.Stepping, "Up": ovm.GoUp, "clearbreakpoint": ovm.Unbreak, "breakpoint": ovm.Breakpoint}
 
 	switch c.DbgCmd {
 	case "attach":
@@ -595,7 +679,7 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 
 		for true {
 			select {
-			case d = <- debugchan:
+			case d = <-debugchan:
 
 			default:
 				return "C" + string(d[1]) + hex.EncodeToString(d[2:]), nil
@@ -604,7 +688,7 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 
 	case "detach":
 		if pendattach {
-			debugchan <- []byte{0,0,0}
+			debugchan <- []byte{0, 0, 0}
 		}
 		fallthrough
 
@@ -625,29 +709,29 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 
 	switch c.DbgCmd {
 	case "go", "step", "up":
-		ovm.Control <- &ovm.DebugCmd {
-			Cmd: gotype[c.DbgCmd],
-			Data: nil,
+		ovm.Control <- &ovm.DebugCmd{
+			Cmd:   gotype[c.DbgCmd],
+			Data:  nil,
 			Reply: reply,
 		}
 
-		d := <- reply
+		d := <-reply
 
 		if d[0] == byte(ovm.Terminated) {
-			rdata := &btcjson.DebugReply {
-				Result:	"Terminated",
+			rdata := &btcjson.DebugReply{
+				Result: "Terminated",
 			}
 			return rdata, nil
 		} else if d[0] == byte(ovm.Breaked) {
 			v := common.LittleEndian.Uint32(d[1:])
-			rdata := &btcjson.DebugReply {
-				Result:	fmt.Sprintf("Break at inst %d", v),
-				Line: v,
+			rdata := &btcjson.DebugReply{
+				Result: fmt.Sprintf("Break at inst %d", v),
+				Line:   v,
 			}
 			return rdata, nil
 		} else {
-			rdata := &btcjson.DebugReply {
-				Result:	"Unexpected result: " + hex.EncodeToString(d),
+			rdata := &btcjson.DebugReply{
+				Result: "Unexpected result: " + hex.EncodeToString(d),
 			}
 			return rdata, nil
 		}
@@ -657,42 +741,42 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 
 		common.LittleEndian.PutUint32(b[:], uint32(*c.Value))
 
-		ovm.Control <- &ovm.DebugCmd {
-			Cmd: gotype[c.DbgCmd],
-			Data: b[:],
+		ovm.Control <- &ovm.DebugCmd{
+			Cmd:   gotype[c.DbgCmd],
+			Data:  b[:],
 			Reply: nil,
 		}
 
 		return "Done", nil
 
 	case "getdata":
-		buf := make([]byte, len(*c.Param) + 5)
+		buf := make([]byte, len(*c.Param)+5)
 		copy(buf, []byte(*c.Param))
 		buf[len(*c.Param)] = ','
-		common.LittleEndian.PutUint32(buf[len(buf) - 4:], uint32(*c.Value))
-		ovm.Control <- &ovm.DebugCmd {
-			Cmd: ovm.Getdata,
-			Data: buf,
+		common.LittleEndian.PutUint32(buf[len(buf)-4:], uint32(*c.Value))
+		ovm.Control <- &ovm.DebugCmd{
+			Cmd:   ovm.Getdata,
+			Data:  buf,
 			Reply: reply,
 		}
 
-		d := <- reply
+		d := <-reply
 
 		return hex.EncodeToString(d), nil
 
 	case "getstack":
-		ovm.Control <- &ovm.DebugCmd {
-			Cmd: ovm.Getstack,
-			Data: nil,
+		ovm.Control <- &ovm.DebugCmd{
+			Cmd:   ovm.Getstack,
+			Data:  nil,
 			Reply: reply,
 		}
 
-		d := <- reply
+		d := <-reply
 
-		stack := make([]int, len(d) / 4)
+		stack := make([]int, len(d)/4)
 		for i := 0; i < len(d); i += 4 {
 			v := common.LittleEndian.Uint32(d[i:])
-			stack[i / 4] = int(v)
+			stack[i/4] = int(v)
 		}
 
 		return stack, nil
@@ -704,13 +788,13 @@ func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 			return nil, nil
 		}
 		common.LittleEndian.PutUint32(buf[8:], uint32(*c.Value))
-		ovm.Control <- &ovm.DebugCmd {
-			Cmd: ovm.Evaluate,
-			Data: buf[:],
+		ovm.Control <- &ovm.DebugCmd{
+			Cmd:   ovm.Evaluate,
+			Data:  buf[:],
 			Reply: reply,
 		}
 
-		d := <- reply
+		d := <-reply
 
 		return hex.EncodeToString(d), nil
 	}
@@ -827,7 +911,7 @@ func peerExists(connMgr rpcserverConnManager, addr string, nodeID int32) bool {
 // latest protocol version and returns a hex-encoded string of the result.
 func messageToHex(msg wire.Message) (string, error) {
 	var buf bytes.Buffer
-	if err := msg.OmcEncode(&buf, maxProtocolVersion, wire.SignatureEncoding | wire.FullEncoding); err != nil {
+	if err := msg.OmcEncode(&buf, maxProtocolVersion, wire.SignatureEncoding|wire.FullEncoding); err != nil {
 		context := fmt.Sprintf("Failed to encode msg of type %T", msg)
 		return "", internalRPCError(err.Error(), context)
 	}
@@ -854,7 +938,7 @@ func handleTokenAddress(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 		return nil, fmt.Errorf("Tokentype 0x%x is not used.", c.TokenType)
 	}
 
-	address,_ := btcutil.NewAddressContract(addr, s.cfg.ChainParams)
+	address, _ := btcutil.NewAddressContract(addr, s.cfg.ChainParams)
 
 	return address.EncodeAddress(), nil
 }
@@ -893,6 +977,10 @@ func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	vm.BlockVersion = func() uint32 { return wire.Version4 }
 
 	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
+
+	if mb == nil {
+		return nil, fmt.Errorf("Unable to handle this request for now")
+	}
 	if mb.Data.GetContractExec() > vm.StepLimit {
 		vm.StepLimit = mb.Data.GetContractExec()
 	}
@@ -908,14 +996,15 @@ func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	// is intentionally not directly returning because the first return
 	// value is a string and it would result in returning an empty string to
 	// the client instead of nothing (nil) in the case of an error.
-	mtxHex, err := messageToHex(tx.MsgTx())
+	var w bytes.Buffer
+	err = tx.MsgTx().SerializeFull(&w)
 	if err != nil {
 		return nil, err
 	}
 
-	reply := &btcjson.TryResult {
+	reply := &btcjson.TryResult{
 		Result: hex.EncodeToString(result),
-		Tx: mtxHex,
+		Tx:     hex.EncodeToString(w.Bytes()),
 	}
 
 	return reply, nil
@@ -923,13 +1012,13 @@ func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 // handleMiningPolicy handles MiningPolicy commands.
 func handleMiningPolicy(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	txReply := &btcjson.MiningPolicy {
-		RelayFee:			s.cfg.ChainParams.MinRelayTxFee,
-		BorderFee:			int64(s.cfg.ChainParams.MinBorderFee),
-		SubBorderFee:		0,
-		MaxExecSteps:		int32(s.cfg.ChainParams.ContractExecLimit),
-		ContractExecFee:	s.cfg.ChainParams.ContractExecFee,
-		MinContractFee:		0,
+	txReply := &btcjson.MiningPolicy{
+		RelayFee:        s.cfg.ChainParams.MinRelayTxFee,
+		BorderFee:       int64(s.cfg.ChainParams.MinBorderFee),
+		SubBorderFee:    0,
+		MaxExecSteps:    int32(s.cfg.ChainParams.ContractExecLimit),
+		ContractExecFee: s.cfg.ChainParams.ContractExecFee,
+		MinContractFee:  0,
 	}
 
 	return txReply, nil
@@ -1021,7 +1110,7 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 			}
 		}
 
-		txIn := wire.NewTxIn(prevOut, sigIndex)	// uint32(i))
+		txIn := wire.NewTxIn(prevOut, sigIndex) // uint32(i))
 		if c.LockTime != nil && *c.LockTime != 0 {
 			txIn.Sequence = wire.MaxTxInSequenceNum - 1
 		}
@@ -1210,7 +1299,7 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		// The disassembled string will contain [error] inline
 		// if the script doesn't fully parse, so ignore the
 		// error here.
-//		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
+		//		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
@@ -1309,11 +1398,11 @@ func createVoutList(mtx *wire.MsgTx, chainParams *chaincfg.Params, filterAddrMap
 		vout.N = uint32(i)
 		if v.Value.IsNumeric() {
 			vout.Value = map[string]interface{}{
-				"Val":btcutil.Amount(v.Value.(*token.NumToken).Val).ToOMC(),
+				"Val": btcutil.Amount(v.Value.(*token.NumToken).Val).ToOMC(),
 			}
 		} else {
 			vout.Value = map[string]interface{}{
-				"Hash":v.Value.(*token.HashToken).Hash.String(),
+				"Hash": v.Value.(*token.HashToken).Hash.String(),
 			}
 		}
 		vout.TokenType = v.TokenType
@@ -1346,13 +1435,13 @@ func createTxRawResult(chainParams *chaincfg.Params, mtx *wire.MsgTx,
 	}
 
 	txReply := &btcjson.TxRawResult{
-		Hex:      mtxHex,
-		Txid:     txHash,
-		Hash:     mtx.TxHash().String(),	// tx hash does not include signature
-//		Hash:     mtx.SignatureHash().String(),
-		Size:     int32(mtx.SerializeSize()),
-		Vdef:	  createVdefList(mtx),
-//		Vsize:    int32(blockchain.GetTransactionWeight(btcutil.NewTx(mtx))),
+		Hex:  mtxHex,
+		Txid: txHash,
+		Hash: mtx.TxHash().String(), // tx hash does not include signature
+		//		Hash:     mtx.SignatureHash().String(),
+		Size: int32(mtx.SerializeSize()),
+		Vdef: createVdefList(mtx),
+		//		Vsize:    int32(blockchain.GetTransactionWeight(btcutil.NewTx(mtx))),
 		Vin:      createVinList(mtx),
 		Vout:     createVoutList(mtx, chainParams, nil),
 		Version:  mtx.Version,
@@ -1397,7 +1486,7 @@ func handleDecodeRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 		Txid:     mtx.TxHash().String(),
 		Version:  mtx.Version,
 		Locktime: mtx.LockTime,
-		Vdef:	  createVdefList(&mtx),
+		Vdef:     createVdefList(&mtx),
 		Vin:      createVinList(&mtx),
 		Vout:     createVoutList(&mtx, s.cfg.ChainParams, nil),
 	}
@@ -1469,8 +1558,8 @@ func handleDecodeScript(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 
 	// Generate and return the reply.
 	reply := btcjson.DecodeScriptResult{
-		Asm:       disbuf,
-//		ReqSigs:   int32(reqSigs),
+		Asm: disbuf,
+		//		ReqSigs:   int32(reqSigs),
 		Type:      pubKeyTypes(script),
 		Addresses: addresses,
 	}
@@ -1654,8 +1743,8 @@ func handleGetBestBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	best := s.cfg.Chain.BestSnapshot()
 	mbest := s.cfg.Chain.Miners.BestSnapshot()
 	result := &btcjson.GetBestBlockResult{
-		Hash:   best.Hash.String(),
-		Height: best.Height,
+		Hash:        best.Hash.String(),
+		Height:      best.Height,
 		MinerHash:   mbest.Hash.String(),
 		MinerHeight: mbest.Height,
 	}
@@ -1757,7 +1846,7 @@ func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 		copy(srcBytes[1:], c.Input)
 	}
 
-	input := make([]byte, len(srcBytes) / 2)
+	input := make([]byte, len(srcBytes)/2)
 	if _, err := hex.Decode(input, srcBytes); err != nil {
 		return nil, err
 	}
@@ -1794,7 +1883,7 @@ func handleSearchBorder(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 
 	return result, nil
 }
- */
+*/
 
 // handleGetBlock implements the getblock command.
 func handleGetBlockTxHases(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
@@ -1902,10 +1991,10 @@ func handleGetBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		Height:        int64(blockHeight),
 		Size:          int32(len(blkBytes)),
 		StrippedSize:  int32(blk.MsgBlock().SerializeSizeStripped()),
-//		Weight:        int32(blockchain.GetBlockWeight(blk)),
-//		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
-//		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
-		NextHash:      nextHashString,
+		//		Weight:        int32(blockchain.GetBlockWeight(blk)),
+		//		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
+		//		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
+		NextHash: nextHashString,
 	}
 
 	if c.VerboseTx == nil || !*c.VerboseTx {
@@ -2007,7 +2096,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 	params := s.cfg.ChainParams
 	blockHeader := blk.MsgBlock()
 
-	d,_ := btcutil.NewAddressPubKeyHash(blockHeader.Miner[:], params)
+	d, _ := btcutil.NewAddressPubKeyHash(blockHeader.Miner[:], params)
 	collateral := string("")
 	if blockHeader.Utxos != nil {
 		collateral = blockHeader.Utxos.String()
@@ -2026,10 +2115,10 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
 		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 		NextHash:      nextHashString,
-		Address:	   d.String(),	// hex.EncodeToString(blockHeader.Miner),
-		Best:		   blockHeader.BestBlock.String(),
+		Address:       d.String(), // hex.EncodeToString(blockHeader.Miner),
+		Best:          blockHeader.BestBlock.String(),
 		Collateral:    collateral,
-		Violations:	   blockHeader.ViolationReport,
+		Violations:    blockHeader.ViolationReport,
 	}
 
 	return blockReply, nil
@@ -2057,7 +2146,7 @@ func softForkStatus(state minerchain.ThresholdState) (string, error) {
 // handleAddMiningKey implements the addminingkey command.
 func handleAddMiningKey(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.AddMiningKeyCmd)
-	result := &btcjson.AddMiningKeyResult { Status: -1 }
+	result := &btcjson.AddMiningKeyResult{Status: -1}
 
 	if c.KeyType { // true for private, false for public key
 		if !s.cfg.ShareMining {
@@ -2092,19 +2181,19 @@ func handleAddMiningKey(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 
 func encrypt(buf []byte, pubkey *rsa.PublicKey) ([]byte, error) {
 	n := 0
-	ciphered := make([]byte, 0, len(buf) + 4)
+	ciphered := make([]byte, 0, len(buf)+4)
 
 	for len(buf) > n {
 		m := len(buf)
-		if len(buf) - n > 446 {
+		if len(buf)-n > 446 {
 			m = n + 446
 		}
-		t, err := rsa.EncryptOAEP(sha256.New(), rrand.Reader, pubkey, buf[n : m], []byte("alert"))
+		t, err := rsa.EncryptOAEP(sha256.New(), rrand.Reader, pubkey, buf[n:m], []byte("alert"))
 		if err != nil {
 			return nil, err
 		}
 		n = m
-		var u[4]byte
+		var u [4]byte
 
 		common.LittleEndian.PutUint32(u[:], uint32(len(t)))
 		ciphered = append(append(ciphered, u[:]...), t...)
@@ -2123,67 +2212,67 @@ func handleGetBlockChainInfo(s *rpcServer, cmd interface{}, closeChan <-chan str
 	current := s.cfg.SyncMgr.IsCurrent()
 
 	chainInfo := &btcjson.GetBlockChainInfoResult{
-		Chain:         params.Name,
-		Current:	   current,
-		Blocks:        chainSnapshot.Height,
-//		Headers:       chainSnapshot.Height,
-		Rotate:		   int32(chainSnapshot.LastRotation),
+		Chain:   params.Name,
+		Current: current,
+		Blocks:  chainSnapshot.Height,
+		//		Headers:       chainSnapshot.Height,
+		Rotate:        int32(chainSnapshot.LastRotation),
 		BestBlockHash: chainSnapshot.Hash.String(),
-//		Difficulty:    getDifficultyRatio(chainSnapshot.Bits, params),
-		MedianTime:    chainSnapshot.MedianTime.Unix(),
-//		Pruned:        false,
-		MinerBlocks:        minerchainSnapshot.Height,
-//		MinerHeaders:       minerchainSnapshot.Height,
+		//		Difficulty:    getDifficultyRatio(chainSnapshot.Bits, params),
+		MedianTime: chainSnapshot.MedianTime.Unix(),
+		//		Pruned:        false,
+		MinerBlocks: minerchainSnapshot.Height,
+		//		MinerHeaders:       minerchainSnapshot.Height,
 		MinerBestBlockHash: minerchainSnapshot.Hash.String(),
 		MinerDifficulty:    getDifficultyRatio(minerchainSnapshot.Bits, params),
 		MinerMedianTime:    minerchainSnapshot.MedianTime.Unix(),
 	}
-/*
-	// Next, populate the response with information describing the current
-	// status of soft-forks deployed via the super-majority block
-	// signalling mechanism.
-//	height := chainSnapshot.Height
-	chainInfo.SoftForks = []*btcjson.SoftForkDescription{}
+	/*
+	   	// Next, populate the response with information describing the current
+	   	// status of soft-forks deployed via the super-majority block
+	   	// signalling mechanism.
+	   //	height := chainSnapshot.Height
+	   	chainInfo.SoftForks = []*btcjson.SoftForkDescription{}
 
-	// Finally, query the BIP0009 version bits state for all currently
-	// defined BIP0009 soft-fork deployments.
-	for deployment, _ := range params.Deployments {	// deploymentDetails
-		// Map the integer deployment ID into a human readable
-		// fork-name.
-//		var forkName string
-		switch deployment {
-		case chaincfg.DeploymentTestDummy:
-//			forkName = "dummy"
+	   	// Finally, query the BIP0009 version bits state for all currently
+	   	// defined BIP0009 soft-fork deployments.
+	   	for deployment, _ := range params.Deployments {	// deploymentDetails
+	   		// Map the integer deployment ID into a human readable
+	   		// fork-name.
+	   //		var forkName string
+	   		switch deployment {
+	   		case chaincfg.DeploymentTestDummy:
+	   //			forkName = "dummy"
 
-		default:
-			return nil, &btcjson.RPCError{
-				Code: btcjson.ErrRPCInternal.Code,
-				Message: fmt.Sprintf("Unknown deployment %v "+
-					"detected", deployment),
-			}
-		}
+	   		default:
+	   			return nil, &btcjson.RPCError{
+	   				Code: btcjson.ErrRPCInternal.Code,
+	   				Message: fmt.Sprintf("Unknown deployment %v "+
+	   					"detected", deployment),
+	   			}
+	   		}
 
-		// Query the chain for the current status of the deployment as
-		// identified by its deployment ID.
-		deploymentStatus, err := chain.ThresholdState(uint32(deployment))
-		if err != nil {
-			context := "Failed to obtain deployment status"
-			return nil, internalRPCError(err.Error(), context)
-		}
+	   		// Query the chain for the current status of the deployment as
+	   		// identified by its deployment ID.
+	   		deploymentStatus, err := chain.ThresholdState(uint32(deployment))
+	   		if err != nil {
+	   			context := "Failed to obtain deployment status"
+	   			return nil, internalRPCError(err.Error(), context)
+	   		}
 
-		// Attempt to convert the current deployment status into a
-		// human readable string. If the status is unrecognized, then a
-		// non-nil error is returned.
-		_, err = softForkStatus(deploymentStatus)	// statusString
-		if err != nil {
-			return nil, &btcjson.RPCError{
-				Code: btcjson.ErrRPCInternal.Code,
-				Message: fmt.Sprintf("unknown deployment status: %v",
-					deploymentStatus),
-			}
-		}
-	}
-*/
+	   		// Attempt to convert the current deployment status into a
+	   		// human readable string. If the status is unrecognized, then a
+	   		// non-nil error is returned.
+	   		_, err = softForkStatus(deploymentStatus)	// statusString
+	   		if err != nil {
+	   			return nil, &btcjson.RPCError{
+	   				Code: btcjson.ErrRPCInternal.Code,
+	   				Message: fmt.Sprintf("unknown deployment status: %v",
+	   					deploymentStatus),
+	   			}
+	   		}
+	   	}
+	*/
 
 	return chainInfo, nil
 }
@@ -2205,7 +2294,7 @@ func handleGetBlockHash(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	hash, err := s.cfg.Chain.BlockHashByHeight(int32(c.Index))
 	if err != nil {
 		s := fmt.Sprintf("Block number %d out of range", c.Index)
-//		return nil, err
+		//		return nil, err
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCOutOfRange,
 			Message: s,
@@ -2214,7 +2303,7 @@ func handleGetBlockHash(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 
 	t := hash.String()
 
-//	fmt.Printf("handleGetBlockHash = %s", t)
+	//	fmt.Printf("handleGetBlockHash = %s", t)
 
 	return t, nil
 }
@@ -2284,7 +2373,7 @@ func handleGetBlockHeader(s *rpcServer, cmd interface{}, closeChan <-chan struct
 		nextHashString = nextHash.String()
 	}
 
-//	params := s.cfg.ChainParams
+	//	params := s.cfg.ChainParams
 	blockHeaderReply := btcjson.GetBlockHeaderVerboseResult{
 		Hash:          c.Hash,
 		Confirmations: int64(1 + best.Height - blockHeight),
@@ -2296,8 +2385,8 @@ func handleGetBlockHeader(s *rpcServer, cmd interface{}, closeChan <-chan struct
 		PreviousHash:  blockHeader.PrevBlock.String(),
 		Nonce:         int64(blockHeader.Nonce),
 		Time:          blockHeader.Timestamp.Unix(),
-//		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
-//		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
+		//		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
+		//		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 	}
 	return blockHeaderReply, nil
 }
@@ -2578,7 +2667,7 @@ func (state *gbtWorkState) updateBlockTemplate(s *rpcServer, useCoinbaseValue bo
 
 	return nil
 }
- */
+*/
 
 // blockTemplateResult returns the current block template associated with the
 // state as a btcjson.GetBlockTemplateResult that is ready to be encoded to JSON
@@ -2642,7 +2731,7 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		// Serialize the transaction for later conversion to hex.
 		txBuf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 		if err := tx.OmcEncode(txBuf, 0, wire.SignatureEncoding); err != nil {
-//		if err := tx.Serialize(txBuf); err != nil {
+			//		if err := tx.Serialize(txBuf); err != nil {
 			context := "Failed to serialize transaction"
 			return nil, internalRPCError(err.Error(), context)
 		}
@@ -2663,16 +2752,16 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 	// implied by the included or omission of fields:
 	//  Including MinTime -> time/decrement
 	//  Omitting CoinbaseTxn -> coinbase, generation
-	targetDifficulty := fmt.Sprintf("%064x", blockchain.CompactToBig(template.Bits))	// header.Bits))
+	targetDifficulty := fmt.Sprintf("%064x", blockchain.CompactToBig(template.Bits)) // header.Bits))
 	templateID := encodeTemplateID(state.prevHash, state.lastGenerated)
 	reply := btcjson.GetBlockTemplateResult{
-		Bits:         strconv.FormatInt(int64(template.Bits), 16),	//	header.Bits), 16),
+		Bits:         strconv.FormatInt(int64(template.Bits), 16), //	header.Bits), 16),
 		CurTime:      header.Timestamp.Unix(),
 		Height:       int64(template.Height),
 		PreviousHash: header.PrevBlock.String(),
-//		WeightLimit:  chaincfg.MaxBlockWeight,
-		SigOpLimit:   chaincfg.MaxBlockSigOpsCost,
-//		SizeLimit:    wire.MaxBlockPayload,
+		//		WeightLimit:  chaincfg.MaxBlockWeight,
+		SigOpLimit: chaincfg.MaxBlockSigOpsCost,
+		//		SizeLimit:    wire.MaxBlockPayload,
 		Transactions: transactions,
 		Version:      header.Version,
 		LongPollID:   templateID,
@@ -2710,7 +2799,7 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		tx := msgBlock.Transactions[0]
 		txBuf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 		if err := tx.OmcEncode(txBuf, 0, wire.SignatureEncoding); err != nil {
-//		if err := tx.Serialize(txBuf); err != nil {
+			//		if err := tx.Serialize(txBuf); err != nil {
 			context := "Failed to serialize transaction"
 			return nil, internalRPCError(err.Error(), context)
 		}
@@ -2825,7 +2914,7 @@ func handleGetBlockTemplateLongPoll(s *rpcServer, longPollID string, useCoinbase
 
 	return result, nil
 }
- */
+*/
 
 // handleGetBlockTemplateRequest is a helper for handleGetBlockTemplate which
 // deals with generating and returning block templates to the caller.  It
@@ -2913,7 +3002,7 @@ func handleGetBlockTemplateRequest(s *rpcServer, request *btcjson.TemplateReques
 	}
 	return state.blockTemplateResult(useCoinbaseValue, nil)
 }
- */
+*/
 
 // chainErrToGBTErrString converts an error returned from btcchain to a string
 // which matches the reasons and format described in BIP0022 for rejection
@@ -3079,7 +3168,7 @@ func handleGetBlockTemplateProposal(s *rpcServer, request *btcjson.TemplateReque
 
 	return nil, nil
 }
- */
+*/
 
 // handleGetBlockTemplate implements the getblocktemplate command.
 //
@@ -3108,7 +3197,7 @@ func handleGetBlockTemplate(s *rpcServer, cmd interface{}, closeChan <-chan stru
 		Message: "Invalid mode",
 	}
 }
- */
+*/
 
 // handleGetCFilter implements the getcfilter command.
 func handleGetCFilter(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
@@ -3204,11 +3293,11 @@ func handleGetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 // handleGetHashesPerSec implements the gethashespersec command.
 func handleGetHashesPerSec(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	hp := int64(0)
-/*
-	if s.cfg.CPUMiner != nil {
-		hp += int64(s.cfg.CPUMiner.HashesPerSecond())
-	}
- */
+	/*
+		if s.cfg.CPUMiner != nil {
+			hp += int64(s.cfg.CPUMiner.HashesPerSecond())
+		}
+	*/
 	if s.cfg.MinerMiner != nil {
 		hp += int64(s.cfg.MinerMiner.HashesPerSecond())
 	}
@@ -3313,17 +3402,17 @@ func handleGetMiningInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 
 	best := s.cfg.Chain.BestSnapshot()
 	result := btcjson.GetMiningInfoResult{
-		Blocks:             int64(best.Height),
-		CurrentBlockSize:   best.BlockSize,
-//		CurrentBlockLimit:  best.BlockLimit,
-		CurrentBlockTx:     best.NumTxns,
-		Difficulty:         getDifficultyRatio(best.Bits, s.cfg.ChainParams),
-		Generate:           s.cfg.CPUMiner.IsMining(),
-		GenProcLimit:       1,	//s.cfg.CPUMiner.NumWorkers(),
-		HashesPerSec:       0,	// int64(s.cfg.CPUMiner.HashesPerSecond()),
-		NetworkHashPS:      networkHashesPerSec,
-		PooledTx:           uint64(s.cfg.TxMemPool.Count()),
-		TestNet:            cfg.TestNet,
+		Blocks:           int64(best.Height),
+		CurrentBlockSize: best.BlockSize,
+		//		CurrentBlockLimit:  best.BlockLimit,
+		CurrentBlockTx: best.NumTxns,
+		Difficulty:     getDifficultyRatio(best.Bits, s.cfg.ChainParams),
+		Generate:       s.cfg.CPUMiner.IsMining(),
+		GenProcLimit:   1, //s.cfg.CPUMiner.NumWorkers(),
+		HashesPerSec:   0, // int64(s.cfg.CPUMiner.HashesPerSecond()),
+		NetworkHashPS:  networkHashesPerSec,
+		PooledTx:       uint64(s.cfg.TxMemPool.Count()),
+		TestNet:        cfg.TestNet,
 	}
 	return &result, nil
 }
@@ -3410,7 +3499,7 @@ func handleGetNetworkHashPS(s *rpcServer, cmd interface{}, closeChan <-chan stru
 			minTimestamp = header.Timestamp
 			maxTimestamp = minTimestamp
 		} else {
-//			totalWork.Add(totalWork, blockchain.CalcWork(header.Bits))
+			//			totalWork.Add(totalWork, blockchain.CalcWork(header.Bits))
 
 			if minTimestamp.After(header.Timestamp) {
 				minTimestamp = header.Timestamp
@@ -3443,28 +3532,28 @@ func handleGetPeerInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	for _, p := range peers {
 		statsSnap := p.ToPeer().StatsSnapshot()
 		info := &btcjson.GetPeerInfoResult{
-			ID:             statsSnap.ID,
-			Addr:           statsSnap.Addr,
-			AddrLocal:      p.ToPeer().LocalAddr().String(),
-			Services:       fmt.Sprintf("%08d", uint64(statsSnap.Services)),
-			RelayTxes:      !p.IsTxRelayDisabled(),
-			LastSend:       statsSnap.LastSend.Unix(),
-			LastRecv:       statsSnap.LastRecv.Unix(),
-			BytesSent:      statsSnap.BytesSent,
-			BytesRecv:      statsSnap.BytesRecv,
-			ConnTime:       statsSnap.ConnTime.Unix(),
-			PingTime:       float64(statsSnap.LastPingMicros),
-			TimeOffset:     statsSnap.TimeOffset,
-			Version:        statsSnap.Version,
-			SubVer:         statsSnap.UserAgent,
-			Inbound:        statsSnap.Inbound,
-			StartingHeight: statsSnap.StartingHeight,
+			ID:                  statsSnap.ID,
+			Addr:                statsSnap.Addr,
+			AddrLocal:           p.ToPeer().LocalAddr().String(),
+			Services:            fmt.Sprintf("%08d", uint64(statsSnap.Services)),
+			RelayTxes:           !p.IsTxRelayDisabled(),
+			LastSend:            statsSnap.LastSend.Unix(),
+			LastRecv:            statsSnap.LastRecv.Unix(),
+			BytesSent:           statsSnap.BytesSent,
+			BytesRecv:           statsSnap.BytesRecv,
+			ConnTime:            statsSnap.ConnTime.Unix(),
+			PingTime:            float64(statsSnap.LastPingMicros),
+			TimeOffset:          statsSnap.TimeOffset,
+			Version:             statsSnap.Version,
+			SubVer:              statsSnap.UserAgent,
+			Inbound:             statsSnap.Inbound,
+			StartingHeight:      statsSnap.StartingHeight,
 			StartingMinerHeight: statsSnap.StartingMinerHeight,
-			CurrentHeight:  statsSnap.LastBlock,
-			CurrentMinerHeight: statsSnap.LastMinerBlock,
-			BanScore:       int32(p.BanScore()),
-			FeeFilter:      p.FeeFilter(),
-			SyncNode:       statsSnap.ID == syncPeerID,
+			CurrentHeight:       statsSnap.LastBlock,
+			CurrentMinerHeight:  statsSnap.LastMinerBlock,
+			BanScore:            int32(p.BanScore()),
+			FeeFilter:           p.FeeFilter(),
+			SyncNode:            statsSnap.ID == syncPeerID,
 		}
 		if p.ToPeer().LastPingNonce() != 0 {
 			wait := float64(time.Since(statsSnap.LastPingTime).Nanoseconds())
@@ -3666,7 +3755,7 @@ func handleListUtxos(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 		bgn := cursor.Last
 		nxt := cursor.Prev
 		if start < 0 {
-			start = -start - 1;
+			start = -start - 1
 			bgn = cursor.First
 			nxt = cursor.Next
 		}
@@ -3676,7 +3765,7 @@ func handleListUtxos(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 		}
 
 		for ; ok && run > 0; ok = nxt() {
-			e,err := viewpoint.DeserializeUtxoEntry(cursor.Value())
+			e, err := viewpoint.DeserializeUtxoEntry(cursor.Value())
 			if e == nil || err != nil {
 				continue
 			}
@@ -3707,16 +3796,15 @@ func handleListUtxos(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 			r := ""
 			if txo.Rights != nil {
 
-
 				r = txo.Rights.String()
 			}
 
 			txOutReply := &btcjson.GetTxOutResult{
-				BestBlock:	   op.String(),
-				Height:        e.BlockHeight(),
-				TokenType:     txo.TokenType,
-				Value:         ivalue,
-				Rights:        r,
+				BestBlock: op.String(),
+				Height:    e.BlockHeight(),
+				TokenType: txo.TokenType,
+				Value:     ivalue,
+				Rights:    r,
 				ScriptPubKey: btcjson.ScriptPubKeyResult{
 					Asm:       disbuf,
 					Hex:       hex.EncodeToString(txo.PkScript),
@@ -3828,7 +3916,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		p := wire.OutPoint{Hash: *txHash, Index: c.Vout}
 		if _, ok := s.cfg.Chain.LockedCollaterals[p]; ok {
 			return nil, &btcjson.RPCError{
-				Code: btcjson.ErrRPCInvalidTxVout,
+				Code:    btcjson.ErrRPCInvalidTxVout,
 				Message: "Locked collateral.",
 			}
 		}
@@ -3860,10 +3948,10 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	txOutReply := &btcjson.GetTxOutResult{
 		BestBlock:     bestBlockHash,
 		Confirmations: int64(confirmations),
-		Height:		   height,
+		Height:        height,
 		TokenType:     tokentype,
 		Value:         ivalue,
-		Rights:		   rights,
+		Rights:        rights,
 		ScriptPubKey: btcjson.ScriptPubKeyResult{
 			Asm:       disbuf,
 			Hex:       hex.EncodeToString(pkScript),
@@ -3876,8 +3964,8 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 }
 
 // handleGetDefine handles getdefine commands.
-func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, rec bool, dup * map[string]struct{}) (interface{}, error) {
-	if _,ok := (*dup)[hash.String()]; ok {
+func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, rec bool, dup *map[string]struct{}) (interface{}, error) {
+	if _, ok := (*dup)[hash.String()]; ok {
 		return nil, nil
 	}
 
@@ -3893,14 +3981,14 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		(*dup)[v.Hash().String()] = struct{}{}
 
 		result[v.Hash().String()] = &btcjson.BorderDefinition{
-			Kind: 1,
-			Father:  entry.Father.String(),
-			Begin:  btcjson.VertexDefinition{
+			Kind:   1,
+			Father: entry.Father.String(),
+			Begin: btcjson.VertexDefinition{
 				Lat: entry.Begin.Lat(),
 				Lng: entry.Begin.Lng(),
 				Alt: entry.Begin.Alt(),
 			},
-			End:  btcjson.VertexDefinition{
+			End: btcjson.VertexDefinition{
 				Lat: entry.End.Lat(),
 				Lng: entry.End.Lng(),
 				Alt: entry.End.Alt(),
@@ -3914,14 +4002,14 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			return reply, nil
 		}
 
-		for _,ch := range entry.Children {
-			if _,ok := (*dup)[ch.String()]; !ok {
+		for _, ch := range entry.Children {
+			if _, ok := (*dup)[ch.String()]; !ok {
 				t, err := handleRecursiveGetDefine(s, token.DefTypeBorder, &ch, rec, dup)
 				if err != nil {
 					continue
-//					return nil, err
+					//					return nil, err
 				}
-				for h,u := range t.(*btcjson.GetDefineResult).Definition {
+				for h, u := range t.(*btcjson.GetDefineResult).Definition {
 					result[h] = u
 				}
 			}
@@ -3937,7 +4025,7 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			return nil, rpcDefinitionError(hash.String())
 		}
 		v := &token.PolygonDef{
-			Loops:entry.Loops,
+			Loops: entry.Loops,
 		}
 		p := make([][]string, len(entry.Loops))
 		for i, loop := range entry.Loops {
@@ -3950,7 +4038,7 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		(*dup)[v.Hash().String()] = struct{}{}
 
 		result[v.Hash().String()] = &btcjson.PolygonDefinition{
-			Kind: 2,
+			Kind:    2,
 			Polygon: p,
 		}
 
@@ -4000,18 +4088,18 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			return nil, rpcDefinitionError(hash.String())
 		}
 		v := &token.RightDef{
-			Father:entry.Father,
-			Desc:entry.Desc,
-			Attrib:entry.Attrib,
+			Father: entry.Father,
+			Desc:   entry.Desc,
+			Attrib: entry.Attrib,
 		}
 		result := make(map[string]interface{}, 0)
 		(*dup)[v.Hash().String()] = struct{}{}
 
 		result[v.Hash().String()] = &btcjson.RightDefinition{
-			Kind: 4,
-			Father:entry.Father.String(),
-			Desc:hex.EncodeToString(entry.Desc),
-			Attrib:uint32(entry.Attrib),
+			Kind:   4,
+			Father: entry.Father.String(),
+			Desc:   hex.EncodeToString(entry.Desc),
+			Attrib: uint32(entry.Attrib),
 		}
 
 		if !rec {
@@ -4021,12 +4109,12 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			return reply, nil
 		}
 
-		if _,ok := (*dup)[v.Father.String()]; !ok && !v.Father.IsEqual(&zeroHash) {
+		if _, ok := (*dup)[v.Father.String()]; !ok && !v.Father.IsEqual(&zeroHash) {
 			t, err := handleRecursiveGetDefine(s, token.DefTypeRight, &v.Father, rec, dup)
 			if err != nil {
 				return nil, err
 			}
-			for h,u := range t.(*btcjson.GetDefineResult).Definition {
+			for h, u := range t.(*btcjson.GetDefineResult).Definition {
 				result[h] = u
 			}
 		}
@@ -4052,8 +4140,8 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		}
 
 		result[v.Hash().String()] = &btcjson.RightSetDefinition{
-			Kind: 5,
-			Rights:rs,
+			Kind:   5,
+			Rights: rs,
 		}
 
 		if !rec {
@@ -4068,7 +4156,7 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 			if err != nil {
 				return nil, err
 			}
-			for h,u := range t.(*btcjson.GetDefineResult).Definition {
+			for h, u := range t.(*btcjson.GetDefineResult).Definition {
 				result[h] = u
 			}
 		}
@@ -4077,7 +4165,7 @@ func handleRecursiveGetDefine(s *rpcServer, kind int32, hash *chainhash.Hash, re
 		}
 		return reply, nil
 	}
-	return nil,rpcDefinitionError(hash.String())
+	return nil, rpcDefinitionError(hash.String())
 }
 
 func handleGetDefine(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
@@ -4157,7 +4245,7 @@ type retrievedTx struct {
 	txBytes []byte
 	blkHash *chainhash.Hash // Only set when transaction is in a block.
 	tx      *btcutil.Tx
-	height	uint32
+	height  uint32
 }
 
 // fetchInputTxos fetches the outpoints from all transactions referenced by the
@@ -4255,7 +4343,7 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 	// Lookup all of the referenced transaction outputs needed to populate
 	// the previous output information if requested.
 	var originOutputs map[wire.OutPoint]wire.TxOut
-	if len(filterAddrMap) > 0 {	// vinExtra ||
+	if len(filterAddrMap) > 0 { // vinExtra ||
 		var err error
 		originOutputs, err = fetchInputTxos(s, mtx)
 		if err != nil {
@@ -4348,15 +4436,15 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 
 		// Update the entry with previous output information if
 		// requested.
-/*
-		if vinExtra {
-			vinListEntry := &vinList[len(vinList)-1]
-			vinListEntry.PrevOut = &btcjson.PrevOut{
-				Addresses: encodedAddrs,
-				Value:     btcutil.Amount(originTxOut.Value.(*token.NumToken).Val).ToOMC(),
+		/*
+			if vinExtra {
+				vinListEntry := &vinList[len(vinList)-1]
+				vinListEntry.PrevOut = &btcjson.PrevOut{
+					Addresses: encodedAddrs,
+					Value:     btcutil.Amount(originTxOut.Value.(*token.NumToken).Val).ToOMC(),
+				}
 			}
-		}
- */
+		*/
 	}
 
 	return vinList, nil
@@ -4434,9 +4522,9 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	// each input if needed.
 	c := cmd.(*btcjson.SearchRawTransactionsCmd)
 	vinExtra := false
-//	if c.VinExtra != nil {
-//		vinExtra = *c.VinExtra != 0
-//	}
+	//	if c.VinExtra != nil {
+	//		vinExtra = *c.VinExtra != 0
+	//	}
 
 	// Including the extra previous output information requires the
 	// transaction index.  Currently the address index relies on the
@@ -4499,79 +4587,79 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 	// NOTE: This code doesn't sort by dependency.  This might be something
 	// to do in the future for the client's convenience, or leave it to the
 	// client.
-//	numSkipped := uint32(0)
+	//	numSkipped := uint32(0)
 	addressTxns := make([]retrievedTx, 0, numRequested)
-/*	Don't search in mempool
-	if reverse {
-		// Height in the mempool are not in a block header yet,
-		// so the block header field in the retieved transaction struct
-		// is left nil.
-		mpTxns, mpSkipped := fetchMempoolTxnsForAddress(s, addr,
-			uint32(numToSkip), uint32(numRequested))
-		numSkipped += mpSkipped
-		for _, tx := range mpTxns {
-			addressTxns = append(addressTxns, retrievedTx{tx: tx})
+	/*	Don't search in mempool
+		if reverse {
+			// Height in the mempool are not in a block header yet,
+			// so the block header field in the retieved transaction struct
+			// is left nil.
+			mpTxns, mpSkipped := fetchMempoolTxnsForAddress(s, addr,
+				uint32(numToSkip), uint32(numRequested))
+			numSkipped += mpSkipped
+			for _, tx := range mpTxns {
+				addressTxns = append(addressTxns, retrievedTx{tx: tx})
+			}
 		}
-	}
- */
+	*/
 
 	// Fetch transactions from the database in the desired order if more are
 	// needed.
-//	if len(addressTxns) < numRequested {
-		err = s.cfg.DB.View(func(dbTx database.Tx) error {
-			regions, heights, _, err := addrIndex.TxRegionsForAddress(
-				dbTx, addr, uint32(blocksToSkip),
-				uint32(numRequested), reverse)
-			if err != nil {
-				return err
-			}
-
-			// Load the raw transaction bytes from the database.
-			serializedTxns, err := dbTx.FetchBlockRegions(regions)
-			if err != nil {
-				return err
-			}
-
-			// Add the transaction and the hash of the block it is
-			// contained in to the list.  Note that the transaction
-			// is left serialized here since the caller might have
-			// requested non-verbose output and hence there would be
-			// no point in deserializing it just to reserialize it
-			// later.
-			for i, serializedTx := range serializedTxns {
-				addressTxns = append(addressTxns, retrievedTx{
-					txBytes: serializedTx,
-					height: heights[i] - 1,		// height in serializedTxns is internal height which is 1 more than real height
-					blkHash: regions[i].Hash,
-				})
-			}
-//			numSkipped += dbSkipped
-
-			return nil
-		})
+	//	if len(addressTxns) < numRequested {
+	err = s.cfg.DB.View(func(dbTx database.Tx) error {
+		regions, heights, _, err := addrIndex.TxRegionsForAddress(
+			dbTx, addr, uint32(blocksToSkip),
+			uint32(numRequested), reverse)
 		if err != nil {
-			context := "Failed to load address index entries"
-			return nil, internalRPCError(err.Error(), context)
+			return err
 		}
 
-//	}
+		// Load the raw transaction bytes from the database.
+		serializedTxns, err := dbTx.FetchBlockRegions(regions)
+		if err != nil {
+			return err
+		}
+
+		// Add the transaction and the hash of the block it is
+		// contained in to the list.  Note that the transaction
+		// is left serialized here since the caller might have
+		// requested non-verbose output and hence there would be
+		// no point in deserializing it just to reserialize it
+		// later.
+		for i, serializedTx := range serializedTxns {
+			addressTxns = append(addressTxns, retrievedTx{
+				txBytes: serializedTx,
+				height:  heights[i] - 1, // height in serializedTxns is internal height which is 1 more than real height
+				blkHash: regions[i].Hash,
+			})
+		}
+		//			numSkipped += dbSkipped
+
+		return nil
+	})
+	if err != nil {
+		context := "Failed to load address index entries"
+		return nil, internalRPCError(err.Error(), context)
+	}
+
+	//	}
 
 	// Add transactions from mempool last if client did not request reverse
 	// order and the number of results is still under the number requested.
-/*
-	if !reverse && len(addressTxns) < numRequested {
-		// Height in the mempool are not in a block header yet,
-		// so the block header field in the retieved transaction struct
-		// is left nil.
-		mpTxns, mpSkipped := fetchMempoolTxnsForAddress(s, addr,
-			uint32(numToSkip)-numSkipped, uint32(numRequested-
-				len(addressTxns)))
-		numSkipped += mpSkipped
-		for _, tx := range mpTxns {
-			addressTxns = append(addressTxns, retrievedTx{tx: tx})
+	/*
+		if !reverse && len(addressTxns) < numRequested {
+			// Height in the mempool are not in a block header yet,
+			// so the block header field in the retieved transaction struct
+			// is left nil.
+			mpTxns, mpSkipped := fetchMempoolTxnsForAddress(s, addr,
+				uint32(numToSkip)-numSkipped, uint32(numRequested-
+					len(addressTxns)))
+			numSkipped += mpSkipped
+			for _, tx := range mpTxns {
+				addressTxns = append(addressTxns, retrievedTx{tx: tx})
+			}
 		}
-	}
- */
+	*/
 
 	// Address has never been used if neither source yielded any results.
 	if len(addressTxns) == 0 {
@@ -4619,11 +4707,11 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 
 		header, err := s.cfg.Chain.HeaderByHash(rtx.blkHash)
 		if err != nil {
-				return nil, &btcjson.RPCError{
-					Code:    btcjson.ErrRPCBlockNotFound,
-					Message: "Block not found",
-				}
+			return nil, &btcjson.RPCError{
+				Code:    btcjson.ErrRPCBlockNotFound,
+				Message: "Block not found",
 			}
+		}
 
 		hexTxns[i].Blocktime = header.Timestamp.Unix()
 	}
@@ -4739,7 +4827,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		}
 	}
 
-	for _,s := range msgTx.SignatureScripts {
+	for _, s := range msgTx.SignatureScripts {
 		if len(s) == 0 {
 			return nil, internalRPCError("Incomplete signatures", "")
 		}
@@ -4816,14 +4904,14 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	msg := tx.Hash().String()
 
 	if *c.WaitConfirm != 0 {
-		cf := time.AfterFunc(time.Duration(*c.WaitConfirm) * time.Second, func() {
+		cf := time.AfterFunc(time.Duration(*c.WaitConfirm)*time.Second, func() {
 			s.statusLock.Lock()
 			delete(s.sendcmdconfirmation, *tx.Hash())
 			s.statusLock.Unlock()
 			ch <- nil
 		})
 
-		if t := <- ch; t != nil {
+		if t := <-ch; t != nil {
 			cf.Stop()
 			if t.Version == wire.TxExpire && tx.MsgTx().LockTime < t.LockTime {
 				return nil, internalRPCError("TX rejected after expiration.", "")
@@ -4849,13 +4937,13 @@ func handleConfirmations(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 	}
 
 	if s.cfg.TxIndex == nil {
-			return nil, &btcjson.RPCError{
-				Code: btcjson.ErrRPCNoTxInfo,
-				Message: "The transaction index must be " +
-					"enabled to query the blockchain " +
-					"(specify --txindex)",
-			}
+		return nil, &btcjson.RPCError{
+			Code: btcjson.ErrRPCNoTxInfo,
+			Message: "The transaction index must be " +
+				"enabled to query the blockchain " +
+				"(specify --txindex)",
 		}
+	}
 
 	// Look up the location of the transaction.
 	blockRegion, err := s.cfg.TxIndex.TxBlockRegion(txHash)
@@ -4904,18 +4992,18 @@ func handleSetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	} else {
 		// Respond with an error if there are no addresses to pay the
 		// created blocks to.
-/*
-		if len(cfg.miningAddrs) == 0 {
-			return nil, &btcjson.RPCError{
-				Code: btcjson.ErrRPCInternal.Code,
-				Message: "No payment addresses specified " +
-					"via --miningaddr",
+		/*
+			if len(cfg.miningAddrs) == 0 {
+				return nil, &btcjson.RPCError{
+					Code: btcjson.ErrRPCInternal.Code,
+					Message: "No payment addresses specified " +
+						"via --miningaddr",
+				}
 			}
-		}
-*/
+		*/
 
 		// It's safe to call start even if it's already started.
-//		s.cfg.CPUMiner.SetNumWorkers(int32(genProcLimit))
+		//		s.cfg.CPUMiner.SetNumWorkers(int32(genProcLimit))
 		if s.cfg.CPUMiner != nil && !c.IsMiner {
 			s.cfg.CPUMiner.Start()
 		}
@@ -5078,7 +5166,7 @@ func handleShutdown(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 		for check {
 			r := s.cfg.Chain.BestSnapshot().LastRotation
 			check = false
-checkip:
+		checkip:
 			for i := int32(0); i < wire.CommitteeSize; i++ {
 				m, _ := s.cfg.Chain.Miners.BlockByHeight(int32(r) - i)
 				if m == nil {
@@ -5094,13 +5182,13 @@ checkip:
 			}
 		}
 	}
-	s.requestProcessShutdown<-struct{}{}
+	s.requestProcessShutdown <- struct{}{}
 	return true, nil
 }
 
 type confirmMsg struct {
-	ch 		chan *wire.MsgTx
-	expire	uint32
+	ch     chan *wire.MsgTx
+	expire uint32
 }
 
 // rpcServer provides a concurrent safe RPC server to a chain server.
@@ -5118,12 +5206,43 @@ type rpcServer struct {
 	gbtWorkState           *gbtWorkState
 	helpCacher             *helpCacher
 	requestProcessShutdown chan struct{}
-	sendcmdconfirmation	   map[chainhash.Hash] confirmMsg
+	sendcmdconfirmation    map[chainhash.Hash]confirmMsg
 	quit                   chan int
 
-	Rpcactivity 		   chan struct{}
-//	alertresp			   chan *AlertCommand
-	rsapubkey			   *rsa.PublicKey
+	Rpcactivity chan struct{}
+	//	alertresp			   chan *AlertCommand
+	rsapubkey *rsa.PublicKey
+}
+
+func handleBlackList(s *rpcServer, _ interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	l := s.cfg.Chain.Miners.BlackList()
+
+	reply := btcjson.BlackListResult{
+		BlackList: make([]btcjson.BlackListItem, 0),
+	}
+
+	for m, h := range l {
+		match := -1
+
+		addr, _ := btcutil.NewAddressPubKeyHash(m[:], s.cfg.ChainParams)
+		name := addr.EncodeAddress()
+
+		for i, n := range reply.BlackList {
+			if name == n.Address {
+				match = i
+			}
+		}
+		if match < 0 {
+			reply.BlackList = append(reply.BlackList, btcjson.BlackListItem{Address: name, Heights: make([]int32, 0)})
+			match = len(reply.BlackList) - 1
+			reply.BlackList[match].Address = name
+		}
+		for _, j := range h {
+			reply.BlackList[match].Heights = append(reply.BlackList[match].Heights, j)
+		}
+	}
+
+	return reply, nil
 }
 
 // httpStatusLine returns a response Status-Line (RFC 2616 Section 6.1)
@@ -5284,10 +5403,10 @@ func (s *rpcServer) checkAuth(r *http.Request, require bool) (bool, bool, error)
 
 	// Check for limited auth first as in environments with limited users, those
 	// are probably expected to have a higher volume of calls
-//	limitcmp := subtle.ConstantTimeCompare(authsha[:], s.limitauthsha[:])
-//	if limitcmp == 1 {
-//		return true, false, nil
-//	}
+	//	limitcmp := subtle.ConstantTimeCompare(authsha[:], s.limitauthsha[:])
+	//	if limitcmp == 1 {
+	//		return true, false, nil
+	//	}
 
 	// Check for admin-level auth
 	cmp := subtle.ConstantTimeCompare(authsha[:], s.authsha[:])
@@ -5298,8 +5417,8 @@ func (s *rpcServer) checkAuth(r *http.Request, require bool) (bool, bool, error)
 	return true, false, nil
 
 	// Request's auth doesn't match either user
-//	rpcsLog.Warnf("RPC authentication failure from %s in comparion of auth %s, %v vs. %v", r.RemoteAddr, authhdr[0], authsha, s.authsha)
-//	return false, false, errors.New("auth failure")
+	//	rpcsLog.Warnf("RPC authentication failure from %s in comparion of auth %s, %v vs. %v", r.RemoteAddr, authhdr[0], authsha, s.authsha)
+	//	return false, false, errors.New("auth failure")
 }
 
 // parsedRPCCmd represents a JSON-RPC request object that has been parsed into
@@ -5557,9 +5676,9 @@ func (s *rpcServer) Start() {
 			r.Close = true
 		}
 
-//		if strings.Index(r.RemoteAddr, "127.0.0.1:") == 0 || strings.Index(r.RemoteAddr, "localhost:") == 0 {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-//		}
+		//		if strings.Index(r.RemoteAddr, "127.0.0.1:") == 0 || strings.Index(r.RemoteAddr, "localhost:") == 0 {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		//		}
 
 		// Limit the number of connections to max allowed.
 		if s.limitConnections(w, r.RemoteAddr) {
@@ -5792,8 +5911,8 @@ type rpcserverConfig struct {
 	// Generator produces block templates and the CPUMiner solves them using
 	// the CPU.  CPU mining is typically only useful for test purposes when
 	// doing regression or simulation testing.
-	Generator *mining.BlkTmplGenerator
-	CPUMiner  *cpuminer.CPUMiner
+	Generator  *mining.BlkTmplGenerator
+	CPUMiner   *cpuminer.CPUMiner
 	MinerMiner *minerchain.CPUMiner
 
 	// These fields define any optional indexes the RPC server can make use
@@ -5816,14 +5935,14 @@ func newRPCServer(config *rpcserverConfig) (*rpcServer, error) {
 		gbtWorkState:           newGbtWorkState(config.TimeSource),
 		helpCacher:             newHelpCacher(),
 		requestProcessShutdown: make(chan struct{}),
-		quit: make(chan int),
+		quit:                   make(chan int),
 	}
 	if cfg.RPCUser != "" && cfg.RPCPass != "" {
 		login := cfg.RPCUser + ":" + cfg.RPCPass
 		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(login))
 		rpc.authsha = sha256.Sum256([]byte(auth))
 	}
-	if cfg.RPCLimitUser != "" {		// && cfg.RPCLimitPass != "" {
+	if cfg.RPCLimitUser != "" { // && cfg.RPCLimitPass != "" {
 		login := cfg.RPCLimitUser + ":" + cfg.RPCLimitPass
 		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(login))
 		rpc.limitauthsha = sha256.Sum256([]byte(auth))
@@ -5842,7 +5961,7 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 	case blockchain.NTBlockAccepted:
 		block, ok := notification.Data.(*btcutil.Block)
 		if !ok {
-//			rpcsLog.Warnf("Chain accepted notification is not a block.")
+			//			rpcsLog.Warnf("Chain accepted notification is not a block.")
 			break
 		}
 
@@ -5858,7 +5977,7 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 			blk := notification.Data.(*btcutil.Block)
 			s.ntfnMgr.NotifyBlockConnected(blk)
 			s.statusLock.Lock()
-			for _,tx := range blk.Transactions() {
+			for _, tx := range blk.Transactions() {
 				if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
 					ch.ch <- tx.MsgTx()
 					delete(s.sendcmdconfirmation, *tx.Hash())
@@ -5866,7 +5985,7 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 			}
 			for h, c := range s.sendcmdconfirmation {
 				if c.expire < uint32(blk.Height()) {
-					c.ch <- &wire.MsgTx{Version: wire.TxExpire, LockTime: uint32(blk.Height()) }
+					c.ch <- &wire.MsgTx{Version: wire.TxExpire, LockTime: uint32(blk.Height())}
 					delete(s.sendcmdconfirmation, h)
 				}
 			}

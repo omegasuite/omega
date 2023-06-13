@@ -50,7 +50,7 @@ var (
 // isNullOutpoint determines whether or not a previous transaction output point
 // is set.
 func isNullOutpoint(outpoint *wire.OutPoint) bool {
-	if outpoint.Hash == zeroHash {	// outpoint.Index == math.MaxUint32 &&
+	if outpoint.Hash == zeroHash { // outpoint.Index == math.MaxUint32 &&
 		return true
 	}
 	return false
@@ -73,7 +73,7 @@ func IsCoinBaseTx(msgTx *wire.MsgTx) bool {
 	// The previous output of a coin base must have a max value index and
 	// a zero hash.
 	prevOut := &msgTx.TxIn[0].PreviousOutPoint
-	if prevOut.Hash != zeroHash {		// prevOut.Index != math.MaxUint32 ||
+	if prevOut.Hash != zeroHash { // prevOut.Index != math.MaxUint32 ||
 		return false
 	}
 
@@ -81,7 +81,7 @@ func IsCoinBaseTx(msgTx *wire.MsgTx) bool {
 		return false
 	}
 
-	for _,to := range msgTx.TxOut {
+	for _, to := range msgTx.TxOut {
 		if to.IsSeparator() {
 			continue
 		}
@@ -125,7 +125,7 @@ func SequenceLockActive(sequenceLock *SequenceLock, blockHeight int32,
 const (
 	// LockTimeThreshold is the number below which a lock time is
 	// interpreted to be a block number.
-	LockTimeThreshold = 0x5effa4cf	// genesis time
+	LockTimeThreshold = 0x5effa4cf // genesis time
 )
 
 // IsFinalizedTransaction determines whether or not a transaction is finalized.
@@ -134,7 +134,7 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 
 	// Lock time of zero means the transaction is finalized.
 	lockTime := msgTx.LockTime
-	if (msgTx.Version & wire.TxExpire != 0) || lockTime == 0 {
+	if (msgTx.Version&wire.TxExpire != 0) || lockTime == 0 {
 		return true
 	}
 
@@ -195,17 +195,17 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		return ruleError(ErrNoTxInputs, "transaction has conflicting version flags")
 	}
 
-	forfeit := msgTx.Version & wire.TxTypeMask == wire.ForfeitTxVersion
+	forfeit := msgTx.Version&wire.TxTypeMask == wire.ForfeitTxVersion
 
 	contract := false
-	for _,to := range msgTx.TxOut {
+	for _, to := range msgTx.TxOut {
 		if to.IsSeparator() {
 			continue
 		}
 		contract = contract || to.PkScript[0] == 0x88 // IsContract(to.PkScript[0])
 	}
 
-	if (forfeit || contract) && (msgTx.Version & wire.TxExpire) == 0 && msgTx.LockTime != 0 {
+	if (forfeit || contract) && (msgTx.Version&wire.TxExpire) == 0 && msgTx.LockTime != 0 {
 		return ruleError(ErrBadTxInput, "transaction has contract call and LockTime is not 0")
 	}
 
@@ -251,7 +251,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		// Two's complement int64 overflow guarantees that any overflow
 		// is detected and reported.  This is impossible for Bitcoin, but
 		// perhaps possible if an alt increases the total money supply.
-		if _,ok := totals[txOut.TokenType]; ok {
+		if _, ok := totals[txOut.TokenType]; ok {
 			totals[txOut.TokenType] += hao
 		} else {
 			totals[txOut.TokenType] = hao
@@ -313,7 +313,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 	return nil
 }
 
-func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
+func (b *BlockChain) Rotation(hash chainhash.Hash) int32 {
 	best := b.BestSnapshot()
 	rotate := int32(best.LastRotation)
 	p := b.NodeByHash(&best.Hash)
@@ -345,9 +345,9 @@ func (b * BlockChain) Rotation(hash chainhash.Hash) int32 {
 
 // if return value is nil,false, the block is ok. if nil,true, it may be added as orphan
 // but can not be connected. if err,_, it is a bad block and should be discarded
-func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.BlockNode, powLimit *big.Int, flags BehaviorFlags) (error, bool) {
+func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.BlockNode, powLimit *big.Int, flags BehaviorFlags) (error, bool) {
 	best := b.BestSnapshot()
-//	bits := best.Bits
+	//	bits := best.Bits
 	rotate := best.LastRotation
 
 	s, err := b.Miners.BlockByHeight(int32(rotate))
@@ -398,7 +398,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 		}
 
 		// The target difficulty must be less than the maximum allowed.
-		if target.Cmp(powLimit) > 0 && flags & BFEasyBlocks == 0  {
+		if target.Cmp(powLimit) > 0 && flags&BFEasyBlocks == 0 {
 			str := fmt.Sprintf("block target difficulty of %064x is "+
 				"higher than max of %064x", target, powLimit)
 			return ruleError(ErrUnexpectedDifficulty, str), false
@@ -415,18 +415,18 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			} else if block.MsgBlock().Header.Version < chaincfg.Version2 {
 				hashNum = hashNum.Mul(hashNum, big.NewInt(wire.DifficultyRatio))
 			} else if block.MsgBlock().Header.Version >= wire.Version2 {
-/*
-				s, _ := b.Miners.BlockByHeight(int32(best.LastRotation))
-				blk := b.NodeByHash(&s.MsgBlock().BestBlock)
+				/*
+					s, _ := b.Miners.BlockByHeight(int32(best.LastRotation))
+					blk := b.NodeByHash(&s.MsgBlock().BestBlock)
 
-				for blk != nil && blk.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
-					blk = blk.Parent
-				}
-				pows := int32(best.LastRotation) + (blk.Data.GetNonce() + wire.MINER_RORATE_FREQ) - wire.DESIRABLE_MINER_CANDIDATES
-				if pows < 0 {
-					pows = 0
-				}
- */
+					for blk != nil && blk.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
+						blk = blk.Parent
+					}
+					pows := int32(best.LastRotation) + (blk.Data.GetNonce() + wire.MINER_RORATE_FREQ) - wire.DESIRABLE_MINER_CANDIDATES
+					if pows < 0 {
+						pows = 0
+					}
+				*/
 				target = target.Mul(target, big.NewInt(40))
 			}
 
@@ -436,7 +436,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			}
 		}
 	} else {
-		if parent == nil {		// never
+		if parent == nil { // never
 			return nil, true
 		}
 
@@ -452,18 +452,18 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			switch {
 			case pnonce == -wire.MINER_RORATE_FREQ+1:
 				// this is a rotation block, nonce must be -(height of next Miner block)
-				if header.Nonce != - int32(rotate+1+wire.MINER_RORATE_FREQ) {
-						//					str := fmt.Sprintf("The this is a rotation block, nonce %d must be height of next Miner block %d.", -header.Nonce, rotate + 1 + wire.MINER_RORATE_FREQ)
-						return fmt.Errorf("The this is a rotation block, nonce %d must be height of next Miner block %d.", -header.Nonce, rotate+1+wire.MINER_RORATE_FREQ), true
-						// ruleError(ErrHighHash, str)
-					}
+				if header.Nonce != -int32(rotate+1+wire.MINER_RORATE_FREQ) {
+					//					str := fmt.Sprintf("The this is a rotation block, nonce %d must be height of next Miner block %d.", -header.Nonce, rotate + 1 + wire.MINER_RORATE_FREQ)
+					return fmt.Errorf("The this is a rotation block, nonce %d must be height of next Miner block %d.", -header.Nonce, rotate+1+wire.MINER_RORATE_FREQ), true
+					// ruleError(ErrHighHash, str)
+				}
 
 			case pnonce <= -wire.MINER_RORATE_FREQ:
 				// previous block is a rotation block, this block none must be -1
 				if header.Nonce != -1 {
-						//					str := fmt.Sprintf("Previous block is a rotation block, this block nonce must be -1.")
-						return fmt.Errorf("Previous block is a rotation block, this block nonce must be -1."), true
-					}
+					//					str := fmt.Sprintf("Previous block is a rotation block, this block nonce must be -1.")
+					return fmt.Errorf("Previous block is a rotation block, this block nonce must be -1."), true
+				}
 
 			default:
 				if header.Nonce != pnonce-1 {
@@ -485,7 +485,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			return fmt.Errorf("Incorrect signature"), false
 		}
 
-		_,awd := block.MsgBlock().Transactions[0].TxOut[0].Value.Value()
+		_, awd := block.MsgBlock().Transactions[0].TxOut[0].Value.Value()
 		awardto := make(map[[20]byte]struct{})
 		for _, txo := range block.MsgBlock().Transactions[0].TxOut {
 			if txo.IsSeparator() {
@@ -522,18 +522,18 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			if mb == nil {
 				return nil, true
 			}
-			mbs[i - (rotate - wire.CommitteeSize + 1)] = mb
+			mbs[i-(rotate-wire.CommitteeSize+1)] = mb
 		}
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
-			mb := mbs[i - (rotate - wire.CommitteeSize + 1)]
-			if _,err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
-				if _,ok := awardto[mb.MsgBlock().Miner]; ok {
+			mb := mbs[i-(rotate-wire.CommitteeSize+1)]
+			if _, err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
+				if _, ok := awardto[mb.MsgBlock().Miner]; ok {
 					return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
 				}
 			} else if block.MsgBlock().Header.Version >= chaincfg.Version2 {
 				// should check black list here
-				if _,ok := awardto[mb.MsgBlock().Miner]; !ok {
+				if _, ok := awardto[mb.MsgBlock().Miner]; !ok {
 					return nil, true
 				}
 			}
@@ -542,7 +542,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			delete(awardto, mb.MsgBlock().Miner)
 
 			if !imin {
-				for j,me := range b.Miner {
+				for j, me := range b.Miner {
 					imin = bytes.Compare(me.ScriptAddress(), mb.MsgBlock().Miner[:]) == 0
 					if imin {
 						meme = b.Miner[j]
@@ -564,8 +564,8 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 			}
 
 			pkh := signer.Hash160()
-			if _,ok := committee[*pkh]; !ok {
-				tbr = append(tbr, k + 1)
+			if _, ok := committee[*pkh]; !ok {
+				tbr = append(tbr, k+1)
 				continue
 			}
 			delete(committee, *pkh)
@@ -577,7 +577,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 
 		for k := len(tbr) - 1; k >= 0; k-- {
 			block.MsgBlock().Transactions[0].SignatureScripts =
-			append(block.MsgBlock().Transactions[0].SignatureScripts[:tbr[k]], block.MsgBlock().Transactions[0].SignatureScripts[tbr[k]+1:]...)
+				append(block.MsgBlock().Transactions[0].SignatureScripts[:tbr[k]], block.MsgBlock().Transactions[0].SignatureScripts[tbr[k]+1:]...)
 		}
 
 		if nsigned < wire.CommitteeSigs {
@@ -593,21 +593,21 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent * chainutil.B
 // target difficulty as claimed.
 func (b *BlockChain) CheckProofOfWork(block *btcutil.Block, powLimit *big.Int) error {
 	behaviorFlags := BFNone
-	if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet|| b.ChainParams.Net == common.RegNet {
+	if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet || b.ChainParams.Net == common.RegNet {
 		behaviorFlags |= BFEasyBlocks
 	}
 	err, _ := b.checkProofOfWork(block, b.BestChain.Tip(), powLimit, behaviorFlags)
 	return err
 }
 
-func CheckProofOfWork(stubBlock * btcutil.Block, powLimit *big.Int) error {
+func CheckProofOfWork(stubBlock *btcutil.Block, powLimit *big.Int) error {
 	return nil
 }
 
-func (b *BlockChain) MainChainTx(txHash chainhash.Hash) *wire.MsgTx{
+func (b *BlockChain) MainChainTx(txHash chainhash.Hash) *wire.MsgTx {
 	// Look up the location of the transaction.
 	blockRegion, err := b.indexManager.TxBlockRegion(&txHash)
-	if err != nil || blockRegion == nil{
+	if err != nil || blockRegion == nil {
 		return nil
 	}
 
@@ -634,7 +634,7 @@ func (b *BlockChain) MainChainTx(txHash chainhash.Hash) *wire.MsgTx{
 func (b *BlockChain) TxInMainChain(txHash *chainhash.Hash, height int32) bool {
 	// Look up the location of the transaction.
 	blockRegion, err := b.indexManager.TxBlockRegion(txHash)
-	if err != nil || blockRegion == nil{
+	if err != nil || blockRegion == nil {
 		return false
 	}
 
@@ -730,11 +730,11 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 			return ruleError(ErrMultipleCoinbases, str)
 		}
 		// forfeiture txs must be immediately after coinbase. there could be more than one
-		if tx.MsgTx().Version & wire.TxTypeMask == wire.ForfeitTxVersion && i > minrtx {
+		if tx.MsgTx().Version&wire.TxTypeMask == wire.ForfeitTxVersion && i > minrtx {
 			str := fmt.Sprintf("block contains forfeiture coinbase at "+
 				"index %d", i+1)
 			return ruleError(ErrMultipleCoinbases, str)
-		} else if tx.MsgTx().Version & wire.TxTypeMask == wire.ForfeitTxVersion {
+		} else if tx.MsgTx().Version&wire.TxTypeMask == wire.ForfeitTxVersion {
 			minrtx++
 		}
 	}
@@ -742,7 +742,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	// Do some preliminary checks on each transaction to ensure they are
 	// sane before continuing.
 	for _, tx := range transactions {
-		if (tx.MsgTx().Version & wire.TxExpire) != 0 && tx.MsgTx().LockTime < uint32(block.Height()) {
+		if (tx.MsgTx().Version&wire.TxExpire) != 0 && tx.MsgTx().LockTime < uint32(block.Height()) {
 			// tx lock time must not after block time
 			str := fmt.Sprintf("block contains transaction whose execution time has expired")
 			return ruleError(ErrExpiredTx, str)
@@ -791,7 +791,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 		// We could potentially overflow the accumulator so check for
 		// overflow.
 		lastSigOps := totalSigOps
-		totalSigOps += CountSigOps(tx)	// * chaincfg.WitnessScaleFactor)
+		totalSigOps += CountSigOps(tx) // * chaincfg.WitnessScaleFactor)
 		if totalSigOps < lastSigOps || totalSigOps > chaincfg.MaxBlockSigOpsCost {
 			str := fmt.Sprintf("block contains too many signature "+
 				"operations - got %v, max %v", totalSigOps,
@@ -848,12 +848,12 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 		}
 	}
 
-	mb,_ := b.Miners.BlockByHeight(rotate)
+	mb, _ := b.Miners.BlockByHeight(rotate)
 	if mb == nil {
 		if header.Version != chaincfg.Version1 {
 			return ruleError(ErrBlockVersionTooOld, "Incorrect block version")
 		}
-	} else if header.Version &^ 0xFFFF != mb.MsgBlock().Version &^ 0xFFFF {
+	} else if header.Version&^0xFFFF != mb.MsgBlock().Version&^0xFFFF {
 		return ruleError(ErrBlockVersionTooOld, "Incorrect block version")
 	}
 
@@ -929,7 +929,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 
 		// Ensure all transactions in the block are finalized.
 		for _, tx := range block.Transactions() {
-			if !IsFinalizedTransaction(tx, blockHeight,	blockTime) {
+			if !IsFinalizedTransaction(tx, blockHeight, blockTime) {
 				str := fmt.Sprintf("block contains unfinalized "+
 					"transaction %v", tx.Hash())
 				return ruleError(ErrUnfinalizedTx, str)
@@ -951,8 +951,8 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 		// addition, various other checks against the
 		// coinbase's witness stack.
 		if err := ValidateWitnessCommitment(block); err != nil {
-				return err
-			}
+			return err
+		}
 	}
 
 	return nil
@@ -969,7 +969,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 //
 // NOTE: The transaction MUST have already been sanity checked with the
 // CheckTransactionSanity function prior to calling this function.
-func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
+func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// Coinbase transactions have no inputs.
 	if IsCoinBase(tx) {
 		return nil
@@ -982,7 +982,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 		// actually check definitions only
 		return err
 	}
-//	var zerohash chainhash.Hash
+	//	var zerohash chainhash.Hash
 
 	totalIns := make(map[uint64]int64)
 	for txInIndex, txIn := range tx.MsgTx().TxIn {
@@ -1029,7 +1029,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 		// a transaction are in a unit value known as a hao.  One
 		// bitcoin is a quantity of hao as defined by the
 		// HaoPerBitcoin constant.
-		if utxo.TokenType & 1 != 0 {
+		if utxo.TokenType&1 != 0 {
 			continue
 		}
 
@@ -1065,7 +1065,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.Vi
 	return nil
 }
 
-func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
+func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// Coinbase transactions have no inputs.
 	if IsCoinBase(tx) {
 		return nil
@@ -1107,7 +1107,7 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 		// a transaction are in a unit value known as a hao.  One
 		// bitcoin is a quantity of hao as defined by the
 		// HaoPerBitcoin constant.
-		if utxo.TokenType & 1 != 0 {
+		if utxo.TokenType&1 != 0 {
 			continue
 		}
 
@@ -1143,11 +1143,11 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views * vi
 	return nil
 }
 
-func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
+func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// check definitions in TxOuts
 	// recheck CheckDefinitions
 
-	for _,rt := range tx.MsgTx().TxDef {
+	for _, rt := range tx.MsgTx().TxDef {
 		hash := rt.Hash()
 		e := views.Rights.GetRight(views.Db, hash)
 
@@ -1168,7 +1168,7 @@ func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views * viewpoin
 		case *token.RightSetDef:
 			dup := make(map[chainhash.Hash]struct{})
 			for _, r := range rt.(*token.RightSetDef).Rights {
-				if _,ok := dup[r]; ok {
+				if _, ok := dup[r]; ok {
 					str := fmt.Sprintf("Duplicated right in rightset in tx %s.", tx.MsgTx().TxHash().String())
 					return ruleError(1, str)
 				}
@@ -1179,9 +1179,9 @@ func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views * viewpoin
 					return ruleError(1, str)
 				}
 			}
-			
+
 			views.Rights.AddRightSet(rt.(*token.RightSetDef))
-			
+
 		case *token.RightDef:
 			if !rt.(*token.RightDef).Father.IsEqual(&chainhash.Hash{}) {
 				e3 := views.Rights.GetRight(views.Db, rt.(*token.RightDef).Father).(*viewpoint.RightEntry)
@@ -1197,101 +1197,101 @@ func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views * viewpoin
 		}
 	}
 
-//	err, newrights, newrightsets := validate.ScanDefinitions(tx.MsgTx())
-//	if err != nil {
-//		return err
-//	}
+	//	err, newrights, newrightsets := validate.ScanDefinitions(tx.MsgTx())
+	//	if err != nil {
+	//		return err
+	//	}
 
-//	var righttrees = make(map[chainhash.Hash]chainhash.Hash)
+	//	var righttrees = make(map[chainhash.Hash]chainhash.Hash)
 
-	for i,to := range tx.MsgTx().TxOut {
+	for i, to := range tx.MsgTx().TxOut {
 		if to.IsSeparator() || !to.HasRight() {
 			continue
 		}
 
-//		var rights = make(map[chainhash.Hash]*token.RightDef)
-/*
-		if _, ok := newrightsets[*to.Rights]; ok {
-			for _, r := range newrightsets[*to.Rights].Rights {
-				e := views.Rights.GetRight(views.Db, r).(*viewpoint.RightEntry)
-				if e == nil {
-					str := fmt.Sprintf("Right undefined in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
-					return ruleError(1, str)
-				} else if rights[r] != nil {
+		//		var rights = make(map[chainhash.Hash]*token.RightDef)
+		/*
+			if _, ok := newrightsets[*to.Rights]; ok {
+				for _, r := range newrightsets[*to.Rights].Rights {
+					e := views.Rights.GetRight(views.Db, r).(*viewpoint.RightEntry)
+					if e == nil {
+						str := fmt.Sprintf("Right undefined in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+						return ruleError(1, str)
+					} else if rights[r] != nil {
+						str := fmt.Sprintf("Right duplicated in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+						return ruleError(1, str)
+					} else {
+						rights[r] = e.ToToken()
+					}
+				}
+			} else if _, ok = newrights[*to.Rights]; ok {
+				if rights[*to.Rights] != nil {
 					str := fmt.Sprintf("Right duplicated in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
 					return ruleError(1, str)
-				} else {
-					rights[r] = e.ToToken()
 				}
-			}
-		} else if _, ok = newrights[*to.Rights]; ok {
-			if rights[*to.Rights] != nil {
-				str := fmt.Sprintf("Right duplicated in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
+				rights[*to.Rights] = newrights[*to.Rights]
+			} else {
+		*/
+		e := views.Rights.GetRight(views.Db, *to.Rights)
+		switch e.(type) {
+		case *viewpoint.RightSetEntry:
+			if e == (*viewpoint.RightSetEntry)(nil) {
+				str := fmt.Sprintf("Rightset undefined in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
 				return ruleError(1, str)
 			}
-			rights[*to.Rights] = newrights[*to.Rights]
-		} else {
- */
-			e := views.Rights.GetRight(views.Db, *to.Rights)
-			switch e.(type) {
-			case *viewpoint.RightSetEntry:
-				if e == (*viewpoint.RightSetEntry)(nil) {
-					str := fmt.Sprintf("Rightset undefined in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
-					return ruleError(1, str)
-				}
-/*
+			/*
 				for _, r := range e.(*viewpoint.RightSetEntry).Rights {
 					e := views.Rights.GetRight(views.Db, r).(*viewpoint.RightEntry)
 					rights[r] = e.ToToken()
 				}
- */
-			case *viewpoint.RightEntry:
-				if e == (*viewpoint.RightEntry)(nil) {
-					str := fmt.Sprintf("Right does not exists in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
-					return ruleError(1, str)
-				}
-			}
-//		}
-/*
-		zh := chainhash.Hash{}
-		for h,p := range rights {
-			if _,ok := righttrees[h]; ok {
-				continue
-			}
-			for p != nil {
-				righttrees[h] = p.Father
-				h = p.Father
-				if _,ok := righttrees[h]; ok || h.IsEqual(&zh) {
-					break
-				}
-				q := views.Rights.GetRight(views.Db, h).(*viewpoint.RightEntry)
-				if q == nil {
-					break
-				}
-				p = q.ToToken()
-			}
-		}
-		for h,_ := range rights {
-			p := righttrees[h]
-			var ok bool
-			for _, ok = rights[p]; !ok; _, ok = rights[p] {
-				var k bool
-				if p, k = righttrees[p]; !k {
-					break
-				}
-			}
-			if ok {
-				str := fmt.Sprintf("Rights having ancestor/decendant relationship in %d : %d", tx.MsgTx().TxHash().String(), i)
+			*/
+		case *viewpoint.RightEntry:
+			if e == (*viewpoint.RightEntry)(nil) {
+				str := fmt.Sprintf("Right does not exists in tx %s : %s.", tx.MsgTx().TxHash().String(), i)
 				return ruleError(1, str)
 			}
 		}
- */
+		//		}
+		/*
+			zh := chainhash.Hash{}
+			for h,p := range rights {
+				if _,ok := righttrees[h]; ok {
+					continue
+				}
+				for p != nil {
+					righttrees[h] = p.Father
+					h = p.Father
+					if _,ok := righttrees[h]; ok || h.IsEqual(&zh) {
+						break
+					}
+					q := views.Rights.GetRight(views.Db, h).(*viewpoint.RightEntry)
+					if q == nil {
+						break
+					}
+					p = q.ToToken()
+				}
+			}
+			for h,_ := range rights {
+				p := righttrees[h]
+				var ok bool
+				for _, ok = rights[p]; !ok; _, ok = rights[p] {
+					var k bool
+					if p, k = righttrees[p]; !k {
+						break
+					}
+				}
+				if ok {
+					str := fmt.Sprintf("Rights having ancestor/decendant relationship in %d : %d", tx.MsgTx().TxHash().String(), i)
+					return ruleError(1, str)
+				}
+			}
+		*/
 	}
 
 	return nil
 }
 
-func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, version uint32) error {
+func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, version uint32) error {
 	if IsCoinBase(tx) {
 		return nil
 	}
@@ -1311,6 +1311,8 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 		if x == nil {
 			r := make(map[wire.OutPoint]struct{})
 			r[out] = struct{}{}
+
+			fmt.Printf("Pre-fetch input %v\n", out)
 			views.Utxo.FetchUtxosMain(views.Db, r)
 			x = views.Utxo.LookupEntry(out)
 		}
@@ -1321,11 +1323,11 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 
 		t := x.ToTxOut().Token.TokenType
 
-/*		if version >= wire.Version5 {
-			if t & 1 != 1 {
-				continue
-			}
-		} else*/ if t & 3 != 1 {
+		/*		if version >= wire.Version5 {
+				if t & 1 != 1 {
+					continue
+				}
+			} else*/if t&3 != 1 {
 			continue
 		}
 		inputs = append(inputs, x.ToTxOut().Token)
@@ -1336,11 +1338,11 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 		if txOut.IsSeparator() {
 			continue
 		}
-/*		if version >= wire.Version5 {
-			if t & 1 != 1 {
-				continue
-			}
-		} else*/ if t & 3 != 1 {
+		/*		if version >= wire.Version5 {
+				if t & 1 != 1 {
+					continue
+				}
+			} else*/if t&3 != 1 {
 			continue
 		}
 		match := false
@@ -1349,21 +1351,21 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 				txOut.Token.Value.(*token.HashToken).Hash.IsEqual(&tk.Value.(*token.HashToken).Hash) {
 				rem--
 				match = true
-				inputs[j].TokenType = 0		// no further matching
+				inputs[j].TokenType = 0 // no further matching
 				break
 			}
 		}
 		if !match {
-			str := fmt.Sprintf("The Tx is not integral")
+			str := fmt.Sprintf("The Tx %s is not integral", tx.Hash().String())
 			return ruleError(ErrSpendTooHigh, str)
 		}
 	}
 	if rem != 0 {
-		str := fmt.Sprintf("The Tx is not integral")
+		str := fmt.Sprintf("The Tx %s is not integral", tx.Hash().String())
 		return ruleError(ErrSpendTooHigh, str)
 	}
-//	ntx := tx.Copy() // Deep copy
-//	ntx.Spends = append(inputs, ntx.Spends...)
+	//	ntx := tx.Copy() // Deep copy
+	//	ntx.Spends = append(inputs, ntx.Spends...)
 
 	res, err := validate.QuickCheckRight(tx, views, version)
 	if res {
@@ -1381,7 +1383,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx,  views * viewpoint.ViewPointSet, 
 	return nil
 }
 
-func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views * viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, error) {
+func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, error) {
 	// Coinbase transactions have no inputs.
 	utxoView := views.Utxo
 
@@ -1402,7 +1404,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		// a transaction are in a unit value known as a hao.  One
 		// bitcoin is a quantity of hao as defined by the
 		// HaoPerBitcoin constant.
-		if utxo.TokenType & 3 != 0 {
+		if utxo.TokenType&3 != 0 {
 			continue
 		}
 
@@ -1411,18 +1413,18 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		// The total of all outputs must not be more than the max
 		// allowed per transaction.  Also, we could potentially overflow
 		// the accumulator so check for overflow.
-//		lastHaoIn := totalIns[utxo.TokenType]
+		//		lastHaoIn := totalIns[utxo.TokenType]
 		totalIns[utxo.TokenType] += originTxHao
-/*		already checked elsewhere
-		if totalIns[utxo.TokenType] < lastHaoIn ||
-			totalIns[utxo.TokenType] > btcutil.MaxHao {
-			str := fmt.Sprintf("total value of all transaction "+
-				"inputs is %v which is higher than max "+
-				"allowed value of %v", totalIns[utxo.TokenType],
-				btcutil.MaxHao)
-			return 0, ruleError(ErrBadTxOutValue, str)
-		}
- */
+		/*		already checked elsewhere
+				if totalIns[utxo.TokenType] < lastHaoIn ||
+					totalIns[utxo.TokenType] > btcutil.MaxHao {
+					str := fmt.Sprintf("total value of all transaction "+
+						"inputs is %v which is higher than max "+
+						"allowed value of %v", totalIns[utxo.TokenType],
+						btcutil.MaxHao)
+					return 0, ruleError(ErrBadTxOutValue, str)
+				}
+		*/
 	}
 
 	// Calculate the total output amount for this transaction.  It is safe
@@ -1431,7 +1433,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 	totalHaoOut := make(map[uint64]int64)
 
 	for _, txOut := range tx.MsgTx().TxOut {
-		if txOut.IsSeparator() || txOut.TokenType & 3 != 0 {
+		if txOut.IsSeparator() || txOut.TokenType&3 != 0 {
 			continue
 		}
 
@@ -1446,9 +1448,9 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 	}
 
 	// Ensure the transaction does not spend more than its inputs.
-	for in,out := range totalHaoOut {
+	for in, out := range totalHaoOut {
 		v := int64(0)
-		if k,ok := totalIns[in]; ok {
+		if k, ok := totalIns[in]; ok {
 			v = k
 		}
 		if v < out {
@@ -1464,12 +1466,12 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		}
 	}
 
-	for in,out := range totalIns {
+	for in, out := range totalIns {
 		if in == 0 {
 			continue
 		}
 		v := int64(0)
-		if k,ok := totalHaoOut[in]; ok {
+		if k, ok := totalHaoOut[in]; ok {
 			v = k
 		}
 		if v != out {
@@ -1486,7 +1488,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 	txFeeInHao := totalIns[0] - totalHaoOut[0]
 
 	n := 0
-	for _,d := range tx.MsgTx().TxDef {
+	for _, d := range tx.MsgTx().TxDef {
 		if d.DefType() == token.DefTypeBorder && d.(*token.BorderDef).Father.IsEqual(&zeroHash) {
 			n++
 		}
@@ -1507,7 +1509,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 	return txFeeInHao, nil
 }
 
-func ContractNewStorage(tx *btcutil.Tx, vm * ovm.OVM, paidstoragefees map[[20]byte]int64) int64 {
+func ContractNewStorage(tx *btcutil.Tx, vm *ovm.OVM, paidstoragefees map[[20]byte]int64) int64 {
 	storagefees := make(map[[20]byte]int64)
 
 	for _, txOut := range tx.MsgTx().TxOut {
@@ -1517,12 +1519,12 @@ func ContractNewStorage(tx *btcutil.Tx, vm * ovm.OVM, paidstoragefees map[[20]by
 
 		var addr [20]byte
 		copy(addr[:], txOut.PkScript[1:21])
-		if _,ok := storagefees[addr]; !ok {
+		if _, ok := storagefees[addr]; !ok {
 			storagefees[addr] = int64(vm.NewUage(addr))
 		}
 	}
-	storage := int64(0)		// storage fees need to be paid by this tx
-	for addr,t := range storagefees {
+	storage := int64(0) // storage fees need to be paid by this tx
+	for addr, t := range storagefees {
 		if t <= 0 {
 			continue
 		}
@@ -1560,7 +1562,7 @@ func ContractNewStorage(tx *btcutil.Tx, vm * ovm.OVM, paidstoragefees map[[20]by
 // with that node.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut, Vm * ovm.OVM) error {
+func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut, Vm *ovm.OVM) error {
 	// If the side chain blocks end up in the database, a call to
 	// CheckBlockSanity should be done here in case a previous version
 	// allowed a block that is no longer valid.  However, since the
@@ -1600,7 +1602,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		// countP2SHSigOps for whether or not the transaction is
 		// a coinbase transaction rather than having to do a
 		// full coinbase check again.
-		sigOpCost, err := GetSigOpCost(tx, i == 0, views.Utxo, true,true)
+		sigOpCost, err := GetSigOpCost(tx, i == 0, views.Utxo, true, true)
 		if err != nil {
 			return err
 		}
@@ -1637,8 +1639,8 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// against all the inputs when the signature operations are out of
 	// bounds.
 
-	var oldcoinBase * btcutil.Tx
-	var coinBase * btcutil.Tx
+	var oldcoinBase *btcutil.Tx
+	var coinBase *btcutil.Tx
 
 	if Vm != nil {
 		oldcoinBase = btcutil.NewTx(transactions[0].MsgTx().Copy())
@@ -1681,7 +1683,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	}
 
 	paidstoragefees := make(map[[20]byte]int64)
-	storages := make([]int64, len(transactions) - 1)
+	storages := make([]int64, len(transactions)-1)
 
 	for i, tx := range transactions[1:] {
 		if runScripts {
@@ -1696,7 +1698,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			newtx.SetIndex(tx.Index())
 			newtx.HasIns, newtx.HasDefs, newtx.HasOuts = false, false, false
 
-			_,err = Vm.ExecContract(newtx, node.Height)
+			_, err = Vm.ExecContract(newtx, node.Height)
 			if err != nil {
 				return err
 			}
@@ -1705,7 +1707,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				return fmt.Errorf("Mismatch contract execution result")
 			}
 
-			transactions[i + 1] = newtx
+			transactions[i+1] = newtx
 
 			storages[i] = ContractNewStorage(newtx, Vm, paidstoragefees)
 		}
@@ -1838,26 +1840,26 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	}
 
 	prevPows := uint(0)
-/*
-	if node.Data.GetNonce() > 0 {
-		for pw := node.Parent; pw != nil && pw.Data.GetNonce() > 0; pw = b.ParentNode(pw) {
-			prevPows++
+	/*
+		if node.Data.GetNonce() > 0 {
+			for pw := node.Parent; pw != nil && pw.Data.GetNonce() > 0; pw = b.ParentNode(pw) {
+				prevPows++
+			}
 		}
-	}
-	adj := int64(0)
+		adj := int64(0)
 
-	if prevPows != 0 {
-		best := b.BestSnapshot()
-		adj = CalcBlockSubsidy(best.Height, b.ChainParams, 0) -
-			CalcBlockSubsidy(best.Height, b.ChainParams, prevPows)
-	}
-*/
+		if prevPows != 0 {
+			best := b.BestSnapshot()
+			adj = CalcBlockSubsidy(best.Height, b.ChainParams, 0) -
+				CalcBlockSubsidy(best.Height, b.ChainParams, prevPows)
+		}
+	*/
 	award := CalcBlockSubsidy(node.Height, b.ChainParams, prevPows)
 	if award < b.ChainParams.MinimalAward {
 		award = b.ChainParams.MinimalAward
 	}
 
-	expectedHaoOut := award + totalFees	//  + adj
+	expectedHaoOut := award + totalFees //  + adj
 	if totalHaoOut > expectedHaoOut {
 		var w bytes.Buffer
 		block.Transactions()[0].MsgTx().Serialize(&w)
@@ -1882,8 +1884,8 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		sequenceLock, err := b.calcSequenceLock(node, tx, views.Utxo,
 			false)
 		if err != nil {
-				return err
-			}
+			return err
+		}
 		if !SequenceLockActive(sequenceLock, node.Height,
 			medianTime) {
 			str := fmt.Sprintf("block contains " +
@@ -1893,41 +1895,41 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 
-/*	// we don't forbid violating miner from makeing tx. we only forfeit bond and not
-	// allow him mining (generating MR block)
-	// blacklist check
-	var name [20]byte
-	for _, tx := range block.MsgBlock().Transactions {
-		for _, txo := range tx.TxOut {
-			if txo.IsSeparator() {
-				break
+	/*	// we don't forbid violating miner from makeing tx. we only forfeit bond and not
+		// allow him mining (generating MR block)
+		// blacklist check
+		var name [20]byte
+		for _, tx := range block.MsgBlock().Transactions {
+			for _, txo := range tx.TxOut {
+				if txo.IsSeparator() {
+					break
+				}
+				copy(name[:], txo.PkScript[1:21])
+				if txo.PkScript[0] == b.ChainParams.PubKeyHashAddrID && b.Blacklist.IsBlack(name) {
+					return fmt.Errorf("Blacklised txo")
+				}
 			}
-			copy(name[:], txo.PkScript[1:21])
-			if txo.PkScript[0] == b.ChainParams.PubKeyHashAddrID && b.Blacklist.IsBlack(name) {
-				return fmt.Errorf("Blacklised txo")
-			}
-		}
 
-		if tx.IsCoinBase() || tx.IsForfeit() {
-			continue
-		}
-		for _, txi := range tx.TxIn {
-			if txi.IsSeparator() {
-				break
-			}
-			utxo := views.Utxo.LookupEntry(txi.PreviousOutPoint)
-			if utxo == nil || utxo.IsSpent() {
+			if tx.IsCoinBase() || tx.IsForfeit() {
 				continue
 			}
+			for _, txi := range tx.TxIn {
+				if txi.IsSeparator() {
+					break
+				}
+				utxo := views.Utxo.LookupEntry(txi.PreviousOutPoint)
+				if utxo == nil || utxo.IsSpent() {
+					continue
+				}
 
-			// check blacklist
-			copy(name[:], utxo.PkScript()[1:21])
-			if b.Blacklist.IsBlack(name) {
-				return fmt.Errorf("Blacklised input")
+				// check blacklist
+				copy(name[:], utxo.PkScript()[1:21])
+				if b.Blacklist.IsBlack(name) {
+					return fmt.Errorf("Blacklised input")
+				}
 			}
 		}
-	}
- */
+	*/
 
 	// Update the best hash for view to include this block since all of its
 	// transactions have been connected.
@@ -1942,7 +1944,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
-//	log.Infof("CheckConnectBlockTemplate: ChainLock.RLock")
+	//	log.Infof("CheckConnectBlockTemplate: ChainLock.RLock")
 	b.ChainLock.Lock()
 	defer b.ChainLock.Unlock()
 

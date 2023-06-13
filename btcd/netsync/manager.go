@@ -104,7 +104,7 @@ type getSyncPeerMsg struct {
 // resetConnMsg is a message type to be sent across the message channel for
 // reset connections.
 type resetConnMsg struct {
-	all bool
+	all   bool
 	reply chan struct{}
 }
 
@@ -178,18 +178,18 @@ type peerSyncState struct {
 	requestQueue    []*wire.InvVect
 	requestedTxns   map[chainhash.Hash]struct{}
 	requestedBlocks map[chainhash.Hash]int
-	syncTime	int64	// unix time this peer became a sync peer
+	syncTime        int64 // unix time this peer became a sync peer
 }
 
 type pendginGetBlocks struct {
-	valid 		bool
-	heights		[2]int32
-	hash		chainhash.Hash
-	peer		* peerpkg.Peer
-	locator		chainhash.BlockLocator
-	mlocator 	chainhash.BlockLocator
-	stopHash	*chainhash.Hash
-	mstopHash	*chainhash.Hash
+	valid     bool
+	heights   [2]int32
+	hash      chainhash.Hash
+	peer      *peerpkg.Peer
+	locator   chainhash.BlockLocator
+	mlocator  chainhash.BlockLocator
+	stopHash  *chainhash.Hash
+	mstopHash *chainhash.Hash
 }
 
 // SyncManager is used to communicate block related messages with peers. The
@@ -210,13 +210,13 @@ type SyncManager struct {
 	quit           chan struct{}
 
 	// These fields should only be accessed from the blockHandler thread
-	rejectedTxns    map[chainhash.Hash]struct{}
-	requestedTxns   map[chainhash.Hash]struct{}
-	requestedBlocks map[chainhash.Hash]int
+	rejectedTxns     map[chainhash.Hash]struct{}
+	requestedTxns    map[chainhash.Hash]struct{}
+	requestedBlocks  map[chainhash.Hash]int
 	requestedOrphans map[chainhash.Hash]int
 
-	syncPeer        *peerpkg.Peer
-	peerStates      map[*peerpkg.Peer]*peerSyncState
+	syncPeer   *peerpkg.Peer
+	peerStates map[*peerpkg.Peer]*peerSyncState
 
 	// The following fields are used for headers-first mode.
 	headersFirstMode bool
@@ -228,11 +228,11 @@ type SyncManager struct {
 	feeEstimator *mempool.FeeEstimator
 
 	// blocks already processed for consensus. we cache them to avoid double processing
-	cachedBlocks map[chainhash.Hash]uint32	// block hash=>height
+	cachedBlocks map[chainhash.Hash]uint32 // block hash=>height
 
-	syncjobs []*pendginGetBlocks
-	lastBlockOp string	// for debug
-	bshutdown bool
+	syncjobs    []*pendginGetBlocks
+	lastBlockOp string // for debug
+	bshutdown   bool
 }
 
 // resetHeaderState sets the headers-first mode state to values appropriate for
@@ -263,7 +263,7 @@ func (sm *SyncManager) resetConnections(all bool) {
 
 	log.Infof("ResetConnections peers = %d", len(sm.peerStates))
 
-	for p,_ := range sm.peerStates {
+	for p, _ := range sm.peerStates {
 		p.Disconnect("Reset")
 	}
 	sm.clearSync()
@@ -298,12 +298,12 @@ func (sm *SyncManager) findNextHeaderCheckpoint(height int32) *chaincfg.Checkpoi
 }
 
 func (sm *SyncManager) AddSyncJob(peer *peerpkg.Peer, locator, mlocator chainhash.BlockLocator, stopHash, mstopHash *chainhash.Hash, best [2]int32) {
-	h := make([]byte, chainhash.HashSize * (len(locator) + len(mlocator) + 2))
+	h := make([]byte, chainhash.HashSize*(len(locator)+len(mlocator)+2))
 	p := 0
-	for i := 0; i < len(locator); i,p = i+1,p+chainhash.HashSize {
+	for i := 0; i < len(locator); i, p = i+1, p+chainhash.HashSize {
 		copy(h[p:], (*locator[i])[:])
 	}
-	for i := 0; i < len(mlocator); i,p = i+1,p+chainhash.HashSize {
+	for i := 0; i < len(mlocator); i, p = i+1, p+chainhash.HashSize {
 		copy(h[p:], (*mlocator[i])[:])
 	}
 	if stopHash != nil {
@@ -319,20 +319,20 @@ func (sm *SyncManager) AddSyncJob(peer *peerpkg.Peer, locator, mlocator chainhas
 		}
 	}
 
-	for _,j := range sm.syncjobs {
+	for _, j := range sm.syncjobs {
 		if best[0] >= j.heights[0] && best[1] >= j.heights[1] {
 			j.valid = false
 		}
 	}
 
 	sm.syncjobs = append(sm.syncjobs, &pendginGetBlocks{
-		valid: true,
-		heights: [2]int32{best[0], best[1]},
-		hash: hash,
-		peer: peer,
-		locator: locator,
-		mlocator: mlocator,
-		stopHash: stopHash,
+		valid:     true,
+		heights:   [2]int32{best[0], best[1]},
+		hash:      hash,
+		peer:      peer,
+		locator:   locator,
+		mlocator:  mlocator,
+		stopHash:  stopHash,
 		mstopHash: mstopHash,
 	})
 }
@@ -344,11 +344,11 @@ func (sm *SyncManager) updateSyncPeer() {
 
 	p := sm.syncPeer
 	if p != nil {
-		state,ok := sm.peerStates[p]
+		state, ok := sm.peerStates[p]
 		if ok && len(state.requestedBlocks) > 0 {
 			tm := int(time.Now().Unix())
 			for _, t := range state.requestedBlocks {
-				if t > tm - 30 {
+				if t > tm-30 {
 					return
 				}
 			}
@@ -360,7 +360,7 @@ func (sm *SyncManager) updateSyncPeer() {
 	log.Debugf("updateSyncPeer: %d outstanding jobs", n)
 
 	for n > 0 {
-		j := sm.syncjobs[n - 1]
+		j := sm.syncjobs[n-1]
 		sm.syncjobs = sm.syncjobs[:n-1]
 		n--
 		if !j.valid {
@@ -370,34 +370,34 @@ func (sm *SyncManager) updateSyncPeer() {
 			txmoot := false
 			if j.stopHash != nil && !zeroHash.IsEqual(j.stopHash) {
 				txmoot = sm.chain.NodeByHash(j.stopHash) != nil
-//				txmoot,_ = sm.chain.HaveBlock(j.stopHash)
-			} else if len(j.locator) > 0 {	// && *j.locator[0] != sm.chain.BestSnapshot().Hash {
+				//				txmoot,_ = sm.chain.HaveBlock(j.stopHash)
+			} else if len(j.locator) > 0 { // && *j.locator[0] != sm.chain.BestSnapshot().Hash {
 				blk := sm.chain.NodeByHash(j.locator[0])
 				if blk != nil && blk.Height < sm.chain.BestChain.Height() {
 					txmoot = true
 				}
-//				txmoot,_ = sm.chain.HaveBlock(j.locator[0])
+				//				txmoot,_ = sm.chain.HaveBlock(j.locator[0])
 			} else {
 				txmoot = true
 			}
 			mnmoot := false
 			if j.mstopHash != nil && !zeroHash.IsEqual(j.mstopHash) {
 				mnmoot = sm.chain.Miners.NodeByHash(j.mstopHash) != nil
-//				mnmoot,_ = sm.chain.Miners.HaveBlock(j.mstopHash)
-			} else if len(j.mlocator) > 0 {	// && *j.mlocator[0] != sm.chain.Miners.BestSnapshot().Hash {
-				blk,_ := sm.chain.Miners.BlockByHash(j.mlocator[0])
+				//				mnmoot,_ = sm.chain.Miners.HaveBlock(j.mstopHash)
+			} else if len(j.mlocator) > 0 { // && *j.mlocator[0] != sm.chain.Miners.BestSnapshot().Hash {
+				blk, _ := sm.chain.Miners.BlockByHash(j.mlocator[0])
 				if blk != nil && blk.Height() < sm.chain.Miners.BestSnapshot().Height {
 					mnmoot = true
 				}
-//				mnmoot,_ = sm.chain.Miners.HaveBlock(j.mlocator[0])
-//				mnmoot = true
+				//				mnmoot,_ = sm.chain.Miners.HaveBlock(j.mlocator[0])
+				//				mnmoot = true
 			} else {
 				mnmoot = true
 			}
 			if txmoot && mnmoot {
 				continue
 			}
-			if txmoot  {
+			if txmoot {
 				j.stopHash = &zeroHash
 				j.locator = make([]*chainhash.Hash, 0)
 			}
@@ -470,7 +470,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 	}
 
 	if bestPeer == nil {
-//		log.Infof("No sync peer available out of %d peers", len(sm.peerStates))
+		//		log.Infof("No sync peer available out of %d peers", len(sm.peerStates))
 		return false
 	}
 
@@ -552,15 +552,15 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 				sm.nextCheckpoint.Height, bestPeer.Addr())
 		}
 		if deferexec == 0 {
-//			log.Infof("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
+			//			log.Infof("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
 			bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 		} else {
-			time.AfterFunc(deferexec, func () {
+			time.AfterFunc(deferexec, func() {
 				if !bestPeer.Connected() {
-					sm.msgChan <- startSyncMsg{ reply: nil }
+					sm.msgChan <- startSyncMsg{reply: nil}
 					return
 				}
-//				log.Debugf("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
+				//				log.Debugf("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
 				bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 			})
 		}
@@ -618,7 +618,7 @@ func (sm *SyncManager) handleNewPeerMsg(peer *peerpkg.Peer) {
 		syncCandidate:   isSyncCandidate,
 		requestedTxns:   make(map[chainhash.Hash]struct{}),
 		requestedBlocks: make(map[chainhash.Hash]int),
-		requestQueue: 	 make([]* wire.InvVect, 0, 1000),
+		requestQueue:    make([]*wire.InvVect, 0, 1000),
 	}
 
 	// Start syncing by choosing the best candidate if needed.
@@ -662,14 +662,14 @@ func (sm *SyncManager) handleDonePeerMsg(peer *peerpkg.Peer) {
 	// mode so
 	if sm.syncPeer == peer {
 		sm.syncjobs = make([]*pendginGetBlocks, 0)
-//		p := sm.syncPeer
+		//		p := sm.syncPeer
 		sm.syncPeer = nil
 		if sm.headersFirstMode {
 			best := sm.chain.BestSnapshot()
 			sm.resetHeaderState(&best.Hash, best.Height)
 		}
 		sm.updateSyncPeer()
-//		sm.startSync(p)
+		//		sm.startSync(p)
 	}
 }
 
@@ -778,11 +778,11 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		return
 	}
 
-//	defer func() {
-//		if len(state.requestedBlocks) == 0 {	// && sm.syncPeer == peer {
-//			sm.updateSyncPeer()
-//		}
-//	}()
+	//	defer func() {
+	//		if len(state.requestedBlocks) == 0 {	// && sm.syncPeer == peer {
+	//			sm.updateSyncPeer()
+	//		}
+	//	}()
 
 	behaviorFlags := blockchain.BFNone
 
@@ -794,33 +794,33 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 			log.Errorf("handleBlockMsg: blocked because of insufficient signatures. Require 2 items in coinbase signatures.")
 			return
 		}
-//		if bytes.Compare(peer.Miner[:], bmsg.block.MsgBlock().Transactions[0].SignatureScripts[1]) != 0 {
-//			log.Infof("handleBlockMsg: blocked because of unexpected signature")
-			// not the same
-//			return
-//		}
-//		if peer.Committee < int32(sm.chain.BestSnapshot().LastRotation) - wire.CommitteeSize {
-//			log.Infof("handleBlockMsg: blocked for out of committee")
-//			return
-//		}
+		//		if bytes.Compare(peer.Miner[:], bmsg.block.MsgBlock().Transactions[0].SignatureScripts[1]) != 0 {
+		//			log.Infof("handleBlockMsg: blocked because of unexpected signature")
+		// not the same
+		//			return
+		//		}
+		//		if peer.Committee < int32(sm.chain.BestSnapshot().LastRotation) - wire.CommitteeSize {
+		//			log.Infof("handleBlockMsg: blocked for out of committee")
+		//			return
+		//		}
 		behaviorFlags |= blockchain.BFNoConnect
 	}
 
 	// If we didn't ask for this block then the peer is misbehaving.
 	blockHash := bmsg.block.Hash()
-/*
-	if _, exists = state.requestedBlocks[*blockHash]; !exists && behaviorFlags & blockchain.BFNoConnect != blockchain.BFNoConnect {
-		// The regression test intentionally sends some blocks twice
-		// to test duplicate block insertion fails.  Don't disconnect
-		// the peer or ignore the block when we're in regression test
-		// mode in this case so the chain code is actually fed the
-		// duplicate blocks.
-		if sm.chainParams != &chaincfg.RegressionNetParams && peer.Committee <= 0 {
-			log.Warnf("Got unrequested block %s from %s", blockHash.String(), peer.Addr())
-			return
+	/*
+		if _, exists = state.requestedBlocks[*blockHash]; !exists && behaviorFlags & blockchain.BFNoConnect != blockchain.BFNoConnect {
+			// The regression test intentionally sends some blocks twice
+			// to test duplicate block insertion fails.  Don't disconnect
+			// the peer or ignore the block when we're in regression test
+			// mode in this case so the chain code is actually fed the
+			// duplicate blocks.
+			if sm.chainParams != &chaincfg.RegressionNetParams && peer.Committee <= 0 {
+				log.Warnf("Got unrequested block %s from %s", blockHash.String(), peer.Addr())
+				return
+			}
 		}
-	}
- */
+	*/
 
 	// When in headers-first mode, if the block matches the hash of the
 	// first header in the list of headers that are being fetched, it's
@@ -851,11 +851,11 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	delete(state.requestedBlocks, *blockHash)
 	delete(sm.requestedBlocks, *blockHash)
 
-//	log.Infof("handleBlockMsg: %v", bmsg.block.MsgBlock().Header.PrevBlock)
+	//	log.Infof("handleBlockMsg: %v", bmsg.block.MsgBlock().Header.PrevBlock)
 
 	// Process the block to include validation, best chain selection, orphan
 	// handling, etc.
-//	log.Infof("netsyc ProcessBlock %s at %d", bmsg.block.Hash().String(), bmsg.block.Height())
+	//	log.Infof("netsyc ProcessBlock %s at %d", bmsg.block.Hash().String(), bmsg.block.Height())
 
 	var isMainchain, isOrphan bool
 	var b1, b2 *blockchain.BestState
@@ -863,7 +863,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	var missing int32
 	var orp *chainhash.Hash
 
-	if _,ok := sm.cachedBlocks[*blockHash]; behaviorFlags & blockchain.BFNoConnect != blockchain.BFNoConnect || !ok {
+	if _, ok := sm.cachedBlocks[*blockHash]; behaviorFlags&blockchain.BFNoConnect != blockchain.BFNoConnect || !ok {
 		isMainchain, isOrphan, err, missing, orp = sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
 		b1 = sm.chain.BestSnapshot()
@@ -884,9 +884,11 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 				&zeroHash, &zeroHash, [2]int32{b1.Height, b2.Height})
 		}
 		if orp != nil {
-			log.Infof("Requesting block %s", orp.String())
-			//		peer.PushGetBlocksMsg(chainhash.BlockLocator(make([]*chainhash.Hash, 0)), chainhash.BlockLocator(make([]*chainhash.Hash, 0)), orp, &zeroHash)
-			peer.QueueMessage(&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *orp}}}, nil)
+			if !sm.chain.Orphans.IsKnownOrphan(orp) {
+				log.Infof("Requesting block %s", orp.String())
+				//		peer.PushGetBlocksMsg(chainhash.BlockLocator(make([]*chainhash.Hash, 0)), chainhash.BlockLocator(make([]*chainhash.Hash, 0)), orp, &zeroHash)
+				peer.QueueMessage(&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *orp}}}, nil)
+			}
 		}
 
 		if err != nil {
@@ -920,14 +922,14 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	}
 
 	ht := bmsg.block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index
-	if behaviorFlags & blockchain.BFNoConnect == blockchain.BFNoConnect {
+	if behaviorFlags&blockchain.BFNoConnect == blockchain.BFNoConnect {
 		// passing it consus
 		sm.cachedBlocks[*blockHash] = ht
 		consensus.ProcessBlock(bmsg.block, behaviorFlags)
 		return
 	}
 
-	for hash,h := range sm.cachedBlocks {
+	for hash, h := range sm.cachedBlocks {
 		if h < ht {
 			delete(sm.cachedBlocks, hash)
 		}
@@ -969,16 +971,16 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 			}
 		}
 
-/*
-		orphanRoot := sm.chain.GetOrphanRoot(blockHash)
-		locator, err := sm.chain.LatestBlockLocator()
-		if err != nil {
-			log.Warnf("Failed to get block locator for the "+
-				"latest block: %v", err)
-		} else {
-			peer.PushGetBlocksMsg(locator, make(chainhash.BlockLocator, 0), orphanRoot, nil)
-		}
- */
+		/*
+			orphanRoot := sm.chain.GetOrphanRoot(blockHash)
+			locator, err := sm.chain.LatestBlockLocator()
+			if err != nil {
+				log.Warnf("Failed to get block locator for the "+
+					"latest block: %v", err)
+			} else {
+				peer.PushGetBlocksMsg(locator, make(chainhash.BlockLocator, 0), orphanRoot, nil)
+			}
+		*/
 	} else {
 		// When the block is not an orphan, log information about it and
 		// update the chain state.
@@ -1052,12 +1054,12 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	var mblockHash *chainhash.Hash
 
-	mblk,_ := sm.chain.Miners.BlockByHeight(int32(sm.chain.BestSnapshot().LastRotation))
+	mblk, _ := sm.chain.Miners.BlockByHeight(int32(sm.chain.BestSnapshot().LastRotation))
 	mblockHash = mblk.Hash()
 
 	locator := chainhash.BlockLocator([]*chainhash.Hash{blockHash})
 	mlocator := chainhash.BlockLocator([]*chainhash.Hash{mblockHash})
-//	log.Debugf("handleBlockMsg: PushGetBlocksMsg from %s because  -- switching to normal mode", peer.Addr())
+	//	log.Debugf("handleBlockMsg: PushGetBlocksMsg from %s because  -- switching to normal mode", peer.Addr())
 	err = peer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 	if err != nil {
 		log.Warnf("Failed to send getblocks message to peer %s: %v",
@@ -1075,28 +1077,28 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	}
 
 	defer func() {
-		if len(state.requestedBlocks) == 0 {	// && sm.syncPeer == peer {
+		if len(state.requestedBlocks) == 0 { // && sm.syncPeer == peer {
 			sm.updateSyncPeer()
 		}
 	}()
 
-//	log.Infof("handleMinerBlockMsg: %v", bmsg.block.MsgBlock().PrevBlock)
+	//	log.Infof("handleMinerBlockMsg: %v", bmsg.block.MsgBlock().PrevBlock)
 
 	// If we didn't ask for this block then the peer is misbehaving.
 	blockHash := bmsg.block.Hash()
-/*
-	if _, exists = state.requestedBlocks[*blockHash]; !exists {
-		// The regression test intentionally sends some blocks twice
-		// to test duplicate block insertion fails.  Don't disconnect
-		// the peer or ignore the block when we're in regression test
-		// mode in this case so the chain code is actually fed the
-		// duplicate blocks.
-		if sm.chainParams != &chaincfg.RegressionNetParams && peer.Committee <= 0 {
-			log.Warnf("Got unrequested block %v from %s", blockHash, peer.Addr())
-			return
+	/*
+		if _, exists = state.requestedBlocks[*blockHash]; !exists {
+			// The regression test intentionally sends some blocks twice
+			// to test duplicate block insertion fails.  Don't disconnect
+			// the peer or ignore the block when we're in regression test
+			// mode in this case so the chain code is actually fed the
+			// duplicate blocks.
+			if sm.chainParams != &chaincfg.RegressionNetParams && peer.Committee <= 0 {
+				log.Warnf("Got unrequested block %v from %s", blockHash, peer.Addr())
+				return
+			}
 		}
-	}
- */
+	*/
 
 	behaviorFlags := blockchain.BFNone
 
@@ -1110,7 +1112,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	// handling, etc.
 
 	log.Tracef("sm.chain.Miners.ProcessBlock")
-	if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet|| sm.chainParams.Net == common.RegNet {
+	if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet || sm.chainParams.Net == common.RegNet {
 		behaviorFlags |= blockchain.BFEasyBlocks
 	}
 	isMainchain, isOrphan, err, h := sm.chain.Miners.ProcessBlock(bmsg.block, behaviorFlags)
@@ -1119,16 +1121,22 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	b2 := sm.chain.Miners.BestSnapshot()
 
 	if h != nil {
-		peer.QueueMessageWithEncoding(h, nil, wire.SignatureEncoding)
+		ch := sm.chain.Miners.(*minerchain.MinerChain)
+		iv := h.(*wire.MsgGetData).InvList[0]
+		if iv.Type == common.InvTypeMinerBlock && !ch.Orphans.IsKnownOrphan(&(iv.Hash)) {
+			peer.QueueMessageWithEncoding(h, nil, wire.SignatureEncoding)
+		} else if iv.Type == common.InvTypeWitnessBlock && !sm.chain.Orphans.IsKnownOrphan(&(iv.Hash)) {
+			peer.QueueMessageWithEncoding(h, nil, wire.SignatureEncoding)
+		}
 
-/*
-		sm.AddSyncJob(peer,
-//			sm.chain.BlockLocatorFromHash(&zeroHash),
-			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
-			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
-			h, &zeroHash,
-			[2]int32{b1.Height, b2.Height})
- */
+		/*
+		   		sm.AddSyncJob(peer,
+		   //			sm.chain.BlockLocatorFromHash(&zeroHash),
+		   			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
+		   			chainhash.BlockLocator(make([]*chainhash.Hash, 0)),
+		   			h, &zeroHash,
+		   			[2]int32{b1.Height, b2.Height})
+		*/
 	}
 
 	if err != nil {
@@ -1330,7 +1338,7 @@ func (sm *SyncManager) handleHeadersMsg(hmsg *headersMsg) {
 			log.Warnf("Received block header that does not "+
 				"properly connect to the chain from peer %s "+
 				"-- disconnecting", peer.Addr())
-			peer.Disconnect( "handleHeadersMsg @ PrevBlock")
+			peer.Disconnect("handleHeadersMsg @ PrevBlock")
 			return
 		}
 
@@ -1460,7 +1468,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	lastMinerBlock := -1
 	invVects := imsg.inv.InvList
 	for i := len(invVects) - 1; i >= 0; i-- {
-		if invVects[i].Type & common.InvTypeBlock == common.InvTypeBlock && lastBlock == -1 {
+		if invVects[i].Type&common.InvTypeBlock == common.InvTypeBlock && lastBlock == -1 {
 			lastBlock = i
 		}
 		if invVects[i].Type == common.InvTypeMinerBlock && lastMinerBlock == -1 {
@@ -1504,9 +1512,9 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		return
 	}
 
-	var lastIgnored * wire.InvVect
+	var lastIgnored *wire.InvVect
 	var ignorerun int
-	var lastMinerIgnored * wire.InvVect
+	var lastMinerIgnored *wire.InvVect
 	var ignoreMinerrun int
 
 	b1 := sm.chain.BestSnapshot()
@@ -1556,7 +1564,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			}
 
 			// Add it to the request queue.
-//			log.Infof("%s does not exist add to requestQueue", iv.Hash.String())
+			//			log.Infof("%s does not exist add to requestQueue", iv.Hash.String())
 			state.requestQueue = append(state.requestQueue, iv)
 			continue
 		}
@@ -1568,7 +1576,14 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			state.requestQueue = append(state.requestQueue, iv)
 		}
 
-		if iv.Type & common.InvTypeBlock == common.InvTypeBlock {
+		if iv.Type&common.InvTypeBlock == common.InvTypeBlock {
+			// if the block is in a side chain, pretend it as an orphan
+			if !sm.chain.InBestChain(&iv.Hash) {
+				po, _ := sm.chain.BlockByHash(&iv.Hash)
+				if po != nil {
+					sm.chain.Orphans.AddOrphanBlock(blockchain.BlockToOrphan(po))
+				}
+			}
 			// The block is an orphan block that we already have.
 			// When the existing orphan was processed, it requested
 			// the missing parent blocks.  When this scenario
@@ -1584,7 +1599,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 				// up to the root of the orphan that just came
 				// in.
 				if !sm.chain.TryConnectOrphan(&iv.Hash) {
-					if _,ok := sm.requestedOrphans[iv.Hash]; !ok || sm.requestedOrphans[iv.Hash] > 10 {
+					if _, ok := sm.requestedOrphans[iv.Hash]; !ok || sm.requestedOrphans[iv.Hash] > 10 {
 						log.Tracef("request %s is known orphan", iv.Hash.String())
 						sm.requestedOrphans[iv.Hash] = 1
 						orphanRoot := sm.chain.Orphans.GetOrphanRoot(&iv.Hash)
@@ -1596,7 +1611,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 								"%v", err)
 							continue
 						}
-						sm.AddSyncJob(peer, locator, mlocator, orphanRoot,&zeroHash,
+						sm.AddSyncJob(peer, locator, mlocator, orphanRoot, &zeroHash,
 							[2]int32{b1.Height, b2.Height})
 					} else {
 						sm.requestedOrphans[iv.Hash]++
@@ -1614,19 +1629,19 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// inventory message, so force a request for more.  This
 			// should only happen if we're on a really long side
 			// chain.
-/*
-			if i == lastBlock && len(imsg.inv.InvList) > 1 {
-//				log.Infof("Request blocks after %s from remote peer", iv.Hash.String())
+			/*
+			   			if i == lastBlock && len(imsg.inv.InvList) > 1 {
+			   //				log.Infof("Request blocks after %s from remote peer", iv.Hash.String())
 
-				// Request blocks after this one up to the
-				// final one the remote peer knows about (zero
-				// stop hash).
-				locator := sm.chain.BlockLocatorFromHash(&iv.Hash)
-				mlocator, _ := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
-				log.Infof("handleInvMsg PushGetBlocksMsg because done with the last inv")
-				peer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
-			}
- */
+			   				// Request blocks after this one up to the
+			   				// final one the remote peer knows about (zero
+			   				// stop hash).
+			   				locator := sm.chain.BlockLocatorFromHash(&iv.Hash)
+			   				mlocator, _ := sm.chain.Miners.(*minerchain.MinerChain).LatestBlockLocator()
+			   				log.Infof("handleInvMsg PushGetBlocksMsg because done with the last inv")
+			   				peer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
+			   			}
+			*/
 		} else if iv.Type == common.InvTypeMinerBlock {
 			// The block is an orphan miner block that we already have.
 			// When the existing orphan was processed, it requested
@@ -1639,12 +1654,18 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// to signal there are more missing blocks that need to
 			// be requested.
 			ch := sm.chain.Miners.(*minerchain.MinerChain)
+			if !ch.MainChainHasBlock(&iv.Hash) {
+				po, _ := ch.BlockByHash(&iv.Hash)
+				if po != nil {
+					ch.Orphans.AddOrphanBlock(minerchain.BlockToOrphan(po))
+				}
+			}
 			if ch.Orphans.IsKnownOrphan(&iv.Hash) {
 				// Request blocks starting at the latest known
 				// up to the root of the orphan that just came
 				// in.
 				if !ch.TryConnectOrphan(&iv.Hash) {
-					if _,ok := sm.requestedOrphans[iv.Hash]; !ok || sm.requestedOrphans[iv.Hash] > 10 {
+					if _, ok := sm.requestedOrphans[iv.Hash]; !ok || sm.requestedOrphans[iv.Hash] > 10 {
 						sm.requestedOrphans[iv.Hash] = 1
 						orphanRoot := ch.Orphans.GetOrphanRoot(&iv.Hash)
 						locator, err := ch.LatestBlockLocator()
@@ -1658,7 +1679,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 						tlocator, _ := sm.chain.LatestBlockLocator()
 						sm.AddSyncJob(peer, tlocator, locator, &zeroHash, orphanRoot,
 							[2]int32{b1.Height, b2.Height})
-//						peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, orphanRoot)
+						//						peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, orphanRoot)
 					} else {
 						sm.requestedOrphans[iv.Hash]++
 					}
@@ -1674,20 +1695,20 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// inventory message, so force a request for more.  This
 			// should only happen if we're on a really long side
 			// chain.
-/*
-			if i == lastMinerBlock && len(imsg.inv.InvList) > 1 {
-				// Request blocks after this one up to the
-				// final one the remote peer knows about (zero
-				// stop hash).
-				locator := ch.BlockLocatorFromHash(&iv.Hash)
-				tlocator, _ := sm.chain.LatestBlockLocator()
-				peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, &zeroHash)
-			}
- */
+			/*
+				if i == lastMinerBlock && len(imsg.inv.InvList) > 1 {
+					// Request blocks after this one up to the
+					// final one the remote peer knows about (zero
+					// stop hash).
+					locator := ch.BlockLocatorFromHash(&iv.Hash)
+					tlocator, _ := sm.chain.LatestBlockLocator()
+					peer.PushGetBlocksMsg(tlocator, locator, &zeroHash, &zeroHash)
+				}
+			*/
 		}
 	}
 
-	if ignorerun + ignoreMinerrun == len(invVects) ||
+	if ignorerun+ignoreMinerrun == len(invVects) ||
 		(len(invVects) == 1 && len(sm.syncjobs) == 0 && (!sm.current(0) || !sm.current(1))) {
 		// either we got nothing new. retry a new sync job
 		// or we receive one inv. most likely because of new block, which
@@ -1711,10 +1732,10 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	}
 
 	if lastIgnored != nil && ignorerun > 1 {
-//		log.Infof("send back %s for %d run of ignores inv to %s", lastIgnored.Hash.String(), ignorerun, peer.Addr())
+		//		log.Infof("send back %s for %d run of ignores inv to %s", lastIgnored.Hash.String(), ignorerun, peer.Addr())
 		// send back this one so the peer knows where we are
-		sbmsg := &wire.MsgInv{InvList: []*wire.InvVect{lastIgnored} }
-		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding | wire.FullEncoding)
+		sbmsg := &wire.MsgInv{InvList: []*wire.InvVect{lastIgnored}}
+		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding|wire.FullEncoding)
 
 		// check if it causes a reorg
 		sm.chain.ChainLock.Lock()
@@ -1723,9 +1744,9 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	}
 
 	if lastMinerIgnored != nil && ignoreMinerrun > 1 {
-//		log.Infof("send back %s for %d run of ignores miner inv to %s", lastMinerIgnored.Hash.String(), ignoreMinerrun, peer.Addr())
+		//		log.Infof("send back %s for %d run of ignores miner inv to %s", lastMinerIgnored.Hash.String(), ignoreMinerrun, peer.Addr())
 		// send back this one so the peer knows where we are
-		sbmsg := &wire.MsgInv{InvList: []*wire.InvVect{lastMinerIgnored} }
+		sbmsg := &wire.MsgInv{InvList: []*wire.InvVect{lastMinerIgnored}}
 		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding)
 
 		// check if it causes a reorg
@@ -1740,7 +1761,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	gdmsg := wire.NewMsgGetData()
 
 	resync := false
-	
+
 	tm := int(time.Now().Unix())
 	for len(state.requestQueue) != 0 {
 		iv := state.requestQueue[0]
@@ -1758,18 +1779,18 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 			// request.
 			_, exists := sm.requestedBlocks[iv.Hash]
 			tm0, exists2 := state.requestedBlocks[iv.Hash]
-			if !exists || (exists2 && tm - tm0 > 50) {
+			if !exists || (exists2 && tm-tm0 > 50) {
 				sm.requestedBlocks[iv.Hash] = 1
 				state.requestedBlocks[iv.Hash] = tm
 
-				sm.limitMap(sm.requestedBlocks, 2 * maxRequestedBlocks)
+				sm.limitMap(sm.requestedBlocks, 2*maxRequestedBlocks)
 
-//				log.Infof("tx request %s add to queue list", iv.Hash.String())
+				//				log.Infof("tx request %s add to queue list", iv.Hash.String())
 
 				gdmsg.AddInvVect(iv)
 				numRequested++
 			} else {
-//				log.Infof("tx Repeated %d request for %s", state.requestedBlocks[iv.Hash], iv.Hash.String())
+				//				log.Infof("tx Repeated %d request for %s", state.requestedBlocks[iv.Hash], iv.Hash.String())
 				if sm.requestedBlocks[iv.Hash] >= 10 {
 					delete(sm.requestedBlocks, iv.Hash)
 					delete(state.requestedBlocks, iv.Hash)
@@ -1864,14 +1885,14 @@ func (sm *SyncManager) limitMap(m interface{}, limit int) {
 func (sm *SyncManager) blockHandler() {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
-	
+
 	sm.lastBlockOp = ""
 
 out:
 	for {
-//		if len(sm.msgChan) > 5 {
-//			log.Infof("blockHandler queue pending len = ", len(sm.msgChan))
-//		}
+		//		if len(sm.msgChan) > 5 {
+		//			log.Infof("blockHandler queue pending len = ", len(sm.msgChan))
+		//		}
 
 		select {
 		case <-ticker.C:
@@ -1909,25 +1930,25 @@ out:
 
 			case getSyncPeerMsg:
 				var peerID int32
-				p :=sm.syncPeer
+				p := sm.syncPeer
 				if p != nil {
 					peerID = p.ID()
 				}
 				msg.reply <- peerID
 
 			case processBlockMsg:
-				main, isOrphan, err,_,_ := sm.chain.ProcessBlock(msg.block, msg.flags)
+				main, isOrphan, err, _, _ := sm.chain.ProcessBlock(msg.block, msg.flags)
 				if msg.reply != nil {
 					sm.lastBlockOp += " ... waiting reply from sm.chain.ProcessBlock "
 					if err != nil {
 						msg.reply <- processBlockResponse{
-							isMain: main,
+							isMain:   main,
 							isOrphan: false,
 							err:      err,
 						}
 					} else {
 						msg.reply <- processBlockResponse{
-							isMain: main,
+							isMain:   main,
 							isOrphan: isOrphan,
 							err:      nil,
 						}
@@ -1938,7 +1959,7 @@ out:
 				consensus.ProcessBlock(msg.block, msg.flags)
 
 			case processMinerBlockMsg:
-				if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet|| sm.chainParams.Net == common.RegNet {
+				if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet || sm.chainParams.Net == common.RegNet {
 					msg.flags |= blockchain.BFEasyBlocks
 				}
 				main, isOrphan, err, _ := sm.chain.Miners.ProcessBlock(
@@ -1947,13 +1968,13 @@ out:
 					sm.lastBlockOp += " ... waiting reply from sm.chain.Miners.ProcessBlock "
 					if err != nil {
 						msg.reply <- processBlockResponse{
-							isMain: main,
+							isMain:   main,
 							isOrphan: false,
 							err:      err,
 						}
 					} else {
 						msg.reply <- processBlockResponse{
-							isMain: main,
+							isMain:   main,
 							isOrphan: isOrphan,
 							err:      nil,
 						}
@@ -2034,9 +2055,9 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 				return
 			}
 			for peer, _ := range sm.peerStates {
-				if peer.LastMinerBlock() < block.Height() && block.Height() < peer.LastMinerBlock() + 50 {
+				if peer.LastMinerBlock() < block.Height() && block.Height() < peer.LastMinerBlock()+50 {
 					// should send an inv msg
-					invVect := &wire.InvVect {
+					invVect := &wire.InvVect{
 						Type: common.InvTypeMinerBlock,
 						Hash: *block.Hash(),
 					}
@@ -2055,7 +2076,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 		if ok {
 			// notify peers of new height if our height is greater than we know the peer has
 			for peer, _ := range sm.peerStates {
-				if peer.LastBlock() < block.Height() && block.Height() <  peer.LastBlock() + 500 {
+				if peer.LastBlock() < block.Height() && block.Height() < peer.LastBlock()+500 {
 					invVect := &wire.InvVect{
 						Type: common.InvTypeWitnessBlock,
 						Hash: *block.Hash(),
@@ -2099,7 +2120,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 	case blockchain.NTBlockDisconnected:
 		block, ok := notification.Data.(*btcutil.Block)
 		if !ok {
-//			log.Warnf("Chain NTBlockDisconnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
+			//			log.Warnf("Chain NTBlockDisconnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
 			break
 		}
 
@@ -2179,7 +2200,7 @@ func (sm *SyncManager) QueueInv(inv *wire.MsgInv, peer *peerpkg.Peer) {
 		return
 	}
 
-//	log.Infof("OnInv add to sm.msgChan, len = %d", len(sm.msgChan))
+	//	log.Infof("OnInv add to sm.msgChan, len = %d", len(sm.msgChan))
 
 	sm.msgChan <- &invMsg{inv: inv, peer: peer}
 }
@@ -2230,7 +2251,7 @@ func (sm *SyncManager) Stop() error {
 
 	sm.bshutdown = true
 
-//	log.Tracef("Sync manager shutting down. Last message was:\n%s", sm.lastBlockOp)
+	//	log.Tracef("Sync manager shutting down. Last message was:\n%s", sm.lastBlockOp)
 
 	close(sm.quit)
 	sm.wg.Wait()
@@ -2262,9 +2283,9 @@ func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.Behav
 		}
 
 		// for local consensus generation
-//		log.Infof("send for consensus generation at %d", block.Height())
+		//		log.Infof("send for consensus generation at %d", block.Height())
 		fmt.Printf("send for consensus generation at %d", block.Height())
-		sm.msgChan <- processConsusMsg{block: block, flags: flags }
+		sm.msgChan <- processConsusMsg{block: block, flags: flags}
 		// treating these blocks as orphans because we may need to pull them upon request
 		return false, nil
 	} else {
@@ -2305,23 +2326,23 @@ func (sm *SyncManager) Pause() chan<- struct{} {
 // block, tx, and inv updates.
 func New(config *Config) (*SyncManager, error) {
 	sm := SyncManager{
-		peerNotifier:    config.PeerNotifier,
-		chain:           config.Chain,
-		txMemPool:       config.TxMemPool,
-		chainParams:     config.ChainParams,
-		rejectedTxns:    make(map[chainhash.Hash]struct{}),
-		requestedTxns:   make(map[chainhash.Hash]struct{}),
-		requestedBlocks: make(map[chainhash.Hash]int),
+		peerNotifier:     config.PeerNotifier,
+		chain:            config.Chain,
+		txMemPool:        config.TxMemPool,
+		chainParams:      config.ChainParams,
+		rejectedTxns:     make(map[chainhash.Hash]struct{}),
+		requestedTxns:    make(map[chainhash.Hash]struct{}),
+		requestedBlocks:  make(map[chainhash.Hash]int),
 		requestedOrphans: make(map[chainhash.Hash]int),
-		peerStates:      make(map[*peerpkg.Peer]*peerSyncState),
-		progressLogger:  newBlockProgressLogger("Processed", log),
-		msgChan:         make(chan interface{}, config.MaxPeers*3),
-		headerList:      list.New(),
-		quit:            make(chan struct{}),
-		feeEstimator:    config.FeeEstimator,
-		cachedBlocks:	 make(map[chainhash.Hash]uint32),
-		syncjobs:		 make([]*pendginGetBlocks, 0),
-		syncPeer: nil,
+		peerStates:       make(map[*peerpkg.Peer]*peerSyncState),
+		progressLogger:   newBlockProgressLogger("Processed", log),
+		msgChan:          make(chan interface{}, config.MaxPeers*3),
+		headerList:       list.New(),
+		quit:             make(chan struct{}),
+		feeEstimator:     config.FeeEstimator,
+		cachedBlocks:     make(map[chainhash.Hash]uint32),
+		syncjobs:         make([]*pendginGetBlocks, 0),
+		syncPeer:         nil,
 	}
 
 	best := sm.chain.BestSnapshot()

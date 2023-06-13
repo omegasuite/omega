@@ -10,11 +10,11 @@ import (
 	"container/heap"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
-//	"github.com/omegasuite/omega"
+	//	"github.com/omegasuite/omega"
 	"github.com/omegasuite/omega/ovm"
 	"math/rand"
 	"time"
-//	"encoding/hex"
+	//	"encoding/hex"
 
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
@@ -109,6 +109,7 @@ type txPriorityQueue struct {
 }
 
 var zerohash chainhash.Hash
+
 // Len returns the number of items in the priority queue.  It is part of the
 // heap.Interface implementation.
 func (pq *txPriorityQueue) Len() int {
@@ -200,7 +201,7 @@ type BlockTemplate struct {
 	// Block is a block that is ready to be solved by miners.  Thus, it is
 	// completely valid with the exception of satisfying the proof-of-work
 	// requirement.
-	Block interface{}		// wire.MsgBlock
+	Block interface{} // wire.MsgBlock
 
 	// Fees contains the amount of fees each transaction in the generated
 	// template pays in base units.  Since the first transaction is the
@@ -217,7 +218,7 @@ type BlockTemplate struct {
 	Height int32
 
 	// Bits is difficulty
-	Bits   uint32
+	Bits uint32
 
 	// ValidPayAddress indicates whether or not the template coinbase pays
 	// to an address or is redeemable by anyone.  See the documentation on
@@ -260,23 +261,23 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 		// zero hash and we use index portion to store nextBlockHeight so Coinbase transactions
 		// for different blocks will have different hash even when they have same outputs.
 		PreviousOutPoint: *wire.NewOutPoint(&chainhash.Hash{}, uint32(nextBlockHeight)),
-		SignatureIndex: 0xFFFFFFFF,
-		Sequence:        wire.MaxTxInSequenceNum,
+		SignatureIndex:   0xFFFFFFFF,
+		Sequence:         wire.MaxTxInSequenceNum,
 	})
 
 	prevPows := uint(0)
 	adj := int64(0)
-/*
-	best := chain.BestSnapshot()
+	/*
+		best := chain.BestSnapshot()
 
-	for pw := chain.BestChain.Tip(); pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
-		prevPows++
-	}
-	if prevPows != 0 {
-		adj = blockchain.CalcBlockSubsidy(best.Height, params, 0) -
-			blockchain.CalcBlockSubsidy(best.Height, params, prevPows)
-	}
-*/
+		for pw := chain.BestChain.Tip(); pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
+			prevPows++
+		}
+		if prevPows != 0 {
+			adj = blockchain.CalcBlockSubsidy(best.Height, params, 0) -
+				blockchain.CalcBlockSubsidy(best.Height, params, prevPows)
+		}
+	*/
 	award := blockchain.CalcBlockSubsidy(nextBlockHeight, params, prevPows)
 	if award < params.MinimalAward {
 		award = params.MinimalAward
@@ -285,10 +286,10 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 	val := award + adj
 	val /= int64(len(addrs))
 
-	for _,addr := range addrs {
+	for _, addr := range addrs {
 		t := token.Token{
 			TokenType: 0,
-			Value:    &token.NumToken{
+			Value: &token.NumToken{
 				Val: val,
 			},
 		}
@@ -303,7 +304,7 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 			pkScript[21] = ovm.OP_PAY2PKH
 		} else {
 			pkScript[0] = params.PubKeyHashAddrID
-			pkScript[1] = 1			// anything but 0
+			pkScript[1] = 1 // anything but 0
 			pkScript[21] = ovm.OP_PAY2NONE
 		}
 
@@ -386,8 +387,8 @@ type BlkTmplGenerator struct {
 
 	// only used by minerchain
 	Collateral []*wire.OutPoint
-//	sigCache    *txscript.SigCache
-//	hashCache   *txscript.HashCache
+	//	sigCache    *txscript.SigCache
+	//	hashCache   *txscript.HashCache
 }
 
 // NewBlkTmplGenerator returns a new block template generator for the given
@@ -399,8 +400,8 @@ type BlkTmplGenerator struct {
 func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 	txSource TxSource, chain *blockchain.BlockChain,
 	timeSource chainutil.MedianTimeSource) *BlkTmplGenerator {
-//	sigCache *txscript.SigCache,
-//	hashCache *txscript.HashCache) *BlkTmplGenerator {
+	//	sigCache *txscript.SigCache,
+	//	hashCache *txscript.HashCache) *BlkTmplGenerator {
 
 	return &BlkTmplGenerator{
 		Policy:      policy,
@@ -409,8 +410,8 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 		Chain:       chain,
 		timeSource:  timeSource,
 		Collateral:  nil,
-//		sigCache:    sigCache,
-//		hashCache:   hashCache,
+		//		sigCache:    sigCache,
+		//		hashCache:   hashCache,
 	}
 }
 
@@ -503,7 +504,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	if err != nil {
 		return nil, err
 	}
-	coinbaseSigOpCost := int64(blockchain.CountSigOps(coinbaseTx))	// * chaincfg.WitnessScaleFactor
+	coinbaseSigOpCost := int64(blockchain.CountSigOps(coinbaseTx)) // * chaincfg.WitnessScaleFactor
 
 	// Get the current source transactions and create a priority queue to
 	// hold the transactions which are ready for inclusion into a block
@@ -534,15 +535,15 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	// generated block with reserved space.  Also create a utxo view to
 	// house all of the input transactions so multiple lookups can be
 	// avoided.
-	blockTxns := make([]*btcutil.Tx, 0, len(sourceTxns) + len(comptx) + 1)
+	blockTxns := make([]*btcutil.Tx, 0, len(sourceTxns)+len(comptx)+1)
 	blockTxns = append(blockTxns, coinbaseTx)
-	for _,tx := range comptx {
+	for _, tx := range comptx {
 		btx := btcutil.NewTx(tx)
 		blockTxns = append(blockTxns, btx)
 		spendTransaction(views, btx, nextBlockHeight)
 	}
 
-	blockUtxos := views.Utxo	// blockchain.NewUtxoViewpoint()
+	blockUtxos := views.Utxo // blockchain.NewUtxoViewpoint()
 
 	// dependers is used to track transactions which depend on another
 	// transaction in the source pool.  This, in conjunction with the
@@ -578,8 +579,16 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		ts = time.Unix(prev.Data.TimeStamp(), 0)
 	}
 
+	startTime := time.Now().UnixNano()
+
 mempoolLoop:
 	for _, txDesc := range sourceTxns {
+		// max time allowed
+		nt := time.Now()
+		if priorityQueue.Len() > 0 && nt.UnixNano()-startTime > 2500*1e6 {
+			// allow 2.5 seconds
+			break
+		}
 		// A block can't have more than one coinbase or contain
 		// non-finalized transactions.
 		tx := txDesc.Tx
@@ -599,15 +608,15 @@ mempoolLoop:
 		}
 		log.Infof("mempoolLoop processing tx %s", tx.Hash())
 
-		if (tx.MsgTx().Version & wire.TxExpire) != 0 && tx.MsgTx().LockTime < uint32(nextBlockHeight) {
+		if (tx.MsgTx().Version&wire.TxExpire) != 0 && tx.MsgTx().LockTime < uint32(nextBlockHeight) {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 			log.Infof("Reject expired tx %s", tx.Hash())
 			continue
 		}
 
-		if g.chainParams.ContractReqExp && (tx.MsgTx().Version & wire.TxExpire) == 0 {
-			 // we reject txs that has no expiration and has contract exec
+		if g.chainParams.ContractReqExp && (tx.MsgTx().Version&wire.TxExpire) == 0 {
+			// we reject txs that has no expiration and has contract exec
 			rjct := false
 			for _, txout := range tx.MsgTx().TxOut {
 				if txout.IsSeparator() || txout.PkScript[0] != 0x88 {
@@ -632,7 +641,7 @@ mempoolLoop:
 			continue
 		}
 
-		if s.MsgBlock().Version &^ 0xFFFF >= chaincfg.Version2 {
+		if s.MsgBlock().Version&^0xFFFF >= chaincfg.Version2 {
 			var locked = false
 			locks := ""
 			for _, txin := range tx.MsgTx().TxIn {
@@ -667,12 +676,12 @@ mempoolLoop:
 		// mempool since a transaction which depends on other
 		// transactions in the mempool must come after those
 		// dependencies in the final generated block.
-//		view, err := g.Chain.FetchUtxoView(tx)
-//		if err != nil {
-//			log.Warnf("Unable to fetch utxo view for tx %s: %v",
-//				tx.Hash(), err)
-//			continue
-//		}
+		//		view, err := g.Chain.FetchUtxoView(tx)
+		//		if err != nil {
+		//			log.Warnf("Unable to fetch utxo view for tx %s: %v",
+		//				tx.Hash(), err)
+		//			continue
+		//		}
 
 		// Setup dependencies for any transactions which reference
 		// other transactions in the mempool so they can be properly
@@ -689,7 +698,7 @@ mempoolLoop:
 				if !g.txSource.HaveTransaction(originHash) {
 					g.txSource.RemoveTransaction(tx, true)
 					g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
-					
+
 					log.Tracef("Remove tx %s because it "+
 						"references unspent output %s "+
 						"which is not available",
@@ -736,7 +745,7 @@ mempoolLoop:
 		// Merge the referenced outputs from the input transactions to
 		// this transaction into the block utxo view.  This allows the
 		// code below to avoid a second lookup.
-//		mergeUtxoView(blockUtxos, utxos)
+		//		mergeUtxoView(blockUtxos, utxos)
 	}
 
 	log.Tracef("Priority queue len %d, dependers len %d", priorityQueue.Len(), len(dependers))
@@ -744,16 +753,16 @@ mempoolLoop:
 	// The starting block size is the size of the block header plus the max
 	// possible transaction count size, plus the size of the coinbase
 	// transaction.
-//	blockWeight := uint32((blockHeaderOverhead * chaincfg.WitnessScaleFactor) +
-//		blockchain.GetTransactionWeight(coinbaseTx))
-	blockWeight := uint32(1)	// blockchain.GetTransactionWeight(coinbaseTx))
+	//	blockWeight := uint32((blockHeaderOverhead * chaincfg.WitnessScaleFactor) +
+	//		blockchain.GetTransactionWeight(coinbaseTx))
+	blockWeight := uint32(1) // blockchain.GetTransactionWeight(coinbaseTx))
 	blockSigOpCost := coinbaseSigOpCost
 	totalFees := int64(0)
 
 	coinBaseHash := chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, }
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 	// we don't know coin Base Hash until we know all tx fees in the block.
 	// we don't know all tx fees until all contracts are executed.
 	// contract adds output to coinbase when mint, since we don't know coin Base Hash,
@@ -765,12 +774,12 @@ mempoolLoop:
 			if !coinbaseTx.HasOuts {
 				// this servers as a separater. only TokenType is serialized
 				to := wire.TxOut{}
-				to.Token = token.Token{TokenType:token.DefTypeSeparator}
+				to.Token = token.Token{TokenType: token.DefTypeSeparator}
 				msg.AddTxOut(&to)
 				coinbaseTx.HasOuts = true
 			}
 			msg.AddTxOut(&txo)
-			op := wire.OutPoint { coinBaseHash, uint32(len(msg.TxOut) - 1)}
+			op := wire.OutPoint{coinBaseHash, uint32(len(msg.TxOut) - 1)}
 			views.Utxo.AddRawTxOut(op, &txo, false, nextBlockHeight)
 			return op
 		})
@@ -781,9 +790,9 @@ mempoolLoop:
 		return uint32(ts.Unix())
 	}
 	Vm.BlockVersion = func() uint32 { return s.MsgBlock().Version &^ 0xFFFF }
-//	Vm.Block = func() *btcutil.Block { return nil }
+	//	Vm.Block = func() *btcutil.Block { return nil }
 	Vm.GetCoinBase = func() *btcutil.Tx { return coinbaseTx }
-//	Vm.CheckExecCost = true
+	//	Vm.CheckExecCost = true
 
 	paidstoragefees := make(map[[20]byte]int64)
 	blksz := wire.MaxBlockHeaderPayload
@@ -791,6 +800,12 @@ mempoolLoop:
 	// Choose which transactions make it into the block.
 skiprest:
 	for priorityQueue.Len() > 0 {
+		nt := time.Now()
+		if nt.UnixNano()-startTime > 40000*1e6 {
+			// allow 4 seconds
+			break
+		}
+
 		// Grab the highest priority (or highest fee per kilobyte
 		// depending on the sort order) transaction.
 		prioItem := heap.Pop(priorityQueue).(*txPrioItem)
@@ -800,7 +815,7 @@ skiprest:
 		deps := dependers[*tx.Hash()]
 
 		// Enforce maximum block size.  Also check for overflow.
-//		txWeight := uint32(blockchain.GetTransactionWeight(tx))
+		//		txWeight := uint32(blockchain.GetTransactionWeight(tx))
 		blockPlusTxWeight := blockWeight + 1
 		if blockPlusTxWeight >= wire.MaxTxPerBlock {
 			log.Infof("Skipping tx %s because it would exceed "+
@@ -841,7 +856,7 @@ skiprest:
 					qualified = true
 				}
 			}
-			if !qualified && sum < 200 * int64(g.Policy.TxMinFreeFee) {
+			if !qualified && sum < 200*int64(g.Policy.TxMinFreeFee) {
 				qualified = len(tx.MsgTx().TxDef) == 0
 			}
 
@@ -908,30 +923,30 @@ skiprest:
 		// in transaction, a new copy of tx will be returned.
 		savedCoinBase := *coinbaseTx.MsgTx().Copy()
 		newcoins := coinbaseTx.HasOuts
-//		Vm.Paidfees = prioItem.fee + 10
+		//		Vm.Paidfees = prioItem.fee + 10
 		executed, vmerr := Vm.ExecContract(tx, nextBlockHeight)
 		if vmerr != nil {
 			coinbaseTx.HasOuts = newcoins
 			*coinbaseTx.MsgTx() = savedCoinBase
 
-//			if vmerr.Level() == omega.FatalLevel {
-				g.txSource.RemoveTransaction(tx, true)
-				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			//			if vmerr.Level() == omega.FatalLevel {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-				log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
-				logSkippedDeps(tx, deps)
-				continue
-/*
-			} else {
-				log.Infof("Skip tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
-				logSkippedDeps(tx, deps)
-				break skiprest	// skip rest so we don't waste time on on more contracts because this error
-						// could be caused by exec limit
-			}
- */
-//			continue
+			log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
+			logSkippedDeps(tx, deps)
+			continue
+			/*
+				} else {
+					log.Infof("Skip tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
+					logSkippedDeps(tx, deps)
+					break skiprest	// skip rest so we don't waste time on on more contracts because this error
+							// could be caused by exec limit
+				}
+			*/
+			//			continue
 		}
-		for ip:=0; ip < len(tx.MsgTx().TxOut); ip++ {
+		for ip := 0; ip < len(tx.MsgTx().TxOut); ip++ {
 			if tx.MsgTx().TxOut[ip].IsSeparator() {
 				continue
 			}
@@ -960,7 +975,7 @@ skiprest:
 			continue
 		}
 
-		err = blockchain.CheckTransactionIntegrity(tx, views, s.MsgBlock().Version &^ 0xFFFF)
+		err = blockchain.CheckTransactionIntegrity(tx, views, s.MsgBlock().Version&^0xFFFF)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
@@ -993,7 +1008,7 @@ skiprest:
 		}
 
 		// check block size
-		if blksz + coinbaseTx.MsgTx().SerializeSize() + tx.MsgTx().SerializeSize() > wire.MaxBlockPayload {
+		if blksz+coinbaseTx.MsgTx().SerializeSize()+tx.MsgTx().SerializeSize() > wire.MaxBlockPayload {
 			log.Infof("Skipping tx %s because it would make block size exceeding the max", tx.Hash())
 
 			logSkippedDeps(tx, deps)
@@ -1020,7 +1035,7 @@ skiprest:
 		// save the fees and signature operation counts to the block
 		// template.
 		blockTxns = append(blockTxns, tx)
-		blockWeight++ 	// += txWeight
+		blockWeight++ // += txWeight
 		blockSigOpCost += int64(sigOpCost)
 		totalFees += prioItem.fee
 		txFees = append(txFees, prioItem.fee)
@@ -1065,8 +1080,8 @@ skiprest:
 
 	// now the hash is fixed, back fill hashes in tx
 	hash := coinbaseTx.Hash()
-	for _,tx := range blockTxns {
-		for _,txin := range tx.MsgTx().TxIn {
+	for _, tx := range blockTxns {
+		for _, txin := range tx.MsgTx().TxIn {
 			if txin.PreviousOutPoint.Hash.IsEqual(&coinBaseHash) {
 				txin.PreviousOutPoint.Hash = *hash
 			}
@@ -1076,7 +1091,7 @@ skiprest:
 	// Next, obtain the merkle root of a tree which consists of the
 	// wtxid of all transactions in the block. The coinbase
 	// transaction will have a special wtxid of all zeroes.
-	witnessMerkleTree := blockchain.BuildMerkleTreeStore(blockTxns,true, s.MsgBlock().Version &^ 0xFFFF)
+	witnessMerkleTree := blockchain.BuildMerkleTreeStore(blockTxns, true, s.MsgBlock().Version&^0xFFFF)
 	witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
 
 	msg := coinbaseTx.MsgTx()
@@ -1088,18 +1103,18 @@ skiprest:
 
 	reqDifficulty := s.MsgBlock().Bits
 
-//	reqDifficulty := g.Chain.BestSnapshot().Bits
+	//	reqDifficulty := g.Chain.BestSnapshot().Bits
 
 	// Create a new block ready to be solved.
-	merkles := blockchain.BuildMerkleTreeStore(blockTxns, false, s.MsgBlock().Version &^ 0xFFFF)
+	merkles := blockchain.BuildMerkleTreeStore(blockTxns, false, s.MsgBlock().Version&^0xFFFF)
 	var msgBlock wire.MsgBlock
 	msgBlock.Header = wire.BlockHeader{
-		Version:    s.MsgBlock().Version &^ 0xFFFF,
-		PrevBlock:  best.Hash,
-		MerkleRoot: *merkles[len(merkles)-1],
-		Timestamp:  ts,
+		Version:      s.MsgBlock().Version &^ 0xFFFF,
+		PrevBlock:    best.Hash,
+		MerkleRoot:   *merkles[len(merkles)-1],
+		Timestamp:    ts,
 		ContractExec: contractExec,
-		Nonce: nonce,
+		Nonce:        nonce,
 	}
 
 	for _, tx := range blockTxns {
@@ -1129,7 +1144,7 @@ skiprest:
 		Height:            nextBlockHeight,
 		ValidPayAddress:   payToAddress != nil,
 		WitnessCommitment: (*witnessMerkleRoot)[:],
-		Bits:       reqDifficulty,
+		Bits:              reqDifficulty,
 	}, nil
 }
 
@@ -1170,23 +1185,23 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 
 	bestblk := g.Chain.BestChain.Tip()
 
-//	cbest := g.Chain.BestSnapshot()
-//	bh := cbest.Height
+	//	cbest := g.Chain.BestSnapshot()
+	//	bh := cbest.Height
 
-	h0,_ := g.Chain.BlockHeightByHash(&lastBlk.BestBlock)
-	if bestblk.Height < h0  {
+	h0, _ := g.Chain.BlockHeightByHash(&lastBlk.BestBlock)
+	if bestblk.Height < h0 {
 		return nil, nil
 	}
 
 	var ch = bestblk.Hash
 
 	// new rule: a miner block must not refer POW block to prevent cut line by POW blocks
-	for ; bestblk != nil && bestblk.Data.GetNonce() > 0 && bestblk.Height > 0; {
+	for bestblk != nil && bestblk.Data.GetNonce() > 0 && bestblk.Height > 0 {
 		bestblk = g.Chain.ParentNode(bestblk)
 		ch = bestblk.Hash
 	}
 
-	var uc * wire.OutPoint
+	var uc *wire.OutPoint
 
 	uc = nil
 	if nextBlockVersion >= chaincfg.Version2 {
@@ -1204,7 +1219,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		if len(usable) == 0 {
 			return nil, fmt.Errorf("No qualified collateral available out of %d collaterals.", len(g.Collateral))
 		}
-		for c,_ := range usable {
+		for c, _ := range usable {
 			uc = &c
 			break
 		}
@@ -1215,7 +1230,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	// it that is less than chain param, it could be 0 implying the chain
 	// defauly limit
 	contractlim := 2 * g.Chain.MaxContractExec(lastBlk.BestBlock, ch)
-	if contractlim < lastBlk.ContractLimit * 95 / 100 && contractlim > 10000000 {
+	if contractlim < lastBlk.ContractLimit*95/100 && contractlim > 10000000 {
 		contractlim = lastBlk.ContractLimit * 95 / 100
 	} else if contractlim < lastBlk.ContractLimit {
 		contractlim = lastBlk.ContractLimit
@@ -1234,7 +1249,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		BestBlock:       ch,
 		Utxos:           uc,
 		ViolationReport: make([]*wire.Violations, 0),
-		ContractLimit: contractlim,
+		ContractLimit:   contractlim,
 	}
 
 	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())
@@ -1244,13 +1259,13 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		prev := g.Chain.Miners.NodetoHeader(last)
 		p2 := prev.Version >= chaincfg.Version2
 		v2 := prev.MeanTPH
-		for j,v := range msgBlock.TphReports {
+		for j, v := range msgBlock.TphReports {
 			if p2 {
-				if v > v2 * 8 {
-					v =	v2 * 8
+				if v > v2*8 {
+					v = v2 * 8
 					msgBlock.TphReports[j] = v
-				} else if 8 * v < v2 {
-					v =	(v2 + 7) >> 3
+				} else if 8*v < v2 {
+					v = (v2 + 7) >> 3
 					if v == 0 {
 						v = 1
 					}
@@ -1266,7 +1281,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		}
 
 		if p2 {
-			msgBlock.MeanTPH = (v2 * 63 + sum) >> 6
+			msgBlock.MeanTPH = (v2*63 + sum) >> 6
 		} else {
 			msgBlock.MeanTPH = sum
 		}
@@ -1283,7 +1298,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 
 	return &BlockTemplate{
 		Block:             &msgBlock,
-		Bits:			   reqDifficulty,
+		Bits:              reqDifficulty,
 		Fees:              nil,
 		SigOpCosts:        nil,
 		Height:            nextBlockHeight,
@@ -1310,7 +1325,7 @@ func (g *BlkTmplGenerator) UpdateBlockTime(msgBlock *wire.MsgBlock) error {
 
 	return nil
 }
- */
+*/
 
 func (g *BlkTmplGenerator) UpdateMinerBlockTime(msgBlock *wire.MingingRightBlock) error {
 	// The new timestamp is potentially adjusted to ensure it comes after
@@ -1344,11 +1359,11 @@ func (g *BlkTmplGenerator) TxSource() TxSource {
 }
 
 func (g *BlkTmplGenerator) ActiveMiner(address btcutil.Address) bool {
-	h := g.BestSnapshot().LastRotation		// .Chain.LastRotation(g.BestSnapshot().Hash)
+	h := g.BestSnapshot().LastRotation // .Chain.LastRotation(g.BestSnapshot().Hash)
 	n := h - wire.CommitteeSize
 	for n < h {
 		n++
-		m,_ := g.Chain.Miners.BlockByHeight(int32(n))
+		m, _ := g.Chain.Miners.BlockByHeight(int32(n))
 		if bytes.Compare(address.ScriptAddress(), m.MsgBlock().Miner[:]) == 0 {
 			// if it is in committee, not allowed to do POW mining
 			return true
@@ -1359,14 +1374,14 @@ func (g *BlkTmplGenerator) ActiveMiner(address btcutil.Address) bool {
 }
 
 func (g *BlkTmplGenerator) Committee() (map[[20]byte]struct{}, bool) {
-	h := g.BestSnapshot().LastRotation		// .Chain.LastRotation(g.BestSnapshot().Hash)
+	h := g.BestSnapshot().LastRotation // .Chain.LastRotation(g.BestSnapshot().Hash)
 
 	log.Infof("Get committee at last rotation = %d", h)
 
 	adrs, in := make(map[[20]byte]struct{}), false
 
 	for n := h - wire.CommitteeSize + 1; n <= h; n++ {
-		if m,_ := g.Chain.Miners.BlockByHeight(int32(n)); m != nil {
+		if m, _ := g.Chain.Miners.BlockByHeight(int32(n)); m != nil {
 			adrs[m.MsgBlock().Miner] = struct{}{}
 			for _, ip := range g.chainParams.ExternalIPs {
 				if ip == string(m.MsgBlock().Connection) {
@@ -1383,11 +1398,11 @@ func (g *BlkTmplGenerator) Committee() (map[[20]byte]struct{}, bool) {
 	return adrs, in
 }
 
-func AddSignature(block * btcutil.Block, privkey *btcec.PrivateKey) {
+func AddSignature(block *btcutil.Block, privkey *btcec.PrivateKey) {
 	hash := blockchain.MakeMinerSigHash(block.Height(), *block.Hash())
 
-	sig,_ := privkey.Sign(hash)
-	pubk := privkey.PubKey().SerializeCompressed()	// 33 bytes always
+	sig, _ := privkey.Sign(hash)
+	pubk := privkey.PubKey().SerializeCompressed() // 33 bytes always
 	st := sig.Serialize()
 	if block.MsgBlock().Transactions[0].SignatureScripts == nil || len(block.MsgBlock().Transactions[0].SignatureScripts) == 0 {
 		// signature 0 of coinbase is for signature merkle root

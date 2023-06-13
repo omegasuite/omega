@@ -11,6 +11,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	flags "github.com/jessevdk/go-flags"
 	"github.com/omegasuite/btcd/btcec"
 	"io"
 	"net"
@@ -32,7 +33,6 @@ import (
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/go-socks/socks"
-	flags "github.com/jessevdk/go-flags"
 )
 
 const (
@@ -104,75 +104,77 @@ type config struct {
 	RPCQuirks            bool          `long:"rpcquirks" description:"Mirror some JSON-RPC quirks of Omega Core -- NOTE: Discouraged unless interoperability issues need to be worked around"`
 	DisableRPC           bool          `long:"norpc" description:"Disable built-in RPC server -- NOTE: The RPC server is disabled by default if no rpcuser/rpcpass or rpclimituser/rpclimitpass is specified"`
 	DisableTLS           bool          `long:"notls" description:"Disable TLS for the RPC server -- NOTE: This is only allowed if the RPC server is bound to localhost"`
-	DisableDNSSeed     bool     `long:"nodnsseed" description:"Disable DNS seeding for peers"`
-	ExternalIPs        []string `long:"externalip" description:"Add an ip to the list of local addresses we claim to listen on to peers"`
-	Proxy              string   `long:"proxy" description:"Connect via SOCKS5 proxy (eg. 127.0.0.1:9050)"`
-	ProxyUser          string   `long:"proxyuser" description:"Username for proxy server"`
-	ProxyPass          string   `long:"proxypass" default-mask:"-" description:"Password for proxy server"`
-	OnionProxy         string   `long:"onion" description:"Connect to tor hidden services via SOCKS5 proxy (eg. 127.0.0.1:9050)"`
-	OnionProxyUser     string   `long:"onionuser" description:"Username for onion proxy server"`
-	OnionProxyPass     string   `long:"onionpass" default-mask:"-" description:"Password for onion proxy server"`
-	NoOnion            bool     `long:"noonion" description:"Disable connecting to tor hidden services"`
-	TorIsolation       bool     `long:"torisolation" description:"Enable Tor stream isolation by randomizing user credentials for each connection."`
-	TestNet            bool     `long:"testnet" description:"Use the test network"`
-	RegressionTest     bool     `long:"regtest" description:"Use the regression test network"`
-	SimNet             bool     `long:"simnet" description:"Use the simulation test network"`
-	AddCheckpoints     []string `long:"addcheckpoint" description:"Add a custom checkpoint.  Format: '<height>:<hash>'"`
-	DisableCheckpoints bool     `long:"nocheckpoints" description:"Disable built-in checkpoints.  Don't do this unless you know what you're doing."`
-	DbType             string   `long:"dbtype" description:"Database backend to use for the Block Chain"`
-	Profile            string   `long:"profile" description:"Enable HTTP profiling on given port -- NOTE port must be between 1024 and 65536"`
-	CPUProfile         string   `long:"cpuprofile" description:"Write CPU profile to the specified file"`
-	DebugLevel         string        `short:"d" long:"debuglevel" description:"Logging level for all subsystems {trace, debug, info, warn, error, critical} -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems -- Use show to list available subsystems"`
-	Upnp               bool          `long:"upnp" description:"Use UPnP to map our listening port outside of NAT"`
-	MinRelayTxFee      float64       `long:"minrelaytxfee" description:"The minimum transaction fee in OMC/kB to be considered a non-zero fee."`
-	MinBorderFee       float64       `long:"minborderfee" description:"The minimum polygon storage fee in OMC/kB to be considered a non-zero fee."`
-	FreeTxRelayLimit   float64       `long:"limitfreerelay" description:"Limit relay of transactions with no transaction fee to the given amount in thousands of bytes per minute"`
-	NoRelayPriority    bool          `long:"norelaypriority" description:"Do not require free or low-fee transactions to have high priority for relaying"`
-	TrickleInterval    time.Duration `long:"trickleinterval" description:"Minimum time between attempts to send new inventory to a connected peer"`
-	MaxOrphanTxs       int           `long:"maxorphantx" description:"Max number of orphan transactions to keep in memory"`
-	Generate           bool          `long:"generate" description:"Generate (mine) bitcoins using the CPU"`
-	GenerateMiner      bool          `long:"generateminer" description:"Generate (mine) miner blocks using the CPU"`
-	DisablePOWMining   bool          `long:"disablepowmining" description:"Disable generation of POW blocks"`
+	DisableDNSSeed       bool          `long:"nodnsseed" description:"Disable DNS seeding for peers"`
+	ExternalIPs          []string      `long:"externalip" description:"Add an ip to the list of local addresses we claim to listen on to peers"`
+	Proxy                string        `long:"proxy" description:"Connect via SOCKS5 proxy (eg. 127.0.0.1:9050)"`
+	ProxyUser            string        `long:"proxyuser" description:"Username for proxy server"`
+	ProxyPass            string        `long:"proxypass" default-mask:"-" description:"Password for proxy server"`
+	OnionProxy           string        `long:"onion" description:"Connect to tor hidden services via SOCKS5 proxy (eg. 127.0.0.1:9050)"`
+	OnionProxyUser       string        `long:"onionuser" description:"Username for onion proxy server"`
+	OnionProxyPass       string        `long:"onionpass" default-mask:"-" description:"Password for onion proxy server"`
+	NoOnion              bool          `long:"noonion" description:"Disable connecting to tor hidden services"`
+	TorIsolation         bool          `long:"torisolation" description:"Enable Tor stream isolation by randomizing user credentials for each connection."`
+	TestNet              bool          `long:"testnet" description:"Use the test network"`
+	RegressionTest       bool          `long:"regtest" description:"Use the regression test network"`
+	SimNet               bool          `long:"simnet" description:"Use the simulation test network"`
+	AddCheckpoints       []string      `long:"addcheckpoint" description:"Add a custom checkpoint.  Format: '<height>:<hash>'"`
+	DisableCheckpoints   bool          `long:"nocheckpoints" description:"Disable built-in checkpoints.  Don't do this unless you know what you're doing."`
+	DbType               string        `long:"dbtype" description:"Database backend to use for the Block Chain"`
+	Profile              string        `long:"profile" description:"Enable HTTP profiling on given port -- NOTE port must be between 1024 and 65536"`
+	CPUProfile           string        `long:"cpuprofile" description:"Write CPU profile to the specified file"`
+	DebugLevel           string        `short:"d" long:"debuglevel" description:"Logging level for all subsystems {trace, debug, info, warn, error, critical} -- You may also specify <subsystem>=<level>,<subsystem2>=<level>,... to set the log level for individual subsystems -- Use show to list available subsystems"`
+	Upnp                 bool          `long:"upnp" description:"Use UPnP to map our listening port outside of NAT"`
+	MinRelayTxFee        float64       `long:"minrelaytxfee" description:"The minimum transaction fee in OMC/kB to be considered a non-zero fee."`
+	MinBorderFee         float64       `long:"minborderfee" description:"The minimum polygon storage fee in OMC/kB to be considered a non-zero fee."`
+	FreeTxRelayLimit     float64       `long:"limitfreerelay" description:"Limit relay of transactions with no transaction fee to the given amount in thousands of bytes per minute"`
+	NoRelayPriority      bool          `long:"norelaypriority" description:"Do not require free or low-fee transactions to have high priority for relaying"`
+	TrickleInterval      time.Duration `long:"trickleinterval" description:"Minimum time between attempts to send new inventory to a connected peer"`
+	MaxOrphanTxs         int           `long:"maxorphantx" description:"Max number of orphan transactions to keep in memory"`
+	Generate             bool          `long:"generate" description:"Generate (mine) bitcoins using the CPU"`
+	GenerateMiner        bool          `long:"generateminer" description:"Generate (mine) miner blocks using the CPU"`
+	DisablePOWMining     bool          `long:"disablepowmining" description:"Disable generation of POW blocks"`
 
 	// no longer use EnablePOWMining, but keep it here for compatibility
-	EnablePOWMining    bool          `long:"enablepowmining" description:"Enable generation of POW blocks"`
+	EnablePOWMining bool `long:"enablepowmining" description:"Enable generation of POW blocks"`
 
-	MiningAddrs        []string      `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
-	PrivKeys           []string      `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
-	RsaPrivateKey      string        `long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
-	BlockPrioritySize  uint32        `long:"blockprioritysize" description:"Size in bytes for high-priority/low-fee transactions when creating a block"`
-	MinBlockWeight     uint32        `long:"minblockweight" description:"Minimal desired transactions in a block"`
-	UserAgentComments  []string      `long:"uacomment" description:"Comment to add to the user agent -- See BIP 14 for more information."`
-	NoPeerBloomFilters bool          `long:"nopeerbloomfilters" description:"Disable bloom filtering support"`
-	NoCFilters         bool          `long:"nocfilters" description:"Disable committed filtering (CF) support"`
-	DropCfIndex        bool          `long:"dropcfindex" description:"Deletes the index used for committed filtering (CF) support from the database on start up and then exits."`
-	SigCacheMaxSize    uint          `long:"sigcachemaxsize" description:"The maximum number of entries in the signature verification cache"`
-	BlocksOnly           bool          `long:"blocksonly" description:"Do not accept transactions from remote peers."`
-	TxIndex              bool          `long:"txindex" description:"Maintain a full hash-based transaction index which makes all transactions available via the getrawtransaction RPC"`
-	DropTxIndex    bool          `long:"droptxindex" description:"Deletes the hash-based transaction index from the database on start up and then exits."`
-	AddrIndex      bool          `long:"addrindex" description:"Maintain a full address-based transaction index which makes the searchrawtransactions RPC available"`
-	DropAddrIndex  bool          `long:"dropaddrindex" description:"Deletes the address-based transaction index from the database on start up and then exits."`
-	RelayNonStd    bool          `long:"relaynonstd" description:"Relay non-standard transactions regardless of the default settings for the active network."`
-	RejectNonStd   bool          `long:"rejectnonstd" description:"Reject non-standard transactions regardless of the default settings for the active network."`
-	ShareMining    bool          `long:"sharemining" description:"Enable Shared Mining."`
-	lookup         func(string) ([]net.IP, error)
-	oniondial      func(string, string, time.Duration) (net.Conn, error)
-	dial           func(string, string, time.Duration) (net.Conn, error)
-	addCheckpoints []chaincfg.Checkpoint
-	miningAddrs    []btcutil.Address
+	MiningAddrs        []string `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
+	PrivKeys           []string `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
+	RsaPrivateKey      string   `long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
+	BlockPrioritySize  uint32   `long:"blockprioritysize" description:"Size in bytes for high-priority/low-fee transactions when creating a block"`
+	MinBlockWeight     uint32   `long:"minblockweight" description:"Minimal desired transactions in a block"`
+	UserAgentComments  []string `long:"uacomment" description:"Comment to add to the user agent -- See BIP 14 for more information."`
+	NoPeerBloomFilters bool     `long:"nopeerbloomfilters" description:"Disable bloom filtering support"`
+	NoCFilters         bool     `long:"nocfilters" description:"Disable committed filtering (CF) support"`
+	DropCfIndex        bool     `long:"dropcfindex" description:"Deletes the index used for committed filtering (CF) support from the database on start up and then exits."`
+	SigCacheMaxSize    uint     `long:"sigcachemaxsize" description:"The maximum number of entries in the signature verification cache"`
+	BlocksOnly         bool     `long:"blocksonly" description:"Do not accept transactions from remote peers."`
+	TxIndex            bool     `long:"txindex" description:"Maintain a full hash-based transaction index which makes all transactions available via the getrawtransaction RPC"`
+	DropTxIndex        bool     `long:"droptxindex" description:"Deletes the hash-based transaction index from the database on start up and then exits."`
+	AddrIndex          bool     `long:"addrindex" description:"Maintain a full address-based transaction index which makes the searchrawtransactions RPC available"`
+	DropAddrIndex      bool     `long:"dropaddrindex" description:"Deletes the address-based transaction index from the database on start up and then exits."`
+	RelayNonStd        bool     `long:"relaynonstd" description:"Relay non-standard transactions regardless of the default settings for the active network."`
+	RejectNonStd       bool     `long:"rejectnonstd" description:"Reject non-standard transactions regardless of the default settings for the active network."`
+	ShareMining        bool     `long:"sharemining" description:"Enable Shared Mining."`
+	lookup             func(string) ([]net.IP, error)
+	oniondial          func(string, string, time.Duration) (net.Conn, error)
+	dial               func(string, string, time.Duration) (net.Conn, error)
+	addCheckpoints     []chaincfg.Checkpoint
+	miningAddrs        []btcutil.Address
 
 	// signAddress is the address for privateKeys
-	signAddress    []btcutil.Address
-	privateKeys    []*btcec.PrivateKey
+	signAddress []btcutil.Address
+	privateKeys []*btcec.PrivateKey
 
-	minRelayTxFee btcutil.Amount
-	whitelists    []*net.IPNet
-	Collateral    []string `long:"Collateral" description:"Mining collateral"`
-	collateral    []*wire.OutPoint
-	ExitOnStall   bool          `long:"exitonstall" description:"Exit program when no activity in 30 minutes."`
-	ChainCurrentStd int		   `long:"chaincurrentstd" description:"Hours beyond which chain is considered not current"`
-	MemLimit	  uint32		`long:"memlimit" description:"Memory limit (K), exceeding it will cause program to exit gracefully"`
-	ContractReqExp	bool		`long:"contractreqexp" description:"Local rule, requiring expiration in tx with contract"`
+	minRelayTxFee   btcutil.Amount
+	whitelists      []*net.IPNet
+	Collateral      []string `long:"Collateral" description:"Mining collateral"`
+	collateral      []*wire.OutPoint
+	ExitOnStall     bool   `long:"exitonstall" description:"Exit program when no activity in 30 minutes."`
+	ChainCurrentStd int    `long:"chaincurrentstd" description:"Hours beyond which chain is considered not current"`
+	MemLimit        uint32 `long:"memlimit" description:"Memory limit (K), exceeding it will cause program to exit gracefully"`
+	ContractReqExp  bool   `long:"contractreqexp" description:"Local rule, requiring expiration in tx with contract"`
+	Settip          string `long:"settip" description:"Set tips of chain"`
+	ReUtxo          bool   `long:"reutxo" description:"Rebuild UTXO"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -417,23 +419,23 @@ func loadConfig() (*config, []string, error) {
 		DataDir:              defaultDataDir,
 		LogDir:               defaultLogDir,
 		DbType:               defaultDbType,
-		RPCKey:            defaultRPCKeyFile,
-		RPCCert:           defaultRPCCertFile,
-		MinRelayTxFee:     mempool.DefaultMinRelayTxFee.ToOMC(),
-		FreeTxRelayLimit:  defaultFreeTxRelayLimit,
-		TrickleInterval:   defaultTrickleInterval,
-		BlockPrioritySize: mempool.DefaultBlockPrioritySize,
-		MaxOrphanTxs:      defaultMaxOrphanTransactions,
-		SigCacheMaxSize:   defaultSigCacheMaxSize,
-		Generate:          defaultGenerate,
-		GenerateMiner:     defaultGenerate,
-		DisablePOWMining:  false,
-		EnablePOWMining:   false,
-		TxIndex:           defaultTxIndex,
-		AddrIndex:         defaultAddrIndex,
-		ChainCurrentStd:   24,
-		MinBlockWeight:    4,
-		MemLimit:		   200000,
+		RPCKey:               defaultRPCKeyFile,
+		RPCCert:              defaultRPCCertFile,
+		MinRelayTxFee:        mempool.DefaultMinRelayTxFee.ToOMC(),
+		FreeTxRelayLimit:     defaultFreeTxRelayLimit,
+		TrickleInterval:      defaultTrickleInterval,
+		BlockPrioritySize:    mempool.DefaultBlockPrioritySize,
+		MaxOrphanTxs:         defaultMaxOrphanTransactions,
+		SigCacheMaxSize:      defaultSigCacheMaxSize,
+		Generate:             defaultGenerate,
+		GenerateMiner:        defaultGenerate,
+		DisablePOWMining:     false,
+		EnablePOWMining:      false,
+		TxIndex:              defaultTxIndex,
+		AddrIndex:            defaultAddrIndex,
+		ChainCurrentStd:      24,
+		MinBlockWeight:       4,
+		MemLimit:             200000,
 	}
 
 	// Service options which are only added on Windows.
@@ -551,7 +553,7 @@ func loadConfig() (*config, []string, error) {
 		activeNetParams = &simNetParams
 		cfg.DisableDNSSeed = true
 	}
-	
+
 	chaincfg.ActiveNetParams = activeNetParams.Params
 
 	if numNets > 1 {
@@ -677,15 +679,15 @@ func loadConfig() (*config, []string, error) {
 			cfg.whitelists = append(cfg.whitelists, ipnet)
 		}
 	}
-/*
-	if cfg.GenerateMiner && cfg.ShareMining && len(cfg.PrivKeys) == 0 {
-		if len(cfg.ExternalIPs) == 0 {
-			return nil, nil, fmt.Errorf("ExternalIP is required")
+	/*
+		if cfg.GenerateMiner && cfg.ShareMining && len(cfg.PrivKeys) == 0 {
+			if len(cfg.ExternalIPs) == 0 {
+				return nil, nil, fmt.Errorf("ExternalIP is required")
+			}
+			cfg.ConnectPeers = make([]string, 1)
+			cfg.ConnectPeers[0] = cfg.ExternalIPs[0]
 		}
-		cfg.ConnectPeers = make([]string, 1)
-		cfg.ConnectPeers[0] = cfg.ExternalIPs[0]
-	}
-*/
+	*/
 
 	// --addPeer and --connect do not mix.
 	if len(cfg.AddPeers) > 0 && len(cfg.ConnectPeers) > 0 {
@@ -771,7 +773,7 @@ func loadConfig() (*config, []string, error) {
 
 	// Validate the the minrelaytxfee.
 	cfg.minRelayTxFee, err = btcutil.NewAmount(cfg.MinRelayTxFee, 0)
-//	cfg.MinBorderFee = cfg.MinBorderFee
+	//	cfg.MinBorderFee = cfg.MinBorderFee
 
 	if err != nil {
 		str := "%s: invalid minrelaytxfee: %v"
@@ -836,7 +838,7 @@ func loadConfig() (*config, []string, error) {
 	}
 
 	// Check mining addresses are valid and saved parsed versions.
-	cfg.miningAddrs = make([]btcutil.Address, 0, len(cfg.MiningAddrs) + len(cfg.PrivKeys))
+	cfg.miningAddrs = make([]btcutil.Address, 0, len(cfg.MiningAddrs)+len(cfg.PrivKeys))
 	for _, strAddr := range cfg.MiningAddrs {
 		addr, err := btcutil.DecodeAddress(strAddr, activeNetParams.Params)
 		if err != nil {
@@ -890,11 +892,11 @@ func loadConfig() (*config, []string, error) {
 	}
 
 	cfg.collateral = make([]*wire.OutPoint, 0, len(cfg.Collateral))
-	for _,c := range cfg.Collateral {
+	for _, c := range cfg.Collateral {
 		i := strings.Index(c, ":")
 		if i > 0 {
 			rs := []byte(c)
-			h,_ := chainhash.NewHashFromStr(string(rs[:i]))
+			h, _ := chainhash.NewHashFromStr(string(rs[:i]))
 			if h != nil {
 				var d uint32
 				fmt.Sscanf(string(rs[i+1:]), "%d", &d)
@@ -925,37 +927,37 @@ func loadConfig() (*config, []string, error) {
 	// Add default port to all rpc listener addresses if needed and remove
 	// duplicate addresses.
 	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.rpcPort)
-/*
-	// Only allow TLS to be disabled if the RPC is bound to localhost
-	// addresses.
-	if !cfg.DisableRPC && cfg.DisableTLS {
-		allowedTLSListeners := map[string]struct{}{
-			"localhost": {},
-			"127.0.0.1": {},
-			"::1":       {},
-		}
-		for _, addr := range cfg.RPCListeners {
-			host, _, err := net.SplitHostPort(addr)
-			if err != nil {
-				str := "%s: RPC listen interface '%s' is " +
-					"invalid: %v"
-				err := fmt.Errorf(str, funcName, addr, err)
-				fmt.Fprintln(os.Stderr, err)
-				fmt.Fprintln(os.Stderr, usageMessage)
-				return nil, nil, err
+	/*
+		// Only allow TLS to be disabled if the RPC is bound to localhost
+		// addresses.
+		if !cfg.DisableRPC && cfg.DisableTLS {
+			allowedTLSListeners := map[string]struct{}{
+				"localhost": {},
+				"127.0.0.1": {},
+				"::1":       {},
 			}
-			if _, ok := allowedTLSListeners[host]; !ok {
-				str := "%s: the --notls option may not be used " +
-					"when binding RPC to non localhost " +
-					"addresses: %s"
-				err := fmt.Errorf(str, funcName, addr)
-				fmt.Fprintln(os.Stderr, err)
-				fmt.Fprintln(os.Stderr, usageMessage)
-				return nil, nil, err
+			for _, addr := range cfg.RPCListeners {
+				host, _, err := net.SplitHostPort(addr)
+				if err != nil {
+					str := "%s: RPC listen interface '%s' is " +
+						"invalid: %v"
+					err := fmt.Errorf(str, funcName, addr, err)
+					fmt.Fprintln(os.Stderr, err)
+					fmt.Fprintln(os.Stderr, usageMessage)
+					return nil, nil, err
+				}
+				if _, ok := allowedTLSListeners[host]; !ok {
+					str := "%s: the --notls option may not be used " +
+						"when binding RPC to non localhost " +
+						"addresses: %s"
+					err := fmt.Errorf(str, funcName, addr)
+					fmt.Fprintln(os.Stderr, err)
+					fmt.Fprintln(os.Stderr, usageMessage)
+					return nil, nil, err
+				}
 			}
 		}
-	}
- */
+	*/
 
 	// Add default port to all added peer addresses if needed and remove
 	// duplicate addresses.

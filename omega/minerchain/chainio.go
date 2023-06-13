@@ -53,7 +53,7 @@ var (
 	// TphReportsName is the name of the db key used to reports of tph.
 	TphReportsName = []byte("tphreports")
 
-// byteOrder is the preferred byte order used for serializing numeric
+	// byteOrder is the preferred byte order used for serializing numeric
 	// fields for storage in the database.
 	byteOrder = binary.LittleEndian
 )
@@ -78,9 +78,9 @@ var (
 // bestChainState represents the data to be stored the database for the current
 // best chain state.
 type bestChainState struct {
-	hash      chainhash.Hash
-	height    uint32
-	workSum   *big.Int
+	hash    chainhash.Hash
+	height  uint32
+	workSum *big.Int
 }
 
 // serializeBestChainState returns the serialization of the passed block best
@@ -144,9 +144,9 @@ func deserializeBestChainState(serializedData []byte) (bestChainState, error) {
 func dbPutBestState(dbTx database.Tx, snapshot *blockchain.BestState, workSum *big.Int) error {
 	// Serialize the current best chain state.
 	serializedData := serializeBestChainState(bestChainState{
-		hash:      snapshot.Hash,
-		height:    uint32(snapshot.Height),
-		workSum:   workSum,
+		hash:    snapshot.Hash,
+		height:  uint32(snapshot.Height),
+		workSum: workSum,
 	})
 
 	// Store the current best chain state into the database.
@@ -186,7 +186,7 @@ func (b *MinerChain) createChainState() error {
 
 		// Create the bucket that houses the chain block hash to height
 		// index.
-		if _, err = meta.CreateBucket(hashIndexBucketName);  err != nil {
+		if _, err = meta.CreateBucket(hashIndexBucketName); err != nil {
 			return err
 		}
 
@@ -268,14 +268,16 @@ func (b *MinerChain) initChainState() error {
 		}
 	}
 
+	gobackone := false
+
 	// Attempt to load the chain state from the database.
-	err = b.db.View(func(dbTx database.Tx) error {
+	exec := func(dbTx database.Tx) error {
 		// Fetch the stored chain state from the database metadata.
 		// When it doesn't exist, it means the database hasn't been
 		// initialized for use with chain yet, so break out now to allow
 		// that to happen under a writable database transaction.
 		serializedData := dbTx.Metadata().Get(chainStateKeyName)
-//		log.Tracef("Serialized chain state: %x", serializedData)
+		//		log.Tracef("Serialized chain state: %x", serializedData)
 		state, err := deserializeBestChainState(serializedData)
 		if err != nil {
 			return err
@@ -286,7 +288,7 @@ func (b *MinerChain) initChainState() error {
 		// number of nodes are already known, perform a single alloc
 		// for them versus a whole bunch of little ones to reduce
 		// pressure on the GC.
-//		log.Infof("Loading block index...")
+		//		log.Infof("Loading block index...")
 
 		blockIndexBucket := dbTx.Metadata().Bucket(blockIndexBucketName)
 
@@ -350,6 +352,12 @@ func (b *MinerChain) initChainState() error {
 			return AssertError(fmt.Sprintf("initChainState: cannot find "+
 				"chain tip %s in block index", state.hash))
 		}
+		if gobackone {
+			b.index.SetStatusFlags(tip, chainutil.StatusValidateFailed)
+			tip = tip.Parent
+			state.hash = tip.Hash
+		}
+
 		b.BestChain.SetTip(tip)
 
 		// Load the raw block bytes for the best block.
@@ -373,20 +381,26 @@ func (b *MinerChain) initChainState() error {
 			// we'll mark it as valid now to ensure consistency once
 			// we're up and running.
 			if !iterNode.Status.KnownValid() {
-/*
-				log.Infof("Block %v (height=%v) ancestor of "+
-					"chain tip not marked as valid, "+
-					"upgrading to valid for consistency",
-					iterNode.hash, iterNode.height)
-*/
+				/*
+					log.Infof("Block %v (height=%v) ancestor of "+
+						"chain tip not marked as valid, "+
+						"upgrading to valid for consistency",
+						iterNode.hash, iterNode.height)
+				*/
 				b.index.SetStatusFlags(iterNode, chainutil.StatusValid)
 			}
 
 			// update blacklist
-			for _,r := range NodetoHeader(iterNode).ViolationReport {
+			for _, r := range NodetoHeader(iterNode).ViolationReport {
 				mb := b.index.LookupNodeUL(&r.MRBlock)
-				if _,ok := b.blacklist[NodetoHeader(mb).Miner]; ok {
-					b.blacklist[NodetoHeader(mb).Miner] = append(b.blacklist[NodetoHeader(mb).Miner], mb.Height)
+				if _, ok := b.blacklist[NodetoHeader(mb).Miner]; ok {
+					exst := false
+					for _, e := range b.blacklist[NodetoHeader(mb).Miner] {
+						exst = exst || (e == mb.Height)
+					}
+					if !exst {
+						b.blacklist[NodetoHeader(mb).Miner] = append(b.blacklist[NodetoHeader(mb).Miner], mb.Height)
+					}
 				} else {
 					b.blacklist[NodetoHeader(mb).Miner] = []int32{mb.Height}
 				}
@@ -396,8 +410,21 @@ func (b *MinerChain) initChainState() error {
 		// Initialize the state related to the best block.
 		b.stateSnapshot = newBestState(tip, tip.CalcPastMedianTime())
 
+		if gobackone {
+			if err = dbPutBestState(dbTx, b.stateSnapshot, tip.Data.(*blockchainNodeData).workSum); err != nil {
+				return err
+			}
+		}
+
 		return nil
-	})
+	}
+
+	if gobackone {
+		err = b.db.Update(exec)
+	} else {
+		err = b.db.View(exec)
+	}
+
 	if err != nil {
 		return err
 	}

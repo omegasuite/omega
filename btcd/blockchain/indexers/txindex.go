@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/viewpoint"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
 )
 
 const (
@@ -288,6 +288,10 @@ type TxIndex struct {
 
 // Ensure the TxIndex type implements the Indexer interface.
 var _ Indexer = (*TxIndex)(nil)
+
+func (idx *TxIndex) DbFetchTxIndexEntry(dbTx database.Tx, txHash *chainhash.Hash) (*database.BlockRegion, error) {
+	return dbFetchTxIndexEntry(dbTx, txHash)
+}
 
 // BlockInit initializes the hash-based transaction index.  In particular, it finds
 // the highest used block ID and stores it for later use when connecting or

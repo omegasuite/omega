@@ -9,16 +9,16 @@
 package viewpoint
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
-	"bytes"
 
+	"github.com/omegasuite/btcd/blockchain/bccompress"
+	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/btcd/chaincfg"
-	"github.com/omegasuite/btcd/blockchain/bccompress"
 	"github.com/omegasuite/omega/token"
 )
 
@@ -61,9 +61,9 @@ type UtxoEntry struct {
 	// how it affects alignment on 64-bit platforms.  The current order is
 	// specifically crafted to result in minimal padding.  There will be a
 	// lot of these in memory, so a few extra bytes of padding adds up.
-	TokenType	uint64
+	TokenType   uint64
 	Amount      token.TokenValue
-	Rights * chainhash.Hash
+	Rights      *chainhash.Hash
 	pkScript    []byte // The public key script for the output.
 	blockHeight int32  // Height of block containing tx.
 
@@ -114,7 +114,7 @@ func (entry *UtxoEntry) Spend() {
 
 // Amount returns the amount of the output.
 func (entry *UtxoEntry) NumAmount() int64 {
-	if entry.TokenType & 1 != 0 {
+	if entry.TokenType&1 != 0 {
 		panic("Incorrect TokenType. -- UtxoEntry.NumAmount()")
 	}
 	return entry.Amount.(*token.NumToken).Val
@@ -135,21 +135,35 @@ func (entry *UtxoEntry) Clone() *UtxoEntry {
 		return nil
 	}
 
+	var r *chainhash.Hash
+	if entry.Rights != nil {
+		r, _ = chainhash.NewHash((*entry.Rights)[:])
+	} else {
+		r = nil
+	}
+
 	return &UtxoEntry{
 		TokenType:   entry.TokenType,
 		Amount:      entry.Amount,
 		pkScript:    entry.pkScript,
+		Rights:      r,
 		blockHeight: entry.blockHeight,
 		packedFlags: entry.packedFlags,
 	}
 }
 
 func (entry *UtxoEntry) ToTxOut() *wire.TxOut {
-	t := wire.TxOut {}
+	t := wire.TxOut{}
+	var r *chainhash.Hash
+	if entry.Rights != nil {
+		r, _ = chainhash.NewHash((*entry.Rights)[:])
+	} else {
+		r = nil
+	}
 	t.Token = token.Token{
 		entry.TokenType,
 		entry.Amount,
-		entry.Rights,
+		r,
 	}
 	t.PkScript = entry.pkScript
 	return &t
@@ -163,7 +177,7 @@ func (entry *UtxoEntry) ToTxOut() *wire.TxOut {
 // when this spent txout is spending the last unspent output of the containing
 // transaction.
 type SpentTxOut struct {
-	TokenType	uint64
+	TokenType uint64
 
 	// Amount is the amount/value of the output.
 	Amount token.TokenValue
@@ -216,7 +230,7 @@ func (view *UtxoViewpoint) LookupEntry(outpoint wire.OutPoint) *UtxoEntry {
 // unspendable.  When the view already has an entry for the output, it will be
 // marked unspent.  All fields will be updated for existing entries since it's
 // possible it has changed during a reorg.
-func (view *UtxoViewpoint) addTxOut(outpoint wire.OutPoint, txOut *wire.TxOut, isCoinBase bool, blockHeight int32) * UtxoEntry {
+func (view *UtxoViewpoint) addTxOut(outpoint wire.OutPoint, txOut *wire.TxOut, isCoinBase bool, blockHeight int32) *UtxoEntry {
 	// Update existing entries.  All fields are updated because it's
 	// possible (although extremely unlikely) that the existing entry is
 	// being replaced by a different transaction with the same hash.  This
@@ -228,7 +242,11 @@ func (view *UtxoViewpoint) addTxOut(outpoint wire.OutPoint, txOut *wire.TxOut, i
 	}
 
 	entry.TokenType = txOut.TokenType
-	entry.Rights = txOut.Rights
+	if txOut.Rights != nil {
+		entry.Rights, _ = chainhash.NewHash((*txOut.Rights)[:])
+	} else {
+		entry.Rights = nil
+	}
 	entry.Amount = txOut.Value
 	entry.pkScript = txOut.PkScript
 	entry.blockHeight = blockHeight
@@ -240,7 +258,7 @@ func (view *UtxoViewpoint) addTxOut(outpoint wire.OutPoint, txOut *wire.TxOut, i
 	return entry
 }
 
-func (view *UtxoViewpoint) AddRawTxOut(outpoint wire.OutPoint, txOut *wire.TxOut, isCoinBase bool, blockHeight int32) * UtxoEntry {
+func (view *UtxoViewpoint) AddRawTxOut(outpoint wire.OutPoint, txOut *wire.TxOut, isCoinBase bool, blockHeight int32) *UtxoEntry {
 	return view.addTxOut(outpoint, txOut, isCoinBase, blockHeight)
 }
 
@@ -285,7 +303,7 @@ func (view *ViewPointSet) AddTxOut(tx *btcutil.Tx, txOutIdx uint32, blockHeight 
 	y := view.TokenRights(e)
 	for _, r := range y {
 		re, _ := view.FetchRightEntry(&r)
-		if re.(*RightEntry).Attrib & token.Monitor != 0 {
+		if re.(*RightEntry).Attrib&token.Monitor != 0 {
 			e.packedFlags |= TfMonitoring | TfModified
 			e.monitor = make([]byte, 52)
 			copy(e.monitor, re.(*RightEntry).Desc[1:21])
@@ -322,7 +340,7 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 		y := view.TokenRights(e)
 		for _, r := range y {
 			re, _ := view.FetchRightEntry(&r)
-			if re.(*RightEntry).Attrib & token.Monitor != 0 {
+			if re.(*RightEntry).Attrib&token.Monitor != 0 {
 				e.packedFlags |= TfMonitoring
 				e.monitor = make([]byte, 52)
 				copy(e.monitor, re.(*RightEntry).Desc[1:21])
@@ -363,9 +381,15 @@ func (view *ViewPointSet) ConnectTransaction(tx *btcutil.Tx, blockHeight int32, 
 		// Only create the stxo details if requested.
 		if stxos != nil {
 			// Populate the stxo details using the utxo entry.
+			var nr *chainhash.Hash
+			if entry.Rights != nil {
+				nr, _ = chainhash.NewHash((*entry.Rights)[:])
+			} else {
+				nr = nil
+			}
 			var stxo = SpentTxOut{
 				TokenType:  entry.TokenType,
-				Rights:		entry.Rights,
+				Rights:     nr,
 				Amount:     entry.Amount,
 				PkScript:   entry.PkScript(),
 				Height:     entry.BlockHeight(),
@@ -435,9 +459,16 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 			prevOut.Index = uint32(txOutIdx)
 			entry := view.Utxo.entries[prevOut]
 			if entry == nil {
+				var r *chainhash.Hash
+				if txOut.Rights != nil {
+					r, _ = chainhash.NewHash(txOut.Rights[:])
+				} else {
+					r = nil
+				}
 				entry = &UtxoEntry{
-					TokenType:	 txOut.TokenType,
+					TokenType:   txOut.TokenType,
 					Amount:      txOut.Value,
+					Rights:      r,
 					pkScript:    txOut.PkScript,
 					blockHeight: block.Height(),
 					packedFlags: packedFlags,
@@ -450,7 +481,7 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 			y := view.TokenRights(entry)
 			for _, r := range y {
 				re, _ := view.FetchRightEntry(&r)
-				if re.(*RightEntry).Attrib & token.Monitor != 0 {
+				if re.(*RightEntry).Attrib&token.Monitor != 0 {
 					entry.packedFlags |= TfMonitoring | TfModified
 					entry.monitor = make([]byte, 52)
 					copy(entry.monitor, re.(*RightEntry).Desc[1:21])
@@ -528,6 +559,7 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 			// journal and mark it as modified.
 			entry.TokenType = stxo.TokenType
 			entry.Amount = stxo.Amount
+			entry.Rights = stxo.Rights
 			entry.pkScript = stxo.PkScript
 			entry.blockHeight = stxo.Height
 			entry.packedFlags = TfModified
@@ -543,7 +575,7 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 			y := view.TokenRights(entry)
 			for _, r := range y {
 				re, _ := view.FetchRightEntry(&r)
-				if re.(*RightEntry).Attrib & token.Monitor != 0 {
+				if re.(*RightEntry).Attrib&token.Monitor != 0 {
 					entry.packedFlags |= TfMonitoring
 					entry.monitor = make([]byte, 52)
 					copy(entry.monitor, re.(*RightEntry).Desc[1:21])
@@ -559,19 +591,19 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 	return nil
 }
 
-// outpointKey returns a key suitable for use as a database key in the utxo set
+// OutpointKey returns a key suitable for use as a database key in the utxo set
 // while making use of a free list.  A new buffer is allocated if there are not
 // already any available on the free list.  The returned byte slice should be
 // returned to the free list by using the recycleOutpointKey function when the
 // caller is done with it _unless_ the slice will need to live for longer than
 // the caller can calculate such as when used to write to the database.
-func outpointKey(outpoint wire.OutPoint) *[]byte {
+func OutpointKey(outpoint wire.OutPoint) *[]byte {
 	// A VLQ employs an MSB encoding, so they are useful not only to reduce
 	// the amount of storage space, but also so iteration of utxos when
 	// doing byte-wise comparisons will produce them in order.
 	key := outpointKeyPool.Get().(*[]byte)
 	idx := uint64(outpoint.Index)
-	*key = (*key)[:chainhash.HashSize + bccompress.SerializeSizeVLQ(idx)]
+	*key = (*key)[:chainhash.HashSize+bccompress.SerializeSizeVLQ(idx)]
 	copy(*key, outpoint.Hash[:])
 	bccompress.PutVLQ((*key)[chainhash.HashSize:], idx)
 	return key
@@ -580,7 +612,7 @@ func outpointKey(outpoint wire.OutPoint) *[]byte {
 func Key2Outpoint(key []byte) wire.OutPoint {
 	var outpoint wire.OutPoint
 	copy(outpoint.Hash[:], key[:chainhash.HashSize])
-	x,_ := bccompress.DeserializeVLQ(key[chainhash.HashSize:])
+	x, _ := bccompress.DeserializeVLQ(key[chainhash.HashSize:])
 	outpoint.Index = uint32(x)
 	return outpoint
 }
@@ -593,7 +625,7 @@ var maxUint32VLQSerializeSize = bccompress.SerializeSizeVLQ(1<<32 - 1)
 // provide temporary buffers for outpoint database keys.
 var outpointKeyPool = sync.Pool{
 	New: func() interface{} {
-		b := make([]byte, chainhash.HashSize + maxUint32VLQSerializeSize)
+		b := make([]byte, chainhash.HashSize+maxUint32VLQSerializeSize)
 		return &b // Pointer to slice to avoid boxing alloc.
 	},
 }
@@ -602,7 +634,7 @@ var outpointKeyPool = sync.Pool{
 func (view *ViewPointSet) FindMonitor(addr []byte, hash chainhash.Hash) *UtxoEntry {
 	serialized := []byte(nil)
 
-	key := make([]byte, len(addr) + len(hash))
+	key := make([]byte, len(addr)+len(hash))
 	copy(key, addr)
 	copy(key[len(addr):], hash[:])
 
@@ -630,7 +662,7 @@ func (view *ViewPointSet) FindMonitor(addr []byte, hash chainhash.Hash) *UtxoEnt
 }
 
 // recycleOutpointKey puts the provided byte slice, which should have been
-// obtained via the outpointKey function, back on the free list.
+// obtained via the OutpointKey function, back on the free list.
 func recycleOutpointKey(key *[]byte) {
 	outpointKeyPool.Put(key)
 }
@@ -646,7 +678,7 @@ func dbFetchUtxoEntryByHash(dbTx database.Tx, hash *chainhash.Hash) (*UtxoEntry,
 	// where the index uses an MSB encoding, if there are any entries for
 	// the hash at all, one will be found.
 	cursor := dbTx.Metadata().Bucket(utxoSetBucketName).Cursor()
-	key := outpointKey(wire.OutPoint{Hash: *hash, Index: 0})
+	key := OutpointKey(wire.OutPoint{Hash: *hash, Index: 0})
 	ok := cursor.Seek(*key)
 	recycleOutpointKey(key)
 	if !ok {
@@ -701,14 +733,14 @@ func DeserializeUtxoEntry(serialized []byte) (*UtxoEntry, error) {
 	offset += bytesRead
 	entry.TokenType = code
 
-	if entry.TokenType & 1 == 0 {
+	if (entry.TokenType & 1) == 0 {
 		// Decode the compressed unspent transaction output.
 		compressedAmount, bytesRead := bccompress.DeserializeVLQ(serialized[offset:])
 		amount := bccompress.DecompressTxOutAmount(compressedAmount)
 
 		offset += bytesRead
 		entry.Amount = &token.NumToken{
-			Val:int64(amount),
+			Val: int64(amount),
 		}
 	} else {
 		var hash chainhash.Hash
@@ -719,7 +751,7 @@ func DeserializeUtxoEntry(serialized []byte) (*UtxoEntry, error) {
 		}
 	}
 
-	if entry.TokenType & 2 == 2 {
+	if (entry.TokenType & 2) == 2 {
 		entry.Rights = &chainhash.Hash{}
 		copy(entry.Rights[:], serialized[offset:])
 		offset += chainhash.HashSize
@@ -763,7 +795,7 @@ func (view *UtxoViewpoint) fetchEntryByHash(db database.DB, hash *chainhash.Hash
 func DbFetchUtxoEntry(dbTx database.Tx, outpoint wire.OutPoint) (*UtxoEntry, error) {
 	// Fetch the unspent transaction output information for the passed
 	// transaction output.  Return now when there is no entry.
-	key := outpointKey(outpoint)
+	key := OutpointKey(outpoint)
 	utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
 	serializedUtxo := utxoBucket.Get(*key)
 	recycleOutpointKey(key)
@@ -835,7 +867,7 @@ func (view *UtxoViewpoint) FetchUtxosMain(db database.DB, outpoints map[wire.Out
 		return nil
 	}
 
-	for outpoint,_ := range outpoints {
+	for outpoint, _ := range outpoints {
 		if _, ok := view.entries[outpoint]; ok {
 			delete(outpoints, outpoint)
 		}
@@ -849,7 +881,7 @@ func (view *UtxoViewpoint) FetchUtxosMain(db database.DB, outpoints map[wire.Out
 	// so other code can use the presence of an entry in the store as a way
 	// to unnecessarily avoid attempting to reload it from the database.
 	return db.View(func(dbTx database.Tx) error {
-		for outpoint,_ := range outpoints {
+		for outpoint, _ := range outpoints {
 			entry, err := DbFetchUtxoEntry(dbTx, outpoint)
 			if err != nil {
 				return err
@@ -878,7 +910,7 @@ func (view *ViewPointSet) GetUtxo(outpoint wire.OutPoint) *UtxoEntry {
 	if view.Utxo.FetchUtxosMain(view.Db, neededSet) != nil {
 		return nil
 	}
-	
+
 	return view.Utxo.entries[outpoint]
 }
 
@@ -961,14 +993,14 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 
 		// Remove the utxo entry if it is spent.
 		if entry.IsSpent() {
-			key := outpointKey(outpoint)
+			key := OutpointKey(outpoint)
 			err := utxoBucket.Delete(*key)
 			recycleOutpointKey(key)
 			if err != nil {
 				return err
 			}
 
-			if entry.packedFlags & TfMonitoring != 0 {
+			if entry.packedFlags&TfMonitoring != 0 {
 				utxoBucket.Delete(entry.monitor)
 			}
 
@@ -976,11 +1008,11 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 		}
 
 		// Serialize and store the utxo entry.
-		serialized, err := serializeUtxoEntry(entry)
+		serialized, err := SerializeUtxoEntry(entry)
 		if err != nil {
 			return err
 		}
-		key := outpointKey(outpoint)
+		key := OutpointKey(outpoint)
 		err = utxoBucket.Put(*key, serialized)
 
 		// NOTE: The key is intentionally not recycled here since the
@@ -991,7 +1023,7 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 			return err
 		}
 
-		if entry.packedFlags & TfMonitoring != 0 {
+		if entry.packedFlags&TfMonitoring != 0 {
 			utxoBucket.Put(entry.monitor, *key)
 		}
 	}
@@ -999,9 +1031,9 @@ func DbPutUtxoView(dbTx database.Tx, view *UtxoViewpoint) error {
 	return nil
 }
 
-// serializeUtxoEntry returns the entry serialized to a format that is suitable
+// SerializeUtxoEntry returns the entry serialized to a format that is suitable
 // for long-term storage.  The format is described in detail above.
-func serializeUtxoEntry(entry *UtxoEntry) ([]byte, error) {
+func SerializeUtxoEntry(entry *UtxoEntry) ([]byte, error) {
 	// Spent outputs have no serialization.
 	if entry.IsSpent() {
 		return nil, nil
@@ -1015,12 +1047,12 @@ func serializeUtxoEntry(entry *UtxoEntry) ([]byte, error) {
 
 	size := bccompress.SerializeSizeVLQ(headerCode) + bccompress.SerializeSizeVLQ(entry.TokenType)
 	// Calculate the size needed to serialize the entry.
-	if entry.TokenType & 1 == 0 {
+	if entry.TokenType&1 == 0 {
 		size += bccompress.SerializeSizeVLQ(bccompress.CompressTxOutAmount(uint64(entry.Amount.(*token.NumToken).Val)))
 	} else {
 		size += chainhash.HashSize
 	}
-	if entry.TokenType & 2 == 2 {
+	if entry.TokenType&2 == 2 {
 		size += chainhash.HashSize
 	}
 	size += len(entry.PkScript())
@@ -1030,23 +1062,22 @@ func serializeUtxoEntry(entry *UtxoEntry) ([]byte, error) {
 	serialized := make([]byte, size)
 	offset := bccompress.PutVLQ(serialized, headerCode)
 	offset += bccompress.PutVLQ(serialized[offset:], entry.TokenType)
-	if entry.TokenType & 1 == 0 {
+	if entry.TokenType&1 == 0 {
 		offset += bccompress.PutVLQ(serialized[offset:], bccompress.CompressTxOutAmount(uint64(entry.Amount.(*token.NumToken).Val)))
 	} else {
 		copy(serialized[offset:], entry.Amount.(*token.HashToken).Hash[:])
 		offset += chainhash.HashSize
 	}
-	if entry.TokenType & 2 == 2 {
-		if entry.Rights != nil {
-			copy(serialized[offset:], (*entry.Rights)[:])
-		}
+	if entry.TokenType&2 == 2 {
+		//		if entry.Rights != nil {
+		copy(serialized[offset:], (*entry.Rights)[:])
+		//		}
 		offset += chainhash.HashSize
 	}
 	copy(serialized[offset:], entry.PkScript())
 
 	return serialized, nil
 }
-
 
 // -----------------------------------------------------------------------------
 // The unspent transaction output (utxo) set consists of an entry for each

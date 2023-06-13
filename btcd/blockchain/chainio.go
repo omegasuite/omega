@@ -12,7 +12,7 @@ import (
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/wire/common"
 	"math/big"
-//	"sort"
+	//	"sort"
 	"time"
 
 	"github.com/omegasuite/btcd/blockchain/bccompress"
@@ -80,7 +80,7 @@ var (
 
 	// vertexSetBucketName is the name of the db bucket used to house the
 	// vertex definition set.
-//	vertexSetBucketName = []byte("vertices")
+	//	vertexSetBucketName = []byte("vertices")
 
 	// borderSetBucketName is the name of the db bucket used to house the
 	// border definition set.
@@ -95,11 +95,11 @@ var (
 
 	// borderChildrenSetBucketName is the name of the db bucket used to house the
 	// border's children set.
-//	borderChildrenSetBucketName = []byte("borderChildren")
+	//	borderChildrenSetBucketName = []byte("borderChildren")
 
 	// morderModificationSetBucketName is the name of the db bucket from leaf border to
 	// outpoint indicating consent is required when the edge is modified.
-//	borderModificationSetBucketName = []byte("borderModificationRight")
+	//	borderModificationSetBucketName = []byte("borderModificationRight")
 
 	// polygonSetBucketName is the name of the db bucket used to house the
 	// polygon definition set.
@@ -202,8 +202,7 @@ func (b *BlockChain) FetchUtxoEntry(outpoint wire.OutPoint) (*viewpoint.UtxoEntr
 	return entry, nil
 }
 
-
-func (b *BlockChain) NewViewPointSet() * viewpoint.ViewPointSet {
+func (b *BlockChain) NewViewPointSet() *viewpoint.ViewPointSet {
 	return viewpoint.NewViewPointSet(b.db)
 }
 
@@ -409,19 +408,19 @@ func decodeSpentTxOut(serialized []byte, stxo *viewpoint.SpentTxOut) (int, error
 		// regular token
 		compressedAmount, bytesRead := bccompress.DeserializeVLQ(serialized[offset:])
 		amount := bccompress.DecompressTxOutAmount(compressedAmount)
-		stxo.Amount = &token.NumToken {
+		stxo.Amount = &token.NumToken{
 			Val: int64(amount),
 		}
 		offset += bytesRead
 	} else {
 		stxo.Amount = &token.HashToken{}
-		copy(stxo.Amount.(*token.HashToken).Hash[:], serialized[offset:offset + chainhash.HashSize])
+		copy(stxo.Amount.(*token.HashToken).Hash[:], serialized[offset:offset+chainhash.HashSize])
 		offset += chainhash.HashSize
 	}
 
-	if (stxo.TokenType & 2) == 2 && len(serialized) > offset {
+	if (stxo.TokenType&2) == 2 && len(serialized) > offset {
 		stxo.Rights = &chainhash.Hash{}
-		copy(stxo.Rights[:], serialized[offset:offset + chainhash.HashSize])
+		copy(stxo.Rights[:], serialized[offset:offset+chainhash.HashSize])
 		offset += chainhash.HashSize
 	} else {
 		stxo.Rights = nil
@@ -429,7 +428,7 @@ func decodeSpentTxOut(serialized []byte, stxo *viewpoint.SpentTxOut) (int, error
 
 	pklen, bytesRead := bccompress.DeserializeVLQ(serialized[offset:])
 	offset += bytesRead
-	stxo.PkScript = serialized[offset:offset + int(pklen)]
+	stxo.PkScript = serialized[offset : offset+int(pklen)]
 	return offset + int(pklen), nil
 }
 
@@ -444,7 +443,7 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 	var numStxos int
 	for _, tx := range txns {
 		numStxos += len(tx.TxIn)
-		for _,in := range tx.TxIn {
+		for _, in := range tx.TxIn {
 			if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				numStxos--
 			}
@@ -687,9 +686,9 @@ type bestChainState struct {
 // chain state.  This is data to be stored in the chain state bucket.
 func serializeBestChainState(state bestChainState) []byte {
 	// Calculate the full size needed to serialize the chain state.
-//	workSumBytes := state.workSum.Bytes()
-//	workSumBytesLen := uint32(len(workSumBytes))
-	serializedLen := chainhash.HashSize + 4 + 8 + 4 + 4 + 4	// + workSumBytesLen
+	//	workSumBytes := state.workSum.Bytes()
+	//	workSumBytesLen := uint32(len(workSumBytes))
+	serializedLen := chainhash.HashSize + 4 + 8 + 4 + 4 + 4 // + workSumBytesLen
 
 	// Serialize the chain state.
 	serializedData := make([]byte, serializedLen)
@@ -740,7 +739,7 @@ func dbPutBestState(dbTx database.Tx, snapshot *BestState) error {
 	// Serialize the current best chain state.
 	serializedData := serializeBestChainState(bestChainState{
 		hash:      snapshot.Hash,
-		bits:	   snapshot.Bits,
+		bits:      snapshot.Bits,
 		rotation:  snapshot.LastRotation,
 		height:    uint32(snapshot.Height),
 		totalTxns: snapshot.TotalTxns,
@@ -794,7 +793,7 @@ func (b *BlockChain) createChainState() error {
 
 		// Create the bucket that houses the chain block hash to height
 		// index.
-		if _, err = meta.CreateBucket(hashIndexBucketName);  err != nil {
+		if _, err = meta.CreateBucket(hashIndexBucketName); err != nil {
 			return err
 		}
 
@@ -805,9 +804,9 @@ func (b *BlockChain) createChainState() error {
 		}
 
 		// Create the bucket that houses my coins.
-//		if _, err = meta.CreateBucket(MycoinsBucketName); err != nil {
-//			return err
-//		}
+		//		if _, err = meta.CreateBucket(MycoinsBucketName); err != nil {
+		//			return err
+		//		}
 
 		// Create the bucket that houses the spend journal data and
 		// store its version.
@@ -825,14 +824,14 @@ func (b *BlockChain) createChainState() error {
 		if _, err = meta.CreateBucket(UtxoSetBucketName); err != nil {
 			return err
 		}
-		if err = DbPutVersion(dbTx, spendJournalVersionKeyName,	latestSpendJournalBucketVersion); err != nil {
+		if err = DbPutVersion(dbTx, spendJournalVersionKeyName, latestSpendJournalBucketVersion); err != nil {
 			return err
 		}
 
 		// Create the bucket that houses the vertex hash to definition
-//		if _, err = meta.CreateBucket(vertexSetBucketName); err != nil {
-//			return err
-//		}
+		//		if _, err = meta.CreateBucket(vertexSetBucketName); err != nil {
+		//			return err
+		//		}
 
 		// Create the bucket that houses the border hash to definition
 		if _, err = meta.CreateBucket(borderSetBucketName); err != nil {
@@ -900,6 +899,86 @@ func (b *BlockChain) createChainState() error {
 	return err
 }
 
+type indexer interface {
+	DbFetchTxIndexEntry(dbTx database.Tx, txHash *chainhash.Hash) (*database.BlockRegion, error)
+}
+
+func (b *BlockChain) Rebuildutxo(index indexer) {
+	keys := make(map[wire.OutPoint]struct{})
+
+	b.db.Update(func(dbTx database.Tx) error {
+		utxoSetBucketName := []byte("utxosetv2")
+		utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
+		cursor := utxoBucket.Cursor()
+		n, m := 0, 0
+
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			entry, err := viewpoint.DeserializeUtxoEntry(cursor.Value())
+			if err != nil {
+				return err
+			}
+
+			m++
+
+			if (entry.TokenType & 2) != 2 {
+				continue
+			}
+
+			key := viewpoint.Key2Outpoint(cursor.Key())
+
+			blockRegion, err := index.DbFetchTxIndexEntry(dbTx, &key.Hash)
+			if err != nil {
+				return fmt.Errorf("Failed to retrieve transaction location")
+			}
+			if blockRegion == nil {
+				return fmt.Errorf("Failed to retrieve transaction")
+			}
+
+			// Load the raw transaction bytes from the database.
+			var txBytes []byte
+			txBytes, err = dbTx.FetchBlockRegion(blockRegion)
+
+			if err != nil {
+				return fmt.Errorf("rpcNoTxInfoError(txHash)")
+			}
+
+			// Deserialize the transaction
+			var msgTx wire.MsgTx
+			err = msgTx.Deserialize(bytes.NewReader(txBytes))
+			if err != nil {
+				return fmt.Errorf("Failed to deserialize transaction")
+			}
+			txOut := msgTx.TxOut[key.Index]
+
+			if entry.Rights.IsEqual(txOut.Rights) {
+				continue
+			}
+
+			fmt.Printf("fix utxo right for %s from %s to %s\n", key.String(), entry.Rights.String(), txOut.Rights.String())
+			entry.Rights = txOut.Rights
+
+			keys[key] = struct{}{}
+
+			serialized, err := viewpoint.SerializeUtxoEntry(entry)
+			if err != nil {
+				return err
+			}
+			utxoBucket.Put(*viewpoint.OutpointKey(key), serialized)
+			fmt.Printf("serialized %v\n", serialized)
+			n++
+		}
+		fmt.Printf("%d out of %d entries fixed\n", n, m)
+		return nil
+	})
+
+	v := viewpoint.NewUtxoViewpoint()
+	v.FetchUtxosMain(b.db, keys)
+	for k, _ := range keys {
+		t := v.LookupEntry(k)
+		fmt.Printf("Verify %s = %v right = %s\n", k.String(), *t, t.Rights.String())
+	}
+}
+
 // initChainState attempts to load and initialize the chain state from the
 // database.  When the db does not yet contain any chain state, both it and the
 // chain state are initialized to the genesis block.
@@ -952,12 +1031,12 @@ func (b *BlockChain) initChainState() error {
 			chainStateKeyName := []byte("chainstate")
 			serializedData := dbTx.Metadata().Get(chainStateKeyName)
 			if serializedData == nil {
-					return nil
-				}
+				return nil
+			}
 			var hash chainhash.Hash
 			copy(hash[:], serializedData[0:chainhash.HashSize])
 
-			h,_ := DbFetchHeaderByHash(dbTx, &hash)
+			h, _ := DbFetchHeaderByHash(dbTx, &hash)
 			if h.Version < wire.Version2 {
 				indexesBucket := dbTx.Metadata().Bucket([]byte("idxtips"))
 				return indexesBucket.Put(addrUseIndexKey, serializedData)
@@ -984,7 +1063,7 @@ func (b *BlockChain) initChainState() error {
 
 	unloaded := make(map[chainhash.Hash]int32)
 	buffer := make([]struct {
-		hash chainhash.Hash
+		hash   chainhash.Hash
 		height int32
 	}, 5000)
 	buffertop := 0
@@ -1009,7 +1088,7 @@ func (b *BlockChain) initChainState() error {
 			cutoff = state.height - 200000
 		}
 		b.index.Cutoff = cutoff
-//		b.index.Unloaded = make([]chainhash.Hash, cutoff + 1)
+		//		b.index.Unloaded = make([]chainhash.Hash, cutoff + 1)
 
 		// Load all of the headers from the data for the known best
 		// chain and construct the block index accordingly.  Since the
@@ -1027,8 +1106,8 @@ func (b *BlockChain) initChainState() error {
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			blockCount++
 		}
-		blockNodes := make([]chainutil.BlockNode, blockCount - int32(cutoff) + 2)
-		var tmpnode = & chainutil.BlockNode{}
+		blockNodes := make([]chainutil.BlockNode, blockCount-int32(cutoff)+2)
+		var tmpnode = &chainutil.BlockNode{}
 
 		var i int32
 		var lastNode *chainutil.BlockNode
@@ -1063,8 +1142,8 @@ func (b *BlockChain) initChainState() error {
 				parentheight = parent.Height
 			} else if header.PrevBlock.IsEqual(&chainhash.Hash{}) {
 				continue
-			} else if _,bad := badblocks[header.PrevBlock]; bad {
-				badblocks[header.BlockHash()] = struct {}{}
+			} else if _, bad := badblocks[header.PrevBlock]; bad {
+				badblocks[header.BlockHash()] = struct{}{}
 				continue
 			} else {
 				parent = b.index.LookupNode(&header.PrevBlock)
@@ -1078,8 +1157,8 @@ func (b *BlockChain) initChainState() error {
 						}
 						if parentheight < 0 {
 							continue
-//							return AssertError(fmt.Sprintf("initChainState: Could "+
-//								"not find parent for block %s", header.BlockHash()))
+							//							return AssertError(fmt.Sprintf("initChainState: Could "+
+							//								"not find parent for block %s", header.BlockHash()))
 						}
 					}
 				} else {
@@ -1097,7 +1176,7 @@ func (b *BlockChain) initChainState() error {
 				buffer[buffertop%5000] = struct {
 					hash   chainhash.Hash
 					height int32
-				} {hash: header.PrevBlock, height: peekh - 1}
+				}{hash: header.PrevBlock, height: peekh - 1}
 				buffertop++
 
 				delete(unloaded, header.PrevBlock)
@@ -1182,8 +1261,8 @@ func (b *BlockChain) initChainState() error {
 
 		if gobackone {
 			b.stateSnapshot = newBestState(tip, blockSize,
-				numTxns, state.totalTxns - numTxns, tip.CalcPastMedianTime(), // state.bits,
-				state.rotation - 2)
+				numTxns, state.totalTxns-numTxns, tip.CalcPastMedianTime(), // state.bits,
+				state.rotation-2)
 			if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
 				return err
 			}
@@ -1197,9 +1276,9 @@ func (b *BlockChain) initChainState() error {
 	}
 
 	if gobackone {
-		err = b.db.Update(exec);
+		err = b.db.Update(exec)
 	} else {
-		err = b.db.View(exec);
+		err = b.db.View(exec)
 	}
 
 	if err != nil {
@@ -1211,6 +1290,7 @@ func (b *BlockChain) initChainState() error {
 	// write if the elements are dirty, so it'll usually be a noop.
 	return b.index.FlushToDB(dbStoreBlockNode)
 }
+
 /*
 func (b *BlockChain) FetchMissingNodes(hash * chainhash.Hash, to int32) error {
 	// fetching missing nodes in best chain from tip till 'to'
@@ -1302,80 +1382,80 @@ func (b *BlockChain) FetchMissingNodes(hash * chainhash.Hash, to int32) error {
 		return nil
 	})
 }
- */
+*/
 
 type blockchainNodeData struct {
 	// Some fields from block headers to aid in best chain selection and
 	// reconstructing headers from memory.  These must be treated as
 	// immutable and are intentionally ordered to avoid padding on 64-bit
 	// platforms.
-	Version   uint32
-	Nonce     int32
-	Timestamp int64
-	MerkleRoot chainhash.Hash
+	Version      uint32
+	Nonce        int32
+	Timestamp    int64
+	MerkleRoot   chainhash.Hash
 	ContractExec int64
 }
 
-func (d * blockchainNodeData) GetContractExec() int64 {
+func (d *blockchainNodeData) GetContractExec() int64 {
 	return d.ContractExec
 }
 
-func (d * blockchainNodeData) GetData(s interface{}) {
+func (d *blockchainNodeData) GetData(s interface{}) {
 	t := s.(*blockchainNodeData)
 	*t = *d
 }
 
-func (d * blockchainNodeData) TimeStamp() int64 {
+func (d *blockchainNodeData) TimeStamp() int64 {
 	return d.Timestamp
 }
 
-func (d * blockchainNodeData) GetNonce() int32 {
+func (d *blockchainNodeData) GetNonce() int32 {
 	return d.Nonce
 }
 
-func (d * blockchainNodeData) SetData(s interface{}) {
+func (d *blockchainNodeData) SetData(s interface{}) {
 	t := s.(*blockchainNodeData)
 	*d = *t
 }
 
-func (d * blockchainNodeData) SetBits(s uint32) {
+func (d *blockchainNodeData) SetBits(s uint32) {
 	// only to satisfy interface. no real effect
-//	d.Bits = s
+	//	d.Bits = s
 }
 
-func (d * blockchainNodeData) GetBits() uint32 {
+func (d *blockchainNodeData) GetBits() uint32 {
 	// only to satisfy interface. no real effect
-	return 0	// d.Bits
+	return 0 // d.Bits
 }
 
-func (d * blockchainNodeData) GetVersion() uint32 {
+func (d *blockchainNodeData) GetVersion() uint32 {
 	return d.Version
 }
 
-func (d * blockchainNodeData) WorkSum() *big.Int {
+func (d *blockchainNodeData) WorkSum() *big.Int {
 	return big.NewInt(0)
 }
 
 // Header constructs a block header from the node and returns it.
 //
 // This function is safe for concurrent access.
-func (b * BlockChain) NodetoHeader(node *chainutil.BlockNode) wire.BlockHeader {
+func (b *BlockChain) NodetoHeader(node *chainutil.BlockNode) wire.BlockHeader {
 	// No lock is needed because all accessed fields are immutable.
 	prevHash := &zeroHash
 	if node.Parent != nil {
 		prevHash = &node.Parent.Hash
 		d := node.Data.(*blockchainNodeData)
 		return wire.BlockHeader{
-			Version:    d.Version,
-			PrevBlock:  *prevHash,
-			Timestamp:  time.Unix(d.Timestamp, 0),
-			Nonce:      d.Nonce,
-			MerkleRoot: d.MerkleRoot,
+			Version:      d.Version,
+			PrevBlock:    *prevHash,
+			Timestamp:    time.Unix(d.Timestamp, 0),
+			Nonce:        d.Nonce,
+			MerkleRoot:   d.MerkleRoot,
 			ContractExec: d.ContractExec,
 		}
 	} else if node.Height != 0 {
-		var h * wire.BlockHeader
-		b.db.View(func (tx database.Tx) error {
+		var h *wire.BlockHeader
+		b.db.View(func(tx database.Tx) error {
 			h, _ = DbFetchHeaderByHash(tx, &node.Hash)
 			return nil
 		})
@@ -1391,20 +1471,20 @@ func (b * BlockChain) NodetoHeader(node *chainutil.BlockNode) wire.BlockHeader {
 // This function is NOT safe for concurrent access.  It must only be called when
 // initially creating a node.
 func InitBlockNode(node *chainutil.BlockNode, blockHeader *wire.BlockHeader, parent *chainutil.BlockNode) {
-	d := blockchainNodeData {
-		Version:    blockHeader.Version,
-		Nonce:      blockHeader.Nonce,
-		Timestamp:  blockHeader.Timestamp.Unix(),
-		MerkleRoot: blockHeader.MerkleRoot,
+	d := blockchainNodeData{
+		Version:      blockHeader.Version,
+		Nonce:        blockHeader.Nonce,
+		Timestamp:    blockHeader.Timestamp.Unix(),
+		MerkleRoot:   blockHeader.MerkleRoot,
 		ContractExec: blockHeader.ContractExec,
 	}
 	*node = chainutil.BlockNode{
-		Hash:       blockHeader.BlockHash(),
+		Hash: blockHeader.BlockHash(),
 	}
 	if parent != nil {
-//		if d.Bits == 0 {
-//			d.Bits = parent.Data.(*blockchainNodeData).Bits // default is same as parent
-//		}
+		//		if d.Bits == 0 {
+		//			d.Bits = parent.Data.(*blockchainNodeData).Bits // default is same as parent
+		//		}
 		node.Parent = parent
 		node.Height = parent.Height + 1
 	}
@@ -1499,7 +1579,7 @@ func dbStoreBlockNode(dbTx database.Tx, node *chainutil.BlockNode) error {
 	} else if node.Height != 0 {
 		bucket := dbTx.Metadata().Bucket(heightIndexBucketName)
 		var key [4]byte
-		common.LittleEndian.PutUint32(key[:], uint32(node.Height - 1))
+		common.LittleEndian.PutUint32(key[:], uint32(node.Height-1))
 		hash := bucket.Get(key[:])
 		var h chainhash.Hash
 		copy(h[:], hash)
@@ -1507,11 +1587,11 @@ func dbStoreBlockNode(dbTx database.Tx, node *chainutil.BlockNode) error {
 	}
 	d := node.Data.(*blockchainNodeData)
 	header := wire.BlockHeader{
-		Version:    d.Version,
-		PrevBlock:  *prevHash,
-		Timestamp:  time.Unix(d.Timestamp, 0),
-		Nonce:      d.Nonce,
-		MerkleRoot: d.MerkleRoot,
+		Version:      d.Version,
+		PrevBlock:    *prevHash,
+		Timestamp:    time.Unix(d.Timestamp, 0),
+		Nonce:        d.Nonce,
+		MerkleRoot:   d.MerkleRoot,
 		ContractExec: d.ContractExec,
 	}
 
@@ -1538,7 +1618,7 @@ func dbStoreBlockNode(dbTx database.Tx, node *chainutil.BlockNode) error {
 	// Write block header data to block index bucket.
 	blockIndexBucket := dbTx.Metadata().Bucket(blockIndexBucketName)
 	key := BlockIndexKey(&node.Hash, uint32(0xFFFFFFFF))
-	blockIndexBucket.Delete(key)	// remove invalid data that might be there
+	blockIndexBucket.Delete(key) // remove invalid data that might be there
 
 	key = BlockIndexKey(&node.Hash, uint32(node.Height))
 	return blockIndexBucket.Put(key, value)
@@ -1596,7 +1676,7 @@ func (b *BlockChain) HeightOfBlock(hash chainhash.Hash) int32 {
 	}
 	return n.Height
 }
- */
+*/
 
 // BlockByHash returns the block from the main chain with the given hash with
 // the appropriate chain height set.
@@ -1665,7 +1745,6 @@ func (b *BlockChain) FetchBorderEntry(hash chainhash.Hash) (*viewpoint.BorderEnt
 	return entry, nil
 }
 
-
 // FetchVtxEntry loads and returns the requested vertex definition
 // from the point of view of the end of the main chain.
 //
@@ -1687,7 +1766,7 @@ func (b *BlockChain) FetchPolygonEntry(hash chainhash.Hash) (*viewpoint.PolygonE
 			return err
 		}
 		entry = &viewpoint.PolygonEntry{
-			Loops: e.Loops,
+			Loops:       e.Loops,
 			PackedFlags: 0,
 		}
 		return err
@@ -1698,7 +1777,6 @@ func (b *BlockChain) FetchPolygonEntry(hash chainhash.Hash) (*viewpoint.PolygonE
 
 	return entry, nil
 }
-
 
 // FetchVtxEntry loads and returns the requested vertex definition
 // from the point of view of the end of the main chain.
@@ -1723,9 +1801,9 @@ func (b *BlockChain) FetchRightEntry(hash chainhash.Hash) (*viewpoint.RightEntry
 		switch e.(type) {
 		case *viewpoint.RightEntry:
 			entry = &viewpoint.RightEntry{
-				Father: e.(*viewpoint.RightEntry).Father,
-				Desc:e.(*viewpoint.RightEntry).Desc,
-				Attrib: e.(*viewpoint.RightEntry).Attrib,
+				Father:      e.(*viewpoint.RightEntry).Father,
+				Desc:        e.(*viewpoint.RightEntry).Desc,
+				Attrib:      e.(*viewpoint.RightEntry).Attrib,
 				PackedFlags: 0,
 			}
 		default:
@@ -1768,14 +1846,13 @@ func (b *BlockChain) FetchRightSetEntry(hash chainhash.Hash) (*viewpoint.RightSe
 	return entry, nil
 }
 func (b *BlockChain) dbFetchVertex(blockHeight int32, tx int32, ind uint32) (*token.VertexDef, error) {
-	blk,err := b.BlockByHeight(blockHeight)
+	blk, err := b.BlockByHeight(blockHeight)
 	if err != nil {
 		return nil, err
 	}
 
 	return blk.Transactions()[tx].MsgTx().TxDef[ind].(*token.VertexDef), nil
 }
-
 
 // FetchUtxoView loads unspent transaction outputs for the inputs referenced by
 // the passed transaction from the point of view of the end of the main chain.
@@ -1816,7 +1893,7 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 
 func (b *BlockChain) dbHashByHeight(blockHeight int32) *chainhash.Hash {
 	var hash []byte
-	b.db.View(func (dbTx database.Tx) error {
+	b.db.View(func(dbTx database.Tx) error {
 		bucket := dbTx.Metadata().Bucket(heightIndexBucketName)
 		var key [4]byte
 		common.LittleEndian.PutUint32(key[:], uint32(blockHeight))
@@ -1833,7 +1910,7 @@ func (b *BlockChain) dbHashByHeight(blockHeight int32) *chainhash.Hash {
 
 func (b *BlockChain) dbHeightofHash(key chainhash.Hash) int32 {
 	var d []byte
-	b.db.View(func (dbTx database.Tx) error {
+	b.db.View(func(dbTx database.Tx) error {
 		bucket := dbTx.Metadata().Bucket(hashIndexBucketName)
 		d = bucket.Get(key[:])
 		return nil
