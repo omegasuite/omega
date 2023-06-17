@@ -4365,7 +4365,7 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 		// if the script doesn't fully parse, so ignore the
 		// error here.
 		hexs := "by contract"
-		if !contracts {
+		if !contracts && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && txIn.SignatureIndex > 0 {
 			hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
 		}
 
@@ -4537,6 +4537,11 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		}
 	}
 
+	if c.Signatures == nil {
+		b := false
+		c.Signatures = &b
+	}
+
 	// Attempt to decode the supplied address.
 	params := s.cfg.ChainParams
 	addr, err := btcutil.DecodeAddress(c.Address, params)
@@ -4627,6 +4632,19 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		// no point in deserializing it just to reserialize it
 		// later.
 		for i, serializedTx := range serializedTxns {
+			if !*c.Signatures {
+				mtx := new(wire.MsgTx)
+				err := mtx.Deserialize(bytes.NewReader(serializedTx))
+				if err != nil {
+					return err
+				}
+				mtx.SignatureScripts = make([][]byte, 0)
+
+				var w bytes.Buffer
+				err = mtx.SerializeFull(&w)
+				serializedTx = w.Bytes()
+			}
+
 			addressTxns = append(addressTxns, retrievedTx{
 				txBytes: serializedTx,
 				height:  heights[i] - 1, // height in serializedTxns is internal height which is 1 more than real height

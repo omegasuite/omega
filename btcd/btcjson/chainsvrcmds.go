@@ -11,10 +11,10 @@ package btcjson
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/goinggo/mapstructure"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/goinggo/mapstructure"
 	"github.com/omegasuite/omega/token"
 )
 
@@ -61,33 +61,33 @@ type TransactionInput struct {
 // transaction hash and output number pair. We use this strange structure
 // to emulate interface-json conversion
 type Definition struct {
-	DefType uint32 `json:"deftype"`
+	DefType uint32                 `json:"deftype"`
 	DefData map[string]interface{} `json:"data"`
 }
 
-type Vertex struct{
-	Lat int32  `json:"lat"`
-	Lng int32  `json:"lng"`
-	Alt int32  `json:"alt"`
+type Vertex struct {
+	Lat int32 `json:"lat"`
+	Lng int32 `json:"lng"`
+	Alt int32 `json:"alt"`
 }
 
 type Border struct {
-	Father	string  `json:"father"`
-	Begin	Vertex  `json:"begin"`
-	End		Vertex  `json:"end"`
+	Father string `json:"father"`
+	Begin  Vertex `json:"begin"`
+	End    Vertex `json:"end"`
 }
 
 type Polygon struct {
-	Loops	[][]string  `json:"loops"`
+	Loops [][]string `json:"loops"`
 }
 
 type Right struct {
-	Father string  `json:"father"`
-	Desc string  `json:"desc"`
-	Attrib byte  `json:"attrib"`
+	Father string `json:"father"`
+	Desc   string `json:"desc"`
+	Attrib byte   `json:"attrib"`
 }
 
-func (t * Definition) ConvertTo() token.Definition {
+func (t *Definition) ConvertTo() token.Definition {
 	switch t.DefType {
 	case token.DefTypeVertex:
 		v := Vertex{}
@@ -104,12 +104,12 @@ func (t * Definition) ConvertTo() token.Definition {
 		if err := mapstructure.Decode(t.DefData, &b); err != nil {
 			return nil
 		}
-		f,err := chainhash.NewHashFromStr(b.Father)
+		f, err := chainhash.NewHashFromStr(b.Father)
 		if err != nil {
 			f = &chainhash.Hash{}
 			copy(f[:], b.Father[:])
 		}
-		bd := &token.BorderDef {
+		bd := &token.BorderDef{
 			Father: *f,
 		}
 		bd.Begin.SetLat(b.Begin.Lat)
@@ -134,7 +134,7 @@ func (t * Definition) ConvertTo() token.Definition {
 		for _, loop := range p.Loops {
 			l := make([]chainhash.Hash, 0, len(loop))
 			for _, b := range loop {
-				h,err := chainhash.NewHashFromStr(b)
+				h, err := chainhash.NewHashFromStr(b)
 				if err != nil {
 					h = &chainhash.Hash{}
 					copy(h[:], b[:])
@@ -150,14 +150,14 @@ func (t * Definition) ConvertTo() token.Definition {
 		if err := mapstructure.Decode(t.DefData, &r); err != nil {
 			return nil
 		}
-		f,err := chainhash.NewHashFromStr(r.Father)
+		f, err := chainhash.NewHashFromStr(r.Father)
 		if err != nil {
 			f = &chainhash.Hash{}
 			copy(f[:], r.Father[:])
 		}
 		t := token.RightDef{
 			Father: *f,
-			Desc: make([]byte, len(r.Desc)),
+			Desc:   make([]byte, len(r.Desc)),
 			Attrib: r.Attrib,
 		}
 		copy(t.Desc[:], r.Desc[:])
@@ -168,19 +168,19 @@ func (t * Definition) ConvertTo() token.Definition {
 
 // Token represents a token. A transferrable value.
 type Token struct {
-	TokenType uint64  `json:"tokentype"`
-	Value map[string]interface{} `json:"value"`	// either an numeric amount or a hash value
-	Rights string `json:"rights"`					// hash of rights
-	Script *string `json:"script"`					// script to use
+	TokenType uint64                 `json:"tokentype"`
+	Value     map[string]interface{} `json:"value"`  // either an numeric amount or a hash value
+	Rights    string                 `json:"rights"` // hash of rights
+	Script    *string                `json:"script"` // script to use
 }
 
-func (t * Token) ConvertTo(mtx * wire.MsgTx) * wire.TxOut {
+func (t *Token) ConvertTo(mtx *wire.MsgTx) *wire.TxOut {
 	v := wire.TxOut{}
 	v.TokenType = t.TokenType
-	v.Rights,_ = chainhash.NewHashFromStr(t.Rights)
+	v.Rights, _ = chainhash.NewHashFromStr(t.Rights)
 
-	if t.TokenType & 1 == 0 {
-		if i,ok := t.Value["val"]; ok {
+	if t.TokenType&1 == 0 {
+		if i, ok := t.Value["val"]; ok {
 			if f, ok := i.(float64); ok {
 				nm, _ := btcutil.NewAmount(f, t.TokenType)
 				v.Value = &token.NumToken{Val: int64(nm)}
@@ -207,7 +207,7 @@ func (t * Token) ConvertTo(mtx * wire.MsgTx) * wire.TxOut {
 
 // CreateRawTransactionCmd defines the createrawtransaction JSON-RPC command.
 type ParseRawTransactionCmd struct {
-	RawTx   string
+	RawTx string
 }
 
 // NewParseRawTransactionCmd returns a new instance which can be used to issue
@@ -215,17 +215,17 @@ type ParseRawTransactionCmd struct {
 //
 // Amounts are in OMC.
 func NewParseRawTransactionCmd(s string) *ParseRawTransactionCmd {
-	return &ParseRawTransactionCmd {
-		RawTx:   s,
+	return &ParseRawTransactionCmd{
+		RawTx: s,
 	}
 }
 
 // CreateRawTransactionCmd defines the createrawtransaction JSON-RPC command.
 type CreateRawTransactionCmd struct {
-	Inputs   []TransactionInput
-	Definitions   []Definition
-	Amounts  []map[string]Token `jsonrpcusage:"{\"address\":token,...}"`
-	LockTime *int64
+	Inputs      []TransactionInput
+	Definitions []Definition
+	Amounts     []map[string]Token `jsonrpcusage:"{\"address\":token,...}"`
+	LockTime    *int64
 }
 
 // NewCreateRawTransactionCmd returns a new instance which can be used to issue
@@ -236,10 +236,10 @@ func NewCreateRawTransactionCmd(inputs []TransactionInput, defs []Definition, am
 	lockTime *int64) *CreateRawTransactionCmd {
 
 	return &CreateRawTransactionCmd{
-		Inputs:   inputs,
+		Inputs:      inputs,
 		Definitions: defs,
-		Amounts:  amounts,
-		LockTime: lockTime,
+		Amounts:     amounts,
+		LockTime:    lockTime,
 	}
 }
 
@@ -310,11 +310,11 @@ type GetBlockCmd struct {
 }
 
 type SearchBorderCmd struct {
-	Left int32
-	Right int32
+	Left   int32
+	Right  int32
 	Bottom int32
-	Top int32
-	Lod byte
+	Top    int32
+	Lod    byte
 }
 
 type GetTPSViewCmd struct {
@@ -323,27 +323,27 @@ type GetTPSViewCmd struct {
 
 type ContractCallCmd struct {
 	Contract string
-	Input string
+	Input    string
 }
 
 type GetBlockTxHashesCmd struct {
-	Hash      string
+	Hash string
 }
 
 type AddMiningKeyCmd struct {
-	KeyType  bool
-	Key      string
+	KeyType bool
+	Key     string
 }
 
 func NewAddMiningKeyCmd(k string, ktype bool) *AddMiningKeyCmd {
 	return &AddMiningKeyCmd{
-		KeyType:      ktype,
-		Key:		  k,
+		KeyType: ktype,
+		Key:     k,
 	}
 }
 
 type GetMinerBlockHeightCmd struct {
-	Hash      string
+	Hash string
 }
 
 // NewGetBlockCmd returns a new instance which can be used to issue a getblock
@@ -353,13 +353,13 @@ type GetMinerBlockHeightCmd struct {
 // for optional parameters will use the default value.
 func NewGetBlockHeightCmd(hash string) *GetMinerBlockHeightCmd {
 	return &GetMinerBlockHeightCmd{
-		Hash:      hash,
+		Hash: hash,
 	}
 }
 
 type GetMinerBlockCmd struct {
-	Hash      string
-	Verbose   *bool `jsonrpcdefault:"true"`
+	Hash    string
+	Verbose *bool `jsonrpcdefault:"true"`
 }
 
 // NewGetBlockCmd returns a new instance which can be used to issue a getblock
@@ -377,31 +377,31 @@ func NewGetBlockCmd(hash string, verbose, verboseTx *bool) *GetBlockCmd {
 
 func NewGetBlockTxHasesCmd(hash string) *GetBlockTxHashesCmd {
 	return &GetBlockTxHashesCmd{
-		Hash:      hash,
+		Hash: hash,
 	}
 }
 
 func NewContractCallCmd(contract, input string) *ContractCallCmd {
 	return &ContractCallCmd{
 		Contract: contract,
-		Input: input,
+		Input:    input,
 	}
 }
 
 func NewSearchBorderCmd(left, right, bottom, top int32, lod byte) *SearchBorderCmd {
 	return &SearchBorderCmd{
-		Left: left,
-		Right: right,
+		Left:   left,
+		Right:  right,
 		Bottom: bottom,
-		Top: top,
-		Lod: lod,
+		Top:    top,
+		Lod:    lod,
 	}
 }
 
 func NewGetMinerBlockCmd(hash string, verbose *bool) *GetMinerBlockCmd {
 	return &GetMinerBlockCmd{
-		Hash:      hash,
-		Verbose:   verbose,
+		Hash:    hash,
+		Verbose: verbose,
 	}
 }
 
@@ -739,10 +739,10 @@ func NewGetRawMempoolCmd(verbose *bool) *GetRawMempoolCmd {
 // NOTE: This field is an int versus a bool to remain compatible with Bitcoin
 // Core even though it really should be a bool.
 type GetRawTransactionCmd struct {
-	Txid    string
-	Verbose *int `jsonrpcdefault:"0"`
+	Txid           string
+	Verbose        *int  `jsonrpcdefault:"0"`
 	IncludeMempool *bool `jsonrpcdefault:"true"`
-	InMainChain *bool `jsonrpcdefault:"true"`
+	InMainChain    *bool `jsonrpcdefault:"true"`
 }
 
 // NewGetRawTransactionCmd returns a new instance which can be used to issue a
@@ -752,8 +752,8 @@ type GetRawTransactionCmd struct {
 // for optional parameters will use the default value.
 func NewGetRawTransactionCmd(txHash string, verbose *int, includeMempool *bool) *GetRawTransactionCmd {
 	return &GetRawTransactionCmd{
-		Txid:    txHash,
-		Verbose: verbose,
+		Txid:           txHash,
+		Verbose:        verbose,
 		IncludeMempool: includeMempool,
 	}
 }
@@ -776,15 +776,15 @@ func NewGetTxOutCmd(txHash string, vout uint32, includeMempool *bool, IncludeLoc
 		Txid:           txHash,
 		Vout:           vout,
 		IncludeMempool: includeMempool,
-		IncludeLocked: IncludeLocked,
+		IncludeLocked:  IncludeLocked,
 	}
 }
 
 // ListUtxosCmd defines the ListUtxos JSON-RPC command.
 type ListUtxosCmd struct {
-	Begin           * int32
-	Run             * uint32
-	Minval			* int64
+	Begin  *int32
+	Run    *uint32
+	Minval *int64
 }
 
 // NewListUtxosCmd returns a new instance which can be used to issue a ListUtxos
@@ -792,19 +792,19 @@ type ListUtxosCmd struct {
 //
 // The parameters which are pointers indicate they are optional.  Passing nil
 // for optional parameters will use the default value.
-func NewListUtxosCmd(begin * int32, run * uint32, m * int64) *ListUtxosCmd {
+func NewListUtxosCmd(begin *int32, run *uint32, m *int64) *ListUtxosCmd {
 	return &ListUtxosCmd{
-		Begin:         begin,
-		Run:           run,
-		Minval:		   m,
+		Begin:  begin,
+		Run:    run,
+		Minval: m,
 	}
 }
 
 // GetDefineCmd defines the GetDefine JSON-RPC command.
 type GetDefineCmd struct {
-	Kind           uint32
-	Hash           string
-	Recursive	   bool
+	Kind      uint32
+	Hash      string
+	Recursive bool
 }
 
 // NewGetTxOutCmd returns a new instance which can be used to issue a gettxout
@@ -814,9 +814,9 @@ type GetDefineCmd struct {
 // for optional parameters will use the default value.
 func NewGetDefineCmd(kind uint32, hash string, recursive bool) *GetDefineCmd {
 	return &GetDefineCmd{
-		Kind:           kind,
-		Hash:           hash,
-		Recursive:      recursive,
+		Kind:      kind,
+		Hash:      hash,
+		Recursive: recursive,
 	}
 }
 
@@ -936,6 +936,7 @@ type SearchRawTransactionsCmd struct {
 	VinExtra    *int  `jsonrpcdefault:"0"`
 	Reverse     *bool `jsonrpcdefault:"false"`
 	FilterAddrs *[]string
+	Signatures  *bool `jsonrpcdefault:"false"`
 }
 
 // NewSearchRawTransactionsCmd returns a new instance which can be used to issue a
@@ -952,25 +953,26 @@ func NewSearchRawTransactionsCmd(address string, verbose, skip, count *int, vinE
 		VinExtra:    vinExtra,
 		Reverse:     reverse,
 		FilterAddrs: filterAddrs,
+		Signatures:  nil,
 	}
 }
 
 // TokenAddressCmd defines the tokenaddress JSON-RPC command.
 type TokenAddressCmd struct {
-	TokenType         uint64
+	TokenType uint64
 }
 
 // NewTokenAddressCmd returns a new instance which can be used to issue a
 // TokenAddressCmd JSON-RPC command.
 func NewTokenAddressCmd(tokentype uint64) *TokenAddressCmd {
 	return &TokenAddressCmd{
-		TokenType:         tokentype,
+		TokenType: tokentype,
 	}
 }
 
 // TryContractCmd defines the trycontract JSON-RPC command.
 type TryContractCmd struct {
-	HexTx         string
+	HexTx string
 }
 
 // NewTryContractCmd returns a new instance which can be used to issue a
@@ -980,7 +982,7 @@ type TryContractCmd struct {
 // for optional parameters will use the default value.
 func NewTryContractCmd(hexTx string) *TryContractCmd {
 	return &TryContractCmd{
-		HexTx:         hexTx,
+		HexTx: hexTx,
 	}
 }
 
@@ -993,14 +995,14 @@ type RecastRawTransactionCmd struct {
 //
 
 func NewRecastRawTransactionCmd() *RecastRawTransactionCmd {
-	return &RecastRawTransactionCmd{ }
+	return &RecastRawTransactionCmd{}
 }
 
 // SendRawTransactionCmd defines the sendrawtransaction JSON-RPC command.
 type SendRawTransactionCmd struct {
 	HexTx         string
 	AllowHighFees *bool `jsonrpcdefault:"false"`
-	WaitConfirm   *int `jsonrpcdefault:"0"`
+	WaitConfirm   *int  `jsonrpcdefault:"0"`
 	FulllValidate *bool `jsonrpcdefault:"false"`
 }
 
@@ -1017,19 +1019,19 @@ func NewSendRawTransactionCmd(hexTx string, allowHighFees *bool) *SendRawTransac
 }
 
 type CheckForkCmd struct {
-	HexTx         string
+	HexTx string
 }
 
 func NewCheckForkCmd(hexTx string) *CheckForkCmd {
 	return &CheckForkCmd{
-		HexTx:         hexTx,
+		HexTx: hexTx,
 	}
 }
 
 // SetGenerateCmd defines the setgenerate JSON-RPC command.
 type SetGenerateCmd struct {
 	Generate     bool
-	IsMiner	     bool
+	IsMiner      bool
 	GenProcLimit *int `jsonrpcdefault:"-1"`
 }
 
@@ -1047,12 +1049,12 @@ func NewSetGenerateCmd(generate bool, genProcLimit *int) *SetGenerateCmd {
 
 // ConfirmationsCmd defines the Confirmations JSON-RPC command.
 type ConfirmationsCmd struct {
-	TxHash         string
+	TxHash string
 }
 
 func NewConfirmationsCmd(hash string) *ConfirmationsCmd {
 	return &ConfirmationsCmd{
-		TxHash:         hash,
+		TxHash: hash,
 	}
 }
 
@@ -1113,7 +1115,7 @@ func NewValidateAddressCmd(address string) *ValidateAddressCmd {
 
 // ShutdownCmd defines the shutdown JSON-RPC command.
 type ShutdownCmd struct {
-	NoneCommittee   *bool  `jsonrpcdefault:"false"`
+	NoneCommittee *bool `jsonrpcdefault:"false"`
 }
 
 // VerifyMessageCmd defines the verifymessage JSON-RPC command.
