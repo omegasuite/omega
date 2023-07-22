@@ -269,33 +269,40 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 //best := firstNode.Data.(*blockchainNodeData).block.BestBlock
 
 func (m *MinerChain) factorPOW(baseh uint32, best chainhash.Hash) int64 {
-	var d = int32(0)
-	var h = int32(0)
+	/*
+		var d = int32(0)
+		var h = int32(0)
 
-	hit:
-	for p := m.blockChain.NodeByHash(&best); p != nil; p = m.blockChain.ParentNode(p) {
-		switch {
-		case p.Data.GetNonce() > 0:
-			d += wire.POWRotate
+		hit:
+		for p := m.blockChain.NodeByHash(&best); p != nil; p = m.blockChain.ParentNode(p) {
+			switch {
+			case p.Data.GetNonce() > 0:
+				d += wire.POWRotate
 
-		case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
-			h = -(p.Data.GetNonce() + wire.MINER_RORATE_FREQ)
-			break hit
+			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
+				h = -(p.Data.GetNonce() + wire.MINER_RORATE_FREQ)
+				break hit
+			}
 		}
-	}
 
-	h += d
+		h += d
 
-	if h < 0 {
-		return -1
-	}
+		if h < 0 {
+			return -1
+		}
+	*/
+	h := m.blockChain.Rotation(best)
 
-	d = int32(baseh) - h
-
-	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
+	if h < 0 { // the best block is not in chain. since this is for mining, we do the max.
 		return int64(1) << wire.SCALEFACTORCAP
-	} else if d < wire.DESIRABLE_MINER_CANDIDATES / 2 {
-		m := wire.DESIRABLE_MINER_CANDIDATES / 2 - d
+	}
+
+	d := int32(baseh) - h
+
+	if d-wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
+		return int64(1) << wire.SCALEFACTORCAP
+	} else if d < wire.DESIRABLE_MINER_CANDIDATES/2 {
+		m := wire.DESIRABLE_MINER_CANDIDATES/2 - d
 		if m > 10 {
 			m = 10
 		}

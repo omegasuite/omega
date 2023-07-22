@@ -435,7 +435,7 @@ func (m *CPUMiner) generateBlocks() {
 	nopow := false
 
 out:
-	for ; true ; m.g.Chain.IsPacking = false {
+	for ; true; m.g.Chain.IsPacking = false {
 		if !m.cfg.Generate && nopow {
 			m.wg.Done()
 			return
@@ -443,65 +443,65 @@ out:
 
 		// Quit when the miner is stopped.
 		select {
-			case _, ok := <-m.connch: // prevent chan full & blocking
-				if !ok { // chan closed. we have received stop sig.
-					break out
-				} else {
-					for len(m.connch) > 0 {
-						<-m.connch
-					}
-					lastblkgen = time.Now().Unix()
-					lastblkrcv = lastblkgen
-				}
-
-			case <-m.quit:
+		case _, ok := <-m.connch: // prevent chan full & blocking
+			if !ok { // chan closed. we have received stop sig.
 				break out
-				
-			case <-consensus.POWStopper:
+			} else {
+				for len(m.connch) > 0 {
+					<-m.connch
+				}
+				lastblkgen = time.Now().Unix()
+				lastblkrcv = lastblkgen
+			}
 
-			case k := <- m.miningkeys:
-				pkaddr, err := btcutil.NewAddressPubKey(k.PubKey().SerializeCompressed(), m.cfg.ChainParams)
-				if err == nil {
-					addr := pkaddr.AddressPubKeyHash()
-					mtch := false
-					s := addr.String()
+		case <-m.quit:
+			break out
 
-					for _, t := range m.cfg.SignAddress {
-						if s == t.String() {
-							mtch = true
-						}
+		case <-consensus.POWStopper:
+
+		case k := <-m.miningkeys:
+			pkaddr, err := btcutil.NewAddressPubKey(k.PubKey().SerializeCompressed(), m.cfg.ChainParams)
+			if err == nil {
+				addr := pkaddr.AddressPubKeyHash()
+				mtch := false
+				s := addr.String()
+
+				for _, t := range m.cfg.SignAddress {
+					if s == t.String() {
+						mtch = true
 					}
-					if mtch {
+				}
+				if mtch {
+					m.addkeyresult <- true
+				} else {
+					if m.cfg.AppendPrivKey(k) {
+						m.cfg.PrivKeys = append(m.cfg.PrivKeys, k)
+						m.cfg.SignAddress = append(m.cfg.SignAddress, addr)
 						m.addkeyresult <- true
 					} else {
-						if m.cfg.AppendPrivKey(k) {
-							m.cfg.PrivKeys = append(m.cfg.PrivKeys, k)
-							m.cfg.SignAddress = append(m.cfg.SignAddress, addr)
-							m.addkeyresult <- true
-						} else {
-							m.addkeyresult <- false
-						}
+						m.addkeyresult <- false
 					}
-				} else {
-					m.addkeyresult <- false
 				}
+			} else {
+				m.addkeyresult <- false
+			}
 
-			default:
-				// Non-blocking select to fall through
+		default:
+			// Non-blocking select to fall through
 		}
 
-//		log.Infof("generate Block go!")
+		//		log.Infof("generate Block go!")
 
 		// Wait until there is a connection to at least one other peer
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
 		if ccnt := m.cfg.ConnectedCount(); ccnt == 0 {
-//			log.Infof("Sleep 5 sec because there is no connected peer.")
+			//			log.Infof("Sleep 5 sec because there is no connected peer.")
 			m.Stale = true
 			time.Sleep(time.Second * 5)
 			continue
-//		} else {
-//			log.Infof("ConnectedCount = %d.", ccnt)
+			//		} else {
+			//			log.Infof("ConnectedCount = %d.", ccnt)
 		}
 
 		if len(m.cfg.MiningAddrs) == 0 {
@@ -739,35 +739,35 @@ out:
 
 		mh := m.g.Chain.Miners.BestSnapshot().Height
 
-		if lastblkgen - lastblkrcv < 20 && m.cfg.DisablePOWMining && (!m.cfg.EnablePOWMining || nopow || mh - int32(bs.LastRotation) < 2) { // m.cfg.ChainParams.Net == common.TestNet ||
+		if lastblkgen-lastblkrcv < 20 || m.cfg.DisablePOWMining || !m.cfg.EnablePOWMining || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
 			time.Sleep(time.Second * wire.TimeGap)
-//			log.Infof("Retry because POW Mining disabled.")
+			//			log.Infof("Retry because POW Mining disabled.")
 			continue
 		}
 
-/*
-		pows := 0
-		blk := m.g.Chain.BestChain.Tip()
-		for blk != nil && blk.Data.GetNonce() > 0 {
-			pows++
-			blk = blk.Parent
-		}
+		/*
+		   		pows := 0
+		   		blk := m.g.Chain.BestChain.Tip()
+		   		for blk != nil && blk.Data.GetNonce() > 0 {
+		   			pows++
+		   			blk = blk.Parent
+		   		}
 
-		select {
-		case <-m.connch:
-			continue
+		   		select {
+		   		case <-m.connch:
+		   			continue
 
-		case <-consensus.POWStopper:
-			continue
+		   		case <-consensus.POWStopper:
+		   			continue
 
-		case <-m.quit:
-			break out
+		   		case <-m.quit:
+		   			break out
 
-		default:
+		   		default:
 
-//		case <-time.After(time.Second * time.Duration(2*wire.TimeGap+(1<<pows))):
-		}
-*/
+		   //		case <-time.After(time.Second * time.Duration(2*wire.TimeGap+(1<<pows))):
+		   		}
+		*/
 
 		log.Info("Try to solve block")
 
@@ -778,8 +778,8 @@ out:
 		b := m.solveBlock(template, curHeight+1, ticker, m.quit)
 
 		if b > 0 {
-			if 2 * wire.TimeGap > (time.Now().Unix() - lastblkgen) {
-				time.Sleep(time.Second * (2 * wire.TimeGap - time.Duration(time.Now().Unix() - lastblkgen)))
+			if 2*wire.TimeGap > (time.Now().Unix() - lastblkgen) {
+				time.Sleep(time.Second * (2*wire.TimeGap - time.Duration(time.Now().Unix()-lastblkgen)))
 			}
 			select {
 			case <-m.connch:

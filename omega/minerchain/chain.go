@@ -1040,6 +1040,7 @@ func (b *MinerChain) WorkSum(node *chainutil.BlockNode) *big.Int {
 // believe it is current are:
 //  - Latest block height is after the latest checkpoint (if enabled)
 //  - Latest block has a timestamp newer than 24 hours ago
+//  - Latest block has a timestamp newer than 24 hours ago
 //
 // This function MUST be called with the chain state lock held (for reads).
 func (b *MinerChain) IsCurrent() bool {
@@ -1838,19 +1839,21 @@ func (g *MinerChain) reportFromDB(miner [20]byte) []rv {
 			r.val = byteOrder.Uint32(s[20:])
 			values = append(values, r)
 		}
+		// arrange values in descending order of height
+		sort.Slice(values, func(i, j int) bool {
+			return values[i].height > values[j].height
+		})
 		if len(values) > 1000 {
-			sort.Slice(values, func(i, j int) bool {
-				return values[i].height > values[j].height
-			})
-			if len(values) > 1000 {
-				// we don't have worry about side chain more than 1000 in length
-				// so trim it to save storage
-				for _, r := range values[1000:] {
-					var h [4]byte
-					byteOrder.PutUint32(h[:], r.height)
-					bucket.Delete(h[:])
-				}
+			// we don't have worry about side chain more than 1000 in length
+			// so trim the oldest ones to save storage
+			var h [4]byte
+			for _, r := range values[1000:] {
+				byteOrder.PutUint32(h[:], r.height)
+				bucket.Delete(h[:])
 			}
+		}
+		if len(values) > 100 {
+			// take the most recent 100 values
 			values = values[:100]
 		}
 		return nil

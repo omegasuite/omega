@@ -261,15 +261,16 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 	factorPOW := int64(1)
 
 	if header.Height > 2200 || block.Version >= 0x20000 {
-		factorPOW = m.factorPOW(header.Height - 1, header.Block.(*wire.MingingRightBlock).BestBlock)
+		factorPOW = m.factorPOW(header.Height-1, header.Block.(*wire.MingingRightBlock).BestBlock)
 	}
 
 	if block.Version >= chaincfg.Version2 {
-		factorPOW = 16 * factorPOW	// factor 16 is for smooth transition from V1 to V2
+		factorPOW = 16 * factorPOW // factor 16 is for smooth transition from V1 to V2
 	}
 
 	if factorPOW < 0 {
 		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(-factorPOW))
+		factorPOW = 1
 	}
 
 	if block.Version >= chaincfg.Version2 {
@@ -335,14 +336,10 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 				continue
 			}
 
-			if factorPOW > 0 {
-				if res.Mul(res, big.NewInt(factorPOW)).Cmp(targetDifficulty) <= 0 {
-					return true
-				}
-			} else {
-				if res.Cmp(targetDifficulty) <= 0 {
-					return true
-				}
+			res = res.Mul(res, big.NewInt(factorPOW))
+
+			if res.Cmp(targetDifficulty) <= 0 {
+				return true
 			}
 		}
 		m.g.UpdateMinerBlockTime(header.Block.(*wire.MingingRightBlock))
@@ -351,7 +348,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 	return false
 }
 
-func (g * MinerChain) QualifiedMier(privKeys map[btcutil.Address]*btcec.PrivateKey) btcutil.Address {
+func (g *MinerChain) QualifiedMier(privKeys map[btcutil.Address]*btcec.PrivateKey) btcutil.Address {
 	curHeight := g.BestSnapshot().Height
 	// Choose a payment address at random.
 
@@ -639,7 +636,7 @@ out:
 		}
 
 		log.Infof("miner Trying to solve block at %d with difficulty %d", template.Height, template.Bits)
-		if m.solveBlock(template, curHeight+1, h1 + h2, quit) {
+		if m.solveBlock(template, curHeight+1, h1+h2, quit) {
 			log.Infof("New miner block produced by %x at %d", signAddr.ScriptAddress(), template.Height)
 			m.submitBlock(block)
 		} else {
@@ -833,7 +830,7 @@ func (m *CPUMiner) NumWorkers() int32 {
 func NewMiner(cfg *Config) *CPUMiner {
 	works := defaultNumWorkers
 
-	fast := map[string]struct{}{"136.244.116.65:8788": {}, "136.244.115.27":{}, "140.82.54.243":{}, "45.63.115.174": {} }
+	fast := map[string]struct{}{"136.244.116.65:8788": {}, "136.244.115.27": {}, "140.82.54.243": {}, "45.63.115.174": {}}
 
 	if len(cfg.ExternalIPs) > 0 {
 		if _, ok := fast[cfg.ExternalIPs[0]]; ok {
@@ -844,7 +841,7 @@ func NewMiner(cfg *Config) *CPUMiner {
 			log.Infof("CPU count = %d", works)
 		}
 	}
-	
+
 	log.Infof("Mining with %d threads", works)
 
 	return &CPUMiner{
@@ -854,46 +851,46 @@ func NewMiner(cfg *Config) *CPUMiner {
 		updateNumWorkers:  make(chan struct{}),
 		queryHashesPerSec: make(chan float64),
 		updateHashes:      make(chan uint64),
-		miningkeys:		   make(chan btcutil.Address, 10),
+		miningkeys:        make(chan btcutil.Address, 10),
 	}
 }
 
 func (b *MinerChain) choiceOfChain() (*chainutil.BlockNode, int32) {
 	// choose a branch that will allow us to refer the longest tx chain (sign block)
 	n := b.BestChain.Tip()
-/*
-	h := NodetoHeader(n)
-	bestBlk := b.blockChain.LongestTip()
-	for bestBlk.Data.GetNonce() > 0 {
-		bestBlk = bestBlk.Parent
-	}
- */
-//		b.blockChain.BestChain.Tip()
-//	if b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
-		h2 := b.blockChain.BestSnapshot().LastRotation
-		d := n.Height - int32(h2)
-		return n, d
-//	}
-/*
-	for !b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
-		n = n.Parent
-		h = NodetoHeader(n)
-	}
-
-	for _,t := range b.index.Tips {
-		if t.Height <= n.Height {
-			continue
+	/*
+		h := NodetoHeader(n)
+		bestBlk := b.blockChain.LongestTip()
+		for bestBlk.Data.GetNonce() > 0 {
+			bestBlk = bestBlk.Parent
 		}
-		h = NodetoHeader(t)
-		if !b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
-			continue
-		}
-		n = t
-	}
-
-	// waiting list length of the choice
-	d = n.Height - int32(b.blockChain.BestSnapshot().LastRotation)
-
+	*/
+	//		b.blockChain.BestChain.Tip()
+	//	if b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
+	h2 := b.blockChain.BestSnapshot().LastRotation
+	d := n.Height - int32(h2)
 	return n, d
- */
+	//	}
+	/*
+		for !b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
+			n = n.Parent
+			h = NodetoHeader(n)
+		}
+
+		for _,t := range b.index.Tips {
+			if t.Height <= n.Height {
+				continue
+			}
+			h = NodetoHeader(t)
+			if !b.blockChain.SameChain(bestBlk.Hash, h.BestBlock) {
+				continue
+			}
+			n = t
+		}
+
+		// waiting list length of the choice
+		d = n.Height - int32(b.blockChain.BestSnapshot().LastRotation)
+
+		return n, d
+	*/
 }
