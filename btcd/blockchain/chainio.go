@@ -12,6 +12,8 @@ import (
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/wire/common"
 	"math/big"
+	"os"
+
 	//	"sort"
 	"time"
 
@@ -1070,6 +1072,11 @@ func (b *BlockChain) initChainState() error {
 
 	// Attempt to load the chain state from the database.
 	gobackone := false
+	for _, v := range os.Args {
+		if v == "--chainback" {
+			gobackone = true
+		}
+	}
 
 	exec := func(dbTx database.Tx) error {
 		// Fetch the stored chain state from the database metadata.

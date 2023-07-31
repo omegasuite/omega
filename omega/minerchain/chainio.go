@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/omegasuite/btcd/blockchain"
@@ -247,6 +248,11 @@ func (b *MinerChain) initChainState() error {
 	}
 
 	gobackone := false
+	for _, v := range os.Args {
+		if v == "--minerback" {
+			gobackone = true
+		}
+	}
 
 	// Attempt to load the chain state from the database.
 	exec := func(dbTx database.Tx) error {

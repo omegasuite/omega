@@ -175,6 +175,8 @@ type config struct {
 	ContractReqExp  bool   `long:"contractreqexp" description:"Local rule, requiring expiration in tx with contract"`
 	Settip          string `long:"settip" description:"Set tips of chain"`
 	ReUtxo          bool   `long:"reutxo" description:"Rebuild UTXO"`
+	Chainback       bool   `long:"chainback" description:"back one tx block"`
+	Minerback       bool   `long:"minerback" description:"back one miner block"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
