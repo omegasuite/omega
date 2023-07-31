@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/omegasuite/btcd/blockchain"
@@ -78,28 +77,22 @@ var (
 // bestChainState represents the data to be stored the database for the current
 // best chain state.
 type bestChainState struct {
-	hash    chainhash.Hash
-	height  uint32
-	workSum *big.Int
+	hash   chainhash.Hash
+	height uint32
 }
 
 // serializeBestChainState returns the serialization of the passed block best
 // chain state.  This is data to be stored in the chain state bucket.
 func serializeBestChainState(state bestChainState) []byte {
 	// Calculate the full size needed to serialize the chain state.
-	workSumBytes := state.workSum.Bytes()
-	workSumBytesLen := uint32(len(workSumBytes))
-	serializedLen := chainhash.HashSize + 4 + 4 + workSumBytesLen
+	serializedLen := chainhash.HashSize + 4
 
 	// Serialize the chain state.
 	serializedData := make([]byte, serializedLen)
 	copy(serializedData[0:chainhash.HashSize], state.hash[:])
 	offset := uint32(chainhash.HashSize)
 	byteOrder.PutUint32(serializedData[offset:], state.height)
-	offset += 4
-	byteOrder.PutUint32(serializedData[offset:], workSumBytesLen)
-	offset += 4
-	copy(serializedData[offset:], workSumBytes)
+
 	return serializedData[:]
 }
 
@@ -110,7 +103,7 @@ func serializeBestChainState(state bestChainState) []byte {
 func deserializeBestChainState(serializedData []byte) (bestChainState, error) {
 	// Ensure the serialized data has enough bytes to properly deserialize
 	// the hash, height, total transactions, and work sum length.
-	if len(serializedData) < chainhash.HashSize+8 {
+	if len(serializedData) < chainhash.HashSize+4 {
 		return bestChainState{}, database.Error{
 			ErrorCode:   database.ErrCorruption,
 			Description: "corrupt best chain state",
@@ -121,32 +114,17 @@ func deserializeBestChainState(serializedData []byte) (bestChainState, error) {
 	copy(state.hash[:], serializedData[0:chainhash.HashSize])
 	offset := uint32(chainhash.HashSize)
 	state.height = byteOrder.Uint32(serializedData[offset : offset+4])
-	offset += 4
-	workSumBytesLen := byteOrder.Uint32(serializedData[offset : offset+4])
-	offset += 4
-
-	// Ensure the serialized data has enough bytes to deserialize the work
-	// sum.
-	if uint32(len(serializedData[offset:])) < workSumBytesLen {
-		return bestChainState{}, database.Error{
-			ErrorCode:   database.ErrCorruption,
-			Description: "corrupt best chain state",
-		}
-	}
-	workSumBytes := serializedData[offset : offset+workSumBytesLen]
-	state.workSum = new(big.Int).SetBytes(workSumBytes)
 
 	return state, nil
 }
 
 // dbPutBestState uses an existing database transaction to update the best chain
 // state with the given parameters.
-func dbPutBestState(dbTx database.Tx, snapshot *blockchain.BestState, workSum *big.Int) error {
+func dbPutBestState(dbTx database.Tx, snapshot *blockchain.BestState) error {
 	// Serialize the current best chain state.
 	serializedData := serializeBestChainState(bestChainState{
-		hash:    snapshot.Hash,
-		height:  uint32(snapshot.Height),
-		workSum: workSum,
+		hash:   snapshot.Hash,
+		height: uint32(snapshot.Height),
 	})
 
 	// Store the current best chain state into the database.
@@ -219,7 +197,7 @@ func (b *MinerChain) createChainState() error {
 		}
 
 		// Store the current best chain state into the database.
-		if err = dbPutBestState(dbTx, b.stateSnapshot, node.Data.(*blockchainNodeData).workSum); err != nil {
+		if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
 			return err
 		}
 
@@ -411,7 +389,7 @@ func (b *MinerChain) initChainState() error {
 		b.stateSnapshot = newBestState(tip, tip.CalcPastMedianTime())
 
 		if gobackone {
-			if err = dbPutBestState(dbTx, b.stateSnapshot, tip.Data.(*blockchainNodeData).workSum); err != nil {
+			if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
 				return err
 			}
 		}

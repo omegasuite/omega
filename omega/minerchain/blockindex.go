@@ -11,42 +11,36 @@ package minerchain
 import (
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/wire"
-	"math/big"
 )
 
 type blockchainNodeData struct {
 	// workSum is the total amount of work in the chain up to and including
 	// this node.
-	workSum *big.Int
-	block   *wire.MingingRightBlock
+	block *wire.MingingRightBlock
 }
 
-func (d * blockchainNodeData) GetContractExec() int64 {
+func (d *blockchainNodeData) GetContractExec() int64 {
 	return d.block.ContractLimit
 }
 
-func (d * blockchainNodeData) TimeStamp() int64 {
+func (d *blockchainNodeData) TimeStamp() int64 {
 	return d.block.Timestamp.Unix()
 }
 
-func (d * blockchainNodeData) GetNonce() int32 {
+func (d *blockchainNodeData) GetNonce() int32 {
 	return d.block.Nonce
 }
 
-func (d * blockchainNodeData) SetBits(s uint32) {
+func (d *blockchainNodeData) SetBits(s uint32) {
 	d.block.Bits = s
 }
 
-func (d * blockchainNodeData) GetBits() uint32 {
+func (d *blockchainNodeData) GetBits() uint32 {
 	return d.block.Bits
 }
 
-func (d * blockchainNodeData) GetVersion() uint32 {
+func (d *blockchainNodeData) GetVersion() uint32 {
 	return d.block.Version
-}
-
-func (d * blockchainNodeData) WorkSum() *big.Int {
-	return d.workSum
 }
 
 // Header constructs a block header from the node and returns it.
@@ -65,12 +59,11 @@ func (b *MinerChain) NodetoHeader(node *chainutil.BlockNode) wire.MingingRightBl
 // This function is NOT safe for concurrent access.  It must only be called when
 // initially creating a node.
 func InitBlockNode(node *chainutil.BlockNode, blockHeader *wire.MingingRightBlock, parent *chainutil.BlockNode) {
-	d := blockchainNodeData {
-		workSum:	CalcWork(blockHeader.Bits),
-		block:		blockHeader,
+	d := blockchainNodeData{
+		block: blockHeader,
 	}
 	*node = chainutil.BlockNode{
-		Hash:       blockHeader.BlockHash(),
+		Hash: blockHeader.BlockHash(),
 	}
 
 	if parent != nil {
@@ -79,7 +72,6 @@ func InitBlockNode(node *chainutil.BlockNode, blockHeader *wire.MingingRightBloc
 		}
 		node.Parent = parent
 		node.Height = parent.Height + 1
-		d.workSum = d.workSum.Add(parent.Data.(*blockchainNodeData).workSum, d.workSum)
 	}
 	node.Data = &d
 }

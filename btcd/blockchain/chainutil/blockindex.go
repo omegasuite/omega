@@ -5,7 +5,6 @@
 package chainutil
 
 import (
-	"math/big"
 	"sort"
 	"sync"
 	"time"
@@ -44,7 +43,7 @@ const (
 
 // blockIndexBucketName is the name of the db bucket used to house to the
 // block headers and contextual information.
-var	blockIndexBucketName = []byte("blockheaderidx")
+var blockIndexBucketName = []byte("blockheaderidx")
 
 // HaveData returns whether the full block data is stored in the database. This
 // will return false for a block node where only the header is downloaded or
@@ -74,7 +73,6 @@ type NodeData interface {
 	SetBits(uint32)
 	GetVersion() uint32
 	GetContractExec() int64
-	WorkSum() *big.Int
 }
 
 // BlockNode represents a block within the block chain and is primarily used to
@@ -88,7 +86,7 @@ type BlockNode struct {
 	Hash chainhash.Hash
 
 	// Height is the position in the block chain.
-	Height    int32
+	Height int32
 	// Status is a bitfield representing the validation state of the block. The
 	// Status field, unlike the other fields, may be written to and so should
 	// only be accessed using the concurrent-safe NodeStatus method on
@@ -188,11 +186,11 @@ type BlockIndex struct {
 	index map[chainhash.Hash]*BlockNode
 	dirty map[*BlockNode]bool
 
-//	Unloaded []chainhash.Hash		// unloaded blocks. sorted by hash
+	//	Unloaded []chainhash.Hash		// unloaded blocks. sorted by hash
 
 	Cutoff uint32
-//	Unloaded map[chainhash.Hash]int32
-//	Ulocator []chainhash.Hash
+	//	Unloaded map[chainhash.Hash]int32
+	//	Ulocator []chainhash.Hash
 
 	// Tips of side chains
 	Tips map[chainhash.Hash]*BlockNode
@@ -208,7 +206,7 @@ func NewBlockIndex(db database.DB, chainParams *chaincfg.Params) *BlockIndex {
 		index:       make(map[chainhash.Hash]*BlockNode),
 		dirty:       make(map[*BlockNode]bool),
 		Tips:        make(map[chainhash.Hash]*BlockNode),
-//		Unloaded:	 make(map[chainhash.Hash]int32),
+		//		Unloaded:	 make(map[chainhash.Hash]int32),
 	}
 }
 
@@ -236,7 +234,7 @@ func (bi *BlockIndex) search(hash *chainhash.Hash, m, start, end uint32) bool {
 	}
 }
 
- */
+*/
 // HaveBlock returns whether or not the block index Contains the provided hash.
 //
 // This function is safe for concurrent access.
@@ -245,11 +243,11 @@ func (bi *BlockIndex) HaveBlock(hash *chainhash.Hash) bool {
 	_, hasBlock := bi.index[*hash]
 	bi.RUnlock()
 
-/*
-	if !hasBlock && bi.Cutoff > 0 {
-		hasBlock = bi.search(hash, bi.Cutoff / 2, 1, bi.Cutoff)
-	}
- */
+	/*
+		if !hasBlock && bi.Cutoff > 0 {
+			hasBlock = bi.search(hash, bi.Cutoff / 2, 1, bi.Cutoff)
+		}
+	*/
 
 	return hasBlock
 }
@@ -293,7 +291,7 @@ func (bi *BlockIndex) RemoveNode(node *BlockNode) {
 	bi.dirty[node] = false
 	bi.Unlock()
 }
- */
+*/
 
 // AddNodeUL adds the provided node to the block index, but does not mark it as
 // dirty. This can be used while initializing the block index.
@@ -306,11 +304,12 @@ func (bi *BlockIndex) AddNodeUL(node *BlockNode) {
 	bi.index[node.Hash] = node
 	bi.Tips[node.Hash] = node
 }
+
 /*
 func (bi *BlockIndex) AddNodeHash(h chainhash.Hash) {
 	bi.index[h] = nil
 }
- */
+*/
 
 func (bi *BlockIndex) Untip(hash chainhash.Hash) {
 	delete(bi.Tips, hash)

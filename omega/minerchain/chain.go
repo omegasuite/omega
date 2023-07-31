@@ -424,7 +424,7 @@ func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBl
 	// Atomically insert info into the database.
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
-		err := dbPutBestState(dbTx, state, node.Data.(*blockchainNodeData).workSum)
+		err := dbPutBestState(dbTx, state)
 		if err != nil {
 			return err
 		}
@@ -544,7 +544,7 @@ func (b *MinerChain) disconnectBlock(node *chainutil.BlockNode, block *wire.Mine
 
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
-		err := dbPutBestState(dbTx, state, node.Data.(*blockchainNodeData).workSum)
+		err := dbPutBestState(dbTx, state)
 		if err != nil {
 			return err
 		}
@@ -938,7 +938,7 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 	// We're extending (or creating) a side chain, but the WorkSum is not sufficient
 	//// to cause a reorganization. connectBlock must be called with a blocke cumulative
 	// work for this new side chain is not enough to make it the new chain.
-	if b.WorkSum(node).Cmp(b.WorkSum(b.BestChain.Tip())) <= 0 {
+	if node.Height <= b.BestChain.Tip().Height {
 		// Log information about how the block is forking the chain.
 		fork := b.BestChain.FindFork(node)
 		if fork.Hash.IsEqual(parentHash) {
@@ -1017,22 +1017,6 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 	}
 
 	return true, nil
-}
-
-func (b *MinerChain) WorkSum(node *chainutil.BlockNode) *big.Int {
-	s := node.Data.WorkSum()
-	bb := b.blockChain.NodeByHash(&node.Data.(*blockchainNodeData).block.BestBlock)
-	for bb != nil && bb.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
-		bb = bb.Parent
-	}
-	if bb == nil {
-		return s
-	}
-	mb := b.BestChain.NodeByHeight(-bb.Data.GetNonce() - wire.MINER_RORATE_FREQ)
-	if mb == nil {
-		return s
-	}
-	return s.Add(s, mb.Data.WorkSum())
 }
 
 // isCurrent returns whether or not the chain believes it is current.  Several
