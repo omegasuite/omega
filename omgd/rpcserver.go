@@ -210,7 +210,6 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"shutdownserver":        handleShutdown,
 	"vmdebug":               handleVMDebug,
 	"settip":                handleSetTip,
-	"blacklist":             handleBlackList,
 }
 
 // list of commands that we recognize, but for which btcd has no support because
@@ -344,7 +343,6 @@ var rpcLimited = map[string]struct{}{
 	"getpeerinfo":         {},
 	"node":                {},
 	"ping":                {},
-	"blacklist":           {},
 }
 
 /*
@@ -5230,37 +5228,6 @@ type rpcServer struct {
 	Rpcactivity chan struct{}
 	//	alertresp			   chan *AlertCommand
 	rsapubkey *rsa.PublicKey
-}
-
-func handleBlackList(s *rpcServer, _ interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	l := s.cfg.Chain.Miners.BlackList()
-
-	reply := btcjson.BlackListResult{
-		BlackList: make([]btcjson.BlackListItem, 0),
-	}
-
-	for m, h := range l {
-		match := -1
-
-		addr, _ := btcutil.NewAddressPubKeyHash(m[:], s.cfg.ChainParams)
-		name := addr.EncodeAddress()
-
-		for i, n := range reply.BlackList {
-			if name == n.Address {
-				match = i
-			}
-		}
-		if match < 0 {
-			reply.BlackList = append(reply.BlackList, btcjson.BlackListItem{Address: name, Heights: make([]int32, 0)})
-			match = len(reply.BlackList) - 1
-			reply.BlackList[match].Address = name
-		}
-		for _, j := range h {
-			reply.BlackList[match].Heights = append(reply.BlackList[match].Heights, j)
-		}
-	}
-
-	return reply, nil
 }
 
 // httpStatusLine returns a response Status-Line (RFC 2616 Section 6.1)

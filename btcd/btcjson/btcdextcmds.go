@@ -187,6 +187,5 @@ func init() {
 	MustRegisterCmd("version", (*VersionCmd)(nil), flags)
 	MustRegisterCmd("shutdownserver", (*ShutdownCmd)(nil), flags)
 	MustRegisterCmd("vmdebug", (*VMDebugCmd)(nil), flags)
-	MustRegisterCmd("blacklist", (*GetBlockChainInfoCmd)(nil), flags)
 	MustRegisterCmd("settip", (*SetTipCmd)(nil), flags)
 }

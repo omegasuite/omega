@@ -374,23 +374,7 @@ func (b *MinerChain) initChainState() error {
 				b.index.SetStatusFlags(iterNode, chainutil.StatusValid)
 			}
 
-			// update blacklist
-			for _, r := range NodetoHeader(iterNode).ViolationReport {
-				mb := b.index.LookupNodeUL(&r.MRBlock)
-				if _, ok := b.blacklist[NodetoHeader(mb).Miner]; ok {
-					exst := false
-					for _, e := range b.blacklist[NodetoHeader(mb).Miner] {
-						exst = exst || (e == mb.Height)
-					}
-					if !exst {
-						b.blacklist[NodetoHeader(mb).Miner] = append(b.blacklist[NodetoHeader(mb).Miner], mb.Height)
-					}
-				} else {
-					b.blacklist[NodetoHeader(mb).Miner] = []int32{mb.Height}
-				}
-			}
 		}
-
 		// Initialize the state related to the best block.
 		b.stateSnapshot = newBestState(tip, tip.CalcPastMedianTime())
 

@@ -640,15 +640,6 @@ type TxRawDecodeResult struct {
 	Vout     []Vout `json:"vout"`
 }
 
-type BlackListItem struct {
-	Address string
-	Heights []int32
-}
-
-type BlackListResult struct {
-	BlackList []BlackListItem
-}
-
 // ValidateAddressChainResult models the data returned by the chain server
 // validateaddress command.
 type ValidateAddressChainResult struct {

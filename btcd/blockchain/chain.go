@@ -106,7 +106,6 @@ type MinerChain interface {
 	NodetoHeader(node *chainutil.BlockNode) wire.MingingRightBlock
 	TphReport(rpts int, last *chainutil.BlockNode, me [20]byte) []uint32
 	DSReport(*wire.Violations)
-	BlackList() map[[20]byte][]int32
 	FastReorganizeChain(attachNodes *list.List) error
 }
 
@@ -1229,7 +1228,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 				}
 			}
 			if err != nil {
-				log.Infof("checkProofOfWork error for block %s: " + err.Error(), block.Hash().String())
+				log.Infof("checkProofOfWork error for block %s: "+err.Error(), block.Hash().String())
 			}
 			break
 		}

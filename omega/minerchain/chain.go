@@ -156,7 +156,6 @@ type MinerChain struct {
 	notifications     []blockchain.NotificationCallback
 
 	violations []*wire.Violations
-	blacklist  map[[20]byte][]int32
 
 	TxIndex blockchain.IndexManager
 }
@@ -368,10 +367,6 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	return detachNodes, attachNodes, txdetachNodes, txattachNodes
 }
 
-func (b *MinerChain) BlackList() map[[20]byte][]int32 {
-	return b.blacklist
-}
-
 // connectBlock handles connecting the passed node/block to the end of the main
 // (best) chain.
 //
@@ -389,10 +384,6 @@ func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBl
 	if !prevHash.IsEqual(&b.BestChain.Tip().Hash) {
 		return AssertError("connectBlock must be called with a block " +
 			"that extends the main chain")
-	}
-
-	if _, ok := b.blacklist[block.MsgBlock().Miner]; ok {
-		return fmt.Errorf("Blacklised Miner")
 	}
 
 	// No warnings about unknown rules or versions until the chain is
@@ -460,17 +451,6 @@ func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBl
 	})
 	if err != nil {
 		return err
-	}
-
-	// add to black list
-	for _, r := range block.MsgBlock().ViolationReport {
-		mb := b.index.LookupNodeUL(&r.MRBlock)
-		miner := mb.Data.(*blockchainNodeData).block.Miner
-		if _, ok := b.blacklist[miner]; ok {
-			b.blacklist[miner] = append(b.blacklist[miner], r.Height)
-		} else {
-			b.blacklist[miner] = []int32{r.Height}
-		}
 	}
 
 	// remove from violation report pool expired ones
@@ -574,25 +554,6 @@ func (b *MinerChain) disconnectBlock(node *chainutil.BlockNode, block *wire.Mine
 
 	// This node's parent is now the end of the best chain.
 	b.BestChain.SetTip(node.Parent)
-
-	// add to black list
-	for _, r := range block.MsgBlock().ViolationReport {
-		mb := b.index.LookupNodeUL(&r.MRBlock)
-		miner := mb.Data.(*blockchainNodeData).block.Miner
-		if _, ok := b.blacklist[miner]; ok {
-			t := make([]int32, 0)
-			for _, h := range b.blacklist[miner] {
-				if h != r.Height {
-					t = append(t, h)
-				}
-			}
-			if len(t) > 0 {
-				b.blacklist[miner] = t
-			} else {
-				delete(b.blacklist, miner)
-			}
-		}
-	}
 
 	// add back to pool
 	if len(block.MsgBlock().ViolationReport) > 0 {
@@ -1511,7 +1472,6 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		warningCaches:       NewThresholdCaches(vbNumBits),
 		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
 		violations:          make([]*wire.Violations, 0),
-		blacklist:           make(map[[20]byte][]int32),
 		TxIndex:             config.IndexManager,
 	}
 
