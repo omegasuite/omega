@@ -601,7 +601,7 @@ out:
 			if c == 0 {
 				c = 1
 			}
-			v,err := m.g.Chain.CheckCollateral(block, nil,0)
+			v, err := m.g.Chain.CheckCollateral(block, nil, 0)
 			if err != nil {
 				time.Sleep(time.Second * 5)
 				continue
@@ -612,11 +612,14 @@ out:
 			}
 
 			me := m.g.Chain.Miners.(*MinerChain)
-			prev,_ := me.BlockByHash(&block.MsgBlock().PrevBlock)
+			prev, _ := me.BlockByHash(&block.MsgBlock().PrevBlock)
 			minscore := prev.MsgBlock().MeanTPH >> 3
-			r := me.reportFromDB(block.MsgBlock().Miner)	// max most recent 100 records
+			if minscore == 0 {
+				minscore = 1
+			}
+			r := me.reportFromDB(block.MsgBlock().Miner) // max most recent 100 records
 			for i := len(r); i < 100; i++ {
-				r = append(r, rv{ val: minscore })
+				r = append(r, rv{val: minscore})
 			}
 			sort.Slice(r, func(i, j int) bool {
 				return r[i].val < r[j].val

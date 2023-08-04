@@ -6,28 +6,25 @@ package main
 
 import (
 	"bytes"
-	"crypto/rsa"
-	"encoding/json"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/connmgr"
 	"github.com/omegasuite/omega/consensus"
 	"github.com/omegasuite/omega/minerchain"
-	"math/big"
 	"net"
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-//	"github.com/omegasuite/btcd/peer"
+	//	"github.com/omegasuite/btcd/peer"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
 )
 
-const advanceCommitteeConnection = wire.CommitteeSize	// # of miner blocks we should prepare for connection
+const advanceCommitteeConnection = wire.CommitteeSize // # of miner blocks we should prepare for connection
 const maxFailedAttempts = 25
 
 // This must be a go routine
-func (p * peerState) CommitteeOut(s * committeeState) {
+func (p *peerState) CommitteeOut(s *committeeState) {
 	var msg wire.Message
 	var ok bool
 	done := make(chan bool)
@@ -38,7 +35,7 @@ func (p * peerState) CommitteeOut(s * committeeState) {
 		}
 
 		sent := false
-		for _,sp := range s.peers {
+		for _, sp := range s.peers {
 			if !sent && sp.Connected() {
 				btcdLog.Infof("CommitteeOut: %s msg to %s", msg.Command(), sp.Addr())
 				sp.QueueMessageWithEncoding(msg, done, wire.SignatureEncoding)
@@ -445,6 +442,7 @@ func (s *server) MyPlaceInCommittee(r int32) int32 {
 	return 0
 }
 
+/*
 func (s * server) makeInvitation(me int32, miner []byte) (* wire.Invitation, * btcutil.Address) {
 	if s.signAddress == nil {
 		return nil, nil
@@ -525,12 +523,13 @@ func (s * server) makeInvitationMsg(me int32, miner []byte, conn []byte) * wire.
 
 	return &m
 }
+*/
 
-func (s *server) BestSnapshot() * blockchain.BestState {
+func (s *server) BestSnapshot() *blockchain.BestState {
 	return s.chain.BestSnapshot()
 }
 
-func (s *server) MinerBlockByHeight(n int32) (* wire.MinerBlock,error) {
+func (s *server) MinerBlockByHeight(n int32) (*wire.MinerBlock, error) {
 	return s.chain.Miners.BlockByHeight(n)
 }
 
@@ -541,11 +540,11 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 	m, ok := s.peerState.committee[miner]
 	if ok {
 		np := make([]*serverPeer, 0, len(m.peers))
-		for _,r := range m.peers {
+		for _, r := range m.peers {
 			// do they exist?
 			exist := false
 
-			s.peerState.forAllPeers(func (sp * serverPeer) {
+			s.peerState.forAllPeers(func(sp *serverPeer) {
 				if sp.ID() == r.ID() && sp.Connected() {
 					exist = true
 				}
