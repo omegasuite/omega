@@ -1832,20 +1832,20 @@ func (g *MinerChain) reportNotice(n *blockchain.Notification) {
 			for _, r := range block.MsgBlock().TphReports {
 				w := node.Data.(*blockchainNodeData).block.Miner
 				_, ok := checked[w]
-/*
-				for ok {
-					node = node.Parent
-					if node == nil {
-						break
+				/*
+					for ok {
+						node = node.Parent
+						if node == nil {
+							break
+						}
+						w = node.Data.(*blockchainNodeData).block.Miner
+						_, ok = checked[w]
 					}
-					w = node.Data.(*blockchainNodeData).block.Miner
-					_, ok = checked[w]
-				}
 
- */
+				*/
 				if ok {
 					return nil
-//					continue
+					//					continue
 				}
 				checked[w] = struct{}{}
 
@@ -1867,8 +1867,8 @@ func (g *MinerChain) reportNotice(n *blockchain.Notification) {
 					byteOrder.PutUint32(k[:], uint32(block.Height()))
 					bucket.Delete(k[:])
 				}
-				return nil
-			})
-		}
+			}
+			return nil
+		})
 	}
 }
