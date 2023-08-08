@@ -235,12 +235,15 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			} else {
 				h2 = int64(sum / minscore)
 			}
+			if header.Version <= chaincfg.Version5 {
+				h2 *= 16
+			}
 
 			if factor > 0 {
 				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
 				target = target.Mul(target, big.NewInt(h1+h2))
 			} else {
-				target = target.Mul(target, big.NewInt((h1+h2) * (-factor)))
+				target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
 			}
 
 			if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {

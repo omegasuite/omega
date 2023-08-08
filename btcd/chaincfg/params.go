@@ -121,6 +121,9 @@ const (
 	// collateral provided in the previous adj. period)
 	DeploymentVersion5
 
+	// DeploymentVersion6 includes: a bug fix in miner chain about h2 value
+	DeploymentVersion6
+
 	// DefinedDeployments is the number of currently defined deployments.
 	// It must always come last since it is used to determine how many
 	// defined deployments there currently are.
@@ -133,13 +136,14 @@ const (
 	Version3 = 0x30000
 	Version4 = 0x40000
 	Version5 = 0x50000
+	Version6 = 0x60000
 )
 
 type forfeitureContract struct {
-	Contract 	[21]byte
-	Opening		[4]byte
-	Filing		[4]byte
-	Claim		[4]byte
+	Contract [21]byte
+	Opening  [4]byte
+	Filing   [4]byte
+	Claim    [4]byte
 }
 
 // Params defines a Bitcoin network by its parameters.  These parameters may be
@@ -353,6 +357,12 @@ var MainNetParams = Params{
 			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  uint64(time.Date(2023, 5, 2, 0, 0, 0, 0, time.UTC).Unix()),
 		},
+		DeploymentVersion6: {
+			PrevVersion: 0x50000,
+			FeatureMask: 0x5,
+			StartTime:   uint64(time.Date(2023, 8, 1, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  uint64(time.Date(2023, 11, 2, 0, 0, 0, 0, time.UTC).Unix()),
+		},
 	},
 
 	// Mempool parameters
@@ -363,33 +373,33 @@ var MainNetParams = Params{
 	Bech32HRPSegwit: "bc", // always bc for main net
 
 	// Address encoding magics
-	PubKeyHashAddrID:        0x00, // starts with 1
-	MultiSigAddrID:			 0x78,
-	MultiSigAddrXID:		 0xC3,
+	PubKeyHashAddrID: 0x00, // starts with 1
+	MultiSigAddrID:   0x78,
+	MultiSigAddrXID:  0xC3,
 
-	ScriptHashAddrID:        0x05, // starts with 3
-	ScriptAddrID:			 0x13,
-	ContractAddrID:			 0x88, // start with 8
-	PrivateKeyID:            0x80, // starts with 5 (uncompressed) or K (compressed)
+	ScriptHashAddrID: 0x05, // starts with 3
+	ScriptAddrID:     0x13,
+	ContractAddrID:   0x88, // start with 8
+	PrivateKeyID:     0x80, // starts with 5 (uncompressed) or K (compressed)
 
 	HDPublicKeyID:  [4]byte{0x04, 0x88, 0xad, 0xe4},
-	HDPrivateKeyID:  [4]byte{0x04, 0x88, 0xb2, 0x1e},
+	HDPrivateKeyID: [4]byte{0x04, 0x88, 0xb2, 0x1e},
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
-	HDCoinType: 0,
-	ContractExecLimit: 10000,		// min limit of total contract execution steps in a block
+	HDCoinType:         0,
+	ContractExecLimit:  10000, // min limit of total contract execution steps in a block
 	SigVeriConcurrency: runtime.NumCPU(),
-	ContractExecFee: 1,
-	Forfeit:	forfeitureContract {
-		Contract: 	[21]byte{0x88, 0x1a, 0x52, 0x0f, 0xa9, 0x4d, 0x8e, 0x07,
+	ContractExecFee:    1,
+	Forfeit: forfeitureContract{
+		Contract: [21]byte{0x88, 0x1a, 0x52, 0x0f, 0xa9, 0x4d, 0x8e, 0x07,
 			0x3b, 0x0b, 0x46, 0x79, 0x43, 0x5b, 0x55, 0x09, 0xa5, 0xc6, 0x84, 0x7d, 0xb3},
-		Opening:	[4]byte{0x7c, 0xef, 0x8a, 0x73},
-		Filing:		[4]byte{0xb2, 0x18, 0x16, 0x5a},
-		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
+		Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
+		Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
+		Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
-	ViolationReportDeadline:	100,
-	ContractReqExp: false,
+	ViolationReportDeadline: 100,
+	ContractReqExp:          false,
 }
 
 // RegressionNetParams defines the network parameters for the regression test
@@ -458,6 +468,12 @@ var RegressionNetParams = Params{
 			PrevVersion: 0x40000,
 			FeatureMask: 0x8,
 			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
+		DeploymentVersion6: {
+			PrevVersion: 0x50000,
+			FeatureMask: 0x5,
+			StartTime:   uint64(time.Date(2023, 8, 1, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  math.MaxInt64, // Never expires
 		},
 	},
@@ -571,6 +587,12 @@ var TestNet3Params = Params{
 			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  math.MaxInt64, // Never expires
 		},
+		DeploymentVersion6: {
+			PrevVersion: 0x50000,
+			FeatureMask: 0x5,
+			StartTime:   uint64(time.Date(2023, 8, 1, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
 	},
 
 	// Mempool parameters
@@ -581,34 +603,34 @@ var TestNet3Params = Params{
 	Bech32HRPSegwit: "tb", // always tb for test net
 
 	// Address encoding magics
-	PubKeyHashAddrID:        0x6f, // starts with m or n
-	MultiSigAddrID:			 0x67,
-	MultiSigAddrXID:		 0xC3,
+	PubKeyHashAddrID: 0x6f, // starts with m or n
+	MultiSigAddrID:   0x67,
+	MultiSigAddrXID:  0xC3,
 
-	ScriptHashAddrID:        0xc4, // starts with 2
-	ScriptAddrID:			 0x13,
-	ContractAddrID:	 		 0x88, // start with 8
-	PrivateKeyID:            0xef, // starts with 9 (uncompressed) or c (compressed)
+	ScriptHashAddrID: 0xc4, // starts with 2
+	ScriptAddrID:     0x13,
+	ContractAddrID:   0x88, // start with 8
+	PrivateKeyID:     0xef, // starts with 9 (uncompressed) or c (compressed)
 
 	HDPublicKeyID:  [4]byte{0x04, 0x35, 0x83, 0x94},
-	HDPrivateKeyID:  [4]byte{0x04, 0x35, 0x87, 0xcf},
+	HDPrivateKeyID: [4]byte{0x04, 0x35, 0x87, 0xcf},
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 1,
 
-	ContractExecLimit: 10000,
+	ContractExecLimit:  10000,
 	SigVeriConcurrency: 4,
-	ContractExecFee: 1,
-	Forfeit:	forfeitureContract {
-		Contract: 	[21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
+	ContractExecFee:    1,
+	Forfeit: forfeitureContract{
+		Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
 			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
-		Opening:	[4]byte{0x7c,0xef,0x8a,0x73},
-		Filing:		[4]byte{0xb2,0x18,0x16,0x5a},
-		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
+		Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
+		Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
+		Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
 	ViolationReportDeadline: 10,
-	ContractReqExp: false,
+	ContractReqExp:          false,
 }
 
 // SimNetParams defines the network parameters for the simulation test Bitcoin
@@ -683,6 +705,12 @@ var SimNetParams = Params{
 			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  math.MaxInt64, // Never expires
 		},
+		DeploymentVersion6: {
+			PrevVersion: 0x50000,
+			FeatureMask: 0x5,
+			StartTime:   uint64(time.Date(2023, 8, 1, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  math.MaxInt64, // Never expires
+		},
 	},
 
 	// Mempool parameters
@@ -693,34 +721,34 @@ var SimNetParams = Params{
 	Bech32HRPSegwit: "sb", // always sb for sim net
 
 	// Address encoding magics
-	PubKeyHashAddrID:        0x3f, // starts with S
-	MultiSigAddrID:			 0x60,
-	MultiSigAddrXID:		 0xC3,
+	PubKeyHashAddrID: 0x3f, // starts with S
+	MultiSigAddrID:   0x60,
+	MultiSigAddrXID:  0xC3,
 
-	ScriptHashAddrID:        0x7b, // starts with s
-	ScriptAddrID:			 0x13,
-	ContractAddrID:			 0x88, // start with 8
-	PrivateKeyID:            0x64, // starts with 4 (uncompressed) or F (compressed)
+	ScriptHashAddrID: 0x7b, // starts with s
+	ScriptAddrID:     0x13,
+	ContractAddrID:   0x88, // start with 8
+	PrivateKeyID:     0x64, // starts with 4 (uncompressed) or F (compressed)
 
 	HDPublicKeyID:  [4]byte{0x04, 0x20, 0xb9, 0x00},
-	HDPrivateKeyID:  [4]byte{0x04, 0x35, 0xbd, 0x3a},
+	HDPrivateKeyID: [4]byte{0x04, 0x35, 0xbd, 0x3a},
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 115, // ASCII for s
 
-	ContractExecLimit: 10000,
+	ContractExecLimit:  10000,
 	SigVeriConcurrency: 4,
-	ContractExecFee: 1,
-	Forfeit:	forfeitureContract {
-		Contract: 	[21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
+	ContractExecFee:    1,
+	Forfeit: forfeitureContract{
+		Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
 			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
-		Opening:	[4]byte{0x7c,0xef,0x8a,0x73},
-		Filing:		[4]byte{0xb2,0x18,0x16,0x5a},
-		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
+		Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
+		Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
+		Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
 	ViolationReportDeadline: 10,
-	ContractReqExp: false,
+	ContractReqExp:          false,
 }
 
 var (

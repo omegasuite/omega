@@ -1829,6 +1829,12 @@ func (g *MinerChain) reportNotice(n *blockchain.Notification) {
 				}
 				return nil
 			}
+
+			var k [4]byte
+			byteOrder.PutUint32(k[:], uint32(block.Height()))
+			var s [24]byte
+			copy(s[:], block.MsgBlock().Miner[:])
+
 			for _, r := range block.MsgBlock().TphReports {
 				w := node.Data.(*blockchainNodeData).block.Miner
 				_, ok := checked[w]
@@ -1849,22 +1855,18 @@ func (g *MinerChain) reportNotice(n *blockchain.Notification) {
 				}
 				checked[w] = struct{}{}
 
+				node = node.Parent
+
 				bucket := rootBucket.Bucket(w[:])
 				if bucket == nil {
 					bucket, _ = rootBucket.CreateBucket(w[:])
 				}
 				switch n.Type {
 				case blockchain.NTBlockConnected:
-					var s [24]byte
-					var k [4]byte
-					byteOrder.PutUint32(k[:], uint32(block.Height()))
-					copy(s[:], block.MsgBlock().Miner[:])
 					byteOrder.PutUint32(s[20:], r)
 					bucket.Put(k[:], s[:])
 
 				case blockchain.NTBlockDisconnected:
-					var k [4]byte
-					byteOrder.PutUint32(k[:], uint32(block.Height()))
 					bucket.Delete(k[:])
 				}
 			}
