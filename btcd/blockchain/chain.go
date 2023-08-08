@@ -83,6 +83,12 @@ func newBestState(node *chainutil.BlockNode, blockSize, numTxns,
 	}
 }
 
+type TPSrv struct {
+	Reporter [20]byte
+	Height   uint32
+	Val      uint32
+}
+
 type MinerChain interface {
 	ProcessBlock(*wire.MinerBlock, BehaviorFlags) (bool, bool, error, wire.Message)
 	BestSnapshot() *BestState
@@ -107,6 +113,7 @@ type MinerChain interface {
 	TphReport(rpts int, last *chainutil.BlockNode, me [20]byte) []uint32
 	DSReport(*wire.Violations)
 	FastReorganizeChain(attachNodes *list.List) error
+	TPSreportFromDB([20]byte) []TPSrv
 }
 
 // BlockChain provides functions for working with the bitcoin block chain.

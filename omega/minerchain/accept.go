@@ -203,29 +203,29 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			if c == 0 {
 				c = 1
 			}
-			v,_ := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
+			v, _ := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
 			h1 := int64(v / c)
 			if h1 < 1 {
 				h1 = 1
 			}
 
-			prev,_ := m.DBBlockByHash(&header.PrevBlock)
+			prev, _ := m.DBBlockByHash(&header.PrevBlock)
 			minscore := prev.MsgBlock().MeanTPH >> 3
 			if minscore == 0 {
 				minscore = 1
 			}
 
-			r := m.reportFromDB(header.Miner)	// max most recent 100 records
+			r := m.TPSreportFromDB(header.Miner) // max most recent 100 records
 			for i := len(r); i < 100; i++ {
-				r = append(r, rv{ val: minscore })
+				r = append(r, blockchain.TPSrv{Val: minscore})
 			}
 			sort.Slice(r, func(i, j int) bool {
-				return r[i].val < r[j].val
+				return r[i].Val < r[j].Val
 			})
 
 			sum := uint32(0)
 			for k := 25; k < 75; k++ {
-				sum += r[k].val
+				sum += r[k].Val
 			}
 			sum /= 50
 
@@ -405,27 +405,27 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		if !b.BestChain.Contains(b.NodeByHash(&p.MRBlock)) {
 			return ruleError(ErrBlackList, fmt.Errorf("Invalid evidence: block %s not in MR chain", p.MRBlock.String()).Error())
 		}
-		mb,_ := b.BlockByHash(&p.MRBlock)
-		if mb.Height() < block.Height() - 99 {
+		mb, _ := b.BlockByHash(&p.MRBlock)
+		if mb.Height() < block.Height()-99 {
 			return ruleError(ErrBlackList, fmt.Errorf("Report of violation more than 99 blocks older not allowed. %d", mb.Height()).Error())
 		}
 		miner := mb.MsgBlock().Miner
 
-		if _,ok := uniq[p.MRBlock]; !ok {
+		if _, ok := uniq[p.MRBlock]; !ok {
 			uniq[p.MRBlock] = make(map[chainhash.Hash]struct{})
 		}
 
 		// prep for check for duplicated reports
-		for q,_ := b.BlockByHash(&block.MsgBlock().PrevBlock); q.Height() > mb.Height(); q,_ = b.BlockByHash(&q.MsgBlock().PrevBlock) {
+		for q, _ := b.BlockByHash(&block.MsgBlock().PrevBlock); q.Height() > mb.Height(); q, _ = b.BlockByHash(&q.MsgBlock().PrevBlock) {
 			for _, s := range q.MsgBlock().ViolationReport {
 				if !s.MRBlock.IsEqual(&p.MRBlock) {
 					continue
 				}
-				if _,ok := uniq[s.MRBlock]; !ok {
+				if _, ok := uniq[s.MRBlock]; !ok {
 					uniq[s.MRBlock] = make(map[chainhash.Hash]struct{})
 				}
-				for _,tx := range s.Blocks {
-					if _,err := b.blockChain.BlockHeightByHash(&tx); err != nil {
+				for _, tx := range s.Blocks {
+					if _, err := b.blockChain.BlockHeightByHash(&tx); err != nil {
 						uniq[s.MRBlock][tx] = struct{}{}
 					}
 				}
@@ -433,9 +433,9 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		}
 
 		main := false
-		for _,tx := range p.Blocks {
-			if _,err := b.blockChain.BlockHeightByHash(&tx); err != nil {
-				if _,ok := uniq[p.MRBlock][tx]; ok {
+		for _, tx := range p.Blocks {
+			if _, err := b.blockChain.BlockHeightByHash(&tx); err != nil {
+				if _, ok := uniq[p.MRBlock][tx]; ok {
 					return ruleError(ErrBlackList, fmt.Errorf("Violating block already reported before: %s", tx.String()).Error())
 				}
 				uniq[p.MRBlock][tx] = struct{}{}
@@ -444,13 +444,13 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 			} else {
 				main = true
 			}
-			tb,_ := b.blockChain.HashToBlock(&tx)	// already checked that it exists
+			tb, _ := b.blockChain.HashToBlock(&tx) // already checked that it exists
 			if tb == nil || tb.Height() != p.Height {
 				return ruleError(ErrBlackList, fmt.Errorf("Invalid height of violating block: %s", tx.String()).Error())
 			}
 
 			mtch := false
-			for _,sig := range tb.MsgBlock().Transactions[0].SignatureScripts[1:] {
+			for _, sig := range tb.MsgBlock().Transactions[0].SignatureScripts[1:] {
 				// although tb is in side chain, the fact that it is the database means
 				// that all block signatures has been verified. thus we don't need to
 				// verify signature again. we only need to extract address from pub key

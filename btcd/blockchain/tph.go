@@ -182,52 +182,28 @@ func (b *BlockChain) TphNotice(t *Notification) {
 		}
 
 		for i := 0; i < wire.CommitteeSize; i++ {
-			mb,_ := b.Miners.BlockByHeight(rot)
+			mb, _ := b.Miners.BlockByHeight(rot)
 			rot--
 
 			miner := mb.MsgBlock().Miner
-
-			// only if the miner has signed the block. this is to punish free-riders who generate MR blocks only
-			// and rely on others to generate TX blocks and yet receive awards
-/*
-			signed := false
-			for _,cb := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
-				if signed {
-					continue
-				}
-				k, _ := btcec.ParsePubKey(cb[:btcec.PubKeyBytesLenCompressed], btcec.S256())
-				pk, _ := btcutil.NewAddressPubKeyPubKey(*k, b.ChainParams)
-				pk.SetFormat(btcutil.PKFCompressed)
-				addr := pk.AddressPubKeyHash()
-				if bytes.Compare(addr.ScriptAddress(), miner[:]) == 0 {
-					signed = true
-				}
-			}
-*/
-//			log.Infof("TphNotice: miner = %x at %d", miner, h)
 
 			p := b.GetMinerTPS(miner)
 			switch t.Type {
 			case NTBlockConnected:
 				if p.current.TxTotal == 0 && p.current.StartBlock == 0 {
 					p.current.StartBlock, p.current.StartTime, p.current.EndBlock = h, time.Now(), h
-				} else if p.current.EndBlock + 1 == h {
+				} else if p.current.EndBlock+1 == h {
 					p.current.EndBlock, p.current.EndTime = h, time.Now()
-					var sigs = 1	// coinbase counts as 1, all other sigs counts as 10
-					for _,tx := range block.MsgBlock().Transactions[1:] {
+					var sigs = 1 // coinbase counts as 1, all other sigs counts as 10
+					for _, tx := range block.MsgBlock().Transactions[1:] {
 						sigs += 10 * len(tx.SignatureScripts)
 					}
-//					if signed {
-						p.current.TxTotal += uint32(sigs) + 10*uint32(block.MsgBlock().Header.ContractExec/CONTRACTTXRATIO)
-//					} else {
-						// if the miner has not signed the block, he gets the min score
-//						p.current.TxTotal++
-//					}
+					p.current.TxTotal += uint32(sigs) + 10*uint32(block.MsgBlock().Header.ContractExec/CONTRACTTXRATIO)
 				} else if p.current.EndBlock != h {
 					if p.current.TxTotal != 0 {
 						p.History = append(p.History, p.current)
 						if len(p.History) > maxRcdPerMiner {
-							p.History = p.History[len(p.History) - maxRcdPerMiner:]
+							p.History = p.History[len(p.History)-maxRcdPerMiner:]
 						}
 						b.updateTPS(miner, p)
 					}

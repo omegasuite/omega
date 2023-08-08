@@ -165,6 +165,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getblocktxhashes":    handleGetBlockTxHases,     // New
 	//	"searchborder":   		 handleSearchBorder,	// New
 	"gettpsview":   handleGetTPSView,
+	"gettpsreport": handleGetTPSReport,
 	"contractcall": handleContractCall, // New
 	"trycontract":  handleTryContract,  // New
 	"miningpolicy": handleMiningPolicy, // New. miner specific policy
@@ -321,6 +322,7 @@ var rpcLimited = map[string]struct{}{
 	"listutxos":             {},
 	"getdefine":             {},
 	"gettpsview":            {},
+	"gettpsreport":          {},
 	"contractcall":          {},
 	"trycontract":           {},
 	"searchrawtransactions": {},
@@ -1805,6 +1807,44 @@ func handleGetTPSView(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 	}
 
 	return *r, nil
+}
+
+func handleGetTPSReport(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetTPSViewCmd)
+	addr, err := btcutil.DecodeAddress(c.Address, activeNetParams.Params)
+	if err != nil {
+		return nil, err
+	}
+
+	var miner [20]byte
+	copy(miner[:], addr.ScriptAddress())
+
+	r := s.cfg.Chain.Miners.TPSreportFromDB(miner)
+
+	if r == nil {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCMisc,
+			Message: "No record for address " + c.Address,
+		}
+	}
+
+	res := &struct {
+		Count uint32
+		TPS   []btcjson.TPSreportResultItem
+	}{}
+
+	res.Count = uint32(len(r))
+	res.TPS = make([]btcjson.TPSreportResultItem, len(r))
+	for i, v := range r {
+		addr, _ := btcutil.NewAddressPubKeyHash(v.Reporter[:], s.cfg.ChainParams)
+		res.TPS[i] = btcjson.TPSreportResultItem{
+			Reporter: addr.String(),
+			Height:   v.Height,
+			Val:      v.Val,
+		}
+	}
+
+	return res, nil
 }
 
 func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {

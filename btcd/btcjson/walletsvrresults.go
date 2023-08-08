@@ -4,9 +4,6 @@
 
 package btcjson
 
-import (
-//	"github.com/omegasuite/btcd/wire"
-)
 // GetTransactionDetailsResult models the details data from the gettransaction command.
 //
 // This models the "short" version of the ListTransactionsResult type, which
@@ -148,6 +145,12 @@ type SignHashResult struct {
 	Hex      string                    `json:"hex"`
 	Complete bool                      `json:"complete"`
 	Errors   []SignRawTransactionError `json:"errors,omitempty"`
+}
+
+type TPSreportResultItem struct {
+	Reporter string
+	Height   uint32
+	Val      uint32
 }
 
 // ValidateAddressWalletResult models the data returned by the wallet server

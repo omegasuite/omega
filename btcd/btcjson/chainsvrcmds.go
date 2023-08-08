@@ -1164,6 +1164,7 @@ func init() {
 	MustRegisterCmd("getblocktxhashes", (*GetBlockTxHashesCmd)(nil), flags)
 	MustRegisterCmd("searchborder", (*SearchBorderCmd)(nil), flags)
 	MustRegisterCmd("gettpsview", (*GetTPSViewCmd)(nil), flags)
+	MustRegisterCmd("gettpsreport", (*GetTPSViewCmd)(nil), flags)
 	MustRegisterCmd("contractcall", (*ContractCallCmd)(nil), flags)
 	MustRegisterCmd("tokenaddress", (*TokenAddressCmd)(nil), flags)
 	MustRegisterCmd("trycontract", (*TryContractCmd)(nil), flags)

@@ -1642,7 +1642,7 @@ func checkProofOfWork(header *wire.MingingRightBlock, powLimit *big.Int, flags b
 	return nil
 }
 
-type rv struct {
+type TPSrv struct {
 	reporter [20]byte
 	height   uint32
 	val      uint32
@@ -1655,10 +1655,10 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 	rpt := make([]uint32, 0, rpts)
 	miners := make(map[[20]byte]struct{})
 
-	rptme := g.reportFromDB(me) // those who has reported me
-	rptmemap := make(map[[20]byte]rv)
+	rptme := g.TPSreportFromDB(me) // those who has reported me
+	rptmemap := make(map[[20]byte]blockchain.TPSrv)
 	for _, r := range rptme {
-		rptmemap[r.reporter] = r
+		rptmemap[r.Reporter] = r
 	}
 	q := g.blockChain.GetMinerTPS(me)
 	myscore := uint32(0)
@@ -1697,10 +1697,10 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 		}
 		score := int32(q.TPHscore)
 		if p, ok := rptmemap[w]; myscore > 0 && ok {
-			if p.val < myscore { // 2% courtesy
+			if p.Val < myscore { // 2% courtesy
 				//				score += score * int32(p.val - myscore) * 2 / (100 * int32(myscore))
 				//			} else {		// 80% retaliation
-				score -= score * int32(myscore-p.val) * 80 / (100 * int32(myscore))
+				score -= score * int32(myscore-p.Val) * 80 / (100 * int32(myscore))
 				if score < int32(minscore) {
 					score = int32(minscore)
 				}
@@ -1718,9 +1718,9 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 				bucket := rootBucket.Bucket(last.Data.(*blockchainNodeData).block.Miner[:])
 				cursor := bucket.Cursor()
 
-				values := make([]rv, 0, 100)
+				values := make([]TPSrv, 0, 100)
 				for ok := cursor.First(); ok; ok = cursor.Next() {
-					r := rv {}
+					r := TPSrv {}
 					copy(r.reporter[:], cursor.Key())
 					s := cursor.Value()
 					r.height = byteOrder.Uint32(s)
@@ -1758,8 +1758,8 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 	return rpt
 }
 
-func (g *MinerChain) reportFromDB(miner [20]byte) []rv {
-	values := make([]rv, 0, 1000)
+func (g *MinerChain) TPSreportFromDB(miner [20]byte) []blockchain.TPSrv {
+	values := make([]blockchain.TPSrv, 0, 1000)
 
 	g.db.Update(func(tx database.Tx) error {
 		rootBucket := tx.Metadata().Bucket(TphReportsName)
@@ -1776,23 +1776,23 @@ func (g *MinerChain) reportFromDB(miner [20]byte) []rv {
 		cursor := bucket.Cursor()
 
 		for ok := cursor.First(); ok; ok = cursor.Next() {
-			r := rv{}
-			r.height = byteOrder.Uint32(cursor.Key())
+			r := blockchain.TPSrv{}
+			r.Height = byteOrder.Uint32(cursor.Key())
 			s := cursor.Value()
-			copy(r.reporter[:], s)
-			r.val = byteOrder.Uint32(s[20:])
+			copy(r.Reporter[:], s)
+			r.Val = byteOrder.Uint32(s[20:])
 			values = append(values, r)
 		}
 		// arrange values in descending order of height
 		sort.Slice(values, func(i, j int) bool {
-			return values[i].height > values[j].height
+			return values[i].Height > values[j].Height
 		})
 		if len(values) > 1000 {
 			// we don't have worry about side chain more than 1000 in length
 			// so trim the oldest ones to save storage
 			var h [4]byte
 			for _, r := range values[1000:] {
-				byteOrder.PutUint32(h[:], r.height)
+				byteOrder.PutUint32(h[:], r.Height)
 				bucket.Delete(h[:])
 			}
 		}
@@ -1815,34 +1815,40 @@ func (g *MinerChain) reportNotice(n *blockchain.Notification) {
 			return
 		}
 
-		checked := make(map[[20]byte]struct{})
-		node := g.NodeByHash(&block.MsgBlock().PrevBlock)
-		if node == nil { // it is in a side chain, no need to record it
-			if g.index.LookupNode(&block.MsgBlock().PrevBlock) == nil {
-				panic("Irrecoverable error in chain data")
+		g.db.Update(func(tx database.Tx) error {
+			rootBucket := tx.Metadata().Bucket(TphReportsName)
+			if rootBucket == nil {
+				return nil
 			}
-			return
-		}
-		for _, r := range block.MsgBlock().TphReports {
-			w := node.Data.(*blockchainNodeData).block.Miner
-			_, ok := checked[w]
-			for ok {
-				node = node.Parent
-				if node == nil {
-					break
+
+			checked := make(map[[20]byte]struct{})
+			node := g.NodeByHash(&block.MsgBlock().PrevBlock)
+			if node == nil { // it is in a side chain, no need to record it
+				if g.index.LookupNode(&block.MsgBlock().PrevBlock) == nil {
+					panic("Irrecoverable error in chain data")
 				}
-				w = node.Data.(*blockchainNodeData).block.Miner
-				_, ok = checked[w]
+				return nil
 			}
-			if ok {
-				continue
-			}
-			checked[w] = struct{}{}
-			g.db.Update(func(tx database.Tx) error {
-				rootBucket := tx.Metadata().Bucket(TphReportsName)
-				if rootBucket == nil {
+			for _, r := range block.MsgBlock().TphReports {
+				w := node.Data.(*blockchainNodeData).block.Miner
+				_, ok := checked[w]
+/*
+				for ok {
+					node = node.Parent
+					if node == nil {
+						break
+					}
+					w = node.Data.(*blockchainNodeData).block.Miner
+					_, ok = checked[w]
+				}
+
+ */
+				if ok {
 					return nil
+//					continue
 				}
+				checked[w] = struct{}{}
+
 				bucket := rootBucket.Bucket(w[:])
 				if bucket == nil {
 					bucket, _ = rootBucket.CreateBucket(w[:])

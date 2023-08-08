@@ -617,17 +617,17 @@ out:
 			if minscore == 0 {
 				minscore = 1
 			}
-			r := me.reportFromDB(block.MsgBlock().Miner) // max most recent 100 records
+			r := me.TPSreportFromDB(block.MsgBlock().Miner) // max most recent 100 records
 			for i := len(r); i < 100; i++ {
-				r = append(r, rv{val: minscore})
+				r = append(r, blockchain.TPSrv{Val: minscore})
 			}
 			sort.Slice(r, func(i, j int) bool {
-				return r[i].val < r[j].val
+				return r[i].Val < r[j].Val
 			})
 
 			sum := uint32(0)
 			for k := 25; k < 75; k++ {
-				sum += r[k].val
+				sum += r[k].Val
 			}
 			sum /= 50
 
