@@ -11,6 +11,7 @@ import (
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
+	"time"
 )
 
 // maybeAcceptBlock potentially accepts a block into the block chain and, if
@@ -118,6 +119,12 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	b.ChainLock.Unlock()
 	b.SendNotification(NTBlockAccepted, block)
 	b.ChainLock.Lock()
+
+	if b.BTfile != nil {
+		r := time.Now().Unix()
+		s := fmt.Sprintf("%d rcvd %d lat %d (%d)\n", block.Height(), r, r-block.MsgBlock().Header.Timestamp.Unix(), block.MsgBlock().Header.Timestamp.Unix())
+		b.BTfile.Write([]byte(s))
+	}
 
 	return isMainChain, nil, -1
 }

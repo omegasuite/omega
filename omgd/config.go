@@ -177,6 +177,8 @@ type config struct {
 	ReUtxo          bool   `long:"reutxo" description:"Rebuild UTXO"`
 	Chainback       bool   `long:"chainback" description:"back one tx block"`
 	Minerback       bool   `long:"minerback" description:"back one miner block"`
+	Concurrency     int    `long:"concurrency" description:"Concurrency"`
+	LogBlockTime    bool   `long:"logblocktime" description:"Log the time that blocks are received"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -438,6 +440,8 @@ func loadConfig() (*config, []string, error) {
 		ChainCurrentStd:      24,
 		MinBlockWeight:       4,
 		MemLimit:             200000,
+		Concurrency:          1,
+		LogBlockTime:         false,
 	}
 
 	// Service options which are only added on Windows.

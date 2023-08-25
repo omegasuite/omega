@@ -739,7 +739,7 @@ out:
 
 		mh := m.g.Chain.Miners.BestSnapshot().Height
 
-		if lastblkgen-lastblkrcv < 20 || m.cfg.DisablePOWMining || !m.cfg.EnablePOWMining || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
+		if lastblkgen-lastblkrcv < 2*wire.TimeGap || m.cfg.DisablePOWMining || !m.cfg.EnablePOWMining || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
 			time.Sleep(time.Second * wire.TimeGap)
 			//			log.Infof("Retry because POW Mining disabled.")
 			continue
@@ -778,9 +778,6 @@ out:
 		b := m.solveBlock(template, curHeight+1, ticker, m.quit)
 
 		if b > 0 {
-			if 2*wire.TimeGap > (time.Now().Unix() - lastblkgen) {
-				time.Sleep(time.Second * (2*wire.TimeGap - time.Duration(time.Now().Unix()-lastblkgen)))
-			}
 			select {
 			case <-m.connch:
 				lastblkrcv = time.Now().Unix()

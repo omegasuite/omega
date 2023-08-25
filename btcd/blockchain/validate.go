@@ -737,6 +737,18 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 		} else if tx.MsgTx().Version&wire.TxTypeMask == wire.ForfeitTxVersion {
 			minrtx++
 		}
+		if (header.Version&0x7FFF0000) > wire.Version5 && len(tx.MsgTx().TxIn) > 1000 {
+			str := fmt.Sprintf("Too many inputs in a transactions %d", len(tx.MsgTx().TxIn))
+			return ruleError(ErrMultipleCoinbases, str)
+		}
+		if (header.Version&0x7FFF0000) > wire.Version5 && len(tx.MsgTx().TxOut) > 1000 {
+			str := fmt.Sprintf("Too many outputs in a transactions %d", len(tx.MsgTx().TxOut))
+			return ruleError(ErrMultipleCoinbases, str)
+		}
+		if (header.Version&0x7FFF0000) > wire.Version5 && len(tx.MsgTx().TxDef) > 1000 {
+			str := fmt.Sprintf("Too many definitions in a transactions %d", len(tx.MsgTx().TxDef))
+			return ruleError(ErrMultipleCoinbases, str)
+		}
 	}
 
 	// Do some preliminary checks on each transaction to ensure they are

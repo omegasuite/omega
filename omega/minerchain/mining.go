@@ -10,8 +10,6 @@ package minerchain
 
 import (
 	"bytes"
-	"runtime"
-
 	//	"fmt"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
@@ -247,10 +245,7 @@ func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 {	// *big.I
 // stale block such as a new block showing up or periodically when there are
 // new transactions and enough time has elapsed without finding a solution.
 func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h int64,
-	quit chan struct{}) bool {
-
-	ticker := time.NewTicker(time.Second * 5)
-	defer ticker.Stop()
+	quit chan struct{}, numWorkers uint32) bool {
 
 	// Create some convenience variables.
 	targetDifficulty := blockchain.CompactToBig(header.Bits)
@@ -283,66 +278,101 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 	}
 
 	// Initial state.
-	hashesCompleted := uint64(0)
 	tbest := m.g.Chain.BestSnapshot()
 	rotation := tbest.LastRotation
 
-	for true {
-		// Search through the entire nonce range for a solution while
-		// periodically checking for early quit and stale block
-		// conditions along with updates to the speed monitor.
-		for i := uint32(1); i <= maxNonce; i++ {
-			select {
-			case <-quit:
-				return false
+	resch := make(chan uint32, numWorkers)
+	locquit := make(chan struct{})
 
-			case <-ticker.C:
-				m.updateHashes <- hashesCompleted
-				hashesCompleted = 0
+	solver := func(start uint32, numWorkers uint32) {
+		locheader := *header.Block.(*wire.MingingRightBlock)
+		hashesCompleted := uint64(0)
 
-				tbest = m.g.Chain.BestSnapshot()
-				if rotation != tbest.LastRotation {
-					log.Infof("quit solving block because a rotation occurred in TX chain")
-					return false
+		ticker := time.NewTicker(time.Second * 5)
+		defer ticker.Stop()
+
+		for true {
+			// Search through the entire nonce range for a solution while
+			// periodically checking for early quit and stale block
+			// conditions along with updates to the speed monitor.
+			for i := start; i <= maxNonce-numWorkers; i += numWorkers {
+				select {
+				case <-locquit:
+					return
+
+				case <-quit:
+					resch <- 0
+					return
+
+				case <-ticker.C:
+					m.updateHashes <- hashesCompleted
+					hashesCompleted = 0
+
+					tbest = m.g.Chain.BestSnapshot()
+					if rotation != tbest.LastRotation {
+						log.Infof("quit solving block because a rotation occurred in TX chain")
+						resch <- 0
+						return
+					}
+
+					// The current block is stale if the best block has changed.
+					best := m.g.Chain.Miners.BestSnapshot()
+					if !locheader.PrevBlock.IsEqual(&best.Hash) {
+						log.Infof("quit solving block because tip changed")
+						resch <- 0
+						return
+					}
+
+					m.g.UpdateMinerBlockTime(&locheader)
+
+				default:
+					// Non-blocking select to fall through
 				}
 
-				// The current block is stale if the best block
-				// has changed.
-				best := m.g.Chain.Miners.BestSnapshot()
-				if !header.Block.(*wire.MingingRightBlock).PrevBlock.IsEqual(&best.Hash) {
-					log.Infof("quit solving block because best hash is not prev block")
-					return false
+				// Update the nonce and hash the block header.  Each
+				// hash is actually a double sha256 (two hashes), so
+				// increment the number of hashes completed for each
+				// attempt accordingly.
+				locheader.Nonce = int32(i)
+				hash := locheader.BlockHash()
+				hashesCompleted += 2
+
+				// The block is solved when the new block hash is less
+				// than the target difficulty.  Yay!
+				res := blockchain.HashToBig(&hash)
+
+				if res.Cmp(m.cfg.ChainParams.PowLimit) >= 0 {
+					continue
 				}
 
-				m.g.UpdateMinerBlockTime(header.Block.(*wire.MingingRightBlock))
+				res = res.Mul(res, big.NewInt(factorPOW))
 
-			default:
-				// Non-blocking select to fall through
+				if res.Cmp(targetDifficulty) <= 0 {
+					best := m.g.Chain.Miners.BestSnapshot()
+					if !locheader.PrevBlock.IsEqual(&best.Hash) {
+						log.Infof("quit solving block because tip changed")
+						resch <- 0
+						return
+					}
+					resch <- i
+					return
+				}
 			}
-
-			// Update the nonce and hash the block header.  Each
-			// hash is actually a double sha256 (two hashes), so
-			// increment the number of hashes completed for each
-			// attempt accordingly.
-			header.Block.(*wire.MingingRightBlock).Nonce = int32(i)
-			hash := header.Block.(*wire.MingingRightBlock).BlockHash()
-			hashesCompleted += 2
-
-			// The block is solved when the new block hash is less
-			// than the target difficulty.  Yay!
-			res := blockchain.HashToBig(&hash)
-
-			if res.Cmp(m.cfg.ChainParams.PowLimit) >= 0 {
-				continue
-			}
-
-			res = res.Mul(res, big.NewInt(factorPOW))
-
-			if res.Cmp(targetDifficulty) <= 0 {
-				return true
-			}
+			m.g.UpdateMinerBlockTime(&locheader)
 		}
-		m.g.UpdateMinerBlockTime(header.Block.(*wire.MingingRightBlock))
+	}
+
+	for i := uint32(1); i <= numWorkers; i++ {
+		go solver(i, numWorkers)
+	}
+
+	for i := uint32(0); i < numWorkers; i++ {
+		v := <-resch
+		if v != 0 {
+			header.Block.(*wire.MingingRightBlock).Nonce = int32(v)
+			close(locquit)
+			return true
+		}
 	}
 
 	return false
@@ -380,7 +410,7 @@ func (m *CPUMiner) ChangeMiningKey(miningAddr btcutil.Address) {
 // is submitted.
 //
 // It must be run as a goroutine.
-func (m *CPUMiner) generateBlocks(quit chan struct{}) {
+func (m *CPUMiner) generateBlocks(quit chan struct{}, numWorkers uint32) {
 	// Start a ticker which is used to signal checks for stale work and
 	// updates to the speed monitor.
 out:
@@ -407,7 +437,7 @@ out:
 		// transactions to work on when there are no connected peers.
 		if m.cfg.ConnectedCount() == 0 {
 			m.Stale = true
-//			log.Info("miner.generateBlocks: sleep because of no connection")
+			//			log.Info("miner.generateBlocks: sleep because of no connection")
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -639,7 +669,7 @@ out:
 		}
 
 		log.Infof("miner Trying to solve block at %d with difficulty %d", template.Height, template.Bits)
-		if m.solveBlock(template, curHeight+1, h1+h2, quit) {
+		if m.solveBlock(template, curHeight+1, h1+h2, quit, numWorkers) {
 			log.Infof("New miner block produced by %x at %d", signAddr.ScriptAddress(), template.Height)
 			m.submitBlock(block)
 		} else {
@@ -660,17 +690,17 @@ func (m *CPUMiner) miningWorkerController() {
 	// workers for generating blocks.
 	var runningWorkers []chan struct{}
 	launchWorkers := func(numWorkers uint32) {
-		for i := uint32(0); i < numWorkers; i++ {
-			quit := make(chan struct{})
-			runningWorkers = append(runningWorkers, quit)
+		//		for i := uint32(0); i < numWorkers; i++ {
+		quit := make(chan struct{})
+		runningWorkers = append(runningWorkers, quit)
 
-			m.workerWg.Add(1)
-			go m.generateBlocks(quit)
-		}
+		m.workerWg.Add(1)
+		go m.generateBlocks(quit, numWorkers)
+		//		}
 	}
 
 	// Launch the current number of workers by default.
-	runningWorkers = make([]chan struct{}, 0, m.numWorkers)
+	runningWorkers = make([]chan struct{}, 0, 1) // rkers)
 	launchWorkers(m.numWorkers)
 
 out:
@@ -684,18 +714,9 @@ out:
 				continue
 			}
 
-			// Add new workers.
-			if m.numWorkers > numRunning {
-				launchWorkers(m.numWorkers - numRunning)
-				continue
-			}
-
-			// Signal the most recently created goroutines to exit.
-			for i := numRunning - 1; i >= m.numWorkers; i-- {
-				close(runningWorkers[i])
-				runningWorkers[i] = nil
-				runningWorkers = runningWorkers[:i]
-			}
+			close(runningWorkers[0])
+			runningWorkers = runningWorkers[:0]
+			launchWorkers(m.numWorkers)
 
 		case <-m.quit:
 			for _, quit := range runningWorkers {
@@ -831,26 +852,16 @@ func (m *CPUMiner) NumWorkers() int32 {
 // Use Start to begin the mining process.  See the documentation for CPUMiner
 // type for more details.
 func NewMiner(cfg *Config) *CPUMiner {
-	works := defaultNumWorkers
-
-	fast := map[string]struct{}{"136.244.116.65:8788": {}, "136.244.115.27": {}, "140.82.54.243": {}, "45.63.115.174": {}}
-
-	if len(cfg.ExternalIPs) > 0 {
-		if _, ok := fast[cfg.ExternalIPs[0]]; ok {
-			works = uint32(runtime.NumCPU()) - 1
-			if works <= 0 {
-				works = 1
-			}
-			log.Infof("CPU count = %d", works)
-		}
+	workers := cfg.ChainParams.SigVeriConcurrency - 1
+	if workers <= 0 {
+		workers = 1
 	}
-
-	log.Infof("Mining with %d threads", works)
+	log.Infof("Mining with %d threads", workers)
 
 	return &CPUMiner{
 		g:                 cfg.BlockTemplateGenerator,
 		cfg:               *cfg,
-		numWorkers:        works,
+		numWorkers:        uint32(workers),
 		updateNumWorkers:  make(chan struct{}),
 		queryHashesPerSec: make(chan float64),
 		updateHashes:      make(chan uint64),

@@ -221,8 +221,13 @@ func btcdMain(serverChan chan<- *server) error {
 
 	activeNetParams.Params.ExternalIPs = tcfg.ExternalIPs
 	activeNetParams.Params.ContractReqExp = tcfg.ContractReqExp
+	activeNetParams.Params.LogBlockTime = tcfg.LogBlockTime
 
 	activeNetParams.Params.ChainCurrentStd = time.Hour * time.Duration(tcfg.ChainCurrentStd)
+	if cfg.Concurrency <= 0 {
+		cfg.Concurrency = 1
+	}
+	activeNetParams.Params.SigVeriConcurrency = cfg.Concurrency
 
 	// Create server and start it.
 	server, err := newServer(cfg.Listeners, db, minerdb, activeNetParams.Params,

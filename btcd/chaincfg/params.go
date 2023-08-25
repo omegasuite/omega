@@ -9,7 +9,6 @@ import (
 	"errors"
 	"math"
 	"math/big"
-	"runtime"
 	"strings"
 	"time"
 
@@ -276,16 +275,19 @@ type Params struct {
 	// SigVeriConcurrency is the number of concurrent verifiers for signature veridfication
 	SigVeriConcurrency int
 
-	MinBorderFee int
-	MinRelayTxFee int64
-	ContractExecFee		int64			// contract execution cost as Haos per 10K steps
+	MinBorderFee    int
+	MinRelayTxFee   int64
+	ContractExecFee int64 // contract execution cost as Haos per 10K steps
 
 	// forfeiture
-	Forfeit		forfeitureContract
-	ViolationReportDeadline	int32
+	Forfeit                 forfeitureContract
+	ViolationReportDeadline int32
 
 	// local rule: require expiration time set if tx has contract
-	ContractReqExp	bool
+	ContractReqExp bool
+
+	// whether we log time blocks received
+	LogBlockTime bool
 }
 
 // MainNetParams defines the network parameters for the main Omega network.
@@ -387,10 +389,9 @@ var MainNetParams = Params{
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
-	HDCoinType:         0,
-	ContractExecLimit:  10000, // min limit of total contract execution steps in a block
-	SigVeriConcurrency: runtime.NumCPU(),
-	ContractExecFee:    1,
+	HDCoinType:        0,
+	ContractExecLimit: 10000, // min limit of total contract execution steps in a block
+	ContractExecFee:   1,
 	Forfeit: forfeitureContract{
 		Contract: [21]byte{0x88, 0x1a, 0x52, 0x0f, 0xa9, 0x4d, 0x8e, 0x07,
 			0x3b, 0x0b, 0x46, 0x79, 0x43, 0x5b, 0x55, 0x09, 0xa5, 0xc6, 0x84, 0x7d, 0xb3},
@@ -487,33 +488,32 @@ var RegressionNetParams = Params{
 
 	// Address encoding magics
 	PubKeyHashAddrID: 0x6f, // starts with m or n
-	MultiSigAddrID:	  0x67,
+	MultiSigAddrID:   0x67,
 	MultiSigAddrXID:  0xC3,
 
 	ScriptHashAddrID: 0xc4, // starts with 2
-	ScriptAddrID:	  0x13,
-	ContractAddrID:	  0x88, // start with 8
+	ScriptAddrID:     0x13,
+	ContractAddrID:   0x88, // start with 8
 	PrivateKeyID:     0xef, // starts with 9 (uncompressed) or c (compressed)
 
 	HDPublicKeyID:  [4]byte{0x04, 0x35, 0x83, 0x94},
-	HDPrivateKeyID:  [4]byte{0x04, 0x35, 0x87, 0xcf},
+	HDPrivateKeyID: [4]byte{0x04, 0x35, 0x87, 0xcf},
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 1,
 
 	ContractExecLimit: 10000,
-	SigVeriConcurrency: 4,
-	ContractExecFee: 1,
-	Forfeit:	forfeitureContract {
-		Contract: 	[21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
+	ContractExecFee:   1,
+	Forfeit: forfeitureContract{
+		Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
 			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
-		Opening:	[4]byte{0x7c,0xef,0x8a,0x73},
-		Filing:		[4]byte{0xb2,0x18,0x16,0x5a},
-		Claim:		[4]byte{0x44, 0x90, 0x02, 0xf8},
+		Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
+		Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
+		Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
 	},
 	ViolationReportDeadline: 10,
-	ContractReqExp: false,
+	ContractReqExp:          false,
 }
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
@@ -619,9 +619,8 @@ var TestNet3Params = Params{
 	// address generation.
 	HDCoinType: 1,
 
-	ContractExecLimit:  10000,
-	SigVeriConcurrency: 4,
-	ContractExecFee:    1,
+	ContractExecLimit: 10000,
+	ContractExecFee:   1,
 	Forfeit: forfeitureContract{
 		Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
 			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
@@ -737,9 +736,8 @@ var SimNetParams = Params{
 	// address generation.
 	HDCoinType: 115, // ASCII for s
 
-	ContractExecLimit:  10000,
-	SigVeriConcurrency: 4,
-	ContractExecFee:    1,
+	ContractExecLimit: 10000,
+	ContractExecFee:   1,
 	Forfeit: forfeitureContract{
 		Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
 			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},

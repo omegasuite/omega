@@ -74,12 +74,15 @@ func main() {
 	fmt.Println("Simple Shell")
 	fmt.Println("---------------------")
 
-	var gtx * wire.MsgTx
+	var gtx *wire.MsgTx
 	var mining bool
 
 	for {
 		fmt.Print("-> ")
-		text, _ := reader.ReadString('\n')
+		text, err := reader.ReadString('\n')
+		if err != nil {
+			os.Exit(0)
+		}
 		// convert CRLF to LF
 		text = strings.Replace(strings.Replace(text, "\r", "", -1), "\n", "", -1)
 

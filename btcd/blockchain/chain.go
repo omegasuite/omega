@@ -15,6 +15,7 @@ import (
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/omega/token"
+	"os"
 	"sync"
 	"time"
 
@@ -203,6 +204,9 @@ type BlockChain struct {
 
 	// address usage index. use in forfeiture
 	AddrUsage func(address btcutil.Address) uint32
+
+	// tmp data
+	BTfile *os.File
 }
 
 func (b *BlockChain) InitCollateral() {
@@ -2598,6 +2602,11 @@ func New(config *Config) (*BlockChain, error) {
 		}
 	}
 
+	var f *os.File
+	if config.ChainParams.LogBlockTime {
+		f, _ = os.OpenFile("blocktime.txt", os.O_CREATE|os.O_APPEND|os.O_RDWR, 0644)
+	}
+
 	params := config.ChainParams
 	targetTimespan := int64(params.TargetTimespan / time.Second)
 	targetTimePerBlock := int64(params.TargetTimePerBlock / time.Second)
@@ -2624,6 +2633,7 @@ func New(config *Config) (*BlockChain, error) {
 		collaterals:       make([]wire.OutPoint, params.ViolationReportDeadline),
 		LockedCollaterals: make(map[wire.OutPoint]struct{}),
 		IsPacking:         false,
+		BTfile:            f,
 	}
 
 	// Initialize the chain state from the passed database.  When the db
