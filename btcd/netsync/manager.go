@@ -54,7 +54,7 @@ type newPeerMsg struct {
 	peer *peerpkg.Peer
 }
 
-// blockMsg packages a bitcoin block message and the peer it came from together
+// blockMsg packages a block message and the peer it came from together
 // so the block handler has access to that information.
 type blockMsg struct {
 	block *btcutil.Block
@@ -66,6 +66,15 @@ type minerBlockMsg struct {
 	block *wire.MinerBlock
 	peer  *peerpkg.Peer
 	reply chan struct{}
+}
+
+// sigMsg packages a block signature message and the peer it came from together
+// so the block handler has access to that information.
+type sigMsg struct {
+	hash       chainhash.Hash
+	signatures [][]byte
+	peer       *peerpkg.Peer
+	reply      chan struct{}
 }
 
 // invMsg packages a bitcoin inv message and the peer it came from together
@@ -228,11 +237,13 @@ type SyncManager struct {
 	feeEstimator *mempool.FeeEstimator
 
 	// blocks already processed for consensus. we cache them to avoid double processing
-	cachedBlocks map[chainhash.Hash]uint32 // block hash=>height
+	cachedBlocks map[chainhash.Hash]*btcutil.Block // block hash=>block
+	castedMsg    map[chainhash.Hash]int64          // time a message is broadcated, to prevent re-casting
 
 	syncjobs    []*pendginGetBlocks
 	lastBlockOp string // for debug
 	bshutdown   bool
+	castmx      sync.Mutex
 }
 
 // resetHeaderState sets the headers-first mode state to values appropriate for
@@ -921,16 +932,22 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		}
 	}
 
+	if b1 == nil {
+		b1 = sm.chain.BestSnapshot()
+	}
+
 	ht := bmsg.block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index
 	if behaviorFlags&blockchain.BFNoConnect == blockchain.BFNoConnect {
-		// passing it consus
-		sm.cachedBlocks[*blockHash] = ht
+		// passing it to consensus maker
 		consensus.ProcessBlock(bmsg.block, behaviorFlags)
+		if bmsg.block.Height() > b1.Height {
+			sm.cachedBlocks[*blockHash] = bmsg.block
+		}
 		return
 	}
 
 	for hash, h := range sm.cachedBlocks {
-		if h < ht {
+		if h.Height() <= b1.Height { // block height has passed
 			delete(sm.cachedBlocks, hash)
 		}
 	}
@@ -1399,6 +1416,8 @@ func (sm *SyncManager) haveInventory(invVect *wire.InvVect) (bool, error) {
 	switch invVect.Type {
 	case common.InvTypeWitnessBlock:
 		fallthrough
+	case common.InvTypeTempBlock:
+		fallthrough
 	case common.InvTypeBlock:
 		// Ask chain if the block is known to it in any form (main
 		// chain, side chain, or orphan).
@@ -1468,7 +1487,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	lastMinerBlock := -1
 	invVects := imsg.inv.InvList
 	for i := len(invVects) - 1; i >= 0; i-- {
-		if invVects[i].Type&common.InvTypeBlock == common.InvTypeBlock && lastBlock == -1 {
+		if invVects[i].Type&common.InvTypeMask == common.InvTypeBlock && lastBlock == -1 {
 			lastBlock = i
 		}
 		if invVects[i].Type == common.InvTypeMinerBlock && lastMinerBlock == -1 {
@@ -1527,6 +1546,7 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	for i, iv := range invVects {
 		switch iv.Type {
 		case common.InvTypeBlock:
+		case common.InvTypeTempBlock:
 		case common.InvTypeMinerBlock:
 		case common.InvTypeTx:
 		case common.InvTypeWitnessBlock:
@@ -1546,12 +1566,20 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		}
 
 		// Request the inventory if we don't already have it.
-		haveInv, err := sm.haveInventory(iv)
-		if err != nil {
-			log.Warnf("Unexpected failure when checking for "+
-				"existing inventory during inv message "+
-				"processing: %v", err)
-			continue
+		haveInv := false
+		if iv.Type == common.InvTypeTempBlock {
+			_, haveInv = sm.cachedBlocks[iv.Hash]
+		}
+
+		if !haveInv {
+			var err error
+			haveInv, err = sm.haveInventory(iv)
+			if err != nil {
+				log.Warnf("Unexpected failure when checking for "+
+					"existing inventory during inv message "+
+					"processing: %v", err)
+				continue
+			}
 		}
 
 		if !haveInv {
@@ -1565,9 +1593,15 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 
 			// Add it to the request queue.
 			//			log.Infof("%s does not exist add to requestQueue", iv.Hash.String())
+			//			if iv.Type == common.InvTypeTempBlock {
+			// we request a InvTypeWitnessBlock when inv is a InvTypeTempBlock in case
+			// the block has come into the chain in client side
+			//				iv.Type = common.InvTypeWitnessBlock
+			//			}
 			state.requestQueue = append(state.requestQueue, iv)
 			continue
 		}
+
 		if (i == lastBlock || i == lastMinerBlock) && len(imsg.inv.InvList) > 1 {
 			// in any case, we will request the last one in inv list to notify
 			// the peer to send us new batch of inv list if any
@@ -1577,8 +1611,9 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		}
 
 		if iv.Type&common.InvTypeBlock == common.InvTypeBlock {
-			// if the block is in a side chain, pretend it as an orphan
 			if !sm.chain.InBestChain(&iv.Hash) {
+				// if the block is in a side chain, pretend it as an orphan, so we
+				// will try to connect it in case the side chain becomes main chain
 				po, _ := sm.chain.BlockByHash(&iv.Hash)
 				if po != nil {
 					sm.chain.Orphans.AddOrphanBlock(blockchain.BlockToOrphan(po))
@@ -1731,16 +1766,18 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		}
 	}
 
-	if lastIgnored != nil && ignorerun > 1 {
+	if lastIgnored != nil && ignorerun > 1 && lastIgnored.Type != common.InvTypeTempBlock {
 		//		log.Infof("send back %s for %d run of ignores inv to %s", lastIgnored.Hash.String(), ignorerun, peer.Addr())
 		// send back this one so the peer knows where we are
 		sbmsg := &wire.MsgInv{InvList: []*wire.InvVect{lastIgnored}}
-		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding|wire.FullEncoding)
+		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding) // | wire.FullEncoding)
 
 		// check if it causes a reorg
-		sm.chain.ChainLock.Lock()
-		sm.chain.CheckSideChain(&lastIgnored.Hash)
-		sm.chain.ChainLock.Unlock()
+		/*
+			sm.chain.ChainLock.Lock()
+			sm.chain.CheckSideChain(&lastIgnored.Hash)
+			sm.chain.ChainLock.Unlock()
+		*/
 	}
 
 	if lastMinerIgnored != nil && ignoreMinerrun > 1 {
@@ -1750,9 +1787,11 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 		peer.QueueMessageWithEncoding(sbmsg, nil, wire.SignatureEncoding)
 
 		// check if it causes a reorg
-		sm.chain.ChainLock.Lock()
-		sm.chain.Miners.(*minerchain.MinerChain).CheckSideChain(&lastMinerIgnored.Hash)
-		sm.chain.ChainLock.Unlock()
+		/*
+			sm.chain.ChainLock.Lock()
+			sm.chain.Miners.(*minerchain.MinerChain).CheckSideChain(&lastMinerIgnored.Hash)
+			sm.chain.ChainLock.Unlock()
+		*/
 	}
 
 	// Request as much as possible at once.  Anything that won't fit into
@@ -1770,7 +1809,9 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 
 		switch iv.Type {
 		case common.InvTypeBlock:
-			iv.Type = common.InvTypeWitnessBlock
+			fallthrough
+		case common.InvTypeTempBlock:
+			//			iv.Type = common.InvTypeWitnessBlock
 			fallthrough
 		case common.InvTypeWitnessBlock:
 			fallthrough
@@ -1876,6 +1917,47 @@ func (sm *SyncManager) limitMap(m interface{}, limit int) {
 	}
 }
 
+func (sm *SyncManager) CachedBlock(h chainhash.Hash) *btcutil.Block {
+	if b, ok := sm.cachedBlocks[h]; ok {
+		return b
+	}
+	return nil
+}
+
+func (sm *SyncManager) Broadcast(m wire.Message) {
+	sm.broadcast(nil, m)
+}
+
+func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message) {
+	var h chainhash.Hash
+	var w bytes.Buffer
+
+	m.OmcEncode(&w, 0, wire.FullEncoding)
+	copy(h[:], chainhash.HashB(w.Bytes()))
+
+	sm.castmx.Lock()
+	defer func() {
+		sm.castmx.Unlock()
+	}()
+
+	now := time.Now().Unix()
+
+	if _, ok := sm.castedMsg[h]; !ok {
+		sm.castedMsg[h] = now
+		for peer, _ := range sm.peerStates {
+			if p == nil || peer.ID() != p.ID() {
+				peer.QueueMessageWithEncoding(m, nil, wire.FullEncoding)
+			}
+		}
+	}
+
+	for h, t := range sm.castedMsg {
+		if now-t > 5 {
+			delete(sm.castedMsg, h)
+		}
+	}
+}
+
 // blockHandler is the main handler for the sync manager.  It must be run as a
 // goroutine.  It processes block and inv messages in a separate goroutine
 // from the peer handlers so the block (MsgBlock) messages are handled by a
@@ -1910,6 +1992,25 @@ out:
 			case *txMsg:
 				sm.handleTxMsg(msg)
 				msg.reply <- struct{}{}
+
+			case *sigMsg:
+				if b, ok := sm.cachedBlocks[msg.hash]; ok {
+					b.MsgBlock().Transactions[0].SignatureScripts = msg.signatures
+					bm := blockMsg{
+						b,
+						msg.peer,
+						msg.reply,
+					}
+					sm.handleBlockMsg(&bm)
+				}
+				msg.reply <- struct{}{}
+
+				// we should broadcast this message here
+				b := wire.MsgSignatures{
+					msg.hash,
+					msg.signatures,
+				}
+				sm.broadcast(msg.peer, &b)
 
 			case *blockMsg:
 				sm.handleBlockMsg(msg)
@@ -1957,6 +2058,11 @@ out:
 
 			case processConsusMsg:
 				consensus.ProcessBlock(msg.block, msg.flags)
+				// broadcast inventory
+				inv := wire.NewInvVect(common.InvTypeTempBlock, msg.block.Hash())
+				invm := wire.NewMsgInv()
+				invm.AddInvVect(inv)
+				sm.broadcast(nil, invm)
 
 			case processMinerBlockMsg:
 				if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet || sm.chainParams.Net == common.RegNet {
@@ -2167,6 +2273,22 @@ func (sm *SyncManager) QueueTx(tx *btcutil.Tx, peer *peerpkg.Peer, done chan str
 	sm.msgChan <- &txMsg{tx: tx, peer: peer, reply: done}
 }
 
+func (sm *SyncManager) QueueSignatures(msg *wire.MsgSignatures, peer *peerpkg.Peer, done chan struct{}) {
+	// Don't accept more blocks if we're shutting down.
+	if atomic.LoadInt32(&sm.shutdown) != 0 {
+		log.Trace("shutting down in pogress in QueueBlock")
+		done <- struct{}{}
+		return
+	}
+
+	sm.msgChan <- &sigMsg{
+		hash:       msg.Hash,
+		signatures: msg.Signatures,
+		peer:       peer,
+		reply:      done,
+	}
+}
+
 // QueueBlock adds the passed block message and peer to the block handling
 // queue. Responds to the done channel argument after the block message is
 // processed.
@@ -2340,7 +2462,8 @@ func New(config *Config) (*SyncManager, error) {
 		headerList:       list.New(),
 		quit:             make(chan struct{}),
 		feeEstimator:     config.FeeEstimator,
-		cachedBlocks:     make(map[chainhash.Hash]uint32),
+		cachedBlocks:     make(map[chainhash.Hash]*btcutil.Block),
+		castedMsg:        make(map[chainhash.Hash]int64),
 		syncjobs:         make([]*pendginGetBlocks, 0),
 		syncPeer:         nil,
 	}

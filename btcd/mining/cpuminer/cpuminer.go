@@ -378,8 +378,8 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	return b
 }
 
-func (m *CPUMiner) Notice (notification *blockchain.Notification) {
-	if !m.started {
+func (m *CPUMiner) Notice(notification *blockchain.Notification) {
+	if !m.started || !m.cfg.Generate {
 		return
 	}
 	switch notification.Type {
@@ -549,8 +549,8 @@ out:
 
 		log.Infof("committee size = %d. I am %v", len(committee), in)
 
-		if len(m.cfg.SignAddress) != 0 && len(committee) == wire.CommitteeSize && in {
-			for j,pt := range m.cfg.SignAddress {
+		if m.cfg.Generate && in && len(m.cfg.SignAddress) != 0 && len(committee) == wire.CommitteeSize {
+			for j, pt := range m.cfg.SignAddress {
 				copy(adr[:], pt.ScriptAddress())
 				if _, ok := committee[adr]; ok {
 					payToAddr = m.cfg.SignAddress[j]
@@ -561,7 +561,7 @@ out:
 			}
 		}
 
-		if powMode == in {
+		if m.cfg.Generate && in && powMode {
 			log.Errorf("error: expected private key not found")
 		}
 
@@ -615,7 +615,7 @@ out:
 				}
 			}
 		} else {
-			if m.cfg.DisablePOWMining && !m.cfg.EnablePOWMining {
+			if (m.cfg.DisablePOWMining && m.cfg.Generate) || !m.cfg.EnablePOWMining {
 				time.Sleep(time.Second * wire.TimeGap)
 				continue
 			}
@@ -647,12 +647,30 @@ out:
 //		log.Infof("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
 
 		if !powMode {
+			rank := uint32(0)
 			if wire.CommitteeSize == 1 {
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
 				mining.AddSignature(block, sigaddr)
 			} else {
 //				block.ClearSize()
 				block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
+
+				r := m.g.Chain.BestSnapshot().LastRotation
+				in := false
+
+				for i := r - wire.CommitteeSize + 1; i <= r && !in; i++ {
+					mb, _ := m.g.Chain.Miners.BlockByHeight(int32(i))
+					if mb == nil {
+						continue
+					}
+					miner := mb.MsgBlock().Miner
+					for _, sa := range m.cfg.MiningAddrs {
+						if bytes.Compare(miner[:], sa.ScriptAddress()) == 0 {
+							rank = i - (r - wire.CommitteeSize + 1)
+							in = true
+						}
+					}
+				}
 			}
 			m.minedBlock = block
 
@@ -677,6 +695,10 @@ out:
 				log.Infof("Re-try be cause %d <= 1 && %d > 1", sz, nt)
 				time.Sleep(time.Duration(nt) * time.Second)
 				continue
+			}
+
+			if rank > 0 {
+				time.Sleep(time.Duration(rank*5) * time.Second)
 			}
 
 			lastblkgen = time.Now().Unix()
@@ -739,7 +761,7 @@ out:
 
 		mh := m.g.Chain.Miners.BestSnapshot().Height
 
-		if lastblkgen-lastblkrcv < 2*wire.TimeGap || m.cfg.DisablePOWMining || !m.cfg.EnablePOWMining || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
+		if lastblkgen-lastblkrcv < 2*wire.TimeGap || (m.cfg.DisablePOWMining && m.cfg.Generate) || !m.cfg.EnablePOWMining || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
 			time.Sleep(time.Second * wire.TimeGap)
 			//			log.Infof("Retry because POW Mining disabled.")
 			continue

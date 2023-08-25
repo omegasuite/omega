@@ -130,6 +130,8 @@ type MessageListeners struct {
 	OnBlock func(p *Peer, msg *wire.MsgBlock, buf []byte)
 	OnMinerBlock func(p *Peer, msg *wire.MingingRightBlock, buf []byte)
 
+	OnSignatures func(p *Peer, msg *wire.MsgSignatures)
+
 	// OnCFilter is invoked when a peer receives a cfilter bitcoin message.
 	OnCFilter func(p *Peer, msg *wire.MsgCFilter)
 
@@ -1575,6 +1577,12 @@ out:
 				p.cfg.Listeners.OnTx(p, msg)
 			}
 
+		case *wire.MsgSignatures:
+			log.Tracef("inHandler MsgSignatures")
+			if p.cfg.Listeners.OnSignatures != nil {
+				p.cfg.Listeners.OnSignatures(p, msg)
+			}
+
 		case *wire.MsgBlock:
 			log.Tracef("inHandler MsgBlock")
 			if p.cfg.Listeners.OnBlock != nil {
@@ -1718,7 +1726,7 @@ out:
 				}
 			}
 
-			push, h := consensus.HandleMessage(msg)
+			push, h := consensus.HandleMessage(p, msg)
 			if push && p.cfg.Listeners.PushGetBlock != nil {
 				log.Debugf("inHandler consensus.Message asks PushGetBlock")
 				p.cfg.Listeners.PushGetBlock(p)

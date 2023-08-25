@@ -435,7 +435,55 @@ func (b *BlockChain) GetReorganizeSideChain(hash chainhash.Hash) (*list.List, *l
 
 	// it is safe to assume side chain is cached, so we can use b.BestChain.Contains
 	// instead of b.BestChainContains
+	if b.Orphans.IsKnownOrphan(&hash) {
+		whash := hash
+		var aft *chainutil.BlockNode
+
+		for b.Orphans.IsKnownOrphan(&whash) {
+			wnode := &chainutil.BlockNode{}
+			m := b.Orphans.GetOrphanBlock(&whash)
+			block := m.(*wire.MsgBlock)
+			InitBlockNode(wnode, &block.Header, nil)
+			if aft != nil {
+				aft.Parent = wnode
+			}
+			aft = wnode
+			attachNodes.PushFront(wnode)
+			whash = block.Header.PrevBlock
+		}
+		node := b.NodeByHash(&whash)
+		if node == nil {
+			return detachNodes, list.New()
+		}
+		aft.Parent = node
+		h := node.Height + 1
+		for n := attachNodes.Front(); n != nil; n = n.Next() {
+			n.Value.(*chainutil.BlockNode).Height = h
+			h++
+		}
+		for node != nil && !b.BestChain.Contains(node) {
+			attachNodes.PushFront(node)
+			node = b.NodeByHash(&node.Parent.Hash)
+		}
+		if node == nil {
+			return detachNodes, list.New()
+		}
+		for p := b.BestChain.Tip(); p != nil && p != node; {
+			detachNodes.PushBack(p)
+			p = p.Parent
+			if p == nil {
+				return list.New(), list.New()
+			}
+		}
+		return detachNodes, attachNodes
+	}
+
 	node := b.NodeByHash(&hash)
+
+	if node == nil {
+		return detachNodes, attachNodes
+	}
+
 	if b.BestChain.Contains(node) {
 		return detachNodes, attachNodes
 	}

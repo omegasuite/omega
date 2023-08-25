@@ -36,15 +36,16 @@ type InvType uint32
 
 // These constants define the various supported inventory vector types.
 const (
-	InvTypeError                InvType = 0
-	InvTypeTx                   InvType = 1
-	InvTypeBlock                InvType = 2
-	InvTypeFilteredBlock        InvType = 3
-	InvTypeTempBlock		    InvType = 4
-	InvTypeMinerBlock           InvType = 5
-	InvTypeWitnessBlock         InvType = InvTypeBlock | InvWitnessFlag
-	InvTypeWitnessTx            InvType = InvTypeTx | InvWitnessFlag
-	InvTypeFilteredWitnessBlock InvType = InvTypeFilteredBlock | InvWitnessFlag
+	InvTypeError         InvType = 0
+	InvTypeTx            InvType = 1
+	InvTypeBlock         InvType = 2
+	InvTypeFilteredBlock InvType = 3
+	InvTypeTempBlock     InvType = InvTypeBlock | InvTempFlag
+	InvTypeMinerBlock    InvType = 5
+	InvTypeWitnessBlock  InvType = InvTypeBlock | InvWitnessFlag
+	InvTypeMask          InvType = 7
+	InvTypeWitnessTx     InvType = InvTypeTx | InvWitnessFlag
+	//	InvTypeFilteredWitnessBlock InvType = InvTypeFilteredBlock | InvWitnessFlag
 )
 
 const (
@@ -773,6 +774,7 @@ const (
 	// InvWitnessFlag denotes that the inventory vector type is requesting,
 	// or sending a version which includes witness data.
 	InvWitnessFlag = 1 << 30
+	InvTempFlag    = 1 << 29
 )
 
 // Map of service flags back to their constant names for pretty printing.

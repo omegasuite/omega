@@ -29,39 +29,40 @@ const MaxMessagePayload = (1024 * 1024 * 64) // 64MB
 
 // Commands used in bitcoin message headers which describe the type of message.
 const (
-	CmdVersion      = "version"
-	CmdVerAck       = "verack"
-	CmdGetAddr      = "getaddr"
-	CmdAddr         = "addr"
-	CmdInvitation   = "invitation"
-	CmdAckInvitation = "avkinvite"
-	CmdGetBlocks    = "getblocks"
-	CmdGetMinerBlocks    = "getminerblks"
-	CmdInv          = "inv"
-	CmdGetData      = "getdata"
-	CmdNotFound     = "notfound"
-	CmdBlock        = "block"
-	CmdMinerBlock   = "minerblock"
-	CmdTx           = "tx"
-	CmdGetHeaders   = "getheaders"
-	CmdHeaders      = "headers"
-	CmdPing         = "ping"
-	CmdPong         = "pong"
-	CmdAlert        = "alert"
-	CmdMemPool      = "mempool"
-	CmdFilterAdd    = "filteradd"
-	CmdFilterClear  = "filterclear"
-	CmdFilterLoad   = "filterload"
-	CmdReject       = "reject"
-	CmdSendHeaders  = "sendheaders"
-	CmdFeeFilter    = "feefilter"
-	CmdGetCFilters  = "getcfilters"
-	CmdGetCFHeaders = "getcfheaders"
-	CmdGetCFCheckpt = "getcfcheckpt"
-	CmdCFilter      = "cfilter"
-	CmdCFHeaders    = "cfheaders"
-	CmdCFCheckpt    = "cfcheckpt"
-	CmdMerkleBlock  = "merkleblock"
+	CmdVersion        = "version"
+	CmdVerAck         = "verack"
+	CmdGetAddr        = "getaddr"
+	CmdAddr           = "addr"
+	CmdInvitation     = "invitation"
+	CmdAckInvitation  = "avkinvite"
+	CmdGetBlocks      = "getblocks"
+	CmdGetMinerBlocks = "getminerblks"
+	CmdInv            = "inv"
+	CmdGetData        = "getdata"
+	CmdNotFound       = "notfound"
+	CmdBlock          = "block"
+	CmdMinerBlock     = "minerblock"
+	CmdTx             = "tx"
+	CmdGetHeaders     = "getheaders"
+	CmdHeaders        = "headers"
+	CmdPing           = "ping"
+	CmdPong           = "pong"
+	CmdAlert          = "alert"
+	CmdMemPool        = "mempool"
+	CmdFilterAdd      = "filteradd"
+	CmdFilterClear    = "filterclear"
+	CmdFilterLoad     = "filterload"
+	CmdReject         = "reject"
+	CmdSendHeaders    = "sendheaders"
+	CmdFeeFilter      = "feefilter"
+	CmdGetCFilters    = "getcfilters"
+	CmdGetCFHeaders   = "getcfheaders"
+	CmdGetCFCheckpt   = "getcfcheckpt"
+	CmdCFilter        = "cfilter"
+	CmdCFHeaders      = "cfheaders"
+	CmdCFCheckpt      = "cfcheckpt"
+	CmdMerkleBlock    = "merkleblock"
+	CmdSignatures     = "signatures"
 
 	// consensus protocol message
 	CmdKnowledge = "knowledge"
@@ -110,6 +111,7 @@ type OmegaMessage interface {
 	Message
 	DoubleHashB() []byte
 	GetSignature() []byte
+	SetSeq(int32)
 }
 
 // makeEmptyMessage creates a message of the appropriate concrete type based
@@ -233,6 +235,9 @@ func makeEmptyMessage(command string) (Message, error) {
 
 	case CmdCandidateReply:
 		msg = &MsgCandidateResp{}
+
+	case CmdSignatures:
+		msg = &MsgSignatures{}
 
 	case CmdSignature:
 		msg = &MsgSignature{}
