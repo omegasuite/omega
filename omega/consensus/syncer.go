@@ -18,16 +18,24 @@ import (
 	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/token"
-	"time"
 	"sync"
+	"time"
 )
 
 type tree struct {
-	creator  [20]byte
-	fees uint64
-	hash chainhash.Hash
-	header * wire.BlockHeader
-	block * btcutil.Block
+	creator [20]byte
+	fees    uint64
+	hash    chainhash.Hash
+	header  *wire.BlockHeader
+	block   *btcutil.Block
+}
+
+func (self *Syncer) block(t *tree) *btcutil.Block {
+	if r, ok := self.blocks[t.hash]; ok {
+		return r
+	} else {
+		return nil
+	}
 }
 
 type Syncer struct {
@@ -39,66 +47,68 @@ type Syncer struct {
 	Runnable bool
 
 	Committee int32
-	Base int32
+	Base      int32
 
 	Members map[[20]byte]int32
-	Names map[int32][20]byte
+	Names   map[int32][20]byte
+	ips     map[[20]byte]string
 
-	Me [20]byte
+	Me     [20]byte
 	Myself int32
 
-	Malice map[[20]byte]struct {}
+	Malice map[[20]byte]struct{}
 
 	// a node may annouce to be a candidate if he believes he is the best choice
 	// if he believes another one is the best, send his knowledge about the best to the best
 
 	// a node received the candidacy announcement returns an agree message if he believes
-	// the node is better than himself and is known to more than 1/ nodes (qualified)
+	// the node is better than himself and is known to more than 1/2 nodes (qualified)
 	// a node rejects candidacy announcement should send his knowledge of the best in reply
 
-	// a node collected more than 1/2 agrees may annouce the fact by broadcasting the agreements it
-	// collected.
+	// a node collected more than 1/2 agrees consents may annouce the fact by broadcasting
+	// the agreements it collected.
 
-	asked    [wire.CommitteeSize]bool					// those who have asked to be a candidate, and not released
-	agrees   map[int32]struct{}		// those who I have agree to be a candidate
-	agreed   int32			// the one who I have agreed. can not back out until released by
-	sigGiven int32			// who I have given my signature. can never change once given.
+	asked    [wire.CommitteeSize]bool // those who have asked to be a candidate, and not released
+	agrees   map[int32]struct{}       // those who I have agree to be a candidate
+	blocks   map[chainhash.Hash]*btcutil.Block
+	agreed   int32 // the one who I have agreed. can not back out until released by
+	sigGiven int32 // who I have given my signature. can never change once given.
 
-//	consents map[[20]byte]int32		// those wh
-	forest   map[[20]byte]*tree		// blocks mined
-	knows    map[[20]byte][]*wire.MsgKnowledge	// the knowledges we received organized by finders (i.e. fact)
-	signed   map[[20]byte]struct{}
+	//	consents map[[20]byte]int32		// those wh
+	forest map[[20]byte]*tree                // blocks mined
+	knows  map[[20]byte][]*wire.MsgKnowledge // the knowledges we received organized by finders (i.e. fact)
+	signed map[[20]byte]struct{}
 
-	forestLock  sync.Mutex
+	forestLock sync.Mutex
 
 	knowledges *Knowledgebase
 
 	commands chan interface{}
-	quit chan struct{}
+	quit     chan struct{}
 
 	Done bool
 
 	Height int32
 
-//	pending map[string][]Message
-	pulling map[int32]int
+	//	pending map[string][]Message
+	pulling  map[int32]int
 	pulltime map[int32]int64
 
 	// debug only
-	knowRevd	[]int32
-	candRevd	[]int32
-	consRevd	[]int32
+	knowRevd []int32
+	candRevd []int32
+	consRevd []int32
 
 	// wait for end of task
-//	wg          sync.WaitGroup
-	idles		int
-	handeling   string
-	repeats int
+	//	wg          sync.WaitGroup
+	idles     int
+	handeling string
+	repeats   int
 }
 
 func (self *Syncer) CommitteeMsgMG(p [20]byte, m wire.Message) {
 	if h, ok := self.Members[p]; ok {
-		miner.server.CommitteeMsgMG(p, h + self.Base, m)
+		miner.server.CommitteeMsgMG(p, h+self.Base, m)
 	} else {
 		log.Infof("Msg not sent because %s is not a memnber", p)
 	}
@@ -106,7 +116,7 @@ func (self *Syncer) CommitteeMsgMG(p [20]byte, m wire.Message) {
 
 func (self *Syncer) CommitteeMsg(p [20]byte, m wire.Message) bool {
 	h, ok := self.Members[p]
-	return ok && miner.server.CommitteeMsg(p, h + self.Base, m)
+	return ok && miner.server.CommitteeMsg(p, h+self.Base, m)
 }
 
 func (self *Syncer) CommitteeCastMG(msg wire.Message) {
@@ -118,8 +128,8 @@ func (self *Syncer) CommitteeCastMG(msg wire.Message) {
 	}
 }
 
-func (self *Syncer) findBlock(h * chainhash.Hash) * btcutil.Block {
-	for _,f := range self.forest {
+func (self *Syncer) findBlock(h *chainhash.Hash) *btcutil.Block {
+	for _, f := range self.forest {
 		if f.block != nil && f.hash.IsEqual(h) {
 			return f.block
 		}
@@ -519,19 +529,6 @@ loop:
 							self.knows[k.Finder] = make([]*wire.MsgKnowledge, 0)
 						}
 						self.knows[k.Finder] = append(self.knows[k.Finder], k)
-						self.repeats = 0
-					}
-
-				case *wire.MsgKnowledgeDone:
-					if self.sigGiven >= 0 {
-						self.forestLock.Unlock()
-						continue
-					}
-
-					k := m.(*wire.MsgKnowledgeDone)
-
-					if self.knowledges.ProcKnowledgeDone((*wire.MsgKnowledge)(k)) {
-						self.candidacy()
 						self.repeats = 0
 					}
 

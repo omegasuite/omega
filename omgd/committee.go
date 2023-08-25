@@ -9,7 +9,6 @@ import (
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/connmgr"
-	"github.com/omegasuite/omega/consensus"
 	"github.com/omegasuite/omega/minerchain"
 	"net"
 	"time"
@@ -101,28 +100,31 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 						s.retry = maxFailedAttempts
 					}
 				}
-/*
-				p.cmutex.Lock()
-				s.queue <- msg
-				p.cmutex.Unlock()
- */
+				/*
+					p.cmutex.Lock()
+					s.queue <- msg
+					p.cmutex.Unlock()
+				*/
 
 				s.connecting = false
 
 				continue
 			}
 		}
-		if sent {
-			r := <-done
-			m, ok := msg.(*wire.MsgKnowledge)
-			if ok && r {
-				reply := wire.MsgKnowledgeDone(*m)
-				reply.From = s.member
-				consensus.HandleMessage(&reply)
+		/*
+			if sent {
+				r := <-done
+				m, ok := msg.(*wire.MsgKnowledge)
+				if ok && r {
+					reply := wire.MsgKnowledgeDone(*m)
+					reply.From = s.member
+					consensus.HandleMessage(&reply)
+				}
 			}
-		}
+		*/
 	}
 }
+
 /*
 func (sp *serverPeer) OnAckInvitation(_ *peer.Peer, msg *wire.MsgAckInvitation) {
 	sp.server.peerState.print()

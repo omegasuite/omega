@@ -580,7 +580,11 @@ func (b *MinerChain) disconnectBlock(node *chainutil.BlockNode, block *wire.Mine
 }
 
 func (b *MinerChain) FastReorganizeChain(attachNodes *list.List) error {
-	return b.reorganizeChain(list.New(), attachNodes)
+	b.chainLock.Lock()
+	r := b.reorganizeChain(list.New(), attachNodes)
+	b.chainLock.Unlock()
+
+	return r
 }
 
 // reorganizeChain reorganizes the block chain by disconnecting the nodes in the

@@ -10,6 +10,7 @@ package consensus
 
 import (
 	"bytes"
+	"github.com/omegasuite/btcd/wire/common"
 	"time"
 
 	//	"bufio"
@@ -20,12 +21,12 @@ import (
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
-//	"io"
+	//	"io"
 	"os"
 
 	//	"net/http"
 	"sync"
-//	"time"
+	//	"time"
 )
 
 const (
@@ -33,15 +34,17 @@ const (
 )
 
 type Message interface {
+	wire.Message
 	Block() int32
 	Sign(key *btcec.PrivateKey)
 	DoubleHashB() []byte
 	GetSignature() []byte
 	Sender() []byte
-	Command() string
+	BlockHash() chainhash.Hash
+	Sequence() int32
 }
 
-var Debug        int // hash of last block
+var Debug int // hash of last block
 
 type PeerNotifier interface {
 	MyPlaceInCommittee(r int32) int32
@@ -57,23 +60,31 @@ type PeerNotifier interface {
 	ChainSync(chainhash.Hash, [20]byte)
 	ResetConnections()
 	GetTxBlock(h int32) *btcutil.Block
+	Broadcast(wire.Message)
+}
+
+type ReqQueue interface {
+	QueueMessage(msg wire.Message, doneChan chan<- bool)
 }
 
 type Miner struct {
 	syncMutex    sync.Mutex
 	Sync         map[int32]*Syncer
-	server		 PeerNotifier
+	server       PeerNotifier
 	updateheight chan int32
-	name [][20]byte
+	name         [][20]byte
 
 	lastSignedBlock int32
-	lwbFile * os.File
+	lwbFile         *os.File
 
-	cfg *chaincfg.Params
+	cfg     *chaincfg.Params
+	pulling map[chainhash.Hash]int64
+	allblks map[chainhash.Hash]*btcutil.Block
 
 	// wait for end of task
-	wg          sync.WaitGroup
-	shutdown bool
+	wg        sync.WaitGroup
+	shutdown  bool
+	castedMsg map[chainhash.Hash]int64 // time a message is broadcated, to prevent re-casting
 }
 
 type newblock struct {
@@ -81,19 +92,12 @@ type newblock struct {
 	flags blockchain.BehaviorFlags
 }
 
-type delayblock struct {
-	block *btcutil.Block
-	flags blockchain.BehaviorFlags
-	delay int64
-}
-
 var newblockch chan newblock
-var delayedblk chan delayblock
 
 // var newheadch chan newhead
 
 func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
-	if miner == nil || miner.shutdown {
+	if miner == nil || miner.shutdown || newblockch == nil {
 		return
 	}
 
@@ -106,44 +110,10 @@ func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 	}
 
 	block.ClearSize()
-	if newblockch != nil {
-		var adr [20]byte
-		copy(adr[:], block.MsgBlock().Transactions[0].SignatureScripts[1])
-
-		ours := false
-		for _, n := range miner.name {
-			if bytes.Compare(adr[:], n[:]) == 0 {
-				ours = true
-			}
-		}
-
-		if !ours {
-			newblockch <- newblock{block, flags}
-			log.Infof("newblockch.len queued")
-		} else {
-			// are we the first in committee?
-			r := miner.server.BestSnapshot().LastRotation
-			p := int32(0)
-			for i := int32(0); i < wire.CommitteeSize; i++ {
-				b, _ := miner.server.MinerBlockByHeight(int32(r) - i)
-				if bytes.Compare(adr[:], b.MsgBlock().Miner[:]) == 0 {
-					p = i
-				}
-			}
-			if p == wire.CommitteeSize - 1 {
-				// we are first, no delay
-				newblockch <- newblock{block, flags}
-				log.Infof("newblockch.len queued")
-			} else {
-				// add to a delay queue
-				delay := int64((wire.CommitteeSize - p - 1) * 5)
-				delayedblk <- delayblock{block, flags, delay + time.Now().Unix() }
-			}
-		}
-	}
+	newblockch <- newblock{block, flags}
 }
 
-func ServeBlock(h * chainhash.Hash) *btcutil.Block {
+func ServeBlock(h *chainhash.Hash) *btcutil.Block {
 	if miner == nil || miner.shutdown {
 		return nil
 	}
@@ -156,7 +126,7 @@ func ServeBlock(h * chainhash.Hash) *btcutil.Block {
 	return nil
 }
 
-var miner * Miner
+var miner *Miner
 
 var Quit chan struct{}
 var POWStopper chan struct{}
@@ -164,7 +134,7 @@ var errMootBlock error
 var errInvalidBlock error
 var connNotice chan interface{}
 
-func (m *Miner) notice (notification *blockchain.Notification) {
+func (m *Miner) notice(notification *blockchain.Notification) {
 	if connNotice != nil && !miner.shutdown {
 		switch notification.Type {
 		case blockchain.NTBlockConnected:
@@ -228,36 +198,14 @@ func UpdateLastWritten(last int32) bool {
 		miner.lastSignedBlock = last
 		return true
 	}
-/*
-	// write last sign block height to file instead of DB to ensure it is not cached/buffered
-	writer := bufio.NewWriter(miner.lwbFile)
 
-	miner.lwbFile.Seek(0, io.SeekStart)
-	if last > miner.lastSignedBlock {
-		miner.lastSignedBlock = last
-		fmt.Fprintf(writer, "%d\n", last)
-		writer.Flush()
-		miner.lwbFile.Sync()		// do a file flush here
-		return true
-	}
-	log.Infof("UpdateLastWritten: rejected because %d <= %d", last, miner.lastSignedBlock)
-*/
 	return false
 }
 
-func handleDelayBlk() {
-	for true {
-		select {
-		case p := <-delayedblk:
-			if time.Now().Unix() > p.delay {
-				time.Sleep(time.Duration(time.Now().Unix() - p.delay) * time.Second)
-			}
-			newblockch <- newblock{p.block, p.flags}
-
-		case <- Quit:
-			return
-		}
-	}
+func SetupRelay(s PeerNotifier) {
+	miner = &Miner{}
+	miner.server = s
+	miner.cfg = nil
 }
 
 func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chaincfg.Params) {
@@ -266,28 +214,10 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	miner.cfg = cfg
 	miner.updateheight = make(chan int32, 200)
 	miner.lastSignedBlock = 0
+	miner.castedMsg = make(map[chainhash.Hash]int64)
+	miner.pulling = make(map[chainhash.Hash]int64)
+	miner.allblks = make(map[chainhash.Hash]*btcutil.Block)
 
-/*
-	lwbFile := dataDir + "/lastsignedblock"
-
-	fp, err := os.Open(lwbFile)
-	if fp != nil && err != io.EOF {
-		reader := bufio.NewReader(fp)
-		line, err := reader.ReadString('\n')
-		if err == nil {
-			fmt.Sscanf(line, "%d", &miner.lastSignedBlock)
-		}
-	}
-	fp.Close()
-
-	miner.lwbFile, err = os.OpenFile(lwbFile, os.O_WRONLY | os.O_CREATE | os.O_TRUNC, 0600)
-	defer miner.lwbFile.Close()
-
-	if err != nil {
-		log.Infof("UpdateLastWritten: unable to open %s", lwbFile)
-		return
-	}
-*/
 	s.SubscribeChain(miner.notice)
 
 	connNotice = make(chan interface{}, 10)
@@ -296,12 +226,11 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	miner.syncMutex = sync.Mutex{}
 
 	miner.name = make([][20]byte, len(addr))
-	for i,name := range addr {
+	for i, name := range addr {
 		copy(miner.name[i][:], name.ScriptAddress())
 	}
 
-	newblockch = make(chan newblock, 2 * wire.CommitteeSize)
-	delayedblk = make(chan delayblock, 20 * wire.CommitteeSize)
+	newblockch = make(chan newblock, 2*wire.CommitteeSize)
 
 	errMootBlock = fmt.Errorf("Moot block.")
 	errInvalidBlock = fmt.Errorf("Invalid block")
@@ -310,13 +239,11 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	log.Info("Consensus running")
 	miner.wg.Add(1)
 
-//	ticker := time.NewTicker(time.Second * 10)
+	//	ticker := time.NewTicker(time.Second * 10)
 	defer miner.wg.Done()
 
-	go handleDelayBlk()
-
 	polling := true
-	out:
+out:
 	for polling {
 		select {
 		case height := <-miner.updateheight:
@@ -380,7 +307,6 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 		select {
 		case <-miner.updateheight:
 		case <-newblockch:
-		case <-delayedblk:
 		case <-connNotice:
 
 		default:
@@ -390,7 +316,7 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	}
 }
 
-func HandleMessage(m Message) (bool, * chainhash.Hash) {
+func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 	if miner == nil || miner.shutdown {
 		return false, nil
 	}
@@ -403,13 +329,45 @@ func HandleMessage(m Message) (bool, * chainhash.Hash) {
 		return true, nil
 	}
 
+	if miner.cfg == nil { // relay mode
+		if m.Sequence() > 0 {
+			if _, ok := miner.allblks[m.BlockHash()]; !ok {
+				miner.syncMutex.Lock()
+				pull(m.BlockHash(), p)
+				miner.syncMutex.Unlock()
+			}
+
+			miner.server.Broadcast(m)
+		}
+		return false, nil
+	}
+
 	miner.syncMutex.Lock()
+
+	// check if we have got this msg before
+	var w bytes.Buffer
+	var hs chainhash.Hash
+	m.OmcEncode(&w, 0, wire.FullEncoding)
+	copy(hs[:], chainhash.HashB(w.Bytes()))
+	if _, ok := miner.castedMsg[hs]; ok {
+		miner.syncMutex.Unlock()
+		return true, nil
+	}
+	now := time.Now().Unix()
+	for h, t := range miner.castedMsg {
+		if now-t > 5 {
+			delete(miner.castedMsg, h)
+		}
+	}
+
+	miner.castedMsg[hs] = now
+
 	s, ok := miner.Sync[h]
 
 	if !ok {
 		miner.Sync[h] = CreateSyncer(h)
 		s = miner.Sync[h]
-	} else if miner.Sync[h].Done {
+	} else if s.Done {
 		miner.syncMutex.Unlock()
 		log.Infof("syncer has finished with %h. Ignore this message", h)
 		return false, nil
@@ -418,58 +376,96 @@ func HandleMessage(m Message) (bool, * chainhash.Hash) {
 	s.SetCommittee()
 	miner.syncMutex.Unlock()
 
-	var hash * chainhash.Hash
+	if s.Myself < 0 {
+		if m.Sequence() > 0 {
+			if _, ok := miner.allblks[m.BlockHash()]; !ok {
+				miner.syncMutex.Lock()
+				pull(m.BlockHash(), p)
+				miner.syncMutex.Unlock()
+			}
 
-	if !s.Runnable {
-		log.Infof("syncer is not ready for height %d, message will be queued. Current que len = %d", h, len(s.commands))
-
-		switch m.(type) {
-		case *wire.MsgKnowledge:
-			hash = &m.(*wire.MsgKnowledge).M
-
-		case *wire.MsgCandidate:
-			hash = &m.(*wire.MsgCandidate).M
-
-		case *wire.MsgCandidateResp:
-			hash = &m.(*wire.MsgCandidateResp).M
-
-		case *wire.MsgRelease:
-			hash = &m.(*wire.MsgRelease).M
-
-		case *wire.MsgConsensus:
-			hash = &m.(*wire.MsgConsensus).M
-
-		case *wire.MsgSignature:
-			hash = &m.(*wire.MsgSignature).M
+			miner.server.Broadcast(m)
 		}
+		return false, nil
+	}
+	/*
+			var hash *chainhash.Hash
 
-		if len(s.commands) > 1 {
-			hash = nil
-		}
+		if !s.Runnable {
+			log.Infof("syncer is not ready for height %d, message will be queued. Current que len = %d", h, len(s.commands))
 
-		if len(s.commands) > (wire.CommitteeSize - 1) * 10 {
-			log.Infof("too many messages are queued. Discard oldest one.")
-			<- s.commands
-		}
+			switch m.(type) {
+			case *wire.MsgKnowledge:
+				hash = &m.(*wire.MsgKnowledge).M
+
+			case *wire.MsgCandidate:
+				hash = &m.(*wire.MsgCandidate).M
+
+			case *wire.MsgCandidateResp:
+				hash = &m.(*wire.MsgCandidateResp).M
+
+			case *wire.MsgRelease:
+				hash = &m.(*wire.MsgRelease).M
+
+			case *wire.MsgConsensus:
+				hash = &m.(*wire.MsgConsensus).M
+
+			case *wire.MsgSignature:
+				hash = &m.(*wire.MsgSignature).M
+			}
+
+			if len(s.commands) > 1 {
+				hash = nil
+			}
+
+				if len(s.commands) > (wire.CommitteeSize-1)*10 {
+					log.Infof("too many messages are queued. Discard oldest one.")
+					<-s.commands
+				}
+				s.commands <- m
+				miner.server.Broadcast(m)
+				return false, nil
+			}
+	*/
+
+	if len(s.commands) > (wire.CommitteeSize-1)*10 {
+		<-s.commands
+		<-s.commands
+		log.Infof("Runnable syner %d has too many (%d) messages queued. Discard oldest one.", s.Height, len(s.commands))
+		s.DebugInfo()
 	}
 
-	if len(s.commands) > (wire.CommitteeSize - 1) * 10 {
-		log.Infof("Runnable syner %d has too many (%d) messages queued. Discard oldest one.", s.Height, len(s.commands))
-		<- s.commands
-		s.DebugInfo()
-//		return false, nil
+	if _, ok := s.blocks[m.BlockHash()]; !ok {
+		if mm, ok := miner.allblks[m.BlockHash()]; ok {
+			s.blocks[m.BlockHash()] = mm
+		} else {
+			miner.syncMutex.Lock()
+			pull(m.BlockHash(), p)
+			miner.syncMutex.Unlock()
+		}
 	}
 
 	s.commands <- m
 
-	return false, hash
+	return false, nil // hash
+}
+
+func pull(hash chainhash.Hash, p ReqQueue) {
+	t := time.Now().Unix()
+	if _, ok := miner.pulling[hash]; !ok || miner.pulling[hash]+5 < t {
+		// pull block
+		msg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeTempBlock, hash}}}
+		p.QueueMessage(&msg, nil)
+
+		miner.pulling[hash] = t
+	}
 }
 
 func UpdateChainHeight(latestHeight int32) {
 	if miner.shutdown {
 		return
 	}
-	if miner != nil {
+	if miner != nil && miner.updateheight != nil {
 		miner.updateheight <- latestHeight
 	}
 }
@@ -484,18 +480,23 @@ func cleaner(top int32) {
 			t.Quit()
 		}
 	}
+	for i, b := range miner.allblks {
+		if b.Height() < top {
+			delete(miner.allblks, i)
+		}
+	}
 }
 
 func Shutdown() {
 	miner.shutdown = true
 
 	log.Infof("Syners:")
-	for h,s := range miner.Sync {
+	for h, s := range miner.Sync {
 		log.Infof("%d Runnable = %v", h, s.Runnable)
 		s.Quit()
 	}
 
-//	DebugInfo()
+	//	DebugInfo()
 
 	select {
 	case <-Quit:
@@ -511,7 +512,15 @@ func Shutdown() {
 	log.Infof("Consensus Shutdown completed")
 }
 
-func VerifyMsg(msg wire.OmegaMessage, pubkey * btcec.PublicKey) bool {
+var seq int32
+
+func (self *Miner) Broadcast(msg wire.OmegaMessage) {
+	seq++
+	msg.SetSeq(seq)
+	self.server.Broadcast(msg)
+}
+
+func VerifyMsg(msg wire.OmegaMessage, pubkey *btcec.PublicKey) bool {
 	signature, err := btcec.ParseSignature(msg.GetSignature(), btcec.S256())
 	if err != nil {
 		return false

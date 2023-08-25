@@ -557,3 +557,22 @@ func (b *MinerChain) NodeByHash(hash *chainhash.Hash) *chainutil.BlockNode {
 	}
 	return node
 }
+
+func (b *MinerChain) DeepNodeByHash(hash *chainhash.Hash) *chainutil.BlockNode {
+	node := b.index.LookupNode(hash)
+	if node != nil {
+		return node
+	}
+
+	blk, err := b.DBBlockByHash(hash)
+
+	if blk == nil || err != nil {
+		return nil
+	}
+
+	node = &chainutil.BlockNode{}
+
+	InitBlockNode(node, blk.MsgBlock(), nil)
+
+	return node
+}

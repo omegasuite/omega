@@ -221,9 +221,6 @@ func makeEmptyMessage(command string) (Message, error) {
 	case CmdKnowledge:
 		msg = &MsgKnowledge{}
 
-	case CmdKnowledgeDone:
-		msg = &MsgKnowledgeDone{}
-
 	case CmdCandidate:
 		msg = &MsgCandidate{}
 

@@ -6,6 +6,7 @@
 package netsync
 
 import (
+	"bytes"
 	"container/list"
 	"fmt"
 	"github.com/omegasuite/omega/minerchain"

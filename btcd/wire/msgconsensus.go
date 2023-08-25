@@ -14,16 +14,29 @@ import (
 type MsgConsensus struct {
 	Height    int32
 	From      [20]byte
-	M      	  chainhash.Hash
-	Signature      []byte
+	M         chainhash.Hash
+	Signature []byte
+	Seq       int32
 }
 
-func (msg * MsgConsensus) Sign(key *btcec.PrivateKey) {
+func (msg *MsgConsensus) SetSeq(t int32) {
+	msg.Seq = t
+}
+
+func (msg *MsgConsensus) Sequence() int32 {
+	return msg.Seq
+}
+
+func (msg *MsgConsensus) Sign(key *btcec.PrivateKey) {
 	// never use. just to make interface happy
 }
 
 func (msg * MsgConsensus) Block() int32 {
 	return msg.Height
+}
+
+func (msg *MsgConsensus) BlockHash() chainhash.Hash {
+	return msg.M
 }
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.

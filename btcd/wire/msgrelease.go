@@ -15,9 +15,18 @@ import (
 type MsgRelease struct {
 	Height    int32
 	From      [20]byte
-	Better 	  int32
-	M  	      chainhash.Hash
-	Signature      []byte
+	Better    int32
+	M         chainhash.Hash
+	Signature []byte
+	Seq       int32
+}
+
+func (msg *MsgRelease) SetSeq(t int32) {
+	msg.Seq = t
+}
+
+func (msg *MsgRelease) Sequence() int32 {
+	return msg.Seq
 }
 
 func (msg * MsgRelease) Sign(key *btcec.PrivateKey) {
@@ -34,6 +43,10 @@ func (msg * MsgRelease) Sign(key *btcec.PrivateKey) {
 
 func (msg * MsgRelease) Block() int32 {
 	return msg.Height
+}
+
+func (msg *MsgRelease) BlockHash() chainhash.Hash {
+	return msg.M
 }
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.

@@ -779,14 +779,14 @@ const (
 
 // Map of service flags back to their constant names for pretty printing.
 var ivStrings = map[InvType]string{
-	InvTypeError:                "ERROR",
-	InvTypeTx:                   "MSG_TX",
-	InvTypeBlock:                "MSG_BLOCK",
-	InvTypeMinerBlock:           "MSG_MINERBLOCK",
-	InvTypeFilteredBlock:        "MSG_FILTERED_BLOCK",
-	InvTypeWitnessBlock:         "MSG_WITNESS_BLOCK",
-	InvTypeWitnessTx:            "MSG_WITNESS_TX",
-	InvTypeFilteredWitnessBlock: "MSG_FILTERED_WITNESS_BLOCK",
+	InvTypeError:         "ERROR",
+	InvTypeTx:            "MSG_TX",
+	InvTypeBlock:         "MSG_BLOCK",
+	InvTypeMinerBlock:    "MSG_MINERBLOCK",
+	InvTypeFilteredBlock: "MSG_FILTERED_BLOCK",
+	InvTypeWitnessBlock:  "MSG_WITNESS_BLOCK",
+	InvTypeWitnessTx:     "MSG_WITNESS_TX",
+	//	InvTypeFilteredWitnessBlock: "MSG_FILTERED_WITNESS_BLOCK",
 }
 
 // String returns the InvType in human-readable form.

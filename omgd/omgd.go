@@ -253,17 +253,20 @@ func btcdMain(serverChan chan<- *server) error {
 		btcdLog.Infof("Server shutdown complete")
 	}()
 
+	if cfg.Settip != "" {
+		tips := strings.Split(cfg.Settip, ":")
+		if !setTip(tips[0], tips[1], server.chain) {
+			return nil
+		}
+	}
+
 	if len(cfg.privateKeys) != 0 && cfg.Generate {
 		go consensus.Consensus(server, cfg.DataDir, cfg.signAddress, activeNetParams.Params)
 		for _, sa := range cfg.signAddress {
 			btcdLog.Infof("Address of miner %s", sa.String())
 		}
-	}
-
-	if cfg.Settip != "" {
-		tips := strings.Split(cfg.Settip, ":")
-		setTip(tips[0], tips[1], server.chain)
-		return nil
+	} else {
+		consensus.SetupRelay(server)
 	}
 
 	flag := uint64(0)
@@ -293,32 +296,23 @@ func btcdMain(serverChan chan<- *server) error {
 	}
 
 	if cfg.ExitOnStall && !cfg.TestNet && !cfg.SimNet {
+		var live int64
+		server.chain.Subscribe(func(notification *blockchain.Notification) {
+			switch notification.Type {
+			case blockchain.NTBlockConnected:
+				live = time.Now().Unix()
+			}
+		})
+
 		go func() {
-			state := server.chain.BestSnapshot()
-			h := state.Height
-			before := h
-			server.rpcServer.Rpcactivity = make(chan struct{})
-
 			for {
-				select {
-				case <-server.rpcServer.Rpcactivity:
-
-				case <-time.After(1 * time.Minute):
-					go func() {
-						state = server.chain.BestSnapshot()
-						h = state.Height
-					}()
-
-				case <-time.After(10 * time.Minute):
-					if h == before {
-						var wbuf bytes.Buffer
-						pprof.Lookup("mutex").WriteTo(&wbuf, 1)
-						pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
-						btcdLog.Infof("pprof Info: \n%s", wbuf.String())
-
-						break
-					}
-					before = h
+				<-time.After(10 * time.Minute)
+				if time.Now().Unix()-live > 600 {
+					var wbuf bytes.Buffer
+					pprof.Lookup("mutex").WriteTo(&wbuf, 1)
+					pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
+					btcdLog.Infof("pprof Info: \n%s", wbuf.String())
+					break
 				}
 			}
 
@@ -367,28 +361,28 @@ func btcdMain(serverChan chan<- *server) error {
 	return nil
 }
 
-func setTip(tx, miner string, chain *blockchain.BlockChain) {
+func setTip(tx, miner string, chain *blockchain.BlockChain) bool {
 	fmt.Printf("Setting new tips %s & %s\n", tx, miner)
 	txtip, err := chainhash.NewHashFromStr(tx)
 	if err != nil || txtip == nil {
 		fmt.Printf("Non-exist tx tip hash\n")
-		return
+		return false
 	}
 	minertip, err := chainhash.NewHashFromStr(miner)
 	if err != nil || minertip == nil {
 		fmt.Printf("Non-exist miner tip hash\n")
-		return
+		return false
 	}
 
 	txblk, err := chain.HashToBlock(txtip)
 	if err != nil || txblk == nil {
 		fmt.Printf("Non-exist tx tip")
-		return
+		return false
 	}
 	minerblk, err := chain.Miners.DBBlockByHash(minertip)
 	if err != nil || minerblk == nil {
 		fmt.Printf("Non-exist miner tip\n")
-		return
+		return false
 	}
 
 	state := chain.BestSnapshot()
@@ -399,33 +393,33 @@ func setTip(tx, miner string, chain *blockchain.BlockChain) {
 
 	if !chain.SameChain(*txtip, state.Hash) {
 		fmt.Printf("New tx tip %s not in same chain as current tip %s\n", txtip.String(), state.Hash.String())
-		return
+		return false
 	}
 
 	pb := minerblk.MsgBlock().PrevBlock
-	for i := minerblk.Height() - 1; i != mstate.Height; i-- {
+	for i := minerblk.Height() - 1; i > mstate.Height; i-- {
 		fmt.Printf("Add miner block %s\n", pb.String())
 		pbb, err := chain.Miners.DBBlockByHash(&pb)
 		if err != nil || pbb == nil {
 			fmt.Printf("New miner tip %s not in same chain as current tip %s\n", minertip.String(), mstate.Hash.String())
-			return
+			return false
 		}
 		if !chain.SameChain(minerblk.MsgBlock().BestBlock, pbb.MsgBlock().BestBlock) {
 			fmt.Printf("Best chain not in sync @ miner block %s width best block %s compare to current tip best block %s\n", pb.String(), pbb.MsgBlock().BestBlock.String(), minerblk.MsgBlock().BestBlock.String())
-			return
+			return false
 		}
 		bestblk, _ := chain.HashToBlock(&pbb.MsgBlock().BestBlock)
 		nbestheight := bestblk.Height()
 		if nbestheight > bestheight {
 			fmt.Printf("Best not in order\n")
-			return
+			return false
 		}
 		bestheight = nbestheight
 		pb = pbb.MsgBlock().PrevBlock
 	}
 	if !pb.IsEqual(&mstate.Hash) {
 		fmt.Printf("New miner tip not in same chain as current tip\n")
-		return
+		return false
 	}
 
 	attachNodes := list.New()
@@ -442,15 +436,17 @@ func setTip(tx, miner string, chain *blockchain.BlockChain) {
 	}
 
 	attachNodes = list.New()
-	mnode := chain.Miners.NodeByHash(minertip)
-	mforkNode := chain.Miners.NodeByHash(&mstate.Hash)
+	mnode := chain.Miners.DeepNodeByHash(minertip)
+	mforkNode := chain.Miners.DeepNodeByHash(&mstate.Hash)
 	for n := mnode; n != nil && n != mforkNode; n = n.Parent {
 		attachNodes.PushFront(n)
 	}
 	err = chain.Miners.FastReorganizeChain(attachNodes)
+
 	if err != nil {
 		panic("Miner FastReorganizeChain failed: " + err.Error())
 	}
+	return true
 }
 
 // removeRegressionDB removes the existing regression test database if running

@@ -8,11 +8,12 @@ package cpuminer
 import (
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/omega/consensus"
 	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/omega/consensus"
 	"math/big"
 
 	//	"math/big"
+	"bytes"
 	"math/rand"
 	"runtime"
 

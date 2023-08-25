@@ -714,6 +714,11 @@ func (sp *serverPeer) OnTx(_ *peer.Peer, msg *wire.MsgTx) {
 	<-sp.txProcessed
 }
 
+func (sp *serverPeer) OnSignatures(_ *peer.Peer, msg *wire.MsgSignatures) {
+	sp.server.syncManager.QueueSignatures(msg, sp.Peer, sp.blockProcessed)
+	<-sp.blockProcessed
+}
+
 // OnBlock is invoked when a peer receives a block bitcoin message.  It
 // blocks until the bitcoin block has been fully processed.
 func (sp *serverPeer) OnBlock(_ *peer.Peer, msg *wire.MsgBlock, buf []byte) {
@@ -856,8 +861,10 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 			err = sp.server.pushTxMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
 		case common.InvTypeTx:
 			err = sp.server.pushTxMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
+		case common.InvTypeTempBlock: //	in MsgGetData, we always send InvTypeWitnessBlock inv
+			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
 		case common.InvTypeWitnessBlock:
-			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding|wire.FullEncoding)
+			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
 		case common.InvTypeBlock:
 			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 		case common.InvTypeMinerBlock:
@@ -1809,7 +1816,7 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 				}
 				if len(inv.InvList) > 0 {
 					done := make(chan bool)
-					sp.Peer.QueueMessageWithEncoding(inv, done, wire.SignatureEncoding|wire.FullEncoding)
+					sp.Peer.QueueMessageWithEncoding(inv, done, wire.SignatureEncoding) // | wire.FullEncoding)
 					<-done
 				}
 			}
@@ -1838,6 +1845,9 @@ func (s *server) pushBlockMsg(sp *serverPeer, hash *chainhash.Hash, doneChan cha
 			}
 
 			msgBlock = *block.MsgBlock()
+			err = nil
+		} else if cb := s.syncManager.CachedBlock(*hash); cb != nil {
+			msgBlock = *cb.MsgBlock()
 			err = nil
 		} else {
 			peerLog.Tracef("Unable to fetch requested block hash %s: %v",
@@ -2303,7 +2313,7 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 			return
 		}
 
-		if msg.invVect.Type&common.InvTypeBlock == common.InvTypeBlock {
+		if msg.invVect.Type&common.InvTypeMask == common.InvTypeBlock {
 			h, err := s.chain.BlockHeightByHash(&msg.invVect.Hash)
 			if err != nil {
 				return
@@ -2315,7 +2325,7 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 			}
 		}
 
-		if msg.invVect.Type&common.InvTypeMinerBlock == common.InvTypeMinerBlock {
+		if msg.invVect.Type&common.InvTypeMask == common.InvTypeMinerBlock {
 			n := s.chain.Miners.NodeByHash(&msg.invVect.Hash)
 			if n == nil || n.Height > sp.LastMinerBlock()+50 {
 				// don't relay if the peer is too far behind. let the peer pull, perhaps it is
@@ -2330,7 +2340,7 @@ func (s *server) handleRelayInvMsg(state *peerState, msg relayMsg) {
 		// If the inventory is a block and the peer prefers headers,
 		// generate and send a headers message instead of an inventory
 		// message.
-		if msg.invVect.Type&common.InvTypeBlock == common.InvTypeBlock && sp.WantsHeaders() {
+		if msg.invVect.Type&common.InvTypeMask == common.InvTypeBlock && sp.WantsHeaders() {
 			blockHeader, ok := msg.data.(wire.BlockHeader)
 			if !ok {
 				peerLog.Warnf("Underlying data for headers" +
@@ -2627,6 +2637,7 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 			PushGetBlock:   sp.PushGetBlock,
 			OnReject:       sp.OnReject,
 			OnAlert:        sp.OnAlert,
+			OnSignatures:   sp.OnSignatures,
 		},
 		NewestBlock:       sp.newestBlock,
 		NewestMinerBlock:  sp.newestMinerBlock,
@@ -2699,6 +2710,10 @@ func (s *server) outboundPeerConnected(c *connmgr.ConnReq, conn net.Conn) {
 	sp.AssociateConnection(conn)
 	go s.peerDoneHandler(sp)
 	s.addrManager.Attempt(sp.NA())
+}
+
+func (s *server) Broadcast(m wire.Message) {
+	s.syncManager.Broadcast(m)
 }
 
 // peerDoneHandler handles peer disconnects by notifiying the server that it's

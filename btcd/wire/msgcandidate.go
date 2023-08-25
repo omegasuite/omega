@@ -14,9 +14,18 @@ import (
 
 type MsgCandidate struct {
 	Height    int32
-	F		  [20]byte
-	M	      chainhash.Hash
-	Signature      []byte
+	F         [20]byte
+	M         chainhash.Hash
+	Signature []byte
+	Seq       int32
+}
+
+func (msg *MsgCandidate) SetSeq(t int32) {
+	msg.Seq = t
+}
+
+func (msg *MsgCandidate) Sequence() int32 {
+	return msg.Seq
 }
 
 func (msg * MsgCandidate) Sign(key *btcec.PrivateKey) {
@@ -33,6 +42,10 @@ func (msg * MsgCandidate) Sign(key *btcec.PrivateKey) {
 
 func (msg * MsgCandidate) Block() int32 {
 	return msg.Height
+}
+
+func (msg *MsgCandidate) BlockHash() chainhash.Hash {
+	return msg.M
 }
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
@@ -142,6 +155,15 @@ type MsgCandidateResp struct {
 	From      [20]byte
 	M         chainhash.Hash
 	Signature []byte
+	Seq       int32
+}
+
+func (msg *MsgCandidateResp) SetSeq(t int32) {
+	msg.Seq = t
+}
+
+func (msg *MsgCandidateResp) Sequence() int32 {
+	return msg.Seq
 }
 
 func (msg * MsgCandidateResp) Sign(key *btcec.PrivateKey) {
@@ -158,6 +180,10 @@ func (msg * MsgCandidateResp) Sign(key *btcec.PrivateKey) {
 
 func (msg * MsgCandidateResp) Block() int32 {
 	return msg.Height
+}
+
+func (msg *MsgCandidateResp) BlockHash() chainhash.Hash {
+	return msg.M
 }
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.

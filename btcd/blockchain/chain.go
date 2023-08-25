@@ -96,6 +96,7 @@ type MinerChain interface {
 	BlockByHash(hash *chainhash.Hash) (*wire.MinerBlock, error)
 	DBBlockByHash(hash *chainhash.Hash) (*wire.MinerBlock, error)
 	NodeByHash(hash *chainhash.Hash) *chainutil.BlockNode
+	DeepNodeByHash(hash *chainhash.Hash) *chainutil.BlockNode
 	NodeByHeight(height int32) *chainutil.BlockNode
 	BlockByHeight(height int32) (*wire.MinerBlock, error)
 	CheckConnectBlockTemplate(*wire.MinerBlock) error
