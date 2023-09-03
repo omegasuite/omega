@@ -165,13 +165,19 @@ func ValidateWitnessCommitment(blk *btcutil.Block) error {
 
 	witnessCommitment := blk.MsgBlock().Transactions[0].SignatureScripts[0]
 
-	witnessMerkleTree := BuildMerkleTreeStore(blk.Transactions(), true, blk.MsgBlock().Header.Version)
+	witnessMerkleTree := BuildMerkleTreeStore(blk.Transactions(), true, blk.MsgBlock().Header.Version&^0xFFFF)
 	witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
 
 	if !bytes.Equal((*witnessMerkleRoot)[:], witnessCommitment) {
+		m := blk.Transactions()[0].MsgTx()
+		var w bytes.Buffer
+		m.OmcEncode(&w, 0, wire.SignatureEncoding|wire.FullEncoding)
+
+		bt, _ := blk.Bytes()
+
 		str := fmt.Sprintf("witness commitment does not match: "+
-			"computed %v, coinbase includes %v", (*witnessMerkleRoot)[:],
-			witnessCommitment)
+			"computed %v, coinbase includes %v \n tx[0]: %x \n: Block: %x", (*witnessMerkleRoot)[:],
+			witnessCommitment, w.Bytes(), bt)
 		return ruleError(ErrWitnessCommitmentMismatch, str)
 	}
 

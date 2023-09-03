@@ -168,15 +168,21 @@ type updatePeerHeightsMsg struct {
 	originPeer *peer.Peer
 }
 
+type msgnb struct {
+	msg  wire.Message
+	done chan bool
+}
+
 type committeeState struct {
 	peers       []*serverPeer
 	member      [20]byte
-	queue       chan wire.Message
+	queue       chan msgnb
 	closed      bool
 	address     string
 	minerHeight int32
 	connecting  bool
 	retry       uint32
+	msgsent     uint32
 }
 
 // peerState maintains state of inbound, persistent, outbound peers as well
@@ -204,13 +210,13 @@ func (p *peerState) NewCommitteeState(m [20]byte, h int32, addr string) *committ
 
 	t := &committeeState{
 		peers:       make([]*serverPeer, 0),
-		queue:       make(chan wire.Message, 50),
+		queue:       make(chan msgnb, 50),
 		closed:      false,
 		member:      m,
 		minerHeight: h,
 		address:     adr,
-		connecting:  false,
-		retry:       0,
+		//		connecting:  false,
+		retry: 0,
 	}
 
 	go p.CommitteeOut(t)
@@ -863,6 +869,12 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 			err = sp.server.pushTxMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 		case common.InvTypeTempBlock: //	in MsgGetData, we always send InvTypeWitnessBlock inv
 			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
+			if err != nil {
+				src := sp.server.syncManager.TmpBlkSrc(iv.Hash)
+				if src != nil {
+					src.QueueMessage(&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeTempBlock, iv.Hash}}}, nil)
+				}
+			}
 		case common.InvTypeWitnessBlock:
 			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
 		case common.InvTypeBlock:
@@ -2498,7 +2510,8 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 		}
 		state.cmutex.Unlock()
 
-		if len(state.persistentPeers) > 0 {
+		if !msg.permanent && len(state.persistentPeers) > 0 {
+			msg.reply <- nil
 			return
 		}
 
@@ -2712,8 +2725,8 @@ func (s *server) outboundPeerConnected(c *connmgr.ConnReq, conn net.Conn) {
 	s.addrManager.Attempt(sp.NA())
 }
 
-func (s *server) Broadcast(m wire.Message) {
-	s.syncManager.Broadcast(m)
+func (s *server) Broadcast(m wire.Message, ps *string) {
+	s.syncManager.Broadcast(m, ps)
 }
 
 // peerDoneHandler handles peer disconnects by notifiying the server that it's
@@ -2797,6 +2810,17 @@ func (s *server) peerHandler() {
 out:
 	for {
 		select {
+		case <-s.quit:
+			btcdLog.Tracef("peerHandler: quit")
+			// Disconnect all peers on server shutdown.
+			state.ForAllPeers(func(sp *serverPeer) {
+				srvrLog.Tracef("Shutdown peer %s", sp)
+				sp.Disconnect("peerHandler @ quit")
+			})
+			btcdLog.Tracef("peerHandler: quit - done")
+
+			break out
+
 		case r := <-newBlock:
 			btcdLog.Tracef("peerHandler: newBlock - handleCommitteRotation")
 			s.handleCommitteRotation(r)
@@ -2848,17 +2872,6 @@ out:
 			btcdLog.Tracef("peerHandler: query - handleQuery")
 			s.handleQuery(state, qmsg)
 			btcdLog.Tracef("peerHandler: query - handleQuery - done")
-
-		case <-s.quit:
-			btcdLog.Tracef("peerHandler: quit")
-			// Disconnect all peers on server shutdown.
-			state.ForAllPeers(func(sp *serverPeer) {
-				srvrLog.Tracef("Shutdown peer %s", sp)
-				sp.Disconnect("peerHandler @ quit")
-			})
-			btcdLog.Tracef("peerHandler: quit - done")
-
-			break out
 		}
 	}
 
@@ -2981,6 +2994,9 @@ func (s *server) rebroadcastHandler() {
 out:
 	for {
 		select {
+		case <-s.quit:
+			break out
+
 		case riv := <-s.modifyRebroadcastInv:
 			switch msg := riv.(type) {
 			// Incoming InvVects are added to our map of RPC txs.
@@ -3006,9 +3022,6 @@ out:
 			// Process at a random time up to 30mins (in seconds)
 			// in the future.
 			timer.Reset(time.Second * time.Duration(randomUint16Number(1800)))
-
-		case <-s.quit:
-			break out
 		}
 	}
 
@@ -3218,6 +3231,9 @@ func (s *server) upnpUpdateThread() {
 out:
 	for {
 		select {
+		case <-s.quit:
+			break out
+
 		case <-timer.C:
 			// TODO: pick external port  more cleverly
 			// TODO: know which ports we are listening to on an external net.
@@ -3247,8 +3263,6 @@ out:
 				first = false
 			}
 			timer.Reset(time.Minute * 15)
-		case <-s.quit:
-			break out
 		}
 	}
 

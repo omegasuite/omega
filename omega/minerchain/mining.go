@@ -259,9 +259,9 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 		factorPOW = m.factorPOW(header.Height-1, header.Block.(*wire.MingingRightBlock).BestBlock)
 	}
 
-	if block.Version >= chaincfg.Version2 {
-		factorPOW = 16 * factorPOW // factor 16 is for smooth transition from V1 to V2
-	}
+	//	if block.Version >= chaincfg.Version2 && factorPOW > 0 {
+	//		factorPOW = 16 * factorPOW // factor 16 is for smooth transition from V1 to V2
+	//	}
 
 	if factorPOW < 0 {
 		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(-factorPOW))
@@ -270,10 +270,12 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 
 	if block.Version >= chaincfg.Version2 {
 		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(h))
-		if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))) > 0 {
-			targetDifficulty = m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))
-		}
-	} else if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
+		//		if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))) > 0 {
+		//			targetDifficulty = m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))
+		//		}
+	} //  else
+
+	if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
 		targetDifficulty = m.cfg.ChainParams.PowLimit
 	}
 
@@ -281,7 +283,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 	tbest := m.g.Chain.BestSnapshot()
 	rotation := tbest.LastRotation
 
-	resch := make(chan uint32, numWorkers)
+	resch := make(chan *wire.MingingRightBlock, numWorkers)
 	locquit := make(chan struct{})
 
 	solver := func(start uint32, numWorkers uint32) {
@@ -296,37 +298,39 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 			// periodically checking for early quit and stale block
 			// conditions along with updates to the speed monitor.
 			for i := start; i <= maxNonce-numWorkers; i += numWorkers {
-				select {
-				case <-locquit:
-					return
-
-				case <-quit:
-					resch <- 0
-					return
-
-				case <-ticker.C:
-					m.updateHashes <- hashesCompleted
-					hashesCompleted = 0
-
-					tbest = m.g.Chain.BestSnapshot()
-					if rotation != tbest.LastRotation {
-						log.Infof("quit solving block because a rotation occurred in TX chain")
-						resch <- 0
+				if i%10000 == 0 {
+					select {
+					case <-locquit:
 						return
-					}
 
-					// The current block is stale if the best block has changed.
-					best := m.g.Chain.Miners.BestSnapshot()
-					if !locheader.PrevBlock.IsEqual(&best.Hash) {
-						log.Infof("quit solving block because tip changed")
-						resch <- 0
+					case <-quit:
+						resch <- nil
 						return
+
+					case <-ticker.C:
+						m.updateHashes <- hashesCompleted
+						hashesCompleted = 0
+
+						tbest = m.g.Chain.BestSnapshot()
+						if rotation != tbest.LastRotation {
+							log.Infof("quit solving block because a rotation occurred in TX chain")
+							resch <- nil
+							return
+						}
+
+						// The current block is stale if the best block has changed.
+						best := m.g.Chain.Miners.BestSnapshot()
+						if !locheader.PrevBlock.IsEqual(&best.Hash) {
+							log.Infof("quit solving block because tip changed")
+							resch <- nil
+							return
+						}
+
+						m.g.UpdateMinerBlockTime(&locheader)
+
+					default:
+						// Non-blocking select to fall through
 					}
-
-					m.g.UpdateMinerBlockTime(&locheader)
-
-				default:
-					// Non-blocking select to fall through
 				}
 
 				// Update the nonce and hash the block header.  Each
@@ -351,10 +355,10 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 					best := m.g.Chain.Miners.BestSnapshot()
 					if !locheader.PrevBlock.IsEqual(&best.Hash) {
 						log.Infof("quit solving block because tip changed")
-						resch <- 0
+						resch <- nil
 						return
 					}
-					resch <- i
+					resch <- &locheader
 					return
 				}
 			}
@@ -368,8 +372,8 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 
 	for i := uint32(0); i < numWorkers; i++ {
 		v := <-resch
-		if v != 0 {
-			header.Block.(*wire.MingingRightBlock).Nonce = int32(v)
+		if v != nil {
+			*header.Block.(*wire.MingingRightBlock) = *v
 			close(locquit)
 			return true
 		}
@@ -478,24 +482,24 @@ out:
 
 		chainChoice, d := m.g.Chain.Miners.(*MinerChain).choiceOfChain()
 
-//		h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
-//		d := curHeight - int32(h)
-		if d > wire.DESIRABLE_MINER_CANDIDATES + 10 {
+		//		h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
+		//		d := curHeight - int32(h)
+		if d > wire.DESIRABLE_MINER_CANDIDATES+10 {
 			m.submitBlockLock.Unlock()
 			m.Stale = true
 			log.Infof("miner.generateBlocks: sleep because of too many candidates %d", d)
 			select {
 			case <-m.quit:
-			case <-time.After(time.Second * time.Duration(5 * (d -3 - wire.DESIRABLE_MINER_CANDIDATES ))):
+			case <-time.After(time.Second * time.Duration(5*(d-3-wire.DESIRABLE_MINER_CANDIDATES))):
 			}
 			continue
 		}
-		
+
 		// Choose a payment address at random.
 		rand.Seed(time.Now().Unix())
 		rnd := rand.Intn(len(m.cfg.MiningAddrs))
 		if m.cfg.ShareMining && rnd > 1 {
-			rnd = 1		// all addresses except for the first are external
+			rnd = 1 // all addresses except for the first are external
 		}
 
 		mtch := false
@@ -504,13 +508,13 @@ out:
 		for i := 0; i < wire.MinerGap && qc != nil && !mtch; i++ {
 			p := NodetoHeader(qc)
 			qc = qc.Parent
-			for _,s := range m.cfg.ExternalIPs {
+			for _, s := range m.cfg.ExternalIPs {
 				if bytes.Compare(p.Connection, []byte(s)) == 0 {
 					mtch = true
 					es += s
 				}
 			}
-			for _,s := range m.cfg.MiningAddrs {
+			for _, s := range m.cfg.MiningAddrs {
 				if bytes.Compare(p.Miner[:], s.ScriptAddress()) == 0 {
 					mtch = true
 					es += s.String()
@@ -647,7 +651,7 @@ out:
 			if minscore == 0 {
 				minscore = 1
 			}
-			r := me.TPSreportFromDB(block.MsgBlock().Miner) // max most recent 100 records
+			r := me.TPSreportFromDB(block.MsgBlock().Miner, uint32(template.Height-1)) // max most recent 100 records
 			for i := len(r); i < 100; i++ {
 				r = append(r, blockchain.TPSrv{Val: minscore})
 			}

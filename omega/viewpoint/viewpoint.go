@@ -90,45 +90,45 @@ func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Bl
 	if err != nil {
 		return err
 	}
-/*
-	for _,tx := range block.Transactions()[1:] {
-		for _, in := range tx.MsgTx().TxIn {
-			if in.IsSeparator() {
-				continue
-			}
-			entry := t.Utxo.LookupEntry(in.PreviousOutPoint)
-			if entry == nil {
-				t.Utxo.FetchUtxosMain(db, map[wire.OutPoint]struct{}{in.PreviousOutPoint: {}})
-				entry = t.Utxo.LookupEntry(in.PreviousOutPoint)
+	/*
+		for _,tx := range block.Transactions()[1:] {
+			for _, in := range tx.MsgTx().TxIn {
+				if in.IsSeparator() {
+					continue
+				}
+				entry := t.Utxo.LookupEntry(in.PreviousOutPoint)
 				if entry == nil {
-					continue	// it's OK to have a nil
+					t.Utxo.FetchUtxosMain(db, map[wire.OutPoint]struct{}{in.PreviousOutPoint: {}})
+					entry = t.Utxo.LookupEntry(in.PreviousOutPoint)
+					if entry == nil {
+						continue	// it's OK to have a nil
+					}
+				}
+
+				if entry.TokenType&3 == 3 {
+					t.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).reference(t)
 				}
 			}
 
-			if entry.TokenType&3 == 3 {
-				t.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).reference(t)
+			for _, out := range tx.MsgTx().TxOut {
+				if out.TokenType == 3 {
+					t.Polygon.LookupEntry(out.Token.Value.(*token.HashToken).Hash).deReference(t)
+				}
 			}
 		}
-
-		for _, out := range tx.MsgTx().TxOut {
-			if out.TokenType == 3 {
-				t.Polygon.LookupEntry(out.Token.Value.(*token.HashToken).Hash).deReference(t)
-			}
-		}
-	}
- */
+	*/
 
 	return t.disconnectTransactions(db, block, stxos)
 }
 
-func (t * ViewPointSet) Commit() {
+func (t *ViewPointSet) Commit() {
 	t.Rights.commit()
 	t.Polygon.commit()
 	t.Border.commit()
 	t.Utxo.commit()
 }
 
-func DbPutViews(dbTx database.Tx,  view * ViewPointSet) error {
+func DbPutViews(dbTx database.Tx, view *ViewPointSet) error {
 	DbPutUtxoView(dbTx, view.Utxo)
 	DbPutPolygonView(dbTx, view.Polygon)
 	DbPutBorderView(dbTx, view.Border)
@@ -139,7 +139,7 @@ func DbPutViews(dbTx database.Tx,  view * ViewPointSet) error {
 var GlobalBoundingBox = func() BoundingBox {
 	box := BoundingBox{}
 	box.Reset()
-	for _,b := range omega.InitDefs {
+	for _, b := range omega.InitDefs {
 		switch b.(type) {
 		case *token.BorderDef:
 			v := b.(*token.BorderDef).Begin
@@ -149,12 +149,15 @@ var GlobalBoundingBox = func() BoundingBox {
 	return box
 }()
 
-func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSet) error {
+func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view *ViewPointSet) error {
 	bdrview := view.Border
 	plgview := view.Polygon
 	rtview := view.Rights
 
-	for _,d := range tx.MsgTx().TxDef {
+	for _, d := range tx.MsgTx().TxDef {
+		if d.IsSeparator() {
+			continue
+		}
 		switch d.(type) {
 		case *token.BorderDef:
 			b := d.(*token.BorderDef)
@@ -163,19 +166,19 @@ func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view * ViewPointSe
 			if !b.Father.IsEqual(&chainhash.Hash{}) {
 				view.Border.LookupEntry(b.Father).RefCnt++
 			}
-			break;
+			break
 		case *token.PolygonDef:
 			view.addPolygon(d.(*token.PolygonDef), true, GlobalBoundingBox)
 			bdr := view.Flattern(d.(*token.PolygonDef).Loops)
 			for _, loop := range bdr {
-				for _,b := range loop {
+				for _, b := range loop {
 					view.Border.LookupEntry(b).RefCnt++
 				}
 			}
-			break;
+			break
 		case *token.RightDef:
 			view.AddRight(d.(*token.RightDef))
-			break;
+			break
 		}
 	}
 

@@ -371,6 +371,9 @@ func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement
 	defdrights := map[chainhash.Hash]*viewpoint.RightEntry{}
 	defdrsets := map[chainhash.Hash]*viewpoint.RightSetEntry{}
 	for _, x := range tx.MsgTx().TxDef {
+		if x.IsSeparator() {
+			continue
+		}
 		if x.DefType() == token.DefTypeRight {
 			defdrights[x.Hash()] = &viewpoint.RightEntry{
 				Father:      x.(*token.RightDef).Father,
@@ -490,6 +493,9 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 	}
 
 	for _, txDef := range msgtx.TxDef {
+		if txDef.IsSeparator() {
+			continue
+		}
 		switch txDef.(type) {
 		case *token.PolygonDef:
 			checkPolygon = false
@@ -653,13 +659,13 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 
 	for i, v := range sumVals {
 		if i.tokenType != 3 && v != 0 {
-			return false, fmt.Errorf("The Tx %s is not integral. Tokentype = %d val %d", tx.Hash().String(), i.tokenType, v)
+			return false, fmt.Errorf("sumVals: The Tx %s is not integral. Tokentype = %d val %d", tx.Hash().String(), i.tokenType, v)
 		}
 	}
 
 	for i, v := range siblingVals {
 		if i.tokenType != 3 && v != 0 {
-			return false, fmt.Errorf("The Tx %s is not integral. Tokentype = %d val %d", tx.Hash().String(), i.tokenType, v)
+			return false, fmt.Errorf("siblingVals: The Tx %s is not integral. Tokentype = %d val %d", tx.Hash().String(), i.tokenType, v)
 		}
 	}
 

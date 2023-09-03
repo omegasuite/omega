@@ -65,13 +65,14 @@ const (
 	CmdSignatures     = "signatures"
 
 	// consensus protocol message
-	CmdKnowledge = "knowledge"
-	CmdKnowledgeDone = "knowledgeDone"
-	CmdCandidate = "candidate"
+	CmdKnowledge      = "knowledge"
+	CmdKnowledgeDone  = "knowledgeDone"
+	CmdCandidate      = "candidate"
 	CmdCandidateReply = "candidReply"
-	CmdRelease = "release"
-	CmdConsensus = "consensus"
-	CmdSignature = "signature"
+	CmdRelease        = "release"
+	CmdConsensus      = "consensus"
+	CmdSignature      = "signature"
+	CmdPull           = "pull"
 )
 
 // MessageEncoding represents the wire message encoding format to be used.
@@ -238,6 +239,9 @@ func makeEmptyMessage(command string) (Message, error) {
 
 	case CmdSignature:
 		msg = &MsgSignature{}
+
+	case CmdPull:
+		msg = &MsgPull{}
 
 	default:
 		return nil, fmt.Errorf("unhandled command [%s]", command)
@@ -468,7 +472,7 @@ func ReadMessageWithEncodingN(r io.Reader, pver uint32, btcnet common.OmegaNet,
 	pr := bytes.NewBuffer(payload)
 	err = msg.OmcDecode(pr, pver, enc)
 	if err != nil {
-		return totalBytes, nil, nil, err
+		return totalBytes, nil, []byte(command), err
 	}
 
 	return totalBytes, msg, payload, nil

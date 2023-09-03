@@ -508,6 +508,25 @@ func (b *MinerChain) BlockByHeight(blockHeight int32) (*wire.MinerBlock, error) 
 	return block, err
 }
 
+func (b *MinerChain) AnyBlockByHash(hash *chainhash.Hash) (*wire.MinerBlock, error) {
+	// Lookup the block hash in block index and ensure it is in the best
+	// chain.
+	node := b.index.LookupNode(hash)
+	if node == nil {
+		str := fmt.Sprintf("block %s is not in the main chain", hash)
+		return nil, bccompress.ErrNotInMainChain(str)
+	}
+
+	// Load the block from the database and return it.
+	var block *wire.MinerBlock
+	err := b.db.View(func(dbTx database.Tx) error {
+		var err error
+		block, err = dbFetchBlockByNode(dbTx, node)
+		return err
+	})
+	return block, err
+}
+
 // BlockByHash returns the block from the main chain with the given hash with
 // the appropriate chain height set.
 //

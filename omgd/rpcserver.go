@@ -1819,7 +1819,7 @@ func handleGetTPSReport(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	var miner [20]byte
 	copy(miner[:], addr.ScriptAddress())
 
-	r := s.cfg.Chain.Miners.TPSreportFromDB(miner)
+	r := s.cfg.Chain.Miners.TPSreportFromDB(miner, uint32(s.cfg.Chain.Miners.BestSnapshot().Height-1))
 
 	if r == nil {
 		return nil, &btcjson.RPCError{

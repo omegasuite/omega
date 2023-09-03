@@ -21,18 +21,20 @@ type MsgCandidate struct {
 }
 
 func (msg *MsgCandidate) SetSeq(t int32) {
-	msg.Seq = t
+	if msg.Seq != 0 {
+		msg.Seq = t
+	}
 }
 
 func (msg *MsgCandidate) Sequence() int32 {
 	return msg.Seq
 }
 
-func (msg * MsgCandidate) Sign(key *btcec.PrivateKey) {
+func (msg *MsgCandidate) Sign(key *btcec.PrivateKey) {
 	sig, _ := key.Sign(msg.DoubleHashB())
 
 	ss := sig.Serialize()
-	ssig := make([]byte, btcec.PubKeyBytesLenCompressed + len(ss))
+	ssig := make([]byte, btcec.PubKeyBytesLenCompressed+len(ss))
 
 	copy(ssig, key.PubKey().SerializeCompressed())
 	copy(ssig[btcec.PubKeyBytesLenCompressed:], ss)
@@ -40,7 +42,7 @@ func (msg * MsgCandidate) Sign(key *btcec.PrivateKey) {
 	msg.Signature = ssig
 }
 
-func (msg * MsgCandidate) Block() int32 {
+func (msg *MsgCandidate) Block() int32 {
 	return msg.Height
 }
 
@@ -50,7 +52,7 @@ func (msg *MsgCandidate) BlockHash() chainhash.Hash {
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidate) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgCandidate) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	err := readElement(r, &msg.Height)
 	if err != nil {
 		return err
@@ -64,23 +66,30 @@ func (msg * MsgCandidate) OmcDecode(r io.Reader, pver uint32, enc MessageEncodin
 		return err
 	}
 
-	if enc == SignatureEncoding {
-		var ln uint32
-		if err = readElement(r, &ln); err != nil {
-			return err
-		}
-		msg.Signature = make([]byte, ln)
-		if err = readElement(r, msg.Signature); err != nil {
-			return err
-		}
+	msg.Seq = 0
+
+	var ln uint32
+	if err = readElement(r, &ln); err != nil {
+		return err
 	}
+	if ln == 0 {
+		readElement(r, &msg.Seq)
+		return nil
+	}
+
+	msg.Signature = make([]byte, ln)
+	if err = readElement(r, msg.Signature); err != nil {
+		return err
+	}
+
+	readElement(r, &msg.Seq)
 
 	return nil
 }
 
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidate) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgCandidate) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	err := writeElement(w, msg.Height)
 	if err != nil {
 		return err
@@ -94,12 +103,15 @@ func (msg * MsgCandidate) OmcEncode(w io.Writer, pver uint32, enc MessageEncodin
 		return err
 	}
 
-	if enc == SignatureEncoding {
+	if enc == SignatureEncoding || enc == FullEncoding {
 		ln := uint32(len(msg.Signature))
 		if err = writeElement(w, ln); err != nil {
 			return err
 		}
 		if err = writeElement(w, msg.Signature); err != nil {
+			return err
+		}
+		if err = writeElement(w, msg.Seq); err != nil {
 			return err
 		}
 	}
@@ -109,13 +121,13 @@ func (msg * MsgCandidate) OmcEncode(w io.Writer, pver uint32, enc MessageEncodin
 
 // Command returns the protocol command string for the message.  This is part
 // of the Message interface implementation.
-func (msg * MsgCandidate) Command() string {
+func (msg *MsgCandidate) Command() string {
 	return CmdCandidate
 }
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg * MsgCandidate) MaxPayloadLength(pver uint32) uint32 {
+func (msg *MsgCandidate) MaxPayloadLength(pver uint32) uint32 {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	return MaxMessagePayload
@@ -123,17 +135,17 @@ func (msg * MsgCandidate) MaxPayloadLength(pver uint32) uint32 {
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg * MsgCandidate) DoubleHashB() []byte {
+func (msg *MsgCandidate) DoubleHashB() []byte {
 	var w bytes.Buffer
 	msg.OmcEncode(&w, 0, BaseEncoding)
 	return chainhash.DoubleHashB(w.Bytes())
 }
 
-func (msg * MsgCandidate) GetSignature() []byte {
+func (msg *MsgCandidate) GetSignature() []byte {
 	return msg.Signature
 }
 
-func (msg * MsgCandidate) Sender() []byte {
+func (msg *MsgCandidate) Sender() []byte {
 	return msg.F[:]
 }
 
@@ -149,8 +161,8 @@ func NewMsgCandidate(blk int32, f [20]byte, m chainhash.Hash) *MsgCandidate {
 
 type MsgCandidateResp struct {
 	Height    int32
-	Reply     string	// a 4 byte string
-	K         []int64	// knowledge, when rejected
+	Reply     string  // a 4 byte string
+	K         []int64 // knowledge, when rejected
 	Better    int32
 	From      [20]byte
 	M         chainhash.Hash
@@ -159,18 +171,20 @@ type MsgCandidateResp struct {
 }
 
 func (msg *MsgCandidateResp) SetSeq(t int32) {
-	msg.Seq = t
+	if msg.Seq != 0 {
+		msg.Seq = t
+	}
 }
 
 func (msg *MsgCandidateResp) Sequence() int32 {
 	return msg.Seq
 }
 
-func (msg * MsgCandidateResp) Sign(key *btcec.PrivateKey) {
+func (msg *MsgCandidateResp) Sign(key *btcec.PrivateKey) {
 	sig, _ := key.Sign(msg.DoubleHashB())
 
 	ss := sig.Serialize()
-	ssig := make([]byte, btcec.PubKeyBytesLenCompressed + len(ss))
+	ssig := make([]byte, btcec.PubKeyBytesLenCompressed+len(ss))
 
 	copy(ssig, key.PubKey().SerializeCompressed())
 	copy(ssig[btcec.PubKeyBytesLenCompressed:], ss)
@@ -178,7 +192,7 @@ func (msg * MsgCandidateResp) Sign(key *btcec.PrivateKey) {
 	msg.Signature = ssig
 }
 
-func (msg * MsgCandidateResp) Block() int32 {
+func (msg *MsgCandidateResp) Block() int32 {
 	return msg.Height
 }
 
@@ -188,7 +202,7 @@ func (msg *MsgCandidateResp) BlockHash() chainhash.Hash {
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidateResp) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgCandidateResp) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	err := readElement(r, &msg.Height)
 	if err != nil {
 		return err
@@ -225,23 +239,27 @@ func (msg * MsgCandidateResp) OmcDecode(r io.Reader, pver uint32, enc MessageEnc
 		msg.K[i] = int64(n)
 	}
 
-	if enc == SignatureEncoding {
-		var ln uint32
-		if err = readElement(r, &ln); err != nil {
-			return err
-		}
-		msg.Signature = make([]byte, ln)
-		if err = readElement(r, msg.Signature); err != nil {
-			return err
-		}
+	msg.Seq = 0
+
+	var ln uint32
+	if err = readElement(r, &ln); err != nil || ln == 0 {
+		msg.Signature = make([]byte, 0)
+		return nil
 	}
+
+	msg.Signature = make([]byte, ln)
+	if err = readElement(r, msg.Signature); err != nil {
+		return err
+	}
+
+	readElement(r, &msg.Seq)
 
 	return nil
 }
 
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgCandidateResp) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgCandidateResp) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {
@@ -276,12 +294,15 @@ func (msg * MsgCandidateResp) OmcEncode(w io.Writer, pver uint32, enc MessageEnc
 		}
 	}
 
-	if enc == SignatureEncoding {
+	if enc == SignatureEncoding || enc == FullEncoding {
 		ln := uint32(len(msg.Signature))
 		if err = writeElement(w, ln); err != nil {
 			return err
 		}
 		if err = writeElement(w, msg.Signature); err != nil {
+			return err
+		}
+		if err = writeElement(w, msg.Seq); err != nil {
 			return err
 		}
 	}
@@ -291,13 +312,13 @@ func (msg * MsgCandidateResp) OmcEncode(w io.Writer, pver uint32, enc MessageEnc
 
 // Command returns the protocol command string for the message.  This is part
 // of the Message interface implementation.
-func (msg * MsgCandidateResp) Command() string {
+func (msg *MsgCandidateResp) Command() string {
 	return CmdCandidateReply
 }
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg * MsgCandidateResp) MaxPayloadLength(pver uint32) uint32 {
+func (msg *MsgCandidateResp) MaxPayloadLength(pver uint32) uint32 {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	return MaxMessagePayload
@@ -305,17 +326,17 @@ func (msg * MsgCandidateResp) MaxPayloadLength(pver uint32) uint32 {
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg * MsgCandidateResp) DoubleHashB() []byte {
+func (msg *MsgCandidateResp) DoubleHashB() []byte {
 	var w bytes.Buffer
 	msg.OmcEncode(&w, 0, BaseEncoding)
 	return chainhash.DoubleHashB(w.Bytes())
 }
 
-func (msg * MsgCandidateResp) GetSignature() []byte {
+func (msg *MsgCandidateResp) GetSignature() []byte {
 	return msg.Signature
 }
 
-func (msg * MsgCandidateResp) Sender() []byte {
+func (msg *MsgCandidateResp) Sender() []byte {
 	return msg.From[:]
 }
 

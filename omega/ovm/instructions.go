@@ -2426,6 +2426,8 @@ func opExec(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 
 	evm.GetCurrentOutput = oldop
 
+	evm.StateDB[toAddr].spendables[evm.GetCurrentOutput()] = struct{}{}
+
 	if err != nil {
 		return err
 	}
@@ -3180,16 +3182,22 @@ func opSpend(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 			cbh := cb.Hash()
 			if bytes.Compare(p.Hash[:], negHash[:]) == 0 || bytes.Compare(p.Hash[:], (*cbh)[:]) == 0 {
 				pks = cb.MsgTx().TxOut[p.Index].PkScript
-			} else {
-				return omega.ScriptError(omega.ErrInternal, "Contract try to spend what does not exist.")
 			}
 		} else {
 			pks = u.PkScript
 		}
 
 		addr := contract.Address()
-		if !isContract(pks[0]) || bytes.Compare(pks[1:21], addr[:]) != 0 {
-			return omega.ScriptError(omega.ErrInternal, "Contract try to spend what does not belong to it.")
+
+		if pks == nil {
+			if _, ok := evm.StateDB[addr].spendables[p]; !ok {
+				return omega.ScriptError(omega.ErrInternal, "Contract try to spend what does not exist. UTXO = "+p.Hash.String())
+			}
+			delete(evm.StateDB[addr].spendables, p)
+		} else {
+			if !isContract(pks[0]) || bytes.Compare(pks[1:21], addr[:]) != 0 {
+				return omega.ScriptError(omega.ErrInternal, "Contract try to spend what does not belong to it.")
+			}
 		}
 
 		if evm.Spend(p, nil) {
@@ -3391,9 +3399,8 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 		return omega.ScriptError(omega.ErrInternal, "Address is invalid.")
 	}
 
+	me := contract.self.Address()
 	if isContract(tk.PkScript[0]) {
-		me := contract.self.Address()
-
 		if bytes.Compare(tk.PkScript[1:21], me[:]) != 0 {
 			return omega.ScriptError(omega.ErrInternal, "Contract may not add a txout outside scope")
 		}
@@ -3414,6 +3421,12 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 
 	if seq < 0 {
 		return omega.ScriptError(omega.ErrInternal, "Malformed expression")
+	}
+
+	if isContract(tk.PkScript[0]) {
+		op := evm.GetCurrentOutput()
+		op.Index = uint32(seq)
+		evm.StateDB[me].spendables[op] = struct{}{}
 	}
 
 	if dest != 0 && top == 2 {
@@ -3482,6 +3495,9 @@ func opGetDefinition(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.
 
 	if tx != nil {
 		for _, def := range tx.MsgTx().TxDef {
+			if def.IsSeparator() {
+				continue
+			}
 			h := def.Hash()
 			if h.IsEqual(&hash) {
 				var w bytes.Buffer

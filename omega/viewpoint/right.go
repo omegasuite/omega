@@ -364,6 +364,9 @@ func (view *ViewPointSet) AddRights(tx *btcutil.Tx) bool {
 	// Loop all of the vertex definitions
 
 	for _, txVtx := range tx.MsgTx().TxDef {
+		if txVtx.IsSeparator() {
+			continue
+		}
 		switch txVtx.(type) {
 		case *token.RightDef:
 			if !view.AddRight(txVtx.(*token.RightDef)) {
@@ -449,6 +452,9 @@ func (entry *RightEntry) RollBack() {
 func (view *ViewPointSet) disconnectRightTransactions(block *btcutil.Block) error {
 	for _, tx := range block.Transactions() {
 		for _, txDef := range tx.MsgTx().TxDef {
+			if txDef.IsSeparator() {
+				continue
+			}
 			switch txDef.(type) {
 			case *token.RightDef:
 				h := txDef.Hash()

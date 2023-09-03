@@ -250,11 +250,11 @@ func BlockToOrphan(block *btcutil.Block) chainutil.Orphaned {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error, int32, *chainhash.Hash) {
-	if block.MsgBlock().Header.Nonce > 0 {
-		// if it is a POW block, wait 10 seconds. Thus if the committee if functioning
-		// they will generate signed blocks during this period and supersedes this block
-		time.Sleep(10 * time.Second)
-	}
+	//	if block.MsgBlock().Header.Nonce > 0 {
+	// if it is a POW block, wait 10 seconds. Thus if the committee if functioning
+	// they will generate signed blocks during this period and supersedes this block
+	//		time.Sleep(10 * time.Second)
+	//	}
 
 	//	log.Infof("ProcessBlock: ChainLock.RLock")
 	b.ChainLock.Lock()

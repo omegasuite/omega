@@ -501,18 +501,18 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 		cmtx.Lock()
 		delete(pendingConn, c.Addr)
 		cmtx.Unlock()
-	} ()
+	}()
 
 	log.Debugf("Attempting to connect to %v", c)
 
 	conn, err := cm.cfg.Dial(c.Addr)
 	if err != nil {
-//		log.Infof(". Failed to Dial connect to %s\n", c.Addr.String())
+		//		log.Infof(". Failed to Dial connect to %s\n", c.Addr.String())
 		select {
 		case cm.requests <- handleFailed{c, err}:
 		case <-cm.quit:
 		}
-		time.Sleep(2 * time.Second)
+		//		time.Sleep(2 * time.Second)
 		return
 	} else {
 		log.Debugf(". Succeed to connect to %s\n", c.Addr.String())

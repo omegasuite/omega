@@ -866,6 +866,7 @@ func loadConfig() (*config, []string, error) {
 
 	cfg.privateKeys = make([]*btcec.PrivateKey, 0, len(cfg.PrivKeys))
 	cfg.signAddress = make([]btcutil.Address, 0, len(cfg.PrivKeys))
+
 	if len(cfg.PrivKeys) > 0 {
 		for _, pk := range cfg.PrivKeys {
 			dwif, err := btcutil.DecodeWIF(pk)
@@ -895,6 +896,13 @@ func loadConfig() (*config, []string, error) {
 				cfg.privateKeys = append(cfg.privateKeys, privKey)
 			}
 		}
+	}
+
+	if cfg.ShareMining && !cfg.Generate { // This is a PC miner, force it to connect its server only
+		cfg.signAddress = cfg.signAddress[:0]
+		cfg.ConnectPeers = []string{cfg.ExternalIPs[0]}
+		cfg.AddPeers = cfg.AddPeers[:0]
+		cfg.privateKeys = cfg.privateKeys[:0]
 	}
 
 	cfg.collateral = make([]*wire.OutPoint, 0, len(cfg.Collateral))

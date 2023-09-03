@@ -548,8 +548,6 @@ out:
 		powMode := true
 		var sigaddr *btcec.PrivateKey
 
-		log.Infof("committee size = %d. I am %v", len(committee), in)
-
 		if m.cfg.Generate && in && len(m.cfg.SignAddress) != 0 && len(committee) == wire.CommitteeSize {
 			for j, pt := range m.cfg.SignAddress {
 				copy(adr[:], pt.ScriptAddress())
@@ -577,19 +575,14 @@ out:
 
 		payToAddress := []btcutil.Address{payToAddr}
 
-		log.Infof("powMode = %v.", powMode)
-
 		nonce := pb
 		if !powMode {
-//			log.Infof("Non-POW mode")
-
 			if nonce >= 0 || nonce <= -wire.MINER_RORATE_FREQ {
 				nonce = -1
 			} else if nonce == -wire.MINER_RORATE_FREQ+1 {
 				h := int32(bs.LastRotation) + 1
 				nonce = -h - wire.MINER_RORATE_FREQ
 				if mb, err := m.g.Chain.Miners.BlockByHeight(h); err != nil || mb == nil {
-					log.Infof("generateBlocks: sleep because MR block %d is not available", h)
 					time.Sleep(time.Second * 5)
 					continue
 				}
@@ -620,7 +613,6 @@ out:
 				time.Sleep(time.Second * wire.TimeGap)
 				continue
 			}
-//			log.Infof("POW mode")
 			nonce = 1
 		}
 
@@ -629,7 +621,6 @@ out:
 		template, err := m.g.NewBlockTemplate(payToAddress, nonce)
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to create new block template: %s", err.Error())
-//			log.Info(err.Error())
 			log.Infof(errStr)
 			continue
 		}
@@ -639,13 +630,10 @@ out:
 		block := btcutil.NewBlock(wb)
 		block.SetHeight(template.Height)
 
-		if template.Height != height + 1 {
-			log.Infof("height %d is not uptodate", template.Height)
+		if template.Height != height+1 {
 			// a new block got inserted between we get tip ino and gen template
 			continue
 		}
-
-//		log.Infof("New template with %d txs", len(template.Block.(*wire.MsgBlock).Transactions))
 
 		if !powMode {
 			rank := uint32(0)
@@ -653,7 +641,6 @@ out:
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
 				mining.AddSignature(block, sigaddr)
 			} else {
-//				block.ClearSize()
 				block.MsgBlock().Transactions[0].SignatureScripts = append(block.MsgBlock().Transactions[0].SignatureScripts, adr[:])
 
 				r := m.g.Chain.BestSnapshot().LastRotation
@@ -684,16 +671,13 @@ out:
 			if m.g.Chain.ChainParams.Net == common.MainNet {
 				wanted := m.cfg.BlockTemplateGenerator.Policy.MinBlockWeight
 				if sz < int(wanted)/2 && nt > 4 {
-					log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 4", sz, wanted, nt)
 					time.Sleep(time.Duration(nt) / 4 * time.Second)
 					continue
 				} else if sz < int(wanted)/2 && nt > 0 {
-					log.Infof("Re-try be cause %d < int(%d) / 2 && %d > 0", sz, wanted, nt)
 					time.Sleep(time.Duration(nt) * time.Second)
 					continue
 				}
 			} else if sz <= 1 && nt > 1 {
-				log.Infof("Re-try be cause %d <= 1 && %d > 1", sz, nt)
 				time.Sleep(time.Duration(nt) * time.Second)
 				continue
 			}
@@ -704,7 +688,7 @@ out:
 
 			lastblkgen = time.Now().Unix()
 
-			if template.Height > m.g.Chain.ConsensusRange[1] + wire.MINER_RORATE_FREQ / 2 {
+			if template.Height > m.g.Chain.ConsensusRange[1]+wire.MINER_RORATE_FREQ/2 {
 				m.g.Chain.ConsensusRange[0] = template.Height
 			}
 			m.g.Chain.ConsensusRange[1] = template.Height
@@ -721,14 +705,13 @@ out:
 		connected:
 			for true {
 				select {
-				case blk,ok := <-m.connch:
+				case blk, ok := <-m.connch:
 					if !ok || blk >= block.Height() {
-						log.Infof("Noticed of new connected block %d", blk)
 						break connected
 					}
 					lastblkrcv = time.Now().Unix()
-					
-				case _,ok := <-consensus.POWStopper:
+
+				case _, ok := <-consensus.POWStopper:
 					if !ok {
 						break connected
 					}
@@ -736,16 +719,6 @@ out:
 				case <-m.quit:
 					m.minedBlock = nil
 					break out
-/*
-				case <-time.After(time.Second * 5):
-					if m.g.Chain.BestSnapshot().Height >= block.Height() || time.Now().Unix() - lastblkgen > 600 {
-						log.Infof("5 sec consensus timeout at block %d", block.Height())
-						break connected
-					}
-
-					log.Infof("cpuminer waiting for consus to finish block %d", block.Height())
-//					consensus.DebugInfo()
- */
 				}
 			}
 
@@ -762,35 +735,15 @@ out:
 
 		mh := m.g.Chain.Miners.BestSnapshot().Height
 
-		if lastblkgen-lastblkrcv < 2*wire.TimeGap || (m.cfg.DisablePOWMining && m.cfg.Generate) || !m.cfg.EnablePOWMining || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
+		if m.cfg.DisablePOWMining && !m.cfg.EnablePOWMining {
 			time.Sleep(time.Second * wire.TimeGap)
-			//			log.Infof("Retry because POW Mining disabled.")
 			continue
 		}
 
-		/*
-		   		pows := 0
-		   		blk := m.g.Chain.BestChain.Tip()
-		   		for blk != nil && blk.Data.GetNonce() > 0 {
-		   			pows++
-		   			blk = blk.Parent
-		   		}
-
-		   		select {
-		   		case <-m.connch:
-		   			continue
-
-		   		case <-consensus.POWStopper:
-		   			continue
-
-		   		case <-m.quit:
-		   			break out
-
-		   		default:
-
-		   //		case <-time.After(time.Second * time.Duration(2*wire.TimeGap+(1<<pows))):
-		   		}
-		*/
+		if lastblkgen-lastblkrcv < 2*wire.TimeGap || (m.cfg.DisablePOWMining && m.cfg.Generate) || !m.cfg.EnablePOWMining || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
+			time.Sleep(time.Second * wire.TimeGap)
+			continue
+		}
 
 		log.Info("Try to solve block")
 

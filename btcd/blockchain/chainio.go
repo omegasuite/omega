@@ -1224,7 +1224,14 @@ func (b *BlockChain) initChainState() error {
 			return AssertError(fmt.Sprintf("initChainState: cannot find "+
 				"chain tip %s in block index", state.hash))
 		}
+
+		rdiff := uint32(0)
 		if gobackone {
+			if tip.Data.GetNonce() > 0 {
+				rdiff = 2
+			} else if tip.Data.GetNonce() < -wire.MINER_RORATE_FREQ {
+				rdiff = 1
+			}
 			b.index.SetStatusFlags(tip, chainutil.StatusValidateFailed)
 			tip = tip.Parent
 			state.hash = tip.Hash
@@ -1269,7 +1276,7 @@ func (b *BlockChain) initChainState() error {
 		if gobackone {
 			b.stateSnapshot = newBestState(tip, blockSize,
 				numTxns, state.totalTxns-numTxns, tip.CalcPastMedianTime(), // state.bits,
-				state.rotation-2)
+				state.rotation-rdiff)
 			if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
 				return err
 			}
@@ -1684,6 +1691,25 @@ func (b *BlockChain) HeightOfBlock(hash chainhash.Hash) int32 {
 	return n.Height
 }
 */
+
+func (b *BlockChain) AnyBlockByHash(hash *chainhash.Hash) (*btcutil.Block, error) {
+	// Lookup the block hash in block index and ensure it is in the best
+	// chain.
+	node := b.NodeByHash(hash)
+	if node == nil {
+		str := fmt.Sprintf("block %s is not in the main chain", hash)
+		return nil, bccompress.ErrNotInMainChain(str)
+	}
+
+	// Load the block from the database and return it.
+	var block *btcutil.Block
+	err := b.db.View(func(dbTx database.Tx) error {
+		var err error
+		block, err = dbFetchBlockByNode(dbTx, node)
+		return err
+	})
+	return block, err
+}
 
 // BlockByHash returns the block from the main chain with the given hash with
 // the appropriate chain height set.

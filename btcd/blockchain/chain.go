@@ -115,7 +115,7 @@ type MinerChain interface {
 	TphReport(rpts int, last *chainutil.BlockNode, me [20]byte) []uint32
 	DSReport(*wire.Violations)
 	FastReorganizeChain(attachNodes *list.List) error
-	TPSreportFromDB([20]byte) []TPSrv
+	TPSreportFromDB([20]byte, uint32) []TPSrv
 }
 
 // BlockChain provides functions for working with the bitcoin block chain.
@@ -1260,6 +1260,8 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 
 		b.index.UnsetStatusFlags(n, chainutil.StatusValid)
 
+		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
+
 		// Notice the spent txout details are not requested here and
 		// thus will not be generated.  This is done because the state
 		// is not being immediately written to the database, so it is
@@ -1268,7 +1270,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		// In the case the block is determined to be invalid due to a
 		// rule violation, mark it as invalid and mark all of its
 		// descendants as having an invalid ancestor.
-		err = b.checkConnectBlock(n, block, views, nil, nil)
+		err = b.checkConnectBlock(n, block, views, &stxos, Vm)
 
 		// check proof of work
 		var mkorphan bool
@@ -1288,8 +1290,17 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 				}
 			}
 			if err != nil {
-				log.Infof("checkProofOfWork error for block %s: "+err.Error(), block.Hash().String())
+				log.Infof("checkConnectBlock || checkProofOfWork error for block %d: "+err.Error(), block.Height())
 			}
+			if mkorphan {
+				b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+			}
+			log.Infof("stop adding new blocks %v || %v", err, mkorphan)
+			break
+		}
+
+		err = views.ConnectTransactions(block, &stxos)
+		if err != nil {
 			break
 		}
 
@@ -1366,8 +1377,11 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	attachable = 0
 	for i := 0; e != nil && i < len(attachBlocks); i, e = i+1, e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
+		newBest = n
 
 		block := attachBlocks[i]
+
+		log.Infof("commit attaching block %d", n.Height)
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
@@ -1377,9 +1391,12 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 			return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
 		}
 
-		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
-		coinBase.SetIndex(block.Transactions()[0].Index())
-		coinBaseHash := *coinBase.Hash()
+		coinBase := block.Transactions()[0]
+		coinBase.MsgTx().Strip()
+
+		//		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
+		//		coinBase.SetIndex(block.Transactions()[0].Index())
+		coinBaseHash := coinBase.Hash()
 		Vm.SetCoinBaseOp(
 			func(txo wire.TxOut) wire.OutPoint {
 				if !coinBase.HasOuts {
@@ -1390,7 +1407,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 					coinBase.HasOuts = true
 				}
 				coinBase.MsgTx().AddTxOut(&txo)
-				op := wire.OutPoint{coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
+				op := wire.OutPoint{*coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
 				return op
 			})
 		Vm.BlockNumber = func() uint64 {
@@ -1408,24 +1425,24 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 			if i == 0 {
 				continue
 			}
-			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
-			newtx.SetIndex(tx.Index())
-			_, err = Vm.ExecContract(newtx, block.Height())
+			//			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
+			//			newtx.SetIndex(tx.Index())
+			_, err = Vm.ExecContract(tx, block.Height())
 			if err != nil {
 				//				Vm.AbortRollback()
 				log.Infof("ExecContract error: " + err.Error())
 				return detachable, attachable, err
 			}
 
-			if !tx.Match(newtx) {
-				log.Infof("Mismatch contract execution result")
-				return detachable, attachable, fmt.Errorf("Mismatch contract execution result")
-			}
+			//			if !tx.Match(newtx) {
+			//				log.Infof("Mismatch contract execution result")
+			//				return detachable, attachable, fmt.Errorf("Mismatch contract execution result")
+			//			}
 		}
-		if !block.Transactions()[0].Match(coinBase) {
-			log.Infof("Mismatch coinbase contract execution result")
-			return detachable, attachable, fmt.Errorf("Mismatch coinbase contract execution result")
-		}
+		//		if !block.Transactions()[0].Match(coinBase) {
+		//			log.Infof("Mismatch coinbase contract execution result")
+		//			return detachable, attachable, fmt.Errorf("Mismatch coinbase contract execution result")
+		//		}
 		if Vm.StepLimit != 0 {
 			log.Infof("Incorrect contract execution cost.")
 			return detachable, attachable, fmt.Errorf("Incorrect contract execution cost.")
@@ -2022,7 +2039,7 @@ func (b *BlockChain) BestChainContains(hash *chainhash.Hash) bool {
 
 	if p == nil {
 		h := b.dbHeightofHash(*hash)
-		if h < 0 {
+		if h < 0 || h > b.stateSnapshot.Height {
 			return false
 		}
 		g := b.dbHashByHeight(h)

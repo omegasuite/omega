@@ -915,6 +915,9 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 				"which forks the chain at height %d/block %v",
 				node.Hash, fork.Height, fork.Hash)
 		}
+		if writeErr := b.index.FlushToDB(dbStoreBlockNode); writeErr != nil {
+			log.Warnf("Error flushing block index changes to disk: %v", writeErr)
+		}
 
 		return false, nil
 	}
@@ -1062,7 +1065,7 @@ func (b *MinerChain) HeaderByHash(hash *chainhash.Hash) (wire.MingingRightBlock,
 // This function is safe for concurrent access.
 func (b *MinerChain) MainChainHasBlock(hash *chainhash.Hash) bool {
 	node := b.index.LookupNode(hash)
-	return node != nil && b.BestChain.Contains(node)
+	return node != nil && node.Height <= b.stateSnapshot.Height && b.BestChain.Contains(node)
 }
 
 // BlockLocatorFromHash returns a block locator for the passed block hash.
@@ -1090,8 +1093,9 @@ func (b *MinerChain) BlockLocatorFromHash(hash *chainhash.Hash) chainhash.BlockL
 // This function is safe for concurrent access.
 func (b *MinerChain) LatestBlockLocator() (chainhash.BlockLocator, error) {
 	//	log.Infof("MinerChain.LatestBlockLocator: ChainLock.RLock")
+	tip := b.index.LookupNode(&b.stateSnapshot.Hash)
 	b.chainLock.RLock()
-	locator := b.BestChain.BlockLocator(nil, b.index)
+	locator := b.BestChain.BlockLocator(tip, b.index)
 	b.chainLock.RUnlock()
 	//	log.Infof("MinerChain.LatestBlockLocator: ChainLock.RUnlock")
 	return locator, nil
@@ -1503,21 +1507,18 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	n := mtop
 	h := NodetoHeader(n).BestBlock
 	detachNodes := list.New()
-	for n.Parent != nil && !s.MainChainHasBlock(&h) {
+	var rotaterm int32
+	for n.Parent != nil && !s.InBestChain(&h) {
+		log.Infof("Roll back miner block %s because best block %s is not in mainchain", n.Hash.String(), h.String())
 		//			&& n.Header().BestBlock != best.Hash
 		detachNodes.PushBack(n)
 		n = n.Parent
 		h = NodetoHeader(n).BestBlock
+		rotaterm = n.Height
 		ok = false
 	}
 
 	if !ok {
-		for rl := detachNodes.Len(); n.Parent != nil && rl > 0; rl-- {
-			detachNodes.PushBack(n)
-			n = n.Parent
-			h = NodetoHeader(n).BestBlock
-		}
-
 		log.Warnf("miner chain is corrupted. roll back %d blocks", detachNodes.Len())
 		b.chainLock.Lock()
 		// Disconnect blocks from the main chain.
@@ -1551,9 +1552,14 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		detachNodes := list.New()
 		//		var p *chainutil.BlockNode
 		//		p = nil
-		for m := s.BestChain.Tip(); m.Hash != h; m = m.Parent {
+		for m, r := s.BestChain.Tip(), s.BestSnapshot().LastRotation; r >= uint32(rotaterm); m = m.Parent {
+			if m.Data.GetNonce() > 0 {
+				r -= 2
+			} else if m.Data.GetNonce() < -wire.MINER_RORATE_FREQ {
+				r--
+			}
+
 			detachNodes.PushBack(m)
-			//			p = m
 		}
 		//		detachNodes.PushBack(p.Parent)
 
@@ -1659,7 +1665,7 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 	rpt := make([]uint32, 0, rpts)
 	miners := make(map[[20]byte]struct{})
 
-	rptme := g.TPSreportFromDB(me) // those who has reported me
+	rptme := g.TPSreportFromDB(me, uint32(last.Height)) // those who has reported me
 	rptmemap := make(map[[20]byte]blockchain.TPSrv)
 	for _, r := range rptme {
 		rptmemap[r.Reporter] = r
@@ -1762,7 +1768,7 @@ func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte)
 	return rpt
 }
 
-func (g *MinerChain) TPSreportFromDB(miner [20]byte) []blockchain.TPSrv {
+func (g *MinerChain) TPSreportFromDB(miner [20]byte, h uint32) []blockchain.TPSrv {
 	values := make([]blockchain.TPSrv, 0, 1000)
 
 	g.db.Update(func(tx database.Tx) error {
@@ -1782,6 +1788,9 @@ func (g *MinerChain) TPSreportFromDB(miner [20]byte) []blockchain.TPSrv {
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			r := blockchain.TPSrv{}
 			r.Height = byteOrder.Uint32(cursor.Key())
+			if r.Height > h {
+				continue
+			}
 			s := cursor.Value()
 			copy(r.Reporter[:], s)
 			r.Val = byteOrder.Uint32(s[20:])

@@ -633,6 +633,8 @@ func (ovm *OVM) TryContract(tx *btcutil.Tx, txHeight int32) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		ovm.StateDB[d].spendables[wire.OutPoint{*tx.Hash(), uint32(i)}] = struct{}{}
 	}
 
 	return result, nil
@@ -748,6 +750,8 @@ func (ovm *OVM) ExecContract(tx *btcutil.Tx, txHeight int32) (bool, omega.Err) {
 			*tx.MsgTx() = savedTx
 			return false, err
 		}
+
+		ovm.StateDB[d].spendables[wire.OutPoint{*tx.Hash(), uint32(i)}] = struct{}{}
 
 		executed = true
 	}

@@ -481,12 +481,23 @@ func (msg *MsgTx) TxFullHash() chainhash.Hash {
 	return chainhash.DoubleHashH(buf.Bytes())
 }
 
+func (msg *MsgTx) TxBaseHash() chainhash.Hash {
+	// Encode the transaction and calculate double sha256 on the result.
+	// Ignore the error returns since the only way the encode could fail
+	// is being out of memory or due to nil pointers, both of which would
+	// cause a run-time panic.
+
+	buf := bytes.NewBuffer(make([]byte, 0, msg.SerializeSize()))
+	_ = msg.SerializeFull(buf)
+	return chainhash.DoubleHashH(buf.Bytes())
+}
+
 // SignatureHash generates the hash of the transaction serialized including Tx data and signatures.
 // The final output is used within the Segregated Witness commitment of all the witnesses
 // within a block
 func (msg *MsgTx) SignatureHash() chainhash.Hash {
 	buf := bytes.NewBuffer(make([]byte, 0, msg.SerializeSize()))
-	_ = msg.OmcEncode(buf, 0, SignatureEncoding)	// | FullEncoding)
+	_ = msg.OmcEncode(buf, 0, SignatureEncoding) // | FullEncoding)
 	return chainhash.DoubleHashH(buf.Bytes())
 }
 
@@ -494,12 +505,12 @@ func (msg *MsgTx) SignatureHash() chainhash.Hash {
 // modified when the copy is manipulated.
 func (msg *MsgTx) Copy() *MsgTx {
 	newTx := MsgTx{
-		Version:  msg.Version,
-		TxIn:     make([]*TxIn, 0, len(msg.TxIn)),
-		TxDef:    make([]token.Definition, 0, len(msg.TxDef)),
-		TxOut:    make([]*TxOut, 0, len(msg.TxOut)),
+		Version:          msg.Version,
+		TxIn:             make([]*TxIn, 0, len(msg.TxIn)),
+		TxDef:            make([]token.Definition, 0, len(msg.TxDef)),
+		TxOut:            make([]*TxOut, 0, len(msg.TxOut)),
 		SignatureScripts: make([][]byte, 0, len(msg.SignatureScripts)),
-		LockTime: msg.LockTime,
+		LockTime:         msg.LockTime,
 	}
 
 	// Deep copy the old TxOut data.

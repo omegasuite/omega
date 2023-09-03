@@ -485,14 +485,17 @@ func (view * ViewPointSet) addBorder(b *token.BorderDef) bool {
 	return false
 }
 
-func (view * ViewPointSet) AddOneBorder(b *token.BorderDef) bool {
+func (view *ViewPointSet) AddOneBorder(b *token.BorderDef) bool {
 	return view.addBorder(b)
 }
 
 // AddVertices adds all vertex definitions in the passed transaction to the view.
-func (view * ViewPointSet) AddBorder(tx *btcutil.Tx) bool {
+func (view *ViewPointSet) AddBorder(tx *btcutil.Tx) bool {
 	// Loop all of the vertex definitions
 	for _, txVtx := range tx.MsgTx().TxDef {
+		if txVtx.IsSeparator() {
+			continue
+		}
 		switch txVtx.(type) {
 		case *token.BorderDef:
 			if !view.addBorder(txVtx.(*token.BorderDef)) {
@@ -548,15 +551,18 @@ func (entry *BorderEntry) RollBack() {
 // disconnectTransactions updates the view by removing all of the transactions
 // created by the passed block, removing all vertices defined in the transactions,
 // and setting the best hash for the view to the block before the passed block.
-func (view * ViewPointSet) disconnectBorderTransactions(block *btcutil.Block) error {
-	for _,tx := range block.Transactions() {
+func (view *ViewPointSet) disconnectBorderTransactions(block *btcutil.Block) error {
+	for _, tx := range block.Transactions() {
 		for _, txDef := range tx.MsgTx().TxDef {
+			if txDef.IsSeparator() {
+				continue
+			}
 			switch txDef.(type) {
 			case *token.BorderDef:
 				h := txDef.Hash()
 				p := view.Border.LookupEntry(h)
 				if p == nil {
-					p,_ = view.FetchBorderEntry(&h)
+					p, _ = view.FetchBorderEntry(&h)
 				}
 				if p != nil {
 					p.RollBack()

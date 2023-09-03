@@ -57,6 +57,7 @@ var winServiceMain func() (bool, error)
 
 // Set by the linker.
 var CompileTime string
+var Server *server
 
 // go build -ldflags "-X main.CompileTime='$(date)'"
 
@@ -238,6 +239,9 @@ func btcdMain(serverChan chan<- *server) error {
 			cfg.Listeners, err)
 		return err
 	}
+
+	Server = server
+
 	defer func() {
 		if len(cfg.privateKeys) != 0 && cfg.Generate {
 			btcdLog.Infof("Gracefully shutting down consensus server...")
@@ -266,7 +270,7 @@ func btcdMain(serverChan chan<- *server) error {
 			btcdLog.Infof("Address of miner %s", sa.String())
 		}
 	} else {
-		consensus.SetupRelay(server)
+		go consensus.SetupRelay(server)
 	}
 
 	flag := uint64(0)

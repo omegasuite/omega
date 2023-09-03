@@ -12,6 +12,9 @@ import (
 )
 
 func VerifySigScript(sign, hash []byte, chainParams *chaincfg.Params) (*AddressPubKeyHash, error) {
+	if chainParams == nil {
+		return nil, nil
+	}
 	if len(sign) < btcec.PubKeyBytesLenCompressed {
 		return nil, fmt.Errorf("Incorrect signature")
 	}

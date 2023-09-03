@@ -31,6 +31,10 @@ func ScanDefinitions(msgTx *wire.MsgTx) (error, map[chainhash.Hash]*token.RightD
 	var newrightsets = make(map[chainhash.Hash]*token.RightSetDef)
 
 	for i, def := range msgTx.TxDef {
+		if def.IsSeparator() {
+			continue
+		}
+
 		switch def.(type) {
 		case *token.BorderDef:
 			v := def.(*token.BorderDef)
@@ -40,11 +44,14 @@ func ScanDefinitions(msgTx *wire.MsgTx) (error, map[chainhash.Hash]*token.RightD
 			h := v.Hash()
 			refd := false
 			for _, b := range msgTx.TxDef {
+				if b.IsSeparator() {
+					continue
+				}
 				switch b.(type) {
 				case *token.PolygonDef:
 					bd := b.(*token.PolygonDef)
-					for _,lp := range bd.Loops {
-						for _,l := range lp {
+					for _, lp := range bd.Loops {
+						for _, l := range lp {
 							if l.IsEqual(&h) {
 								refd = true
 							}
@@ -76,6 +83,9 @@ func ScanDefinitions(msgTx *wire.MsgTx) (error, map[chainhash.Hash]*token.RightD
 			checked:
 				for j := i + 1; j < len(msgTx.TxDef); j++ {
 					q := msgTx.TxDef[j]
+					if q.IsSeparator() {
+						continue
+					}
 					switch q.(type) {
 					case *token.PolygonDef:
 						v := q.(*token.PolygonDef)
@@ -97,16 +107,19 @@ func ScanDefinitions(msgTx *wire.MsgTx) (error, map[chainhash.Hash]*token.RightD
 			v := def.(*token.RightDef)
 			refd := false
 			h := v.Hash()
-			if _,ok := newrights[h]; ok {
+			if _, ok := newrights[h]; ok {
 				str := fmt.Sprintf("Duplicated right definition.", h.String())
 				return ruleError(1, str), nil, nil
 			}
 			newrights[h] = v
 			for _, b := range msgTx.TxDef {
+				if b.IsSeparator() {
+					continue
+				}
 				switch b.(type) {
 				case *token.RightSetDef:
 					bd := b.(*token.RightSetDef)
-					for _,r := range bd.Rights {
+					for _, r := range bd.Rights {
 						if h.IsEqual(&r) {
 							refd = true
 						}
@@ -176,8 +189,8 @@ type Cs2Loop map[string]*struct {
 }
 
 func (s *Cs2Loop) Add(cs string, loop *token.LoopDef) {
-	if _,ok := (*s)[cs]; !ok {
-		t := struct { Loops []*token.LoopDef }{
+	if _, ok := (*s)[cs]; !ok {
+		t := struct{ Loops []*token.LoopDef }{
 			make([]*token.LoopDef, 0, 1),
 		}
 		(*s)[cs] = &t
@@ -311,12 +324,15 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 
 	defdef := map[chainhash.Hash]struct{}{}
 
-	for _,d := range tx.MsgTx().TxDef {
+	for _, d := range tx.MsgTx().TxDef {
+		if d.IsSeparator() {
+			continue
+		}
 		h := d.Hash()
 		switch d.(type) {
 		case *token.PolygonDef:
-			ft,_ := views.FetchPolygonEntry(&h)
-			if ft != nil {		// polygon already exists
+			ft, _ := views.FetchPolygonEntry(&h)
+			if ft != nil { // polygon already exists
 				return ruleError(1, "Illegal Polygon definition.")
 			}
 
@@ -324,13 +340,13 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 			if err := sanePolygon(p, views, ccwloops, cwloops, inloops, unxloops); err != nil {
 				return err
 			}
-			
+
 			// a newly defined polygon must be used in this Tx. it is either a polygon in txout,
 			// or be used by other polygon. if it is used in a txout, the first loop must be ccw,
 			// otherwise cw.
 			ccw := false
 			th := p.Hash()
-			for _,out := range tx.MsgTx().TxOut {
+			for _, out := range tx.MsgTx().TxOut {
 				if out.IsSeparator() {
 					continue
 				}
@@ -341,27 +357,27 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 			}
 			var rcw bool
 			var bx viewpoint.BoundingBox
-			if rcw,bx = views.PolygonInfo(p); rcw != ccw {
+			if rcw, bx = views.PolygonInfo(p); rcw != ccw {
 				return ruleError(1, "Illegal Polygon definition.")
 			}
 			views.AddOnePolygon(p, ccw, bx)
 
 		case *token.BorderDef:
-			ft,_ := views.FetchBorderEntry(&h)
-			if ft != nil {		// no repeat definition
+			ft, _ := views.FetchBorderEntry(&h)
+			if ft != nil { // no repeat definition
 				return ruleError(1, "Illegal Border definition.")
 			}
 
 			b := d.(*token.BorderDef)
 			f := &b.Father
 
-			if _,ok := redefbl[*f]; ok {
+			if _, ok := redefbl[*f]; ok {
 				redefbl[h] = struct{}{}
 			}
 
 			if !f.IsEqual(&chainhash.Hash{}) {
-				ft,_ = views.FetchBorderEntry(f)
-				if ft == nil {		// father does not exist
+				ft, _ = views.FetchBorderEntry(f)
+				if ft == nil { // father does not exist
 					return ruleError(1, "Illegal Border definition.")
 				}
 
@@ -376,7 +392,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 					if depth > 100 {
 						return ruleError(1, "Border definition is too deep.")
 					}
-					ft,_ = views.FetchBorderEntry(f)
+					ft, _ = views.FetchBorderEntry(f)
 					f = &ft.Father
 				}
 			}
@@ -386,8 +402,8 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 			}
 
 		case *token.RightDef, *token.RightSetDef:
-			ft,_ := views.FetchRightEntry(&h)
-			if ft != nil {		// father does not exist
+			ft, _ := views.FetchRightEntry(&h)
+			if ft != nil { // father does not exist
 				return ruleError(1, "Illegal Rights definition.")
 			}
 
@@ -395,12 +411,12 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 			case *token.RightDef:
 				f := &d.(*token.RightDef).Father
 				if !f.IsEqual(&chainhash.Hash{}) {
-					if _,ok := defdef[*f]; ok {
+					if _, ok := defdef[*f]; ok {
 						defdef[d.(*token.RightDef).Hash()] = struct{}{}
 						continue
 					}
-					ft,_ := views.FetchRightEntry(f)
-					if ft == nil || ft.(*viewpoint.RightEntry).Attrib & token.Unsplittable != 0 {		// father is indivisible
+					ft, _ := views.FetchRightEntry(f)
+					if ft == nil || ft.(*viewpoint.RightEntry).Attrib&token.Unsplittable != 0 { // father is indivisible
 						return ruleError(1, "Illegal Right definition.")
 					}
 				}
@@ -408,11 +424,14 @@ func CheckTransactionInputs(tx *btcutil.Tx, views * viewpoint.ViewPointSet) erro
 
 			case *token.RightSetDef:
 				for _, r := range d.(*token.RightSetDef).Rights {
-					ft,_ := views.FetchRightEntry(&r)
-					if ft == nil {
-						return ruleError(1, "Illegal Right definition.")
+					if _, ok := defdef[r]; !ok {
+						ft, _ := views.FetchRightEntry(&r)
+						if ft == nil {
+							return ruleError(1, "Illegal Right definition.")
+						}
 					}
 				}
+				defdef[d.(*token.RightSetDef).Hash()] = struct{}{}
 			}
 		}
 	}

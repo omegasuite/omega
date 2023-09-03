@@ -1714,28 +1714,34 @@ out:
 			}
 
 		case consensus.Message:
-			log.Debugf("inHandler consensus.Message %s", msg.Command())
-			var ea [20]byte
-			if p.Inbound() && bytes.Compare(p.Miner[:], ea[:]) == 0 {
-				sender := consensus.Sender(msg)
-				if sender == nil {
-					log.Debugf("inHandler consensus.Message %s sender unknown", msg.Command())
-				} else {
-					log.Debugf("set miner for peer %s (%s %s) to %x", p.id, p.Addr(), p.LocalAddr().String(), sender)
-					copy(p.Miner[:], sender)
-				}
-			}
+			cmd := msg.Command()
+			log.Infof("received consensus.Message %s %v", cmd, msg)
 
-			push, h := consensus.HandleMessage(p, msg)
-			if push && p.cfg.Listeners.PushGetBlock != nil {
-				log.Debugf("inHandler consensus.Message asks PushGetBlock")
-				p.cfg.Listeners.PushGetBlock(p)
-			} else if h != nil {
-				log.Debugf("inHandler consensus.Message require MsgGetData %s", h.String())
-				nmsg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *h}}}
-				p.QueueMessageWithEncoding(&nmsg, nil, wire.SignatureEncoding)
+			if consensus.VerifySig(msg) {
+				var ea [20]byte
+				if p.Inbound() && bytes.Compare(p.Miner[:], ea[:]) == 0 {
+					sender := consensus.Sender(msg)
+					if sender == nil {
+						log.Debugf("inHandler consensus.Message %s sender unknown", msg.Command())
+					} else {
+						log.Debugf("set miner for peer %s (%s %s) to %x", p.id, p.Addr(), p.LocalAddr().String(), sender)
+						copy(p.Miner[:], sender)
+					}
+				}
+
+				push, h := consensus.HandleMessage(p, msg)
+				if push && p.cfg.Listeners.PushGetBlock != nil {
+					log.Debugf("inHandler consensus.Message asks PushGetBlock")
+					p.cfg.Listeners.PushGetBlock(p)
+				} else if h != nil {
+					log.Debugf("inHandler consensus.Message require MsgGetData %s", h.String())
+					nmsg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, *h}}}
+					p.QueueMessageWithEncoding(&nmsg, nil, wire.SignatureEncoding)
+				}
+				log.Debugf("inHandler consensus.Message %s processed", msg.Command())
+			} else {
+				log.Infof("inHandler consensus.VerifySig failed")
 			}
-			log.Debugf("inHandler consensus.Message %s processed", msg.Command())
 
 		default:
 //			log.Infof("inHandler default")

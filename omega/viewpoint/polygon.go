@@ -742,34 +742,34 @@ func abs(in int32) int32 {
 	return in
 }
 
-func (view * ViewPointSet) LoopBound(c * token.LoopDef) BoundingBox {
+func (view *ViewPointSet) LoopBound(c *token.LoopDef) BoundingBox {
 	var bx BoundingBox
 	bx.Reset()
 	if len(*c) == 1 {
-		plg,_ := view.FetchPolygonEntry(&(*c)[0])
+		plg, _ := view.FetchPolygonEntry(&(*c)[0])
 		return plg.Bound
 	}
-	for _,p := range *c {
-		fe,_ := view.FetchBorderEntry(&p)
+	for _, p := range *c {
+		fe, _ := view.FetchBorderEntry(&p)
 		box := fe.GetBound()
 		bx.Merge(&box)
 	}
 	return bx
 }
 
-func (view * ViewPointSet) LoopCCW(cl * token.LoopDef) (bool, * BoundingBox) {
+func (view *ViewPointSet) LoopCCW(cl *token.LoopDef) (bool, *BoundingBox) {
 	sum := big.NewInt(0)
 	tmp := big.NewInt(0)
 
 	borders, box := view.ExpandLoop(cl)
 
 	vp := borders[len(borders)-1].border
-	ex, ey := int64(vp.End.Lng() - vp.Begin.Lng()), int64(vp.End.Lat() - vp.Begin.Lat())
+	ex, ey := int64(vp.End.Lng()-vp.Begin.Lng()), int64(vp.End.Lat()-vp.Begin.Lat())
 	if borders[len(borders)-1].rev != 0 {
 		ex, ey = -ex, -ey
 	}
 	for _, f := range borders {
-		fx, fy := int64(f.border.End.Lng() - f.border.Begin.Lng()), int64(f.border.End.Lat() - f.border.Begin.Lat())
+		fx, fy := int64(f.border.End.Lng()-f.border.Begin.Lng()), int64(f.border.End.Lat()-f.border.Begin.Lat())
 		if f.rev != 0 {
 			fx, fy = -fx, -fy
 		}
@@ -779,39 +779,42 @@ func (view * ViewPointSet) LoopCCW(cl * token.LoopDef) (bool, * BoundingBox) {
 		ex, ey = fx, fy
 	}
 
-	return sum.Sign() > 0, & box
+	return sum.Sign() > 0, &box
 }
 
 // addVertex adds the specified vertex to the view.
-func (view * ViewPointSet) AddOnePolygon(b *token.PolygonDef, ccw bool, bx BoundingBox) bool {
+func (view *ViewPointSet) AddOnePolygon(b *token.PolygonDef, ccw bool, bx BoundingBox) bool {
 	return view.addPolygon(b, ccw, bx)
 }
 
 // AddPolygon adds all vertex definitions in the passed transaction to the view.
-func (view * ViewPointSet) AddPolygon(tx *btcutil.Tx) bool {
+func (view *ViewPointSet) AddPolygon(tx *btcutil.Tx) bool {
 	// Loop all of the vertex definitions
 	for _, txVtx := range tx.MsgTx().TxDef {
+		if txVtx.IsSeparator() {
+			continue
+		}
 		switch txVtx.(type) {
-			case *token.PolygonDef:
-				ccw := false
-				th := txVtx.Hash()
-				for _,out := range tx.MsgTx().TxOut {
-					if out.IsSeparator() {
-						continue
-					}
-					if out.TokenType == 3 && out.Value.(*token.HashToken).Hash.IsEqual(&th) {
-						ccw = true
-						break
-					}
+		case *token.PolygonDef:
+			ccw := false
+			th := txVtx.Hash()
+			for _, out := range tx.MsgTx().TxOut {
+				if out.IsSeparator() {
+					continue
 				}
-				var rcw bool
-				var bx BoundingBox
-				if rcw,bx = view.PolygonInfo(txVtx.(*token.PolygonDef)); rcw != ccw {
-					return false
+				if out.TokenType == 3 && out.Value.(*token.HashToken).Hash.IsEqual(&th) {
+					ccw = true
+					break
 				}
-				if !view.addPolygon(txVtx.(*token.PolygonDef), ccw, bx) {
-					return false
-				}
+			}
+			var rcw bool
+			var bx BoundingBox
+			if rcw, bx = view.PolygonInfo(txVtx.(*token.PolygonDef)); rcw != ccw {
+				return false
+			}
+			if !view.addPolygon(txVtx.(*token.PolygonDef), ccw, bx) {
+				return false
+			}
 			break
 		}
 	}
@@ -821,7 +824,7 @@ func (view * ViewPointSet) AddPolygon(tx *btcutil.Tx) bool {
 // FetchEntry attempts to find any vertex for the given hash by
 // searching the entire view.  It checks the view first and then falls
 // back to the database if needed.
-func (view * ViewPointSet) FetchPolygonEntry(hash *chainhash.Hash) (*PolygonEntry, error) {
+func (view *ViewPointSet) FetchPolygonEntry(hash *chainhash.Hash) (*PolygonEntry, error) {
 	// First attempt to find a utxo with the provided hash in the view.
 	entry := view.Polygon.LookupEntry(*hash)
 	if entry != nil {
@@ -866,15 +869,18 @@ func (entry *PolygonEntry) RollBack() {
 // disconnectTransactions updates the view by removing all of the transactions
 // created by the passed block, removing all vertices defined in the transactions,
 // and setting the best hash for the view to the block before the passed block.
-func (view * ViewPointSet) disconnectPolygonTransactions(block *btcutil.Block) error {
-	for _,tx := range block.Transactions() {
+func (view *ViewPointSet) disconnectPolygonTransactions(block *btcutil.Block) error {
+	for _, tx := range block.Transactions() {
 		for _, txDef := range tx.MsgTx().TxDef {
+			if txDef.IsSeparator() {
+				continue
+			}
 			switch txDef.(type) {
 			case *token.PolygonDef:
 				h := txDef.Hash()
 				p := view.Polygon.LookupEntry(h)
 				if p == nil {
-					p,_ = view.FetchPolygonEntry(&h)
+					p, _ = view.FetchPolygonEntry(&h)
 				}
 				if p != nil {
 					p.RollBack()

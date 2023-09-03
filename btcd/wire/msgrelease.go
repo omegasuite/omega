@@ -22,18 +22,20 @@ type MsgRelease struct {
 }
 
 func (msg *MsgRelease) SetSeq(t int32) {
-	msg.Seq = t
+	if msg.Seq != 0 {
+		msg.Seq = t
+	}
 }
 
 func (msg *MsgRelease) Sequence() int32 {
 	return msg.Seq
 }
 
-func (msg * MsgRelease) Sign(key *btcec.PrivateKey) {
+func (msg *MsgRelease) Sign(key *btcec.PrivateKey) {
 	sig, _ := key.Sign(msg.DoubleHashB())
 
 	ss := sig.Serialize()
-	ssig := make([]byte, btcec.PubKeyBytesLenCompressed + len(ss))
+	ssig := make([]byte, btcec.PubKeyBytesLenCompressed+len(ss))
 
 	copy(ssig, key.PubKey().SerializeCompressed())
 	copy(ssig[btcec.PubKeyBytesLenCompressed:], ss)
@@ -41,7 +43,7 @@ func (msg * MsgRelease) Sign(key *btcec.PrivateKey) {
 	msg.Signature = ssig
 }
 
-func (msg * MsgRelease) Block() int32 {
+func (msg *MsgRelease) Block() int32 {
 	return msg.Height
 }
 
@@ -51,7 +53,7 @@ func (msg *MsgRelease) BlockHash() chainhash.Hash {
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgRelease) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgRelease) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	// Read filter type
 	err := readElement(r, &msg.Height)
 	if err != nil {
@@ -69,16 +71,20 @@ func (msg * MsgRelease) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding)
 		return err
 	}
 
-	if enc == SignatureEncoding {
-		var ln uint32
-		if err = readElement(r, &ln); err != nil {
-			return err
-		}
-		msg.Signature = make([]byte, ln)
-		if err = readElement(r, msg.Signature); err != nil {
-			return err
-		}
+	msg.Seq = 0
+
+	var ln uint32
+	if err = readElement(r, &ln); err != nil || ln == 0 {
+		msg.Signature = make([]byte, 0)
+		return nil
 	}
+
+	msg.Signature = make([]byte, ln)
+	if err = readElement(r, msg.Signature); err != nil {
+		return err
+	}
+
+	readElement(r, &msg.Seq)
 
 	return nil
 }
@@ -102,12 +108,15 @@ func (msg *MsgRelease) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) 
 		return err
 	}
 
-	if enc == SignatureEncoding {
+	if enc == SignatureEncoding || enc == FullEncoding {
 		ln := uint32(len(msg.Signature))
 		if err = writeElement(w, ln); err != nil {
 			return err
 		}
 		if err = writeElement(w, msg.Signature); err != nil {
+			return err
+		}
+		if err = writeElement(w, msg.Seq); err != nil {
 			return err
 		}
 	}

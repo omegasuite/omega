@@ -64,15 +64,19 @@ type stateDB struct {
 
 	// only used in destruct, indicate whether to transfer mint
 	transferrable bool
+
+	// what are added to a tx as contract output
+	spendables map[wire.OutPoint]struct{}
 }
 
 func NewStateDB(db database.DB, addr [20]byte) *stateDB {
 	return &stateDB{
-		DB:       db,
-		contract: addr,
-		fresh: false,
-		data:     make(map[string]*entry),
-		meta:     make(map[string]*entry),
+		DB:         db,
+		contract:   addr,
+		fresh:      false,
+		data:       make(map[string]*entry),
+		meta:       make(map[string]*entry),
+		spendables: make(map[wire.OutPoint]struct{}),
 	}
 }
 
@@ -82,7 +86,7 @@ func (d *stateDB) Suicide() {
 	d.suicided = true
 }
 
-func (v * OVM) setMeta(contract [20]byte, key string, code []byte) {
+func (v *OVM) setMeta(contract [20]byte, key string, code []byte) {
 	d := v.StateDB[contract]
 
 	if d.suicided {
@@ -93,7 +97,7 @@ func (v * OVM) setMeta(contract [20]byte, key string, code []byte) {
 		m := d.GetMeta(key)
 		t := make([]byte, len(code))
 		copy(t, code)
-		d.meta[key] = &entry {m,  t}
+		d.meta[key] = &entry{m, t}
 	} else {
 		if d.meta[key].data == nil {
 			d.meta[key].data = make([]byte, len(code))
@@ -470,7 +474,9 @@ func (r *entry) dup() *entry {
 }
 
 func (d *stateDB) Copy() stateDB {
-	s := stateDB{ DB: d.DB, }
+	s := stateDB{DB: d.DB,
+		spendables: make(map[wire.OutPoint]struct{}),
+	}
 
 	if d.suicided {
 		s.suicided = true
@@ -479,18 +485,18 @@ func (d *stateDB) Copy() stateDB {
 
 	copy(s.contract[:], d.contract[:])
 	s.data = make(map[string]*entry)
-	for h,r := range d.data {
+	for h, r := range d.data {
 		s.data[h] = r.dup()
 	}
 	s.meta = make(map[string]*entry)
-	for h,r := range d.meta {
+	for h, r := range d.meta {
 		s.meta[h] = r.dup()
 	}
 
 	return s
 }
 
-func (v * OVM) GetState(contract [20]byte, loc string) []byte {
+func (v *OVM) GetState(contract [20]byte, loc string) []byte {
 	d := v.StateDB[contract]
 	if d.suicided {
 		return nil

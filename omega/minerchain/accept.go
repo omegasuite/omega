@@ -185,18 +185,19 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 		hashNum := HashToBig(&hash)
 
 		factor := int64(1)
-		if flags & blockchain.BFWatingFactor == blockchain.BFWatingFactor {
-			factor = m.factorPOW(uint32(m.index.LookupNode(&header.PrevBlock).Height), header.BestBlock)
+		h := uint32(m.index.LookupNode(&header.PrevBlock).Height)
+		if flags&blockchain.BFWatingFactor == blockchain.BFWatingFactor {
+			factor = m.factorPOW(h, header.BestBlock)
 		}
-//		if factor < 0 {
-//			return fmt.Errorf("Curable POW factor error.")
-//		}
+		//		if factor < 0 {
+		//			return fmt.Errorf("Curable POW factor error.")
+		//		}
 
 		if header.Version >= chaincfg.Version2 {
 			// since Ver 0x20000, the formula is:
 			// 2 * hashNum * factor <= target * (h1 + h2)
 			// h1 is collacteral factor, h2 is tps factor
-			factor *= 16
+			//			factor *= 16
 
 			// for h1, we compare this block's coin & Collateral for simplicity
 			c := header.Collateral
@@ -215,7 +216,7 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 				minscore = 1
 			}
 
-			r := m.TPSreportFromDB(header.Miner) // max most recent 100 records
+			r := m.TPSreportFromDB(header.Miner, h) // max most recent 100 records
 			for i := len(r); i < 100; i++ {
 				r = append(r, blockchain.TPSrv{Val: minscore})
 			}
@@ -243,11 +244,20 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
 				target = target.Mul(target, big.NewInt(h1+h2))
 			} else {
+				if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
+					factor *= 16
+				}
 				target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
 			}
 
-			if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
-				target = powLimit.Mul(powLimit, big.NewInt(16))
+			if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
+				if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
+					target = powLimit.Mul(powLimit, big.NewInt(16))
+				}
+			} else {
+				if target.Cmp(powLimit) > 0 {
+					target = powLimit
+				}
 			}
 		} else {
 			if factor > 0 {

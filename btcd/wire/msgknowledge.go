@@ -14,43 +14,45 @@ import (
 )
 
 type MsgKnowledge struct {
-	Height    int32
-	K         []int32
-	M         chainhash.Hash
-	Finder    [20]byte
-	From      [20]byte
+	Height     int32
+	K          []int32
+	M          chainhash.Hash
+	Finder     [20]byte
+	From       [20]byte
 	Signatures [][]byte
 	Seq        int32
 }
 
 func (msg *MsgKnowledge) SetSeq(t int32) {
-	msg.Seq = t
+	if msg.Seq != 0 {
+		msg.Seq = t
+	}
 }
 
 func (msg *MsgKnowledge) Sequence() int32 {
 	return msg.Seq
 }
 
-func (msg * MsgKnowledge) Sign(key *btcec.PrivateKey) {
+func (msg *MsgKnowledge) Sign(key *btcec.PrivateKey) {
 	// to make interface happy. never used.
 }
 
-func (msg * MsgKnowledge) AddK(k int32, key *btcec.PrivateKey) {
+func (msg *MsgKnowledge) AddK(k int32, key *btcec.PrivateKey) {
+	msg.K = append(msg.K, k)
 	sig, _ := key.Sign(msg.DoubleHashB())
 
 	ss := sig.Serialize()
-	ssig := make([]byte, btcec.PubKeyBytesLenCompressed + len(ss))
+	ssig := make([]byte, btcec.PubKeyBytesLenCompressed+len(ss))
 
 	copy(ssig, key.PubKey().SerializeCompressed())
 	copy(ssig[btcec.PubKeyBytesLenCompressed:], ss)
 
 	msg.Signatures = append(msg.Signatures, ssig)
-	msg.K = append(msg.K, k)
 }
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgKnowledge) OmcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
+func (msg *MsgKnowledge) OmcDecode(r io.Reader, pver uint32, _ MessageEncoding) error {
 	// Read filter type
 	err := common.ReadElement(r, &msg.Height)
 	if err != nil {
@@ -91,6 +93,7 @@ func (msg * MsgKnowledge) OmcDecode(r io.Reader, pver uint32, _ MessageEncoding)
 		return err
 	}
 
+	msg.Seq = 0
 	msg.Signatures = make([][]byte, ns)
 	for i := int32(0); i < ns; i++ {
 		var sn int32
@@ -102,13 +105,14 @@ func (msg * MsgKnowledge) OmcDecode(r io.Reader, pver uint32, _ MessageEncoding)
 			return err
 		}
 	}
+	readElement(r, &msg.Seq)
 
 	return nil
 }
 
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgKnowledge) OmcEncode(w io.Writer, pver uint32, _ MessageEncoding) error {
+func (msg *MsgKnowledge) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	// Write filter type
 	err := writeElement(w, msg.Height)
 	if err != nil {
@@ -150,30 +154,36 @@ func (msg * MsgKnowledge) OmcEncode(w io.Writer, pver uint32, _ MessageEncoding)
 		}
 	}
 
+	if enc == SignatureEncoding || enc == FullEncoding {
+		if err = writeElement(w, msg.Seq); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 // Command returns the protocol command string for the message.  This is part
 // of the Message interface implementation.
-func (msg * MsgKnowledge) Command() string {
+func (msg *MsgKnowledge) Command() string {
 	return CmdKnowledge
 }
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver. This is part of the Message interface implementation.
-func (msg * MsgKnowledge) MaxPayloadLength(pver uint32) uint32 {
+func (msg *MsgKnowledge) MaxPayloadLength(pver uint32) uint32 {
 	// Message size depends on the blockchain height, so return general limit
 	// for all messages.
 	return MaxMessagePayload
 }
 
-func (msg * MsgKnowledge) DoubleHashB() []byte {
+func (msg *MsgKnowledge) DoubleHashB() []byte {
 	var w bytes.Buffer
 	msg.OmcEncode(&w, 0, BaseEncoding)
 	return chainhash.DoubleHashB(w.Bytes())
 }
 
-func (msg * MsgKnowledge) Block() int32 {
+func (msg *MsgKnowledge) Block() int32 {
 	return msg.Height
 }
 
@@ -182,10 +192,10 @@ func (msg *MsgKnowledge) BlockHash() chainhash.Hash {
 }
 
 func (msg *MsgKnowledge) GetSignature() []byte {
-	return msg.Signatures[msg.K[len(msg.K) - 1]]
+	return msg.Signatures[len(msg.K)-1]
 }
 
-func (msg * MsgKnowledge) Sender() []byte {
+func (msg *MsgKnowledge) Sender() []byte {
 	return msg.From[:]
 }
 
@@ -193,7 +203,7 @@ func (msg * MsgKnowledge) Sender() []byte {
 // the Message interface. See MsgCFCheckpt for details.
 func NewMsgKnowledge() *MsgKnowledge {
 	return &MsgKnowledge{
-		K:      make([]int32, 0),
+		K:          make([]int32, 0),
 		Signatures: make([][]byte, 0),
 	}
 }

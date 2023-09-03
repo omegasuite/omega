@@ -10,7 +10,6 @@ package consensus
 
 import (
 	"bytes"
-	"github.com/omegasuite/btcd/wire/common"
 	"time"
 
 	//	"bufio"
@@ -60,11 +59,13 @@ type PeerNotifier interface {
 	ChainSync(chainhash.Hash, [20]byte)
 	ResetConnections()
 	GetTxBlock(h int32) *btcutil.Block
-	Broadcast(wire.Message)
+	Broadcast(wire.Message, *string)
 }
 
 type ReqQueue interface {
 	QueueMessage(msg wire.Message, doneChan chan<- bool)
+	QueueMessageWithEncoding(msg wire.Message, doneChan chan<- bool, encoding wire.MessageEncoding)
+	Addr() string
 }
 
 type Miner struct {
@@ -77,9 +78,10 @@ type Miner struct {
 	lastSignedBlock int32
 	lwbFile         *os.File
 
-	cfg     *chaincfg.Params
-	pulling map[chainhash.Hash]int64
-	allblks map[chainhash.Hash]*btcutil.Block
+	cfg      *chaincfg.Params
+	pulling  map[chainhash.Hash]int64
+	allblks  map[chainhash.Hash]*btcutil.Block
+	knownsrc map[chainhash.Hash]ReqQueue
 
 	// wait for end of task
 	wg        sync.WaitGroup
@@ -206,6 +208,23 @@ func SetupRelay(s PeerNotifier) {
 	miner = &Miner{}
 	miner.server = s
 	miner.cfg = nil
+	miner.castedMsg = make(map[chainhash.Hash]int64)
+	miner.pulling = make(map[chainhash.Hash]int64)
+	miner.allblks = make(map[chainhash.Hash]*btcutil.Block)
+	miner.knownsrc = make(map[chainhash.Hash]ReqQueue)
+	newblockch = make(chan newblock, 2*wire.CommitteeSize)
+
+	polling := true
+
+	for polling {
+		select {
+		case blk := <-newblockch:
+			miner.allblks[*blk.block.Hash()] = blk.block
+
+		case <-Quit:
+			return
+		}
+	}
 }
 
 func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chaincfg.Params) {
@@ -217,6 +236,7 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 	miner.castedMsg = make(map[chainhash.Hash]int64)
 	miner.pulling = make(map[chainhash.Hash]int64)
 	miner.allblks = make(map[chainhash.Hash]*btcutil.Block)
+	miner.knownsrc = make(map[chainhash.Hash]ReqQueue)
 
 	s.SubscribeChain(miner.notice)
 
@@ -325,19 +345,48 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 	h := m.Block()
 	bh := miner.server.BestSnapshot().Height
 
+	if m.Sequence() > 0 {
+		log.Infof("Seq = %d", m.Sequence())
+	}
+
 	if h <= bh {
 		return true, nil
 	}
 
+	switch m.(type) {
+	case *wire.MsgPull:
+		miner.syncMutex.Lock()
+		mm, _ := miner.allblks[m.BlockHash()]
+		if mm != nil {
+			log.Infof("Supply data for pulling of %s to %s", m.BlockHash().String(), p.Addr())
+			//			d := make(chan bool)
+			p.QueueMessageWithEncoding(mm.MsgBlock(), nil, wire.SignatureEncoding)
+			//			if <-d {
+			//				log.Infof("Block sent")
+			//			} else {
+			//				log.Infof("Fail to send block")
+			//			}
+
+		} else if src, ok := miner.knownsrc[m.BlockHash()]; ok {
+			log.Infof("Forward pulling request")
+			pull(m.BlockHash(), m.Block(), src)
+		} else {
+			log.Infof("Unable to handle pulling request")
+		}
+		miner.syncMutex.Unlock()
+		return true, nil
+
+	default:
+		miner.syncMutex.Lock()
+		miner.knownsrc[m.BlockHash()] = p
+		miner.syncMutex.Unlock()
+	}
+
+	ps := p.Addr()
+
 	if miner.cfg == nil { // relay mode
 		if m.Sequence() > 0 {
-			if _, ok := miner.allblks[m.BlockHash()]; !ok {
-				miner.syncMutex.Lock()
-				pull(m.BlockHash(), p)
-				miner.syncMutex.Unlock()
-			}
-
-			miner.server.Broadcast(m)
+			miner.server.Broadcast(m, &ps)
 		}
 		return false, nil
 	}
@@ -347,6 +396,7 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 	// check if we have got this msg before
 	var w bytes.Buffer
 	var hs chainhash.Hash
+	w.Write([]byte(m.Command()))
 	m.OmcEncode(&w, 0, wire.FullEncoding)
 	copy(hs[:], chainhash.HashB(w.Bytes()))
 	if _, ok := miner.castedMsg[hs]; ok {
@@ -378,55 +428,10 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 
 	if s.Myself < 0 {
 		if m.Sequence() > 0 {
-			if _, ok := miner.allblks[m.BlockHash()]; !ok {
-				miner.syncMutex.Lock()
-				pull(m.BlockHash(), p)
-				miner.syncMutex.Unlock()
-			}
-
-			miner.server.Broadcast(m)
+			miner.server.Broadcast(m, &ps)
 		}
 		return false, nil
 	}
-	/*
-			var hash *chainhash.Hash
-
-		if !s.Runnable {
-			log.Infof("syncer is not ready for height %d, message will be queued. Current que len = %d", h, len(s.commands))
-
-			switch m.(type) {
-			case *wire.MsgKnowledge:
-				hash = &m.(*wire.MsgKnowledge).M
-
-			case *wire.MsgCandidate:
-				hash = &m.(*wire.MsgCandidate).M
-
-			case *wire.MsgCandidateResp:
-				hash = &m.(*wire.MsgCandidateResp).M
-
-			case *wire.MsgRelease:
-				hash = &m.(*wire.MsgRelease).M
-
-			case *wire.MsgConsensus:
-				hash = &m.(*wire.MsgConsensus).M
-
-			case *wire.MsgSignature:
-				hash = &m.(*wire.MsgSignature).M
-			}
-
-			if len(s.commands) > 1 {
-				hash = nil
-			}
-
-				if len(s.commands) > (wire.CommitteeSize-1)*10 {
-					log.Infof("too many messages are queued. Discard oldest one.")
-					<-s.commands
-				}
-				s.commands <- m
-				miner.server.Broadcast(m)
-				return false, nil
-			}
-	*/
 
 	if len(s.commands) > (wire.CommitteeSize-1)*10 {
 		<-s.commands
@@ -434,28 +439,100 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 		log.Infof("Runnable syner %d has too many (%d) messages queued. Discard oldest one.", s.Height, len(s.commands))
 		s.DebugInfo()
 	}
+	s.commands <- m
 
+	if !s.Runnable {
+		log.Infof("syncer is not ready for height %d, message will be queued. Current que len = %d", h, len(s.commands))
+		miner.server.Broadcast(m, &ps)
+		return false, nil
+	}
+
+	miner.syncMutex.Lock()
+	//	s.forestLock.Lock()
 	if _, ok := s.blocks[m.BlockHash()]; !ok {
 		if mm, ok := miner.allblks[m.BlockHash()]; ok {
 			s.blocks[m.BlockHash()] = mm
 		} else {
-			miner.syncMutex.Lock()
-			pull(m.BlockHash(), p)
-			miner.syncMutex.Unlock()
+			pull(m.BlockHash(), s.Height, p)
 		}
 	}
-
-	s.commands <- m
+	//	s.forestLock.Unlock()
+	miner.syncMutex.Unlock()
 
 	return false, nil // hash
 }
 
-func pull(hash chainhash.Hash, p ReqQueue) {
+func VerifySig(m Message) bool {
+	var err error
+	switch m.(type) {
+	case *wire.MsgPull:
+		return true
+
+	case *wire.MsgKnowledge:
+		tmsg := *m.(*wire.MsgKnowledge)
+		tmsg.K = make([]int32, 0)
+		tmsg.Signatures = make([][]byte, 0)
+		copy(tmsg.From[:], tmsg.Finder[:])
+
+		for j, i := range m.(*wire.MsgKnowledge).K {
+			sig := m.(*wire.MsgKnowledge).Signatures[j]
+
+			tmsg.K = append(tmsg.K, i)
+
+			signer, err := btcutil.VerifySigScript(sig, tmsg.DoubleHashB(), miner.cfg)
+			if err != nil {
+				log.Infof("VerifySig VerifySigScript fail. msg = %x\n", m)
+				return false
+			}
+
+			pkh := signer.Hash160()
+			copy(tmsg.From[:], pkh[:])
+			tmsg.Signatures = append(tmsg.Signatures, sig)
+		}
+
+	case *wire.MsgConsensus, *wire.MsgSignature:
+		hash := blockchain.MakeMinerSigHash(m.Block(), m.BlockHash())
+		k, err := btcec.ParsePubKey(m.GetSignature()[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+		if err != nil {
+			return false
+		}
+		s, err := btcec.ParseDERSignature(m.GetSignature()[btcec.PubKeyBytesLenCompressed:], btcec.S256())
+
+		if !s.Verify(hash, k) {
+			return false
+		}
+
+	default:
+		_, err = btcutil.VerifySigScript(m.GetSignature(), m.DoubleHashB(), miner.cfg)
+	}
+
+	if err != nil {
+		log.Infof("VerifySigScript fail. %v", m)
+		return false
+	}
+	return true
+}
+
+func pull(hash chainhash.Hash, h int32, p ReqQueue) {
 	t := time.Now().Unix()
+
+	if p == nil {
+		if src, ok := miner.knownsrc[hash]; ok {
+			p = src
+		} else {
+			log.Infof("Unable to pull %s because don't know its source", hash.String())
+			return
+		}
+	}
+
 	if _, ok := miner.pulling[hash]; !ok || miner.pulling[hash]+5 < t {
 		// pull block
-		msg := wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeTempBlock, hash}}}
+		msg := wire.MsgPull{}
+		msg.Height = h
+		msg.M = hash
 		p.QueueMessage(&msg, nil)
+
+		log.Infof("pull %s at %d from %s", hash.String(), h, p.Addr())
 
 		miner.pulling[hash] = t
 	}
@@ -514,10 +591,10 @@ func Shutdown() {
 
 var seq int32
 
-func (self *Miner) Broadcast(msg wire.OmegaMessage) {
+func (self *Miner) Broadcast(msg wire.OmegaMessage, ps *string) {
 	seq++
 	msg.SetSeq(seq)
-	self.server.Broadcast(msg)
+	self.server.Broadcast(msg, ps)
 }
 
 func VerifyMsg(msg wire.OmegaMessage, pubkey *btcec.PublicKey) bool {
@@ -529,28 +606,30 @@ func VerifyMsg(msg wire.OmegaMessage, pubkey *btcec.PublicKey) bool {
 	return valid
 }
 
+/*
 func DebugInfo() {
 	top := int32(0)
 	if miner == nil {
 		return
 	}
 	miner.syncMutex.Lock()
-	for h,_ := range miner.Sync {
+	for h, _ := range miner.Sync {
 		if h > top {
 			top = h
 		}
 	}
 	log.Infof("\nMiner has %d Syncers\n\nThe top syncer is %d:", len(miner.Sync), top)
-	for h,s := range miner.Sync {
-		if h < top - 2 {
+	for h, s := range miner.Sync {
+		if h < top-2 {
 			delete(miner.Sync, h)
 			log.Infof("\nStopping %d", h)
 			s.Quit()
 		}
 	}
 	log.Infof("\nDone examing syner heights")
-	if s,ok := miner.Sync[top]; ok {
+	if s, ok := miner.Sync[top]; ok {
 		s.DebugInfo()
 	}
 	miner.syncMutex.Unlock()
 }
+*/
