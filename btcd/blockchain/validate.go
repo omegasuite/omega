@@ -1726,20 +1726,11 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 
 			mblk.Transactions[i+1] = newtx.MsgTx()
 
-			//			transactions[i+1] = newtx
-			var w bytes.Buffer
-			newtx.MsgTx().Serialize(&w)
-			log.Infof("new tx (post exec): %x", w.Bytes())
-
 			storages[i] = ContractNewStorage(newtx, Vm, paidstoragefees)
 		}
 	}
 
 	mblk.Transactions[0] = coinBase.MsgTx()
-
-	var w bytes.Buffer
-	coinBase.MsgTx().Serialize(&w)
-	log.Infof("coinBase (post exec): %x", w.Bytes())
 
 	if Vm != nil {
 		if Vm.StepLimit != 0 {
@@ -1755,8 +1746,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	txFee := int64(0)
 
 	block = btcutil.NewBlock(&mblk)
-	bt, _ := block.Bytes()
-	log.Infof("checkConnectBlock (post exec): %x", bt)
 
 	transactions = block.Transactions()
 
