@@ -135,6 +135,7 @@ var POWStopper chan struct{}
 var errMootBlock error
 var errInvalidBlock error
 var connNotice chan interface{}
+var Leader chan int32
 
 func (m *Miner) notice(notification *blockchain.Notification) {
 	if connNotice != nil && !miner.shutdown {
@@ -185,13 +186,14 @@ func handleConnNotice(c interface{}) {
 		if next != 0x7FFFFFFF && !miner.Sync[next].Runnable {
 			sny = miner.Sync[next]
 		}
+		miner.syncMutex.Unlock()
+
 		if sny != nil {
 			log.Infof("SetCommittee for next syner %d", sny.Height)
 			sny.SetCommittee()
 		} else {
 			log.Infof("No pending syners")
 		}
-		miner.syncMutex.Unlock()
 	}
 }
 
@@ -291,12 +293,13 @@ out:
 			}
 
 			miner.syncMutex.Lock()
-			if _, ok := miner.Sync[bh]; !ok {
+			snr, ok := miner.Sync[bh]
+			if !ok {
 				log.Infof(" CreateSyncer at %d", bh)
 				miner.Sync[bh] = CreateSyncer(bh)
+				snr = miner.Sync[bh]
 			}
 			log.Infof(" BlockInit at %d for block %s", bh, blk.block.Hash().String())
-			snr := miner.Sync[bh]
 			miner.syncMutex.Unlock()
 
 			if POWStopper != nil {
@@ -360,13 +363,7 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 		if mm != nil {
 			log.Infof("Supply data for pulling of %s to %s", m.BlockHash().String(), p.Addr())
 			//			d := make(chan bool)
-			p.QueueMessageWithEncoding(mm.MsgBlock(), nil, wire.SignatureEncoding)
-			//			if <-d {
-			//				log.Infof("Block sent")
-			//			} else {
-			//				log.Infof("Fail to send block")
-			//			}
-
+			p.QueueMessageWithEncoding(mm.MsgBlock(), nil, wire.SignatureEncoding|wire.FullEncoding)
 		} else if src, ok := miner.knownsrc[m.BlockHash()]; ok {
 			log.Infof("Forward pulling request")
 			pull(m.BlockHash(), m.Block(), src)
@@ -422,9 +419,9 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 		log.Infof("syncer has finished with %h. Ignore this message", h)
 		return false, nil
 	}
+	miner.syncMutex.Unlock()
 
 	s.SetCommittee()
-	miner.syncMutex.Unlock()
 
 	if s.Myself < 0 {
 		if m.Sequence() > 0 {
@@ -463,6 +460,10 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 }
 
 func VerifySig(m Message) bool {
+	if miner.cfg == nil {
+		return true
+	}
+
 	var err error
 	switch m.(type) {
 	case *wire.MsgPull:

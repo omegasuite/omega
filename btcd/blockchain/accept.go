@@ -42,6 +42,13 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		return true, nil, -1
 	}
 
+	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
+		return false, fmt.Errorf("insifficient signatures"), -1
+	}
+	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts[1]) < 33 {
+		return false, fmt.Errorf("incorrect signatures"), -1
+	}
+
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
 		// make sure the rotate in Miner block is there
 		if prevNode.Data.GetNonce() != -wire.MINER_RORATE_FREQ+1 {
@@ -57,7 +64,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	// on a side chain.
 	blockHeader := &block.MsgBlock().Header
 
-	newNode := b.NodeByHash(block.Hash())
+	newNode := b.MainChainNodeByHash(block.Hash())
 
 	// Insert the block into the database if it's not already there.
 	// This is necessary since it allows block download to be decoupled

@@ -115,7 +115,7 @@ func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.Behav
 			return true, nil
 		}
 
-		if block.MsgBlock().Version >= chaincfg.Version2 {
+		if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 			if r, _, hreq := b.checkV2(block, parent, flags); !r {
 				return true, hreq
 			}
@@ -237,11 +237,11 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	}
 
 	// Perform preliminary sanity checks on the block.
-	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet|| b.chainParams.Net == common.RegNet {
+	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet || b.chainParams.Net == common.RegNet {
 		flags |= blockchain.BFEasyBlocks
 	}
 
-	err := CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags | blockchain.BFNoPoWCheck)
+	err := CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags|blockchain.BFNoPoWCheck)
 	if err != nil {
 		return false, false, err, nil
 	}
@@ -262,9 +262,9 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 
 	prevHashExists := b.index.HaveBlock(prevHash)
 
-//	if err != nil {
-//		return false, false, err, nil
-//	}
+	//	if err != nil {
+	//		return false, false, err, nil
+	//	}
 	if !prevHashExists {
 		log.Infof("block prevHash does not Exists Adding orphan block %s with parent %s", blockHash.String(), prevHash.String())
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
@@ -272,24 +272,24 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, true, nil, &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeMinerBlock, *prevHash}}}
 	}
 
-	bestblk := b.blockChain.NodeByHash(&block.MsgBlock().BestBlock)	//.HaveBlock(&block.MsgBlock().BestBlock)
+	bestblk := b.blockChain.NodeByHash(&block.MsgBlock().BestBlock) //.HaveBlock(&block.MsgBlock().BestBlock)
 	if bestblk == nil {
 		log.Infof("best block %s does not exist", block.MsgBlock().BestBlock.String())
-		return false, false, ruleError(ErrMissingBestBlock, "best block does not exist"),&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
+		return false, false, ruleError(ErrMissingBestBlock, "best block does not exist"), &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
-	if block.MsgBlock().Version >= chaincfg.Version3 && bestblk.Data.GetNonce() >= 0 && bestblk.Height > 0 {
+	if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version3 && bestblk.Data.GetNonce() >= 0 && bestblk.Height > 0 {
 		log.Infof("best block is not a signed block")
-		return false, false, ruleError(ErrMissingBestBlock, "best block is not a signed block"),&wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
+		return false, false, ruleError(ErrMissingBestBlock, "best block is not a signed block"), &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
 
 	parent := b.index.LookupNode(prevHash)
 	if !b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) {
 		log.Infof("block and parent tx reference not in the same chain.")
-//		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+		//		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
 		return false, false, fmt.Errorf("block and parent tx reference not in the same chain."), nil
 	}
 
-	if block.MsgBlock().Version >= chaincfg.Version2 {
+	if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 		if r, err, hreq := b.checkV2(block, parent, flags); !r {
 			return false, false, err, hreq
 		}
@@ -303,7 +303,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// ContractLimit if that is less than chain param, it could be 0
 	// implying the chain param value
 	lastBlk := parent.Data.(*blockchainNodeData).block
-	if block.MsgBlock().Version >= chaincfg.Version2 {
+	if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 		contractlim := block.MsgBlock().ContractLimit
 		if contractlim == 0 {
 			contractlim = b.chainParams.ContractExecLimit
@@ -385,7 +385,7 @@ func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource cha
 			hex.EncodeToString(header.MsgBlock().Connection))
 	}
 
-	if header.MsgBlock().Version >= 0x20000 {
+	if header.MsgBlock().Version&0x7FFF0000 >= 0x20000 {
 		k := len(header.MsgBlock().TphReports)
 		if k > wire.MaxTPSReports {
 			return fmt.Errorf("Reported more than max allowed TPS items")
@@ -393,7 +393,7 @@ func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource cha
 		if k < wire.MinTPSReports && header.Height() > wire.MinTPSReports {
 			return fmt.Errorf("Reported less than min required TPS items")
 		}
-		for _,v := range header.MsgBlock().TphReports {
+		for _, v := range header.MsgBlock().TphReports {
 			if v == 0 {
 				return fmt.Errorf("Reported 0 in TPS value")
 			}

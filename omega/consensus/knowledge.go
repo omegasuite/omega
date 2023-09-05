@@ -151,15 +151,12 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 
 	ng, res := self.gain(mp, lmg.K)
 
-	log.Infof("gain = %x, %x", ng, res)
-
 	for i, q := range self.Knowledge[mp] {
 		if int32(i) == me {
 			continue
 		}
 		imp := improve(msg.K, int32(i))
-		log.Infof("improve(%d) = %v", i, imp)
-		if (ng&(1<<i)) != 0 || imp || q == 0 { // || (q&res) != res {
+		if len(lmg.K) < 3*wire.CommitteeSize && ((ng&(1<<i)) != 0 || imp || q == 0) { // || (q&res) != res {
 			self.sendout(&lmg, mp, me, int32(i))
 		}
 	}

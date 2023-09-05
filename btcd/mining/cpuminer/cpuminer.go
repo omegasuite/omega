@@ -434,6 +434,7 @@ func (m *CPUMiner) generateBlocks() {
 	lastblkrcv := lastblkgen
 
 	nopow := false
+	leader := int32(0)
 
 out:
 	for ; true; m.g.Chain.IsPacking = false {
@@ -583,7 +584,7 @@ out:
 				h := int32(bs.LastRotation) + 1
 				nonce = -h - wire.MINER_RORATE_FREQ
 				if mb, err := m.g.Chain.Miners.BlockByHeight(h); err != nil || mb == nil {
-					time.Sleep(time.Second * 5)
+					time.Sleep(time.Second * 3)
 					continue
 				}
 			} else {
@@ -636,7 +637,7 @@ out:
 		}
 
 		if !powMode {
-			rank := uint32(0)
+			rank := int32(0)
 			if wire.CommitteeSize == 1 {
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
 				mining.AddSignature(block, sigaddr)
@@ -654,13 +655,25 @@ out:
 					miner := mb.MsgBlock().Miner
 					for _, sa := range m.cfg.MiningAddrs {
 						if bytes.Compare(miner[:], sa.ScriptAddress()) == 0 {
-							rank = i - (r - wire.CommitteeSize + 1)
+							rank = int32(i - (r - wire.CommitteeSize + 1))
 							in = true
 						}
 					}
 				}
 			}
 			m.minedBlock = block
+
+			adj := int32(0)
+			if nonce == -1 {
+				leader = 0
+			}
+
+			if leader >= 0 {
+				rank = (rank + wire.CommitteeSize - leader) % wire.CommitteeSize
+			} else {
+				rank = (rank + wire.CommitteeSize) % wire.CommitteeSize
+				adj = 1
+			}
 
 			sz := len(block.MsgBlock().Transactions)
 			block.ClearSize()
@@ -683,7 +696,7 @@ out:
 			}
 
 			if rank > 0 {
-				time.Sleep(time.Duration(rank*5) * time.Second)
+				time.Sleep(time.Duration(rank*4+adj) * time.Second)
 			}
 
 			lastblkgen = time.Now().Unix()
@@ -700,6 +713,11 @@ out:
 				log.Infof("Submit block failed")
 				continue
 			}
+
+			for len(consensus.Leader) > 0 {
+				leader = <-consensus.Leader
+			}
+
 			log.Infof("Waiting for block connected at %d", block.Height())
 
 		connected:
@@ -745,6 +763,7 @@ out:
 			continue
 		}
 
+		time.Sleep(time.Second * 20)
 		log.Info("Try to solve block")
 
 		// Attempt to solve the block.  The function will exit early
@@ -961,88 +980,88 @@ func (m *CPUMiner) NumWorkers() int32 {
 
 func (m *CPUMiner) GenerateNBlocks(n uint32) ([]*chainhash.Hash, error) {
 	return nil, fmt.Errorf("not supported")
-/*
-	m.Lock()
+	/*
+		m.Lock()
 
-	// Respond with an error if server is already mining.
-	if m.started || m.discreteMining {
+		// Respond with an error if server is already mining.
+		if m.started || m.discreteMining {
+			m.Unlock()
+			return nil, errors.New("Server is already CPU mining. Please call " +
+				"`setgenerate 0` before calling discrete `generate` commands.")
+		}
+
+		m.started = true
+		m.discreteMining = true
+
+		m.speedMonitorQuit = make(chan struct{})
+		m.wg.Add(1)
+		go m.speedMonitor()
+
 		m.Unlock()
-		return nil, errors.New("Server is already CPU mining. Please call " +
-			"`setgenerate 0` before calling discrete `generate` commands.")
-	}
 
-	m.started = true
-	m.discreteMining = true
+		log.Tracef("Generating %d blocks", n)
 
-	m.speedMonitorQuit = make(chan struct{})
-	m.wg.Add(1)
-	go m.speedMonitor()
+		i := uint32(0)
+		blockHashes := make([]*chainhash.Hash, n)
 
-	m.Unlock()
+		// Start a ticker which is used to signal checks for stale work and
+		// updates to the speed monitor.
+		ticker := time.NewTicker(time.Second * hashUpdateSecs)
+		defer ticker.Stop()
 
-	log.Tracef("Generating %d blocks", n)
+		for {
+			// Read updateNumWorkers in case someone tries a `setgenerate` while
+			// we're generating. We can ignore it as the `generate` RPC call only
+			// uses 1 worker.
+			select {
+			case <-m.updateNumWorkers:
+			default:
+			}
 
-	i := uint32(0)
-	blockHashes := make([]*chainhash.Hash, n)
+			// Grab the lock used for block submission, since the current block will
+			// be changing and this would otherwise end up building a new block
+			// template on a block that is in the process of becoming stale.
+			m.submitBlockLock.Lock()
+			curHeight := m.g.BestSnapshot().CHeight
 
-	// Start a ticker which is used to signal checks for stale work and
-	// updates to the speed monitor.
-	ticker := time.NewTicker(time.Second * hashUpdateSecs)
-	defer ticker.Stop()
+			// Choose a payment address at random.
+			rand.Seed(time.Now().UnixNano())
+			payToAddr := m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
 
-	for {
-		// Read updateNumWorkers in case someone tries a `setgenerate` while
-		// we're generating. We can ignore it as the `generate` RPC call only
-		// uses 1 worker.
-		select {
-		case <-m.updateNumWorkers:
-		default:
-		}
+			// Create a new block template using the available transactions
+			// in the memory pool as a source of transactions to potentially
+			// include in the block.
+			template, err := m.g.NewBlockTemplate(payToAddr)
+			m.submitBlockLock.Unlock()
+			if err != nil {
+				errStr := fmt.Sprintf("Failed to create new block "+
+					"template: %v", err)
+				log.Errorf(errStr)
+				continue
+			}
 
-		// Grab the lock used for block submission, since the current block will
-		// be changing and this would otherwise end up building a new block
-		// template on a block that is in the process of becoming stale.
-		m.submitBlockLock.Lock()
-		curHeight := m.g.BestSnapshot().CHeight
-
-		// Choose a payment address at random.
-		rand.Seed(time.Now().UnixNano())
-		payToAddr := m.cfg.MiningAddrs[rand.Intn(len(m.cfg.MiningAddrs))]
-
-		// Create a new block template using the available transactions
-		// in the memory pool as a source of transactions to potentially
-		// include in the block.
-		template, err := m.g.NewBlockTemplate(payToAddr)
-		m.submitBlockLock.Unlock()
-		if err != nil {
-			errStr := fmt.Sprintf("Failed to create new block "+
-				"template: %v", err)
-			log.Errorf(errStr)
-			continue
-		}
-
-		// Attempt to solve the block.  The function will exit early
-		// with false when conditions that trigger a stale block, so
-		// a new block template can be generated.  When the return is
-		// true a solution was found, so submit the solved block.
-		if m.solveBlock(template, curHeight+1, ticker, nil) {
-			block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
-			m.submitBlock(block)
-			blockHashes[i] = block.Hash()
-			i++
-			if i == n {
-				log.Tracef("Generated %d blocks", i)
-				m.Lock()
-				close(m.speedMonitorQuit)
-				m.wg.Wait()
-				m.started = false
-				m.discreteMining = false
-				m.Unlock()
-				return blockHashes, nil
+			// Attempt to solve the block.  The function will exit early
+			// with false when conditions that trigger a stale block, so
+			// a new block template can be generated.  When the return is
+			// true a solution was found, so submit the solved block.
+			if m.solveBlock(template, curHeight+1, ticker, nil) {
+				block := btcutil.NewBlock(template.Block.(*wire.MsgBlock))
+				m.submitBlock(block)
+				blockHashes[i] = block.Hash()
+				i++
+				if i == n {
+					log.Tracef("Generated %d blocks", i)
+					m.Lock()
+					close(m.speedMonitorQuit)
+					m.wg.Wait()
+					m.started = false
+					m.discreteMining = false
+					m.Unlock()
+					return blockHashes, nil
+				}
 			}
 		}
-	}
-*/
+	*/
 }
 
 // New returns a new instance of a CPU miner for the provided configuration.
@@ -1050,20 +1069,21 @@ func (m *CPUMiner) GenerateNBlocks(n uint32) ([]*chainhash.Hash, error) {
 // type for more details.
 func New(cfg *Config) *CPUMiner {
 	m := &CPUMiner{
-		g:                 cfg.BlockTemplateGenerator,
-		cfg:               *cfg,
-		numWorkers:        defaultNumWorkers,
-		updateNumWorkers:  make(chan struct{}),
-//		queryHashesPerSec: make(chan float64),
-//		updateHashes:      make(chan uint64),
-		connch: 		   make(chan int32, 1000),
-		miningkeys:		   make(chan *btcec.PrivateKey),
-		addkeyresult:	   make(chan bool),
+		g:                cfg.BlockTemplateGenerator,
+		cfg:              *cfg,
+		numWorkers:       defaultNumWorkers,
+		updateNumWorkers: make(chan struct{}),
+		//		queryHashesPerSec: make(chan float64),
+		//		updateHashes:      make(chan uint64),
+		connch:       make(chan int32, 1000),
+		miningkeys:   make(chan *btcec.PrivateKey),
+		addkeyresult: make(chan bool),
 	}
 
-	consensus.POWStopper = make(chan struct{}, 3 * wire.MINER_RORATE_FREQ)
+	consensus.POWStopper = make(chan struct{}, 3*wire.MINER_RORATE_FREQ)
+	consensus.Leader = make(chan int32, 3*wire.MINER_RORATE_FREQ)
 
-	m.g.Chain.Subscribe(m.Notice)	// Miners.(*minerchain.MinerChain).
-	m.g.Chain.Miners.Subscribe(m.Notice)	// Miners.(*minerchain.MinerChain).
+	m.g.Chain.Subscribe(m.Notice)        // Miners.(*minerchain.MinerChain).
+	m.g.Chain.Miners.Subscribe(m.Notice) // Miners.(*minerchain.MinerChain).
 	return m
 }

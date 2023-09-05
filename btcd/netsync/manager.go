@@ -1690,8 +1690,6 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 					} else {
 						sm.requestedOrphans[iv.Hash]++
 					}
-				} else {
-					delete(sm.requestedOrphans, iv.Hash)
 				}
 				continue
 			}

@@ -868,7 +868,7 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 		case common.InvTypeTx:
 			err = sp.server.pushTxMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 		case common.InvTypeTempBlock: //	in MsgGetData, we always send InvTypeWitnessBlock inv
-			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
+			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding|wire.FullEncoding)
 			if err != nil {
 				src := sp.server.syncManager.TmpBlkSrc(iv.Hash)
 				if src != nil {
@@ -876,9 +876,10 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 				}
 			}
 		case common.InvTypeWitnessBlock:
-			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding)
+			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding|wire.FullEncoding)
 		case common.InvTypeBlock:
-			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
+			btcdLog.Infof("receive a request for InvTypeBlock from %s, treat it as InvTypeWitnessBlock", sp.Peer.Addr())
+			err = sp.server.pushBlockMsg(sp, &iv.Hash, c, waitChan, wire.SignatureEncoding|wire.FullEncoding) // , wire.BaseEncoding|wire.FullEncoding)
 		case common.InvTypeMinerBlock:
 			err = sp.server.pushMinerBlockMsg(sp, &iv.Hash, c, waitChan, wire.BaseEncoding)
 			//		case common.InvTypeFilteredWitnessBlock:

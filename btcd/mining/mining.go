@@ -641,7 +641,7 @@ mempoolLoop:
 			continue
 		}
 
-		if s.MsgBlock().Version&^0xFFFF >= chaincfg.Version2 {
+		if s.MsgBlock().Version >= chaincfg.Version2 {
 			var locked = false
 			locks := ""
 			for _, txin := range tx.MsgTx().TxIn {

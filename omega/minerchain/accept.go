@@ -56,19 +56,19 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	// The block must pass all of the validation rules which depend on the
 	// position of the block within the block chain.
 	err := b.checkBlockContext(block, prevNode, flags)
-	if err != nil && (flags & blockchain.BFEasyBlocks) == 0{
-		if _,ok := err.(RuleError); ok {
+	if err != nil && (flags&blockchain.BFEasyBlocks) == 0 {
+		if _, ok := err.(RuleError); ok {
 			return false, err
 		}
 		flags |= blockchain.BFNoReorg | blockchain.BFSideChain
 	}
 
-	if block.MsgBlock().Version >= chaincfg.Version2 {
+	if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 		sum := uint32(0)
-		p2 := prevNode.Data.(*blockchainNodeData).block.Version >= chaincfg.Version2
+		p2 := prevNode.Data.(*blockchainNodeData).block.Version&0x7FFF0000 >= chaincfg.Version2
 		v2 := prevNode.Data.(*blockchainNodeData).block.MeanTPH
 		for _, v := range block.MsgBlock().TphReports {
-			if p2 && (v > v2 * 8 || 8 * v < v2) {
+			if p2 && (v > v2*8 || 8*v < v2) {
 				return false, ruleError(ErrInvalidAncestorBlock, "Out of range TPH score")
 			}
 			sum += v
@@ -193,7 +193,7 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 		//			return fmt.Errorf("Curable POW factor error.")
 		//		}
 
-		if header.Version >= chaincfg.Version2 {
+		if header.Version&0x7FFF0000 >= chaincfg.Version2 {
 			// since Ver 0x20000, the formula is:
 			// 2 * hashNum * factor <= target * (h1 + h2)
 			// h1 is collacteral factor, h2 is tps factor
@@ -366,7 +366,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
-	if header.Version >= chaincfg.Version4 && header.Collateral != coll {
+	if header.Version&0x7FFF0000 >= chaincfg.Version4 && header.Collateral != coll {
 		str := "block collateral of %d is not the expected value of %d"
 		str = fmt.Sprintf(str, header.Collateral, coll)
 		return ruleError(ErrUnexpectedDifficulty, str)
@@ -390,20 +390,20 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	// MINER_RORATE_FREQ, the difficulty increases 20% for every one more candidate.
 
 	xf := blockchain.BFNone
-	if block.Height() > 2200 || block.MsgBlock().Version >= 0x20000 {
+	if block.Height() > 2200 || block.MsgBlock().Version&0x7FFF0000 >= 0x20000 {
 		xf = blockchain.BFWatingFactor
 	}
-	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet|| b.chainParams.Net == common.RegNet {
+	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet || b.chainParams.Net == common.RegNet {
 		xf |= blockchain.BFEasyBlocks
 	}
 
-	if err := b.checkProofOfWork(header, b.chainParams.PowLimit, flags | xf); err != nil {
+	if err := b.checkProofOfWork(header, b.chainParams.PowLimit, flags|xf); err != nil {
 		return err
 	}
 
 	// validity of Violations
 	uniq := make(map[chainhash.Hash]map[chainhash.Hash]struct{})
-	mh,_ := b.blockChain.BlockHeightByHash(&block.MsgBlock().BestBlock)
+	mh, _ := b.blockChain.BlockHeightByHash(&block.MsgBlock().BestBlock)
 	for _, p := range block.MsgBlock().ViolationReport {
 		if p.Height <= 0 {
 			return ruleError(ErrBlackList, fmt.Errorf("Invalid height: %d", p.Height).Error())
@@ -480,7 +480,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	}
 
 	nextBlockVersion, err := b.NextBlockVersion(prevNode)
-	if err != nil || (header.Version & 0xFFFF0000) < (nextBlockVersion & 0xFFFF0000) ||
+	if err != nil || (header.Version&0xFFFF0000) < (nextBlockVersion&0xFFFF0000) ||
 		header.Version > nextBlockVersion {
 		//		(header.Version & 0xFFFF0000) > ((nextBlockVersion + 0xFFFF) & 0xFFFF0000) ||
 		//		(header.Version > nextBlockVersion && (header.Version & 0xFFFF0000) == (nextBlockVersion & 0xFFFF0000)){

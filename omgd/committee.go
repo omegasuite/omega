@@ -28,10 +28,15 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 	var msg msgnb
 	var ok bool
 
+	next := true
+
 	for {
-		if msg, ok = <-s.queue; !ok {
-			return
+		if next {
+			if msg, ok = <-s.queue; !ok {
+				return
+			}
 		}
+		next = true
 
 		sent := false
 		for _, sp := range s.peers {
@@ -69,96 +74,54 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 			if len(s.peers) > 0 {
 				s.queue <- msg
 			} else {
-				switch msg.msg.(type) {
-				case wire.OmegaMessage:
-					msg.msg.(wire.OmegaMessage).SetSeq(rand.Int31())
-				}
-				Server.Broadcast(msg.msg, nil)
-				if msg.done != nil {
-					msg.done <- true
-				}
-				continue
-
-				if s.retry != maxFailedAttempts || len(s.queue) < 30 { // if len(s.address) > 0
-					if len(p.persistentPeers) > 0 || s.connecting {
-						// if we have persistent peers, don't make any connection
-						if msg.done != nil {
-							msg.done <- false
-						}
-						s.msgsent++
-						continue
+				tcp, err := net.ResolveTCPAddr("", s.address)
+				if err != nil {
+					btcdLog.Infof("CommitteeOut: can not resolve %s", s.address)
+					if msg.done != nil {
+						msg.done <- false
 					}
+					s.msgsent++
+					continue
+				}
 
-					tcp, err := net.ResolveTCPAddr("", s.address)
-					if err != nil {
-						btcdLog.Infof("CommitteeOut: can not resolve %s", s.address)
-						if msg.done != nil {
-							msg.done <- false
-						}
-						s.msgsent++
-						continue
-					}
+				btcdLog.Infof("CommitteeOut: make a connection for %s to %s.", msg.msg.Command(), tcp.String())
 
-					btcdLog.Infof("CommitteeOut: make a connection for %s to %s.", msg.msg.Command(), tcp.String())
+				s.retry++
+				connected := make(chan bool)
 
-					s.retry++
-					connected := make(chan bool)
+				s.connecting = true
 
-					s.connecting = true
-
-					//				if !s.connecting {
-					//					s.connecting = true
-					go p.connManager.Connect(&connmgr.ConnReq{
-						Addr:      tcp,
-						Permanent: false,
-						Committee: s.minerHeight,
-						Miner:     s.member,
-						Initcallback: func(sp connmgr.ServerPeer) {
-							s.connecting = false
-							s.peers = append(s.peers, sp.(*serverPeer))
-							close(connected)
-						},
-					})
-					//				}
-
-					select {
-					case <-connected:
-						btcdLog.Infof("CommitteeOut: connection established.")
-						s.retry = 0
-						if len(s.queue) < 40 && !s.closed {
-							btcdLog.Infof("CommitteeOut: push back msg.")
-							s.queue <- msg
-						} else {
-							if msg.done != nil {
-								btcdLog.Infof("CommitteeOut: signal msg send failure.")
-								msg.done <- false
-							}
-							s.msgsent++
-						}
-
-					case <-time.After(time.Second * time.Duration(4*(s.retry+1))):
-						btcdLog.Infof("CommitteeOut: connection time out.")
+				//				if !s.connecting {
+				//					s.connecting = true
+				go p.connManager.Connect(&connmgr.ConnReq{
+					Addr:      tcp,
+					Permanent: false,
+					Committee: s.minerHeight,
+					Miner:     s.member,
+					Initcallback: func(sp connmgr.ServerPeer) {
 						s.connecting = false
-						s.retry++
-						// time out, treat it as a connection failure
-						if s.retry > maxFailedAttempts {
-							s.retry = maxFailedAttempts
-							if msg.done != nil {
-								btcdLog.Infof("CommitteeOut: signal msg send failure.")
-								msg.done <- false
-							}
-							s.msgsent++
-						} else if len(s.queue) < 40 && !s.closed {
-							btcdLog.Infof("CommitteeOut: push back msg.")
-							s.queue <- msg
-						} else {
-							s.msgsent++
-							if msg.done != nil {
-								btcdLog.Infof("CommitteeOut: signal msg send failure.")
-								msg.done <- false
-							}
-						}
+						s.peers = append(s.peers, sp.(*serverPeer))
+						close(connected)
+					},
+				})
+				//				}
+
+				select {
+				case <-connected:
+					btcdLog.Infof("CommitteeOut: connection established.")
+					s.retry = 0
+					next = false
+
+				case <-time.After(time.Second * time.Duration(4*(s.retry+1))):
+					switch msg.msg.(type) {
+					case wire.OmegaMessage:
+						msg.msg.(wire.OmegaMessage).SetSeq(rand.Int31())
 					}
+					Server.Broadcast(msg.msg, nil)
+					if msg.done != nil {
+						msg.done <- true
+					}
+					s.msgsent++
 				}
 			}
 		}

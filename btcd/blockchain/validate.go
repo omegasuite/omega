@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
@@ -921,6 +922,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 	if err != nil {
 		return err
 	}
+
 	fastAdd := flags&BFFastAdd == BFFastAdd
 	if !fastAdd {
 		if len(block.MsgBlock().Transactions) > wire.MaxTxPerBlock {
@@ -958,6 +960,17 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 				"transaction %v", block.Hash())
 			return ruleError(ErrBadCoinbaseScriptLen, str)
 		}
+	}
+
+	// Validate the witness commitment (if any) within the
+	// block.  This involves asserting that if the coinbase
+	// contains the special commitment output, then this
+	// merkle root matches a computed merkle root of all
+	// the wtxid's of the transactions within the block. In
+	// addition, various other checks against the
+	// coinbase's witness stack.
+	if err := ValidateWitnessCommitment(block); err != nil {
+		return err
 	}
 
 	return nil
@@ -1652,17 +1665,13 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// against all the inputs when the signature operations are out of
 	// bounds.
 
-	//	var oldcoinBase *btcutil.Tx
-	var coinBase *btcutil.Tx
+	coinBase := btcutil.NewTx(transactions[0].MsgTx().Stripped())
+	coinBase.SetIndex(transactions[0].Index())
 
 	if Vm != nil {
 		Vm.SetViewPoint(views)
 
-		//		oldcoinBase = btcutil.NewTx(transactions[0].MsgTx().Copy())
-		coinBase = transactions[0]
-		coinBase.MsgTx().Strip()
-		coinBase.SetIndex(transactions[0].Index())
-		coinBaseHash := *coinBase.Hash()
+		coinBaseHash := *transactions[0].Hash()
 
 		Vm.SetCoinBaseOp(
 			func(txo wire.TxOut) wire.OutPoint {
@@ -1700,7 +1709,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	paidstoragefees := make(map[[20]byte]int64)
 	storages := make([]int64, len(transactions)-1)
 
-	mblk := *block.MsgBlock()
+	var unmached string
 
 	for i, tx := range transactions[1:] {
 		if runScripts {
@@ -1720,34 +1729,70 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				return err
 			}
 
-			//			if !newtx.Match(tx) {
-			//				return fmt.Errorf("Mismatch contract execution result")
-			//			}
+			if !newtx.Match(tx) {
+				old, _ := json.Marshal(tx.MsgTx())
+				newt, _ := json.Marshal(newtx.MsgTx())
+				blk, _ := json.Marshal(block.MsgBlock())
 
-			mblk.Transactions[i+1] = newtx.MsgTx()
+				unmached = unmached + fmt.Sprintf("Mismatch contract execution result. old %s \n vs. new %s \n block %s\n", string(old), string(newt), string(blk))
+
+				if !tx.Match(btcutil.NewTx(tx.MsgTx().Stripped())) {
+					// we will update block in DB only if mismatch is between raw tx and executed tx
+					// here we find that tx is executed (therefore it does not match its raw version)
+					return fmt.Errorf("%s", unmached)
+				}
+				transactions[i+1] = newtx
+			}
 
 			storages[i] = ContractNewStorage(newtx, Vm, paidstoragefees)
 		}
 	}
 
-	mblk.Transactions[0] = coinBase.MsgTx()
-
 	if Vm != nil {
+		if !transactions[0].Match(coinBase) {
+			transactions[0] = coinBase
+			unmached = unmached + "Mismatch contract execution result in coinbase."
+		}
+
+		if len(unmached) > 0 {
+			var dbblk *btcutil.Block
+			b.db.View(func(dbTx database.Tx) error {
+				var err error
+				blockBytes, err := dbTx.FetchBlock(block.Hash())
+				if err != nil {
+					return err
+				}
+
+				t, err := btcutil.NewBlockFromBytes(blockBytes)
+				if err != nil {
+					return err
+				}
+
+				dbblk = t
+
+				return nil
+			})
+
+			if dbblk != nil {
+				um := false
+				for i, tx := range dbblk.Transactions() {
+					um = um || !tx.Match(transactions[i])
+				}
+				if um {
+					b.db.Update(func(dbTx database.Tx) error {
+						return dbTx.UpdateBlock(block)
+					})
+				}
+			}
+			return fmt.Errorf("%s", unmached)
+		}
 		if Vm.StepLimit != 0 {
 			return fmt.Errorf("Incorrect contract execution cost.")
 		}
-		//		if !block.Transactions()[0].Match(oldcoinBase) {
-		//			Vm.AbortRollback()
-		//			return fmt.Errorf("Mismatch contract execution result in coinbase")
-		//		}
 	}
 
 	totalFees := int64(0)
 	txFee := int64(0)
-
-	block = btcutil.NewBlock(&mblk)
-
-	transactions = block.Transactions()
 
 	//	views.Rights = viewpoint.NewRightViewpoint()
 	//	views.Polygon = viewpoint.NewPolygonViewpoint()
@@ -1831,17 +1876,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		if err != nil {
 			return err
 		}
-	}
-
-	// Validate the witness commitment (if any) within the
-	// block.  This involves asserting that if the coinbase
-	// contains the special commitment output, then this
-	// merkle root matches a computed merkle root of all
-	// the wtxid's of the transactions within the block. In
-	// addition, various other checks against the
-	// coinbase's witness stack.
-	if err := ValidateWitnessCommitment(block); err != nil {
-		return err
 	}
 
 	// Build merkle tree and ensure the calculated merkle root matches the

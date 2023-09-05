@@ -229,6 +229,7 @@ type Tx interface {
 	//
 	// Other errors are possible depending on the implementation.
 	StoreBlock(block *btcutil.Block) error
+	UpdateBlock(block *btcutil.Block) error
 	StoreMinerBlock(block *wire.MinerBlock) error
 
 	// HasBlock returns whether or not a block with the given hash exists

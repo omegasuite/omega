@@ -1425,8 +1425,8 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 			if i == 0 {
 				continue
 			}
-			//			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
-			//			newtx.SetIndex(tx.Index())
+			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
+			newtx.SetIndex(tx.Index())
 			_, err = Vm.ExecContract(tx, block.Height())
 			if err != nil {
 				//				Vm.AbortRollback()
@@ -1434,15 +1434,15 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 				return detachable, attachable, err
 			}
 
-			//			if !tx.Match(newtx) {
-			//				log.Infof("Mismatch contract execution result")
-			//				return detachable, attachable, fmt.Errorf("Mismatch contract execution result")
-			//			}
+			if !tx.Match(newtx) {
+				log.Infof("Mismatch contract execution result")
+				return detachable, attachable, fmt.Errorf("Mismatch contract execution result")
+			}
 		}
-		//		if !block.Transactions()[0].Match(coinBase) {
-		//			log.Infof("Mismatch coinbase contract execution result")
-		//			return detachable, attachable, fmt.Errorf("Mismatch coinbase contract execution result")
-		//		}
+		if !block.Transactions()[0].Match(coinBase) {
+			log.Infof("Mismatch coinbase contract execution result")
+			return detachable, attachable, fmt.Errorf("Mismatch coinbase contract execution result")
+		}
 		if Vm.StepLimit != 0 {
 			log.Infof("Incorrect contract execution cost.")
 			return detachable, attachable, fmt.Errorf("Incorrect contract execution cost.")
@@ -1488,7 +1488,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 
 // checkBlockSanity check whether the miner has provided sufficient collateral
 func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest *chainhash.Hash, flags BehaviorFlags) (uint32, error) {
-	if block.MsgBlock().Utxos == nil || block.MsgBlock().Version < chaincfg.Version2 {
+	if block.MsgBlock().Utxos == nil || block.MsgBlock().Version&0x7FFF0000 < chaincfg.Version2 {
 		return 0, nil
 	}
 
@@ -1553,7 +1553,7 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest *chainhash.H
 		return 0, fmt.Errorf("Insufficient Collateral.")
 	}
 
-	if block.MsgBlock().Version >= chaincfg.Version3 {
+	if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version3 {
 		pks := e.PkScript()
 		if bytes.Compare(pks[1:21], block.MsgBlock().Miner[:]) != 0 {
 			return 0, fmt.Errorf("Collateral belongs to someone else.")
@@ -2737,6 +2737,16 @@ func (b *BlockChain) HaveNode(h *chainhash.Hash) bool {
 	}
 
 	return b.dbHeightofHash(*h) >= 0
+}
+
+func (b *BlockChain) MainChainNodeByHash(h *chainhash.Hash) *chainutil.BlockNode {
+	p := b.index.LookupNode(h)
+
+	if !b.BestChain.Contains(p) {
+		return nil
+	}
+
+	return p
 }
 
 func (b *BlockChain) NodeByHash(h *chainhash.Hash) *chainutil.BlockNode {

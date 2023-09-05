@@ -255,27 +255,28 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 
 	factorPOW := int64(1)
 
-	if header.Height > 2200 || block.Version >= 0x20000 {
+	if header.Height > 2200 || block.Version&0x7FFF0000 >= 0x20000 {
 		factorPOW = m.factorPOW(header.Height-1, header.Block.(*wire.MingingRightBlock).BestBlock)
 	}
 
-	//	if block.Version >= chaincfg.Version2 && factorPOW > 0 {
-	//		factorPOW = 16 * factorPOW // factor 16 is for smooth transition from V1 to V2
-	//	}
+	// Normal mode
+	//if block.Version < chaincfg.Version5 && block.Version >= chaincfg.Version2 && factorPOW > 0 {
+	//	factorPOW = 16 * factorPOW // factor 16 is for smooth transition from V1 to V2
+	//}
 
 	if factorPOW < 0 {
 		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(-factorPOW))
 		factorPOW = 1
 	}
 
-	if block.Version >= chaincfg.Version2 {
+	if block.Version&0x7FFF0000 >= chaincfg.Version2 {
 		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(h))
-		//		if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))) > 0 {
-		//			targetDifficulty = m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))
-		//		}
-	} //  else
-
-	if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
+		if block.Version&0x7FFF0000 <= chaincfg.Version5 && targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))) > 0 {
+			targetDifficulty = m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))
+		} else if block.Version&0x7FFF0000 > chaincfg.Version5 && targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
+			targetDifficulty = m.cfg.ChainParams.PowLimit
+		}
+	} else if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
 		targetDifficulty = m.cfg.ChainParams.PowLimit
 	}
 
@@ -298,7 +299,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 			// periodically checking for early quit and stale block
 			// conditions along with updates to the speed monitor.
 			for i := start; i <= maxNonce-numWorkers; i += numWorkers {
-				if i%10000 == 0 {
+				if i%10000 == 0 { // normal mode
 					select {
 					case <-locquit:
 						return
@@ -559,13 +560,13 @@ out:
 		// true a solution was found, so submit the solved block.
 		block := wire.NewMinerBlock(template.Block.(*wire.MingingRightBlock))
 
-		if chainChoice.Hash == *m.g.Chain.Miners.Tip().Hash() && block.MsgBlock().Version >= chaincfg.Version2 {
+		if chainChoice.Hash == *m.g.Chain.Miners.Tip().Hash() && block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 			// we choose the best chain, file violation report
 			violations := m.g.Chain.Miners.(*MinerChain).violations
 			t := make([]*wire.Violations, 0, len(violations))
-			for _,v := range violations {
+			for _, v := range violations {
 				vb := make(map[chainhash.Hash]struct{})
-				for _,h := range v.Blocks {
+				for _, h := range v.Blocks {
 					vb[h] = struct{}{}
 				}
 
@@ -575,8 +576,8 @@ out:
 					if v.MRBlock == p.Data.(*blockchainNodeData).block.BlockHash() {
 						inrange = true
 					}
-					for _,u := range p.Data.(*blockchainNodeData).block.ViolationReport {
-						for _,h := range u.Blocks {
+					for _, u := range p.Data.(*blockchainNodeData).block.ViolationReport {
+						for _, h := range u.Blocks {
 							delete(vb, h)
 						}
 					}
@@ -586,7 +587,7 @@ out:
 					t = append(t, v)
 				}
 			}
-			sort.Slice(t, func (i int, j int) bool {
+			sort.Slice(t, func(i int, j int) bool {
 				return t[i].Height < t[j].Height
 			})
 			block.MsgBlock().ViolationReport = t
@@ -606,29 +607,29 @@ out:
 			time.Sleep(time.Second * 5)
 			continue
 		}
-/*
-		bm := len(m.g.Chain.BlackedList)
-		if bm > 0 {
-			bl := make([]*wire.Violations, 0, bm)
-			for j := 0; j < bm; j++ {
-				n := m.g.Chain.BlackedList[j]
-				mb, _ := m.g.Chain.Miners.BlockByHash(&n.MRBlock)
-				if mb.Height() < template.Height-99 {
-					continue
+		/*
+			bm := len(m.g.Chain.BlackedList)
+			if bm > 0 {
+				bl := make([]*wire.Violations, 0, bm)
+				for j := 0; j < bm; j++ {
+					n := m.g.Chain.BlackedList[j]
+					mb, _ := m.g.Chain.Miners.BlockByHash(&n.MRBlock)
+					if mb.Height() < template.Height-99 {
+						continue
+					}
+					bl = append(bl, n)
 				}
-				bl = append(bl, n)
+				m.g.Chain.BlackedList = m.g.Chain.BlackedList[bm:]
+				if len(bl) > 0 {
+					block.MsgBlock().ViolationReport = bl
+				}
 			}
-			m.g.Chain.BlackedList = m.g.Chain.BlackedList[bm:]
-			if len(bl) > 0 {
-				block.MsgBlock().ViolationReport = bl
-			}
-		}
- */
+		*/
 		m.submitBlockLock.Unlock()
 
 		var h1, h2 int64
 
-		if block.MsgBlock().Version >= chaincfg.Version2 {
+		if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 			// for h1, we compare this block's coin & Collateral for simplicity
 			h := NodetoHeader(chainChoice)
 			c := h.Collateral

@@ -1168,7 +1168,7 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 	w := bytes.NewBuffer(make([]byte, 0, block.MsgBlock().SerializeSize()))
 	err := block.MsgBlock().SerializeFull(w)
 
-//	blockBytes, err := block.Bytes()
+	//	blockBytes, err := block.Bytes()
 	if err != nil {
 		str := fmt.Sprintf("failed to get serialized bytes for block %s",
 			blockHash)
@@ -1176,18 +1176,6 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 	}
 
 	blockBytes := w.Bytes()
-
-	// we really shout not be doing it here
-	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
-		panic(fmt.Sprintf("insifficient signatures for block %s", block.Hash().String()))
-		os.Exit(-8)
-		return makeDbErr(database.ErrTxNotWritable, "insifficient signatures", nil)
-	}
-	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts[1]) < 33 {
-		panic(fmt.Sprintf("incorrect signatures for block %s", block.Hash().String()))
-		os.Exit(-9)
-		return makeDbErr(database.ErrTxNotWritable, "incorrect signatures", nil)
-	}
 
 	// Add the block to be stored to the list of pending blocks to store
 	// when the transaction is committed.  Also, add it to pending blocks
@@ -1201,6 +1189,58 @@ func (tx *transaction) StoreBlock(block *btcutil.Block) error {
 		hash:  blockHash,
 		bytes: blockBytes,
 	})
+	log.Tracef("Added block %s to pending blocks", blockHash)
+
+	return nil
+}
+
+func (tx *transaction) UpdateBlock(block *btcutil.Block) error {
+	// Ensure transaction state is valid.
+	if err := tx.checkClosed(); err != nil {
+		return err
+	}
+
+	// Ensure the transaction is writable.
+	if !tx.writable {
+		str := "store block requires a writable database transaction"
+		return makeDbErr(database.ErrTxNotWritable, str, nil)
+	}
+
+	// Reject the block if it already exists.
+	blockHash := block.Hash()
+
+	w := bytes.NewBuffer(make([]byte, 0, block.MsgBlock().SerializeSize()))
+	err := block.MsgBlock().SerializeFull(w)
+
+	//	blockBytes, err := block.Bytes()
+	if err != nil {
+		str := fmt.Sprintf("failed to get serialized bytes for block %s",
+			blockHash)
+		return makeDbErr(database.ErrDriverSpecific, str, err)
+	}
+
+	blockBytes := w.Bytes()
+
+	// Add the block to be stored to the list of pending blocks to store
+	// when the transaction is committed.  Also, add it to pending blocks
+	// map so it is easy to determine the block is pending based on the
+	// block hash.
+	if tx.pendingBlocks == nil {
+		tx.pendingBlocks = make(map[chainhash.Hash]int)
+	}
+
+	if p, ok := tx.pendingBlocks[*blockHash]; ok {
+		tx.pendingBlockData[p] = pendingBlock{
+			hash:  blockHash,
+			bytes: blockBytes,
+		}
+	} else {
+		tx.pendingBlocks[*blockHash] = len(tx.pendingBlockData)
+		tx.pendingBlockData = append(tx.pendingBlockData, pendingBlock{
+			hash:  blockHash,
+			bytes: blockBytes,
+		})
+	}
 	log.Tracef("Added block %s to pending blocks", blockHash)
 
 	return nil

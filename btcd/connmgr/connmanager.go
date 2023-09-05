@@ -571,6 +571,7 @@ func (cm *ConnManager) listenHandler(listener net.Listener) {
 			}
 			continue
 		}
+		time.Sleep(100 * time.Millisecond)
 		go cm.cfg.OnAccept(conn)
 	}
 

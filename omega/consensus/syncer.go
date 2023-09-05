@@ -10,6 +10,7 @@ package consensus
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
@@ -199,7 +200,7 @@ func (self *Syncer) repeater() {
 	} else if self.agreed == self.Myself {
 		best := self.Myself
 		for i, b := range self.asked {
-			if b != nil || int32(i) == self.Myself || !self.better(int32(i), self.Myself) {
+			if b == nil || int32(i) == self.Myself || !self.better(int32(i), self.Myself) {
 				continue
 			}
 			if self.better(int32(i), best) {
@@ -348,6 +349,10 @@ type debugtype struct {
 }
 
 func (self *Syncer) process(cmd interface{}) bool {
+	if !self.Runnable || self.Done {
+		return true
+	}
+
 	switch cmd.(type) {
 	case *debugtype:
 		self.debugging()
@@ -621,12 +626,16 @@ loop:
 					miner.server.NewConsusBlock(self.forest[owner].block)
 				}
 			}
+			self.forestLock.Unlock()
 
 			log.Infof("sync %d quit", self.Height)
 
+			if Leader != nil {
+				Leader <- self.agreed
+			}
+
 			self.Done = true
 			self.Runnable = false
-			self.forestLock.Unlock()
 
 			return
 		}
@@ -1362,15 +1371,16 @@ func (self *Syncer) setCommittee() {
 
 	in := false
 
+	self.forestLock.Lock()
 	for i := c - wire.CommitteeSize + 1; i <= c; i++ {
-		blk,_ := miner.server.MinerBlockByHeight(i)
+		blk, _ := miner.server.MinerBlockByHeight(i)
 		if blk == nil {
 			continue
 		}
 
 		who := i - (c - wire.CommitteeSize + 1)
 
-		for _,n := range miner.name {
+		for _, n := range miner.name {
 			if bytes.Compare(n[:], blk.MsgBlock().Miner[:]) == 0 {
 				inc := false
 				for _, ip := range miner.cfg.ExternalIPs {
@@ -1391,6 +1401,7 @@ func (self *Syncer) setCommittee() {
 		self.Members[blk.MsgBlock().Miner] = who
 		self.Names[who] = blk.MsgBlock().Miner
 	}
+	self.forestLock.Unlock()
 
 	self.knowledges = CreateKnowledge(self)
 

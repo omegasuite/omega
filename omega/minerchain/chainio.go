@@ -12,7 +12,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/omegasuite/btcd/blockchain"
@@ -247,13 +246,6 @@ func (b *MinerChain) initChainState() error {
 		}
 	}
 
-	gobackone := false
-	for _, v := range os.Args {
-		if v == "--minerback" {
-			gobackone = true
-		}
-	}
-
 	// Attempt to load the chain state from the database.
 	exec := func(dbTx database.Tx) error {
 		// Fetch the stored chain state from the database metadata.
@@ -336,11 +328,6 @@ func (b *MinerChain) initChainState() error {
 			return AssertError(fmt.Sprintf("initChainState: cannot find "+
 				"chain tip %s in block index", state.hash))
 		}
-		if gobackone {
-			b.index.SetStatusFlags(tip, chainutil.StatusValidateFailed)
-			tip = tip.Parent
-			state.hash = tip.Hash
-		}
 
 		b.BestChain.SetTip(tip)
 
@@ -378,20 +365,10 @@ func (b *MinerChain) initChainState() error {
 		// Initialize the state related to the best block.
 		b.stateSnapshot = newBestState(tip, tip.CalcPastMedianTime())
 
-		if gobackone {
-			if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
-				return err
-			}
-		}
-
 		return nil
 	}
 
-	if gobackone {
-		err = b.db.Update(exec)
-	} else {
-		err = b.db.View(exec)
-	}
+	err = b.db.View(exec)
 
 	if err != nil {
 		return err

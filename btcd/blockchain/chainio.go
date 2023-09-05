@@ -12,8 +12,6 @@ import (
 	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/wire/common"
 	"math/big"
-	"os"
-
 	//	"sort"
 	"time"
 
@@ -1071,12 +1069,6 @@ func (b *BlockChain) initChainState() error {
 	buffertop := 0
 
 	// Attempt to load the chain state from the database.
-	gobackone := false
-	for _, v := range os.Args {
-		if v == "--chainback" {
-			gobackone = true
-		}
-	}
 
 	exec := func(dbTx database.Tx) error {
 		// Fetch the stored chain state from the database metadata.
@@ -1225,18 +1217,6 @@ func (b *BlockChain) initChainState() error {
 				"chain tip %s in block index", state.hash))
 		}
 
-		rdiff := uint32(0)
-		if gobackone {
-			if tip.Data.GetNonce() > 0 {
-				rdiff = 2
-			} else if tip.Data.GetNonce() < -wire.MINER_RORATE_FREQ {
-				rdiff = 1
-			}
-			b.index.SetStatusFlags(tip, chainutil.StatusValidateFailed)
-			tip = tip.Parent
-			state.hash = tip.Hash
-		}
-
 		b.BestChain.SetTip(tip)
 
 		// Load the raw block bytes for the best block.
@@ -1273,27 +1253,14 @@ func (b *BlockChain) initChainState() error {
 		blockSize := uint64(len(blockBytes))
 		numTxns := uint64(len(block.Transactions))
 
-		if gobackone {
-			b.stateSnapshot = newBestState(tip, blockSize,
-				numTxns, state.totalTxns-numTxns, tip.CalcPastMedianTime(), // state.bits,
-				state.rotation-rdiff)
-			if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
-				return err
-			}
-		} else {
-			b.stateSnapshot = newBestState(tip, blockSize,
-				numTxns, state.totalTxns, tip.CalcPastMedianTime(), // state.bits,
-				state.rotation)
-		}
+		b.stateSnapshot = newBestState(tip, blockSize,
+			numTxns, state.totalTxns, tip.CalcPastMedianTime(), // state.bits,
+			state.rotation)
 
 		return nil
 	}
 
-	if gobackone {
-		err = b.db.Update(exec)
-	} else {
-		err = b.db.View(exec)
-	}
+	err = b.db.View(exec)
 
 	if err != nil {
 		return err

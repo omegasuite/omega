@@ -239,9 +239,9 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			j := b.blocksPerRetarget - (nextAdjustHeight - pb.Height)
 			if j < 0 {
 				i = -1
-			} else if collaterals[j] == 0 && pb.Height < lastNode.Height - 7 {	// block is considered finalized after 7 confirmations
+			} else if collaterals[j] == 0 && pb.Height < lastNode.Height-7 { // block is considered finalized after 7 confirmations
 				i--
-				if block.Version >= chaincfg.Version5 && block.Utxos != nil {
+				if block.Version&0x7FFF0000 >= chaincfg.Version5 && block.Utxos != nil {
 					var op = block.Utxos
 
 					// it could have been spent, so we get the raw tx and find out its value
@@ -321,16 +321,16 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	normalizedTimespan := int64(0)
 	pb := firstNode
 
-	coll = 0x7FFFFFFF	// max. min coll for next period is the min coll of all in the last period
+	coll = 0x7FFFFFFF // max. min coll for next period is the min coll of all in the last period
 
-//	bb := b.blockChain.BestChain.Tip()
+	//	bb := b.blockChain.BestChain.Tip()
 	for i := b.blocksPerRetarget - 2; i >= 0; i-- {
 		// to cause loading of missing nodes
-//		b.blockChain.HeaderByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
+		//		b.blockChain.HeaderByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
 		block := pb.Data.(*blockchainNodeData).block
 		bb := b.blockChain.NodeByHash(&block.BestBlock)
 
-		if block.Collateral < coll && block.Version < chaincfg.Version5 {
+		if block.Collateral < coll && block.Version&0x7FFF0000 < chaincfg.Version5 {
 			coll = block.Collateral
 		}
 
@@ -339,7 +339,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			if uint32(collaterals[j]) < coll {
 				coll = uint32(collaterals[j])
 			}
-		} else if v3 && block.Version >= chaincfg.Version5 && block.Utxos != nil {
+		} else if v3 && block.Version&0x7FFF0000 >= chaincfg.Version5 && block.Utxos != nil {
 			var op = block.Utxos
 
 			// it could have been spent, so we get the raw tx and find out its value

@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/wire/common"
 	"math/big"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -698,7 +699,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
-		if block.MsgBlock().Version >= chaincfg.Version2 {
+		if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 			if r, err, _ := b.checkV2(block, newBest, blockchain.BFNone); !r {
 				if err != nil {
 					log.Infof("checkV2 failed for attaching block: %s", err.Error())
@@ -710,7 +711,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		}
 
 		xf := blockchain.BFNone
-		if block.Height() > 2200 || block.MsgBlock().Version >= wire.Version2 {
+		if block.Height() > 2200 || block.MsgBlock().Version&0x7FFF0000 >= wire.Version2 {
 			xf = blockchain.BFWatingFactor
 		}
 		if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet || b.chainParams.Net == common.RegNet {
@@ -1490,6 +1491,21 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		return nil, err
 	}
 
+	for _, v := range os.Args {
+		if v == "--minerback" {
+			detachNodes := list.New()
+			detachNodes.PushBack(b.BestChain.Tip())
+
+			b.chainLock.Lock()
+			b.reorganizeChain(detachNodes, list.New())
+			b.chainLock.Unlock()
+
+			config.DB.Close()
+			config.MinerDB.Close()
+			return nil, fmt.Errorf("rolled back one miner block. please restart")
+		}
+	}
+
 	b.Subscribe(b.reportNotice)
 
 	b.blockChain = s
@@ -1549,7 +1565,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		//		b.reorganizeChain(detachNodes, list.New())
 		b.chainLock.Unlock()
 
-		detachNodes := list.New()
+		detachNodes = list.New()
 		//		var p *chainutil.BlockNode
 		//		p = nil
 		for m, r := s.BestChain.Tip(), s.BestSnapshot().LastRotation; r >= uint32(rotaterm); m = m.Parent {
@@ -1579,6 +1595,8 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	for txtop != nil && txtop.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
 		txtop = txtop.Parent
 	}
+
+	detachNodes = list.New()
 	if txtop != nil && mbest.Height < -txtop.Data.GetNonce()-wire.MINER_RORATE_FREQ {
 		ok = false
 		// roll back tx chain to the point where a rotation references to a valid
@@ -1596,16 +1614,33 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 			}
 		}
 
-		detachNodes := list.New()
 		for n := s.BestChain.Tip(); n.Parent != nil && n != rp; n = n.Parent {
 			detachNodes.PushBack(n)
 		}
 		detachNodes.PushBack(rp)
+	}
 
+	if ok {
+		for _, v := range os.Args {
+			if v == "--chainback" {
+				detachNodes.PushBack(s.BestChain.Tip())
+				ok = false
+				break
+			}
+		}
+	}
+
+	if !ok {
 		log.Warnf("tx chain is corrupted. roll back %d blocks", detachNodes.Len())
 		s.ChainLock.Lock()
 		s.ReorganizeChain(detachNodes, list.New())
 		s.ChainLock.Unlock()
+
+		log.Infof("commit to data base and exit")
+
+		config.DB.Close()
+		config.MinerDB.Close()
+		return nil, fmt.Errorf("databased was corrupted. please restart")
 	}
 
 	// Initialize rule change threshold state caches.
@@ -1613,15 +1648,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		return nil, err
 	}
 
-	if !ok {
-		log.Infof("commit to data base and exit")
-
-		config.DB.Close()
-		config.MinerDB.Close()
-		return nil, fmt.Errorf("databased was corrupted. please restart")
-	}
-	log.Infof("Miner Chain state (height %d, hash %s)",
-		mtop.Height, mtop.Hash.String())
+	log.Infof("Miner Chain state (height %d, hash %s)", mtop.Height, mtop.Hash.String())
 
 	return s, nil
 }
