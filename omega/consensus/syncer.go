@@ -10,7 +10,6 @@ package consensus
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
