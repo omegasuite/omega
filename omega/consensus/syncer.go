@@ -1319,7 +1319,8 @@ func (self *Syncer) validateMsg(finder [20]byte, m *chainhash.Hash, msg Message)
 			return false
 		}
 		pkh := signer.Hash160()
-		if bytes.Compare(msg.Sender(), pkh[:]) != 0 {
+		s := msg.Sender()
+		if bytes.Compare(s[:], pkh[:]) != 0 {
 			log.Infof("%s Verify sender fail", msg.Command())
 			return false
 		}

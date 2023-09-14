@@ -38,7 +38,7 @@ type Message interface {
 	Sign(key *btcec.PrivateKey)
 	DoubleHashB() []byte
 	GetSignature() []byte
-	Sender() []byte
+	Sender() [20]byte
 	BlockHash() chainhash.Hash
 	Sequence() int32
 }
@@ -60,12 +60,14 @@ type PeerNotifier interface {
 	ResetConnections()
 	GetTxBlock(h int32) *btcutil.Block
 	Broadcast(wire.Message, *string)
+	AddKnownCommittee(int32, [20]byte) bool
 }
 
 type ReqQueue interface {
 	QueueMessage(msg wire.Message, doneChan chan<- bool)
 	QueueMessageWithEncoding(msg wire.Message, doneChan chan<- bool, encoding wire.MessageEncoding)
 	Addr() string
+	ID() int32
 }
 
 type Miner struct {
@@ -387,6 +389,9 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 		}
 		return false, nil
 	}
+
+	// add source IP to known committee
+	miner.server.AddKnownCommittee(p.ID(), m.Sender())
 
 	miner.syncMutex.Lock()
 

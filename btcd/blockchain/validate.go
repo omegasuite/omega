@@ -1812,7 +1812,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	if err != nil {
 		return err
 	}
-	log.Infof("coinbase check")
 
 	for i, tx := range transactions[1:] {
 		err := CheckTransactionInputs(tx, node.Height, views, b.ChainParams)

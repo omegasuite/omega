@@ -148,8 +148,8 @@ func (msg MsgRelease) GetSignature() []byte {
 	return msg.Signature[:]
 }
 
-func (msg * MsgRelease) Sender() []byte {
-	return msg.From[:]
+func (msg *MsgRelease) Sender() [20]byte {
+	return msg.From
 }
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to

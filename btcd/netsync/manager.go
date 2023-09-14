@@ -810,6 +810,9 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	behaviorFlags := blockchain.BFNone
 
+	// If we didn't ask for this block then the peer is misbehaving.
+	blockHash := bmsg.block.Hash()
+
 	// if it is a block being processed by the committee, veryfy it is from the peer
 	// producing, i.e. the address in coinbase signature is the peer's
 	if wire.CommitteeSize > 1 && bmsg.block.MsgBlock().Header.Nonce < 0 &&
@@ -830,8 +833,6 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		behaviorFlags |= blockchain.BFNoConnect
 	}
 
-	// If we didn't ask for this block then the peer is misbehaving.
-	blockHash := bmsg.block.Hash()
 	/*
 		if _, exists = state.requestedBlocks[*blockHash]; !exists && behaviorFlags & blockchain.BFNoConnect != blockchain.BFNoConnect {
 			// The regression test intentionally sends some blocks twice

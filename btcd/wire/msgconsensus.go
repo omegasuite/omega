@@ -135,8 +135,8 @@ func (msg *MsgConsensus) GetSignature() []byte {
 	return msg.Signature[:]
 }
 
-func (msg *MsgConsensus) Sender() []byte {
-	return msg.From[:]
+func (msg *MsgConsensus) Sender() [20]byte {
+	return msg.From
 }
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to
@@ -236,18 +236,18 @@ func (msg MsgSignature) MaxPayloadLength(pver uint32) uint32 {
 	return MaxMessagePayload
 }
 
-func (msg * MsgSignature) DoubleHashB() []byte {
+func (msg *MsgSignature) DoubleHashB() []byte {
 	var w bytes.Buffer
 	msg.OmcEncode(&w, 0, BaseEncoding)
 	return chainhash.DoubleHashB(w.Bytes())
 }
 
-func (msg * MsgSignature) GetSignature() []byte {
+func (msg *MsgSignature) GetSignature() []byte {
 	return msg.Signature[:]
 }
 
-func (msg * MsgSignature) Sender() []byte {
-	return msg.From[:]
+func (msg *MsgSignature) Sender() [20]byte {
+	return msg.From
 }
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to

@@ -1714,9 +1714,6 @@ out:
 			}
 
 		case consensus.Message:
-			cmd := msg.Command()
-			log.Infof("received consensus.Message %s %v", cmd, msg)
-
 			if consensus.VerifySig(msg) {
 				var ea [20]byte
 				if p.Inbound() && bytes.Compare(p.Miner[:], ea[:]) == 0 {

@@ -100,9 +100,9 @@ type Config struct {
 	IsCurrent func() bool
 
 	// call back to add priv key to .conf
-	AppendPrivKey	  func (*btcec.PrivateKey) bool
+	AppendPrivKey func(*btcec.PrivateKey) bool
 
-	Generate	bool
+	Generate bool
 }
 
 // CPUMiner provides facilities for solving blocks (mining) using the CPU in
@@ -113,25 +113,30 @@ type Config struct {
 // system which is typically sufficient.
 type CPUMiner struct {
 	sync.Mutex
-	g                 *mining.BlkTmplGenerator
-	cfg               Config
-	numWorkers        uint32
-	started           bool
-	discreteMining    bool
-//	connLock          sync.Mutex
-	wg                sync.WaitGroup
-	updateNumWorkers  chan struct{}
-//	queryHashesPerSec chan float64
-//	updateHashes      chan uint64
-//	speedMonitorQuit  chan struct{}
-	quit              chan struct{}
-	connch            chan int32
-	miningkeys		  chan *btcec.PrivateKey
-	addkeyresult	  chan bool
+	g              *mining.BlkTmplGenerator
+	cfg            Config
+	numWorkers     uint32
+	started        bool
+	discreteMining bool
+	//	connLock          sync.Mutex
+	wg               sync.WaitGroup
+	updateNumWorkers chan struct{}
+	//	queryHashesPerSec chan float64
+	//	updateHashes      chan uint64
+	//	speedMonitorQuit  chan struct{}
+	quit         chan struct{}
+	connch       chan int32
+	miningkeys   chan *btcec.PrivateKey
+	addkeyresult chan bool
 
 	// the block being mined by committee
-	minedBlock		  * btcutil.Block
-	Stale			  bool
+	minedBlock *btcutil.Block
+	Stale      bool
+	generating bool
+}
+
+func (m *CPUMiner) IsGenerating() bool {
+	return m.started && m.generating
 }
 
 // speedMonitor handles tracking the number of hashes per second the mining
@@ -501,6 +506,7 @@ out:
 			//			log.Infof("Sleep 5 sec because there is no connected peer.")
 			m.Stale = true
 			time.Sleep(time.Second * 5)
+			m.generating = false
 			continue
 			//		} else {
 			//			log.Infof("ConnectedCount = %d.", ccnt)
@@ -508,6 +514,7 @@ out:
 
 		if len(m.cfg.MiningAddrs) == 0 {
 			time.Sleep(time.Second * 5)
+			m.generating = false
 			continue
 		}
 
@@ -518,16 +525,17 @@ out:
 		// a block that is in the process of becoming stale.
 
 		isCurrent := m.cfg.IsCurrent()
-//		log.Infof("isCurrent = %v.", isCurrent)
+		//		log.Infof("isCurrent = %v.", isCurrent)
 
 		bs := m.g.BestSnapshot()
 		curHeight := bs.Height
-//		log.Infof("curHeight = %d.", curHeight)
+		//		log.Infof("curHeight = %d.", curHeight)
 
 		if curHeight != 0 && !isCurrent {
 			m.Stale = true
 			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent @ height %d", curHeight)
 			time.Sleep(time.Second * 5)
+			m.generating = false
 			continue
 		}
 
@@ -560,6 +568,7 @@ out:
 				}
 			}
 		}
+		m.generating = !powMode
 
 		if m.cfg.Generate && in && powMode {
 			log.Errorf("error: expected private key not found")
@@ -906,9 +915,6 @@ func (m *CPUMiner) Stop() {
 //
 // This function is safe for concurrent access.
 func (m *CPUMiner) IsMining() bool {
-	m.Lock()
-	defer m.Unlock()
-
 	return m.started
 }
 

@@ -298,8 +298,9 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 			// Search through the entire nonce range for a solution while
 			// periodically checking for early quit and stale block
 			// conditions along with updates to the speed monitor.
-			for i := start; i <= maxNonce-numWorkers; i += numWorkers {
-				if i%10000 == 0 { // normal mode
+			for i, j := start, 0; i <= maxNonce-numWorkers; i += numWorkers {
+				j++
+				if j%10000 == 0 { // normal mode
 					select {
 					case <-locquit:
 						return
@@ -359,6 +360,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 						resch <- nil
 						return
 					}
+					log.Infof("miner block solved")
 					resch <- &locheader
 					return
 				}
@@ -418,6 +420,8 @@ func (m *CPUMiner) ChangeMiningKey(miningAddr btcutil.Address) {
 func (m *CPUMiner) generateBlocks(quit chan struct{}, numWorkers uint32) {
 	// Start a ticker which is used to signal checks for stale work and
 	// updates to the speed monitor.
+	m.workerWg.Add(1)
+
 out:
 	for {
 		// Quit when the miner is stopped.
@@ -693,19 +697,17 @@ out:
 func (m *CPUMiner) miningWorkerController() {
 	// launchWorkers groups common code to launch a specified number of
 	// workers for generating blocks.
-	var runningWorkers []chan struct{}
-	launchWorkers := func(numWorkers uint32) {
-		//		for i := uint32(0); i < numWorkers; i++ {
-		quit := make(chan struct{})
-		runningWorkers = append(runningWorkers, quit)
 
-		m.workerWg.Add(1)
+	var numRunning uint32
+
+	quit := make(chan struct{})
+
+	launchWorkers := func(numWorkers uint32) {
+		numRunning = numWorkers
 		go m.generateBlocks(quit, numWorkers)
-		//		}
 	}
 
 	// Launch the current number of workers by default.
-	runningWorkers = make([]chan struct{}, 0, 1) // rkers)
 	launchWorkers(m.numWorkers)
 
 out:
@@ -714,19 +716,20 @@ out:
 		// Update the number of running workers.
 		case <-m.updateNumWorkers:
 			// No change.
-			numRunning := uint32(len(runningWorkers))
 			if m.numWorkers == numRunning {
 				continue
 			}
 
-			close(runningWorkers[0])
-			runningWorkers = runningWorkers[:0]
+			close(quit)
+
+			m.workerWg.Wait()
+			quit = make(chan struct{})
+
 			launchWorkers(m.numWorkers)
 
 		case <-m.quit:
-			for _, quit := range runningWorkers {
-				close(quit)
-			}
+			log.Infof("Closing %d miner works", numRunning)
+			close(quit)
 			break out
 		}
 	}

@@ -5231,7 +5231,7 @@ func handleShutdown(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 				for _, p := range ip {
 					if p == string(m.MsgBlock().Connection) {
 						check = true
-						time.Sleep(10 * time.Minute)
+						time.Sleep(1 * time.Minute)
 						break checkip
 					}
 				}

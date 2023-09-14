@@ -11,7 +11,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain"
-	"github.com/omegasuite/btcd/btcjson"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/consensus"
 	"io/ioutil"
@@ -299,7 +298,7 @@ func btcdMain(serverChan chan<- *server) error {
 		serverChan <- server
 	}
 
-	if cfg.ExitOnStall && !cfg.TestNet && !cfg.SimNet {
+	if ((cfg.MemLimit != 0 && runtime.GOOS == "linux") || cfg.ExitOnStall) && !cfg.TestNet && !cfg.SimNet {
 		var live int64
 		server.chain.Subscribe(func(notification *blockchain.Notification) {
 			switch notification.Type {
@@ -308,15 +307,41 @@ func btcdMain(serverChan chan<- *server) error {
 			}
 		})
 
+		pid := os.Getpid()
+		stat := fmt.Sprintf("/proc/%d/statm", pid)
+
 		go func() {
 			for {
-				<-time.After(10 * time.Minute)
-				if time.Now().Unix()-live > 600 {
+				time.Sleep(10 * time.Minute)
+				if cfg.ExitOnStall && time.Now().Unix()-live > 600 {
 					var wbuf bytes.Buffer
 					pprof.Lookup("mutex").WriteTo(&wbuf, 1)
 					pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
 					btcdLog.Infof("pprof Info: \n%s", wbuf.String())
 					break
+				}
+				if cfg.MemLimit != 0 && runtime.GOOS == "linux" {
+					contents, err := ioutil.ReadFile(stat)
+
+					if err != nil {
+						continue
+					}
+
+					var mem uint32
+					fmt.Sscanf("%d", string(contents), &mem)
+					if mem > cfg.MemLimit {
+						if cfg.Generate {
+							// wait until not generating blocks
+							for i := 30; i > 0 && server.cpuMiner.IsGenerating(); i-- {
+								time.Sleep(20 * time.Second)
+							}
+							if server.cpuMiner.IsGenerating() {
+								continue
+							}
+						}
+						btcdLog.Infof("Voluntary shutdown for exceeding memory limit (%d).", mem)
+						break
+					}
 				}
 			}
 
@@ -327,33 +352,6 @@ func btcdMain(serverChan chan<- *server) error {
 	}
 
 	fmt.Printf("The system is %s", runtime.GOOS)
-
-	if cfg.MemLimit != 0 && runtime.GOOS == "linux" {
-		pid := os.Getpid()
-		stat := fmt.Sprintf("/proc/%d/statm", pid)
-
-		go func() {
-			for {
-				select {
-				case <-time.After(10 * time.Minute):
-					contents, err := ioutil.ReadFile(stat)
-
-					if err != nil {
-						continue
-					}
-
-					var mem uint32
-					fmt.Sscanf("%d", string(contents), &mem)
-					if mem > cfg.MemLimit {
-						btcdLog.Infof("Voluntary shutdown for exceeding memory limit (%d).", mem)
-
-						w := true
-						handleShutdown(server.rpcServer, &btcjson.ShutdownCmd{&w}, nil)
-					}
-				}
-			}
-		}()
-	}
 
 	// Wait until the interrupt signal is received from an OS signal or
 	// shutdown is requested through one of the subsystems such as the RPC

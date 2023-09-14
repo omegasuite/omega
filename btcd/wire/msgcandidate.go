@@ -145,8 +145,8 @@ func (msg *MsgCandidate) GetSignature() []byte {
 	return msg.Signature
 }
 
-func (msg *MsgCandidate) Sender() []byte {
-	return msg.F[:]
+func (msg *MsgCandidate) Sender() [20]byte {
+	return msg.F
 }
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to
@@ -336,8 +336,8 @@ func (msg *MsgCandidateResp) GetSignature() []byte {
 	return msg.Signature
 }
 
-func (msg *MsgCandidateResp) Sender() []byte {
-	return msg.From[:]
+func (msg *MsgCandidateResp) Sender() [20]byte {
+	return msg.From
 }
 
 // NewMsgCFCheckpt returns a new bitcoin cfheaders message that conforms to

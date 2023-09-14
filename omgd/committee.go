@@ -72,7 +72,7 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 				}
 			})
 			if len(s.peers) > 0 {
-				s.queue <- msg
+				next = false
 			} else {
 				tcp, err := net.ResolveTCPAddr("", s.address)
 				if err != nil {
@@ -80,7 +80,6 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 					if msg.done != nil {
 						msg.done <- false
 					}
-					s.msgsent++
 					continue
 				}
 
@@ -89,39 +88,41 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 				s.retry++
 				connected := make(chan bool)
 
-				s.connecting = true
+				if !s.connecting {
+					s.connecting = true
+					go p.connManager.Connect(&connmgr.ConnReq{
+						Addr:      tcp,
+						Permanent: false,
+						Committee: s.minerHeight,
+						Miner:     s.member,
+						Initcallback: func(sp connmgr.ServerPeer) {
+							s.connecting = false
+							s.peers = append(s.peers, sp.(*serverPeer))
+							close(connected)
+						},
+					})
 
-				//				if !s.connecting {
-				//					s.connecting = true
-				go p.connManager.Connect(&connmgr.ConnReq{
-					Addr:      tcp,
-					Permanent: false,
-					Committee: s.minerHeight,
-					Miner:     s.member,
-					Initcallback: func(sp connmgr.ServerPeer) {
+					select {
+					case <-connected:
+						btcdLog.Infof("CommitteeOut: connection established.")
+						s.retry = 0
+						next = false
+
+					case <-time.After(time.Second * time.Duration(4*(s.retry+1))):
 						s.connecting = false
-						s.peers = append(s.peers, sp.(*serverPeer))
-						close(connected)
-					},
-				})
-				//				}
-
-				select {
-				case <-connected:
-					btcdLog.Infof("CommitteeOut: connection established.")
-					s.retry = 0
+						switch msg.msg.(type) {
+						case wire.OmegaMessage:
+							msg.msg.(wire.OmegaMessage).SetSeq(rand.Int31())
+						}
+						Server.Broadcast(msg.msg, nil)
+						if msg.done != nil {
+							msg.done <- true
+						}
+					}
+				} else {
+					time.Sleep(2 * time.Second)
+					s.connecting = false
 					next = false
-
-				case <-time.After(time.Second * time.Duration(4*(s.retry+1))):
-					switch msg.msg.(type) {
-					case wire.OmegaMessage:
-						msg.msg.(wire.OmegaMessage).SetSeq(rand.Int31())
-					}
-					Server.Broadcast(msg.msg, nil)
-					if msg.done != nil {
-						msg.done <- true
-					}
-					s.msgsent++
 				}
 			}
 		}
@@ -745,6 +746,42 @@ func (s *server) handleCommitteRotation(r int32) {
 		// otherwise, broadcast q request for connection msg.
 		s.makeConnection(conn, mb.MsgBlock().Miner, j)
 	}
+}
+
+func (s *server) AddKnownCommittee(id int32, member [20]byte) bool {
+	s.peerState.cmutex.Lock()
+
+	m, ok := s.peerState.committee[member]
+	s.peerState.cmutex.Unlock()
+
+	if !ok {
+		return true
+	}
+
+	for _, t := range m.peers {
+		if id == t.ID() {
+			return true
+		}
+	}
+
+	added := false
+
+	s.peerState.ForAllPeers(func(sp *serverPeer) {
+		if added {
+			return
+		}
+		if sp.Connected() && sp.Peer.ID() == id {
+			if m.minerHeight > sp.Peer.Committee {
+				sp.Peer.Committee = m.minerHeight
+			}
+			copy(sp.Peer.Miner[:], member[:])
+
+			m.peers = append(m.peers, sp)
+			added = true
+		}
+	})
+
+	return added
 }
 
 func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
