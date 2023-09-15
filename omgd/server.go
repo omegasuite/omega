@@ -829,11 +829,6 @@ func (sp *serverPeer) OnGetData(_ *peer.Peer, msg *wire.MsgGetData) {
 	numAdded := 0
 	notFound := wire.NewMsgNotFound()
 
-	btcdLog.Infof("OnGetData: getting %d items starting %s for %s", len(msg.InvList), msg.InvList[0].Hash.String(), sp.Addr())
-	defer func() {
-		btcdLog.Infof("OnGetData Done")
-	}()
-
 	length := len(msg.InvList)
 	// A decaying ban score increase is applied to prevent exhausting resources
 	// with unusually large inventory queries.

@@ -68,6 +68,7 @@ type ReqQueue interface {
 	QueueMessageWithEncoding(msg wire.Message, doneChan chan<- bool, encoding wire.MessageEncoding)
 	Addr() string
 	ID() int32
+	NA() *wire.NetAddress
 }
 
 type Miner struct {
@@ -390,9 +391,6 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 		return false, nil
 	}
 
-	// add source IP to known committee
-	miner.server.AddKnownCommittee(p.ID(), m.Sender())
-
 	miner.syncMutex.Lock()
 
 	// check if we have got this msg before
@@ -425,6 +423,13 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 		return false, nil
 	}
 	miner.syncMutex.Unlock()
+
+	// add source IP to known committee
+	if ip, ok := s.ips[m.Sender()]; m.Sequence() == 0 && ok { // not through broadcast, thus the source IP belongs to the true committee member
+		if p.NA().IP.Equal(ip) {
+			miner.server.AddKnownCommittee(p.ID(), m.Sender())
+		}
+	}
 
 	s.SetCommittee()
 

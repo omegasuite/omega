@@ -98,6 +98,7 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 						Initcallback: func(sp connmgr.ServerPeer) {
 							s.connecting = false
 							s.peers = append(s.peers, sp.(*serverPeer))
+							copy(sp.(*serverPeer).Miner[:], s.member[:])
 							close(connected)
 						},
 					})
@@ -635,6 +636,7 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 			Miner:     miner,
 			Initcallback: func(sp connmgr.ServerPeer) {
 				m.peers = append(m.peers, sp.(*serverPeer))
+				copy(sp.(*serverPeer).Miner[:], m.member[:])
 				m.connecting = false
 			},
 		})

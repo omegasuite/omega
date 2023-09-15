@@ -144,9 +144,12 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 
 	lmg := *msg
 
+	tosend := false
+
 	if len(lmg.K) < 2 || lmg.K[len(lmg.K)-1] != me {
 		lmg.AddK(me, miner.server.GetPrivKey(self.syncer.Me))
 		lmg.From = self.syncer.Me
+		tosend = true
 	}
 
 	ng, res := self.gain(mp, lmg.K)
@@ -156,7 +159,7 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 			continue
 		}
 		imp := improve(msg.K, int32(i))
-		if len(lmg.K) < 3*wire.CommitteeSize && ((ng&(1<<i)) != 0 || imp || q == 0) { // || (q&res) != res {
+		if tosend && len(lmg.K) < 3*wire.CommitteeSize && ((ng&(1<<i)) != 0 || imp || q == 0) { // || (q&res) != res {
 			self.sendout(&lmg, mp, me, int32(i))
 		}
 	}

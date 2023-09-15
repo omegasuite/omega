@@ -17,6 +17,7 @@ import (
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/token"
+	"net"
 	"sync"
 	"time"
 )
@@ -50,7 +51,7 @@ type Syncer struct {
 
 	Members map[[20]byte]int32
 	Names   map[int32][20]byte
-	ips     map[[20]byte]string
+	ips     map[[20]byte]net.IP
 
 	Me     [20]byte
 	Myself int32
@@ -1233,6 +1234,7 @@ func CreateSyncer(h int32) *Syncer {
 	p.signed = make(map[[20]byte]struct{})
 	p.Members = make(map[[20]byte]int32)
 	p.Names = make(map[int32][20]byte)
+	p.ips = make(map[[20]byte]net.IP)
 	p.Malice = make(map[[20]byte]struct{})
 	p.knows = make(map[[20]byte][]*wire.MsgKnowledge)
 	p.Done = false
@@ -1400,6 +1402,10 @@ func (self *Syncer) setCommittee() {
 
 		self.Members[blk.MsgBlock().Miner] = who
 		self.Names[who] = blk.MsgBlock().Miner
+		tcp, err := net.ResolveTCPAddr("", string(blk.MsgBlock().Connection))
+		if err == nil {
+			self.ips[blk.MsgBlock().Miner] = tcp.IP
+		}
 	}
 	self.forestLock.Unlock()
 
