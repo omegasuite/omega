@@ -26,7 +26,6 @@ type tree struct {
 	creator [20]byte
 	fees    uint64
 	hash    chainhash.Hash
-	header  *wire.BlockHeader
 	block   *btcutil.Block
 }
 
@@ -163,6 +162,19 @@ func (self *Syncer) repeater() {
 		self.Done = true
 		close(self.quit)
 		return
+	}
+
+	rtrees := make(map[chainhash.Hash]*tree)
+	for _, t := range self.forest {
+		if _, ok := rtrees[t.hash]; !ok && t.block != nil {
+			rtrees[t.hash] = t
+		}
+	}
+	for u, t := range self.forest {
+		if s, ok := rtrees[t.hash]; ok && t.block == nil {
+			self.forest[u].block = s.block
+			self.forest[u].fees = s.fees
+		}
 	}
 
 	if self.sigGiven != -1 {
@@ -438,7 +450,6 @@ func (self *Syncer) process(cmd interface{}) bool {
 					creator: k.Finder,
 					fees:    0,
 					hash:    k.M,
-					header:  nil,
 					block:   nil,
 				}
 				w := self.Members[k.Finder]
@@ -572,7 +583,7 @@ func (self *Syncer) run() {
 	miner.wg.Add(1)
 	defer miner.wg.Done()
 
-	ticker := time.NewTicker(time.Second * 3)
+	ticker := time.NewTicker(time.Second * 2)
 	begin := time.Now().Unix()
 	//	alive := false
 
@@ -1333,7 +1344,6 @@ func (self *Syncer) validateMsg(finder [20]byte, m *chainhash.Hash, msg Message)
 			creator: finder,
 			fees:    0,
 			hash:    *m,
-			header:  nil,
 			block:   nil,
 		}
 
@@ -1471,14 +1481,13 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	}
 
 	self.setCommittee()
-	
+
 	self.forestLock.Lock()
-	if r,ok := self.forest[adr]; !ok || r.block == nil {
+	if r, ok := self.forest[adr]; !ok || r.block == nil {
 		self.commands <- &tree{
 			creator: adr,
 			fees:    uint64(fees),
-			hash:    * block.Hash(),
-			header:  &block.MsgBlock().Header,
+			hash:    *block.Hash(),
 			block:   block,
 		}
 	}
