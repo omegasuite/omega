@@ -8,10 +8,10 @@ package indexers
 import (
 	"errors"
 	"fmt"
-//	"github.com/omegasuite/omega/token"
+	//	"github.com/omegasuite/omega/token"
 	"sync"
 
-//	"github.com/omegasuite/btcd/blockchain"
+	//	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
@@ -81,11 +81,11 @@ var (
 
 // copied from ovm to avoid circular importation
 const (
-	OP_PAY2PKH				= 0x41
-	OP_PAY2SCRIPTH			= 0x42
-	OP_PAYMULTISIG			= 0x43
-	OP_PAY2NONE				= 0x45
-	OP_PAY2ANY				= 0x46
+	OP_PAY2PKH     = 0x41
+	OP_PAY2SCRIPTH = 0x42
+	OP_PAYMULTISIG = 0x43
+	OP_PAY2NONE    = 0x45
+	OP_PAY2ANY     = 0x46
 )
 
 // -----------------------------------------------------------------------------
@@ -274,7 +274,7 @@ func dbFetchAddrIndexEntries(bucket internalBucket, addrKey [addrKeySize]byte, b
 
 enough:
 	for true {
-//	for !reverse || len(serialized) < int(numToSkip+numRequested)*txEntrySize {
+		//	for !reverse || len(serialized) < int(numToSkip+numRequested)*txEntrySize {
 		curLevelKey := keyForLevel(addrKey, level)
 		levelData := bucket.Get(curLevelKey[:])
 		if levelData == nil {
@@ -292,7 +292,7 @@ enough:
 				}
 			} else {
 				// done if block height of last entry is smaller than blocksToSkip
-				h := byteOrder.Uint32(levelData[len(levelData) - txEntrySize:])
+				h := byteOrder.Uint32(levelData[len(levelData)-txEntrySize:])
 				if h <= blocksToSkip {
 					break enough
 				}
@@ -330,7 +330,7 @@ enough:
 
 		h := byteOrder.Uint32(serialized[offset:])
 		if !on {
-			if !(reverse && h <= blocksToSkip) && !(!reverse && h >= blocksToSkip) {
+			if !(reverse && h <= blocksToSkip) && !(!reverse && h > blocksToSkip) {
 				continue
 			}
 			on = true
@@ -707,7 +707,7 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 			}
 			addr, _ = btcutil.NewAddressPubKeyHash(pkScript[1:21], chainParams)
 		case OP_PAYMULTISIG:
-			if pkScript[0] != chainParams.MultiSigAddrID   {
+			if pkScript[0] != chainParams.MultiSigAddrID {
 				return nil, 0, fmt.Errorf("Malformed pkScript")
 			}
 			addr, _ = btcutil.NewAddressMultiSig(pkScript[1:21], chainParams)
@@ -732,7 +732,7 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) ([]btcu
 func (idx *AddrIndex) indexPkScript(data writeIndexData, pkScript []byte, txIdx int) {
 	// Nothing to index if the script is non-standard or otherwise doesn't
 	// contain any addresses.
-	addrs, _, err := ExtractPkScriptAddrs(pkScript,	idx.chainParams)
+	addrs, _, err := ExtractPkScriptAddrs(pkScript, idx.chainParams)
 	if err != nil || len(addrs) == 0 {
 		return
 	}
@@ -771,7 +771,7 @@ func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 		// already been proven on the first transaction in the block is
 		// a coinbase.
 		if txIdx != 0 {
-			for _,txIn := range tx.MsgTx().TxIn {
+			for _, txIn := range tx.MsgTx().TxIn {
 				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}

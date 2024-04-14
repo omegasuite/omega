@@ -903,6 +903,41 @@ type indexer interface {
 	DbFetchTxIndexEntry(dbTx database.Tx, txHash *chainhash.Hash) (*database.BlockRegion, error)
 }
 
+func (b *BlockChain) GetAccounts() map[[21]byte]int64 {
+	accounts := make(map[[21]byte]int64)
+	b.db.View(func(dbTx database.Tx) error {
+		utxoSetBucketName := []byte("utxosetv2")
+		utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
+		cursor := utxoBucket.Cursor()
+
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			entry, err := viewpoint.DeserializeUtxoEntry(cursor.Value())
+			if err != nil {
+				return err
+			}
+
+			if entry.TokenType != 0 {
+				continue
+			}
+
+			pks := entry.PkScript()
+
+			var addr [21]byte
+			copy(addr[:], pks[:])
+
+			_, v := entry.Amount.Value()
+			if _, ok := accounts[addr]; ok {
+				accounts[addr] = accounts[addr] + v
+			} else {
+				accounts[addr] = v
+			}
+		}
+		return nil
+	})
+
+	return accounts
+}
+
 func (b *BlockChain) Rebuildutxo(index indexer) {
 	keys := make(map[wire.OutPoint]struct{})
 

@@ -179,6 +179,7 @@ type config struct {
 	Minerback       bool   `long:"minerback" description:"back one miner block"`
 	Concurrency     int    `long:"concurrency" description:"Concurrency"`
 	LogBlockTime    bool   `long:"logblocktime" description:"Log the time that blocks are received"`
+	Accounts        bool   `long:"accounts" description:"list omega accounts & balance"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -442,6 +443,7 @@ func loadConfig() (*config, []string, error) {
 		MemLimit:             200000,
 		Concurrency:          1,
 		LogBlockTime:         false,
+		Accounts:             false,
 	}
 
 	// Service options which are only added on Windows.

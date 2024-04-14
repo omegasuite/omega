@@ -280,7 +280,7 @@ out:
 			}
 			miner.syncMutex.Unlock()
 
-		case c := <- connNotice:
+		case c := <-connNotice:
 			handleConnNotice(c)
 
 		case blk := <-newblockch:
@@ -314,7 +314,7 @@ out:
 			}
 			snr.BlockInit(blk.block)
 
-		case <- Quit:
+		case <-Quit:
 			polling = false
 			break out
 		}
@@ -425,7 +425,11 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 	miner.syncMutex.Unlock()
 
 	// add source IP to known committee
-	if ip, ok := s.ips[m.Sender()]; m.Sequence() == 0 && ok { // not through broadcast, thus the source IP belongs to the true committee member
+	s.forestLock.Lock()
+	ip, ok := s.ips[m.Sender()]
+	s.forestLock.Unlock()
+
+	if m.Sequence() == 0 && ok { // not through broadcast, thus the source IP belongs to the true committee member
 		if p.NA().IP.Equal(ip) {
 			miner.server.AddKnownCommittee(p.ID(), m.Sender())
 		}

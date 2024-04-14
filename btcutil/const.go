@@ -13,5 +13,5 @@ const (
 	HaoPerBitcoin = 1e8
 
 	// MaxHao is the maximum transaction amount allowed in hao.
-	MaxHao = 21e6 * HaoPerBitcoin
+	MaxHao = 430e6 * HaoPerBitcoin
 )

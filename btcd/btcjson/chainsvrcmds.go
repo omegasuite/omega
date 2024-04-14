@@ -335,6 +335,11 @@ type AddMiningKeyCmd struct {
 	Key     string
 }
 
+type AddCollateralCmd struct {
+	Hash  string
+	Index uint32
+}
+
 func NewAddMiningKeyCmd(k string, ktype bool) *AddMiningKeyCmd {
 	return &AddMiningKeyCmd{
 		KeyType: ktype,
@@ -723,6 +728,12 @@ type GetRawMempoolCmd struct {
 	Verbose *bool `jsonrpcdefault:"false"`
 }
 
+// GetIssuedTokensCmd defines the getissuedtokens JSON-RPC command.
+type GetIssuedTokensCmd struct {
+	Start *uint32 `jsonrpcdefault:"0"`
+	Count *uint32 `jsonrpcdefault:"100"`
+}
+
 // NewGetRawMempoolCmd returns a new instance which can be used to issue a
 // getrawmempool JSON-RPC command.
 //
@@ -937,6 +948,13 @@ type SearchRawTransactionsCmd struct {
 	Reverse     *bool `jsonrpcdefault:"false"`
 	FilterAddrs *[]string
 	Signatures  *bool `jsonrpcdefault:"false"`
+}
+
+// SearchRawSpendCmd defines the searchspend JSON-RPC command.
+type SearchRawSpendCmd struct {
+	Address  string
+	Spending string
+	Skip     *int `jsonrpcdefault:"0"`
 }
 
 // NewSearchRawTransactionsCmd returns a new instance which can be used to issue a
@@ -1171,6 +1189,7 @@ func init() {
 	MustRegisterCmd("getminerblock", (*GetMinerBlockCmd)(nil), flags)
 	MustRegisterCmd("getblockchaininfo", (*GetBlockChainInfoCmd)(nil), flags)
 	MustRegisterCmd("addminingkey", (*AddMiningKeyCmd)(nil), flags)
+	MustRegisterCmd("addcollateral", (*AddCollateralCmd)(nil), flags)
 	MustRegisterCmd("getblockcount", (*GetBlockCountCmd)(nil), flags)
 	MustRegisterCmd("getminerblockcount", (*GetMinerBlockCountCmd)(nil), flags)
 	MustRegisterCmd("getblockhash", (*GetBlockHashCmd)(nil), flags)
@@ -1188,6 +1207,7 @@ func init() {
 	MustRegisterCmd("gethashespersec", (*GetHashesPerSecCmd)(nil), flags)
 	MustRegisterCmd("getinfo", (*GetInfoCmd)(nil), flags)
 	MustRegisterCmd("getmempoolentry", (*GetMempoolEntryCmd)(nil), flags)
+	MustRegisterCmd("getissuedtokens", (*GetIssuedTokensCmd)(nil), flags)
 	MustRegisterCmd("getmempoolinfo", (*GetMempoolInfoCmd)(nil), flags)
 	MustRegisterCmd("getmininginfo", (*GetMiningInfoCmd)(nil), flags)
 	MustRegisterCmd("getnetworkinfo", (*GetNetworkInfoCmd)(nil), flags)
@@ -1209,6 +1229,7 @@ func init() {
 	MustRegisterCmd("preciousblock", (*PreciousBlockCmd)(nil), flags)
 	MustRegisterCmd("reconsiderblock", (*ReconsiderBlockCmd)(nil), flags)
 	MustRegisterCmd("searchrawtransactions", (*SearchRawTransactionsCmd)(nil), flags)
+	MustRegisterCmd("searchspend", (*SearchRawSpendCmd)(nil), flags)
 	MustRegisterCmd("sendrawtransaction", (*SendRawTransactionCmd)(nil), flags)
 	MustRegisterCmd("confirmations", (*ConfirmationsCmd)(nil), flags)
 	MustRegisterCmd("checkfork", (*CheckForkCmd)(nil), flags)

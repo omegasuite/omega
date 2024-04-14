@@ -32,7 +32,7 @@ import (
 
 const (
 	// maxNonce is the maximum value a nonce can be in a block header.
-	maxNonce = 0x7FFFFFFF	// ^uint32(0) // 2^32 - 1
+	maxNonce = 0x7FFFFFFF // ^uint32(0) // 2^32 - 1
 
 	// hpsUpdateSecs is the number of seconds to wait in between each
 	// update to the hashes per second monitor.
@@ -186,7 +186,7 @@ out:
 	m.wg.Done()
 	log.Tracef("CPU miner speed monitor done")
 }
- */
+*/
 
 // submitBlock submits the passed block to network after ensuring it passes all
 // of the consensus validation rules.
@@ -267,19 +267,19 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	targetDifficulty := blockchain.CompactToBig(template.Bits)
 
 	if msgBlock.Header.Version >= wire.Version2 {
-/*
-		st := m.g.Chain.BestSnapshot()
-		s, _ := m.g.Chain.Miners.BlockByHeight(int32(st.LastRotation))
-		blk := m.g.Chain.NodeByHash(&s.MsgBlock().BestBlock)
+		/*
+			st := m.g.Chain.BestSnapshot()
+			s, _ := m.g.Chain.Miners.BlockByHeight(int32(st.LastRotation))
+			blk := m.g.Chain.NodeByHash(&s.MsgBlock().BestBlock)
 
-		for blk != nil && blk.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
-			blk = blk.Parent
-		}
-		pows := int32(st.LastRotation) + (blk.Data.GetNonce() + wire.MINER_RORATE_FREQ) - wire.DESIRABLE_MINER_CANDIDATES
-		if pows < 0 {
-			pows = 0
-		}
- */
+			for blk != nil && blk.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
+				blk = blk.Parent
+			}
+			pows := int32(st.LastRotation) + (blk.Data.GetNonce() + wire.MINER_RORATE_FREQ) - wire.DESIRABLE_MINER_CANDIDATES
+			if pows < 0 {
+				pows = 0
+			}
+		*/
 		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(40))
 	}
 
@@ -290,20 +290,20 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 	// Initial state.
 	lastGenerated := time.Now()
 	lastTxUpdate := m.g.TxSource().LastUpdated()
-//	hashesCompleted := uint64(0)
+	//	hashesCompleted := uint64(0)
 
-//	for true {
-		// Search through the entire nonce range for a solution while
-		// periodically checking for early quit and stale block
-		// conditions along with updates to the speed monitor.
-	pow := func (start uint32, endpow chan int32) int32 {
+	//	for true {
+	// Search through the entire nonce range for a solution while
+	// periodically checking for early quit and stale block
+	// conditions along with updates to the speed monitor.
+	pow := func(start uint32, endpow chan int32) int32 {
 		for i := start; i <= maxNonce; i += mp {
 			select {
 			case r, ok := <-endpow:
 				if !ok {
 					return 0
 				}
-				return r;
+				return r
 
 			case <-quit:
 				return 0
@@ -359,12 +359,12 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 		return 0
 	}
 
-	quitt := make(chan int32, mp + 1)
+	quitt := make(chan int32, mp+1)
 	closing := false
 
 	var mt sync.Mutex
 	for i := uint32(0); i < mp; i++ {
-		go func () {
+		go func() {
 			r := pow(i+1, quitt)
 
 			mt.Lock()
@@ -372,7 +372,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 				quitt <- r
 			}
 			mt.Unlock()
-		} ()
+		}()
 	}
 	b := <-quitt
 
@@ -389,9 +389,9 @@ func (m *CPUMiner) Notice(notification *blockchain.Notification) {
 		return
 	}
 	switch notification.Type {
-	case blockchain.NTBlockConnected:	// , blockchain.NTBlockRejected:
+	case blockchain.NTBlockConnected: // , blockchain.NTBlockRejected:
 		if len(m.connch) > 50 {
-			<- m.connch
+			<-m.connch
 		}
 
 		switch notification.Data.(type) {
@@ -400,12 +400,12 @@ func (m *CPUMiner) Notice(notification *blockchain.Notification) {
 			log.Infof("cpuminer notice: sending %d", notification.Data.(*btcutil.Block).Height())
 
 		case *wire.MinerBlock:
-			m.connch <- 0	// this will only affect POW mining
+			m.connch <- 0 // this will only affect POW mining
 		}
 	}
 }
 
-func (m *CPUMiner) CurrentBlock(h * chainhash.Hash) * btcutil.Block {
+func (m *CPUMiner) CurrentBlock(h *chainhash.Hash) *btcutil.Block {
 	if m.minedBlock != nil {
 		bh := m.minedBlock.Hash()
 		if bh.IsEqual(h) {
@@ -417,7 +417,7 @@ func (m *CPUMiner) CurrentBlock(h * chainhash.Hash) * btcutil.Block {
 
 func (m *CPUMiner) AddMiningKey(miningAddr *btcec.PrivateKey) bool {
 	m.miningkeys <- miningAddr
-	return <- m.addkeyresult
+	return <-m.addkeyresult
 }
 
 // generateBlocks is a worker that is controlled by the miningWorkerController.
@@ -607,10 +607,10 @@ out:
 					// My this address is not qualified. Use a random in POW mode.
 					log.Infof("Change to POW mining because my address is not qualified.")
 					powMode = true
-					payToAddr = m.cfg.MiningAddrs[rand.Int() % len(m.cfg.MiningAddrs)]
+					payToAddr = m.cfg.MiningAddrs[rand.Int()%len(m.cfg.MiningAddrs)]
 					payToAddress = []btcutil.Address{payToAddr}
 					nonce = 1
-				} else if len(payToAddress) <= wire.CommitteeSize / 2 {
+				} else if len(payToAddress) <= wire.CommitteeSize/2 {
 					// impossible to form a qualified consensus
 					log.Infof("Change to POW mining because insufficient committee members.")
 					powMode = true
@@ -705,7 +705,7 @@ out:
 			}
 
 			if rank > 0 {
-				time.Sleep(time.Duration(rank*4+adj) * time.Second)
+				time.Sleep(time.Duration(rank*3+adj) * time.Second)
 			}
 
 			lastblkgen = time.Now().Unix()
@@ -794,7 +794,7 @@ out:
 				break out
 
 			default:
-				wb := * template.Block.(*wire.MsgBlock)
+				wb := *template.Block.(*wire.MsgBlock)
 				wb.Header.Nonce = b
 				block := btcutil.NewBlock(&wb)
 				log.Infof("New POW block produced nonce = %s at %d", block.MsgBlock().Header.Nonce, template.Height)
@@ -808,7 +808,7 @@ out:
 		}
 	}
 
-//	close(m.speedMonitorQuit)
+	//	close(m.speedMonitorQuit)
 	m.wg.Done()
 
 	log.Tracef("Generate blocks worker done")
@@ -817,7 +817,7 @@ out:
 var negHash = chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, }
+	0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
 
 func (m *CPUMiner) coinbaseByCommittee(me btcutil.Address) []btcutil.Address {
 	addresses := make([]btcutil.Address, 0)
@@ -833,7 +833,7 @@ func (m *CPUMiner) coinbaseByCommittee(me btcutil.Address) []btcutil.Address {
 	qualified := false
 	for i := -int32(wire.CommitteeSize - 1); i <= 0; i++ {
 		if mb, _ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
-			if _,err := m.g.Chain.CheckCollateral(mb, nil, blockchain.BFNone); err != nil {
+			if _, err := m.g.Chain.CheckCollateral(mb, nil, blockchain.BFNone); err != nil {
 				log.Infof("CheckCollateral failed")
 				continue
 			}
@@ -870,12 +870,12 @@ func (m *CPUMiner) Start() {
 	}
 
 	m.quit = make(chan struct{})
-//	m.speedMonitorQuit = make(chan struct{})
+	//	m.speedMonitorQuit = make(chan struct{})
 	m.wg.Add(1)
-//	go m.speedMonitor()
+	//	go m.speedMonitor()
 	go m.generateBlocks()
 
-	consensus.POWStopper = make(chan struct{}, 3 * wire.MINER_RORATE_FREQ)
+	consensus.POWStopper = make(chan struct{}, 3*wire.MINER_RORATE_FREQ)
 
 	m.started = true
 	log.Infof("CPU miner started")
@@ -897,11 +897,11 @@ func (m *CPUMiner) Stop() {
 	}
 	m.started = false
 
-//	close(m.connch)
+	//	close(m.connch)
 
-//	t := consensus.POWStopper
-//	consensus.POWStopper = nil
-//	close(t)
+	//	t := consensus.POWStopper
+	//	consensus.POWStopper = nil
+	//	close(t)
 
 	close(m.quit)
 
@@ -934,7 +934,7 @@ func (m *CPUMiner) HashesPerSecond() float64 {
 
 	return <-m.queryHashesPerSec
 }
- */
+*/
 
 // SetNumWorkers sets the number of workers to create which solve blocks.  Any
 // negative values will cause a default number of workers to be used which is

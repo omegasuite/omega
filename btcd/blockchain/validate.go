@@ -242,7 +242,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 				"value of %v", hao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if hao > btcutil.MaxHao {
+		if txOut.TokenType == 0 && hao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v", hao,
 				btcutil.MaxHao)
@@ -264,7 +264,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 				btcutil.MaxHao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if totals[txOut.TokenType] > btcutil.MaxHao {
+		if txOut.TokenType == 0 && totals[txOut.TokenType] > btcutil.MaxHao {
 			str := fmt.Sprintf("total value of all transaction "+
 				"outputs is %v which is higher than max "+
 				"allowed value of %v", totals[txOut.TokenType],

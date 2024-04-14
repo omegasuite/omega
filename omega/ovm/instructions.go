@@ -3842,7 +3842,7 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 		}
 	}
 
-	if tokentype >= (0x1 << 48) {
+	if tokentype >= (0x1 << 40) { // 5 bytes for tokentype. 3 bytes reserved as chain id in chain family
 		return omega.ScriptError(omega.ErrInternal, fmt.Sprintf("The tokentype %d exceeds the max limit.", tokentype))
 	}
 

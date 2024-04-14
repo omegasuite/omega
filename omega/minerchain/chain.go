@@ -503,10 +503,11 @@ func (b *MinerChain) disconnectBlock(node *chainutil.BlockNode, block *wire.Mine
 
 	// Load the previous block since some details for it are needed below.
 	prevNode := node.Parent
-	var prevBlock *wire.MinerBlock
+	//	var prevBlock *wire.MinerBlock
 	err := b.db.View(func(dbTx database.Tx) error {
 		var err error
-		prevBlock, err = dbFetchBlockByNode(dbTx, prevNode)
+		//		prevBlock, err = dbFetchBlockByNode(dbTx, prevNode)
+		_, err = dbFetchBlockByNode(dbTx, prevNode)
 		return err
 	})
 	if err != nil {
@@ -831,8 +832,8 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 // a reorganization to become the main chain).
 //
 // The flags modify the behavior of this function as follows:
-//  - BFFastAdd: Avoids several expensive transaction validation operations.
-//    This is useful when using checkpoints.
+//   - BFFastAdd: Avoids several expensive transaction validation operations.
+//     This is useful when using checkpoints.
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.MinerBlock, flags blockchain.BehaviorFlags) (bool, error) {
@@ -991,9 +992,9 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 // isCurrent returns whether or not the chain believes it is current.  Several
 // factors are used to guess, but the key factors that allow the chain to
 // believe it is current are:
-//  - Latest block height is after the latest checkpoint (if enabled)
-//  - Latest block has a timestamp newer than 24 hours ago
-//  - Latest block has a timestamp newer than 24 hours ago
+//   - Latest block height is after the latest checkpoint (if enabled)
+//   - Latest block has a timestamp newer than 24 hours ago
+//   - Latest block has a timestamp newer than 24 hours ago
 //
 // This function MUST be called with the chain state lock held (for reads).
 func (b *MinerChain) IsCurrent() bool {
@@ -1267,11 +1268,11 @@ func (b *MinerChain) IntervalBlockHashes(endHash *chainhash.Hash, interval int) 
 //
 // In addition, there are two special cases:
 //
-// - When no locators are provided, the stop hash is treated as a request for
-//   that block, so it will either return the node associated with the stop hash
-//   if it is known, or nil if it is unknown
-// - When locators are provided, but none of them are known, nodes starting
-//   after the genesis block will be returned
+//   - When no locators are provided, the stop hash is treated as a request for
+//     that block, so it will either return the node associated with the stop hash
+//     if it is known, or nil if it is unknown
+//   - When locators are provided, but none of them are known, nodes starting
+//     after the genesis block will be returned
 //
 // This is primarily a helper function for the locateBlocks and locateHeaders
 // functions.
@@ -1363,11 +1364,11 @@ func (b *MinerChain) locateBlocks(locator chainhash.BlockLocator, hashStop *chai
 //
 // In addition, there are two special cases:
 //
-// - When no locators are provided, the stop hash is treated as a request for
-//   that block, so it will either return the stop hash itself if it is known,
-//   or nil if it is unknown
-// - When locators are provided, but none of them are known, hashes starting
-//   after the genesis block will be returned
+//   - When no locators are provided, the stop hash is treated as a request for
+//     that block, so it will either return the stop hash itself if it is known,
+//     or nil if it is unknown
+//   - When locators are provided, but none of them are known, hashes starting
+//     after the genesis block will be returned
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) LocateBlocks(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxHashes uint32) []chainhash.Hash {
@@ -1425,11 +1426,11 @@ func (b *MinerChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 //
 // In addition, there are two special cases:
 //
-// - When no locators are provided, the stop hash is treated as a request for
-//   that header, so it will either return the header for the stop hash itself
-//   if it is known, or nil if it is unknown
-// - When locators are provided, but none of them are known, headers starting
-//   after the genesis block will be returned
+//   - When no locators are provided, the stop hash is treated as a request for
+//     that header, so it will either return the header for the stop hash itself
+//     if it is known, or nil if it is unknown
+//   - When locators are provided, but none of them are known, headers starting
+//     after the genesis block will be returned
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) LocateHeaders(locator chainhash.BlockLocator, hashStop *chainhash.Hash) []wire.MingingRightBlock {
@@ -1658,8 +1659,8 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 // target difficulty as claimed.
 //
 // The flags modify the behavior of this function as follows:
-//  - BFNoPoWCheck: The check to ensure the block hash is less than the target
-//    difficulty is not performed.
+//   - BFNoPoWCheck: The check to ensure the block hash is less than the target
+//     difficulty is not performed.
 func checkProofOfWork(header *wire.MingingRightBlock, powLimit *big.Int, flags blockchain.BehaviorFlags) error {
 	// The target difficulty must be larger than zero.
 	target := CompactToBig(header.Bits)

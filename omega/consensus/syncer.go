@@ -584,7 +584,7 @@ func (self *Syncer) run() {
 	defer miner.wg.Done()
 
 	ticker := time.NewTicker(time.Second * 2)
-	begin := time.Now().Unix()
+	//	begin := time.Now().Unix()
 	//	alive := false
 
 loop:
@@ -615,7 +615,7 @@ loop:
 	}
 
 	ticker.Stop()
-	log.Infof("\nmessage statistics at %d: %v\nTime span: %d sec\n", self.Height, self.nmsg, time.Now().Unix()-begin)
+	//	log.Infof("\nmessage statistics at %d: %v\nTime span: %d sec\n", self.Height, self.nmsg, time.Now().Unix()-begin)
 
 	for true {
 		select {
@@ -739,7 +739,7 @@ func (self *Syncer) Signature(msg *wire.MsgSignature) bool {
 	// verify signature
 	hash := blockchain.MakeMinerSigHash(self.Height, msg.M)
 
-	k,err := btcec.ParsePubKey(msg.Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+	k, err := btcec.ParsePubKey(msg.Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 	if err != nil {
 		return false
 	}
@@ -753,13 +753,13 @@ func (self *Syncer) Signature(msg *wire.MsgSignature) bool {
 		return false
 	}
 
-	if self.sigGiven == -1 {	// len(self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts[1]) <= 20 {
+	if self.sigGiven == -1 { // len(self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts[1]) <= 20 {
 		// remove the sig 1 that contained the miner's name
 		self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts =
 			self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts[:1]
 	}
 
-	if !UpdateLastWritten(self.Height) && self.sigGiven != tree {	// nenver sign if height is not higher than last signed block
+	if !UpdateLastWritten(self.Height) && self.sigGiven != tree { // nenver sign if height is not higher than last signed block
 		return false
 	}
 
@@ -773,7 +773,7 @@ func (self *Syncer) Signature(msg *wire.MsgSignature) bool {
 	return len(self.signed) >= wire.CommitteeSigs
 }
 
-func (self *Syncer) Consensus(msg * wire.MsgConsensus) bool {
+func (self *Syncer) Consensus(msg *wire.MsgConsensus) bool {
 	if self.agreed != self.Members[msg.From] {
 		return false
 	}
@@ -781,7 +781,7 @@ func (self *Syncer) Consensus(msg * wire.MsgConsensus) bool {
 	// verify signature
 	hash := blockchain.MakeMinerSigHash(self.Height, self.forest[msg.From].hash)
 
-	k,err := btcec.ParsePubKey(msg.Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
+	k, err := btcec.ParsePubKey(msg.Signature[:btcec.PubKeyBytesLenCompressed], btcec.S256())
 	if err != nil {
 		return false
 	}
@@ -803,25 +803,25 @@ func (self *Syncer) Consensus(msg * wire.MsgConsensus) bool {
 	sig, _ := privKey.Sign(hash)
 	sgs := sig.Serialize()
 
-	sigmsg := wire.MsgSignature {
-		For:	   msg.From,
+	sigmsg := wire.MsgSignature{
+		For: msg.From,
 	}
-	sigmsg.MsgConsensus = wire.MsgConsensus {
+	sigmsg.MsgConsensus = wire.MsgConsensus{
 		Height:    self.Height,
 		From:      self.Me,
-		M:		   msg.M,
-		Signature: make([]byte, btcec.PubKeyBytesLenCompressed + len(sgs)),
+		M:         msg.M,
+		Signature: make([]byte, btcec.PubKeyBytesLenCompressed+len(sgs)),
 	}
 
 	copy(sigmsg.Signature[:], privKey.PubKey().SerializeCompressed())
 	copy(sigmsg.Signature[btcec.PubKeyBytesLenCompressed:], sgs)
 
-//	log.Infof("Consensus: cast signature")
+	//	log.Infof("Consensus: cast signature")
 
 	self.CommitteeCastMG(&sigmsg)
 
 	if self.sigGiven == -1 {
-		if !UpdateLastWritten(self.Height) && self.sigGiven != self.agreed {	// nenver sign if height is not higher than last signed block
+		if !UpdateLastWritten(self.Height) && self.sigGiven != self.agreed { // nenver sign if height is not higher than last signed block
 			return false
 		}
 		self.sigGiven = self.agreed
@@ -847,15 +847,15 @@ func (self *Syncer) Consensus(msg * wire.MsgConsensus) bool {
 
 		if len(self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
 			return true
-//			log.Info("passing NewConsusBlock & quit")
-//			miner.server.NewConsusBlock(self.forest[msg.From].block)
+			//			log.Info("passing NewConsusBlock & quit")
+			//			miner.server.NewConsusBlock(self.forest[msg.From].block)
 		}
 	}
 	return false
 }
 
 func (self *Syncer) reckconsensus() {
-	if self.agreed != self.Myself || self.sigGiven != self.Myself || len(self.agrees) + 1 < wire.CommitteeSigs {
+	if self.agreed != self.Myself || self.sigGiven != self.Myself || len(self.agrees)+1 < wire.CommitteeSigs {
 		return
 	}
 
@@ -863,7 +863,7 @@ func (self *Syncer) reckconsensus() {
 		return
 	}
 
-	if _,ok := self.signed[self.Me]; !ok {
+	if _, ok := self.signed[self.Me]; !ok {
 		return
 	}
 
@@ -910,8 +910,8 @@ func (self *Syncer) ckconsensus(bc bool) bool {
 		msg := wire.MsgConsensus{
 			Height:    self.Height,
 			From:      self.Me,
-			M:		   self.forest[self.Me].hash,
-			Signature: make([]byte, btcec.PubKeyBytesLenCompressed + len(ss)),
+			M:         self.forest[self.Me].hash,
+			Signature: make([]byte, btcec.PubKeyBytesLenCompressed+len(ss)),
 		}
 
 		copy(msg.Signature[:], privKey.PubKey().SerializeCompressed())
@@ -1369,7 +1369,7 @@ func (self *Syncer) setCommittee() {
 	}
 
 	best := miner.server.BestSnapshot()
-	self.Runnable = self.Height == best.Height + 1
+	self.Runnable = self.Height == best.Height+1
 
 	if !self.Runnable {
 		log.Infof("self.Height %d != best.Height %d + 1", self.Height, best.Height)
@@ -1430,15 +1430,15 @@ func (self *Syncer) setCommittee() {
 }
 
 func (self *Syncer) UpdateChainHeight(h int32) {
-//	if h < self.Height {
-//		return
-//	}
+	//	if h < self.Height {
+	//		return
+	//	}
 	if h > self.Height {
 		self.Quit()
 		return
 	}
-	
-//	self.SetCommittee()
+
+	//	self.SetCommittee()
 }
 
 func (self *Syncer) BlockInit(block *btcutil.Block) {
@@ -1633,11 +1633,11 @@ func (self *Syncer) debugging() {
 }
 
 func (self *Syncer) better(left, right int32) bool {
-	l,ok := self.forest[self.Names[left]]
+	l, ok := self.forest[self.Names[left]]
 	if !ok {
 		return false
 	}
-	r,ok := self.forest[self.Names[right]]
+	r, ok := self.forest[self.Names[right]]
 	if !ok {
 		return true
 	}
@@ -1647,7 +1647,7 @@ func (self *Syncer) better(left, right int32) bool {
 func (self *Syncer) best() int32 {
 	var seld *[20]byte
 
-	for left,l := range self.forest {
+	for left, l := range self.forest {
 		if seld == nil {
 			if l.block != nil {
 				seld = new([20]byte)

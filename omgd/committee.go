@@ -41,7 +41,7 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 		sent := false
 		for _, sp := range s.peers {
 			if !sent && sp.Connected() {
-				btcdLog.Infof("Send %s msg to %s", msg.msg.Command(), s.address)
+				//				btcdLog.Infof("Send %s msg to %s", msg.msg.Command(), s.address)
 				sp.QueueMessageWithEncoding(msg.msg, msg.done, wire.SignatureEncoding)
 				sent = true
 				s.msgsent++
@@ -398,7 +398,7 @@ func (sp *serverPeer) OnInvitation(_ *peer.Peer, msg *wire.MsgInvitation) {
 
 	sp.server.BroadcastMessage(msg, sp)
 }
- */
+*/
 
 func (s *server) phaseoutCommittee(r int32) {
 	s.peerState.cmutex.Lock()
@@ -574,7 +574,7 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 			btcdLog.Infof("Error: inconsistent miner %x & height %d in makeConnection", miner, j)
 		}
 
-		m = s.peerState.NewCommitteeState(miner,j, string(mb.MsgBlock().Connection))
+		m = s.peerState.NewCommitteeState(miner, j, string(mb.MsgBlock().Connection))
 		s.peerState.committee[miner] = m
 	}
 
@@ -602,7 +602,7 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 		isin := false
 
 		addr := tcp.String()
-//		s.peerState.committee[miner].address = addr
+		//		s.peerState.committee[miner].address = addr
 
 		s.peerState.ForAllPeers(func(ob *serverPeer) {
 			if !isin && (ob.Addr() == addr || ob.Peer.LocalAddr().String() == addr) && ob.Connected() {
@@ -665,7 +665,7 @@ func (s *server) handleCommitteRotation(r int32) {
 		}
 	}
 
-	s.phaseoutCommittee(r - 2 * wire.CommitteeSize)
+	s.phaseoutCommittee(r - 2*wire.CommitteeSize)
 
 	me := s.MyPlaceInCommittee(r)
 	if me == 0 {
@@ -688,19 +688,19 @@ func (s *server) handleCommitteRotation(r int32) {
 		bot = r - wire.CommitteeSize + 1
 	}
 
-	for j := bot; j < me + advanceCommitteeConnection; j++ {
+	for j := bot; j < me+advanceCommitteeConnection; j++ {
 		if me == j || j < 0 || j >= minerTop {
 			continue
 		}
 
-		mb,_ := b.Miners.BlockByHeight(j)
+		mb, _ := b.Miners.BlockByHeight(j)
 		if mb == nil {
 			break
 		}
 
 		rc := false
 		conn := mb.MsgBlock().Connection
-		for _,c := range s.chainParams.ExternalIPs {
+		for _, c := range s.chainParams.ExternalIPs {
 			if string(conn) == c {
 				rc = true
 			}
@@ -716,7 +716,7 @@ func (s *server) handleCommitteRotation(r int32) {
 			continue
 		}
 		mtch := false
-		for _,sa := range s.signAddress {
+		for _, sa := range s.signAddress {
 			if bytes.Compare(mb.MsgBlock().Miner[:], sa.ScriptAddress()) == 0 {
 				mtch = true
 			}
@@ -725,13 +725,13 @@ func (s *server) handleCommitteRotation(r int32) {
 			continue
 		}
 
-		if _,err := s.chain.CheckCollateral(mb, nil, blockchain.BFNone); err != nil {
+		if _, err := s.chain.CheckCollateral(mb, nil, blockchain.BFNone); err != nil {
 			continue
 		}
 
 		s.peerState.cmutex.Lock()
 		s.peerState.committee[mb.MsgBlock().Miner] =
-		 	s.peerState.NewCommitteeState(mb.MsgBlock().Miner, j, string(mb.MsgBlock().Connection))
+			s.peerState.NewCommitteeState(mb.MsgBlock().Miner, j, string(mb.MsgBlock().Connection))
 		p := s.peerState.peerByName(mb.MsgBlock().Miner[:])
 
 		if p != nil {
@@ -831,11 +831,11 @@ func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {
 	}
 
 	s.peerState.cmutex.Lock()
-	sp,ok := s.peerState.committee[p]
+	sp, ok := s.peerState.committee[p]
 	s.peerState.cmutex.Unlock()
 
 	if ok {
-		for _,r := range sp.peers {
+		for _, r := range sp.peers {
 			if r.Connected() {
 				r.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
 				return
@@ -846,11 +846,11 @@ func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {
 
 func (s *server) Connected(p [20]byte) bool {
 	s.peerState.cmutex.Lock()
-	sp,ok := s.peerState.committee[p]
+	sp, ok := s.peerState.committee[p]
 	s.peerState.cmutex.Unlock()
 
 	if ok {
-		for _,r := range sp.peers {
+		for _, r := range sp.peers {
 			if r.Connected() {
 				return true
 			}
@@ -926,8 +926,8 @@ func (s *server) NewConsusBlock(m *btcutil.Block) {
 	}
 }
 
-func (s *server) GetPrivKey(who [20]byte) * btcec.PrivateKey {
-	for i,k := range s.signAddress {
+func (s *server) GetPrivKey(who [20]byte) *btcec.PrivateKey {
+	for i, k := range s.signAddress {
 		if bytes.Compare(who[:], k.ScriptAddress()) == 0 {
 			return cfg.privateKeys[i]
 		}
@@ -935,9 +935,9 @@ func (s *server) GetPrivKey(who [20]byte) * btcec.PrivateKey {
 	return nil
 }
 
-func (s *peerState) peerByName(name []byte) * serverPeer {
-	var p * serverPeer
-	s.forAllPeers(func (q * serverPeer) {
+func (s *peerState) peerByName(name []byte) *serverPeer {
+	var p *serverPeer
+	s.forAllPeers(func(q *serverPeer) {
 		if (p == nil || !p.Connected()) && bytes.Compare(name, q.Miner[:]) == 0 {
 			p = q
 		}
@@ -947,28 +947,28 @@ func (s *peerState) peerByName(name []byte) * serverPeer {
 
 func (s *peerState) print() {
 	return
-/*
-	consensusLog.Infof("print Lock")
-	s.cmutex.Lock()
-	consensusLog.Infof("\npeerState.committee %d:", len(s.committee))
-	for i,t := range s.committee {
-		srvrLog.Infof("%d => miner = %x conn %s Connected = %d", i, t.Miner, t.String(), t.Connected())
-	}
-	s.cmutex.Unlock()
-	consensusLog.Infof("print Unlock")
- */
+	/*
+		consensusLog.Infof("print Lock")
+		s.cmutex.Lock()
+		consensusLog.Infof("\npeerState.committee %d:", len(s.committee))
+		for i,t := range s.committee {
+			srvrLog.Infof("%d => miner = %x conn %s Connected = %d", i, t.Miner, t.String(), t.Connected())
+		}
+		s.cmutex.Unlock()
+		consensusLog.Infof("print Unlock")
+	*/
 
-//	srvrLog.Infof("")
-/*
-	srvrLog.Infof("peerState.inboundPeers %d:", len(s.inboundPeers))
-	for i,t := range s.inboundPeers {
-		srvrLog.Infof("id %d => conn: %s Connected = %d", i, t.String(), t.Connected())
-	}
+	//	srvrLog.Infof("")
+	/*
+		srvrLog.Infof("peerState.inboundPeers %d:", len(s.inboundPeers))
+		for i,t := range s.inboundPeers {
+			srvrLog.Infof("id %d => conn: %s Connected = %d", i, t.String(), t.Connected())
+		}
 
-	srvrLog.Infof("peerState.outboundPeers %d:", len(s.outboundPeers))
-	for i,t := range s.outboundPeers {
-		srvrLog.Infof("id %d => conn: %s Connected = %d", i, t.String(), t.Connected())
-	}
+		srvrLog.Infof("peerState.outboundPeers %d:", len(s.outboundPeers))
+		for i,t := range s.outboundPeers {
+			srvrLog.Infof("id %d => conn: %s Connected = %d", i, t.String(), t.Connected())
+		}
 
- */
+	*/
 }

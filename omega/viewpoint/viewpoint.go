@@ -26,7 +26,7 @@ var (
 
 	// vertexSetBucketName is the name of the db bucket used to house the
 	// vertex definition set.
-//	vertexSetBucketName = []byte("vertices")
+	//	vertexSetBucketName = []byte("vertices")
 
 	// borderSetBucketName is the name of the db bucket used to house the
 	// border definition set.
@@ -46,21 +46,21 @@ var (
 
 	// MycoinsBucketName is the name of the db bucket used to house the
 	// my (Miner) coins that may be used for collateral.
-//	mycoinsBucketName = []byte("mycoins")
+	//	mycoinsBucketName = []byte("mycoins")
 )
 
 type txoFlags uint8
 
 type ViewPointSet struct {
-	Db database.DB
-	Utxo * UtxoViewpoint
-	Border * BorderViewpoint
-	Polygon * PolygonViewpoint
-	Rights * RightViewpoint
+	Db      database.DB
+	Utxo    *UtxoViewpoint
+	Border  *BorderViewpoint
+	Polygon *PolygonViewpoint
+	Rights  *RightViewpoint
 }
 
-func NewViewPointSet(db database.DB) * ViewPointSet {
-	t := ViewPointSet {}
+func NewViewPointSet(db database.DB) *ViewPointSet {
+	t := ViewPointSet{}
 	t.Db = db
 	t.Utxo = NewUtxoViewpoint()
 	t.Border = NewBorderViewpoint()
@@ -70,14 +70,14 @@ func NewViewPointSet(db database.DB) * ViewPointSet {
 	return &t
 }
 
-func (t * ViewPointSet) SetBestHash(hash * chainhash.Hash) {
+func (t *ViewPointSet) SetBestHash(hash *chainhash.Hash) {
 	t.Rights.bestHash = *hash
 	t.Polygon.bestHash = *hash
 	t.Border.bestHash = *hash
 	t.Utxo.bestHash = *hash
 }
 
-func (t * ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Block, stxos []SpentTxOut) error {
+func (t *ViewPointSet) DisconnectTransactions(db database.DB, block *btcutil.Block, stxos []SpentTxOut) error {
 	err := t.disconnectRightTransactions(block)
 	if err != nil {
 		return err
@@ -212,7 +212,7 @@ var zerohash chainhash.Hash
 // ConnectTransactions updates the view by adding all new vertices created by all
 // of the transactions in the passed block, and setting the best hash for the view
 // to the passed block.
-func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut) error {
+func (view *ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]SpentTxOut) error {
 	for _, tx := range block.Transactions() {
 		if !view.AddBorder(tx) {
 			return fmt.Errorf("Attempt to add illegal border.")
@@ -234,7 +234,7 @@ func (view * ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Sp
 					return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))
 				}
 
-				if entry.TokenType&3 == 3 {
+				if entry.TokenType == 3 {
 					p := view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
 					if p == nil {
 						view.FetchPolygonEntry(&entry.Amount.(*token.HashToken).Hash)

@@ -293,6 +293,26 @@ func btcdMain(serverChan chan<- *server) error {
 		})
 	}
 
+	if cfg.Accounts {
+		accounts := server.chain.GetAccounts()
+		for addr, bal := range accounts {
+			var address btcutil.Address
+			switch addr[0] {
+			case server.chainParams.PubKeyHashAddrID:
+				address, _ = btcutil.NewAddressPubKeyHash(addr[1:], server.chainParams)
+			case server.chainParams.ContractAddrID:
+				address, _ = btcutil.NewAddressContract(addr[1:], server.chainParams)
+			case server.chainParams.ScriptHashAddrID:
+				address, _ = btcutil.NewAddressScriptHash(addr[1:], server.chainParams)
+			case server.chainParams.MultiSigAddrID:
+				address, _ = btcutil.NewAddressMultiSig(addr[1:], server.chainParams)
+			default:
+				continue
+			}
+			fmt.Printf("%s, %f\n", address.EncodeAddress(), float64(bal)/1e8)
+		}
+	}
+
 	server.Start()
 	if serverChan != nil {
 		serverChan <- server

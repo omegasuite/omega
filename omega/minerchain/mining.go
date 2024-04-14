@@ -52,7 +52,7 @@ var (
 	// since we are in development phase, use 1 miner to free CPU do other work
 	// in final release we may want to keep it this way if most people would
 	// use hardware mining
-	defaultNumWorkers = uint32(1)	// uint32(runtime.NumCPU())
+	defaultNumWorkers = uint32(1) // uint32(runtime.NumCPU())
 )
 
 // Config is a descriptor containing the cpu miner configuration.
@@ -60,12 +60,12 @@ type Config struct {
 	// ChainParams identifies which chain parameters the cpu miner is
 	// associated with.
 	ChainParams *chaincfg.Params
-	
+
 	// ExternalIPs, the ip we listen on
 	ExternalIPs []string
-	
+
 	// RSAPubKey for people to connect to us
-	RSAPubKey   string
+	RSAPubKey string
 
 	// whether in ShareMining mode
 	ShareMining bool
@@ -121,8 +121,8 @@ type CPUMiner struct {
 	updateHashes      chan uint64
 	speedMonitorQuit  chan struct{}
 	quit              chan struct{}
-	miningkeys		  chan btcutil.Address
-	Stale			  bool
+	miningkeys        chan btcutil.Address
+	Stale             bool
 }
 
 // speedMonitor handles tracking the number of hashes per second the mining
@@ -151,7 +151,7 @@ out:
 			totalHashes = 0
 
 			if len(m.queryHashesPerSec) == 0 {
-//				m.queryHashesPerSec <- hashesPerSec
+				//				m.queryHashesPerSec <- hashesPerSec
 			}
 
 		// Request for the number of hashes per second.
@@ -178,14 +178,14 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 	// detected and all work on the stale block is halted to start work on
 	// a new block, but the check only happens periodically, so it is
 	// possible a block was found and submitted in between.
-/*
-	msgBlock := block.MsgBlock()
+	/*
+		msgBlock := block.MsgBlock()
 
-	if !msgBlock.PrevBlock.IsEqual(&m.g.BestMinerSnapshot().Hash) {
-		log.Infof("PrevHash %s is not the best hash %s", msgBlock.PrevBlock.String(), m.g.BestMinerSnapshot().Hash.String())
-		return false
-	}
- */
+		if !msgBlock.PrevBlock.IsEqual(&m.g.BestMinerSnapshot().Hash) {
+			log.Infof("PrevHash %s is not the best hash %s", msgBlock.PrevBlock.String(), m.g.BestMinerSnapshot().Hash.String())
+			return false
+		}
+	*/
 
 	// Process this block using the same rules as blocks coming from other
 	// nodes.  This will in turn relay it to the network like normal.
@@ -211,19 +211,19 @@ func (m *CPUMiner) submitBlock(block *wire.MinerBlock) bool {
 	return true
 }
 
-func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 {	// *big.Int {
+func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 { // *big.Int {
 	h := m.g.Chain.Rotation(best)
 
-	if h < 0 {	// the best block is not in chain. since this is for mining, we do the max.
+	if h < 0 { // the best block is not in chain. since this is for mining, we do the max.
 		return int64(1) << wire.SCALEFACTORCAP
 	}
 
 	d := prevh - h
 
-	if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
+	if d-wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP
-	} else if d < wire.DESIRABLE_MINER_CANDIDATES / 2 {
-		m := wire.DESIRABLE_MINER_CANDIDATES / 2 - d
+	} else if d < wire.DESIRABLE_MINER_CANDIDATES/2 {
+		m := wire.DESIRABLE_MINER_CANDIDATES/2 - d
 		if m > 10 {
 			m = 10
 		}

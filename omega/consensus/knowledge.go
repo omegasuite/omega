@@ -4,7 +4,7 @@
 * Use of this source code is governed by license that can be
 * found in the LICENSE file.
 *
-*/
+ */
 
 package consensus
 
@@ -12,17 +12,17 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/wire"
 	"net/http"
-//	"github.com/omegasuite/btcd/btcec"
+	//	"github.com/omegasuite/btcd/btcec"
 )
 
 type Knowledgebase struct {
-	syncer *Syncer
-	Knowledge [][]int64	// row = knowledge; col = member; bits = know who knows the fact
-	rejections int64	// who has rejected out condidacy announcement
-	status    uint // 0 normal, 1 candidate, 2 consensus, 3 released
+	syncer     *Syncer
+	Knowledge  [][]int64 // row = knowledge; col = member; bits = know who knows the fact
+	rejections int64     // who has rejected out condidacy announcement
+	status     uint      // 0 normal, 1 candidate, 2 consensus, 3 released
 }
 
-func (k * Knowledgebase) Malice(c int32) {
+func (k *Knowledgebase) Malice(c int32) {
 	k.Knowledge[c] = make([]int64, wire.CommitteeSize)
 }
 
@@ -49,7 +49,7 @@ func (k * Knowledgebase) ProcessTree(t int32) {
 	}
 	k.syncer.candidacy()
 }
- */
+*/
 
 func CreateKnowledge(s *Syncer) *Knowledgebase {
 	var k Knowledgebase
@@ -210,7 +210,7 @@ func improve(k []int32, to int32) bool {
 }
 
 func (self *Knowledgebase) sendout(msg *wire.MsgKnowledge, mp int32, me int32, q int32) {
-	log.Infof("sendout %v to %d", msg.K, q)
+	//	log.Infof("sendout %v to %d", msg.K, q)
 	self.syncer.CommitteeMsgMG(self.syncer.Names[q], msg)
 	/*
 

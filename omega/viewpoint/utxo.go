@@ -490,7 +490,15 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 			}
 
 			if txOut.TokenType == 3 {
-				view.Polygon.LookupEntry(txOut.Token.Value.(*token.HashToken).Hash).deReference(view)
+				t := view.Polygon.LookupEntry(txOut.Token.Value.(*token.HashToken).Hash)
+				if t == nil {
+					view.FetchPolygonEntry(&entry.Amount.(*token.HashToken).Hash)
+					t = view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
+				}
+				if t == nil {
+					return fmt.Errorf("Missing polygon definition %s", entry.Amount.(*token.HashToken).Hash.String())
+				}
+				t.deReference(view)
 			}
 
 			entry.Spend()
@@ -567,8 +575,16 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 				entry.packedFlags |= TfCoinBase
 			}
 
-			if entry.TokenType&3 == 3 {
-				view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash).reference(view)
+			if entry.TokenType == 3 {
+				t := view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
+				if t == nil {
+					view.FetchPolygonEntry(&entry.Amount.(*token.HashToken).Hash)
+					t = view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
+				}
+				if t == nil {
+					return fmt.Errorf("Missing polygon definition %s", entry.Amount.(*token.HashToken).Hash.String())
+				}
+				t.reference(view)
 			}
 
 			// if it has a monitor right, add a monitor index
