@@ -8,7 +8,6 @@ package btcjson
 import (
 	"encoding/json"
 	"github.com/omegasuite/btcd/wire"
-	//	"github.com/btcsuite/btcd/wire"
 )
 
 // GetBlockHeaderVerboseResult models the data from the getblockheader command when

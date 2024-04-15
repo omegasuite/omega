@@ -5,7 +5,9 @@ set GOPATH=f:\Gopath
 set CGO_ENABLED=0
 @REM -race
 
-go build -i -v -ldflags "-X 'main.CompileTime=`%date%`'"
+go build -ldflags "-X 'main.CompileTime=`%date%`'"
+
+@REM go build -i -v -ldflags "-X 'main.CompileTime=`%date%`'"
 
 copy omgd \btctest
 

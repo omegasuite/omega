@@ -3,14 +3,14 @@ package main
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/omega/ovm"
-	"github.com/btcsuite/omega/token"
+	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/omega/ovm"
+	"github.com/omegasuite/omega/token"
 	"os"
 	//	"path/filepath"
 	//	"sort"
-	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	flags "github.com/jessevdk/go-flags"
 )
 

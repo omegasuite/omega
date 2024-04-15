@@ -6,9 +6,9 @@
 package main
 
 import (
-	"github.com/btcsuite/btclog"
-	"github.com/btcsuite/omega/consensus"
-	"github.com/btcsuite/omega/minerchain"
+	"github.com/omegasuite/btclog"
+	"github.com/omegasuite/omega/consensus"
+	"github.com/omegasuite/omega/minerchain"
 	"os"
 )
 

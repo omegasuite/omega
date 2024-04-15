@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/txscript/txsparser"
+//	"github.com/omegasuite/btcd/txscript/txsparser"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/omega/ovm"
 )

@@ -15,7 +15,7 @@ import (
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/rpcclient"
-	"github.com/omegasuite/btcd/txscript"
+//	"github.com/omegasuite/btcd/txscript"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/btcutil/hdkeychain"

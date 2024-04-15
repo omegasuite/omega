@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg"
-	"github.com/omegasuite/btcd/txscript/txsparser"
+//	"github.com/omegasuite/btcd/txscript/txsparser"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"

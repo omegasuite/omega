@@ -3,7 +3,7 @@ package leveldb
 import (
 	"testing"
 
-	"github.com/btcsuite/goleveldb/leveldb/testutil"
+	"github.com/omegasuite/goleveldb/leveldb/testutil"
 )
 
 func TestLevelDB(t *testing.T) {

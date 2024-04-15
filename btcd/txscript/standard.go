@@ -11,7 +11,7 @@ import (
 
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/btcd/chaincfg"
-	"github.com/omegasuite/btcd/txscript/txsparser"
+//	"github.com/omegasuite/btcd/txscript/txsparser"
 	"github.com/omegasuite/omega/ovm"
 )
 

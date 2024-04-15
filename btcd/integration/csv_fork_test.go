@@ -19,7 +19,7 @@ import (
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/integration/rpctest"
-	"github.com/omegasuite/btcd/txscript"
+//	"github.com/omegasuite/btcd/txscript"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
 )

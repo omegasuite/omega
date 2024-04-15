@@ -57,76 +57,76 @@ var (
 	// application shutdown.
 	logRotator *rotator.Rotator
 
-	adxrLog = backendLog.Logger("ADXR", 0xFFFF)
-	amgrLog = backendLog.Logger("AMGR", 0xFFFF)
-	cmgrLog = backendLog.Logger("CMGR", 0xFFFF)
-	bcdbLog = backendLog.Logger("BCDB", 0xFFFF)
-	btcdLog = backendLog.Logger("OMCD", 0xFFFF)
-	chanLog = backendLog.Logger("CHAN", 0xFFFF)
-	discLog = backendLog.Logger("DISC", 0xFFFF)
-	indxLog = backendLog.Logger("INDX", 0xFFFF)
-	minrLog = backendLog.Logger("MINR", 0xFFFF)
-	peerLog = backendLog.Logger("PEER", 0xFFFF)
-	rpcsLog = backendLog.Logger("RPCS", 0xFFFF)
-	scrpLog = backendLog.Logger("SCRP", 0xFFFF)
-	srvrLog = backendLog.Logger("SRVR", 0xFFFF)
-	syncLog = backendLog.Logger("SYNC", 0xFFFF)
-	txmpLog = backendLog.Logger("TXMP", 0xFFFF)
-	ovmLog = backendLog.Logger("OVM", 0xFFFF)
+	adxrLog      = backendLog.Logger("ADXR", 0xFFFF)
+	amgrLog      = backendLog.Logger("AMGR", 0xFFFF)
+	cmgrLog      = backendLog.Logger("CMGR", 0xFFFF)
+	bcdbLog      = backendLog.Logger("BCDB", 0xFFFF)
+	btcdLog      = backendLog.Logger("OMCD", 0xFFFF)
+	chanLog      = backendLog.Logger("CHAN", 0xFFFF)
+	discLog      = backendLog.Logger("DISC", 0xFFFF)
+	indxLog      = backendLog.Logger("INDX", 0xFFFF)
+	minrLog      = backendLog.Logger("MINR", 0xFFFF)
+	peerLog      = backendLog.Logger("PEER", 0xFFFF)
+	rpcsLog      = backendLog.Logger("RPCS", 0xFFFF)
+	scrpLog      = backendLog.Logger("SCRP", 0xFFFF)
+	srvrLog      = backendLog.Logger("SRVR", 0xFFFF)
+	syncLog      = backendLog.Logger("SYNC", 0xFFFF)
+	txmpLog      = backendLog.Logger("TXMP", 0xFFFF)
+	ovmLog       = backendLog.Logger("OVM", 0xFFFF)
 	consensusLog = backendLog.Logger("CNSS", 0xFFFF)
-	minerLog = backendLog.Logger("MNER", 0xFFFF)
-	tokenLog = backendLog.Logger("TKN", 0xFFFF)
+	minerLog     = backendLog.Logger("MNER", 0xFFFF)
+	tokenLog     = backendLog.Logger("TKN", 0xFFFF)
 )
 
 // Initialize package-global logger variables.
 func init() {
 	addrmgr.UseLogger(amgrLog)
-//	amgrLog.SetLevel(btclog.LevelTrace)
+	//	amgrLog.SetLevel(btclog.LevelTrace)
 
 	connmgr.UseLogger(cmgrLog)
-//	cmgrLog.SetLevel(btclog.LevelTrace)
+	//	cmgrLog.SetLevel(btclog.LevelTrace)
 
-	database.UseLogger(btclog.Disabled)	// bcdbLog)
+	database.UseLogger(btclog.Disabled) // bcdbLog)
 	blockchain.UseLogger(chanLog)
-//	chanLog.SetLevel(btclog.LevelTrace)
+	//	chanLog.SetLevel(btclog.LevelTrace)
 
-//	indexers.UseLogger(btclog.Disabled)	// indxLog)
+	//	indexers.UseLogger(btclog.Disabled)	// indxLog)
 	indexers.UseLogger(indxLog)
 	mining.UseLogger(minrLog)
 	cpuminer.UseLogger(minrLog)
 	peer.UseLogger(peerLog)
-//	peerLog.SetLevel(btclog.LevelTrace)
-//	UseLogger(scrpLog)
+	//	peerLog.SetLevel(btclog.LevelTrace)
+	//	UseLogger(scrpLog)
 
 	netsync.UseLogger(syncLog)
-//	syncLog.SetLevel(btclog.LevelWarn)
-//	syncLog.SetLevel(btclog.LevelTrace)
+	//	syncLog.SetLevel(btclog.LevelWarn)
+	//	syncLog.SetLevel(btclog.LevelTrace)
 
-	mempool.UseLogger(btclog.Disabled)	// txmpLog)
+	mempool.UseLogger(btclog.Disabled) // txmpLog)
 	ovm.UseLogger(ovmLog)
-//	ovm.UseLogger(btclog.Disabled)
+	//	ovm.UseLogger(btclog.Disabled)
 	consensus.UseLogger(consensusLog)
 	minerchain.UseLogger(minerLog)
-//	minerchain.UseLogger(btclog.Disabled)
-	token.UseLogger(btclog.Disabled)	// tokenLog)
+	//	minerchain.UseLogger(btclog.Disabled)
+	token.UseLogger(btclog.Disabled) // tokenLog)
 
-//	btcdLog.SetLevel(btclog.LevelTrace)
+	//	btcdLog.SetLevel(btclog.LevelTrace)
 
 	srvrLog = btclog.Disabled
 }
 
 func debugLevel() {
-	ovmLog.SetLevel(btclog.LevelDebug)	// ovmLog)
+	ovmLog.SetLevel(btclog.LevelDebug) // ovmLog)
 
-/*
-	amgrLog.SetLevel(btclog.LevelDebug)
-	cmgrLog.SetLevel(btclog.LevelDebug)
-	chanLog.SetLevel(btclog.LevelDebug)
+	/*
+		amgrLog.SetLevel(btclog.LevelDebug)
+		cmgrLog.SetLevel(btclog.LevelDebug)
+		chanLog.SetLevel(btclog.LevelDebug)
 
-	peerLog.SetLevel(btclog.LevelDebug)
-	syncLog.SetLevel(btclog.LevelDebug)
-	btcdLog.SetLevel(btclog.LevelDebug)
- */
+		peerLog.SetLevel(btclog.LevelDebug)
+		syncLog.SetLevel(btclog.LevelDebug)
+		btcdLog.SetLevel(btclog.LevelDebug)
+	*/
 }
 
 // subsystemLoggers maps each subsystem identifier to its associated logger.
@@ -211,7 +211,6 @@ func pickNoun(n uint64, singular, plural string) string {
 	}
 	return plural
 }
-
 
 // LogClosure is a closure that can be printed with %v to be used to
 // generate expensive-to-create data for a detailed log level and avoid doing

@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/omegasuite/btcd/txscript"
+//	"github.com/omegasuite/btcd/txscript"
 )
 
 // TestCheckBlockScripts ensures that validating the all of the scripts in a

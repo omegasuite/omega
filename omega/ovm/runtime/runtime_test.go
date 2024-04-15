@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/btcsuite/ovm"
+	"github.com/omegasuite/ovm"
 )
 
 func TestDefaults(t *testing.T) {
