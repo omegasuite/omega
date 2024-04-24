@@ -982,7 +982,7 @@ func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	vm.BlockNumber = func() uint64 { return uint64(best.Height + 1) }
 	nt := time.Now().Unix()
 	vm.BlockTime = func() uint32 { return uint32(nt) }
-	vm.BlockVersion = func() uint32 { return wire.Version4 }
+	vm.BlockVersion = func() uint32 { return wire.CodeVersion }
 
 	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
 
@@ -1865,7 +1865,7 @@ func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	best := s.cfg.Chain.BestSnapshot()
 	vm.BlockTime = func() uint32 { return uint32(best.MedianTime.Unix()) }
 	vm.BlockNumber = func() uint64 { return uint64(best.Height) }
-	vm.BlockVersion = func() uint32 { return wire.Version4 }
+	vm.BlockVersion = func() uint32 { return wire.CodeVersion }
 
 	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
 	if mb == nil {

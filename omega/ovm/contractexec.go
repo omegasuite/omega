@@ -76,7 +76,7 @@ func CalcSignatureHash(tx *wire.MsgTx, txinidx int, script []byte, txHeight int3
 	ctx.AddTxOutput = func(t wire.TxOut) int { return -1 }
 	ctx.BlockNumber = func() uint64 { return uint64(txHeight) }
 	ctx.BlockTime = func() uint32 { return 0 }
-	ctx.BlockVersion = func() uint32 { return wire.Version4 }
+	ctx.BlockVersion = func() uint32 { return wire.CodeVersion }
 	//	ctx.Block = func() *btcutil.Block { return nil }
 	ctx.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
 	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
@@ -190,7 +190,7 @@ func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoi
 					ovm.AddTxOutput = func(t wire.TxOut) int { return -1 }
 					ovm.BlockNumber = func() uint64 { return 0 } // uint64(txHeight) }
 					ovm.BlockTime = func() uint32 { return 0 }
-					ovm.BlockVersion = func() uint32 { return wire.Version4 }
+					ovm.BlockVersion = func() uint32 { return wire.CodeVersion }
 
 					//					ovm.Block = func() *btcutil.Block { return nil }
 					ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash { return chainhash.Hash{} }
@@ -457,7 +457,7 @@ func (ovm *OVM) ContractCall(addr Address, input []byte) ([]byte, error) {
 	ovm.BlockTime = func() uint32 {
 		return uint32(time.Now().Unix())
 	}
-	ovm.BlockVersion = func() uint32 { return wire.Version4 }
+	ovm.BlockVersion = func() uint32 { return wire.CodeVersion }
 
 	cb := wire.MsgTx{}
 	coinBase := btcutil.NewTx(&cb)
@@ -515,7 +515,7 @@ func (ovm *OVM) TryContract(tx *btcutil.Tx, txHeight int32) ([]byte, error) {
 	ovm.BlockTime = func() uint32 {
 		return uint32(time.Now().Unix())
 	}
-	ovm.BlockVersion = func() uint32 { return wire.Version4 }
+	ovm.BlockVersion = func() uint32 { return wire.CodeVersion }
 	ovm.AddDef = func(t token.Definition, coinbase bool) chainhash.Hash {
 		h := t.Hash()
 		e := ovm.views.Rights.GetRight(ovm.DB, h)

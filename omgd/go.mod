@@ -52,6 +52,7 @@ replace (
 	github.com/omegasuite/winsvc/registry  => f:\Gopath\src\github.com\omegasuite\winsvc\registry
 	github.com/omegasuite/winsvc/winapi  => f:\Gopath\src\github.com\omegasuite\winsvc\winapi
 	github.com/omegasuite/snappy-go  => f:\Gopath\src\github.com/omegasuite/snappy-go
+	github.com/jessevdk/go-flags => f:\Gopath\src\github.com\jessevdk\go-flags
 )
 
 require (
