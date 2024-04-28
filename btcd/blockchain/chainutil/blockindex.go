@@ -211,7 +211,7 @@ func NewBlockIndex(db database.DB, chainParams *chaincfg.Params) *BlockIndex {
 }
 
 func (bi *BlockIndex) Highest() *BlockNode {
-	h, high := int32(0), (*BlockNode)(nil)
+	h, high := int32(-1), (*BlockNode)(nil)
 	for _, node := range bi.index {
 		if node.Height > h {
 			h = node.Height
