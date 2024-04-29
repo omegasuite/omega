@@ -296,7 +296,7 @@ func (self *Syncer) repeater() {
 			all |= mp
 		}
 
-		lmg := *self.forest[self.Names[int32(m)]].know
+		lmg := self.forest[self.Names[int32(m)]].know
 
 		if len(lmg.K) < 2 || lmg.K[len(lmg.K)-1] != self.Myself {
 			lmg.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
@@ -309,7 +309,7 @@ func (self *Syncer) repeater() {
 			}
 			log.Infof("Repeater: Sending knowledge info about %x to %x", m, i)
 
-			self.CommitteeMsgMG(self.Names[int32(i)], &lmg)
+			self.CommitteeMsgMG(self.Names[int32(i)], lmg)
 		}
 	}
 
@@ -408,7 +408,12 @@ func (self *Syncer) process(cmd interface{}) bool {
 
 		if _, ok := self.forest[tree.creator]; !ok || self.forest[tree.creator].block == nil {
 			// each creator may submit only one tree
-			self.forest[tree.creator] = tree
+			if ok {
+				self.forest[tree.creator].block = tree.block
+				self.forest[tree.creator].fees = tree.fees
+			} else {
+				self.forest[tree.creator] = tree
+			}
 			//					self.repeats = 0
 			self.blocks[tree.hash] = tree.block
 			miner.allblks[tree.hash] = tree.block
@@ -453,6 +458,8 @@ func (self *Syncer) process(cmd interface{}) bool {
 				log.Infof("MsgKnowledge invalid")
 				return false
 			}
+
+			log.Infof("MsgKnowledge originated from %d with %v", self.Members[k.Finder], k.K)
 
 			if bytes.Compare(self.forest[k.Finder].hash[:], k.M[:]) != 0 {
 				// reset it
