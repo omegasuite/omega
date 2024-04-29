@@ -27,6 +27,7 @@ type tree struct {
 	fees    uint64
 	hash    chainhash.Hash
 	block   *btcutil.Block
+	know    *wire.MsgKnowledge
 }
 
 func (self *Syncer) block(t *tree) *btcutil.Block {
@@ -206,7 +207,6 @@ func (self *Syncer) repeater() {
 		copy(sigmsg.Signature[btcec.PubKeyBytesLenCompressed:], s)
 
 		miner.Broadcast(&sigmsg, nil)
-		//		self.CommitteeCastMG(&sigmsg)
 	} else if self.ckconsensus(true) {
 		return
 	} else if self.agreed == self.Myself {
@@ -259,18 +259,6 @@ func (self *Syncer) repeater() {
 			self.commands <- self.asked[best]
 			self.asked[best] = nil
 		}
-		/*
-			else if _, ok := self.forest[self.Me]; ok {
-				// no agreement has reached, volunteer for it
-				log.Infof("Repeater: volunteer for candidacy")
-				msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
-				msg.Sign(miner.server.GetPrivKey(self.Me))
-				miner.Broadcast(msg)
-				//			self.CommitteeCastMG(msg)
-				self.agreed = self.Myself
-				self.agrees = make(map[int32]struct{})
-			}
-		*/
 	}
 
 	if _, ok := self.forest[self.Me]; ok { // && len(self.commands) < (wire.CommitteeSize - 1) * 10 {
@@ -279,15 +267,6 @@ func (self *Syncer) repeater() {
 		self.commands <- k
 
 		miner.Broadcast(k, nil)
-		/*
-			for i, p := range self.Names {
-				if i == self.Myself {
-					continue
-				}
-				log.Infof("Repeater: Sending my knowledge info to %x", p)
-				self.CommitteeMsgMG(p, k)
-			}
-		*/
 	}
 	self.forestLock.Unlock()
 
@@ -302,6 +281,37 @@ func (self *Syncer) repeater() {
 	}
 	miner.syncMutex.Unlock()
 	//	self.repeats++
+
+	for m, kp := range self.knowledges.Knowledge {
+		if _, ok := self.forest[self.Names[int32(m)]]; !ok {
+			continue
+		}
+
+		if self.forest[self.Names[int32(m)]].know == nil {
+			continue
+		}
+
+		all := int64(0)
+		for _, mp := range kp {
+			all |= mp
+		}
+
+		lmg := *self.forest[self.Names[int32(m)]].know
+
+		if len(lmg.K) < 2 || lmg.K[len(lmg.K)-1] != self.Myself {
+			lmg.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
+			lmg.From = self.Me
+		}
+
+		for i, mp := range kp {
+			if mp == all || int32(i) == self.Myself {
+				continue
+			}
+			log.Infof("Repeater: Sending knowledge info about %x to %x", m, i)
+
+			self.CommitteeMsgMG(self.Names[int32(i)], &lmg)
+		}
+	}
 
 	/*
 		for _, kp := range self.knows {
@@ -467,6 +477,10 @@ func (self *Syncer) process(cmd interface{}) bool {
 					self.signed = make(map[[20]byte]struct{})
 				}
 				pull(k.M, self.Height, nil)
+			}
+
+			if self.forest[k.Finder].know == nil || len(k.K) > len(self.forest[k.Finder].know.K) {
+				self.forest[k.Finder].know = k
 			}
 
 			//			if _, ok := self.forest[k.Finder]; !ok || self.forest[k.Finder].block == nil {
