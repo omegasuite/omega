@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire"
 )
 
 const (
@@ -21,8 +21,8 @@ const (
 
 type Orphaned interface {
 	MsgBlock() wire.Message
-	PrevBlock() * chainhash.Hash
-	Hash() * chainhash.Hash
+	PrevBlock() *chainhash.Hash
+	Hash() *chainhash.Hash
 	NeedUpdate(Orphaned) bool
 	Removable(Orphaned) bool
 }
@@ -48,24 +48,24 @@ type Orphans struct {
 	oldestOrphan *orphanBlock
 }
 
-func NewOrphanMgr() * Orphans {
-	return &Orphans {
-		orphans:             make(map[chainhash.Hash]*orphanBlock),
-		prevOrphans:         make(map[chainhash.Hash][]*orphanBlock),
+func NewOrphanMgr() *Orphans {
+	return &Orphans{
+		orphans:     make(map[chainhash.Hash]*orphanBlock),
+		prevOrphans: make(map[chainhash.Hash][]*orphanBlock),
 	}
 }
 
 // must be called with ChainLock on
-func (b *Orphans) GetOrphanBlock(hash * chainhash.Hash) wire.Message {
+func (b *Orphans) GetOrphanBlock(hash *chainhash.Hash) wire.Message {
 	var msgBlock wire.Message
 
-//	b.ChainLock.RLock()
+	//	b.ChainLock.RLock()
 	b.orphanLock.RLock()
 	if p, exists := b.orphans[*hash]; exists {
 		msgBlock = p.block.MsgBlock()
 	}
 	b.orphanLock.RUnlock()
-//	b.ChainLock.RUnlock()
+	//	b.ChainLock.RUnlock()
 
 	return msgBlock
 }
@@ -195,7 +195,7 @@ func (b *Orphans) AddOrphanBlock(block Orphaned) *chainhash.Hash {
 
 	hash := *block.Hash()
 
-	if ob,ok := b.orphans[hash]; ok {
+	if ob, ok := b.orphans[hash]; ok {
 		// check signatures
 		if block.NeedUpdate(ob.block) {
 			b.orphans[hash].block = block
@@ -208,15 +208,15 @@ func (b *Orphans) AddOrphanBlock(block Orphaned) *chainhash.Hash {
 	prevHash := block.PrevBlock()
 	b.prevOrphans[*prevHash] = append(b.prevOrphans[*prevHash], oBlock)
 
-	if _,ok := b.orphans[*prevHash]; !ok {
+	if _, ok := b.orphans[*prevHash]; !ok {
 		return prevHash
 	}
 
 	return nil
 
 	// iterate to the top
-//	for ob,ok := b.orphans[*prevHash]; ok; prevHash = ob.block.PrevBlock() {}
-//	return prevHash
+	//	for ob,ok := b.orphans[*prevHash]; ok; prevHash = ob.block.PrevBlock() {}
+	//	return prevHash
 }
 
 // ProcessOrphans determines if there are any orphans which depend on the passed
@@ -254,7 +254,7 @@ func (b *Orphans) ProcessOrphans(hash *chainhash.Hash, handler func(*chainhash.H
 				continue
 			}
 
-			t,h := handler(processHash, orphan.block)
+			t, h := handler(processHash, orphan.block)
 			if h != nil {
 				return nil, h
 			}
@@ -281,9 +281,9 @@ func (b *Orphans) ProcessOrphans(hash *chainhash.Hash, handler func(*chainhash.H
 func (b *Orphans) OnNewMinerNode(handler func(*chainhash.Hash, *chainhash.Hash, bool) bool) bool {
 	added := false
 	root := make(map[chainhash.Hash]struct{}, 0)
-	for q,_ := range b.orphans {
+	for q, _ := range b.orphans {
 		r := b.GetOrphanRoot(&q)
-		if _,ok := root[*r]; ok {
+		if _, ok := root[*r]; ok {
 			continue
 		}
 		root[*r] = struct{}{}
@@ -294,7 +294,7 @@ func (b *Orphans) OnNewMinerNode(handler func(*chainhash.Hash, *chainhash.Hash, 
 	return added
 }
 
-func (b *Orphans) CheckOrphan(blockHash * chainhash.Hash, block Orphaned) bool {
+func (b *Orphans) CheckOrphan(blockHash *chainhash.Hash, block Orphaned) bool {
 	// The block must not already exist as an orphan.
 	if p, exists := b.orphans[*blockHash]; exists {
 		// check if the orphan is a pre-consus block and this is a consensus block

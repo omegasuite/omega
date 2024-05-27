@@ -9,25 +9,23 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/btcd/wire/common"
-	"github.com/omegasuite/omega/ovm"
+	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"math"
 	"math/big"
 	"time"
 
-	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/token"
 	//	"sort"
-	"github.com/omegasuite/omega/validate"
-	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/famofchains/omega/validate"
+	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 const (
@@ -830,8 +828,8 @@ func CheckBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 // which depend on its position within the block chain.
 //
 // The flags modify the behavior of this function as follows:
-//  - BFFastAdd: All checks except those involving comparing the header against
-//    the checkpoints are not performed.
+//   - BFFastAdd: All checks except those involving comparing the header against
+//     the checkpoints are not performed.
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode *chainutil.BlockNode, flags BehaviorFlags) error {
@@ -908,8 +906,8 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 // on its position within the block chain.
 //
 // The flags modify the behavior of this function as follows:
-//  - BFFastAdd: The transaction are not checked to see if they are finalized
-//    and the somewhat expensive BIP0034 validation is not performed.
+//   - BFFastAdd: The transaction are not checked to see if they are finalized
+//     and the somewhat expensive BIP0034 validation is not performed.
 //
 // The flags are also passed to checkBlockHeaderContext.  See its documentation
 // for how the flags modify its behavior.
@@ -1535,38 +1533,6 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 	return txFeeInHao, nil
 }
 
-func ContractNewStorage(tx *btcutil.Tx, vm *ovm.OVM, paidstoragefees map[[20]byte]int64) int64 {
-	storagefees := make(map[[20]byte]int64)
-
-	for _, txOut := range tx.MsgTx().TxOut {
-		if txOut.IsSeparator() || !chaincfg.IsContractAddrID(txOut.PkScript[0]) {
-			continue
-		}
-
-		var addr [20]byte
-		copy(addr[:], txOut.PkScript[1:21])
-		if _, ok := storagefees[addr]; !ok {
-			storagefees[addr] = int64(vm.NewUage(addr))
-		}
-	}
-	storage := int64(0) // storage fees need to be paid by this tx
-	for addr, t := range storagefees {
-		if t <= 0 {
-			continue
-		}
-		if s, ok := paidstoragefees[addr]; ok {
-			if t <= s {
-				continue
-			}
-			storage += t - s
-		} else {
-			storage += t
-		}
-		paidstoragefees[addr] = t
-	}
-	return storage
-}
-
 // checkConnectBlock performs several checks to confirm connecting the passed
 // block to the chain represented by the passed view does not violate any rules.
 // In addition, the passed view is updated to spend all of the referenced
@@ -1588,7 +1554,7 @@ func ContractNewStorage(tx *btcutil.Tx, vm *ovm.OVM, paidstoragefees map[[20]byt
 // with that node.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut, Vm *ovm.OVM) error {
+func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut) error {
 	// If the side chain blocks end up in the database, a call to
 	// CheckBlockSanity should be done here in case a previous version
 	// allowed a block that is no longer valid.  However, since the
@@ -1668,44 +1634,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	coinBase := btcutil.NewTx(transactions[0].MsgTx().Stripped())
 	coinBase.SetIndex(transactions[0].Index())
 
-	if Vm != nil {
-		Vm.SetViewPoint(views)
-
-		coinBaseHash := *transactions[0].Hash()
-
-		Vm.SetCoinBaseOp(
-			func(txo wire.TxOut) wire.OutPoint {
-				if !coinBase.HasOuts {
-					// this servers as a separater. only TokenType is serialized
-					to := wire.TxOut{}
-					to.Token = token.Token{TokenType: token.DefTypeSeparator}
-					coinBase.MsgTx().AddTxOut(&to)
-					coinBase.HasOuts = true
-				}
-				coinBase.MsgTx().AddTxOut(&txo)
-				op := wire.OutPoint{coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
-				views.Utxo.AddRawTxOut(op, &txo, false, block.Height())
-				return op
-			})
-
-		Vm.StepLimit = block.MsgBlock().Header.ContractExec
-		Vm.BlockNumber = func() uint64 {
-			return uint64(block.Height())
-		}
-		Vm.BlockTime = func() uint32 {
-			return uint32(block.MsgBlock().Header.Timestamp.Unix())
-		}
-		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
-		//	Vm.Block = func() *btcutil.Block { return block }
-		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
-		Vm.BlockTime = func() uint32 {
-			return uint32(block.MsgBlock().Header.Timestamp.Unix())
-		}
-		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
-		//	} else {
-		//		oldcoinBase = transactions[0]
-	}
-
 	paidstoragefees := make(map[[20]byte]int64)
 	storages := make([]int64, len(transactions)-1)
 
@@ -1717,77 +1645,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			if err != nil {
 				return err
 			}
-		}
-
-		if Vm != nil {
-			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
-			newtx.SetIndex(tx.Index())
-			newtx.HasIns, newtx.HasDefs, newtx.HasOuts = false, false, false
-
-			_, err = Vm.ExecContract(newtx, node.Height)
-			if err != nil {
-				return err
-			}
-
-			if !newtx.Match(tx) {
-				old, _ := json.Marshal(tx.MsgTx())
-				newt, _ := json.Marshal(newtx.MsgTx())
-				blk, _ := json.Marshal(block.MsgBlock())
-
-				unmached = unmached + fmt.Sprintf("Mismatch contract execution result. old %s \n vs. new %s \n block %s\n", string(old), string(newt), string(blk))
-
-				if !tx.Match(btcutil.NewTx(tx.MsgTx().Stripped())) {
-					// we will update block in DB only if mismatch is between raw tx and executed tx
-					// here we find that tx is executed (therefore it does not match its raw version)
-					return fmt.Errorf("%s", unmached)
-				}
-				transactions[i+1] = newtx
-			}
-
-			storages[i] = ContractNewStorage(newtx, Vm, paidstoragefees)
-		}
-	}
-
-	if Vm != nil {
-		if !transactions[0].Match(coinBase) {
-			transactions[0] = coinBase
-			unmached = unmached + "Mismatch contract execution result in coinbase."
-		}
-
-		if len(unmached) > 0 {
-			var dbblk *btcutil.Block
-			b.db.View(func(dbTx database.Tx) error {
-				var err error
-				blockBytes, err := dbTx.FetchBlock(block.Hash())
-				if err != nil {
-					return err
-				}
-
-				t, err := btcutil.NewBlockFromBytes(blockBytes)
-				if err != nil {
-					return err
-				}
-
-				dbblk = t
-
-				return nil
-			})
-
-			if dbblk != nil {
-				um := false
-				for i, tx := range dbblk.Transactions() {
-					um = um || !tx.Match(transactions[i])
-				}
-				if um {
-					b.db.Update(func(dbTx database.Tx) error {
-						return dbTx.UpdateBlock(block)
-					})
-				}
-			}
-			return fmt.Errorf("%s", unmached)
-		}
-		if Vm.StepLimit != 0 {
-			return fmt.Errorf("Incorrect contract execution cost.")
 		}
 	}
 

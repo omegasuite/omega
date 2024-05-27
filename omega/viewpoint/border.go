@@ -9,41 +9,40 @@
 package viewpoint
 
 import (
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/database"
-	//	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/token"
-	"fmt"
 	"encoding/binary"
+	"fmt"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/token"
 )
 
 // var borderBoxSetBucketName = []byte("borderboxes")
 
 type BoundingBox struct {
-	east int32
-	west int32
+	east  int32
+	west  int32
 	south int32
 	north int32
 }
 
-func (b * BoundingBox) East() int32 {
+func (b *BoundingBox) East() int32 {
 	return b.east
 }
 
-func (b * BoundingBox) West() int32 {
+func (b *BoundingBox) West() int32 {
 	return b.west
 }
 
-func (b * BoundingBox) South() int32 {
+func (b *BoundingBox) South() int32 {
 	return b.south
 }
 
-func (b * BoundingBox) North() int32 {
+func (b *BoundingBox) North() int32 {
 	return b.north
 }
 
-func (b * BoundingBox) Expand(lat, lng int32) {
+func (b *BoundingBox) Expand(lat, lng int32) {
 	if b.east < lng {
 		b.east = lng
 	}
@@ -58,7 +57,7 @@ func (b * BoundingBox) Expand(lat, lng int32) {
 	}
 }
 
-func (b * BoundingBox) serialize() []byte {
+func (b *BoundingBox) serialize() []byte {
 	var s [16]byte
 	binary.LittleEndian.PutUint32(s[:], uint32(b.east))
 	binary.LittleEndian.PutUint32(s[4:], uint32(b.west))
@@ -68,26 +67,26 @@ func (b * BoundingBox) serialize() []byte {
 	return s[:]
 }
 
-func (b * BoundingBox) Reset() {
+func (b *BoundingBox) Reset() {
 	b.east = -2147483648
 	b.west = 0x7FFFFFFF
 	b.south = 0x7FFFFFFF
 	b.north = -2147483648
 }
 
-func (b * BoundingBox) unserialize(s []byte) {
+func (b *BoundingBox) unserialize(s []byte) {
 	b.east = int32(binary.LittleEndian.Uint32(s))
 	b.west = int32(binary.LittleEndian.Uint32(s[4:]))
 	b.south = int32(binary.LittleEndian.Uint32(s[8:]))
 	b.north = int32(binary.LittleEndian.Uint32(s[12:]))
 }
 
-func (b * BoundingBox) Contain(c * BoundingBox) bool {
+func (b *BoundingBox) Contain(c *BoundingBox) bool {
 	return b.west <= c.west && b.east >= c.east &&
 		b.south <= c.south && b.north >= c.north
 }
 
-func (b * BoundingBox) Intersects(c * BoundingBox, touch bool) bool {
+func (b *BoundingBox) Intersects(c *BoundingBox, touch bool) bool {
 	if touch {
 		return !(b.west > c.east || c.west > b.east ||
 			b.south > c.north || c.south > b.north)
@@ -96,7 +95,7 @@ func (b * BoundingBox) Intersects(c * BoundingBox, touch bool) bool {
 		b.south >= c.north || c.south >= b.north)
 }
 
-func (b * BoundingBox) DSize() int32 {
+func (b *BoundingBox) DSize() int32 {
 	return b.north - b.south + b.east - b.west
 }
 
@@ -109,14 +108,14 @@ type BorderEntry struct {
 	// specifically crafted to result in minimal padding.  There will be a
 	// lot of these in memory, so a few extra bytes of padding adds up.
 
-	Father chainhash.Hash
-	Begin token.VertexDef
-	End token.VertexDef
-	Children []chainhash.Hash
-	Bound * BoundingBox
+	Father      chainhash.Hash
+	Begin       token.VertexDef
+	End         token.VertexDef
+	Children    []chainhash.Hash
+	Bound       *BoundingBox
 	newchildren bool
-	RefCnt int32		// reference count. record may be deleted when dropped to 0
-	refChg int32		// change in reference count. not stored.
+	RefCnt      int32 // reference count. record may be deleted when dropped to 0
+	refChg      int32 // change in reference count. not stored.
 
 	// packedFlags contains additional info about vertex. Currently unused.
 	PackedFlags txoFlags
@@ -166,17 +165,17 @@ func (b *BorderEntry) Intersects(c *BorderEntry, r1, r2 bool) bool {
 	// bounding boxes of b & c are known to intersect, have no common end point.
 	// test if the edges are intersecting
 	// BorderEntry has no children
-	d1 := int64(c.End.Lat() - b.Begin.Lat()) * int64(b.End.Lng() - b.Begin.Lng()) -
-		int64(c.End.Lng() - b.Begin.Lng()) * int64(b.End.Lat() - b.Begin.Lat())
+	d1 := int64(c.End.Lat()-b.Begin.Lat())*int64(b.End.Lng()-b.Begin.Lng()) -
+		int64(c.End.Lng()-b.Begin.Lng())*int64(b.End.Lat()-b.Begin.Lat())
 
-	d2 := int64(c.Begin.Lat() - b.Begin.Lat()) * int64(b.End.Lng() - b.Begin.Lng()) -
-		int64(c.Begin.Lng() - b.Begin.Lng()) * int64(b.End.Lat() - b.Begin.Lat())
+	d2 := int64(c.Begin.Lat()-b.Begin.Lat())*int64(b.End.Lng()-b.Begin.Lng()) -
+		int64(c.Begin.Lng()-b.Begin.Lng())*int64(b.End.Lat()-b.Begin.Lat())
 
-	d3 := int64(b.End.Lat() - c.Begin.Lat()) * int64(c.End.Lng() - c.Begin.Lng()) -
-		int64(b.End.Lng() - c.Begin.Lng()) * int64(c.End.Lat() - c.Begin.Lat())
+	d3 := int64(b.End.Lat()-c.Begin.Lat())*int64(c.End.Lng()-c.Begin.Lng()) -
+		int64(b.End.Lng()-c.Begin.Lng())*int64(c.End.Lat()-c.Begin.Lat())
 
-	d4 := int64(b.Begin.Lat() - c.Begin.Lat()) * int64(c.End.Lng() - c.Begin.Lng()) -
-		int64(b.Begin.Lng() - c.Begin.Lng()) * int64(c.End.Lat() - c.Begin.Lat())
+	d4 := int64(b.Begin.Lat()-c.Begin.Lat())*int64(c.End.Lng()-c.Begin.Lng()) -
+		int64(b.Begin.Lng()-c.Begin.Lng())*int64(c.End.Lat()-c.Begin.Lat())
 
 	if d1 < 0 {
 		d1 = -1
@@ -199,11 +198,11 @@ func (b *BorderEntry) Intersects(c *BorderEntry, r1, r2 bool) bool {
 		d4 = 1
 	}
 
-	return d1 * d2 < 0 && d3 * d4 < 0
+	return d1*d2 < 0 && d3*d4 < 0
 }
 
 func (b *BorderEntry) Lat(rev bool) int32 {
-	var p * token.VertexDef
+	var p *token.VertexDef
 	if rev {
 		p = &b.End
 	} else {
@@ -213,7 +212,7 @@ func (b *BorderEntry) Lat(rev bool) int32 {
 }
 
 func (b *BorderEntry) Lng(rev bool) int32 {
-	var p * token.VertexDef
+	var p *token.VertexDef
 	if rev {
 		p = &b.End
 	} else {
@@ -272,50 +271,50 @@ func (b *BorderEntry) North() int32 {
 
 // isModified returns whether or not the output has been modified since it was
 // loaded.
-func (entry * BorderEntry) isModified() bool {
-	return entry.PackedFlags & TfModified == TfModified || entry.refChg != 0
+func (entry *BorderEntry) isModified() bool {
+	return entry.PackedFlags&TfModified == TfModified || entry.refChg != 0
 }
 
-func (entry * BorderEntry) toDelete() bool {
-	return entry.PackedFlags & TfSpent == TfSpent
+func (entry *BorderEntry) toDelete() bool {
+	return entry.PackedFlags&TfSpent == TfSpent
 }
 
 // Clone returns a shallow copy of the vertex entry.
-func (entry * BorderEntry) Clone() *BorderEntry {
+func (entry *BorderEntry) Clone() *BorderEntry {
 	if entry == nil {
 		return nil
 	}
 
 	return &BorderEntry{
-		Father:   entry.Father,
-		Begin:    entry.Begin,
-		End:	  entry.End,
-		Children: entry.Children,
-		Bound: entry.Bound,
+		Father:      entry.Father,
+		Begin:       entry.Begin,
+		End:         entry.End,
+		Children:    entry.Children,
+		Bound:       entry.Bound,
 		newchildren: entry.newchildren,
 		PackedFlags: entry.PackedFlags,
 	}
 }
 
-func (entry * BorderEntry) deReference() {
+func (entry *BorderEntry) deReference() {
 	entry.refChg--
 }
 
-func (entry * BorderEntry) reference() {
+func (entry *BorderEntry) reference() {
 	entry.refChg++
 }
 
-func (entry * BorderEntry) Anciesters(view * ViewPointSet) map[chainhash.Hash]struct{} {
+func (entry *BorderEntry) Anciesters(view *ViewPointSet) map[chainhash.Hash]struct{} {
 	as := make(map[chainhash.Hash]struct{})
 	e := entry
 	for !e.Father.IsEqual(&chainhash.Hash{}) {
 		as[e.Father] = struct{}{}
-		e,_ = view.FetchBorderEntry(&e.Father)
+		e, _ = view.FetchBorderEntry(&e.Father)
 	}
 	return as
 }
 
-func (entry * BorderEntry) ToToken() * token.BorderDef {
+func (entry *BorderEntry) ToToken() *token.BorderDef {
 	return token.NewBorderDef(entry.Begin, entry.End, entry.Father)
 }
 
@@ -331,13 +330,13 @@ type BorderViewpoint struct {
 
 // BestHash returns the hash of the best block in the chain the view currently
 // respresents.
-func (view * BorderViewpoint) BestHash() *chainhash.Hash {
+func (view *BorderViewpoint) BestHash() *chainhash.Hash {
 	return &view.bestHash
 }
 
 // SetBestHash sets the hash of the best block in the chain the view currently
 // respresents.
-func (view * BorderViewpoint) SetBestHash(hash *chainhash.Hash) {
+func (view *BorderViewpoint) SetBestHash(hash *chainhash.Hash) {
 	view.bestHash = *hash
 }
 
@@ -345,15 +344,15 @@ func (view * BorderViewpoint) SetBestHash(hash *chainhash.Hash) {
 // the current state of the view.  It will return nil if the passed vertex does
 // not exist in the view or is otherwise not available such as when it has been
 // disconnected during a reorg.
-func (view * BorderViewpoint) LookupEntry(p chainhash.Hash) * BorderEntry {
+func (view *BorderViewpoint) LookupEntry(p chainhash.Hash) *BorderEntry {
 	q := chainhash.Hash{}
 	q.SetBytes(p.CloneBytes())
 	q[0] &= 0xFE
 	return view.entries[q]
 }
 
-func NewBound(x1, x2, y1, y2 int32) * BoundingBox {
-	b := BoundingBox {	x1, x1, y1, y1	}
+func NewBound(x1, x2, y1, y2 int32) *BoundingBox {
+	b := BoundingBox{x1, x1, y1, y1}
 	if x1 < x2 {
 		b.east = x2
 	} else {
@@ -367,13 +366,13 @@ func NewBound(x1, x2, y1, y2 int32) * BoundingBox {
 	return &b
 }
 
-func (box  * BoundingBox) Clone() * BoundingBox {
+func (box *BoundingBox) Clone() *BoundingBox {
 	b := new(BoundingBox)
 	*b = *box
 	return b
 }
 
-func (box  * BoundingBox) Merge(b * BoundingBox) bool {
+func (box *BoundingBox) Merge(b *BoundingBox) bool {
 	c := false
 	if b.east > box.east {
 		box.east, c = b.east, true
@@ -390,11 +389,11 @@ func (box  * BoundingBox) Merge(b * BoundingBox) bool {
 	return c
 }
 
-func (fe * BorderEntry) mergeBound(view * ViewPointSet, b * BoundingBox) (* BoundingBox, bool) {
-	var box * BoundingBox
+func (fe *BorderEntry) mergeBound(view *ViewPointSet, b *BoundingBox) (*BoundingBox, bool) {
+	var box *BoundingBox
 	if fe.Bound == nil {
 		box = &BoundingBox{
-			east: fe.East(), west: fe.West(),south: fe.South(),north: fe.North(),
+			east: fe.East(), west: fe.West(), south: fe.South(), north: fe.North(),
 		}
 	} else {
 		box = fe.Bound
@@ -408,7 +407,7 @@ func (fe * BorderEntry) mergeBound(view * ViewPointSet, b * BoundingBox) (* Boun
 	return box, c
 }
 
-func (fe * BorderEntry) HasChild(h chainhash.Hash) bool {
+func (fe *BorderEntry) HasChild(h chainhash.Hash) bool {
 	for _, hs := range fe.Children {
 		if hs.IsEqual(&h) {
 			return true
@@ -417,7 +416,7 @@ func (fe * BorderEntry) HasChild(h chainhash.Hash) bool {
 	return false
 }
 
-func (fe * BorderEntry) OnEdge(p token.VertexDef) bool {
+func (fe *BorderEntry) OnEdge(p token.VertexDef) bool {
 	if p.Lng() < fe.Begin.Lng() && p.Lng() < fe.End.Lng() {
 		return false
 	}
@@ -430,12 +429,12 @@ func (fe * BorderEntry) OnEdge(p token.VertexDef) bool {
 	if p.Lng() > fe.Begin.Lat() && p.Lng() > fe.End.Lat() {
 		return false
 	}
-	return int64(fe.End.Lat() - fe.Begin.Lat()) * int64(p.Lng() - fe.Begin.Lng()) ==
-		int64(fe.End.Lng() - fe.Begin.Lng()) * int64(p.Lat() - fe.Begin.Lat())
+	return int64(fe.End.Lat()-fe.Begin.Lat())*int64(p.Lng()-fe.Begin.Lng()) ==
+		int64(fe.End.Lng()-fe.Begin.Lng())*int64(p.Lat()-fe.Begin.Lat())
 }
 
 // addBorder adds the specified BorderDef to the view.
-func (view * ViewPointSet) addBorder(b *token.BorderDef) bool {
+func (view *ViewPointSet) addBorder(b *token.BorderDef) bool {
 	h := b.Hash()
 	entry := view.Border.LookupEntry(h)
 	f := b.Father
@@ -456,14 +455,14 @@ func (view * ViewPointSet) addBorder(b *token.BorderDef) bool {
 
 		for !f.IsEqual(&chainhash.Hash{}) {
 			fe, _ := view.FetchBorderEntry(&f)
-//			fe := view.Border.LookupEntry(f)
+			//			fe := view.Border.LookupEntry(f)
 			if fe == nil {
 				delete(view.Border.entries, h)
 				return false
 			}
 			var c bool
-			box,c = fe.mergeBound(view, box)
-			
+			box, c = fe.mergeBound(view, box)
+
 			if len(fe.Children) == 0 || fe.newchildren {
 				fe.newchildren = true
 
@@ -510,7 +509,7 @@ func (view *ViewPointSet) AddBorder(tx *btcutil.Tx) bool {
 // fetchEntry attempts to find any vertex for the given hash by
 // searching the entire view.  It checks the view first and then falls
 // back to the database if needed.
-func (view * ViewPointSet) FetchBorderEntry(hash *chainhash.Hash) (*BorderEntry, error) {
+func (view *ViewPointSet) FetchBorderEntry(hash *chainhash.Hash) (*BorderEntry, error) {
 	h := chainhash.Hash{}
 	h.SetBytes(hash.CloneBytes())
 	h[0] &= 0xFE
@@ -527,7 +526,7 @@ func (view * ViewPointSet) FetchBorderEntry(hash *chainhash.Hash) (*BorderEntry,
 	err := view.Db.View(func(dbTx database.Tx) error {
 		e, err := DbFetchBorderEntry(dbTx, hash)
 		entry = e
-		return  err
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -581,17 +580,17 @@ func (view *ViewPointSet) disconnectBorderTransactions(block *btcutil.Block) err
 // RemoveEntry removes the given transaction output from the current state of
 // the view.  It will have no effect if the passed output does not exist in the
 // view.
-func (view * BorderViewpoint) RemoveEntry(hash chainhash.Hash) {
+func (view *BorderViewpoint) RemoveEntry(hash chainhash.Hash) {
 	delete(view.entries, hash)
 }
 
 // Entries returns the underlying map that stores of all the utxo entries.
-func (view * BorderViewpoint) Entries() map[chainhash.Hash]*BorderEntry {
+func (view *BorderViewpoint) Entries() map[chainhash.Hash]*BorderEntry {
 	return view.entries
 }
 
 // commit. this is to be called after data has been committed to db
-func (view * BorderViewpoint) commit() {
+func (view *BorderViewpoint) commit() {
 	for outpoint, entry := range view.entries {
 		if entry == nil || ((entry.PackedFlags & TfSpent) == TfSpent) {
 			delete(view.entries, outpoint)
@@ -608,7 +607,7 @@ func (view * BorderViewpoint) commit() {
 //
 // Upon completion of this function, the view will contain an entry for each
 // requested vertices.
-func (view * BorderViewpoint) fetchBorderMain(db database.DB, b map[chainhash.Hash]struct{}) error {
+func (view *BorderViewpoint) fetchBorderMain(db database.DB, b map[chainhash.Hash]struct{}) error {
 	// Nothing to do if there are no requested outputs.
 	if len(b) == 0 {
 		return nil
@@ -622,7 +621,7 @@ func (view * BorderViewpoint) fetchBorderMain(db database.DB, b map[chainhash.Ha
 	// so other code can use the presence of an entry in the store as a way
 	// to unnecessarily avoid attempting to reload it from the database.
 	return db.View(func(dbTx database.Tx) error {
-		for vtx,_ := range b {
+		for vtx, _ := range b {
 			e, err := DbFetchBorderEntry(dbTx, &vtx)
 			if err != nil {
 				return err
@@ -638,7 +637,7 @@ func (view * BorderViewpoint) fetchBorderMain(db database.DB, b map[chainhash.Ha
 // fetchVertex loads the vertices for the provided set into the view
 // from the database as needed unless they already exist
 // in the view in which case they are ignored.
-func (view * BorderViewpoint) FetchBorder(db database.DB, b map[chainhash.Hash]struct{}) error {
+func (view *BorderViewpoint) FetchBorder(db database.DB, b map[chainhash.Hash]struct{}) error {
 	// Nothing to do if there are no requested vertices.
 	if len(b) == 0 {
 		return nil
@@ -660,7 +659,7 @@ func (view * BorderViewpoint) FetchBorder(db database.DB, b map[chainhash.Hash]s
 }
 
 // NewVtxViewpoint returns a new empty vertex view.
-func NewBorderViewpoint() * BorderViewpoint {
+func NewBorderViewpoint() *BorderViewpoint {
 	return &BorderViewpoint{
 		entries: make(map[chainhash.Hash]*BorderEntry),
 	}
@@ -923,7 +922,7 @@ func findborders(dbTx database.Tx, boxbucket database.Bucket, box [4]uint32, box
 
 	return res
 }
- */
+*/
 
 // dbPutVtxView uses an existing database transaction to update the vertex set
 // in the database based on the provided utxo view contents and state. In
@@ -931,7 +930,7 @@ func findborders(dbTx database.Tx, boxbucket database.Bucket, box [4]uint32, box
 // and not spent (meaning not to be deleted) are written to the database.
 func DbPutBorderView(dbTx database.Tx, view *BorderViewpoint) error {
 	bucket := dbTx.Metadata().Bucket(borderSetBucketName)
-//	boxbucket := dbTx.Metadata().Bucket(borderBoxSetBucketName)
+	//	boxbucket := dbTx.Metadata().Bucket(borderBoxSetBucketName)
 
 	for hash, entry := range view.Entries() {
 		// No need to update the database if the entry was not modified.
@@ -939,17 +938,17 @@ func DbPutBorderView(dbTx database.Tx, view *BorderViewpoint) error {
 			continue
 		}
 
-//		boxindex := entry.boxindex()
+		//		boxindex := entry.boxindex()
 
 		// Remove the utxo entry if it is spent.
 		if entry.toDelete() {
 			if err := bucket.Delete(hash[:]); err != nil {
 				return err
 			}
-//			if len(entry.Children) == 0 {
-				// remove box
-//				removebbox(boxbucket, boxindex, 0x80000000, hash)
-//			}
+			//			if len(entry.Children) == 0 {
+			// remove box
+			//				removebbox(boxbucket, boxindex, 0x80000000, hash)
+			//			}
 			entry.PackedFlags &^= TfModified
 			return nil
 		}
@@ -963,12 +962,12 @@ func DbPutBorderView(dbTx database.Tx, view *BorderViewpoint) error {
 		if err = bucket.Put(hash[:], serialized); err != nil {
 			return err
 		}
-//		if len(entry.Children) > 0 && entry.newchildren {
-			// remove box
-//			removebbox(boxbucket, boxindex, 0x80000000, hash)
-//		} else if len(entry.Children) == 0  {
-//			addbbox(boxbucket, boxindex, 0x80000000, hash)
-//		}
+		//		if len(entry.Children) > 0 && entry.newchildren {
+		// remove box
+		//			removebbox(boxbucket, boxindex, 0x80000000, hash)
+		//		} else if len(entry.Children) == 0  {
+		//			addbbox(boxbucket, boxindex, 0x80000000, hash)
+		//		}
 
 		entry.PackedFlags &^= TfModified
 	}
@@ -989,7 +988,7 @@ func serializeBorderEntry(entry *BorderEntry) ([]byte, error) {
 		entry.refChg = 0
 	}
 
-	s := 4 + chainhash.HashSize * (1 + len(entry.Children)) + 24
+	s := 4 + chainhash.HashSize*(1+len(entry.Children)) + 24
 	if entry.Bound != nil {
 		s += 16
 	}
@@ -997,10 +996,10 @@ func serializeBorderEntry(entry *BorderEntry) ([]byte, error) {
 	var serialized = make([]byte, s)
 	copy(serialized[:], entry.Father[:])
 	copy(serialized[chainhash.HashSize:], entry.Begin.Serialize())
-	copy(serialized[chainhash.HashSize + 12:], entry.End.Serialize())
+	copy(serialized[chainhash.HashSize+12:], entry.End.Serialize())
 
 	pos := chainhash.HashSize + 24
-	for _,v := range entry.Children {
+	for _, v := range entry.Children {
 		copy(serialized[pos:], v[:])
 		pos += chainhash.HashSize
 	}
@@ -1008,10 +1007,10 @@ func serializeBorderEntry(entry *BorderEntry) ([]byte, error) {
 	binary.LittleEndian.PutUint32(serialized[pos:], uint32(entry.RefCnt))
 
 	if entry.Bound != nil {
-		binary.LittleEndian.PutUint32(serialized[pos + 4:], uint32(entry.Bound.west))
-		binary.LittleEndian.PutUint32(serialized[pos + 8:], uint32(entry.Bound.east))
-		binary.LittleEndian.PutUint32(serialized[pos + 12:], uint32(entry.Bound.south))
-		binary.LittleEndian.PutUint32(serialized[pos + 16:], uint32(entry.Bound.north))
+		binary.LittleEndian.PutUint32(serialized[pos+4:], uint32(entry.Bound.west))
+		binary.LittleEndian.PutUint32(serialized[pos+8:], uint32(entry.Bound.east))
+		binary.LittleEndian.PutUint32(serialized[pos+12:], uint32(entry.Bound.south))
+		binary.LittleEndian.PutUint32(serialized[pos+16:], uint32(entry.Bound.north))
 	}
 
 	return serialized, nil
@@ -1031,14 +1030,14 @@ func DbFetchBorderEntry(dbTx database.Tx, hash *chainhash.Hash) (*BorderEntry, e
 
 	copy(b.Father[:], serialized[:chainhash.HashSize])
 	b.Begin.Deserialize(serialized[chainhash.HashSize:])
-	b.End.Deserialize(serialized[chainhash.HashSize + 12:])
-	b.Children = make([]chainhash.Hash, (len(serialized) - 24 - chainhash.HashSize) / chainhash.HashSize)
+	b.End.Deserialize(serialized[chainhash.HashSize+12:])
+	b.Children = make([]chainhash.Hash, (len(serialized)-24-chainhash.HashSize)/chainhash.HashSize)
 
-	for i := 0; i < len(b.Children); i ++ {
-		copy(b.Children[i][:], serialized[(i + 1) * chainhash.HashSize + 24:])
+	for i := 0; i < len(b.Children); i++ {
+		copy(b.Children[i][:], serialized[(i+1)*chainhash.HashSize+24:])
 	}
 
-	p := chainhash.HashSize * (len(b.Children) + 1) + 24
+	p := chainhash.HashSize*(len(b.Children)+1) + 24
 	b.RefCnt = int32(binary.LittleEndian.Uint32(serialized[p:]))
 	p += 4
 
@@ -1048,9 +1047,9 @@ func DbFetchBorderEntry(dbTx database.Tx, hash *chainhash.Hash) (*BorderEntry, e
 
 	b.Bound = &BoundingBox{}
 	b.Bound.west = int32(binary.LittleEndian.Uint32(serialized[p:]))
-	b.Bound.east = int32(binary.LittleEndian.Uint32(serialized[p + 4:]))
-	b.Bound.south = int32(binary.LittleEndian.Uint32(serialized[p + 8:]))
-	b.Bound.north = int32(binary.LittleEndian.Uint32(serialized[p + 12:]))
+	b.Bound.east = int32(binary.LittleEndian.Uint32(serialized[p+4:]))
+	b.Bound.south = int32(binary.LittleEndian.Uint32(serialized[p+8:]))
+	b.Bound.north = int32(binary.LittleEndian.Uint32(serialized[p+12:]))
 
 	return &b, nil
 }

@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 // These variables are the chain proof-of-work limit parameters for each default
@@ -166,11 +166,11 @@ type Params struct {
 	DNSSeeds []DNSSeed
 
 	// GenesisBlock defines the first block of the chain.
-	GenesisBlock *wire.MsgBlock
+	GenesisBlock      *wire.MsgBlock
 	GenesisMinerBlock *wire.MingingRightBlock
 
 	// GenesisHash is the starting block hash.
-	GenesisHash *chainhash.Hash
+	GenesisHash      *chainhash.Hash
 	GenesisMinerHash *chainhash.Hash
 
 	// PowLimit defines the highest allowed proof of work value for a block
@@ -214,7 +214,7 @@ type Params struct {
 	// minimum required difficulty after a long enough period of time has
 	// passed without finding a block.  This is really only useful for test
 	// networks and should not be set on a main network.
-//	ReduceMinDifficulty bool
+	//	ReduceMinDifficulty bool
 
 	// MinDiffReductionTime is the amount of time after which the minimum
 	// required difficulty should be reduced when a block hasn't been found.
@@ -253,17 +253,17 @@ type Params struct {
 	Bech32HRPSegwit string
 
 	// Address encoding magics
-	PubKeyHashAddrID        byte // First byte of a P2PKH address
-	MultiSigAddrID          byte // First byte of a multisig address
-	MultiSigAddrXID         byte // First byte of a multisig redeem script
-	ScriptHashAddrID        byte // First byte of a P2SH address
-	ScriptAddrID   		    byte // First byte of a P2SH address
-	ContractAddrID	        byte // First byte of a P2C address
-	PrivateKeyID            byte // First byte of a WIF private key
+	PubKeyHashAddrID byte // First byte of a P2PKH address
+	MultiSigAddrID   byte // First byte of a multisig address
+	MultiSigAddrXID  byte // First byte of a multisig redeem script
+	ScriptHashAddrID byte // First byte of a P2SH address
+	ScriptAddrID     byte // First byte of a P2SH address
+	ContractAddrID   byte // First byte of a P2C address
+	PrivateKeyID     byte // First byte of a WIF private key
 
 	// BIP32 hierarchical deterministic extended key magics
 	HDPublicKeyID  [4]byte
-	HDPrivateKeyID  [4]byte
+	HDPrivateKeyID [4]byte
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
@@ -301,26 +301,25 @@ var MainNetParams = Params{
 
 	// Chain parameters
 	GenesisBlock:             &genesisBlock,
-	GenesisMinerBlock:		  &genesisMinerBlock,
+	GenesisMinerBlock:        &genesisMinerBlock,
 	GenesisHash:              &genesisHash,
 	GenesisMinerHash:         &genesisMinerHash,
 	PowLimit:                 mainPowLimit,
 	PowLimitBits:             0x1e00fff0,
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 	SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
-	MinimalAward: 			  1171875,
+	MinimalAward:             1171875,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
-	ChainCurrentStd:		  time.Hour * 24,
-	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
-	MinBorderFee:			  100000,
-//	ReduceMinDifficulty:      false,
-	MinDiffReductionTime:     0,
-	GenerateSupported:        false,
+	ChainCurrentStd:          time.Hour * 24,
+	RetargetAdjustmentFactor: 4, // 25% less, 400% more
+	MinBorderFee:             100000,
+	//	ReduceMinDifficulty:      false,
+	MinDiffReductionTime: 0,
+	GenerateSupported:    false,
 
 	// Checkpoints ordered from oldest to newest.
-	Checkpoints: []Checkpoint{
-	},
+	Checkpoints: []Checkpoint{},
 
 	// Consensus rule change deployments.
 	//
@@ -414,22 +413,22 @@ var RegressionNetParams = Params{
 
 	// Chain parameters
 	GenesisBlock:             &regTestGenesisBlock,
-	GenesisMinerBlock:		  &regTestGenesisMinerBlock,
+	GenesisMinerBlock:        &regTestGenesisMinerBlock,
 	GenesisHash:              &regTestGenesisHash,
 	GenesisMinerHash:         &regTestGenesisMinerHash,
 	PowLimit:                 regressionPowLimit,
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         10,
 	SubsidyReductionInterval: 150 * wire.MINER_RORATE_FREQ,
-	MinimalAward: 			  1171875,
+	MinimalAward:             1171875,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
-	ChainCurrentStd:		  time.Hour * 24000,
-	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
-	MinBorderFee:			  100000,
-//	ReduceMinDifficulty:      true,
-	MinDiffReductionTime:     time.Minute * 20, // TargetTimePerBlock * 2
-	GenerateSupported:        true,
+	ChainCurrentStd:          time.Hour * 24000,
+	RetargetAdjustmentFactor: 4, // 25% less, 400% more
+	MinBorderFee:             100000,
+	//	ReduceMinDifficulty:      true,
+	MinDiffReductionTime: time.Minute * 20, // TargetTimePerBlock * 2
+	GenerateSupported:    true,
 
 	// Checkpoints ordered from oldest to newest.
 	Checkpoints: nil,
@@ -529,26 +528,25 @@ var TestNet3Params = Params{
 
 	// Chain parameters
 	GenesisBlock:             &testNet3GenesisBlock,
-	GenesisMinerBlock:		  &testNet3GenesisMinerBlock,
+	GenesisMinerBlock:        &testNet3GenesisMinerBlock,
 	GenesisHash:              &testNet3GenesisHash,
 	GenesisMinerHash:         &testNet3GenesisMinerHash,
 	PowLimit:                 testNet3PowLimit,
-	PowLimitBits:             0x1f0fffff,	// 0x1d3fffff
+	PowLimitBits:             0x1f0fffff, // 0x1d3fffff
 	CoinbaseMaturity:         10,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
-	MinimalAward: 			  1171875,
-	TargetTimespan:           time.Hour * 2, // 2 hours
-	TargetTimePerBlock:       time.Minute * 4,    // 4 minutes
-	ChainCurrentStd:		  time.Hour * 24000,
-	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
-	MinBorderFee:			  100000,
-//	ReduceMinDifficulty:      true,
-	MinDiffReductionTime:     time.Minute * 3, // TargetTimePerBlock * 2
-	GenerateSupported:        true,
+	MinimalAward:             1171875,
+	TargetTimespan:           time.Hour * 2,   // 2 hours
+	TargetTimePerBlock:       time.Minute * 4, // 4 minutes
+	ChainCurrentStd:          time.Hour * 24000,
+	RetargetAdjustmentFactor: 4, // 25% less, 400% more
+	MinBorderFee:             100000,
+	//	ReduceMinDifficulty:      true,
+	MinDiffReductionTime: time.Minute * 3, // TargetTimePerBlock * 2
+	GenerateSupported:    true,
 
 	// Checkpoints ordered from oldest to newest.
-	Checkpoints: []Checkpoint{
-	},
+	Checkpoints: []Checkpoint{},
 
 	// Consensus rule change deployments.
 	//
@@ -647,22 +645,22 @@ var SimNetParams = Params{
 
 	// Chain parameters
 	GenesisBlock:             &simNetGenesisBlock,
-	GenesisMinerBlock:		  &simNetGenesisMinerBlock,
+	GenesisMinerBlock:        &simNetGenesisMinerBlock,
 	GenesisHash:              &simNetGenesisHash,
 	GenesisMinerHash:         &simNetGenesisMinerHash,
 	PowLimit:                 simNetPowLimit,
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
-	MinimalAward: 			  1171875,
+	MinimalAward:             1171875,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
-	ChainCurrentStd:		  time.Hour * 24000,
-	RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
-	MinBorderFee:			  100000,
-//	ReduceMinDifficulty:      true,
-	MinDiffReductionTime:     time.Minute * 20, // TargetTimePerBlock * 2
-	GenerateSupported:        true,
+	ChainCurrentStd:          time.Hour * 24000,
+	RetargetAdjustmentFactor: 4, // 25% less, 400% more
+	MinBorderFee:             100000,
+	//	ReduceMinDifficulty:      true,
+	MinDiffReductionTime: time.Minute * 20, // TargetTimePerBlock * 2
+	GenerateSupported:    true,
 
 	// Checkpoints ordered from oldest to newest.
 	Checkpoints: nil,
@@ -899,4 +897,4 @@ func init() {
 	mustRegister(&SimNetParams)
 }
 
-var ActiveNetParams * Params
+var ActiveNetParams *Params

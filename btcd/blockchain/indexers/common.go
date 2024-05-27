@@ -11,11 +11,10 @@ import (
 	"encoding/binary"
 	"errors"
 
-//	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 var (
@@ -34,7 +33,6 @@ type NeedsInputser interface {
 	NeedsInputs() bool
 }
 
-
 // BlockLocator is used to help locate a specific block.  The algorithm for
 // building the block locator is to add the hashes in reverse order until
 // the genesis block is reached.  In order to keep the list of locator hashes
@@ -44,8 +42,9 @@ type NeedsInputser interface {
 // from the block being located.
 //
 // For example, assume a block chain with a side chain as depicted below:
-// 	genesis -> 1 -> 2 -> ... -> 15 -> 16  -> 17  -> 18
-// 	                              \-> 16a -> 17a
+//
+//	genesis -> 1 -> 2 -> ... -> 15 -> 16  -> 17  -> 18
+//	                              \-> 16a -> 17a
 //
 // The block locator for block 17a would be the hashes of blocks:
 // [17a 16a 15 14 13 12 11 10 9 8 7 6 4 genesis]

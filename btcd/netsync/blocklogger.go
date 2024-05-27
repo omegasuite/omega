@@ -5,7 +5,7 @@
 package netsync
 
 import (
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"sync"
 	"time"
 

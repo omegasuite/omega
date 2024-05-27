@@ -8,26 +8,24 @@ package cpuminer
 import (
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/btcd/wire/common"
-	"github.com/omegasuite/omega/consensus"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/famofchains/omega/consensus"
 	"math/big"
 
-	//	"math/big"
 	"bytes"
 	"math/rand"
 	"runtime"
 
-	//	"runtime"
 	"sync"
 	"time"
 
-	"github.com/omegasuite/btcd/blockchain"
-	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/mining"
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/mining"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/famofchains/omega/token"
 )
 
 const (

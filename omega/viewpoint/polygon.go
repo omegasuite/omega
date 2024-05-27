@@ -9,15 +9,12 @@
 package viewpoint
 
 import (
-	//	"fmt"
-
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/database"
 	"fmt"
-	"github.com/omegasuite/btcd/blockchain/bccompress"
-	//	"github.com/btcsuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/famofchains/btcd/blockchain/bccompress"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/token"
 	"math/big"
 )
 
@@ -30,10 +27,10 @@ type PolygonEntry struct {
 	// specifically crafted to result in minimal padding.  There will be a
 	// lot of these in memory, so a few extra bytes of padding adds up.
 
-	Loops []token.LoopDef
-	Bound BoundingBox
-	FirstCW	bool
-	Depth uint8
+	Loops   []token.LoopDef
+	Bound   BoundingBox
+	FirstCW bool
+	Depth   uint8
 
 	// packedFlags contains additional info about vertex. Currently unused.
 	PackedFlags txoFlags
@@ -41,31 +38,31 @@ type PolygonEntry struct {
 
 // isModified returns whether or not the output has been modified since it was
 // loaded.
-func (entry * PolygonEntry) isModified() bool {
-	return entry.PackedFlags & TfModified == TfModified
+func (entry *PolygonEntry) isModified() bool {
+	return entry.PackedFlags&TfModified == TfModified
 }
 
-func (entry * PolygonEntry) toDelete() bool {
-	return entry.PackedFlags & TfSpent == TfSpent
+func (entry *PolygonEntry) toDelete() bool {
+	return entry.PackedFlags&TfSpent == TfSpent
 }
 
 // Clone returns a shallow copy of the vertex entry.
-func (entry * PolygonEntry) Clone() *PolygonEntry {
+func (entry *PolygonEntry) Clone() *PolygonEntry {
 	if entry == nil {
 		return nil
 	}
 
 	return &PolygonEntry{
-		Loops:   entry.Loops,
-		Bound:   entry.Bound,
-		FirstCW: entry.FirstCW,
-		Depth: entry.Depth,
+		Loops:       entry.Loops,
+		Bound:       entry.Bound,
+		FirstCW:     entry.FirstCW,
+		Depth:       entry.Depth,
 		PackedFlags: entry.PackedFlags,
 	}
 }
 
-func (entry * PolygonEntry) deReference(view * ViewPointSet) {
-	loops :=  view.Flattern(entry.Loops)
+func (entry *PolygonEntry) deReference(view *ViewPointSet) {
+	loops := view.Flattern(entry.Loops)
 	for _, loop := range loops {
 		for _, b := range loop {
 			b[0] &= 0xFE
@@ -75,8 +72,8 @@ func (entry * PolygonEntry) deReference(view * ViewPointSet) {
 	}
 }
 
-func (entry * PolygonEntry) reference(view * ViewPointSet) {
-	loops :=  view.Flattern(entry.Loops)
+func (entry *PolygonEntry) reference(view *ViewPointSet) {
+	loops := view.Flattern(entry.Loops)
 	for _, loop := range loops {
 		for _, b := range loop {
 			b[0] &= 0xFE
@@ -86,11 +83,12 @@ func (entry * PolygonEntry) reference(view * ViewPointSet) {
 	}
 }
 
-func (entry * PolygonEntry) ToToken() *token.PolygonDef {
+func (entry *PolygonEntry) ToToken() *token.PolygonDef {
 	return &token.PolygonDef{
 		Loops: entry.Loops,
 	}
 }
+
 // VtxViewpoint represents a view into the set of vertex definition
 // from a specific point of view in the chain.  For example, it could be for
 // the end of the main chain, some point in the history of the main chain, or
@@ -103,13 +101,13 @@ type PolygonViewpoint struct {
 
 // BestHash returns the hash of the best block in the chain the view currently
 // respresents.
-func (view * PolygonViewpoint) BestHash() *chainhash.Hash {
+func (view *PolygonViewpoint) BestHash() *chainhash.Hash {
 	return &view.bestHash
 }
 
 // SetBestHash sets the hash of the best block in the chain the view currently
 // respresents.
-func (view * PolygonViewpoint) SetBestHash(hash *chainhash.Hash) {
+func (view *PolygonViewpoint) SetBestHash(hash *chainhash.Hash) {
 	view.bestHash = *hash
 }
 
@@ -117,11 +115,11 @@ func (view * PolygonViewpoint) SetBestHash(hash *chainhash.Hash) {
 // the current state of the view.  It will return nil if the passed vertex does
 // not exist in the view or is otherwise not available such as when it has been
 // disconnected during a reorg.
-func (view * PolygonViewpoint) LookupEntry(p chainhash.Hash) * PolygonEntry {
+func (view *PolygonViewpoint) LookupEntry(p chainhash.Hash) *PolygonEntry {
 	return view.entries[p]
 }
 
-func (s * ViewPointSet) IsLoop(lp * token.LoopDef) bool {
+func (s *ViewPointSet) IsLoop(lp *token.LoopDef) bool {
 	if len(*lp) == 1 {
 		return false
 	}
@@ -135,7 +133,7 @@ func (s * ViewPointSet) IsLoop(lp * token.LoopDef) bool {
 		if d == nil {
 			return false
 		}
-		if b[0] & 1 == 0 {
+		if b[0]&1 == 0 {
 			pe, pb = &d.End, &d.Begin
 		} else {
 			pb, pe = &d.End, &d.Begin
@@ -145,7 +143,7 @@ func (s * ViewPointSet) IsLoop(lp * token.LoopDef) bool {
 		} else if !be.IsEqual(pb) {
 			return false
 		}
-		if _,ok := exists[*pb]; ok {
+		if _, ok := exists[*pb]; ok {
 			return false
 		}
 		exists[*pb] = struct{}{}
@@ -156,7 +154,7 @@ func (s * ViewPointSet) IsLoop(lp * token.LoopDef) bool {
 }
 
 // addVertex adds the specified vertex to the view.
-func (view * ViewPointSet) addPolygon(b *token.PolygonDef, ccw bool, bx BoundingBox) bool {
+func (view *ViewPointSet) addPolygon(b *token.PolygonDef, ccw bool, bx BoundingBox) bool {
 	// polygon must have already passed sanity check
 	h := b.Hash()
 	entry := view.Polygon.LookupEntry(h)
@@ -167,9 +165,9 @@ func (view * ViewPointSet) addPolygon(b *token.PolygonDef, ccw bool, bx Bounding
 		entry.PackedFlags = TfModified
 		entry.Bound = bx
 		mx := uint8(0)
-		for _,q := range b.Loops {
+		for _, q := range b.Loops {
 			if len(q) == 1 {
-				r,_ := view.FetchPolygonEntry(&q[0])
+				r, _ := view.FetchPolygonEntry(&q[0])
 				if r.Depth > mx {
 					mx = r.Depth
 				}
@@ -185,13 +183,13 @@ func (view * ViewPointSet) addPolygon(b *token.PolygonDef, ccw bool, bx Bounding
 	return false
 }
 
-func (view * ViewPointSet) PolygonInfo(b *token.PolygonDef) (bool, BoundingBox) {
+func (view *ViewPointSet) PolygonInfo(b *token.PolygonDef) (bool, BoundingBox) {
 	bx := (*BoundingBox)(nil)
 	first := true
 	getfirst := true
 	for _, loop := range b.Loops {
 		if len(loop) == 1 {
-			d,_ := view.FetchPolygonEntry(&loop[0])
+			d, _ := view.FetchPolygonEntry(&loop[0])
 			if bx == nil {
 				bx = &BoundingBox{}
 				*bx = d.Bound
@@ -204,7 +202,7 @@ func (view * ViewPointSet) PolygonInfo(b *token.PolygonDef) (bool, BoundingBox) 
 			}
 		} else {
 			for _, b := range loop {
-				d,_ := view.FetchBorderEntry(&b)
+				d, _ := view.FetchBorderEntry(&b)
 				if bx == nil {
 					bx = &BoundingBox{}
 					*bx = d.GetBound()
@@ -215,7 +213,7 @@ func (view * ViewPointSet) PolygonInfo(b *token.PolygonDef) (bool, BoundingBox) 
 				}
 			}
 			if getfirst {
-				first,_ = view.LoopCCW(&loop)
+				first, _ = view.LoopCCW(&loop)
 				getfirst = false
 			}
 		}
@@ -225,16 +223,16 @@ func (view * ViewPointSet) PolygonInfo(b *token.PolygonDef) (bool, BoundingBox) 
 
 type DirectedBorder struct {
 	border *BorderEntry
-	rev byte
+	rev    byte
 }
 
-func (view * ViewPointSet) ExpandLoop(cl *token.LoopDef) ([]DirectedBorder, BoundingBox) {
+func (view *ViewPointSet) ExpandLoop(cl *token.LoopDef) ([]DirectedBorder, BoundingBox) {
 	borders := make([]DirectedBorder, 0, len(*cl))
 	var box BoundingBox
 	box.Reset()
 
 	for _, l := range *cl {
-		b0,err := view.FetchBorderEntry(&l)
+		b0, err := view.FetchBorderEntry(&l)
 		if err != nil {
 			return nil, box
 		}
@@ -247,7 +245,7 @@ func (view * ViewPointSet) ExpandLoop(cl *token.LoopDef) ([]DirectedBorder, Boun
 			if t == nil {
 				return nil, box
 			}
-			if l[0] & 1 == 1 {
+			if l[0]&1 == 1 {
 				for i := len(t) - 1; i >= 0; i-- {
 					borders = append(borders, t[i])
 				}
@@ -260,7 +258,7 @@ func (view * ViewPointSet) ExpandLoop(cl *token.LoopDef) ([]DirectedBorder, Boun
 	return borders, box
 }
 
-func (view * ViewPointSet) Intersects(c1, c2 * token.LoopDef, pb1, pb2 * BoundingBox,
+func (view *ViewPointSet) Intersects(c1, c2 *token.LoopDef, pb1, pb2 *BoundingBox,
 	cw1 bool) bool {
 	// if c1 == c2, check self intersection, else check intersection
 	if pb1 == nil {
@@ -310,7 +308,7 @@ func (view * ViewPointSet) Intersects(c1, c2 * token.LoopDef, pb1, pb2 * Boundin
 		return false
 	}
 
-	t,_ := view.BorderIntersects(&loops1[0], &loops2[0], pb1, pb2, nil, nil, cw1)
+	t, _ := view.BorderIntersects(&loops1[0], &loops2[0], pb1, pb2, nil, nil, cw1)
 	return t
 }
 
@@ -320,16 +318,16 @@ func ReorderChildren(c []chainhash.Hash, rev bool) []chainhash.Hash {
 	}
 	n := len(c)
 	d := make([]chainhash.Hash, n)
-	for i,h := range c {
-		d[n - 1 - i] = h
-		d[n - 1 - i][0] |= 1
+	for i, h := range c {
+		d[n-1-i] = h
+		d[n-1-i][0] |= 1
 	}
 	return d
 }
 
-func (view * ViewPointSet) BorderIntersects(c1, c2 * token.LoopDef, pb1, pb2 * BoundingBox,
-	pb0 * chainhash.Hash, pfe0 * BorderEntry, cw1 bool) (bool, * BorderEntry) {
-	var fe1, pfe * BorderEntry
+func (view *ViewPointSet) BorderIntersects(c1, c2 *token.LoopDef, pb1, pb2 *BoundingBox,
+	pb0 *chainhash.Hash, pfe0 *BorderEntry, cw1 bool) (bool, *BorderEntry) {
+	var fe1, pfe *BorderEntry
 	var tb bool
 
 	// now c1 & c2 are both simple loops, check edges
@@ -338,7 +336,7 @@ func (view * ViewPointSet) BorderIntersects(c1, c2 * token.LoopDef, pb1, pb2 * B
 		if c1 != c2 {
 			n = len(*c1)
 		}
-		fe2,_ := view.FetchBorderEntry(&lp)
+		fe2, _ := view.FetchBorderEntry(&lp)
 		box1 := fe2.GetBound()
 
 		if !box1.Intersects(pb1, true) {
@@ -350,17 +348,17 @@ func (view * ViewPointSet) BorderIntersects(c1, c2 * token.LoopDef, pb1, pb2 * B
 		}
 
 		pb, pfe := pb0, pfe0
-		rev2 := lp[0] & 1 == 1
+		rev2 := lp[0]&1 == 1
 
 		for j := 0; j < n; j++ {
 			lq := (*c1)[j]
-			fe1,_ = view.FetchBorderEntry(&lq)
+			fe1, _ = view.FetchBorderEntry(&lq)
 			box2 := fe1.GetBound()
 			if !box1.Intersects(&box2, true) {
 				pb, pfe = &(*c1)[j], fe1
 				continue
 			}
-			rev1 := lq[0] & 1 == 1
+			rev1 := lq[0]&1 == 1
 			if len(fe1.Children) > 0 && len(fe2.Children) > 0 {
 				nc := ReorderChildren(fe1.Children, rev1)
 				nd := ReorderChildren(fe2.Children, rev2)
@@ -386,12 +384,12 @@ func (view * ViewPointSet) BorderIntersects(c1, c2 * token.LoopDef, pb1, pb2 * B
 				sh11 := fe1.End.IsEqual(&fe2.End)
 				if (sh00 || sh01) && (sh10 || sh11) {
 					pb, pfe = &(*c1)[j], fe1
-					continue	// same edge. should have been excluded already in SameEdge check
+					continue // same edge. should have been excluded already in SameEdge check
 				}
-				check := sh00 || sh01 || sh10 || sh11	// check both ends of fe2
+				check := sh00 || sh01 || sh10 || sh11 // check both ends of fe2
 
-				if int64(fe1.End.Lat() - fe1.Begin.Lat()) * int64(fe2.End.Lng() - fe2.Begin.Lng()) ==
-					int64(fe1.End.Lng() - fe1.Begin.Lng()) * int64(fe2.End.Lat() - fe2.Begin.Lat()) {
+				if int64(fe1.End.Lat()-fe1.Begin.Lat())*int64(fe2.End.Lng()-fe2.Begin.Lng()) ==
+					int64(fe1.End.Lng()-fe1.Begin.Lng())*int64(fe2.End.Lat()-fe2.Begin.Lat()) {
 					pb, pfe = &(*c1)[j], fe1
 					continue
 				}
@@ -421,8 +419,8 @@ func (view * ViewPointSet) BorderIntersects(c1, c2 * token.LoopDef, pb1, pb2 * B
 						ne2.Father, ne2.Begin, ne2.End = lp, ep, fe2.End
 						view.AddOneBorder(&ne2)
 
-						res1, res3 := view.BorderIntersects(c1, c2, pb1, pb2, pb0, pfe0, cw1)		// redo it
-						
+						res1, res3 := view.BorderIntersects(c1, c2, pb1, pb2, pb0, pfe0, cw1) // redo it
+
 						// remove temp edges
 						fe2.Children = []chainhash.Hash{}
 						view.Border.RemoveEntry(ne1.Hash())
@@ -441,19 +439,19 @@ func (view * ViewPointSet) BorderIntersects(c1, c2 * token.LoopDef, pb1, pb2 * B
 	return false, pfe
 }
 
-func (view * ViewPointSet) Between(pb * chainhash.Hash, e1, e2 * BorderEntry, p token.VertexDef, rev1, cw bool) bool {
+func (view *ViewPointSet) Between(pb *chainhash.Hash, e1, e2 *BorderEntry, p token.VertexDef, rev1, cw bool) bool {
 	if e1 == nil {
-		e1,_ = view.FetchBorderEntry(pb)
+		e1, _ = view.FetchBorderEntry(pb)
 	}
 
 	for len(e1.Children) > 0 {
 		var lq chainhash.Hash
 		if rev1 {
-			lq = e1.Children[len(e1.Children) - 1]
+			lq = e1.Children[len(e1.Children)-1]
 		} else {
 			lq = e1.Children[0]
 		}
-		e1,_ = view.FetchBorderEntry(&lq)
+		e1, _ = view.FetchBorderEntry(&lq)
 	}
 
 	a, b, c := e1.Begin, e1.End, e2.End
@@ -466,12 +464,12 @@ func (view * ViewPointSet) Between(pb * chainhash.Hash, e1, e2 * BorderEntry, p 
 	if cw {
 		a, c = c, a
 	}
-	d1 := int64(b.Lat() - a.Lat()) * int64(c.Lng() - b.Lng()) -
-		int64(b.Lng() - a.Lng()) * int64(c.Lat() - b.Lat())
-	d2 := int64(b.Lat() - a.Lat()) * int64(p.Lng() - b.Lng()) -
-		int64(b.Lng() - a.Lng()) * int64(p.Lat() - b.Lat())
-	d3 := int64(b.Lat() - p.Lat()) * int64(c.Lng() - b.Lng()) -
-		int64(b.Lng() - p.Lng()) * int64(c.Lat() - b.Lat())
+	d1 := int64(b.Lat()-a.Lat())*int64(c.Lng()-b.Lng()) -
+		int64(b.Lng()-a.Lng())*int64(c.Lat()-b.Lat())
+	d2 := int64(b.Lat()-a.Lat())*int64(p.Lng()-b.Lng()) -
+		int64(b.Lng()-a.Lng())*int64(p.Lat()-b.Lat())
+	d3 := int64(b.Lat()-p.Lat())*int64(c.Lng()-b.Lng()) -
+		int64(b.Lng()-p.Lng())*int64(c.Lat()-b.Lat())
 	if d2 == 0 || d3 == 0 {
 		return false
 	}
@@ -481,7 +479,7 @@ func (view * ViewPointSet) Between(pb * chainhash.Hash, e1, e2 * BorderEntry, p 
 	return !(d2 < 0 && d3 < 0)
 }
 
-func (view * ViewPointSet) CommonEdge(p, q * token.LoopDef) bool {
+func (view *ViewPointSet) CommonEdge(p, q *token.LoopDef) bool {
 	if len(*p) == 1 {
 		fe, _ := view.FetchPolygonEntry(&(*p)[0])
 		for _, t := range fe.Loops {
@@ -516,12 +514,12 @@ func (view * ViewPointSet) CommonEdge(p, q * token.LoopDef) bool {
 				}
 
 			case len(fe.Children) > len(fe2.Children):
-				if view.CommonEdge((* token.LoopDef)(&fe.Children), q) {
+				if view.CommonEdge((*token.LoopDef)(&fe.Children), q) {
 					return true
 				}
 
 			default:
-				if view.CommonEdge(p, (* token.LoopDef)(&fe2.Children)) {
+				if view.CommonEdge(p, (*token.LoopDef)(&fe2.Children)) {
 					return true
 				}
 			}
@@ -530,11 +528,11 @@ func (view * ViewPointSet) CommonEdge(p, q * token.LoopDef) bool {
 	return false
 }
 
-func (view * ViewPointSet) InOutCheck(p, w * token.LoopDef, wd * BoundingBox) bool {
+func (view *ViewPointSet) InOutCheck(p, w *token.LoopDef, wd *BoundingBox) bool {
 	// return true if any loop of w is inside any loop of p
 	for len(*p) == 1 {
-		plg,_ := view.FetchPolygonEntry(&(*p)[0])
-		for _,lp := range plg.Loops {
+		plg, _ := view.FetchPolygonEntry(&(*p)[0])
+		for _, lp := range plg.Loops {
 			bd := view.LoopBound(&lp)
 			if !bd.Contain(wd) {
 				continue
@@ -547,8 +545,8 @@ func (view * ViewPointSet) InOutCheck(p, w * token.LoopDef, wd * BoundingBox) bo
 	}
 
 	for len(*w) == 1 {
-		plg,_ := view.FetchPolygonEntry(&(*w)[0])
-		for _,lp := range plg.Loops {
+		plg, _ := view.FetchPolygonEntry(&(*w)[0])
+		for _, lp := range plg.Loops {
 			bd := view.LoopBound(&lp)
 			if view.InOutCheck(p, &lp, &bd) {
 				return true
@@ -563,13 +561,13 @@ func (view * ViewPointSet) InOutCheck(p, w * token.LoopDef, wd * BoundingBox) bo
 	for _, q := range *w {
 		b, _ := view.FetchBorderEntry(&q)
 		if len(b.Children) > 0 {
-			c := ReorderChildren(b.Children, q[0] & 1 == 1)
+			c := ReorderChildren(b.Children, q[0]&1 == 1)
 			if view.InOutCheck(p, (*token.LoopDef)(&c), nil) {
 				return true
 			}
 		}
 		v := b.End
-		if q[0] & 1 != 0 { // reversed
+		if q[0]&1 != 0 { // reversed
 			v = b.Begin
 		}
 		r := view.InsidePoint(p, v)
@@ -594,7 +592,7 @@ func (view * ViewPointSet) InOutCheck(p, w * token.LoopDef, wd * BoundingBox) bo
 	d := (wd.east - wd.west) / 2
 	n := 0
 	for d > 0 {
-		n, d = n + 1, d >> 1
+		n, d = n+1, d>>1
 	}
 	d = 1 << n
 	for d > 1 {
@@ -610,13 +608,13 @@ func (view * ViewPointSet) InOutCheck(p, w * token.LoopDef, wd * BoundingBox) bo
 					return false
 				}
 			}
-			v.SetLng(v.Lng() + 2 * d)
+			v.SetLng(v.Lng() + 2*d)
 		}
 	}
-	return true		// impossible
+	return true // impossible
 }
 
-func (view * ViewPointSet) SelectBorders(lp * token.LoopDef, p token.VertexDef) []chainhash.Hash {
+func (view *ViewPointSet) SelectBorders(lp *token.LoopDef, p token.VertexDef) []chainhash.Hash {
 	loop := make([]chainhash.Hash, 0, len(*lp))
 	for _, l := range *lp {
 		fe, _ := view.FetchBorderEntry(&l)
@@ -626,7 +624,7 @@ func (view * ViewPointSet) SelectBorders(lp * token.LoopDef, p token.VertexDef) 
 			continue
 		}
 		if len(fe.Children) > 0 {
-			c := ReorderChildren(fe.Children, l[0] & 1 == 1)
+			c := ReorderChildren(fe.Children, l[0]&1 == 1)
 			loop = append(loop, view.SelectBorders((*token.LoopDef)(&c), p)...)
 		} else {
 			loop = append(loop, l)
@@ -645,7 +643,7 @@ func quadrant(v, p token.VertexDef) int8 {
 	return 0
 }
 
-func (view * ViewPointSet) InsidePoint(lp * token.LoopDef, p token.VertexDef) int {
+func (view *ViewPointSet) InsidePoint(lp *token.LoopDef, p token.VertexDef) int {
 	// we need to find out how many intersections there are for a ray from p.
 	// For a ccw loop, If the number is odd, it is inside. otherwise it is outseide.
 	// For a cw loop, If the number is odd, it is outseide. otherwise it is inside.
@@ -657,8 +655,8 @@ func (view * ViewPointSet) InsidePoint(lp * token.LoopDef, p token.VertexDef) in
 	loop := view.SelectBorders(lp, p)
 
 	for _, l := range loop {
-		fe,_ := view.FetchBorderEntry(&l)
-		if l[0] & 1 == 1 {
+		fe, _ := view.FetchBorderEntry(&l)
+		if l[0]&1 == 1 {
 			begin, end = fe.End, fe.Begin
 		} else {
 			end, begin = fe.End, fe.Begin
@@ -716,8 +714,8 @@ func (view * ViewPointSet) InsidePoint(lp * token.LoopDef, p token.VertexDef) in
 			side = q2
 
 		default:
-			d := int64(end.Lng() - begin.Lng()) * int64(p.Lat() - end.Lat()) -
-				int64(end.Lat() - begin.Lat()) * int64(p.Lng() - end.Lng())
+			d := int64(end.Lng()-begin.Lng())*int64(p.Lat()-end.Lat()) -
+				int64(end.Lat()-begin.Lat())*int64(p.Lng()-end.Lng())
 			if d == 0 {
 				return 0
 			}
@@ -728,7 +726,7 @@ func (view * ViewPointSet) InsidePoint(lp * token.LoopDef, p token.VertexDef) in
 		}
 	}
 
-	if intersects & 1 == 1 {
+	if intersects&1 == 1 {
 		return 1
 	}
 
@@ -838,13 +836,13 @@ func (view *ViewPointSet) FetchPolygonEntry(hash *chainhash.Hash) (*PolygonEntry
 	err = view.Db.View(func(dbTx database.Tx) error {
 		e, err := DbFetchPolygon(dbTx, hash)
 		if err != nil {
-				return err
-			}
+			return err
+		}
 		entry = &PolygonEntry{
 			Loops:       e.Loops,
 			Bound:       e.Bound,
 			FirstCW:     e.FirstCW,
-			Depth:		 e.Depth,
+			Depth:       e.Depth,
 			PackedFlags: 0,
 		}
 		view.Polygon.entries[*hash] = entry
@@ -898,17 +896,17 @@ func (view *ViewPointSet) disconnectPolygonTransactions(block *btcutil.Block) er
 // RemoveEntry removes the given transaction output from the current state of
 // the view.  It will have no effect if the passed output does not exist in the
 // view.
-func (view * PolygonViewpoint) RemoveEntry(hash chainhash.Hash) {
+func (view *PolygonViewpoint) RemoveEntry(hash chainhash.Hash) {
 	delete(view.entries, hash)
 }
 
 // Entries returns the underlying map that stores of all the utxo entries.
-func (view * PolygonViewpoint) Entries() map[chainhash.Hash]*PolygonEntry {
+func (view *PolygonViewpoint) Entries() map[chainhash.Hash]*PolygonEntry {
 	return view.entries
 }
 
 // commit. this is to be called after data has been committed to db
-func (view * PolygonViewpoint) commit() {
+func (view *PolygonViewpoint) commit() {
 	for outpoint, entry := range view.entries {
 		if entry == nil || ((entry.PackedFlags & TfSpent) == TfSpent) {
 			delete(view.entries, outpoint)
@@ -925,7 +923,7 @@ func (view * PolygonViewpoint) commit() {
 //
 // Upon completion of this function, the view will contain an entry for each
 // requested vertices.
-func (view * PolygonViewpoint) fetchPolygonMain(db database.DB, b map[chainhash.Hash]struct{}) error {
+func (view *PolygonViewpoint) fetchPolygonMain(db database.DB, b map[chainhash.Hash]struct{}) error {
 	// Nothing to do if there are no requested outputs.
 	if len(b) == 0 {
 		return nil
@@ -939,16 +937,16 @@ func (view * PolygonViewpoint) fetchPolygonMain(db database.DB, b map[chainhash.
 	// so other code can use the presence of an entry in the store as a way
 	// to unnecessarily avoid attempting to reload it from the database.
 	return db.View(func(dbTx database.Tx) error {
-		for vtx,_ := range b {
+		for vtx, _ := range b {
 			e, err := DbFetchPolygon(dbTx, &vtx)
 			if err != nil {
 				return err
 			}
 
 			view.entries[vtx] = &PolygonEntry{
-				Loops: e.Loops,
-				Bound: e.Bound,
-				Depth: e.Depth,
+				Loops:       e.Loops,
+				Bound:       e.Bound,
+				Depth:       e.Depth,
 				PackedFlags: 0,
 			}
 		}
@@ -960,7 +958,7 @@ func (view * PolygonViewpoint) fetchPolygonMain(db database.DB, b map[chainhash.
 // fetchVertex loads the vertices for the provided set into the view
 // from the database as needed unless they already exist
 // in the view in which case they are ignored.
-func (view * PolygonViewpoint) FetchPolygon(db database.DB, b map[chainhash.Hash]struct{}) error {
+func (view *PolygonViewpoint) FetchPolygon(db database.DB, b map[chainhash.Hash]struct{}) error {
 	// Nothing to do if there are no requested vertices.
 	if len(b) == 0 {
 		return nil
@@ -982,12 +980,11 @@ func (view * PolygonViewpoint) FetchPolygon(db database.DB, b map[chainhash.Hash
 }
 
 // NewVtxViewpoint returns a new empty vertex view.
-func NewPolygonViewpoint() * PolygonViewpoint {
+func NewPolygonViewpoint() *PolygonViewpoint {
 	return &PolygonViewpoint{
 		entries: make(map[chainhash.Hash]*PolygonEntry),
 	}
 }
-
 
 // dbPutVtxView uses an existing database transaction to update the vertex set
 // in the database based on the provided utxo view contents and state. In
@@ -1033,7 +1030,7 @@ func serializePolygonEntry(entry *PolygonEntry) ([]byte, error) {
 
 	size := bccompress.SerializeSizeVLQ(uint64(len(entry.Loops))) + 16 + 1 + 1
 	for _, l := range entry.Loops {
-		size += bccompress.SerializeSizeVLQ(uint64(len(l))) + len(l) * chainhash.HashSize
+		size += bccompress.SerializeSizeVLQ(uint64(len(l))) + len(l)*chainhash.HashSize
 	}
 
 	var serialized = make([]byte, size)
@@ -1043,16 +1040,16 @@ func serializePolygonEntry(entry *PolygonEntry) ([]byte, error) {
 	for _, l := range entry.Loops {
 		bccompress.PutVLQ(serialized[p:], uint64(len(l)))
 		p += bccompress.SerializeSizeVLQ(uint64(len(l)))
-		for _,t := range l {
+		for _, t := range l {
 			copy(serialized[p:], t[:])
-			p +=  chainhash.HashSize
+			p += chainhash.HashSize
 		}
 	}
 
 	copy(serialized[p:], entry.Bound.serialize())
-	serialized[p + 16] = entry.Depth
+	serialized[p+16] = entry.Depth
 	if entry.FirstCW {
-		serialized[p + 17] = 1
+		serialized[p+17] = 1
 	}
 
 	return serialized, nil
@@ -1068,27 +1065,27 @@ func DbFetchPolygon(dbTx database.Tx, hash *chainhash.Hash) (*PolygonEntry, erro
 		return nil, bccompress.ErrNotInMainChain(str)
 	}
 
-	b := PolygonEntry {}
+	b := PolygonEntry{}
 
 	loops, pos := bccompress.DeserializeVLQ(serialized)
 
 	b.Loops = make([]token.LoopDef, loops)
 
-	for i := uint64(0);  i < loops; i++ {
+	for i := uint64(0); i < loops; i++ {
 		bds, offset := bccompress.DeserializeVLQ(serialized[pos:])
 		pos += offset
 		loop := make([]chainhash.Hash, bds)
-		for j := uint64(0);  j < bds; j++ {
-			copy(loop[j][:], serialized[pos:pos + chainhash.HashSize])
+		for j := uint64(0); j < bds; j++ {
+			copy(loop[j][:], serialized[pos:pos+chainhash.HashSize])
 			pos += chainhash.HashSize
 		}
 		b.Loops[i] = loop
 	}
 	b.Bound.unserialize(serialized[pos:])
 	b.FirstCW = false
-	b.Depth = serialized[pos + 16]
-	if len(serialized) > pos + 17 {
-		b.FirstCW = (serialized[pos + 17] != 0)
+	b.Depth = serialized[pos+16]
+	if len(serialized) > pos+17 {
+		b.FirstCW = (serialized[pos+17] != 0)
 	}
 
 	return &b, nil

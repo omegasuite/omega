@@ -6,10 +6,9 @@
 package mining
 
 import (
-//	"github.com/omegasuite/btcd/blockchain"
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 const (

@@ -11,10 +11,10 @@ package validate
 import (
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/token"
-	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/token"
+	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 type tokenElement struct {

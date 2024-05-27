@@ -6,12 +6,12 @@ package blockchain
 
 import (
 	"fmt"
-	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"time"
 
-	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcutil"
 )
 
 // CheckpointConfirmations is the number of blocks before the end of the current
@@ -171,14 +171,14 @@ func (b *BlockChain) findPreviousCheckpoint() (*chainutil.BlockNode, error) {
 // scripts which are not one of the standard types.
 func isNonstandardTransaction(tx *btcutil.Tx) bool {
 	// Check all of the output public key scripts for non-standard scripts.
-/*
-	for _, txOut := range tx.MsgTx().TxOut {
-		scriptClass := txsparser.GetScriptClass(txOut.PkScript)
-		if scriptClass == txsparser.NonStandardTy {
-			return true
+	/*
+		for _, txOut := range tx.MsgTx().TxOut {
+			scriptClass := txsparser.GetScriptClass(txOut.PkScript)
+			if scriptClass == txsparser.NonStandardTy {
+				return true
+			}
 		}
-	}
-*/
+	*/
 	return false
 }
 
@@ -186,29 +186,29 @@ func isNonstandardTransaction(tx *btcutil.Tx) bool {
 // checkpoint candidate.
 //
 // The factors used to determine a good checkpoint are:
-//  - The block must be in the main chain
-//  - The block must be at least 'CheckpointConfirmations' blocks prior to the
-//    current end of the main chain
-//  - The timestamps for the blocks before and after the checkpoint must have
-//    timestamps which are also before and after the checkpoint, respectively
-//    (due to the median time allowance this is not always the case)
-//  - The block must not contain any strange transaction such as those with
-//    nonstandard scripts
+//   - The block must be in the main chain
+//   - The block must be at least 'CheckpointConfirmations' blocks prior to the
+//     current end of the main chain
+//   - The timestamps for the blocks before and after the checkpoint must have
+//     timestamps which are also before and after the checkpoint, respectively
+//     (due to the median time allowance this is not always the case)
+//   - The block must not contain any strange transaction such as those with
+//     nonstandard scripts
 //
 // The intent is that candidates are reviewed by a developer to make the final
 // decision and then manually added to the list of checkpoints for a network.
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) IsCheckpointCandidate(block *btcutil.Block) (bool, error) {
-//	log.Infof("IsCheckpointCandidate: ChainLock.RLock")
+	//	log.Infof("IsCheckpointCandidate: ChainLock.RLock")
 	b.ChainLock.RLock()
 	defer b.ChainLock.RUnlock()
-/*
-	func () {
-		b.ChainLock.RUnlock()
-		log.Infof("IsCheckpointCandidate: ChainLock.RUnlock")
-	} ()
-*/
+	/*
+		func () {
+			b.ChainLock.RUnlock()
+			log.Infof("IsCheckpointCandidate: ChainLock.RUnlock")
+		} ()
+	*/
 
 	// A checkpoint must be in the main chain.
 	node := b.NodeByHash(block.Hash())

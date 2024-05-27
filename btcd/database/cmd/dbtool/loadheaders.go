@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/famofchains/btcd/database"
 )
 
 // headersCmd defines the configuration options for the loadheaders command.

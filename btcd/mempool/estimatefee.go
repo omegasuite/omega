@@ -10,7 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"io"
 	"math"
 	"math/rand"
@@ -19,7 +19,7 @@ import (
 	"sync"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/mining"
+	"github.com/omegasuite/famofchains/btcd/mining"
 	"github.com/omegasuite/btcutil"
 )
 

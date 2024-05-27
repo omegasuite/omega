@@ -3,13 +3,11 @@ package txscript
 import (
 	"errors"
 	"fmt"
-	"github.com/omegasuite/omega/ovm"
 
-	"github.com/omegasuite/btcd/blockchain/indexers"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/btcd/chaincfg"
-//	"github.com/omegasuite/btcd/txscript/txsparser"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
+	"github.com/omegasuite/famofchains/btcutil"
 )
 
 const (
@@ -126,7 +124,7 @@ func ComputePkScript(sigScript []byte, chainParams *chaincfg.Params) (PkScript, 
 
 	code := ovm.ByteCodeParser(sigScript)
 
-	for _, c:= range code {
+	for _, c := range code {
 		// the first COPYIMM copys either pubkey or script to address 4
 		if c.Op() != ovm.PUSH {
 			continue
@@ -142,14 +140,14 @@ func ComputePkScript(sigScript []byte, chainParams *chaincfg.Params) (PkScript, 
 		format := int(scp[4])
 		p := 4
 		var s []byte
-		if format == 0x2 {	// btcec.pubkeyCompressed
-			s = scp[p + 1 : p + 34]
-		} else if format == 0x4 {	// btcec.pubkeyUncompressed
-			s = scp[p + 1 : p + 67]
-		} else if format == 0x6 {	// btcec.pubkeyHybrid
-			s = scp[p + 1 : p + 67]
+		if format == 0x2 { // btcec.pubkeyCompressed
+			s = scp[p+1 : p+34]
+		} else if format == 0x4 { // btcec.pubkeyUncompressed
+			s = scp[p+1 : p+67]
+		} else if format == 0x6 { // btcec.pubkeyHybrid
+			s = scp[p+1 : p+67]
 		} else {
-			s = scp[p + 1 :]
+			s = scp[p+1:]
 			addr, _ := btcutil.NewAddressScriptHash(s, chainParams)
 			copy(pkScript.script[:], addr.ScriptNetAddress())
 			pkScript.class = txsparser.ScriptHashTy

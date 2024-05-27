@@ -7,10 +7,10 @@ package blockchain
 
 import (
 	"fmt"
-	"github.com/omegasuite/btcd/blockchain/chainutil"
-	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcutil"
 	"time"
 )
 
@@ -100,7 +100,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		return false, err, -1
 	}
 
-	if flags & BFAlreadyInChain == BFAlreadyInChain {
+	if flags&BFAlreadyInChain == BFAlreadyInChain {
 		return false, nil, -1
 	}
 

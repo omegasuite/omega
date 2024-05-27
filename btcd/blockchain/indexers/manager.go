@@ -7,13 +7,13 @@ package indexers
 import (
 	"bytes"
 	"fmt"
-	"github.com/omegasuite/btcd/blockchain"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 var (
@@ -546,12 +546,12 @@ func NewManager(db database.DB, enabledIndexes []Indexer) *Manager {
 }
 
 func (x *Manager) TxBlockRegion(hash *chainhash.Hash) (*database.BlockRegion, error) {
-	for _,p := range x.enabledIndexes {
+	for _, p := range x.enabledIndexes {
 		if p.Name() == txIndexName {
 			return p.(*TxIndex).TxBlockRegion(hash)
 		}
 	}
-	return nil,nil
+	return nil, nil
 }
 
 // dropIndex drops the passed index from the database.  Since indexes can be

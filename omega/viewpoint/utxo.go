@@ -13,13 +13,13 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/omegasuite/btcd/blockchain/bccompress"
-	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/famofchains/btcd/blockchain/bccompress"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/token"
 )
 
 // txoFlags is a bitmask defining additional information and state for a

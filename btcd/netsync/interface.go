@@ -5,13 +5,13 @@
 package netsync
 
 import (
-	"github.com/omegasuite/btcd/blockchain"
-	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/mempool"
-	"github.com/omegasuite/btcd/peer"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/mempool"
+	"github.com/omegasuite/famofchains/btcd/peer"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcutil"
 )
 
 // PeerNotifier exposes methods to notify peers of status changes to
@@ -26,7 +26,7 @@ type PeerNotifier interface {
 	RelayInventory(invVect *wire.InvVect, data interface{})
 
 	TransactionConfirmed(tx *btcutil.Tx)
-//	AnnounceNewBlock(block * btcutil.Block)
+	//	AnnounceNewBlock(block * btcutil.Block)
 }
 
 // Config is a configuration struct used to initialize a new SyncManager.

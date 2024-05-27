@@ -11,22 +11,21 @@ import (
 	"container/list"
 	"encoding/hex"
 	"fmt"
-	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/btcd/wire/common"
-	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/famofchains/omega/token"
 	"os"
 	"sync"
 	"time"
 
-	"github.com/omegasuite/btcd/blockchain/bccompress"
-	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/ovm"
-	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/famofchains/btcd/blockchain/bccompress"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 const (
@@ -390,7 +389,7 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 // LockTimeToSequence converts the passed relative locktime to a sequence
 // number in accordance to BIP-68.
 // See: https://github.com/bitcoin/bips/blob/master/bip-0068.mediawiki
-//  * (Compatibility)
+//   - (Compatibility)
 func LockTimeToSequence(isSeconds bool, locktime uint32) uint32 {
 	// If we're expressing the relative lock time in blocks, then the
 	// corresponding sequence number is simply the desired input age.
@@ -623,7 +622,7 @@ func (s * BlockChain) GetRollbackList(h int32) * list.List {
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Block,
-	view *viewpoint.ViewPointSet, stxos []viewpoint.SpentTxOut, vm *ovm.OVM) error {
+	view *viewpoint.ViewPointSet, stxos []viewpoint.SpentTxOut) error {
 
 	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		return fmt.Errorf("insifficient signatures")
@@ -739,7 +738,6 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	// Prune fully spent entries and mark all entries in the view unmodified
 	// now that the modifications have been committed to the database.
 	view.Commit()
-	vm.Commit()
 
 	// update blocklist
 	//	b.Blacklist.Update(uint32(node.Height))
@@ -1109,7 +1107,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	// entails loading the blocks and their associated spent txos from the
 	// database and using that information to unspend all of the spent txos
 	// and remove the utxos created by the blocks.
-	views, Vm := b.Canvas(nil)
+	views := b.Canvas(nil)
 	views.SetBestHash(&oldBest.Hash)
 
 	for e := detachNodes.Front(); e != nil; e = e.Next() {
@@ -1270,7 +1268,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		// In the case the block is determined to be invalid due to a
 		// rule violation, mark it as invalid and mark all of its
 		// descendants as having an invalid ancestor.
-		err = b.checkConnectBlock(n, block, views, &stxos, Vm)
+		err = b.checkConnectBlock(n, block, views, &stxos)
 
 		// check proof of work
 		var mkorphan bool
@@ -1322,7 +1320,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	// view to be valid from the viewpoint of each block being connected or
 	// disconnected.
 
-	views, Vm = b.Canvas(nil)
+	views = b.Canvas(nil)
 	views.SetBestHash(&b.BestChain.Tip().Hash)
 
 	// Disconnect blocks from the main chain.
@@ -1354,18 +1352,6 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 			return 0, 0, err
 		}
 
-		Vm.BlockNumber = func() uint64 {
-			return uint64(block.Height())
-		}
-		Vm.BlockTime = func() uint32 {
-			return uint32(block.MsgBlock().Header.Timestamp.Unix())
-		}
-		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
-
-		if err = Vm.Rollback(); err != nil { // roll back contract state in DB
-			return 0, 0, err
-		}
-
 		for *block.Hash() == b.Miners.Tip().MsgBlock().BestBlock {
 			// also disconnect the Miner chain tip. make it an orphan!
 			b.Miners.DisconnectTip()
@@ -1391,63 +1377,6 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 			return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
 		}
 
-		coinBase := block.Transactions()[0]
-		coinBase.MsgTx().Strip()
-
-		//		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
-		//		coinBase.SetIndex(block.Transactions()[0].Index())
-		coinBaseHash := coinBase.Hash()
-		Vm.SetCoinBaseOp(
-			func(txo wire.TxOut) wire.OutPoint {
-				if !coinBase.HasOuts {
-					// this servers as a separater. only TokenType is serialized
-					to := wire.TxOut{}
-					to.Token = token.Token{TokenType: token.DefTypeSeparator}
-					coinBase.MsgTx().AddTxOut(&to)
-					coinBase.HasOuts = true
-				}
-				coinBase.MsgTx().AddTxOut(&txo)
-				op := wire.OutPoint{*coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
-				return op
-			})
-		Vm.BlockNumber = func() uint64 {
-			return uint64(block.Height())
-		}
-		Vm.BlockTime = func() uint32 {
-			return uint32(block.MsgBlock().Header.Timestamp.Unix())
-		}
-		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
-
-		Vm.StepLimit = block.MsgBlock().Header.ContractExec
-		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
-
-		for i, tx := range block.Transactions() {
-			if i == 0 {
-				continue
-			}
-			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
-			newtx.SetIndex(tx.Index())
-			_, err = Vm.ExecContract(tx, block.Height())
-			if err != nil {
-				//				Vm.AbortRollback()
-				log.Infof("ExecContract error: " + err.Error())
-				return detachable, attachable, err
-			}
-
-			if !tx.Match(newtx) {
-				log.Infof("Mismatch contract execution result")
-				return detachable, attachable, fmt.Errorf("Mismatch contract execution result")
-			}
-		}
-		if !block.Transactions()[0].Match(coinBase) {
-			log.Infof("Mismatch coinbase contract execution result")
-			return detachable, attachable, fmt.Errorf("Mismatch coinbase contract execution result")
-		}
-		if Vm.StepLimit != 0 {
-			log.Infof("Incorrect contract execution cost.")
-			return detachable, attachable, fmt.Errorf("Incorrect contract execution cost.")
-		}
-
 		// Update the view to mark all utxos referenced by the block
 		// as spent and add all transactions being created by this block
 		// to it.  Also, provide an stxo slice so the spent txout
@@ -1460,13 +1389,11 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		}
 
 		// Update the database and chain state.
-		err = b.connectBlock(n, block, views, stxos, Vm)
+		err = b.connectBlock(n, block, views, stxos)
 		if err != nil {
 			log.Infof("connectBlock error: " + err.Error())
 			return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
 		}
-
-		Vm.Commit() // commit state change & establish a rollback point
 
 		b.index.SetStatusFlags(n, chainutil.StatusValid)
 		attachable++
@@ -1563,41 +1490,10 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest *chainhash.H
 	return uint32(e.Amount.(*token.NumToken).Val / 1e8), nil
 }
 
-func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm.OVM) {
+func (b *BlockChain) Canvas(block *btcutil.Block) *viewpoint.ViewPointSet {
 	views := b.NewViewPointSet()
 
-	// initialize OVM
-	Vm := ovm.NewOVM(b.ChainParams)
-	Vm.SetViewPoint(views)
-
-	if block != nil {
-		Vm.BlockNumber = func() uint64 {
-			return uint64(block.Height())
-		}
-		Vm.BlockTime = func() uint32 {
-			return uint32(block.MsgBlock().Header.Timestamp.Unix())
-		}
-		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
-		//		Vm.Block = func() *btcutil.Block { return block }
-		Vm.SetCoinBaseOp(
-			func(txo wire.TxOut) wire.OutPoint {
-				tx, _ := block.Tx(0)
-				msg := tx.MsgTx()
-				if !tx.HasOuts {
-					// this servers as a separater. only TokenType is serialized
-					to := wire.TxOut{}
-					to.Token = token.Token{TokenType: token.DefTypeSeparator}
-					msg.AddTxOut(&to)
-					tx.HasOuts = true
-				}
-				msg.AddTxOut(&txo)
-				op := wire.OutPoint{*tx.Hash(), uint32(len(msg.TxOut) - 1)}
-				//				views.Utxo.AddRawTxOut(op, &txo, false, block.Height())
-				return op
-			})
-	}
-
-	return views, Vm
+	return views
 }
 
 // connectBestChain handles connecting the passed block to the chain while
@@ -1610,8 +1506,8 @@ func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm
 // a reorganization to become the main chain).
 //
 // The flags modify the behavior of this function as follows:
-//  - BFFastAdd: Avoids several expensive transaction validation operations.
-//    This is useful when using checkpoints.
+//   - BFFastAdd: Avoids several expensive transaction validation operations.
+//     This is useful when using checkpoints.
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.Block, flags BehaviorFlags) (bool, error) {
@@ -1652,12 +1548,12 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		// Perform several checks to verify the block can be connected
 		// to the main chain without violating any rules and without
 		// actually connecting the block.
-		views, Vm := b.Canvas(block)
+		views := b.Canvas(block)
 
 		views.Utxo.SetBestHash(parentHash)
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
 		if !fastAdd {
-			err := b.checkConnectBlock(node, block, views, &stxos, Vm)
+			err := b.checkConnectBlock(node, block, views, &stxos)
 			if err == nil {
 				b.index.SetStatusFlags(node, chainutil.StatusValid)
 			} else if _, ok := err.(RuleError); ok {
@@ -1689,7 +1585,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		}
 
 		// Connect the block to the main chain.
-		err := b.connectBlock(node, block, views, stxos, Vm)
+		err := b.connectBlock(node, block, views, stxos)
 		if err != nil {
 			// If we got hit with a rule error, then we'll mark
 			// that status of the block as invalid and flush the
@@ -1828,8 +1724,8 @@ func (b *BlockChain) FindFork(node *chainutil.BlockNode) *chainutil.BlockNode {
 // isCurrent returns whether or not the chain believes it is current.  Several
 // factors are used to guess, but the key factors that allow the chain to
 // believe it is current are:
-//  - Latest block height is after the latest checkpoint (if enabled)
-//  - Latest block has a timestamp newer than 24 hours ago
+//   - Latest block height is after the latest checkpoint (if enabled)
+//   - Latest block has a timestamp newer than 24 hours ago
 //
 // This function MUST be called with the chain state lock held (for reads).
 func (b *BlockChain) isCurrent() bool {
@@ -1888,8 +1784,8 @@ func (b *BlockChain) SameChain(u, w chainhash.Hash) bool {
 // IsCurrent returns whether or not the chain believes it is current.  Several
 // factors are used to guess, but the key factors that allow the chain to
 // believe it is current are:
-//  - Latest block height is after the latest checkpoint (if enabled)
-//  - Latest block has a timestamp newer than 24 hours ago
+//   - Latest block height is after the latest checkpoint (if enabled)
+//   - Latest block has a timestamp newer than 24 hours ago
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) IsCurrent() bool {
@@ -2245,11 +2141,11 @@ func (b *BlockChain) Ancestor(blockNode *chainutil.BlockNode, blockHeight int32)
 //
 // In addition, there are two special cases:
 //
-// - When no locators are provided, the stop hash is treated as a request for
-//   that block, so it will either return the node associated with the stop hash
-//   if it is known, or nil if it is unknown
-// - When locators are provided, but none of them are known, nodes starting
-//   after the genesis block will be returned
+//   - When no locators are provided, the stop hash is treated as a request for
+//     that block, so it will either return the node associated with the stop hash
+//     if it is known, or nil if it is unknown
+//   - When locators are provided, but none of them are known, nodes starting
+//     after the genesis block will be returned
 //
 // This is primarily a helper function for the locateBlocks and locateHeaders
 // functions.
@@ -2438,11 +2334,11 @@ func (b *BlockChain) locateUncachedBlocks(locator chainhash.BlockLocator, hashSt
 //
 // In addition, there are two special cases:
 //
-// - When no locators are provided, the stop hash is treated as a request for
-//   that block, so it will either return the stop hash itself if it is known,
-//   or nil if it is unknown
-// - When locators are provided, but none of them are known, hashes starting
-//   after the genesis block will be returned
+//   - When no locators are provided, the stop hash is treated as a request for
+//     that block, so it will either return the stop hash itself if it is known,
+//     or nil if it is unknown
+//   - When locators are provided, but none of them are known, hashes starting
+//     after the genesis block will be returned
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) LocateBlocks(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxHashes uint32) []chainhash.Hash {
@@ -2525,11 +2421,11 @@ func (b *BlockChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 //
 // In addition, there are two special cases:
 //
-// - When no locators are provided, the stop hash is treated as a request for
-//   that header, so it will either return the header for the stop hash itself
-//   if it is known, or nil if it is unknown
-// - When locators are provided, but none of them are known, headers starting
-//   after the genesis block will be returned
+//   - When no locators are provided, the stop hash is treated as a request for
+//     that header, so it will either return the header for the stop hash itself
+//     if it is known, or nil if it is unknown
+//   - When locators are provided, but none of them are known, headers starting
+//     after the genesis block will be returned
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) LocateHeaders(locator chainhash.BlockLocator, hashStop *chainhash.Hash) []wire.BlockHeader {

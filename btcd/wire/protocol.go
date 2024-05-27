@@ -6,7 +6,6 @@
 package wire
 
 import (
-//	"github.com/omegasuite/btcd/wire/common"
 )
 
 // XXX pedro: we will probably need to bump this.

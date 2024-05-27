@@ -7,7 +7,7 @@ package main
 
 import (
 	"errors"
-	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"sort"
 	"strings"
 	"sync"

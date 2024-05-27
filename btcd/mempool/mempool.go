@@ -9,24 +9,22 @@ import (
 	"container/list"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/omega/ovm"
 
-	//	"github.com/omegasuite/omega/token"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/omegasuite/btcd/blockchain"
-	"github.com/omegasuite/btcd/blockchain/indexers"
 	"github.com/omegasuite/btcd/btcjson"
-	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/mining"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/blockchain/indexers"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/mining"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 const (
@@ -65,7 +63,7 @@ type Config struct {
 	// transaction output information.
 	FetchUtxoView func(*btcutil.Tx) (*viewpoint.ViewPointSet, error)
 
-//	Views * viewpoint.ViewPointSet
+	//	Views * viewpoint.ViewPointSet
 
 	// BestHeight defines the function to use to access the block height of
 	// the current best chain.
@@ -88,10 +86,10 @@ type Config struct {
 	IsDeploymentActive func(deploymentID uint32) (bool, error)
 
 	// SigCache defines a signature cache to use.
-//	SigCache *txscript.SigCache
+	//	SigCache *txscript.SigCache
 
 	// HashCache defines the transaction hash mid-state cache to use.
-//	HashCache *txscript.HashCache
+	//	HashCache *txscript.HashCache
 
 	// AddrIndex defines the optional address index instance to use for
 	// indexing the unconfirmed transactions in the memory pool.
@@ -162,7 +160,6 @@ type orphanTx struct {
 	expiration time.Time
 }
 
-
 // TxPool is used as a source of transactions that need to be mined into blocks
 // and relayed to other peers.  It is safe for concurrent access from multiple
 // peers.
@@ -185,7 +182,7 @@ type TxPool struct {
 	// to on an unconditional timer.
 	nextExpireScan time.Time
 
-//	Blacklist blockchain.Violations
+	//	Blacklist blockchain.Violations
 }
 
 // Ensure the TxPool type implements the mining.TxSource interface.
@@ -563,7 +560,7 @@ func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.
 			Height:   height,
 			Fee:      fee,
 			FeePerKB: fee * 1000 / blockchain.GetTransactionWeight(tx),
-			Tried:	  0,
+			Tried:    0,
 		},
 		StartingPriority: mining.CalcPriority(tx.MsgTx(), utxoView, height),
 	}
@@ -651,7 +648,7 @@ func (mp *TxPool) fetchInputUtxos(tx *btcutil.Tx) (*viewpoint.ViewPointSet, erro
 		if poolTxDesc, exists := mp.pool[prevOut.Hash]; exists {
 			// AddTxOut ignores out of range index values, so it is
 			// safe to call without bounds checking here.
-			view.AddTxOut(poolTxDesc.Tx, prevOut.Index,	mining.UnminedHeight)
+			view.AddTxOut(poolTxDesc.Tx, prevOut.Index, mining.UnminedHeight)
 		}
 	}
 
@@ -794,25 +791,25 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		}
 		utxoView.RemoveEntry(prevOut)
 	}
-/*
-	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		// Ensure the referenced input transaction is available.
-		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
-		if utxo == nil || utxo.IsSpent() {
-			continue
-		}
+	/*
+	   	for _, txIn := range tx.MsgTx().TxIn {
+	   		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+	   			continue
+	   		}
+	   		// Ensure the referenced input transaction is available.
+	   		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
+	   		if utxo == nil || utxo.IsSpent() {
+	   			continue
+	   		}
 
-		// check blacklist
-//		var name [20]byte
-//		copy(name[:], utxo.PkScript()[1:21])
-//		if mp.Blacklist.IsGrey(name) {
-//			return nil, nil, fmt.Errorf("Blacklised input")
-//		}
-	}
- */
+	   		// check blacklist
+	   //		var name [20]byte
+	   //		copy(name[:], utxo.PkScript()[1:21])
+	   //		if mp.Blacklist.IsGrey(name) {
+	   //			return nil, nil, fmt.Errorf("Blacklised input")
+	   //		}
+	   	}
+	*/
 
 	// Transaction is an orphan if any of the referenced transaction outputs
 	// don't exist or are already spent.  Adding orphans to the orphan pool
@@ -994,7 +991,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 			return nil, nil, fmt.Errorf("Incorrect signature index")
 		}
 	}
-	for i,sig := range tx.MsgTx().SignatureScripts {
+	for i, sig := range tx.MsgTx().SignatureScripts {
 		if len(sig) < btcec.MinSigLen {
 			return nil, nil, fmt.Errorf("Incorrect signature")
 		}
@@ -1014,7 +1011,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	if fulllValidate {
 		err = ovm.VerifySigs(tx, mp.cfg.ChainParams, 0, views)
 		if err != nil {
-			return nil,nil, err
+			return nil, nil, err
 		}
 	}
 

@@ -8,7 +8,7 @@ package blockchain
 import (
 	"bytes"
 	"fmt"
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"math"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -73,7 +73,7 @@ func HashMerkleBranches(left *chainhash.Hash, right *chainhash.Hash) *chainhash.
 //
 // The above stored as a linear array is as follows:
 //
-// 	[h1 h2 h3 h4 h12 h34 root]
+//	[h1 h2 h3 h4 h12 h34 root]
 //
 // As the above shows, the merkle root is always the last element in the array.
 //
@@ -105,7 +105,7 @@ func BuildMerkleTreeStore(transactions []*btcutil.Tx, witness bool, version uint
 			} else {
 				txHash = tx.MsgTx().TxHash()
 			}
-			merkles[i] = &txHash	// &zeroHash
+			merkles[i] = &txHash // &zeroHash
 		default:
 			if witness {
 				// for witness merkle hash (to be put in coinbase) we include signatures but not contract results

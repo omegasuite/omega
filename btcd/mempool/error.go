@@ -5,9 +5,8 @@
 package mempool
 
 import (
-	"github.com/omegasuite/btcd/blockchain"
-//	"github.com/omegasuite/btcd/wire/common"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 // RuleError identifies a rule violation.  It is used to indicate that

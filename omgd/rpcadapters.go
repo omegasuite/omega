@@ -7,12 +7,12 @@ package main
 import (
 	"sync/atomic"
 
-	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/mempool"
-	"github.com/omegasuite/btcd/netsync"
-	"github.com/omegasuite/btcd/peer"
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/mempool"
+	"github.com/omegasuite/famofchains/btcd/netsync"
+	"github.com/omegasuite/famofchains/btcd/peer"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/btcutil"
 )
 

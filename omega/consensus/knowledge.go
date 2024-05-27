@@ -10,9 +10,8 @@ package consensus
 
 import (
 	"fmt"
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"net/http"
-	//	"github.com/omegasuite/btcd/btcec"
 )
 
 type Knowledgebase struct {

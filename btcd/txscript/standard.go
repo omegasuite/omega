@@ -6,19 +6,29 @@
 package txscript
 
 import (
-	"fmt"
 	"encoding/binary"
+	"fmt"
 
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/btcd/chaincfg"
-//	"github.com/omegasuite/btcd/txscript/txsparser"
-	"github.com/omegasuite/omega/ovm"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
+	"github.com/omegasuite/famofchains/btcutil"
 )
 
 const (
 	// MaxDataCarrierSize is the maximum number of bytes allowed in pushed
 	// data to be considered a nulldata transaction
 	MaxDataCarrierSize = 80
+)
+
+const (
+	PAYFUNC_MIN = 0x41
+	PAYFUNC_MAX = 0x46
+
+	OP_PAY2PKH     = 0x41
+	OP_PAY2SCRIPTH = 0x42
+	OP_PAYMULTISIG = 0x43
+	OP_PAY2NONE    = 0x45
+	OP_PAY2ANY     = 0x46
 )
 
 // ScriptInfo houses information about a script pair that is determined by
@@ -96,11 +106,11 @@ func CalcScriptInfo(sigScript, pkScript []byte) (*ScriptInfo, error) {
 		switch c {
 		case ovm.PUSH:
 			i += 2 + int(sigScript[i + 1])
-			
+
 		case ovm.SIGNTEXT:
 			si.SigOps++
 			i += 2
-			
+
 		default:
 			return nil, txsparser.ScriptError(txsparser.ErrNotPushOnly,
 				"sigscript is not valid")
@@ -109,7 +119,7 @@ func CalcScriptInfo(sigScript, pkScript []byte) (*ScriptInfo, error) {
 
 	return si, nil
 }
- */
+*/
 
 /*
 func ExtractSigHead(sigScript []byte) (int, []byte, error) {
@@ -136,7 +146,7 @@ func ExtractSigHead(sigScript []byte) (int, []byte, error) {
 
 	return len(sigScript), nil, nil
 }
- */
+*/
 
 // payToPubKeyHashScript creates a new script to pay a transaction
 // output to a 20-byte pubkey hash. It is expected that the input is a valid
@@ -204,7 +214,7 @@ func MultiSigScript(pubkeys []*btcutil.AddressPubKeyHash, nrequired int) ([]byte
 		return nil, txsparser.ScriptError(txsparser.ErrTooManyRequiredSigs, str)
 	}
 
-	builder := make([]byte, 21 * len(pubkeys) + 8 + 4)
+	builder := make([]byte, 21*len(pubkeys)+8+4)
 	copy(builder, pubkeys[0].ScriptNetAddress())
 	copy(builder[21:], []byte{byte(ovm.OP_PAY2PKH), 0, 0, 0})
 	binary.LittleEndian.PutUint32(builder[25:], uint32(len(pubkeys)))

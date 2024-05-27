@@ -5,15 +5,13 @@
 package indexers
 
 import (
-	"github.com/omegasuite/btcd/blockchain"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 
-	"github.com/omegasuite/btcd/chaincfg"
-	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 const (
@@ -164,7 +162,7 @@ func (idx *AddrUseIndex) Usage(address btcutil.Address) uint32 {
 
 	var r uint32
 
-	idx.db.View(func (tx database.Tx) error {
+	idx.db.View(func(tx database.Tx) error {
 		addrIdxBucket := tx.Metadata().Bucket(addrUseIndexKey)
 		k := addrIdxBucket.Get(addrKey[:])
 		if k == nil {
@@ -174,28 +172,6 @@ func (idx *AddrUseIndex) Usage(address btcutil.Address) uint32 {
 		return nil
 	})
 	return r
-}
-
-func (idx *AddrUseIndex) Snap2V2() {
-	// this index is effective only for version 2
-	idx.db.Update(func(dbTx database.Tx) error {
-		// ad hoc getting best state to avoid circular importation
-		chainStateKeyName := []byte("chainstate")
-		serializedData := dbTx.Metadata().Get(chainStateKeyName)
-		if serializedData == nil {
-			return nil
-		}
-		var hash chainhash.Hash
-		copy(hash[:], serializedData[0:chainhash.HashSize])
-		height := int32(common.LittleEndian.Uint32(serializedData[chainhash.HashSize+4:]))
-
-		h,_ := blockchain.DbFetchHeaderByHash(dbTx, &hash)
-		if h.Version < wire.Version2 {
-			// snap IndexerTip to best state
-			dbPutIndexerTip(dbTx, addrUseIndexKey, &hash, height)
-		}
-		return nil
-	})
 }
 
 // NewAddrIndex returns a new instance of an indexer that is used to create a

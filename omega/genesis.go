@@ -5,8 +5,8 @@ package omega
 import (
 	"time"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/omega/token"
 )
 
 var IntlDateLine = [][2]float64 {	// international date line

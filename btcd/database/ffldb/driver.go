@@ -7,9 +7,9 @@ package ffldb
 import (
 	"fmt"
 
-	"github.com/omegasuite/btcd/database"
+	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/btclog"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 var log = btclog.Disabled

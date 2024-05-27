@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/btclog"
-	"github.com/omegasuite/btcd/wire/common"
-	"github.com/omegasuite/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
 )
 
 const (

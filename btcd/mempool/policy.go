@@ -7,13 +7,13 @@ package mempool
 
 import (
 	"fmt"
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"time"
 
-	"github.com/omegasuite/btcd/blockchain"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 const (

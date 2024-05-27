@@ -11,16 +11,16 @@ package minerchain
 import (
 	"bytes"
 	"fmt"
-	"github.com/omegasuite/btcd/chaincfg"
-	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/omega/token"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/omega/token"
 	"math/big"
 	"strconv"
 	"time"
 
-	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire"
 )
 
 var (
