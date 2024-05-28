@@ -402,15 +402,15 @@ func newConfigParser(cfg *config, so *serviceOptions, options flags.Options) *fl
 // line options.
 //
 // The configuration proceeds as follows:
-// 	1) Start with a default config with sane settings
-// 	2) Pre-parse the command line to check for an alternative config file
-// 	3) Load configuration file overwriting defaults with any specified options
-// 	4) Parse CLI options and overwrite/add any specified options
+//  1. Start with a default config with sane settings
+//  2. Pre-parse the command line to check for an alternative config file
+//  3. Load configuration file overwriting defaults with any specified options
+//  4. Parse CLI options and overwrite/add any specified options
 //
 // The above results in btcd functioning properly without any config settings
 // while still allowing the user to override settings with config files and
 // command line options.  Command line options always take precedence.
-func loadConfig() (*config, []string, error) {
+func loadConfig(xfer int) (*config, []string, error) {
 	// Default config.
 	cfg := config{
 		ConfigFile:           defaultConfigFile,
@@ -455,6 +455,15 @@ func loadConfig() (*config, []string, error) {
 	// the final parse below.
 	preCfg := cfg
 	preParser := newConfigParser(&preCfg, &serviceOpts, flags.HelpFlag)
+
+	switch xfer {
+	case 1:
+		preParser.AddGroup("SVP Options", "SVP Options", &serviceOpts)
+
+	case 2:
+		preParser.AddGroup("Base Options", "Base Options", &serviceOpts)
+	}
+
 	_, err := preParser.Parse()
 	if err != nil {
 		if e, ok := err.(*flags.Error); ok && e.Type == flags.ErrHelp {
@@ -573,26 +582,6 @@ func loadConfig() (*config, []string, error) {
 		return nil, nil, err
 	}
 
-	// Set the default policy for relaying non-standard transactions
-	// according to the default of the active network. The set
-	// configuration value takes precedence over the default value for the
-	// selected network.
-	relayNonStd := activeNetParams.RelayNonStdTxs
-	switch {
-	case cfg.RelayNonStd && cfg.RejectNonStd:
-		str := "%s: rejectnonstd and relaynonstd cannot be used " +
-			"together -- choose only one"
-		err := fmt.Errorf(str, funcName)
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
-	case cfg.RejectNonStd:
-		relayNonStd = false
-	case cfg.RelayNonStd:
-		relayNonStd = true
-	}
-	cfg.RelayNonStd = relayNonStd
-
 	// Append the network type to the data directory so it is "namespaced"
 	// per network.  In addition to the block database, there are other
 	// pieces of data that are saved to disk such as address manager state.
@@ -687,15 +676,6 @@ func loadConfig() (*config, []string, error) {
 			cfg.whitelists = append(cfg.whitelists, ipnet)
 		}
 	}
-	/*
-		if cfg.GenerateMiner && cfg.ShareMining && len(cfg.PrivKeys) == 0 {
-			if len(cfg.ExternalIPs) == 0 {
-				return nil, nil, fmt.Errorf("ExternalIP is required")
-			}
-			cfg.ConnectPeers = make([]string, 1)
-			cfg.ConnectPeers[0] = cfg.ExternalIPs[0]
-		}
-	*/
 
 	// --addPeer and --connect do not mix.
 	if len(cfg.AddPeers) > 0 && len(cfg.ConnectPeers) > 0 {
@@ -900,13 +880,6 @@ func loadConfig() (*config, []string, error) {
 		}
 	}
 
-	if cfg.ShareMining && !cfg.Generate { // This is a PC miner, force it to connect its server only
-		cfg.signAddress = cfg.signAddress[:0]
-		cfg.ConnectPeers = []string{cfg.ExternalIPs[0]}
-		cfg.AddPeers = cfg.AddPeers[:0]
-		cfg.privateKeys = cfg.privateKeys[:0]
-	}
-
 	cfg.collateral = make([]*wire.OutPoint, 0, len(cfg.Collateral))
 	for _, c := range cfg.Collateral {
 		i := strings.Index(c, ":")
@@ -927,7 +900,7 @@ func loadConfig() (*config, []string, error) {
 	// Ensure there is at least one mining address when the generate flag is
 	// set.
 
-	if cfg.GenerateMiner && !cfg.ShareMining && len(cfg.miningAddrs) == 0 {
+	if cfg.GenerateMiner && len(cfg.miningAddrs) == 0 {
 		str := "%s: the generate flag is set, but there are no mining " +
 			"addresses specified "
 		err := fmt.Errorf(str, funcName)

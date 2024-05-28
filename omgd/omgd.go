@@ -6,30 +6,23 @@
 package main
 
 import (
-	"bytes"
 	"container/list"
-	"encoding/binary"
 	"fmt"
-	"github.com/omegasuite/btcd/blockchain"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/consensus"
-	"io/ioutil"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/consensus"
 	"strings"
+	"sync"
 
-	//	"strconv"
-	//	"strings"
-
-	//	"log"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	//	"os/exec"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
-	//	"syscall"
 	"time"
 
 	"github.com/omegasuite/btcd/blockchain/indexers"
@@ -46,146 +39,88 @@ const (
 	minerDbNamePrefix = "miners"
 )
 
-var (
-	cfg *config
-)
+type protocol struct {
+	cfg             *config
+	Server          *server
+	IsSvp           bool
+	db              database.DB
+	minerdb         database.DB
+	activeNetParams *params
+	running         bool
+}
 
-// winServiceMain is only invoked on Windows.  It detects when btcd is running
-// as a service and reacts accordingly.
-var winServiceMain func() (bool, error)
+var protocols []*protocol
 
-// Set by the linker.
-var CompileTime string
-var Server *server
-
-// go build -ldflags "-X main.CompileTime='$(date)'"
-
-// btcdMain is the real main function for btcd.  It is necessary to work around
-// the fact that deferred functions do not run when os.Exit() is called.  The
-// optional serverChan parameter is mainly used by the service code to be
-// notified with the server once it is setup so it can gracefully stop it when
-// requested from the service control manager.
-func btcdMain(serverChan chan<- *server) error {
-	fmt.Printf("OMGD built at %s\n", CompileTime)
-	// Load configuration and parse command line.  This function also
-	// initializes logging and configures it accordingly.
-	tcfg, _, err := loadConfig()
-	if err != nil {
-		return err
-	}
-
-	debugLevel()
-
-	cfg = tcfg
-	defer func() {
-		if logRotator != nil {
-			logRotator.Close()
-		}
-	}()
-
+func prepareServer(tcfg *config) (*protocol, bool) {
 	// Get a channel that will be closed when a shutdown signal has been
 	// triggered either from an OS signal such as SIGINT (Ctrl+C) or from
 	// another subsystem such as the RPC server.
 	interrupt := interruptListener()
 
-	// Show version at startup.
-	btcdLog.Infof("Version %s", version())
-
-	// Enable http profiling server if requested.
-	if cfg.Profile != "" {
-		go func() {
-			listenAddr := net.JoinHostPort("", cfg.Profile)
-			btcdLog.Infof("Profile server listening on %s", listenAddr)
-			profileRedirect := http.RedirectHandler("/debug/pprof",
-				http.StatusSeeOther)
-			http.Handle("/", profileRedirect)
-			btcdLog.Errorf("%v", http.ListenAndServe(listenAddr, nil))
-		}()
-	}
-
-	// Write cpu profile if requested.
-	if cfg.CPUProfile != "" {
-		f, err := os.Create(cfg.CPUProfile)
-		if err != nil {
-			btcdLog.Errorf("Unable to create cpu profile: %v", err)
-			return err
-		}
-		pprof.StartCPUProfile(f)
-		defer f.Close()
-		defer pprof.StopCPUProfile()
-	}
-
-	// Perform upgrades to btcd as new versions require it.
-	if err := doUpgrades(); err != nil {
-		btcdLog.Errorf("%v", err)
-		return err
-	}
-
-	// Return now if an interrupt signal was triggered.
-	if interruptRequested(interrupt) {
-		return nil
-	}
-
 	// Load the block database.
 	db, err := loadBlockDB()
 	if err != nil {
 		btcdLog.Errorf("%v", err)
-		return err
+		return nil, true
+	}
+
+	prot := &protocol{
+		cfg:     tcfg,
+		db:      db,
+		running: false,
 	}
 
 	// Load the block database.
 	minerdb, err := loadMinerDB()
 	if err != nil {
 		btcdLog.Errorf("%v", err)
-		return err
+		return prot, true
 	}
 
-	defer func() {
-		// Ensure the database is sync'd and closed on shutdown.
-		btcdLog.Infof("Gracefully shutting down the database...")
-		db.Close()
-		btcdLog.Infof("db Closed")
-		minerdb.Close()
-		btcdLog.Infof("minerdb Closed")
-	}()
+	prot.minerdb = minerdb
 
 	// Return now if an interrupt signal was triggered.
 	if interruptRequested(interrupt) {
-		return nil
+		return prot, true
 	}
 
 	// Drop indexes and exit if requested.
 	//
 	// NOTE: The order is important here because dropping the tx index also
 	// drops the address index since it relies on it.
-	if cfg.DropAddrIndex {
+	if tcfg.DropAddrIndex {
 		if err := indexers.DropAddrIndex(db, interrupt); err != nil {
 			btcdLog.Errorf("%v", err)
-			return err
+			return prot, true
 		}
 
-		return nil
+		return prot, true
 	}
-	if cfg.DropTxIndex {
+	if tcfg.DropTxIndex {
 		if err := indexers.DropTxIndex(db, interrupt); err != nil {
 			btcdLog.Errorf("%v", err)
-			return err
+			return prot, true
 		}
 
-		return nil
+		return prot, true
 	}
-	if cfg.DropCfIndex {
+	if tcfg.DropCfIndex {
 		if err := indexers.DropCfIndex(db, interrupt); err != nil {
 			btcdLog.Errorf("%v", err)
-			return err
+			return prot, true
 		}
 
-		return nil
+		return prot, true
 	}
 
-	activeNetParams.Params.MinRelayTxFee = int64(cfg.minRelayTxFee)
+	prot.activeNetParams = &params{
+		Params:  &chaincfg.MainNetParams,
+		rpcPort: "8789",
+	}
 
-	if cfg.Generate && len(cfg.privateKeys) == 0 {
+	prot.activeNetParams.Params.MinRelayTxFee = int64(tcfg.minRelayTxFee)
+
+	if tcfg.Generate && len(tcfg.privateKeys) == 0 {
 		// read from stdin. for security.
 		// expect user to do something like: echo privkey | btcd
 		fmt.Printf("Private Key in GIF ... ")
@@ -207,9 +142,9 @@ func btcdMain(serverChan chan<- *server) error {
 				if err == nil {
 					addr := pkaddr.AddressPubKeyHash()
 					if addr.IsForNet(activeNetParams.Params) {
-						cfg.miningAddrs = append(cfg.miningAddrs, addr)
-						cfg.signAddress = append(cfg.signAddress, addr)
-						cfg.privateKeys = append(cfg.privateKeys, privKey)
+						tcfg.miningAddrs = append(tcfg.miningAddrs, addr)
+						tcfg.signAddress = append(tcfg.signAddress, addr)
+						tcfg.privateKeys = append(tcfg.privateKeys, privKey)
 					}
 				}
 			}
@@ -219,30 +154,30 @@ func btcdMain(serverChan chan<- *server) error {
 		}
 	}
 
-	activeNetParams.Params.ExternalIPs = tcfg.ExternalIPs
-	activeNetParams.Params.ContractReqExp = tcfg.ContractReqExp
-	activeNetParams.Params.LogBlockTime = tcfg.LogBlockTime
+	prot.activeNetParams.Params.ExternalIPs = tcfg.ExternalIPs
+	prot.activeNetParams.Params.ContractReqExp = tcfg.ContractReqExp
+	prot.activeNetParams.Params.LogBlockTime = tcfg.LogBlockTime
 
-	activeNetParams.Params.ChainCurrentStd = time.Hour * time.Duration(tcfg.ChainCurrentStd)
-	if cfg.Concurrency <= 0 {
-		cfg.Concurrency = 1
+	prot.activeNetParams.Params.ChainCurrentStd = time.Hour * time.Duration(tcfg.ChainCurrentStd)
+	if tcfg.Concurrency <= 0 {
+		tcfg.Concurrency = 1
 	}
-	activeNetParams.Params.SigVeriConcurrency = cfg.Concurrency
+	prot.activeNetParams.Params.SigVeriConcurrency = tcfg.Concurrency
 
 	// Create server and start it.
-	server, err := newServer(cfg.Listeners, db, minerdb, activeNetParams.Params,
+	server, err := newServer(tcfg.Listeners, db, minerdb, prot.activeNetParams.Params,
 		interrupt)
 	if err != nil {
 		// TODO: this logging could do with some beautifying.
 		btcdLog.Errorf("Unable to start server on %v: %v",
-			cfg.Listeners, err)
-		return err
+			tcfg.Listeners, err)
+		return prot, true
 	}
 
-	Server = server
+	prot.Server = server
 
 	defer func() {
-		if len(cfg.privateKeys) != 0 && cfg.Generate {
+		if len(tcfg.privateKeys) != 0 && tcfg.Generate {
 			btcdLog.Infof("Gracefully shutting down consensus server...")
 			consensus.Shutdown()
 			btcdLog.Infof("consensus Server shutdown complete")
@@ -256,44 +191,15 @@ func btcdMain(serverChan chan<- *server) error {
 		btcdLog.Infof("Server shutdown complete")
 	}()
 
-	if cfg.Settip != "" {
-		tips := strings.Split(cfg.Settip, ":")
+	if tcfg.Settip != "" {
+		tips := strings.Split(tcfg.Settip, ":")
 		if !setTip(tips[0], tips[1], server.chain) {
 			return nil
 		}
 	}
 
-	if len(cfg.privateKeys) != 0 && cfg.Generate {
-		go consensus.Consensus(server, cfg.DataDir, cfg.signAddress, activeNetParams.Params)
-		for _, sa := range cfg.signAddress {
-			btcdLog.Infof("Address of miner %s", sa.String())
-		}
-	} else {
-		go consensus.SetupRelay(server)
-	}
-
-	flag := uint64(0)
-	maintenance := []byte("maintenance")
-	server.db.View(func(dbTx database.Tx) error {
-		mflag := dbTx.Metadata().Get(maintenance)
-		if mflag != nil {
-			flag = binary.LittleEndian.Uint64(mflag)
-		}
-		return nil
-	})
-
-	if cfg.ReUtxo || (flag&1) == 0 {
-		server.chain.Rebuildutxo(server.txIndex)
-		server.db.Update(func(dbTx database.Tx) error {
-			flag |= 1
-			var b [8]byte
-			binary.LittleEndian.PutUint64(b[:], flag)
-			dbTx.Metadata().Put(maintenance, b[:])
-			return nil
-		})
-	}
-
-	if cfg.Accounts {
+	if tcfg.Accounts {
+		// print balances of all addresses
 		accounts := server.chain.GetAccounts()
 		for addr, bal := range accounts {
 			var address btcutil.Address
@@ -313,62 +219,25 @@ func btcdMain(serverChan chan<- *server) error {
 		}
 	}
 
-	server.Start()
-	if serverChan != nil {
-		serverChan <- server
+	return prot, false
+}
+
+func runserver(p *protocol) {
+	interrupt := interruptListener()
+
+	if !p.IsSvp && p.running {
+		if len(p.cfg.privateKeys) != 0 && p.cfg.Generate {
+			go consensus.Consensus(p.Server, p.cfg.DataDir, p.cfg.signAddress, activeNetParams.Params)
+			for _, sa := range p.cfg.signAddress {
+				btcdLog.Infof("Address of miner %s", sa.String())
+			}
+		} else {
+			go consensus.SetupRelay(p.Server)
+		}
 	}
 
-	if ((cfg.MemLimit != 0 && runtime.GOOS == "linux") || cfg.ExitOnStall) && !cfg.TestNet && !cfg.SimNet {
-		var live int64
-		server.chain.Subscribe(func(notification *blockchain.Notification) {
-			switch notification.Type {
-			case blockchain.NTBlockConnected:
-				live = time.Now().Unix()
-			}
-		})
-
-		pid := os.Getpid()
-		stat := fmt.Sprintf("/proc/%d/statm", pid)
-
-		go func() {
-			for {
-				time.Sleep(10 * time.Minute)
-				if cfg.ExitOnStall && time.Now().Unix()-live > 600 {
-					var wbuf bytes.Buffer
-					pprof.Lookup("mutex").WriteTo(&wbuf, 1)
-					pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
-					btcdLog.Infof("pprof Info: \n%s", wbuf.String())
-					break
-				}
-				if cfg.MemLimit != 0 && runtime.GOOS == "linux" {
-					contents, err := ioutil.ReadFile(stat)
-
-					if err != nil {
-						continue
-					}
-
-					var mem uint32
-					fmt.Sscanf("%d", string(contents), &mem)
-					if mem > cfg.MemLimit {
-						if cfg.Generate {
-							// wait until not generating blocks
-							for i := 30; i > 0 && server.cpuMiner.IsGenerating(); i-- {
-								time.Sleep(20 * time.Second)
-							}
-							if server.cpuMiner.IsGenerating() {
-								continue
-							}
-						}
-						btcdLog.Infof("Voluntary shutdown for exceeding memory limit (%d).", mem)
-						break
-					}
-				}
-			}
-
-			btcdLog.Infof("Voluntary shutdown after no new block for 10 min.")
-
-			shutdownRequestChannel <- struct{}{}
-		}()
+	if p.running {
+		p.Server.Start()
 	}
 
 	fmt.Printf("The system is %s", runtime.GOOS)
@@ -378,9 +247,41 @@ func btcdMain(serverChan chan<- *server) error {
 	// server.
 	<-interrupt
 
-	srvrLog.Infof("interrupt received, going to shut down")
+	cleanup(p)
 
-	return nil
+	srvrLog.Infof("interrupt received, going to shut down")
+}
+
+func cleanup(p *protocol) {
+	if p.Server != nil {
+		if len(p.cfg.privateKeys) != 0 && p.cfg.Generate && !p.IsSvp {
+			btcdLog.Infof("Gracefully shutting down consensus server...")
+			consensus.Shutdown()
+			btcdLog.Infof("consensus Server shutdown complete")
+		}
+
+		btcdLog.Infof("Gracefully shutting down the server...")
+		p.Server.Stop()
+
+		btcdLog.Infof(" server Stopped")
+		p.Server.WaitForShutdown()
+	}
+	btcdLog.Infof("Server shutdown complete")
+
+	// Ensure the database is sync'd and closed on shutdown.
+	btcdLog.Infof("Gracefully shutting down the database...")
+	if p.db != nil {
+		p.db.Close()
+	}
+	btcdLog.Infof("db Closed")
+	if p.minerdb != nil {
+		p.minerdb.Close()
+	}
+	btcdLog.Infof("minerdb Closed")
+
+	if p.running {
+		wg.Done()
+	}
 }
 
 func setTip(tx, miner string, chain *blockchain.BlockChain) bool {
@@ -653,9 +554,67 @@ func loadMinerDB() (database.DB, error) {
 	return db, nil
 }
 
+var wg sync.WaitGroup
+
 func main() {
 	// Use all processor cores.
 	runtime.GOMAXPROCS(runtime.NumCPU())
+
+	tcfg, _, err := loadConfig(0) // load only the basic config
+	if err != nil {
+		os.Exit(1)
+	}
+
+	debugLevel()
+
+	defer func() {
+		if logRotator != nil {
+			logRotator.Close()
+		}
+	}()
+
+	// Get a channel that will be closed when a shutdown signal has been
+	// triggered either from an OS signal such as SIGINT (Ctrl+C) or from
+	// another subsystem such as the RPC server.
+	interrupt := interruptListener()
+
+	// Show version at startup.
+	btcdLog.Infof("Version %s", version())
+
+	// Enable http profiling server if requested.
+	if tcfg.Profile != "" {
+		go func() {
+			listenAddr := net.JoinHostPort("", tcfg.Profile)
+			btcdLog.Infof("Profile server listening on %s", listenAddr)
+			profileRedirect := http.RedirectHandler("/debug/pprof",
+				http.StatusSeeOther)
+			http.Handle("/", profileRedirect)
+			btcdLog.Errorf("%v", http.ListenAndServe(listenAddr, nil))
+		}()
+	}
+
+	// Write cpu profile if requested.
+	if tcfg.CPUProfile != "" {
+		f, err := os.Create(tcfg.CPUProfile)
+		if err != nil {
+			btcdLog.Errorf("Unable to create cpu profile: %v", err)
+			os.Exit(1)
+		}
+		pprof.StartCPUProfile(f)
+		defer f.Close()
+		defer pprof.StopCPUProfile()
+	}
+
+	// Perform upgrades as new versions require it.
+	if err := doUpgrades(); err != nil {
+		btcdLog.Errorf("%v", err)
+		os.Exit(1)
+	}
+
+	// Return now if an interrupt signal was triggered.
+	if interruptRequested(interrupt) {
+		os.Exit(1)
+	}
 
 	// Block and transaction processing can cause bursty allocations.  This
 	// limits the garbage collector from excessively overallocating during
@@ -669,22 +628,56 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Call serviceMain on Windows to handle running as a service.  When
-	// the return isService flag is true, exit now since we ran as a
-	// service.  Otherwise, just fall through to normal operation.
-	if runtime.GOOS == "windows" {
-		isService, err := winServiceMain()
-		if err != nil {
-			fmt.Println(err)
-			os.Exit(1)
-		}
-		if isService {
-			os.Exit(0)
-		}
-	}
-
-	// Work around defer not working after os.Exit()
-	if err := btcdMain(nil); err != nil {
+	tcfg, _, err = loadConfig(1) // load only the basic config
+	if err != nil {
 		os.Exit(1)
 	}
+
+	protocols = make([]*protocol, 0)
+
+	// Work around defer not working after os.Exit()
+	p, quit := prepareServer(tcfg)
+	if quit && p != nil {
+		cleanup(p)
+		os.Exit(1)
+	}
+
+	p.IsSvp = false
+	protocols = append(protocols, p)
+
+	err = protocols[0].Server.db.View(func(tx database.Tx) error {
+		bucket := tx.Metadata().Bucket([]byte("SVP Clients"))
+		cursor := bucket.Cursor()
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			cfg := config{}
+			cfg.deserialize(cursor.Value())
+			wg.Add(1)
+			p, quit := prepareServer(&cfg)
+			if quit {
+				cleanup(p)
+				return fmt.Errorf("fail to prepare Server")
+			}
+
+			if p != nil {
+				p.IsSvp = true
+				protocols = append(protocols, p)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		for _, p := range protocols {
+			cleanup(p)
+		}
+		os.Exit(1)
+	}
+
+	for _, p := range protocols {
+		wg.Add(1)
+		p.running = true
+		go runserver(p)
+	}
+
+	wg.Wait()
 }
