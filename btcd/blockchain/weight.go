@@ -18,12 +18,6 @@ func GetBlockWeight(blk *btcutil.Block) int64 {
 
 	totalSize := msgBlock.SerializeSize()
 	return int64(totalSize)
-
-//	baseSize := msgBlock.SerializeSizeStripped()
-//	totalSize := msgBlock.SerializeSize()
-
-	// (baseSize * 3) + totalSize
-//	return int64((baseSize * (chaincfg.WitnessScaleFactor - 1)) + totalSize)
 }
 
 // GetTransactionWeight computes the value of the weight metric for a given

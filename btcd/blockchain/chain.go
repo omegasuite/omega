@@ -594,22 +594,6 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	return detachNodes, attachNodes
 }
 
-/*
-func (s * BlockChain) GetRollbackList(h int32) * list.List {
-	detachNodes := list.New()
-
-	for n := s.BestChain.Tip(); n != nil; n = n.Parent {
-		if n.Data.GetNonce() > -wire.MINER_RORATE_FREQ || n.Data.GetNonce() < -(h + wire.MINER_RORATE_FREQ) {
-			detachNodes.PushBack(n)
-		} else {
-			detachNodes.PushBack(n)
-			break
-		}
-	}
-	return detachNodes
-}
-
-*/
 // connectBlock handles connecting the passed node/block to the end of the main
 // (best) chain.
 //
@@ -807,30 +791,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	numTxns := uint64(len(prevBlock.MsgBlock().Transactions))
 	blockSize := uint64(prevBlock.MsgBlock().SerializeSize())
 	newTotalTxns := curTotalTxns - uint64(len(block.MsgBlock().Transactions))
-	/*
-	   	if node.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
-	   		// the removed block was the first of a series rotated-in block, difficulty should be
-	   		// in its previous block
-	   		p := node.Parent
 
-	   		for p != nil && p.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
-	   			p = p.Parent
-	   		}
-
-	   		realheight := int32(0)
-	   		if p != nil {
-	   			realheight = -p.Data.GetNonce() - wire.MINER_RORATE_FREQ
-	   		}
-
-	   		// the real Miner block height of the previous Miner block
-	   		mblock, err := b.Miners.BlockByHeight(realheight)
-	   		if err != nil {
-	   //			continue  // err		// impossible. only when database is corrupt
-	   		} else {
-	   			bits = mblock.MsgBlock().Bits
-	   		}
-	   	}
-	*/
 	m, rot := 0, rotation
 	if node.Data.GetNonce() >= 0 {
 		rotation -= wire.POWRotate

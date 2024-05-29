@@ -560,7 +560,7 @@ func main() {
 	// Use all processor cores.
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	tcfg, _, err := loadConfig(0) // load only the basic config
+	tcfg, _, err := loadConfig(1) // load only the basic config
 	if err != nil {
 		os.Exit(1)
 	}
@@ -628,11 +628,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	tcfg, _, err = loadConfig(1) // load only the basic config
-	if err != nil {
-		os.Exit(1)
-	}
-
 	protocols = make([]*protocol, 0)
 
 	// Work around defer not working after os.Exit()
@@ -645,33 +640,49 @@ func main() {
 	p.IsSvp = false
 	protocols = append(protocols, p)
 
-	err = protocols[0].Server.db.View(func(tx database.Tx) error {
-		bucket := tx.Metadata().Bucket([]byte("SVP Clients"))
-		cursor := bucket.Cursor()
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			cfg := config{}
-			cfg.deserialize(cursor.Value())
-			wg.Add(1)
-			p, quit := prepareServer(&cfg)
-			if quit {
-				cleanup(p)
-				return fmt.Errorf("fail to prepare Server")
-			}
-
-			if p != nil {
-				p.IsSvp = true
-				protocols = append(protocols, p)
-			}
-		}
-		return nil
-	})
-
+	tcfg, _, err = loadConfig(2) // load only the basic config
 	if err != nil {
-		for _, p := range protocols {
-			cleanup(p)
-		}
 		os.Exit(1)
 	}
+
+	// Work around defer not working after os.Exit()
+	p, quit = prepareServer(tcfg)
+	if quit && p != nil {
+		cleanup(p)
+		os.Exit(1)
+	}
+
+	p.IsSvp = true
+	protocols = append(protocols, p)
+	/*
+		err = protocols[0].Server.db.View(func(tx database.Tx) error {
+			bucket := tx.Metadata().Bucket([]byte("SVP Clients"))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				cfg := config{}
+				cfg.deserialize(cursor.Value())
+				wg.Add(1)
+				p, quit := prepareServer(&cfg)
+				if quit {
+					cleanup(p)
+					return fmt.Errorf("fail to prepare Server")
+				}
+
+				if p != nil {
+					p.IsSvp = true
+					protocols = append(protocols, p)
+				}
+			}
+			return nil
+		})
+
+		if err != nil {
+			for _, p := range protocols {
+				cleanup(p)
+			}
+			os.Exit(1)
+		}
+	*/
 
 	for _, p := range protocols {
 		wg.Add(1)

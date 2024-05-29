@@ -221,20 +221,6 @@ func (bi *BlockIndex) Highest() *BlockNode {
 	return high
 }
 
-/*
-func (bi *BlockIndex) search(hash *chainhash.Hash, m, start, end uint32) bool {
-	if r := bytes.Compare((*hash)[:], bi.Unloaded[m][:]); r == 0 {
-		return true
-	} else if start >= end {
-		return false
-	} else if r > 0 {
-		return bi.search(hash, (m + 1 + end) / 2, m + 1, end)
-	} else {
-		return bi.search(hash, (m - 1 + start) / 2, start, m - 1)
-	}
-}
-
-*/
 // HaveBlock returns whether or not the block index Contains the provided hash.
 //
 // This function is safe for concurrent access.
@@ -285,14 +271,6 @@ func (bi *BlockIndex) AddNodeDirect(node *BlockNode) {
 	bi.index[node.Hash] = node
 }
 
-/*
-func (bi *BlockIndex) RemoveNode(node *BlockNode) {
-	bi.Lock()
-	bi.dirty[node] = false
-	bi.Unlock()
-}
-*/
-
 // AddNodeUL adds the provided node to the block index, but does not mark it as
 // dirty. This can be used while initializing the block index.
 //
@@ -304,12 +282,6 @@ func (bi *BlockIndex) AddNodeUL(node *BlockNode) {
 	bi.index[node.Hash] = node
 	bi.Tips[node.Hash] = node
 }
-
-/*
-func (bi *BlockIndex) AddNodeHash(h chainhash.Hash) {
-	bi.index[h] = nil
-}
-*/
 
 func (bi *BlockIndex) Untip(hash chainhash.Hash) {
 	delete(bi.Tips, hash)

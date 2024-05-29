@@ -1820,42 +1820,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 
-	/*	// we don't forbid violating miner from makeing tx. we only forfeit bond and not
-		// allow him mining (generating MR block)
-		// blacklist check
-		var name [20]byte
-		for _, tx := range block.MsgBlock().Transactions {
-			for _, txo := range tx.TxOut {
-				if txo.IsSeparator() {
-					break
-				}
-				copy(name[:], txo.PkScript[1:21])
-				if txo.PkScript[0] == b.ChainParams.PubKeyHashAddrID && b.Blacklist.IsBlack(name) {
-					return fmt.Errorf("Blacklised txo")
-				}
-			}
-
-			if tx.IsCoinBase() || tx.IsForfeit() {
-				continue
-			}
-			for _, txi := range tx.TxIn {
-				if txi.IsSeparator() {
-					break
-				}
-				utxo := views.Utxo.LookupEntry(txi.PreviousOutPoint)
-				if utxo == nil || utxo.IsSpent() {
-					continue
-				}
-
-				// check blacklist
-				copy(name[:], utxo.PkScript()[1:21])
-				if b.Blacklist.IsBlack(name) {
-					return fmt.Errorf("Blacklised input")
-				}
-			}
-		}
-	*/
-
 	// Update the best hash for view to include this block since all of its
 	// transactions have been connected.
 	views.Utxo.SetBestHash(&node.Hash)

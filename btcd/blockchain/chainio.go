@@ -1230,99 +1230,6 @@ func (b *BlockChain) initChainState() error {
 	return b.index.FlushToDB(dbStoreBlockNode)
 }
 
-/*
-func (b *BlockChain) FetchMissingNodes(hash * chainhash.Hash, to int32) error {
-	// fetching missing nodes in best chain from tip till 'to'
-	log.Infof("FetchMissingNodes from %s to %d", hash.String(), to)
-	return b.db.View(func(dbTx database.Tx) error {
-		b.index.Lock()
-		b.BestChain.Lock()
-
-		defer func() {
-			b.BestChain.Unlock()
-			b.index.Unlock()
-		} ()
-
-		var loading = func (p * chainutil.BlockNode, to int32) {
-			var ph *wire.BlockHeader
-			var r *chainutil.BlockNode
-			var newnodes []chainutil.BlockNode
-			var j int32
-
-			for ; p.Height > to; p = p.Parent {
-				if p.Parent == nil {
-					if ph == nil {
-						ph, _ = DbFetchHeaderByHash(dbTx, &p.Hash)
-					}
-
-					if r = b.index.LookupNodeUL(&ph.PrevBlock); r == nil {
-						ph2, _ := DbFetchHeaderByHash(dbTx, &ph.PrevBlock)
-						if j == 0 {
-							newnodes = make([]chainutil.BlockNode, p.Height - to)
-							j = p.Height - to
-						}
-						j--
-						r = &newnodes[j]
-						InitBlockNode(r, ph2, b.index.LookupNodeUL(&ph2.PrevBlock))
-						r.Height = p.Height - 1
-						b.index.AddNodeDirect(r)
-						delete(b.index.Unloaded, ph.PrevBlock)
-						delete(b.index.Tips, ph2.PrevBlock)
-						ph = ph2
-					} else {
-						ph = nil
-					}
-					p.Parent = r
-				}
-			}
-		}
-
-		var ph *wire.BlockHeader
-
-		p := b.index.LookupNodeUL(hash)
-		var h int32
-		if p != nil {
-			h = p.Height
-		} else {
-			h = b.index.Unloaded[*hash]
-		}
-
-		tip := b.BestChain.NodeByHeightUL(h)
-		if tip == nil {
-			tip = b.BestChain.NodeByHeightUL(b.BestChain.LastNil(h, b.BestChain.HeightUL()))
-			loading(tip, h)
-			for tip = tip.Parent; tip != nil; tip = tip.Parent {
-				b.BestChain.SetNode(tip.Height, tip)
-			}
-			tip = b.BestChain.NodeByHeightUL(h)
-			if p == nil {
-				p = b.index.LookupNodeUL(hash)
-			}
-		}
-
-		if p == nil {
-			ph, _ = DbFetchHeaderByHash(dbTx, hash)
-			p = &chainutil.BlockNode{ }
-			InitBlockNode(p, ph, b.index.LookupNodeUL(&ph.PrevBlock))
-			p.Height = b.index.Unloaded[*hash]
-			b.index.AddNodeUL(p)
-			delete(b.index.Unloaded, *hash)
-		}
-
-		loading(p, to)
-
-		for ; p != nil; p, tip = p.Parent, tip.Parent {
-			if p == tip {
-				b.BestChain.SetNode(h, p)
-			}
-			h--
-		}
-
-		return nil
-	})
-}
-*/
-
 type blockchainNodeData struct {
 	// Some fields from block headers to aid in best chain selection and
 	// reconstructing headers from memory.  These must be treated as
@@ -1606,16 +1513,6 @@ func (b *BlockChain) BlockByHeight(blockHeight int32) (*btcutil.Block, error) {
 	})
 	return block, err
 }
-
-/*
-func (b *BlockChain) HeightOfBlock(hash chainhash.Hash) int32 {
-	n := b.NodeByHash(&hash)
-	if n == nil {
-		return -1
-	}
-	return n.Height
-}
-*/
 
 func (b *BlockChain) AnyBlockByHash(hash *chainhash.Hash) (*btcutil.Block, error) {
 	// Lookup the block hash in block index and ensure it is in the best

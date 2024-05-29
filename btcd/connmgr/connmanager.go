@@ -55,7 +55,6 @@ const (
 )
 
 type ServerPeer interface{}
-var usePerm = false
 
 // ConnReq is the connection request to a network address. If permanent, the
 // connection will be retried on disconnection.
@@ -198,9 +197,10 @@ type ConnManager struct {
 	requests       chan interface{}
 	quit           chan struct{}
 	newBlocks      chan struct{}
-	dupChecker	   ConnectChecker
-	Alive		   time.Time
-	Committee	   int32		// highest Committee so far
+	dupChecker     ConnectChecker
+	Alive          time.Time
+	Committee      int32 // highest Committee so far
+	usePerm        bool
 }
 
 // handleFailedConn handles a connection failed due to a disconnect or any
@@ -212,7 +212,7 @@ func (cm *ConnManager) handleFailedConn(c *ConnReq) {
 	if atomic.LoadInt32(&cm.stop) != 0 {
 		return
 	}
-	if !c.Permanent && usePerm {
+	if !c.Permanent && cm.usePerm {
 		return
 	}
 	if c.Permanent || c.Committee > 0 {
@@ -222,7 +222,7 @@ func (cm *ConnManager) handleFailedConn(c *ConnReq) {
 			d = maxRetryDuration
 		}
 		log.Debugf("Retrying connection to %v in %v", c, d)
-		time.AfterFunc(d, func() {cm.Connect(c)})
+		time.AfterFunc(d, func() { cm.Connect(c) })
 	} else if cm.cfg.GetNewAddress != nil {
 		cm.failedAttempts++
 		if cm.failedAttempts >= maxFailedAttempts {
@@ -463,7 +463,7 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 	}
 
 	if c.Permanent {
-		usePerm = true
+		cm.usePerm = true
 	}
 
 	if atomic.LoadUint64(&c.id) == 0 {
@@ -650,6 +650,7 @@ func New(cfg *Config) (*ConnManager, error) {
 		cfg:      *cfg, // Copy so caller can't mutate
 		requests: make(chan interface{}, 125),
 		quit:     make(chan struct{}),
+		usePerm:  false,
 	}
 	return &cm, nil
 }
