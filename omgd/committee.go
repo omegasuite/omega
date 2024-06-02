@@ -6,18 +6,17 @@ package main
 
 import (
 	"bytes"
-	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/btcd/connmgr"
-	"github.com/omegasuite/omega/minerchain"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/connmgr"
+	"github.com/omegasuite/famofchains/omega/minerchain"
 	"math/rand"
 	"net"
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	//	"github.com/omegasuite/btcd/peer"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcutil"
 )
 
 const advanceCommitteeConnection = wire.CommitteeSize // # of miner blocks we should prepare for connection

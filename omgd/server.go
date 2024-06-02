@@ -23,8 +23,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/omega/minerchain"
 	//	"io"
 	"math"
@@ -39,11 +39,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/addrmgr"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/famofchains/btcd/blockchain/indexers"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/connmgr"
 	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/mempool"
@@ -53,8 +53,8 @@ import (
 	"github.com/omegasuite/famofchains/btcd/peer"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/btcutil/bloom"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/btcutil/bloom"
 	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 

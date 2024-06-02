@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/omegasuite/btcd/btcjson"
+	"github.com/omegasuite/famofchains/btcd/btcjson"
 )
 
 // helpDescsEnUS defines the English descriptions used for the help strings.

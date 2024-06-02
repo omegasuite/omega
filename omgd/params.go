@@ -6,7 +6,7 @@
 package main
 
 import (
-	"github.com/omegasuite/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
 )
 
 // activeNetParams is a pointer to the parameters specific to the
