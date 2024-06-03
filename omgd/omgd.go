@@ -58,7 +58,7 @@ func prepareServer(tcfg *config) (*protocol, bool) {
 	interrupt := interruptListener()
 
 	// Load the block database.
-	db, err := loadBlockDB()
+	db, err := loadBlockDB(tcfg)
 	if err != nil {
 		btcdLog.Errorf("%v", err)
 		return nil, true
@@ -71,7 +71,7 @@ func prepareServer(tcfg *config) (*protocol, bool) {
 	}
 
 	// Load the block database.
-	minerdb, err := loadMinerDB()
+	minerdb, err := loadMinerDB(tcfg)
 	if err != nil {
 		btcdLog.Errorf("%v", err)
 		return prot, true
@@ -98,14 +98,6 @@ func prepareServer(tcfg *config) (*protocol, bool) {
 	}
 	if tcfg.DropTxIndex {
 		if err := indexers.DropTxIndex(db, interrupt); err != nil {
-			btcdLog.Errorf("%v", err)
-			return prot, true
-		}
-
-		return prot, true
-	}
-	if tcfg.DropCfIndex {
-		if err := indexers.DropCfIndex(db, interrupt); err != nil {
 			btcdLog.Errorf("%v", err)
 			return prot, true
 		}
@@ -165,8 +157,7 @@ func prepareServer(tcfg *config) (*protocol, bool) {
 	prot.activeNetParams.Params.SigVeriConcurrency = tcfg.Concurrency
 
 	// Create server and start it.
-	server, err := newServer(tcfg.Listeners, db, minerdb, prot.activeNetParams.Params,
-		interrupt)
+	server, err := newServer(tcfg.Listeners, db, minerdb, prot, interrupt)
 	if err != nil {
 		// TODO: this logging could do with some beautifying.
 		btcdLog.Errorf("Unable to start server on %v: %v",
@@ -194,7 +185,7 @@ func prepareServer(tcfg *config) (*protocol, bool) {
 	if tcfg.Settip != "" {
 		tips := strings.Split(tcfg.Settip, ":")
 		if !setTip(tips[0], tips[1], server.chain) {
-			return nil
+			return nil, false
 		}
 	}
 
@@ -374,7 +365,7 @@ func setTip(tx, miner string, chain *blockchain.BlockChain) bool {
 
 // removeRegressionDB removes the existing regression test database if running
 // in regression test mode and it already exists.
-func removeRegressionDB(dbPath string) error {
+func removeRegressionDB(dbPath string, cfg *config) error {
 	// Don't do anything if not in regression test mode.
 	if !cfg.RegressionTest {
 		return nil
@@ -401,7 +392,7 @@ func removeRegressionDB(dbPath string) error {
 }
 
 // dbPath returns the path to the block database given a database type.
-func blockDbPath(dbType string) string {
+func blockDbPath(dbType string, cfg *config) string {
 	// The database name is based on the database type.
 	dbName := blockDbNamePrefix + "_" + dbType
 	if dbType == "sqlite" {
@@ -412,7 +403,7 @@ func blockDbPath(dbType string) string {
 }
 
 // dbPath returns the path to the block database given a database type.
-func minerDbPath(dbType string) string {
+func minerDbPath(dbType string, cfg *config) string {
 	// The database name is based on the database type.
 	dbName := minerDbNamePrefix + "_" + dbType
 	if dbType == "sqlite" {
@@ -425,7 +416,7 @@ func minerDbPath(dbType string) string {
 // warnMultipleDBs shows a warning if multiple block database types are detected.
 // This is not a situation most users want.  It is handy for development however
 // to support multiple side-by-side databases.
-func warnMultipleDBs() {
+func warnMultipleDBs(cfg *config) {
 	// This is intentionally not using the known db types which depend
 	// on the database types compiled into the binary since we want to
 	// detect legacy db types as well.
@@ -437,7 +428,7 @@ func warnMultipleDBs() {
 		}
 
 		// Store db path as a duplicate db if it exists.
-		dbPath := blockDbPath(dbType)
+		dbPath := blockDbPath(dbType, cfg)
 		if fileExists(dbPath) {
 			duplicateDbPaths = append(duplicateDbPaths, dbPath)
 		}
@@ -445,7 +436,7 @@ func warnMultipleDBs() {
 
 	// Warn if there are extra databases.
 	if len(duplicateDbPaths) > 0 {
-		selectedDbPath := blockDbPath(cfg.DbType)
+		selectedDbPath := blockDbPath(cfg.DbType, cfg)
 		btcdLog.Warnf("WARNING: There are multiple block chain databases "+
 			"using different database types.\nYou probably don't "+
 			"want to waste disk space by having more than one.\n"+
@@ -460,7 +451,7 @@ func warnMultipleDBs() {
 // contains additional logic such warning the user if there are multiple
 // databases which consume space on the file system and ensuring the regression
 // test database is clean when in regression test mode.
-func loadBlockDB() (database.DB, error) {
+func loadBlockDB(cfg *config) (database.DB, error) {
 	// The memdb backend does not have a file path associated with it, so
 	// handle it uniquely.  We also don't want to worry about the multiple
 	// database type warnings when running with the memory database.
@@ -473,14 +464,14 @@ func loadBlockDB() (database.DB, error) {
 		return db, nil
 	}
 
-	warnMultipleDBs()
+	warnMultipleDBs(cfg)
 
 	// The database name is based on the database type.
-	dbPath := blockDbPath(cfg.DbType)
+	dbPath := blockDbPath(cfg.DbType, cfg)
 
 	// The regression test is special in that it needs a clean database for
 	// each run, so remove it now if it already exists.
-	removeRegressionDB(dbPath)
+	removeRegressionDB(dbPath, cfg)
 
 	btcdLog.Infof("Loading block database from '%s'", dbPath)
 	db, err := database.Open(cfg.DbType, dbPath, activeNetParams.Net)
@@ -513,7 +504,7 @@ func loadBlockDB() (database.DB, error) {
 // contains additional logic such warning the user if there are multiple
 // databases which consume space on the file system and ensuring the regression
 // test database is clean when in regression test mode.
-func loadMinerDB() (database.DB, error) {
+func loadMinerDB(cfg *config) (database.DB, error) {
 	// The memdb backend does not have a file path associated with it, so
 	// handle it uniquely.  We also don't want to worry about the multiple
 	// database type warnings when running with the memory database.
@@ -522,11 +513,11 @@ func loadMinerDB() (database.DB, error) {
 	}
 
 	// The database name is based on the database type.
-	dbPath := minerDbPath(cfg.DbType)
+	dbPath := minerDbPath(cfg.DbType, cfg)
 
 	// The regression test is special in that it needs a clean database for
 	// each run, so remove it now if it already exists.
-	removeRegressionDB(dbPath)
+	removeRegressionDB(dbPath, cfg)
 
 	btcdLog.Infof("Loading miner database from '%s'", dbPath)
 	db, err := database.Open(cfg.DbType, dbPath, activeNetParams.Net)
@@ -603,12 +594,6 @@ func main() {
 		pprof.StartCPUProfile(f)
 		defer f.Close()
 		defer pprof.StopCPUProfile()
-	}
-
-	// Perform upgrades as new versions require it.
-	if err := doUpgrades(); err != nil {
-		btcdLog.Errorf("%v", err)
-		os.Exit(1)
 	}
 
 	// Return now if an interrupt signal was triggered.

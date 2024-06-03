@@ -12,7 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 // MessageHeaderSize is the number of bytes in a bitcoin message header.

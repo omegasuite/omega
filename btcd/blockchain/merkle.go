@@ -12,7 +12,7 @@ import (
 	"math"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcutil"
 )
 
 const (

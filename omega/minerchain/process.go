@@ -13,15 +13,15 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcutil"
 	"math/big"
-//	"net"
+	//	"net"
 	"time"
 
 	"encoding/hex"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
@@ -94,7 +94,7 @@ func (b *MinerChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 		return false
 	}
 
-	err,_ := b.ProcessOrphans(&block.PrevBlock, blockchain.BFNone)
+	err, _ := b.ProcessOrphans(&block.PrevBlock, blockchain.BFNone)
 	return err == nil
 }
 
@@ -212,7 +212,7 @@ func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.BehaviorFlags) (bool, bool, error, wire.Message) {
-//	log.Infof("MinerChain.ProcessBlock: ChainLock.RLock")
+	//	log.Infof("MinerChain.ProcessBlock: ChainLock.RLock")
 	b.chainLock.Lock()
 	defer b.chainLock.Unlock()
 
@@ -221,10 +221,10 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	log.Infof("miner Block hash %s\nprevhash %s", blockHash.String(), block.MsgBlock().PrevBlock.String())
 
 	// The block must not already exist in the main chain or side chains.
-	exists := b.MainChainHasBlock(blockHash)		// index.HaveBlock(blockHash)
-//	if err != nil {
-//		return false, false, err, nil
-//	}
+	exists := b.MainChainHasBlock(blockHash) // index.HaveBlock(blockHash)
+	//	if err != nil {
+	//		return false, false, err, nil
+	//	}
 	if exists {
 		str := fmt.Sprintf("already have block %v", blockHash)
 		return false, false, ruleError(ErrDuplicateBlock, str), nil
@@ -333,7 +333,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// there are no more.
 	err, h := b.ProcessOrphans(blockHash, flags)
 	if err != nil {
-//		log.Infof("b.ProcessOrphans error %s", err)
+		//		log.Infof("b.ProcessOrphans error %s", err)
 		return false, false, err, h
 	}
 
@@ -412,7 +412,7 @@ func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource cha
 // reports. yet the reported side chain blocks along with those in previous reports
 // must form a chain extending from a fork point in the chain of best block. i.e.,
 // no orphan block may be reported.
-func (b *MinerChain) validateVioldationReports(block * wire.MinerBlock) error {
+func (b *MinerChain) validateVioldationReports(block *wire.MinerBlock) error {
 	// validate violation reports
 	bestnode := b.blockChain.NodeByHash(&block.MsgBlock().BestBlock)
 

@@ -5,8 +5,8 @@
 package blockchain
 
 import (
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/viewpoint"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 // GetBlockWeight computes the value of the weight metric for a given block.

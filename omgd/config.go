@@ -143,8 +143,6 @@ type config struct {
 	MinBlockWeight     uint32   `long:"minblockweight" description:"Minimal desired transactions in a block"`
 	UserAgentComments  []string `long:"uacomment" description:"Comment to add to the user agent -- See BIP 14 for more information."`
 	NoPeerBloomFilters bool     `long:"nopeerbloomfilters" description:"Disable bloom filtering support"`
-	NoCFilters         bool     `long:"nocfilters" description:"Disable committed filtering (CF) support"`
-	DropCfIndex        bool     `long:"dropcfindex" description:"Deletes the index used for committed filtering (CF) support from the database on start up and then exits."`
 	SigCacheMaxSize    uint     `long:"sigcachemaxsize" description:"The maximum number of entries in the signature verification cache"`
 	BlocksOnly         bool     `long:"blocksonly" description:"Do not accept transactions from remote peers."`
 	TxIndex            bool     `long:"txindex" description:"Maintain a full hash-based transaction index which makes all transactions available via the getrawtransaction RPC"`
@@ -153,7 +151,6 @@ type config struct {
 	DropAddrIndex      bool     `long:"dropaddrindex" description:"Deletes the address-based transaction index from the database on start up and then exits."`
 	RelayNonStd        bool     `long:"relaynonstd" description:"Relay non-standard transactions regardless of the default settings for the active network."`
 	RejectNonStd       bool     `long:"rejectnonstd" description:"Reject non-standard transactions regardless of the default settings for the active network."`
-	ShareMining        bool     `long:"sharemining" description:"Enable Shared Mining."`
 	lookup             func(string) ([]net.IP, error)
 	oniondial          func(string, string, time.Duration) (net.Conn, error)
 	dial               func(string, string, time.Duration) (net.Conn, error)
@@ -1167,7 +1164,7 @@ func createDefaultConfigFile(destinationPath string) error {
 // example, .onion addresses will be dialed using the onion specific proxy if
 // one was specified, but will otherwise use the normal dial function (which
 // could itself use a proxy or not).
-func btcdDial(addr net.Addr) (net.Conn, error) {
+func btcdDial(addr net.Addr, cfg *config) (net.Conn, error) {
 	if strings.Contains(addr.String(), ".onion:") {
 		return cfg.oniondial(addr.Network(), addr.String(),
 			defaultConnectTimeout)
@@ -1182,7 +1179,7 @@ func btcdDial(addr net.Addr) (net.Conn, error) {
 //
 // Any attempt to resolve a tor address (.onion) will return an error since they
 // are not intended to be resolved outside of the tor proxy.
-func btcdLookup(host string) ([]net.IP, error) {
+func btcdLookup(host string, cfg *config) ([]net.IP, error) {
 	if strings.HasSuffix(host, ".onion") {
 		return nil, fmt.Errorf("attempt to resolve tor address %s", host)
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/ovm"
 	"github.com/omegasuite/famofchains/omega/token"
 	//	"sort"
 	"github.com/omegasuite/famofchains/omega/validate"
@@ -1634,12 +1635,9 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	coinBase := btcutil.NewTx(transactions[0].MsgTx().Stripped())
 	coinBase.SetIndex(transactions[0].Index())
 
-	paidstoragefees := make(map[[20]byte]int64)
 	storages := make([]int64, len(transactions)-1)
 
-	var unmached string
-
-	for i, tx := range transactions[1:] {
+	for _, tx := range transactions[1:] {
 		if runScripts {
 			err = ovm.VerifySigs(tx, b.ChainParams, 0, views)
 			if err != nil {
@@ -1862,11 +1860,11 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 
 	// Leave the spent txouts entry nil in the state since the information
 	// is not needed and thus extra work can be avoided.
-	views, Vm := b.Canvas(block)
+	views := b.Canvas(block)
 
 	views.SetBestHash(&tip.Hash)
 
 	newNode := NewBlockNode(&header, tip)
 
-	return b.checkConnectBlock(newNode, block, views, nil, Vm)
+	return b.checkConnectBlock(newNode, block, views, nil)
 }

@@ -11,10 +11,10 @@ import (
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/database"
-	"github.com/omegasuite/famofchains/btcd/txscript"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/ovm"
 	"github.com/omegasuite/famofchains/omega/token"
 	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
@@ -116,7 +116,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 
 		if len(x) == 0 {
 			// no claim. no need to open, destroy the entire bal.
-			stx.TxOut[0].PkScript = []byte{g.ChainParams.PubKeyHashAddrID, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, txscript.OP_PAY2NONE}
+			stx.TxOut[0].PkScript = []byte{g.ChainParams.PubKeyHashAddrID, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ovm.OP_PAY2NONE}
 			continue
 		}
 
@@ -164,7 +164,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 				leftover := &wire.TxOut{}
 				leftover.Value = &token.NumToken{bal - sum}
 				leftover.TokenType = 0
-				leftover.PkScript = []byte{g.ChainParams.PubKeyHashAddrID, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, txscript.OP_PAY2NONE}
+				leftover.PkScript = []byte{g.ChainParams.PubKeyHashAddrID, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ovm.OP_PAY2NONE}
 				ctx.AddTxOut(leftover)
 			}
 
@@ -361,7 +361,7 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 	// any leftover collateral will be destroyed.
 
 	// spend collateral
-	const DEPOSIT = byte(txscript.OP_PAY2PKH)
+	const DEPOSIT = byte(ovm.OP_PAY2PKH)
 
 	ctx.AddTxIn(&wire.TxIn{
 		*blk.MsgBlock().Utxos,
@@ -399,7 +399,7 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 		rpo.PkScript = make([]byte, 22)
 		rpo.PkScript[0] = g.ChainParams.PubKeyHashAddrID
 		copy(rpo.PkScript[1:], r[:])
-		rpo.PkScript[21] = txscript.OP_PAY2PKH
+		rpo.PkScript[21] = ovm.OP_PAY2PKH
 		ctx.AddTxOut(rpo)
 	}
 

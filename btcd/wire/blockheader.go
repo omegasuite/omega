@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 const (
@@ -46,7 +46,7 @@ var CodeVersion = uint32(Version6) // current version of code.
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.
 // Version 4 bytes + Timestamp 4 bytes + Bits 4 bytes + Nonce 4 bytes +
 // PrevBlock and MerkleRoot hashes.
-//const MaxBlockHeaderPayload = 16 + (chainhash.HashSize * 2)
+// const MaxBlockHeaderPayload = 16 + (chainhash.HashSize * 2)
 const MaxBlockHeaderPayload = 24 + (chainhash.HashSize * 2)
 const MaxMinerBlockHeaderPayload = 5000
 

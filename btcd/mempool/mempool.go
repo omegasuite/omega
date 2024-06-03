@@ -15,15 +15,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/omegasuite/btcd/btcjson"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/famofchains/btcd/blockchain/indexers"
+	"github.com/omegasuite/famofchains/btcd/btcjson"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/mining"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/ovm"
 	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 

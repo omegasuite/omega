@@ -9,7 +9,7 @@ import (
 	"io"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 const (
@@ -29,7 +29,7 @@ const (
 // as specified by the Type field, that a peer wants, has, or does not have to
 // another peer.
 type InvVect struct {
-	Type common.InvType        // Type of data
+	Type common.InvType // Type of data
 	Hash chainhash.Hash // Hash of the data
 }
 

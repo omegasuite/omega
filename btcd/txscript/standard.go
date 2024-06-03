@@ -20,17 +20,6 @@ const (
 	MaxDataCarrierSize = 80
 )
 
-const (
-	PAYFUNC_MIN = 0x41
-	PAYFUNC_MAX = 0x46
-
-	OP_PAY2PKH     = 0x41
-	OP_PAY2SCRIPTH = 0x42
-	OP_PAYMULTISIG = 0x43
-	OP_PAY2NONE    = 0x45
-	OP_PAY2ANY     = 0x46
-)
-
 // ScriptInfo houses information about a script pair that is determined by
 // CalcScriptInfo.
 type ScriptInfo struct {

@@ -19,7 +19,7 @@ import (
 	"github.com/omegasuite/famofchains/btcd/database/internal/treap"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/goleveldb/leveldb"
 	"github.com/omegasuite/goleveldb/leveldb/comparer"
 	ldberrors "github.com/omegasuite/goleveldb/leveldb/errors"

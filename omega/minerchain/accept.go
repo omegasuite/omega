@@ -11,19 +11,19 @@ package minerchain
 import (
 	"bytes"
 	"fmt"
-	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcutil"
 	"sort"
 
 	//	"github.com/omegasuite/btcutil/base58"
 
-	"github.com/omegasuite/btcd/blockchain"
-	"github.com/omegasuite/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/btcd/database"
-	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
+	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"math/big"
 )
 
@@ -80,7 +80,7 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 		}
 		var meanTPH uint32
 		if p2 {
-			meanTPH = (v2 * 63 + sum) >> 6
+			meanTPH = (v2*63 + sum) >> 6
 		} else {
 			meanTPH = sum
 		}
@@ -127,7 +127,7 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 		return false, err
 	}
 
-//	log.Infof("isMainChain = %d", isMainChain)
+	//	log.Infof("isMainChain = %d", isMainChain)
 
 	// Notify the caller that the new block was accepted into the block
 	// chain.  The caller would typically want to react by relaying the
@@ -136,7 +136,7 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	b.sendNotification(blockchain.NTBlockAccepted, block)
 	b.chainLock.Lock()
 
-//	log.Infof("maybeAcceptBlock done")
+	//	log.Infof("maybeAcceptBlock done")
 
 	return isMainChain, nil
 }
@@ -160,8 +160,8 @@ func dbStoreMinerBlock(dbTx database.Tx, block *wire.MinerBlock) error {
 // target difficulty as claimed.
 //
 // The flags modify the behavior of this function as follows:
-//  - BFNoPoWCheck: The check to ensure the block hash is less than the target
-//    difficulty is not performed.
+//   - BFNoPoWCheck: The check to ensure the block hash is less than the target
+//     difficulty is not performed.
 func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *big.Int, flags blockchain.BehaviorFlags) error {
 	// The target difficulty must be larger than zero.
 	target := CompactToBig(header.Bits)
@@ -171,7 +171,7 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 	}
 
 	// The target difficulty must be less than the maximum allowed.
-	if target.Cmp(powLimit) > 0 && flags & blockchain.BFEasyBlocks == 0 {
+	if target.Cmp(powLimit) > 0 && flags&blockchain.BFEasyBlocks == 0 {
 		str := fmt.Sprintf("MinerChain.checkProofOfWork: block target difficulty of %064x is "+
 			"higher than max of %064x", target, powLimit)
 		return ruleError(ErrUnexpectedDifficulty, str)
@@ -324,8 +324,8 @@ hit:
 // on its position within the block chain.
 //
 // The flags modify the behavior of this function as follows:
-//  - BFFastAdd: The transaction are not checked to see if they are finalized
-//    and the somewhat expensive BIP0034 validation is not performed.
+//   - BFFastAdd: The transaction are not checked to see if they are finalized
+//     and the somewhat expensive BIP0034 validation is not performed.
 //
 // The flags are also passed to checkBlockHeaderContext.  See its documentation
 // for how the flags modify its behavior.
@@ -498,28 +498,28 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) CheckConnectBlockTemplate(block *wire.MinerBlock) error {
-//	log.Infof("MinerChain.CheckConnectBlockTemplate: ChainLock.RLock")
+	//	log.Infof("MinerChain.CheckConnectBlockTemplate: ChainLock.RLock")
 	b.chainLock.Lock()
 	defer b.chainLock.Unlock()
 
 	// Skip the proof of work check as this is just a block template.
 	flags := blockchain.BFNoPoWCheck
-	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet|| b.chainParams.Net == common.RegNet {
+	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet || b.chainParams.Net == common.RegNet {
 		flags |= blockchain.BFEasyBlocks
 	}
 	tip := b.BestChain.Tip()
 
-/*
-	// This only checks whether the block can be connected to the tip of the
-	// current chain.
-	header := block.MsgBlock()
+	/*
+		// This only checks whether the block can be connected to the tip of the
+		// current chain.
+		header := block.MsgBlock()
 
-	if tip.Hash != header.PrevBlock {
-		str := fmt.Sprintf("previous block must be the current chain tip %v, "+
-			"instead got %v", tip.Hash, header.PrevBlock)
-		return ruleError(ErrPrevBlockNotBest, str)
-	}
- */
+		if tip.Hash != header.PrevBlock {
+			str := fmt.Sprintf("previous block must be the current chain tip %v, "+
+				"instead got %v", tip.Hash, header.PrevBlock)
+			return ruleError(ErrPrevBlockNotBest, str)
+		}
+	*/
 
 	err := CheckBlockSanity(block, b.chainParams.PowLimit, b.timeSource, flags)
 	if err != nil {

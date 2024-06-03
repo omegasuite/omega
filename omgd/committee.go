@@ -114,7 +114,7 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 						case wire.OmegaMessage:
 							msg.msg.(wire.OmegaMessage).SetSeq(rand.Int31())
 						}
-						Server.Broadcast(msg.msg, nil)
+						protocols[0].Server.Broadcast(msg.msg, nil)
 						if msg.done != nil {
 							msg.done <- true
 						}
@@ -928,7 +928,7 @@ func (s *server) NewConsusBlock(m *btcutil.Block) {
 func (s *server) GetPrivKey(who [20]byte) *btcec.PrivateKey {
 	for i, k := range s.signAddress {
 		if bytes.Compare(who[:], k.ScriptAddress()) == 0 {
-			return cfg.privateKeys[i]
+			return protocols[0].cfg.privateKeys[i]
 		}
 	}
 	return nil

@@ -25,6 +25,7 @@ import (
 	"github.com/omegasuite/btclog"
 	"github.com/omegasuite/famofchains/omega/consensus"
 	"github.com/omegasuite/famofchains/omega/minerchain"
+	"github.com/omegasuite/famofchains/omega/ovm"
 	"github.com/omegasuite/famofchains/omega/token"
 )
 

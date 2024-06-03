@@ -10,15 +10,15 @@ package minerchain
 
 import (
 	"bytes"
+	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	//	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
-	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/mining"
 	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcutil"
 	"math/big"
 	"math/rand"
 	"sort"
@@ -66,9 +66,6 @@ type Config struct {
 
 	// RSAPubKey for people to connect to us
 	RSAPubKey string
-
-	// whether in ShareMining mode
-	ShareMining bool
 
 	// BlockTemplateGenerator identifies the instance to use in order to
 	// generate block templates that the miner will attempt to solve.
@@ -503,9 +500,6 @@ out:
 		// Choose a payment address at random.
 		rand.Seed(time.Now().Unix())
 		rnd := rand.Intn(len(m.cfg.MiningAddrs))
-		if m.cfg.ShareMining && rnd > 1 {
-			rnd = 1 // all addresses except for the first are external
-		}
 
 		mtch := false
 		qc := chainChoice

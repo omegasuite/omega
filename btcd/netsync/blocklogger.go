@@ -10,17 +10,17 @@ import (
 	"time"
 
 	"github.com/omegasuite/btclog"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcutil"
 )
 
 // blockProgressLogger provides periodic logging for other services in order
 // to show users progress of certain "actions" involving some or all current
 // blocks. Ex: syncing to best chain, indexing all blocks, etc.
 type blockProgressLogger struct {
-	receivedLogBlocks int64
+	receivedLogBlocks      int64
 	receivedMinerLogBlocks int64
-	receivedLogTx     int64
-	lastBlockLogTime  time.Time
+	receivedLogTx          int64
+	lastBlockLogTime       time.Time
 
 	subsystemLogger btclog.Logger
 	progressAction  string
@@ -29,8 +29,9 @@ type blockProgressLogger struct {
 
 // newBlockProgressLogger returns a new block progress logger.
 // The progress message is templated as follows:
-//  {progressAction} {numProcessed} {blocks|block} in the last {timePeriod}
-//  ({numTxs}, height {lastBlockHeight}, {lastBlockTimeStamp})
+//
+//	{progressAction} {numProcessed} {blocks|block} in the last {timePeriod}
+//	({numTxs}, height {lastBlockHeight}, {lastBlockTimeStamp})
 func newBlockProgressLogger(progressMessage string, logger btclog.Logger) *blockProgressLogger {
 	return &blockProgressLogger{
 		lastBlockLogTime: time.Now(),

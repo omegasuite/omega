@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/omegasuite/btcd/btcec"
+	"github.com/omegasuite/famofchains/btcd/blockchain/indexers"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
 	"github.com/omegasuite/famofchains/btcutil"

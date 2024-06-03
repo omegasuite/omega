@@ -97,9 +97,9 @@ func (s *rpcServer) WebsocketHandler(conn *websocket.Conn, remoteAddr string,
 
 	// Limit max number of websocket clients.
 	rpcsLog.Infof("New websocket client %s", remoteAddr)
-	if s.ntfnMgr.NumClients()+1 > cfg.RPCMaxWebsockets {
+	if s.ntfnMgr.NumClients()+1 > s.cfg.Cfg.RPCMaxWebsockets {
 		rpcsLog.Infof("Max websocket clients exceeded [%d] - "+
-			"disconnecting client %s", cfg.RPCMaxWebsockets,
+			"disconnecting client %s", s.cfg.Cfg.RPCMaxWebsockets,
 			remoteAddr)
 		conn.Close()
 		return
@@ -1051,8 +1051,8 @@ func (*wsNotificationManager) removeSpentRequest(ops map[wire.OutPoint]map[chan 
 func txHexString(tx *wire.MsgTx) string {
 	buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 	// Ignore Serialize's error, as writing to a bytes.buffer cannot fail.
-	tx.OmcEncode(buf, 0, wire.SignatureEncoding | wire.FullEncoding)
-//	tx.Serialize(buf)
+	tx.OmcEncode(buf, 0, wire.SignatureEncoding|wire.FullEncoding)
+	//	tx.Serialize(buf)
 	return hex.EncodeToString(buf.Bytes())
 }
 
@@ -1463,7 +1463,7 @@ out:
 		//
 		// RPC quirks can be enabled by the user to avoid compatibility issues
 		// with software relying on Core's behavior.
-		if request.ID == nil && !(cfg.RPCQuirks && request.Jsonrpc == "") {
+		if request.ID == nil && !(c.server.cfg.Cfg.RPCQuirks && request.Jsonrpc == "") {
 			if !c.authenticated {
 				break out
 			}
@@ -1826,7 +1826,7 @@ func newWebsocketClient(server *rpcServer, conn *websocket.Conn,
 		server:            server,
 		addrRequests:      make(map[string]struct{}),
 		spentRequests:     make(map[wire.OutPoint]struct{}),
-		serviceRequestSem: makeSemaphore(cfg.RPCMaxConcurrentReqs),
+		serviceRequestSem: makeSemaphore(server.cfg.Cfg.RPCMaxConcurrentReqs),
 		ntfnChan:          make(chan []byte, 1), // nonblocking sync
 		sendChan:          make(chan wsResponse, websocketSendBufferSize),
 		quit:              make(chan struct{}),
@@ -2265,7 +2265,7 @@ func rescanBlockFilter(filter *wsClientFilter, block *btcutil.Block, params *cha
 		if !blockchain.IsCoinBaseTx(msgTx) {
 			for _, input := range msgTx.TxIn {
 				if input.PreviousOutPoint.Hash.IsEqual(&zerohash) ||
-						!filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
+					!filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
 					continue
 				}
 				if !added {

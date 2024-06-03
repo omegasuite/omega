@@ -5,7 +5,7 @@
 package txsparser
 
 import (
-	"github.com/omegasuite/omega/ovm"
+	"github.com/omegasuite/famofchains/omega/ovm"
 )
 
 // ScriptFlags is a bitmask defining additional operations or tests that will be
@@ -171,7 +171,7 @@ func IsScriptHash(script []byte) bool {
 // scriptType returns the type of the script being inspected from the known
 // standard types.
 func TypeOfScript(pops []byte) ScriptClass {
-	if  IsContractHash(pops[0]) {
+	if IsContractHash(pops[0]) {
 		return ContractHashTy
 	}
 
@@ -209,7 +209,7 @@ func ExpectedInputs(pops []byte, class ScriptClass) int {
 		return 1
 
 	case MultiSigTy:
-//	case MultiScriptTy:
+		//	case MultiScriptTy:
 		// Standard multisig has a push a small number for the number
 		// of sigs and number of keys.  Check the first push instruction
 		// to see how many arguments are expected. typeOfScript already
@@ -234,4 +234,4 @@ func ExpectedInputs(pops []byte, class ScriptClass) int {
 func GetScriptClass(script []byte) ScriptClass {
 	return TypeOfScript(script)
 }
- */
+*/

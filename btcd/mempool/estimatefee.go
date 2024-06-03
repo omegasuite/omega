@@ -20,7 +20,7 @@ import (
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/mining"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcutil"
 )
 
 // TODO incorporate Alex Morcos' modifications to Gavin's initial model
@@ -49,7 +49,7 @@ const (
 
 	bytePerKb = 1000
 
-	btcPerHao = 1E-8
+	btcPerHao = 1e-8
 )
 
 var (

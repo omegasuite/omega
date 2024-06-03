@@ -37,6 +37,7 @@ import (
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/famofchains/omega/minerchain"
+	"github.com/omegasuite/famofchains/omega/ovm"
 	"github.com/omegasuite/famofchains/omega/token"
 	"github.com/omegasuite/famofchains/omega/viewpoint"
 	"github.com/omegasuite/websocket"
@@ -166,15 +167,11 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	//	"searchborder":   		 handleSearchBorder,	// New
 	"gettpsview":      handleGetTPSView,
 	"gettpsreport":    handleGetTPSReport,
-	"contractcall":    handleContractCall, // New
-	"trycontract":     handleTryContract,  // New
 	"miningpolicy":    handleMiningPolicy, // New. miner specific policy
 	"tokenaddress":    handleTokenAddress, // New
 	"getissuedtokens": handleGetIssuedTokens,
 
 	//	"getblocktemplate":      handleGetBlockTemplate,
-	"getcfilter":            handleGetCFilter,
-	"getcfilterheader":      handleGetCFilterHeader,
 	"getconnectioncount":    handleGetConnectionCount,
 	"resetconnection":       handleResetConnection,
 	"getcurrentnet":         handleGetCurrentNet,
@@ -947,73 +944,6 @@ func handleTokenAddress(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	return address.EncodeAddress(), nil
 }
 
-// handleTryContract handles TryContract commands.
-func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.TryContractCmd)
-	// Deserialize and send off to tx relay
-	hexStr := c.HexTx
-	if len(hexStr)%2 != 0 {
-		hexStr = "0" + hexStr
-	}
-	serializedTx, err := hex.DecodeString(hexStr)
-	if err != nil {
-		return nil, rpcDecodeHexError(hexStr)
-	}
-	var msgTx wire.MsgTx
-	err = msgTx.Deserialize(bytes.NewReader(serializedTx))
-	if err != nil {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCDeserialization,
-			Message: "TX decode failed: " + err.Error(),
-		}
-	}
-
-	vm := ovm.NewOVM(s.cfg.ChainParams)
-	views := s.cfg.Chain.NewViewPointSet()
-	vm.SetViewPoint(views)
-
-	best := s.cfg.Chain.BestSnapshot()
-	views.SetBestHash(&best.Hash)
-
-	vm.BlockNumber = func() uint64 { return uint64(best.Height + 1) }
-	nt := time.Now().Unix()
-	vm.BlockTime = func() uint32 { return uint32(nt) }
-	vm.BlockVersion = func() uint32 { return wire.CodeVersion }
-
-	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
-
-	if mb == nil {
-		return nil, fmt.Errorf("Unable to handle this request for now")
-	}
-	if mb.Data.GetContractExec() > vm.StepLimit {
-		vm.StepLimit = mb.Data.GetContractExec()
-	}
-
-	tx := btcutil.NewTx(&msgTx)
-
-	result, err := vm.TryContract(tx, best.Height)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return the serialized and hex-encoded transaction.  Note that this
-	// is intentionally not directly returning because the first return
-	// value is a string and it would result in returning an empty string to
-	// the client instead of nothing (nil) in the case of an error.
-	var w bytes.Buffer
-	err = tx.MsgTx().SerializeFull(&w)
-	if err != nil {
-		return nil, err
-	}
-
-	reply := &btcjson.TryResult{
-		Result: hex.EncodeToString(result),
-		Tx:     hex.EncodeToString(w.Bytes()),
-	}
-
-	return reply, nil
-}
-
 // handleMiningPolicy handles MiningPolicy commands.
 func handleMiningPolicy(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	txReply := &btcjson.MiningPolicy{
@@ -1599,7 +1529,7 @@ func handleGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	return nil, fmt.Errorf("This interface has been disabled.")
 	// Respond with an error if there are no addresses to pay the
 	// created blocks to.
-	if len(cfg.miningAddrs) == 0 {
+	if len(s.cfg.Cfg.miningAddrs) == 0 {
 		return nil, &btcjson.RPCError{
 			Code: btcjson.ErrRPCInternal.Code,
 			Message: "No payment addresses specified " +
@@ -1710,7 +1640,7 @@ func handleGetAddedNodeInfo(s *rpcServer, cmd interface{}, closeChan <-chan stru
 		default:
 			// Do a DNS lookup for the address.  If the lookup fails, just
 			// use the host.
-			ips, err := btcdLookup(host)
+			ips, err := btcdLookup(host, s.cfg.Cfg)
 			if err != nil {
 				ipList = make([]string, 1)
 				ipList[0] = host
@@ -1850,82 +1780,6 @@ func handleGetTPSReport(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 
 	return res, nil
 }
-
-func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.ContractCallCmd)
-
-	vm := ovm.NewOVM(s.cfg.ChainParams)
-	views := s.cfg.Chain.NewViewPointSet()
-	vm.SetViewPoint(views)
-
-	best := s.cfg.Chain.BestSnapshot()
-	vm.BlockTime = func() uint32 { return uint32(best.MedianTime.Unix()) }
-	vm.BlockNumber = func() uint64 { return uint64(best.Height) }
-	vm.BlockVersion = func() uint32 { return wire.CodeVersion }
-
-	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
-	if mb == nil {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCMisc,
-			Message: "Chain stalled.",
-		}
-	}
-	if mb.Data.GetContractExec() > vm.StepLimit {
-		vm.StepLimit = mb.Data.GetContractExec()
-	}
-
-	contract, err := ovm.AddressFromString(c.Contract)
-	if err != nil {
-		return nil, err
-	}
-
-	var srcBytes []byte
-	if len(c.Input)%2 == 0 {
-		srcBytes = []byte(c.Input)
-	} else {
-		srcBytes = make([]byte, 1+len(c.Input))
-		srcBytes[0] = '0'
-		copy(srcBytes[1:], c.Input)
-	}
-
-	input := make([]byte, len(srcBytes)/2)
-	if _, err := hex.Decode(input, srcBytes); err != nil {
-		return nil, err
-	}
-
-	ret, err := vm.ContractCall(contract, input)
-	return hex.EncodeToString(ret), err
-}
-
-/*
-func handleSearchBorder(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.SearchBorderCmd)
-
-	var hashes []chainhash.Hash
-
-	if err := s.cfg.DB.View(func(dbTx database.Tx) error {
-		hashes = viewpoint.Findborders(dbTx,
-			[4]uint32{uint32(c.Left) + 0x80000000,
-				uint32(c.Right) + 0x80000000,
-				uint32(c.Bottom) + 0x80000000,
-				uint32(c.Top) + 0x80000000}, c.Lod)
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-
-	if len(hashes) > 5000 {
-		hashes = hashes[:5000]
-	}
-
-	result := make([]string, len(hashes))
-	for i, h := range hashes {
-		result[i] = h.String()
-	}
-
-	return result, nil
-}
-*/
 
 // handleGetBlock implements the getblock command.
 func handleGetBlockTxHases(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
@@ -2194,7 +2048,7 @@ func handleAddCollateral(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		return nil, rpcDecodeHexError(c.Hash)
 	}
 
-	fp, err := os.OpenFile(cfg.ConfigFile, os.O_APPEND|os.O_WRONLY, 0666)
+	fp, err := os.OpenFile(s.cfg.Cfg.ConfigFile, os.O_APPEND|os.O_WRONLY, 0666)
 
 	if err != nil {
 		return "failed", nil
@@ -3265,66 +3119,6 @@ func handleGetBlockTemplate(s *rpcServer, cmd interface{}, closeChan <-chan stru
 }
 */
 
-// handleGetCFilter implements the getcfilter command.
-func handleGetCFilter(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	if s.cfg.CfIndex == nil {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCNoCFIndex,
-			Message: "The CF index must be enabled for this command",
-		}
-	}
-
-	c := cmd.(*btcjson.GetCFilterCmd)
-	hash, err := chainhash.NewHashFromStr(c.Hash)
-	if err != nil {
-		return nil, rpcDecodeHexError(c.Hash)
-	}
-
-	filterBytes, err := s.cfg.CfIndex.FilterByBlockHash(hash, c.FilterType)
-	if err != nil {
-		rpcsLog.Debugf("Could not find committed filter for %v: %v",
-			hash, err)
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCBlockNotFound,
-			Message: "Block not found",
-		}
-	}
-
-	rpcsLog.Debugf("Found committed filter for %v", hash)
-	return hex.EncodeToString(filterBytes), nil
-}
-
-// handleGetCFilterHeader implements the getcfilterheader command.
-func handleGetCFilterHeader(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	if s.cfg.CfIndex == nil {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCNoCFIndex,
-			Message: "The CF index must be enabled for this command",
-		}
-	}
-
-	c := cmd.(*btcjson.GetCFilterHeaderCmd)
-	hash, err := chainhash.NewHashFromStr(c.Hash)
-	if err != nil {
-		return nil, rpcDecodeHexError(c.Hash)
-	}
-
-	headerBytes, err := s.cfg.CfIndex.FilterHeaderByBlockHash(hash, c.FilterType)
-	if len(headerBytes) > 0 {
-		rpcsLog.Debugf("Found header of committed filter for %v", hash)
-	} else {
-		rpcsLog.Debugf("Could not find header of committed filter for %v: %v",
-			hash, err)
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCBlockNotFound,
-			Message: "Block not found",
-		}
-	}
-
-	hash.SetBytes(headerBytes)
-	return hash.String(), nil
-}
-
 // handleGetConnectionCount implements the getconnectioncount command.
 func handleGetConnectionCount(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	return s.cfg.ConnMgr.ConnectedCount(), nil
@@ -3421,10 +3215,10 @@ func handleGetInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 		Blocks:          best.Height,
 		TimeOffset:      int64(s.cfg.TimeSource.Offset().Seconds()),
 		Connections:     s.cfg.ConnMgr.ConnectedCount(),
-		Proxy:           cfg.Proxy,
+		Proxy:           s.cfg.Cfg.Proxy,
 		Difficulty:      getDifficultyRatio(best.Bits, s.cfg.ChainParams),
-		TestNet:         cfg.TestNet,
-		RelayFee:        cfg.minRelayTxFee.ToOMC(),
+		TestNet:         s.cfg.Cfg.TestNet,
+		RelayFee:        s.cfg.Cfg.minRelayTxFee.ToOMC(),
 	}
 
 	return ret, nil
@@ -3478,7 +3272,7 @@ func handleGetMiningInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		HashesPerSec:   0, // int64(s.cfg.CPUMiner.HashesPerSecond()),
 		NetworkHashPS:  networkHashesPerSec,
 		PooledTx:       uint64(s.cfg.TxMemPool.Count()),
-		TestNet:        cfg.TestNet,
+		TestNet:        s.cfg.Cfg.TestNet,
 	}
 	return &result, nil
 }
@@ -5704,9 +5498,9 @@ func (s *rpcServer) NotifyNewTransactions(txns []*mempool.TxDesc) {
 //
 // This function is safe for concurrent access.
 func (s *rpcServer) limitConnections(w http.ResponseWriter, remoteAddr string) bool {
-	if int(atomic.LoadInt32(&s.numClients)+1) > cfg.RPCMaxClients {
+	if int(atomic.LoadInt32(&s.numClients)+1) > s.cfg.Cfg.RPCMaxClients {
 		rpcsLog.Infof("Max RPC clients exceeded [%d] - "+
-			"disconnecting client %s", cfg.RPCMaxClients,
+			"disconnecting client %s", s.cfg.Cfg.RPCMaxClients,
 			remoteAddr)
 		http.Error(w, "503 Too busy.  Try again later.",
 			http.StatusServiceUnavailable)
@@ -5932,7 +5726,7 @@ func (s *rpcServer) jsonRPCRead(w http.ResponseWriter, r *http.Request, isAdmin 
 			//
 			// RPC quirks can be enabled by the user to avoid compatibility issues
 			// with software relying on Core's behavior.
-			if request.ID == nil && !(cfg.RPCQuirks && request.Jsonrpc == "") {
+			if request.ID == nil && !(s.cfg.Cfg.RPCQuirks && request.Jsonrpc == "") {
 				return
 			}
 
@@ -6232,6 +6026,7 @@ type rpcserverSyncManager interface {
 
 // rpcserverConfig is a descriptor containing the RPC server configuration.
 type rpcserverConfig struct {
+	Cfg *config
 	// Listeners defines a slice of listeners for which the RPC server will
 	// take ownership of and accept connections.  Since the RPC server takes
 	// ownership of these listeners, they will be closed when the RPC server
@@ -6275,12 +6070,10 @@ type rpcserverConfig struct {
 	// of to provide additional data when queried.
 	TxIndex   *indexers.TxIndex
 	AddrIndex *indexers.AddrIndex
-	CfIndex   *indexers.CfIndex
 
 	// The fee estimator keeps track of how long transactions are left in
 	// the mempool before they are mined into blocks.
 	FeeEstimator *mempool.FeeEstimator
-	ShareMining  bool
 }
 
 // newRPCServer returns a new instance of the rpcServer struct.
@@ -6293,13 +6086,13 @@ func newRPCServer(config *rpcserverConfig) (*rpcServer, error) {
 		requestProcessShutdown: make(chan struct{}),
 		quit:                   make(chan int),
 	}
-	if cfg.RPCUser != "" && cfg.RPCPass != "" {
-		login := cfg.RPCUser + ":" + cfg.RPCPass
+	if config.Cfg.RPCUser != "" && config.Cfg.RPCPass != "" {
+		login := config.Cfg.RPCUser + ":" + config.Cfg.RPCPass
 		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(login))
 		rpc.authsha = sha256.Sum256([]byte(auth))
 	}
-	if cfg.RPCLimitUser != "" { // && cfg.RPCLimitPass != "" {
-		login := cfg.RPCLimitUser + ":" + cfg.RPCLimitPass
+	if config.Cfg.RPCLimitUser != "" { // && cfg.RPCLimitPass != "" {
+		login := config.Cfg.RPCLimitUser + ":" + config.Cfg.RPCLimitPass
 		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(login))
 		rpc.limitauthsha = sha256.Sum256([]byte(auth))
 	}

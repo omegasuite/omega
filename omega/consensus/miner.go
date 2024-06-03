@@ -14,12 +14,12 @@ import (
 
 	//	"bufio"
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcutil"
 	//	"io"
 	"os"
 

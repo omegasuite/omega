@@ -19,12 +19,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/mining"
 	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/famofchains/omega/token"
 )
 
