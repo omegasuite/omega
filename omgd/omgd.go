@@ -311,6 +311,7 @@ func btcdMain(serverChan chan<- *server) error {
 			}
 			fmt.Printf("%s, %f\n", address.EncodeAddress(), float64(bal)/1e8)
 		}
+		return nil
 	}
 
 	server.Start()
