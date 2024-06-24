@@ -1505,6 +1505,11 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			str := fmt.Sprintf("Contract execution steps exceeds block limit in %v", *block.Hash())
 			return false, ruleError(ErrExcessContractExec, str)
 		}
+		if block.MsgBlock().Header.ContractExec > 0 && (b.ChainParams.Net == common.SVPMainNet || b.ChainParams.Net == common.SVPTestNet) {
+			// SVP of base chain is xfer chain which has no contract exec
+			str := fmt.Sprintf("Contract execution not allowed in %v", *block.Hash())
+			return false, ruleError(ErrExcessContractExec, str)
+		}
 
 		// Perform several checks to verify the block can be connected
 		// to the main chain without violating any rules and without

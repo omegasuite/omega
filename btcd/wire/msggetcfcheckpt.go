@@ -9,7 +9,7 @@ import (
 	"io"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 // MsgGetCFCheckpt is a request for filter headers at evenly spaced intervals

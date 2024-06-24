@@ -9,7 +9,7 @@ import (
 	"bytes"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"io"
 )
 

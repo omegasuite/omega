@@ -5,8 +5,8 @@
 package bloom
 
 import (
-	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/famofchains/btcd/blockchain"
 )
 
 // merkleBlock is used to house intermediate information needed to generate a
@@ -123,4 +123,4 @@ func NewMerkleBlock(block *btcutil.Block, filter *Filter) (*wire.MsgMerkleBlock,
 	}
 	return &msgMerkleBlock, matchedIndices
 }
- */
+*/

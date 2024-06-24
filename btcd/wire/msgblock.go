@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
 	"bytes"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 // defaultTransactionAlloc is the default size used for the backing array
@@ -163,21 +163,21 @@ func (msg *MsgBlock) DeserializeTxLoc(r *bytes.Buffer) ([]TxLoc, error) {
 	for i := uint64(0); i < txCount; i++ {
 		txLocs[i].TxStart = fullLen - r.Len()
 		tx := MsgTx{}
-		err := tx.Deserialize(r)	// DeserializeNoWitness(r)
+		err := tx.Deserialize(r) // DeserializeNoWitness(r)
 		if err != nil {
 			return nil, err
 		}
 		msg.Transactions = append(msg.Transactions, &tx)
 		txLocs[i].TxLen = (fullLen - r.Len()) - txLocs[i].TxStart
 	}
-/*
-	for _, tx := range msg.Transactions {
-		err := tx.ReadSignature(r, 0)
-		if err != nil {
-			return nil, err
+	/*
+		for _, tx := range msg.Transactions {
+			err := tx.ReadSignature(r, 0)
+			if err != nil {
+				return nil, err
+			}
 		}
-	}
- */
+	*/
 
 	return txLocs, nil
 }
@@ -217,7 +217,7 @@ func (msg *MsgBlock) Serialize(w io.Writer) error {
 	// Passing WitnessEncoding as the encoding type here indicates that
 	// each of the transactions should be serialized using the witness
 	// serialization structure defined in BIP0141.
-	err := msg.OmcEncode(w, 0, SignatureEncoding | FullEncoding)
+	err := msg.OmcEncode(w, 0, SignatureEncoding|FullEncoding)
 
 	return err
 }
@@ -226,7 +226,7 @@ func (msg *MsgBlock) SerializeFull(w io.Writer) error {
 	// Passing WitnessEncoding as the encoding type here indicates that
 	// each of the transactions should be serialized using the witness
 	// serialization structure defined in BIP0141.
-	err := msg.OmcEncode(w, 0, SignatureEncoding | FullEncoding)
+	err := msg.OmcEncode(w, 0, SignatureEncoding|FullEncoding)
 
 	return err
 }
@@ -235,7 +235,7 @@ func (msg *MsgBlock) SerializeFull(w io.Writer) error {
 // Serialize, with all (if any) witness data stripped from all transactions.
 // This method is provided in additon to the regular Serialize for SVP nodes.
 func (msg *MsgBlock) SerializeNoSignature(w io.Writer) error {
-	return msg.OmcEncode(w, 0, BaseEncoding | FullEncoding)
+	return msg.OmcEncode(w, 0, BaseEncoding|FullEncoding)
 }
 
 // SerializeSize returns the number of bytes it would take to serialize the
@@ -245,9 +245,9 @@ func (msg *MsgBlock) SerializeSize() int {
 	// transactions.
 	n := blockHeaderLen + common.VarIntSerializeSize(uint64(len(msg.Transactions)))
 
-//	if msg.Header.Violations != nil {
-//		n += len(msg.Header.Violations) + common.VarIntSerializeSize(uint64(len(msg.Header.Violations)))
-//	}
+	//	if msg.Header.Violations != nil {
+	//		n += len(msg.Header.Violations) + common.VarIntSerializeSize(uint64(len(msg.Header.Violations)))
+	//	}
 
 	for _, tx := range msg.Transactions {
 		n += tx.SerializeSize()
@@ -263,9 +263,9 @@ func (msg *MsgBlock) SerializeSizeStripped() int {
 	// transactions.
 	n := blockHeaderLen + common.VarIntSerializeSize(uint64(len(msg.Transactions)))
 
-//	if msg.Header.Violations != nil {
-//		n += len(msg.Header.Violations) + common.VarIntSerializeSize(uint64(len(msg.Header.Violations)))
-//	}
+	//	if msg.Header.Violations != nil {
+	//		n += len(msg.Header.Violations) + common.VarIntSerializeSize(uint64(len(msg.Header.Violations)))
+	//	}
 
 	for _, tx := range msg.Transactions {
 		n += tx.SerializeSizeStripped()

@@ -1723,7 +1723,7 @@ func getDifficultyRatio(bits uint32, params *chaincfg.Params) float64 {
 
 func handleGetTPSView(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetTPSViewCmd)
-	addr, err := btcutil.DecodeAddress(c.Address, activeNetParams.Params)
+	addr, err := btcutil.DecodeAddress(c.Address, s.cfg.ChainParams)
 	if err != nil {
 		return nil, err
 	}
@@ -1745,7 +1745,7 @@ func handleGetTPSView(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 
 func handleGetTPSReport(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetTPSViewCmd)
-	addr, err := btcutil.DecodeAddress(c.Address, activeNetParams.Params)
+	addr, err := btcutil.DecodeAddress(c.Address, s.cfg.ChainParams)
 	if err != nil {
 		return nil, err
 	}
@@ -2086,7 +2086,7 @@ func handleAddMiningKey(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 			}
 		}
 	} else if s.cfg.MinerMiner != nil && s.cfg.MinerMiner.IsMining() {
-		if addr, err := btcutil.DecodeAddress(c.Key, activeNetParams.Params); err == nil {
+		if addr, err := btcutil.DecodeAddress(c.Key, s.cfg.ChainParams); err == nil {
 			s.cfg.MinerMiner.ChangeMiningKey(addr)
 			result.Status = 1
 		} else {

@@ -70,8 +70,8 @@ type ConnReq struct {
 	stateMtx   sync.RWMutex
 	retryCount uint32
 
-	Committee  int32		// place in current committee. if not, -1
-	Miner [20]byte
+	Committee    int32 // place in current committee. if not, -1
+	Miner        [20]byte
 	Initcallback func(ServerPeer)
 }
 
@@ -201,6 +201,9 @@ type ConnManager struct {
 	Alive          time.Time
 	Committee      int32 // highest Committee so far
 	usePerm        bool
+
+	pendingConn map[net.Addr]struct{}
+	cmtx        sync.Mutex
 }
 
 // handleFailedConn handles a connection failed due to a disconnect or any
@@ -260,7 +263,7 @@ out:
 	for {
 		select {
 		case t := <-ticker.C:
-			if t.Unix() - cm.Alive.Unix() <= 60 {
+			if t.Unix()-cm.Alive.Unix() <= 60 {
 				continue
 			}
 			log.Debugf("Make a new conn because no activity in 1 min")
@@ -353,11 +356,11 @@ out:
 				// subsequent processing of connections and
 				// failures do not ignore the request.
 				if uint32(len(conns)) < cm.cfg.TargetOutbound ||
-					connReq.Permanent || connReq.Committee >= cm.Committee - wire.CommitteeSize {
+					connReq.Permanent || connReq.Committee >= cm.Committee-wire.CommitteeSize {
 					connReq.updateState(ConnPending)
 					log.Debugf("Reconnecting to %v", connReq)
 
-//					time.Sleep(30 * time.Second)
+					//					time.Sleep(30 * time.Second)
 
 					pending[msg.id] = connReq
 					cm.handleFailedConn(connReq)
@@ -373,7 +376,7 @@ out:
 				}
 
 				connReq.updateState(ConnFailing)
-//				log.Debugf("Failed to connect to %v: %v",	connReq, msg.err)
+				//				log.Debugf("Failed to connect to %v: %v",	connReq, msg.err)
 				cm.handleFailedConn(connReq)
 			}
 
@@ -447,9 +450,6 @@ func (cm *ConnManager) NewConnReq(result chan struct{}) {
 	cm.Connect(c)
 }
 
-var pendingConn = map[net.Addr]struct{}{}
-var cmtx sync.Mutex
-
 // Connect assigns an id and dials a connection to the address of the
 // connection request.
 func (cm *ConnManager) Connect(c *ConnReq) {
@@ -488,19 +488,19 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 		}
 	}
 
-	cmtx.Lock()
-	if _,ok := pendingConn[c.Addr]; ok {
-		cmtx.Unlock()
-		log.Infof("Connect failed due to pendingConn %d", pendingConn[c.Addr])
+	cm.cmtx.Lock()
+	if _, ok := cm.pendingConn[c.Addr]; ok {
+		cm.cmtx.Unlock()
+		log.Infof("Connect failed due to pendingConn %d", cm.pendingConn[c.Addr])
 		return
 	}
-	pendingConn[c.Addr] = struct{}{}
-	cmtx.Unlock()
+	cm.pendingConn[c.Addr] = struct{}{}
+	cm.cmtx.Unlock()
 
 	defer func() {
-		cmtx.Lock()
-		delete(pendingConn, c.Addr)
-		cmtx.Unlock()
+		cm.cmtx.Lock()
+		delete(cm.pendingConn, c.Addr)
+		cm.cmtx.Unlock()
 	}()
 
 	log.Debugf("Attempting to connect to %v", c)
@@ -605,7 +605,7 @@ func (cm *ConnManager) Start(dup ConnectChecker) {
 
 	for i := atomic.LoadUint64(&cm.connReqCount); i < uint64(cm.cfg.TargetOutbound); i++ {
 		go cm.NewConnReq(seq)
-		<- seq
+		<-seq
 	}
 }
 
@@ -647,10 +647,11 @@ func New(cfg *Config) (*ConnManager, error) {
 		cfg.TargetOutbound = defaultTargetOutbound + wire.CommitteeSize
 	}
 	cm := ConnManager{
-		cfg:      *cfg, // Copy so caller can't mutate
-		requests: make(chan interface{}, 125),
-		quit:     make(chan struct{}),
-		usePerm:  false,
+		cfg:         *cfg, // Copy so caller can't mutate
+		requests:    make(chan interface{}, 125),
+		quit:        make(chan struct{}),
+		usePerm:     false,
+		pendingConn: make(map[net.Addr]struct{}),
 	}
 	return &cm, nil
 }

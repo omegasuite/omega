@@ -30,6 +30,12 @@ var interruptSignals = []os.Signal{os.Interrupt}
 var intchannel chan struct{}
 
 func interruptListener() <-chan struct{} {
+	if intchannel == nil {
+		intchannel = make(chan struct{})
+	} else {
+		return intchannel
+	}
+
 	go func() {
 		interruptChannel := make(chan os.Signal, 1)
 		signal.Notify(interruptChannel, interruptSignals...)

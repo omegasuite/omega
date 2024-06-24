@@ -10,7 +10,7 @@ import (
 	"io"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 // MsgGetHeaders implements the Message interface and represents a bitcoin

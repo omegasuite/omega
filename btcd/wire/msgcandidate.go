@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"io"
 )
 
@@ -273,7 +273,7 @@ func (msg *MsgCandidateResp) OmcEncode(w io.Writer, pver uint32, enc MessageEnco
 		return err
 	}
 
-	if err = writeElement(w, msg.From);	err != nil {
+	if err = writeElement(w, msg.From); err != nil {
 		return err
 	}
 

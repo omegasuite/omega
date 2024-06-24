@@ -9,7 +9,6 @@ import (
 	"container/list"
 	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/famofchains/omega/consensus"
 	"strings"
@@ -51,14 +50,14 @@ type protocol struct {
 
 var protocols []*protocol
 
-func prepareServer(tcfg *config) (*protocol, bool) {
+func prepareServer(tcfg *config, xfer int) (*protocol, bool) {
 	// Get a channel that will be closed when a shutdown signal has been
 	// triggered either from an OS signal such as SIGINT (Ctrl+C) or from
 	// another subsystem such as the RPC server.
 	interrupt := interruptListener()
 
 	// Load the block database.
-	db, err := loadBlockDB(tcfg)
+	db, err := loadBlockDB(tcfg, xfer)
 	if err != nil {
 		btcdLog.Errorf("%v", err)
 		return nil, true
@@ -71,7 +70,7 @@ func prepareServer(tcfg *config) (*protocol, bool) {
 	}
 
 	// Load the block database.
-	minerdb, err := loadMinerDB(tcfg)
+	minerdb, err := loadMinerDB(tcfg, xfer)
 	if err != nil {
 		btcdLog.Errorf("%v", err)
 		return prot, true
@@ -105,11 +104,7 @@ func prepareServer(tcfg *config) (*protocol, bool) {
 		return prot, true
 	}
 
-	prot.activeNetParams = &params{
-		Params:  &chaincfg.MainNetParams,
-		rpcPort: "8789",
-	}
-
+	prot.activeNetParams = activeNetParams[xfer]
 	prot.activeNetParams.Params.MinRelayTxFee = int64(tcfg.minRelayTxFee)
 
 	if tcfg.Generate && len(tcfg.privateKeys) == 0 {
@@ -130,10 +125,10 @@ func prepareServer(tcfg *config) (*protocol, bool) {
 			dwif, err := btcutil.DecodeWIF(pvk)
 			if err == nil {
 				privKey := dwif.PrivKey
-				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
+				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), prot.activeNetParams.Params)
 				if err == nil {
 					addr := pkaddr.AddressPubKeyHash()
-					if addr.IsForNet(activeNetParams.Params) {
+					if addr.IsForNet(activeNetParams[0].Params) {
 						tcfg.miningAddrs = append(tcfg.miningAddrs, addr)
 						tcfg.signAddress = append(tcfg.signAddress, addr)
 						tcfg.privateKeys = append(tcfg.privateKeys, privKey)
@@ -168,18 +163,18 @@ func prepareServer(tcfg *config) (*protocol, bool) {
 	prot.Server = server
 
 	defer func() {
-		if len(tcfg.privateKeys) != 0 && tcfg.Generate {
+		if len(tcfg.privateKeys) == 0 && tcfg.Generate {
 			btcdLog.Infof("Gracefully shutting down consensus server...")
 			consensus.Shutdown()
 			btcdLog.Infof("consensus Server shutdown complete")
+
+			btcdLog.Infof("Gracefully shutting down the server...")
+			server.Stop()
+
+			btcdLog.Infof(" server Stopped")
+			server.WaitForShutdown()
+			btcdLog.Infof("Server shutdown complete")
 		}
-
-		btcdLog.Infof("Gracefully shutting down the server...")
-		server.Stop()
-
-		btcdLog.Infof(" server Stopped")
-		server.WaitForShutdown()
-		btcdLog.Infof("Server shutdown complete")
 	}()
 
 	if tcfg.Settip != "" {
@@ -218,7 +213,7 @@ func runserver(p *protocol) {
 
 	if !p.IsSvp && p.running {
 		if len(p.cfg.privateKeys) != 0 && p.cfg.Generate {
-			go consensus.Consensus(p.Server, p.cfg.DataDir, p.cfg.signAddress, activeNetParams.Params)
+			go consensus.Consensus(p.Server, p.cfg.DataDir, p.cfg.signAddress, p.activeNetParams.Params)
 			for _, sa := range p.cfg.signAddress {
 				btcdLog.Infof("Address of miner %s", sa.String())
 			}
@@ -451,7 +446,7 @@ func warnMultipleDBs(cfg *config) {
 // contains additional logic such warning the user if there are multiple
 // databases which consume space on the file system and ensuring the regression
 // test database is clean when in regression test mode.
-func loadBlockDB(cfg *config) (database.DB, error) {
+func loadBlockDB(cfg *config, xfer int) (database.DB, error) {
 	// The memdb backend does not have a file path associated with it, so
 	// handle it uniquely.  We also don't want to worry about the multiple
 	// database type warnings when running with the memory database.
@@ -474,7 +469,7 @@ func loadBlockDB(cfg *config) (database.DB, error) {
 	removeRegressionDB(dbPath, cfg)
 
 	btcdLog.Infof("Loading block database from '%s'", dbPath)
-	db, err := database.Open(cfg.DbType, dbPath, activeNetParams.Net)
+	db, err := database.Open(cfg.DbType, dbPath, activeNetParams[xfer].Net)
 	if err != nil {
 		// Return the error if it's not because the database doesn't
 		// exist.
@@ -489,7 +484,7 @@ func loadBlockDB(cfg *config) (database.DB, error) {
 		if err != nil {
 			return nil, err
 		}
-		db, err = database.Create(cfg.DbType, dbPath, activeNetParams.Net)
+		db, err = database.Create(cfg.DbType, dbPath, activeNetParams[xfer].Net)
 		if err != nil {
 			return nil, err
 		}
@@ -504,7 +499,7 @@ func loadBlockDB(cfg *config) (database.DB, error) {
 // contains additional logic such warning the user if there are multiple
 // databases which consume space on the file system and ensuring the regression
 // test database is clean when in regression test mode.
-func loadMinerDB(cfg *config) (database.DB, error) {
+func loadMinerDB(cfg *config, xfer int) (database.DB, error) {
 	// The memdb backend does not have a file path associated with it, so
 	// handle it uniquely.  We also don't want to worry about the multiple
 	// database type warnings when running with the memory database.
@@ -520,7 +515,7 @@ func loadMinerDB(cfg *config) (database.DB, error) {
 	removeRegressionDB(dbPath, cfg)
 
 	btcdLog.Infof("Loading miner database from '%s'", dbPath)
-	db, err := database.Open(cfg.DbType, dbPath, activeNetParams.Net)
+	db, err := database.Open(cfg.DbType, dbPath, activeNetParams[xfer].Net)
 	if err != nil {
 		// Return the error if it's not because the database doesn't
 		// exist.
@@ -535,7 +530,7 @@ func loadMinerDB(cfg *config) (database.DB, error) {
 		if err != nil {
 			return nil, err
 		}
-		db, err = database.Create(cfg.DbType, dbPath, activeNetParams.Net)
+		db, err = database.Create(cfg.DbType, dbPath, activeNetParams[xfer].Net)
 		if err != nil {
 			return nil, err
 		}
@@ -551,7 +546,7 @@ func main() {
 	// Use all processor cores.
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	tcfg, _, err := loadConfig(1) // load only the basic config
+	tcfg, _, err := loadConfig(0) // chain main options
 	if err != nil {
 		os.Exit(1)
 	}
@@ -616,7 +611,7 @@ func main() {
 	protocols = make([]*protocol, 0)
 
 	// Work around defer not working after os.Exit()
-	p, quit := prepareServer(tcfg)
+	p, quit := prepareServer(tcfg, 0)
 	if quit && p != nil {
 		cleanup(p)
 		os.Exit(1)
@@ -625,15 +620,17 @@ func main() {
 	p.IsSvp = false
 	protocols = append(protocols, p)
 
-	tcfg, _, err = loadConfig(2) // load only the basic config
+	tcfg, _, err = loadConfig(1) // chain svp options
 	if err != nil {
 		os.Exit(1)
 	}
 
 	// Work around defer not working after os.Exit()
-	p, quit = prepareServer(tcfg)
-	if quit && p != nil {
-		cleanup(p)
+	p, quit = prepareServer(tcfg, 1)
+	if quit {
+		if p != nil {
+			cleanup(p)
+		}
 		os.Exit(1)
 	}
 

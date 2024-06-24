@@ -7,17 +7,17 @@ package wire
 import (
 	"bytes"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"io"
 )
 
 type Invitation struct {
-	Height int32	// my miner chain height
-	Pubkey [33]byte	// my pub key goes with the signature
-	IP []byte		// my IP address for connection
+	Height int32    // my miner chain height
+	Pubkey [33]byte // my pub key goes with the signature
+	IP     []byte   // my IP address for connection
 }
 
-func (m * Invitation) Serialize(w io.Writer) error {
+func (m *Invitation) Serialize(w io.Writer) error {
 	err := common.WriteVarInt(w, 0, uint64(m.Height))
 	if err != nil {
 		return err
@@ -31,7 +31,7 @@ func (m * Invitation) Serialize(w io.Writer) error {
 	return common.WriteVarBytes(w, 0, m.IP[:])
 }
 
-func (m * Invitation) Deserialize(r io.Reader) error {
+func (m *Invitation) Deserialize(r io.Reader) error {
 	h, err := common.ReadVarInt(r, 0)
 	if err != nil {
 		return err
@@ -54,11 +54,11 @@ func (m * Invitation) Deserialize(r io.Reader) error {
 }
 
 type MsgInvitation struct {
-	Expire uint32 // expiration height. anything more than Height + committee size
-	To [20]byte	// receipient identified by PKH address
-	Encrypt bool	// whether Msg is encrypted Invitation
-	Sig []byte	// my signature (w/o pubkey) on invitation to prove I am the one
-	Msg []byte	// RSA encrypted invitation message using the receipient's RSA pubkey
+	Expire  uint32   // expiration height. anything more than Height + committee size
+	To      [20]byte // receipient identified by PKH address
+	Encrypt bool     // whether Msg is encrypted Invitation
+	Sig     []byte   // my signature (w/o pubkey) on invitation to prove I am the one
+	Msg     []byte   // RSA encrypted invitation message using the receipient's RSA pubkey
 }
 
 func (msg *MsgInvitation) Hash() chainhash.Hash {
@@ -161,9 +161,9 @@ func NewMsgInvitation() *MsgInvitation {
 
 type MsgAckInvitation struct {
 	// acknowledgement to invitation, send back after connected on invitation
-	Invitation	// this does not have to be RSA encrypted since we know we are connected
-				// to confirmed committee member, but we do have to sign to to prove ourself
-	Sig []byte	// my signature (w/o pubkey) on invitation to prove I am the one
+	Invitation // this does not have to be RSA encrypted since we know we are connected
+	// to confirmed committee member, but we do have to sign to to prove ourself
+	Sig []byte // my signature (w/o pubkey) on invitation to prove I am the one
 }
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.

@@ -7,8 +7,8 @@ package wire
 import (
 	"bytes"
 	"fmt"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"io"
-	"github.com/omegasuite/btcd/wire/common"
 )
 
 // MsgAlert contains a payload and a signature:

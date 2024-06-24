@@ -10,7 +10,7 @@ import (
 	"io"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 // MsgGetMinerBlocks implements the Message interface and represents a bitcoin
@@ -35,7 +35,7 @@ type MsgGetMinerBlocks struct {
 }
 
 // AddBlockLocatorHash adds a new block locator hash to the message.
-func (msg * MsgGetMinerBlocks) AddBlockLocatorHash(hash *chainhash.Hash) error {
+func (msg *MsgGetMinerBlocks) AddBlockLocatorHash(hash *chainhash.Hash) error {
 	if len(msg.BlockLocatorHashes)+1 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message [max %v]",
 			MaxBlockLocatorsPerMsg)
@@ -48,7 +48,7 @@ func (msg * MsgGetMinerBlocks) AddBlockLocatorHash(hash *chainhash.Hash) error {
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
-func (msg * MsgGetMinerBlocks) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
+func (msg *MsgGetMinerBlocks) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
 	err := common.ReadElement(r, &msg.ProtocolVersion)
 	if err != nil {
 		return err
@@ -83,7 +83,7 @@ func (msg * MsgGetMinerBlocks) OmcDecode(r io.Reader, pver uint32, enc MessageEn
 
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
-func (msg * MsgGetMinerBlocks) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
+func (msg *MsgGetMinerBlocks) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	count := len(msg.BlockLocatorHashes)
 	if count > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
@@ -113,14 +113,14 @@ func (msg * MsgGetMinerBlocks) OmcEncode(w io.Writer, pver uint32, enc MessageEn
 
 // Command returns the protocol command string for the message.  This is part
 // of the Message interface implementation.
-func (msg * MsgGetMinerBlocks) Command() string {
+func (msg *MsgGetMinerBlocks) Command() string {
 	return CmdGetMinerBlocks
 }
 
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver.  This is part of the Message interface implementation.
-func (msg * MsgGetMinerBlocks) MaxPayloadLength(pver uint32) uint32 {
-//	 return 8192
+func (msg *MsgGetMinerBlocks) MaxPayloadLength(pver uint32) uint32 {
+	//	 return 8192
 	return 4 + common.MaxVarIntPayload + (MaxBlockLocatorsPerMsg * chainhash.HashSize) + chainhash.HashSize
 }
 

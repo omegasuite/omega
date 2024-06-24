@@ -7,8 +7,8 @@ package wire
 
 import (
 	"fmt"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"io"
-	"github.com/omegasuite/btcd/wire/common"
 )
 
 // MsgNotFound defines a bitcoin notfound message which is sent in response to

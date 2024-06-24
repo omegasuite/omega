@@ -387,6 +387,9 @@ type server struct {
 	// the purpose is to prevent rebroadcast
 	Broadcasted map[chainhash.Hash]int64
 	alerted     map[int32]struct{}
+
+	// protocol data
+	prot *protocol
 }
 
 // serverPeer extends the peer to maintain state shared by the server and
@@ -2185,7 +2188,7 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 			return
 		}
 
-		netAddr, err := addrStringToNetAddr(msg.addr, s.rpcServer.cfg.Cfg)
+		netAddr, err := addrStringToNetAddr(msg.addr, s.prot.cfg)
 		if err != nil {
 			msg.reply <- err
 			return
@@ -2452,7 +2455,7 @@ func (s *server) peerHandler() {
 
 	if !s.rpcServer.cfg.Cfg.DisableDNSSeed {
 		// Add peers discovered through DNS to the address manager.
-		connmgr.SeedFromDNS(activeNetParams.Params, defaultRequiredServices,
+		connmgr.SeedFromDNS(s.rpcServer.cfg.ChainParams, defaultRequiredServices,
 			wrapbtcdLookup, func(addrs []*wire.NetAddress) {
 				// Omega uses a lookup of the dns seeder here. This
 				// is rather strange since the values looked up by the
@@ -2783,7 +2786,7 @@ func (s *server) Stop() error {
 	}
 
 	// Shutdown the RPC server if it's not disabled.
-	if !s.rpcServer.cfg.Cfg.DisableRPC {
+	if s.rpcServer != nil && !s.rpcServer.cfg.Cfg.DisableRPC {
 		btcdLog.Info("Server rpcServer Stop")
 		s.rpcServer.Stop()
 	}
@@ -2900,7 +2903,7 @@ func (s *server) upnpUpdateThread() {
 	// Go off immediately to prevent code duplication, thereafter we renew
 	// lease every 15 minutes.
 	timer := time.NewTimer(0 * time.Second)
-	lport, _ := strconv.ParseInt(activeNetParams.DefaultPort, 10, 16)
+	lport, _ := strconv.ParseInt(s.rpcServer.cfg.ChainParams.DefaultPort, 10, 16)
 	first := true
 out:
 	for {
@@ -3021,7 +3024,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *protocol, in
 	if !prot.cfg.DisableListen {
 		var err error
 		srvrLog.Info("Listening at ", listenAddrs, services)
-		listeners, nat, err = initListeners(amgr, listenAddrs, services, prot.cfg)
+		listeners, nat, err = initListeners(amgr, listenAddrs, services, prot)
 		if err != nil {
 			srvrLog.Info(". Failed")
 			return nil, err
@@ -3060,6 +3063,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *protocol, in
 		//		PendingBlackList:     make(map[[20]byte]uint32),
 		Broadcasted: make(map[chainhash.Hash]int64),
 	}
+	s.prot = prot
 
 	if prot.cfg.RsaPrivateKey != "" {
 		if file, err := os.Open(prot.cfg.RsaPrivateKey); err == nil {
@@ -3326,13 +3330,12 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *protocol, in
 				}
 
 				// allow nondefault ports after 50 failed tries.
-				if tries < 50 && fmt.Sprintf("%d", addr.NetAddress().Port) !=
-					activeNetParams.DefaultPort {
+				if tries < 50 && fmt.Sprintf("%d", addr.NetAddress().Port) != s.rpcServer.cfg.ChainParams.DefaultPort {
 					continue
 				}
 
 				addrString := addrmgr.NetAddressKey(addr.NetAddress())
-				return addrStringToNetAddr(addrString, s.rpcServer.cfg.Cfg)
+				return addrStringToNetAddr(addrString, prot.cfg)
 			}
 
 			return nil, errors.New("no valid connect address")
@@ -3369,7 +3372,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *protocol, in
 		permanentPeers = prot.cfg.AddPeers
 	}
 	for _, addr := range permanentPeers {
-		netAddr, err := addrStringToNetAddr(addr, s.rpcServer.cfg.Cfg)
+		netAddr, err := addrStringToNetAddr(addr, prot.cfg)
 		if err != nil {
 			return nil, err
 		}
@@ -3498,7 +3501,7 @@ func (s *server) Remove(n uint32) {
 // initListeners initializes the configured net listeners and adds any bound
 // addresses to the address manager. Returns the listeners and a NAT interface,
 // which is non-nil if UPnP is in use.
-func initListeners(amgr *addrmgr.AddrManager, listenAddrs []string, services common.ServiceFlag, cfg *config) ([]net.Listener, NAT, error) {
+func initListeners(amgr *addrmgr.AddrManager, listenAddrs []string, services common.ServiceFlag, cfg *protocol) ([]net.Listener, NAT, error) {
 	// Listen for TCP connections at the configured addresses
 	netAddrs, err := parseListeners(listenAddrs)
 	if err != nil {
@@ -3516,15 +3519,15 @@ func initListeners(amgr *addrmgr.AddrManager, listenAddrs []string, services com
 	}
 
 	var nat NAT
-	if len(cfg.ExternalIPs) != 0 {
-		defaultPort, err := strconv.ParseUint(activeNetParams.DefaultPort, 10, 16)
+	if len(cfg.cfg.ExternalIPs) != 0 {
+		defaultPort, err := strconv.ParseUint(cfg.activeNetParams.DefaultPort, 10, 16)
 		if err != nil {
 			srvrLog.Errorf("Can not parse default port %s for active chain: %v",
-				activeNetParams.DefaultPort, err)
+				cfg.activeNetParams.DefaultPort, err)
 			return nil, nil, err
 		}
 
-		for _, sip := range cfg.ExternalIPs {
+		for _, sip := range cfg.cfg.ExternalIPs {
 			eport := uint16(defaultPort)
 			host, portstr, err := net.SplitHostPort(sip)
 			if err != nil {
@@ -3551,7 +3554,7 @@ func initListeners(amgr *addrmgr.AddrManager, listenAddrs []string, services com
 			}
 		}
 	} else {
-		if cfg.Upnp {
+		if cfg.cfg.Upnp {
 			var err error
 			nat, err = Discover()
 			if err != nil {

@@ -18,8 +18,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/wire"
 )
 
@@ -54,18 +54,21 @@ func HashToBig(hash *chainhash.Hash) *big.Int {
 // Like IEEE754 floating point, there are three basic components: the sign,
 // the exponent, and the mantissa.  They are broken out as follows:
 //
-//	* the most significant 8 bits represent the unsigned base 256 exponent
-// 	* bit 23 (the 24th bit) represents the sign bit
-//	* the least significant 23 bits represent the mantissa
+//   - the most significant 8 bits represent the unsigned base 256 exponent
 //
-//	-------------------------------------------------
-//	|   Exponent     |    Sign    |    Mantissa     |
-//	-------------------------------------------------
-//	| 8 bits [31-24] | 1 bit [23] | 23 bits [22-00] |
-//	-------------------------------------------------
+//   - bit 23 (the 24th bit) represents the sign bit
+//
+//   - the least significant 23 bits represent the mantissa
+//
+//     -------------------------------------------------
+//     |   Exponent     |    Sign    |    Mantissa     |
+//     -------------------------------------------------
+//     | 8 bits [31-24] | 1 bit [23] | 23 bits [22-00] |
+//     -------------------------------------------------
 //
 // The formula to calculate N is:
-// 	N = (-1^sign) * mantissa * 256^(exponent-3)
+//
+//	N = (-1^sign) * mantissa * 256^(exponent-3)
 //
 // This compact form is only used in bitcoin to encode unsigned 256-bit numbers
 // which represent difficulty targets, thus there really is not a need for a
@@ -191,16 +194,13 @@ func (b *MinerChain) NextRequiredDifficulty(lastNode *chainutil.BlockNode, newBl
 	return b.calcNextRequiredDifficulty(lastNode, newBlockTime)
 }
 
-var collaterals [2016] int
-var nextAdjustHeight = int32(-1)
-
 // calcNextRequiredDifficulty calculates the required difficulty for the block
 // after the passed previous block node based on the difficulty retarget rules.
 // This function differs from the exported CalcNextRequiredDifficulty in that
 // the exported version uses the current best chain as the previous block node
 // while this function accepts any block node.
 func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, uint32, error) {
-	if lastNode == nil || lastNode.Height < b.blocksPerRetarget + 10 {
+	if lastNode == nil || lastNode.Height < b.blocksPerRetarget+10 {
 		return b.chainParams.PowLimitBits, 1, nil
 	}
 
@@ -218,10 +218,10 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		// For networks that support it, allow special reduction of the
 		// required difficulty once too much time has elapsed without
 		// mining a block.
-		if nextAdjustHeight < 0 || nextAdjustHeight != (lastNode.Height+1) - ((lastNode.Height+1)%b.blocksPerRetarget) + b.blocksPerRetarget {
-			nextAdjustHeight = (lastNode.Height+1) - ((lastNode.Height+1)%b.blocksPerRetarget) + b.blocksPerRetarget
+		if b.nextAdjustHeight < 0 || b.nextAdjustHeight != (lastNode.Height+1)-((lastNode.Height+1)%b.blocksPerRetarget)+b.blocksPerRetarget {
+			b.nextAdjustHeight = (lastNode.Height + 1) - ((lastNode.Height + 1) % b.blocksPerRetarget) + b.blocksPerRetarget
 			for i := 0; i < 2016; i++ {
-				collaterals[i] = 0
+				b.collaterals[i] = 0
 			}
 		}
 		firstNode := lastNode.RelativeAncestor(b.blocksPerRetarget - 1)
@@ -236,10 +236,10 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			// to cause loading of missing nodes
 			//		b.blockChain.HeaderByHash(&pb.Data.(*blockchainNodeData).block.BestBlock)
 			block := pb.Data.(*blockchainNodeData).block
-			j := b.blocksPerRetarget - (nextAdjustHeight - pb.Height)
+			j := b.blocksPerRetarget - (b.nextAdjustHeight - pb.Height)
 			if j < 0 {
 				i = -1
-			} else if collaterals[j] == 0 && pb.Height < lastNode.Height-7 { // block is considered finalized after 7 confirmations
+			} else if b.collaterals[j] == 0 && pb.Height < lastNode.Height-7 { // block is considered finalized after 7 confirmations
 				i--
 				if block.Version&0x7FFF0000 >= chaincfg.Version5 && block.Utxos != nil {
 					var op = block.Utxos
@@ -267,7 +267,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 						fd := false
 						for _, tx := range blk.Transactions() {
 							if tx.Hash().IsEqual(&op.Hash) {
-								collaterals[j] = int(tx.MsgTx().TxOut[op.Index].Value.(*token.NumToken).Val / 1e8)
+								b.collaterals[j] = int(tx.MsgTx().TxOut[op.Index].Value.(*token.NumToken).Val / 1e8)
 								fd = true
 								break
 							}
@@ -279,29 +279,29 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 						// Deserialize the transaction
 						var msgTx wire.MsgTx
 						err = msgTx.Deserialize(bytes.NewReader(txBytes))
-						collaterals[j] = int(msgTx.TxOut[op.Index].Value.(*token.NumToken).Val / 1e8)
+						b.collaterals[j] = int(msgTx.TxOut[op.Index].Value.(*token.NumToken).Val / 1e8)
 					}
 				}
 			}
 			pb = pb.Parent
 		}
-/*
-		if b.chainParams.ReduceMinDifficulty {
-			// Return minimum difficulty when more than the desired
-			// amount of time has elapsed without mining a block.
-			reductionTime := int64(b.chainParams.MinDiffReductionTime /
-				time.Second)
-			allowMinTime := lastNode.Data.(*blockchainNodeData).block.Timestamp.Unix() + reductionTime
-			if newBlockTime.Unix() > allowMinTime {
-				return b.chainParams.PowLimitBits, coll, nil
-			}
+		/*
+			if b.chainParams.ReduceMinDifficulty {
+				// Return minimum difficulty when more than the desired
+				// amount of time has elapsed without mining a block.
+				reductionTime := int64(b.chainParams.MinDiffReductionTime /
+					time.Second)
+				allowMinTime := lastNode.Data.(*blockchainNodeData).block.Timestamp.Unix() + reductionTime
+				if newBlockTime.Unix() > allowMinTime {
+					return b.chainParams.PowLimitBits, coll, nil
+				}
 
-			// The block was mined within the desired timeframe, so
-			// return the difficulty for the last block which did
-			// not have the special minimum difficulty rule applied.
-			return b.findPrevTestNetDifficulty(lastNode), coll, nil
-		}
- */
+				// The block was mined within the desired timeframe, so
+				// return the difficulty for the last block which did
+				// not have the special minimum difficulty rule applied.
+				return b.findPrevTestNetDifficulty(lastNode), coll, nil
+			}
+		*/
 		// For the main network (or any unrecognized networks), simply
 		// return the previous block's difficulty requirements.
 		return lastNode.Data.(*blockchainNodeData).block.Bits, coll, nil
@@ -335,9 +335,9 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		}
 
 		j := pb.Height % b.blocksPerRetarget
-		if collaterals[j] != 0 {
-			if uint32(collaterals[j]) < coll {
-				coll = uint32(collaterals[j])
+		if b.collaterals[j] != 0 {
+			if uint32(b.collaterals[j]) < coll {
+				coll = uint32(b.collaterals[j])
 			}
 		} else if v3 && block.Version&0x7FFF0000 >= chaincfg.Version5 && block.Utxos != nil {
 			var op = block.Utxos
@@ -387,19 +387,19 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 				}
 			}
 		}
-/*
-		for bb != nil && bb.Hash != pb.Data.(*blockchainNodeData).block.BestBlock {
-			if bb.Parent == nil && bb.Height != 0 {
-				// this should not happen. but we keep code here in case something is wrong
-				h := bb.Height - 100
-				if h < 0 {
-					h = 0
+		/*
+			for bb != nil && bb.Hash != pb.Data.(*blockchainNodeData).block.BestBlock {
+				if bb.Parent == nil && bb.Height != 0 {
+					// this should not happen. but we keep code here in case something is wrong
+					h := bb.Height - 100
+					if h < 0 {
+						h = 0
+					}
+					b.blockChain.FetchMissingNodes(&bb.Hash, h)
 				}
-				b.blockChain.FetchMissingNodes(&bb.Hash, h)
+				bb = bb.Parent
 			}
-			bb = bb.Parent
-		}
- */
+		*/
 		if bb == nil {
 			// error. abort recalculation
 			return lastNode.Data.(*blockchainNodeData).block.Bits, coll, fmt.Errorf("unexpected BestBlock for %s", pb.Hash)
@@ -421,7 +421,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			mb = pmb
 		}
 		if mb != nil {
-			h = - mb.Data.GetNonce() - wire.MINER_RORATE_FREQ
+			h = -mb.Data.GetNonce() - wire.MINER_RORATE_FREQ
 		}
 		if lastNode.Data.GetVersion() >= chaincfg.Version2 {
 			h += dh
@@ -434,12 +434,12 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		// if there is an difficulty adjustment (increase) due to waiting list control
 		// adjusting dt as it the block is generated faster, this will cause increase
 		// in difficulty target, so we will less likely run into long waiting list
-		if d - wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
+		if d-wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 			dt = dt >> wire.SCALEFACTORCAP
 		} else if d > wire.DESIRABLE_MINER_CANDIDATES {
 			dt = dt >> (d - wire.DESIRABLE_MINER_CANDIDATES)
-		} else if v2 && d < wire.DESIRABLE_MINER_CANDIDATES / 2 {
-			m := wire.DESIRABLE_MINER_CANDIDATES / 2 - d
+		} else if v2 && d < wire.DESIRABLE_MINER_CANDIDATES/2 {
+			m := wire.DESIRABLE_MINER_CANDIDATES/2 - d
 			if m > 10 {
 				m = 10
 			}
@@ -473,7 +473,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	// rounded down.  Bitcoind also uses integer division to calculate this
 	// result.
 	oldTarget := CompactToBig(lastNode.Data.(*blockchainNodeData).block.Bits)
-	var newTarget * big.Int
+	var newTarget *big.Int
 
 	if b.chainParams.Name != "mainnet" {
 		newTarget = new(big.Int).Mul(oldTarget, big.NewInt(adjustedTimespan))
@@ -511,11 +511,11 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) CalcNextRequiredDifficulty(timestamp time.Time) (uint32, uint32, error) {
-//	log.Infof("MinerChain.CalcNextRequiredDifficulty: ChainLock.RLock")
+	//	log.Infof("MinerChain.CalcNextRequiredDifficulty: ChainLock.RLock")
 	b.chainLock.Lock()
 	difficulty, col, err := b.calcNextRequiredDifficulty(b.BestChain.Tip(), timestamp)
 	b.chainLock.Unlock()
-//	log.Infof("MinerChain.CalcNextRequiredDifficulty: ChainLock.Unlock")
+	//	log.Infof("MinerChain.CalcNextRequiredDifficulty: ChainLock.Unlock")
 
 	return difficulty, col, err
 }

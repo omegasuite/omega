@@ -6,8 +6,8 @@
 package wire
 
 import (
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"io"
-	"github.com/omegasuite/btcd/wire/common"
 )
 
 // ReadElement reads the next sequence of bytes from r using little endian

@@ -580,6 +580,10 @@ func cleaner(top int32) {
 }
 
 func Shutdown() {
+	if miner == nil {
+		return
+	}
+
 	miner.shutdown = true
 
 	log.Infof("Syners:")

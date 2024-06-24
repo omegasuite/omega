@@ -18,11 +18,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/famofchains/btcd/blockchain/bccompress"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	//	"github.com/omegasuite/btcd/wire/common"
@@ -159,6 +159,11 @@ type MinerChain struct {
 	violations []*wire.Violations
 
 	TxIndex blockchain.IndexManager
+
+	// temp data for adjustment
+
+	collaterals      [2016]int
+	nextAdjustHeight int32
 }
 
 func (b *MinerChain) DSReport(p *wire.Violations) {
@@ -1483,6 +1488,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
 		violations:          make([]*wire.Violations, 0),
 		TxIndex:             config.IndexManager,
+		nextAdjustHeight:    -1,
 	}
 
 	// Initialize the chain state from the passed database.  When the db

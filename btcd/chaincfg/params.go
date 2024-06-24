@@ -136,6 +136,8 @@ const (
 	Version4 = 0x40000
 	Version5 = 0x50000
 	Version6 = 0x60000
+
+	SVPVersion1 = 0x10000
 )
 
 type forfeitureContract struct {
@@ -308,7 +310,7 @@ var MainNetParams = Params{
 	PowLimitBits:             0x1e00fff0,
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 	SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
-	MinimalAward:             1171875,
+	MinimalAward:             73242,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	ChainCurrentStd:          time.Hour * 24,
@@ -420,7 +422,7 @@ var RegressionNetParams = Params{
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         10,
 	SubsidyReductionInterval: 150 * wire.MINER_RORATE_FREQ,
-	MinimalAward:             1171875,
+	MinimalAward:             73242,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	ChainCurrentStd:          time.Hour * 24000,
@@ -535,7 +537,7 @@ var TestNet3Params = Params{
 	PowLimitBits:             0x1f0fffff, // 0x1d3fffff
 	CoinbaseMaturity:         10,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
-	MinimalAward:             1171875,
+	MinimalAward:             73242,
 	TargetTimespan:           time.Hour * 2,   // 2 hours
 	TargetTimePerBlock:       time.Minute * 4, // 4 minutes
 	ChainCurrentStd:          time.Hour * 24000,
@@ -652,7 +654,7 @@ var SimNetParams = Params{
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
-	MinimalAward:             1171875,
+	MinimalAward:             73242,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 	ChainCurrentStd:          time.Hour * 24000,
@@ -733,6 +735,170 @@ var SimNetParams = Params{
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
 	HDCoinType: 115, // ASCII for s
+
+	ContractExecLimit: 10000,
+	ContractExecFee:   1,
+	Forfeit: forfeitureContract{
+		Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
+			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
+		Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
+		Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
+		Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
+	},
+	ViolationReportDeadline: 10,
+	ContractReqExp:          false,
+}
+
+// SVPMainNetParams defines the network parameters for the SVP XFER network.
+var SVPMainNetParams = Params{
+	Name:        "mainnet",
+	Net:         common.SVPMainNet,
+	DefaultPort: "8588",
+	DNSSeeds: []DNSSeed{
+		{"omegasuite.org", false},
+	},
+
+	// Chain parameters
+	GenesisBlock:             &svpgenesisBlock,
+	GenesisMinerBlock:        &svpgenesisMinerBlock,
+	GenesisHash:              &svpgenesisHash,
+	GenesisMinerHash:         &svpgenesisMinerHash,
+	PowLimit:                 mainPowLimit,
+	PowLimitBits:             0x1e00fff0,
+	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+	SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
+	MinimalAward:             73242,
+	TargetTimespan:           time.Hour * 24 * 14, // 14 days
+	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
+	ChainCurrentStd:          time.Hour * 24,
+	RetargetAdjustmentFactor: 4, // 25% less, 400% more
+	MinBorderFee:             100000,
+	//	ReduceMinDifficulty:      false,
+	MinDiffReductionTime: 0,
+	GenerateSupported:    false,
+
+	// Checkpoints ordered from oldest to newest.
+	Checkpoints: []Checkpoint{},
+
+	// Consensus rule change deployments.
+	//
+	// The miner confirmation window is defined as:
+	//   target proof of work timespan / target proof of work spacing
+	RuleChangeActivationThreshold: 1916, // 95% of MinerConfirmationWindow
+	MinerConfirmationWindow:       2016, //
+	Deployments: [DefinedDeployments]ConsensusDeployment{
+		DeploymentTestDummy: {
+			PrevVersion: 0,
+			FeatureMask: 0,
+			StartTime:   1199145601, // January 1, 2008 UTC
+			ExpireTime:  1230767999, // December 31, 2008 UTC
+		},
+	},
+
+	// Mempool parameters
+	RelayNonStdTxs: false,
+
+	// Human-readable part for Bech32 encoded segwit addresses, as defined in
+	// BIP 173.
+	Bech32HRPSegwit: "bc", // always bc for main net
+
+	// Address encoding magics
+	PubKeyHashAddrID: 0x00, // starts with 1
+	MultiSigAddrID:   0x78,
+	MultiSigAddrXID:  0xC3,
+
+	ScriptHashAddrID: 0x05, // starts with 3
+	ScriptAddrID:     0x13,
+	ContractAddrID:   0x88, // start with 8
+	PrivateKeyID:     0x80, // starts with 5 (uncompressed) or K (compressed)
+
+	HDPublicKeyID:  [4]byte{0x04, 0x88, 0xad, 0xe4},
+	HDPrivateKeyID: [4]byte{0x04, 0x88, 0xb2, 0x1e},
+
+	// BIP44 coin type used in the hierarchical deterministic path for
+	// address generation.
+	HDCoinType:        0,
+	ContractExecLimit: 10000, // min limit of total contract execution steps in a block
+	ContractExecFee:   1,
+	Forfeit: forfeitureContract{
+		Contract: [21]byte{0x88, 0x1a, 0x52, 0x0f, 0xa9, 0x4d, 0x8e, 0x07,
+			0x3b, 0x0b, 0x46, 0x79, 0x43, 0x5b, 0x55, 0x09, 0xa5, 0xc6, 0x84, 0x7d, 0xb3},
+		Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
+		Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
+		Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
+	},
+	ViolationReportDeadline: 100,
+	ContractReqExp:          false,
+}
+
+var SVPTestNetParams = Params{
+	Name:        "testnet",
+	Net:         common.SVPTestNet,
+	DefaultPort: "18583",
+	DNSSeeds: []DNSSeed{
+		{"omegasuite.org", false},
+	},
+
+	// Chain parameters
+	GenesisBlock:             &svptestNetGenesisBlock,
+	GenesisMinerBlock:        &svptestNetGenesisMinerBlock,
+	GenesisHash:              &svptestNetGenesisHash,
+	GenesisMinerHash:         &svptestNetGenesisMinerHash,
+	PowLimit:                 testNet3PowLimit,
+	PowLimitBits:             0x1f0fffff, // 0x1d3fffff
+	CoinbaseMaturity:         10,
+	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
+	MinimalAward:             73242,
+	TargetTimespan:           time.Hour * 2,   // 2 hours
+	TargetTimePerBlock:       time.Minute * 4, // 4 minutes
+	ChainCurrentStd:          time.Hour * 24000,
+	RetargetAdjustmentFactor: 4, // 25% less, 400% more
+	MinBorderFee:             100000,
+	//	ReduceMinDifficulty:      true,
+	MinDiffReductionTime: time.Minute * 3, // TargetTimePerBlock * 2
+	GenerateSupported:    true,
+
+	// Checkpoints ordered from oldest to newest.
+	Checkpoints: []Checkpoint{},
+
+	// Consensus rule change deployments.
+	//
+	// The miner confirmation window is defined as:
+	//   target proof of work timespan / target proof of work spacing
+	RuleChangeActivationThreshold: 75, // 75% of MinerConfirmationWindow
+	MinerConfirmationWindow:       100,
+	Deployments: [DefinedDeployments]ConsensusDeployment{
+		DeploymentTestDummy: {
+			PrevVersion: 0,
+			FeatureMask: 0,
+			StartTime:   1199145601, // January 1, 2008 UTC
+			ExpireTime:  1230767999, // December 31, 2008 UTC
+		},
+	},
+
+	// Mempool parameters
+	RelayNonStdTxs: true,
+
+	// Human-readable part for Bech32 encoded segwit addresses, as defined in
+	// BIP 173.
+	Bech32HRPSegwit: "tb", // always tb for test net
+
+	// Address encoding magics
+	PubKeyHashAddrID: 0x6f, // starts with m or n
+	MultiSigAddrID:   0x67,
+	MultiSigAddrXID:  0xC3,
+
+	ScriptHashAddrID: 0xc4, // starts with 2
+	ScriptAddrID:     0x13,
+	ContractAddrID:   0x88, // start with 8
+	PrivateKeyID:     0xef, // starts with 9 (uncompressed) or c (compressed)
+
+	HDPublicKeyID:  [4]byte{0x04, 0x35, 0x83, 0x94},
+	HDPrivateKeyID: [4]byte{0x04, 0x35, 0x87, 0xcf},
+
+	// BIP44 coin type used in the hierarchical deterministic path for
+	// address generation.
+	HDCoinType: 1,
 
 	ContractExecLimit: 10000,
 	ContractExecFee:   1,
@@ -897,4 +1063,4 @@ func init() {
 	mustRegister(&SimNetParams)
 }
 
-var ActiveNetParams *Params
+var ActiveNetParams [2]*Params

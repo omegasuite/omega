@@ -6,8 +6,8 @@ package wire
 
 import (
 	"fmt"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"io"
-	"github.com/omegasuite/btcd/wire/common"
 )
 
 // MaxBlockHeadersPerMsg is the maximum number of block headers that can be in

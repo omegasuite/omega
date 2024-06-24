@@ -69,3 +69,13 @@ var simNetGenesisMerkleRoot = omega.SimNetGenesisMerkleRoot
 // as the public transaction ledger for the simulation test network.
 var simNetGenesisBlock = omega.SimNetGenesisBlock
 var simNetGenesisMinerBlock = omega.SimNetGenesisMinerBlock
+
+// SVP
+var svpgenesisBlock = omega.MainNetGenesisBlock
+var svpgenesisMinerBlock = omega.MainNetGenesisMinerBlock
+var svpgenesisHash = omega.MainNetGenesisHash[0]
+var svpgenesisMinerHash = omega.MainNetGenesisHash[1]
+var svptestNetGenesisBlock = omega.TestNetGenesisBlock
+var svptestNetGenesisMinerBlock = omega.TestNetGenesisMinerBlock
+var svptestNetGenesisHash = omega.TestNetGenesisHash[0]
+var svptestNetGenesisMinerHash = omega.TestNetGenesisHash[1]

@@ -272,7 +272,7 @@ func (bf *Filter) maybeAddOutpoint(pkScript []byte, outHash *chainhash.Hash, out
 
 func pushedAddreses(pkScript []byte) [][]byte {
 	res := make([][]byte, 0)
-	addrs, _, err := indexers.ExtractPkScriptAddrs(pkScript, chaincfg.ActiveNetParams)
+	addrs, _, err := indexers.ExtractPkScriptAddrs(pkScript, chaincfg.ActiveNetParams[0])
 	if err != nil {
 		return res
 	}

@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"strings"
-	"strconv"
 	"math/big"
+	"strconv"
+	"strings"
 )
 
 const (
@@ -743,7 +743,6 @@ func RandomUint64() (uint64, error) {
 	return randomUint64(rand.Reader)
 }
 
-
 // MessageError describes an issue with a message.
 // An example of some potential issues are messages from the wrong bitcoin
 // network, invalid commands, mismatched checksums, and exceeding max payloads.
@@ -800,24 +799,24 @@ func (invtype InvType) String() string {
 
 // These constants define the various supported reject codes.
 const (
-	RejectMalformed       RejectCode = 0x01
-	RejectInvalid         RejectCode = 0x10
-	RejectObsolete        RejectCode = 0x11
-	RejectDuplicate       RejectCode = 0x12
-	RejectNonstandard     RejectCode = 0x40
-//	RejectDust            RejectCode = 0x41
+	RejectMalformed   RejectCode = 0x01
+	RejectInvalid     RejectCode = 0x10
+	RejectObsolete    RejectCode = 0x11
+	RejectDuplicate   RejectCode = 0x12
+	RejectNonstandard RejectCode = 0x40
+	//	RejectDust            RejectCode = 0x41
 	RejectInsufficientFee RejectCode = 0x42
 	RejectCheckpoint      RejectCode = 0x43
 )
 
 // Map of reject codes back strings for pretty printing.
 var rejectCodeStrings = map[RejectCode]string{
-	RejectMalformed:       "REJECT_MALFORMED",
-	RejectInvalid:         "REJECT_INVALID",
-	RejectObsolete:        "REJECT_OBSOLETE",
-	RejectDuplicate:       "REJECT_DUPLICATE",
-	RejectNonstandard:     "REJECT_NONSTANDARD",
-//	RejectDust:            "REJECT_DUST",
+	RejectMalformed:   "REJECT_MALFORMED",
+	RejectInvalid:     "REJECT_INVALID",
+	RejectObsolete:    "REJECT_OBSOLETE",
+	RejectDuplicate:   "REJECT_DUPLICATE",
+	RejectNonstandard: "REJECT_NONSTANDARD",
+	//	RejectDust:            "REJECT_DUST",
 	RejectInsufficientFee: "REJECT_INSUFFICIENTFEE",
 	RejectCheckpoint:      "REJECT_CHECKPOINT",
 }
@@ -830,7 +829,6 @@ func (code RejectCode) String() string {
 
 	return fmt.Sprintf("Unknown RejectCode (%d)", uint8(code))
 }
-
 
 const (
 	// SFNodeNetwork is a flag used to indicate a peer is a full node.
@@ -913,26 +911,28 @@ func (f ServiceFlag) String() string {
 // this package does not provide that functionality since it's generally a
 // better idea to simply disconnect clients that are misbehaving over TCP.
 const (
-	// MainNet represents the main bitcoin network.
+	// MainNet represents the main Zentrophy network.
 	MainNet OmegaNet = 0x956ca366
-
 	// RegNet represents the regression test network.
 	RegNet OmegaNet = 0x6241456c
-
 	// TestNet represents the test network.
 	TestNet OmegaNet = 0x709c5fed
-
 	// SimNet represents the simulation test network.
 	SimNet OmegaNet = 0xe10b70ad
+
+	SVPMainNet = 0x665872cc
+	SVPTestNet = 0x625678cd
 )
 
 // bnStrings is a map of omega networks back to their constant names for
 // pretty printing.
 var bnStrings = map[OmegaNet]string{
-	MainNet: "OmgMain",
-	RegNet:  "OmgReg",
-	TestNet: "OmgTest",
-	SimNet:  "OmgSim",
+	MainNet:    "OmgMain",
+	RegNet:     "OmgReg",
+	TestNet:    "OmgTest",
+	SimNet:     "OmgSim",
+	SVPMainNet: "SVPMain",
+	SVPTestNet: "SVPTest",
 }
 
 // String returns the OmegaNet in human-readable form.

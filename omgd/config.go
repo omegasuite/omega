@@ -391,6 +391,7 @@ func newConfigParser(cfg *config, so *serviceOptions, options flags.Options) *fl
 	if runtime.GOOS == "windows" {
 		parser.AddGroup("Service Options", "Service Options", so)
 	}
+
 	return parser
 }
 
@@ -453,11 +454,11 @@ func loadConfig(xfer int) (*config, []string, error) {
 	preParser := newConfigParser(&preCfg, &serviceOpts, flags.HelpFlag)
 
 	switch xfer {
-	case 1:
-		preParser.AddGroup("SVP Options", "SVP Options", &serviceOpts)
+	case 0:
+		preParser.AddGroup("Main Options", "Main Options", &preCfg)
 
-	case 2:
-		preParser.AddGroup("Base Options", "Base Options", &serviceOpts)
+	case 1:
+		preParser.AddGroup("SVP Options", "SVP Options", &preCfg)
 	}
 
 	_, err := preParser.Parse()
@@ -491,6 +492,14 @@ func loadConfig(xfer int) (*config, []string, error) {
 	// Load additional config from file.
 	var configFileError error
 	parser := newConfigParser(&cfg, &serviceOpts, flags.Default)
+	switch xfer {
+	case 0:
+		parser.AddGroup("Main Options", "Main Options", &cfg)
+
+	case 1:
+		parser.AddGroup("SVP Options", "SVP Options", &cfg)
+	}
+
 	if !(preCfg.RegressionTest || preCfg.SimNet) || preCfg.ConfigFile !=
 		defaultConfigFile {
 
@@ -554,20 +563,12 @@ func loadConfig(xfer int) (*config, []string, error) {
 	// while we're at it
 	if cfg.TestNet {
 		numNets++
-		activeNetParams = &testNet3Params
-	}
-	if cfg.RegressionTest {
-		numNets++
-		activeNetParams = &regressionNetParams
-	}
-	if cfg.SimNet {
-		numNets++
-		// Also disable dns seeding on the simulation test network.
-		activeNetParams = &simNetParams
-		cfg.DisableDNSSeed = true
+		activeNetParams[0] = &testNet3Params
+		activeNetParams[1] = &svptestNetParams
 	}
 
-	chaincfg.ActiveNetParams = activeNetParams.Params
+	chaincfg.ActiveNetParams[0] = activeNetParams[0].Params
+	chaincfg.ActiveNetParams[1] = activeNetParams[1].Params
 
 	if numNets > 1 {
 		str := "%s: The testnet, regtest, segnet, and simnet params " +
@@ -585,12 +586,12 @@ func loadConfig(xfer int) (*config, []string, error) {
 	// means each individual piece of serialized data does not have to
 	// worry about changing names per network and such.
 	cfg.DataDir = cleanAndExpandPath(cfg.DataDir)
-	cfg.DataDir = filepath.Join(cfg.DataDir, netName(activeNetParams))
+	cfg.DataDir = filepath.Join(cfg.DataDir, netName(activeNetParams[xfer]))
 
 	// Append the network type to the log directory so it is "namespaced"
 	// per network in the same fashion as the data directory.
 	cfg.LogDir = cleanAndExpandPath(cfg.LogDir)
-	cfg.LogDir = filepath.Join(cfg.LogDir, netName(activeNetParams))
+	cfg.LogDir = filepath.Join(cfg.LogDir, netName(activeNetParams[xfer]))
 
 	// Special show command to list supported subsystems and exit.
 	if cfg.DebugLevel == "show" {
@@ -699,7 +700,7 @@ func loadConfig(xfer int) (*config, []string, error) {
 	// we are to connect to.
 	if len(cfg.Listeners) == 0 {
 		cfg.Listeners = []string{
-			net.JoinHostPort("", activeNetParams.DefaultPort),
+			net.JoinHostPort("", activeNetParams[xfer].DefaultPort),
 		}
 	}
 
@@ -741,7 +742,7 @@ func loadConfig(xfer int) (*config, []string, error) {
 		}
 		cfg.RPCListeners = make([]string, 0, len(addrs))
 		for _, addr := range addrs {
-			addr = net.JoinHostPort(addr, activeNetParams.rpcPort)
+			addr = net.JoinHostPort(addr, activeNetParams[xfer].rpcPort)
 			cfg.RPCListeners = append(cfg.RPCListeners, addr)
 		}
 	}
@@ -824,7 +825,7 @@ func loadConfig(xfer int) (*config, []string, error) {
 	// Check mining addresses are valid and saved parsed versions.
 	cfg.miningAddrs = make([]btcutil.Address, 0, len(cfg.MiningAddrs)+len(cfg.PrivKeys))
 	for _, strAddr := range cfg.MiningAddrs {
-		addr, err := btcutil.DecodeAddress(strAddr, activeNetParams.Params)
+		addr, err := btcutil.DecodeAddress(strAddr, activeNetParams[xfer].Params)
 		if err != nil {
 			str := "%s: mining address '%s' failed to decode: %v"
 			err := fmt.Errorf(str, funcName, strAddr, err)
@@ -832,7 +833,7 @@ func loadConfig(xfer int) (*config, []string, error) {
 			fmt.Fprintln(os.Stderr, usageMessage)
 			return nil, nil, err
 		}
-		if !addr.IsForNet(activeNetParams.Params) {
+		if !addr.IsForNet(activeNetParams[xfer].Params) {
 			str := "%s: mining address '%s' is on the wrong network"
 			err := fmt.Errorf(str, funcName, strAddr)
 			fmt.Fprintln(os.Stderr, err)
@@ -851,7 +852,7 @@ func loadConfig(xfer int) (*config, []string, error) {
 			if err == nil {
 				privKey := dwif.PrivKey
 				//			pkaddr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
-				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
+				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams[xfer].Params)
 
 				if err != nil {
 					str := "%s: mining address '%s' failed to decode: %v"
@@ -862,7 +863,7 @@ func loadConfig(xfer int) (*config, []string, error) {
 				}
 
 				addr := pkaddr.AddressPubKeyHash()
-				if !addr.IsForNet(activeNetParams.Params) {
+				if !addr.IsForNet(activeNetParams[xfer].Params) {
 					str := "%s: mining address '%s' is on the wrong network"
 					err := fmt.Errorf(str, funcName, cfg.PrivKeys)
 					fmt.Fprintln(os.Stderr, err)
@@ -907,11 +908,11 @@ func loadConfig(xfer int) (*config, []string, error) {
 
 	// Add default port to all listener addresses if needed and remove
 	// duplicate addresses.
-	cfg.Listeners = normalizeAddresses(cfg.Listeners, activeNetParams.DefaultPort)
+	cfg.Listeners = normalizeAddresses(cfg.Listeners, activeNetParams[xfer].DefaultPort)
 
 	// Add default port to all rpc listener addresses if needed and remove
 	// duplicate addresses.
-	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.rpcPort)
+	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams[xfer].rpcPort)
 	/*
 		// Only allow TLS to be disabled if the RPC is bound to localhost
 		// addresses.
@@ -946,8 +947,8 @@ func loadConfig(xfer int) (*config, []string, error) {
 
 	// Add default port to all added peer addresses if needed and remove
 	// duplicate addresses.
-	cfg.AddPeers = normalizeAddresses(cfg.AddPeers, activeNetParams.DefaultPort)
-	cfg.ConnectPeers = normalizeAddresses(cfg.ConnectPeers, activeNetParams.DefaultPort)
+	cfg.AddPeers = normalizeAddresses(cfg.AddPeers, activeNetParams[xfer].DefaultPort)
+	cfg.ConnectPeers = normalizeAddresses(cfg.ConnectPeers, activeNetParams[xfer].DefaultPort)
 
 	// --noonion and --onion do not mix.
 	if cfg.NoOnion && cfg.OnionProxy != "" {

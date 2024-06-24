@@ -7,21 +7,20 @@ package blockchain
 import (
 	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/famofchains/btcutil"
 	"time"
 )
 
-const maxRcdPerMiner = 10		// max records we keep for each miner
-const CONTRACTTXRATIO = 30		// when calculating TPS, every 30 contract exec steps = 1 sig
+const maxRcdPerMiner = 10  // max records we keep for each miner
+const CONTRACTTXRATIO = 30 // when calculating TPS, every 30 contract exec steps = 1 sig
 
 // TPHRecord houses information about miners's TPS record.
-//
 type TphPocket struct {
-	StartTime		time.Time
-	EndTime			time.Time
-	StartBlock		uint32
-	EndBlock		uint32
-	TxTotal			uint32
+	StartTime  time.Time
+	EndTime    time.Time
+	StartBlock uint32
+	EndBlock   uint32
+	TxTotal    uint32
 }
 
 type TPHRecord struct {
@@ -34,7 +33,7 @@ type TPHRecord struct {
 }
 
 func (b *BlockChain) GetMinerTPS(miner [20]byte) *TPHRecord {
-	if t,ok := b.MinerTPH[miner]; ok {
+	if t, ok := b.MinerTPH[miner]; ok {
 		return t
 	}
 
@@ -42,7 +41,7 @@ func (b *BlockChain) GetMinerTPS(miner [20]byte) *TPHRecord {
 		TPHscore: 0,
 		History:  make([]TphPocket, 0, maxRcdPerMiner),
 	}
-	tps.current.TxTotal, tps.current.StartBlock, tps.current.EndBlock = 0,0,0
+	tps.current.TxTotal, tps.current.StartBlock, tps.current.EndBlock = 0, 0, 0
 
 	b.db.View(func(dbTx database.Tx) error {
 		bucket := dbTx.Metadata().Bucket(minerTPSBucketName)
@@ -101,11 +100,11 @@ func (b *BlockChain) updateTPS(miner [20]byte, t *TPHRecord) {
 		}
 	}
 
-	serialized := make([]byte, 5 + len(t.History) * 20)
+	serialized := make([]byte, 5+len(t.History)*20)
 	byteOrder.PutUint32(serialized, t.TPHscore)
 	serialized[4] = byte(len(t.History))
 	pos := 5
-	for _,p := range t.History {
+	for _, p := range t.History {
 		byteOrder.PutUint32(serialized[pos:], uint32(p.StartTime.Unix()))
 		pos += 4
 		byteOrder.PutUint32(serialized[pos:], uint32(p.EndTime.Unix()))
