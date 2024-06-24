@@ -866,7 +866,7 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 
 	mb, _ := b.Miners.BlockByHeight(rotate)
 	if mb == nil {
-		if header.Version != chaincfg.Version1 {
+		if (!b.IsSVP && header.Version != chaincfg.Version1) || (b.IsSVP && header.Version != chaincfg.SVPVersion1) {
 			return ruleError(ErrBlockVersionTooOld, "Incorrect block version")
 		}
 	} else if header.Version&^0xFFFF != mb.MsgBlock().Version&^0xFFFF {
@@ -944,12 +944,14 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 		// previous block.
 		blockHeight := prevNode.Height + 1
 
-		// Ensure all transactions in the block are finalized.
-		for _, tx := range block.Transactions() {
-			if !IsFinalizedTransaction(tx, blockHeight, blockTime) {
-				str := fmt.Sprintf("block contains unfinalized "+
-					"transaction %v", tx.Hash())
-				return ruleError(ErrUnfinalizedTx, str)
+		if !b.IsSVP {
+			// Ensure all transactions in the block are finalized.
+			for _, tx := range block.Transactions() {
+				if !IsFinalizedTransaction(tx, blockHeight, blockTime) {
+					str := fmt.Sprintf("block contains unfinalized "+
+						"transaction %v", tx.Hash())
+					return ruleError(ErrUnfinalizedTx, str)
+				}
 			}
 		}
 
@@ -968,8 +970,15 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 	// the wtxid's of the transactions within the block. In
 	// addition, various other checks against the
 	// coinbase's witness stack.
-	if err := ValidateWitnessCommitment(block); err != nil {
-		return err
+	if !b.IsSVP {
+		if err := ValidateWitnessCommitment(block); err != nil {
+			return err
+		}
+	} else {
+		if len(block.MsgBlock().Transactions[0].SignatureScripts) != 0 {
+			str := fmt.Sprintf("Coinbase TX shall not have signature in SVP: %v", block.Hash())
+			return ruleError(ErrBadCoinbaseScriptLen, str)
+		}
 	}
 
 	return nil
@@ -1158,6 +1167,103 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views *vie
 	}
 
 	return nil
+}
+
+func (b *BlockChain) UndefinedDefinitions(tx *btcutil.Tx, chainParams *chaincfg.Params) map[chainhash.Hash]uint8 {
+	defs := make(map[chainhash.Hash]uint8, 0)
+
+	defined := make(map[chainhash.Hash]struct{}, 0)
+
+	views := b.NewViewPointSet()
+
+	for _, rt := range tx.MsgTx().TxDef {
+		if rt.IsSeparator() {
+			continue
+		}
+
+		switch rt.(type) {
+		case *token.RightSetDef:
+			for _, r := range rt.(*token.RightSetDef).Rights {
+				if _, ok := defined[r]; ok {
+					continue
+				}
+				e2 := views.Rights.GetRight(views.Db, r).(*viewpoint.RightEntry)
+				if e2 == nil {
+					defs[r] = token.DefTypeRight
+				} else {
+					defined[r] = struct{}{}
+				}
+			}
+
+		case *token.RightDef:
+			if !rt.(*token.RightDef).Father.IsEqual(&chainhash.Hash{}) {
+				if _, ok := defined[rt.(*token.RightDef).Father]; ok {
+					continue
+				}
+				e3 := views.Rights.GetRight(views.Db, rt.(*token.RightDef).Father).(*viewpoint.RightEntry)
+				if e3 == nil {
+					defs[rt.(*token.RightDef).Father] = token.DefTypeRight
+				} else {
+					defined[rt.(*token.RightDef).Father] = struct{}{}
+				}
+			}
+
+		case *token.PolygonDef:
+			for _, loops := range rt.(*token.PolygonDef).Loops {
+				for _, l := range loops {
+					if _, ok := defined[l]; ok {
+						continue
+					}
+					tmp := make(map[chainhash.Hash]struct{})
+					tmp[l] = struct{}{}
+					views.Border.FetchBorder(views.Db, tmp)
+					e2 := views.Border.LookupEntry(l)
+					if e2 == nil {
+						defs[l] = token.DefTypeBorder
+					} else {
+						defined[l] = struct{}{}
+					}
+				}
+			}
+
+		case *token.BorderDef:
+			f := rt.(*token.BorderDef).Father
+			if !f.IsEqual(&chainhash.Hash{}) {
+				if _, ok := defined[f]; ok {
+					continue
+				}
+				tmp := make(map[chainhash.Hash]struct{})
+				tmp[f] = struct{}{}
+				views.Border.FetchBorder(views.Db, tmp)
+				e3 := views.Border.LookupEntry(f)
+				if e3 == nil {
+					defs[f] = token.DefTypeRight
+				} else {
+					defined[f] = struct{}{}
+				}
+			}
+		}
+		defined[rt.Hash()] = struct{}{}
+	}
+
+	for _, to := range tx.MsgTx().TxOut {
+		if to.TokenType != 3 {
+			continue
+		}
+
+		p, _ := to.Token.Value.Value()
+		if _, ok := defined[*p]; ok {
+			continue
+		}
+
+		q, _ := views.FetchPolygonEntry(p)
+		if q == nil {
+			defs[*p] = token.DefTypePolygon
+		} else {
+			defined[*p] = struct{}{}
+		}
+	}
+	return defs
 }
 
 func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
@@ -1658,9 +1764,11 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		return err
 	}
 
-	err = CheckAdditionalDefinitions(transactions[0], node.Height, views, b.ChainParams)
-	if err != nil {
-		return err
+	if !b.IsSVP {
+		err = CheckAdditionalDefinitions(transactions[0], node.Height, views, b.ChainParams)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = views.ConnectTransaction(transactions[0], node.Height, stxos)
@@ -1679,9 +1787,11 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			return err
 		}
 
-		err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
-		if err != nil {
-			return err
+		if !b.IsSVP {
+			err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
+			if err != nil {
+				return err
+			}
 		}
 
 		err = CheckTransactionIntegrity(tx, views, block.MsgBlock().Header.Version)
@@ -1816,6 +1926,42 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				"locks are not met")
 			return ruleError(ErrUnfinalizedTx, str)
 		}
+	}
+
+	// Update the best hash for view to include this block since all of its
+	// transactions have been connected.
+	views.Utxo.SetBestHash(&node.Hash)
+
+	return nil
+}
+
+func (b *BlockChain) checkConnectSVPBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut) error {
+	// If the side chain blocks end up in the database, a call to
+	// CheckBlockSanity should be done here in case a previous version
+	// allowed a block that is no longer valid.  However, since the
+	// implementation only currently uses memory for the side chain blocks,
+	// it isn't currently necessary.
+
+	// Ensure the view is for the node being checked.
+	parentHash := &block.MsgBlock().Header.PrevBlock
+	if !views.Utxo.BestHash().IsEqual(parentHash) {
+		return AssertError(fmt.Sprintf("inconsistent view when "+
+			"checking block connection: best hash is %v instead "+
+			"of expected %v", views.Utxo.BestHash(), parentHash))
+	}
+
+	// Build merkle tree and ensure the calculated merkle root matches the
+	// entry in the block header. This also has the effect of caching all
+	// of the transaction hashes in the block to speed up future hash
+	// checks. We do this check here after contract execution has been validated.
+	merkles := BuildMerkleTreeStore(block.Transactions(), false, block.MsgBlock().Header.Version&^0xFFFF)
+	calculatedMerkleRoot := merkles[len(merkles)-1]
+	header := block.MsgBlock().Header
+	if !header.MerkleRoot.IsEqual(calculatedMerkleRoot) {
+		str := fmt.Sprintf("block merkle root is invalid - block "+
+			"header indicates %v, but calculated value is %v",
+			header.MerkleRoot, calculatedMerkleRoot)
+		return ruleError(ErrBadMerkleRoot, str)
 	}
 
 	// Update the best hash for view to include this block since all of its

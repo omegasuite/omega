@@ -2899,6 +2899,11 @@ func parseListeners(addrs []string) ([]net.Addr, error) {
 	return netAddrs, nil
 }
 
+func (s *server) GetDefinition(hashes map[chainhash.Hash]uint8) {
+	// find a full client peer s connects to, if none, pick any peer
+	// send a request to this one
+}
+
 func (s *server) upnpUpdateThread() {
 	// Go off immediately to prevent code duplication, thereafter we renew
 	// lease every 15 minutes.
@@ -3140,6 +3145,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *protocol, in
 		Miner:        prot.cfg.signAddress,
 		PrivKey:      prot.cfg.privateKeys,
 		AddrUsage:    s.addrUseIndex.Usage,
+		IsSVP:		  prot.IsSvp,
 		//		HashCache:    s.hashCache,
 	})
 	if err != nil {

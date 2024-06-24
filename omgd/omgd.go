@@ -6,9 +6,12 @@
 package main
 
 import (
+	"bytes"
 	"container/list"
 	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/famofchains/omega/consensus"
 	"strings"
@@ -38,7 +41,7 @@ const (
 	minerDbNamePrefix = "miners"
 )
 
-type protocol struct {
+type Protocol struct {
 	cfg             *config
 	Server          *server
 	IsSvp           bool
@@ -48,9 +51,9 @@ type protocol struct {
 	running         bool
 }
 
-var protocols []*protocol
+var protocols []*Protocol
 
-func prepareServer(tcfg *config, xfer int) (*protocol, bool) {
+func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 	// Get a channel that will be closed when a shutdown signal has been
 	// triggered either from an OS signal such as SIGINT (Ctrl+C) or from
 	// another subsystem such as the RPC server.
@@ -63,7 +66,7 @@ func prepareServer(tcfg *config, xfer int) (*protocol, bool) {
 		return nil, true
 	}
 
-	prot := &protocol{
+	prot := &Protocol{
 		cfg:     tcfg,
 		db:      db,
 		running: false,
@@ -208,7 +211,7 @@ func prepareServer(tcfg *config, xfer int) (*protocol, bool) {
 	return prot, false
 }
 
-func runserver(p *protocol) {
+func runserver(p *Protocol) {
 	interrupt := interruptListener()
 
 	if !p.IsSvp && p.running {
@@ -238,7 +241,7 @@ func runserver(p *protocol) {
 	srvrLog.Infof("interrupt received, going to shut down")
 }
 
-func cleanup(p *protocol) {
+func cleanup(p *Protocol) {
 	if p.Server != nil {
 		if len(p.cfg.privateKeys) != 0 && p.cfg.Generate && !p.IsSvp {
 			btcdLog.Infof("Gracefully shutting down consensus server...")
@@ -666,11 +669,44 @@ func main() {
 		}
 	*/
 
-	for _, p := range protocols {
+	c := make(chan *blockchain.XchMsg, 256)
+
+	for i, p := range protocols {
 		wg.Add(1)
 		p.running = true
+
 		go runserver(p)
+
+		if i > 0 {
+			m := make(map[uint32]chan *blockchain.XchMsg)
+			m[protocols[0].Server.chain.ChainParams.ChainID] = c
+			p.Server.chain.XChainCh = m
+		}
 	}
+	protocols[0].Server.chain.XChainCh = nil
+
+	go protocols[0].Server.chain.RecvXfer(c, interrupt)
+	go retrievedefs(protocols[0], protocols[1])
 
 	wg.Wait()
+}
+
+func retrievedefs(p * Protocol, q * Protocol)  {
+	for true {
+		p.db.View(func(dbtx database.Tx) error {
+			bucket := dbtx.Metadata().Bucket([]byte("RECVTXPOOL"))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				var tx wire.MsgTx
+				var r bytes.Reader
+				r.Reset(cursor.Value()[:])
+				tx.Deserialize(&r)
+
+				undefined := p.Server.chain.UndefinedDefinitions(btcutil.NewTx(&tx), p.activeNetParams.Params)
+				q.Server.GetDefinition(undefined)
+			}
+			return nil
+		})
+		time.Sleep(5 * time.Second)
+	}
 }

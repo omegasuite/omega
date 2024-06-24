@@ -63,9 +63,9 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 		flags |= blockchain.BFNoReorg | blockchain.BFSideChain
 	}
 
-	if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
+	if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 		sum := uint32(0)
-		p2 := prevNode.Data.(*blockchainNodeData).block.Version&0x7FFF0000 >= chaincfg.Version2
+		p2 := b.IsSVP || prevNode.Data.(*blockchainNodeData).block.Version&0x7FFF0000 >= chaincfg.Version2
 		v2 := prevNode.Data.(*blockchainNodeData).block.MeanTPH
 		for _, v := range block.MsgBlock().TphReports {
 			if p2 && (v > v2*8 || 8*v < v2) {
@@ -193,7 +193,7 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 		//			return fmt.Errorf("Curable POW factor error.")
 		//		}
 
-		if header.Version&0x7FFF0000 >= chaincfg.Version2 {
+		if m.IsSVP || header.Version&0x7FFF0000 >= chaincfg.Version2 {
 			// since Ver 0x20000, the formula is:
 			// 2 * hashNum * factor <= target * (h1 + h2)
 			// h1 is collacteral factor, h2 is tps factor
@@ -236,7 +236,7 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			} else {
 				h2 = int64(sum / minscore)
 			}
-			if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
+			if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
 				h2 *= 16
 			}
 
@@ -244,13 +244,13 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
 				target = target.Mul(target, big.NewInt(h1+h2))
 			} else {
-				if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
+				if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
 					factor *= 16
 				}
 				target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
 			}
 
-			if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
+			if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
 				if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
 					target = powLimit.Mul(powLimit, big.NewInt(16))
 				}
@@ -366,7 +366,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
-	if header.Version&0x7FFF0000 >= chaincfg.Version4 && header.Collateral != coll {
+	if (b.IsSVP || header.Version&0x7FFF0000 >= chaincfg.Version4) && header.Collateral != coll {
 		str := "block collateral of %d is not the expected value of %d"
 		str = fmt.Sprintf(str, header.Collateral, coll)
 		return ruleError(ErrUnexpectedDifficulty, str)

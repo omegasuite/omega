@@ -13,7 +13,9 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
+	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/famofchains/omega/ovm"
 	"github.com/omegasuite/famofchains/omega/token"
 	"os"
 	"sync"
@@ -205,8 +207,20 @@ type BlockChain struct {
 	// address usage index. use in forfeiture
 	AddrUsage func(address btcutil.Address) uint32
 
+	// whther this chain is SVP of another chain
+	IsSVP bool
+	XChainCh map[uint32]chan *XchMsg
+
 	// tmp data
 	BTfile *os.File
+}
+
+type XchMsg struct {
+	DelOp	bool
+	SrcChainID	uint32
+	SrcTxHash chainhash.Hash
+	Msg *wire.MsgTx
+	ch chan struct{}
 }
 
 func (b *BlockChain) InitCollateral() {
@@ -657,6 +671,38 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		log.Infof("Update LastRotation to %d", state.LastRotation)
 	}
 
+	if b.IsSVP {		// if we are svp, send only the tx whose destination is main chain
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			for _, txo := range tx.TxOut {
+				if txsparser.IsXChainXfer(txo.PkScript) {
+					if len(txo.PkScript) != 25 {
+						return fmt.Errorf("Cross chain PkScript length is not 25b in %v", tx.TxHash())
+					}
+				}
+			}
+		}
+
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			sent := map[uint32]struct{}{}
+			for _, txo := range tx.TxOut {
+				if txsparser.IsXChainXfer(txo.PkScript) {
+					var cid [4]byte
+					copy(cid[:], txo.PkScript[22:25])
+					cid[3] = 0
+					dest := common.LittleEndian.Uint32(cid[:]) // send the tx to chains we connect. avoid repeat
+					if ch, ok := b.XChainCh[dest]; ok {
+						if _, ok := sent[dest]; !ok {
+							done := make(chan struct{})
+							ch <- &XchMsg{false, tx.TxIn[0].SignatureIndex &^ 0x10000, tx.TxIn[0].PreviousOutPoint.Hash, tx, done}
+							sent[dest] = struct{}{}
+							<-done
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// Atomically insert info into the database.
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
@@ -808,6 +854,38 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	state := newBestState(prevNode, blockSize, numTxns,
 		newTotalTxns, prevNode.CalcPastMedianTime(), // bits,
 		rotation) // prevNode.bits, b.BestSnapshot().LastRotation)
+
+	if b.IsSVP {		// if we are svp, send only the tx whose destination is main chain
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			for _, txo := range tx.TxOut {
+				if txsparser.IsXChainXfer(txo.PkScript) {
+					if len(txo.PkScript) != 25 {
+						return fmt.Errorf("Cross chain PkScript length is not 25b in %v", tx.TxHash())
+					}
+				}
+			}
+		}
+
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			sent := map[uint32]struct{}{}
+			for _, txo := range tx.TxOut {
+				if txsparser.IsXChainXfer(txo.PkScript) {
+					var cid [4]byte
+					copy(cid[:], txo.PkScript[22:25])
+					cid[3] = 0
+					dest := common.LittleEndian.Uint32(cid[:]) // send the tx to chains we connect. avoid repeat
+					if ch, ok := b.XChainCh[dest]; ok {
+						if _, ok := sent[dest]; !ok {
+							done := make(chan struct{})
+							ch <- &XchMsg{true, tx.TxIn[0].SignatureIndex &^ 0x10000, tx.TxIn[0].PreviousOutPoint.Hash, nil, done}
+							sent[dest] = struct{}{}
+							<-done
+						}
+					}
+				}
+			}
+		}
+	}
 
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
@@ -1229,7 +1307,11 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		// In the case the block is determined to be invalid due to a
 		// rule violation, mark it as invalid and mark all of its
 		// descendants as having an invalid ancestor.
-		err = b.checkConnectBlock(n, block, views, &stxos)
+		if b.IsSVP {
+			err = b.checkConnectSVPBlock(n, block, views, &stxos)
+		} else {
+			err = b.checkConnectBlock(n, block, views, &stxos)
+		}
 
 		// check proof of work
 		var mkorphan bool
@@ -1376,7 +1458,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 
 // checkBlockSanity check whether the miner has provided sufficient collateral
 func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest *chainhash.Hash, flags BehaviorFlags) (uint32, error) {
-	if block.MsgBlock().Utxos == nil || block.MsgBlock().Version&0x7FFF0000 < chaincfg.Version2 {
+	if b.IsSVP || block.MsgBlock().Utxos == nil || block.MsgBlock().Version&0x7FFF0000 < chaincfg.Version2 {
 		return 0, nil
 	}
 
@@ -1441,7 +1523,7 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest *chainhash.H
 		return 0, fmt.Errorf("Insufficient Collateral.")
 	}
 
-	if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version3 {
+	if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version3 {
 		pks := e.PkScript()
 		if bytes.Compare(pks[1:21], block.MsgBlock().Miner[:]) != 0 {
 			return 0, fmt.Errorf("Collateral belongs to someone else.")
@@ -1505,7 +1587,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			str := fmt.Sprintf("Contract execution steps exceeds block limit in %v", *block.Hash())
 			return false, ruleError(ErrExcessContractExec, str)
 		}
-		if block.MsgBlock().Header.ContractExec > 0 && (b.ChainParams.Net == common.SVPMainNet || b.ChainParams.Net == common.SVPTestNet) {
+		if block.MsgBlock().Header.ContractExec > 0 && b.IsSVP {
 			// SVP of base chain is xfer chain which has no contract exec
 			str := fmt.Sprintf("Contract execution not allowed in %v", *block.Hash())
 			return false, ruleError(ErrExcessContractExec, str)
@@ -1519,7 +1601,12 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		views.Utxo.SetBestHash(parentHash)
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
 		if !fastAdd {
-			err := b.checkConnectBlock(node, block, views, &stxos)
+			var err error
+			if b.IsSVP {
+				err = b.checkConnectSVPBlock(node, block, views, &stxos)
+			} else {
+				err = b.checkConnectBlock(node, block, views, &stxos)
+			}
 			if err == nil {
 				b.index.SetStatusFlags(node, chainutil.StatusValid)
 			} else if _, ok := err.(RuleError); ok {
@@ -1540,18 +1627,21 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		// utxos, spend them, and add the new utxos being created by
 		// this block.
 		if fastAdd {
-			err := views.FetchInputUtxos(block)
-			if err != nil {
-				return false, err
-			}
-			err = views.ConnectTransactions(block, &stxos)
-			if err != nil {
-				return false, err
+			if !b.IsSVP {
+				err := views.FetchInputUtxos(block)
+				if err != nil {
+					return false, err
+				}
+				err = views.ConnectTransactions(block, &stxos)
+				if err != nil {
+					return false, err
+				}
 			}
 		}
 
 		// Connect the block to the main chain.
-		err := b.connectBlock(node, block, views, stxos)
+		var err error
+		err = b.connectBlock(node, block, views, stxos)
 		if err != nil {
 			// If we got hit with a rule error, then we'll mark
 			// that status of the block as invalid and flush the
@@ -2487,6 +2577,9 @@ type Config struct {
 	Miner   []btcutil.Address
 	PrivKey []*btcec.PrivateKey
 
+	// Whether this chain is SVP of another
+	IsSVP bool
+
 	// HashCache defines a transaction hash mid-state cache to use when
 	// validating transactions. This cache has the potential to greatly
 	// speed up transaction validation as re-using the pre-calculated
@@ -2562,6 +2655,7 @@ func New(config *Config) (*BlockChain, error) {
 		LockedCollaterals: make(map[wire.OutPoint]struct{}),
 		IsPacking:         false,
 		BTfile:            f,
+		IsSVP:             config.IsSVP,
 	}
 
 	// Initialize the chain state from the passed database.  When the db
@@ -2654,4 +2748,50 @@ func (b *BlockChain) MaxContractExec(lastBlk chainhash.Hash, cbest chainhash.Has
 		}
 	}
 	return m
+}
+
+func (b *BlockChain) RecvXfer(txs chan *XchMsg, interrupt <-chan struct{}) {
+	for true {
+		select {
+		case tx := <-txs:		// received a cross chain tx
+			b.db.Update(func(dbtx database.Tx) error {
+				bucket := dbtx.Metadata().Bucket([]byte("RECVTXPOOL"))
+				if tx.DelOp {
+					// disconnect, remove from db
+					bucket.Delete(tx.SrcTxHash[:])
+					return nil
+				}
+				dtx := wire.NewMsgTx(0x11)	// no lock
+				dtx.TxIn = []*wire.TxIn{&wire.TxIn{
+					PreviousOutPoint: wire.OutPoint{Hash: tx.SrcTxHash, Index: 0xFFFFFFFF},
+					SignatureIndex: 0x10000 | tx.SrcChainID,
+				}}
+
+				for _, txo := range tx.Msg.TxOut {
+					if txsparser.IsXChainXfer(txo.PkScript) {
+						var dets [4]byte
+						copy(dets[:], txo.PkScript[22:25])
+						dets[3] = 0
+						cid := common.LittleEndian.Uint32(dets[:])
+						if cid != b.ChainParams.ChainID {
+							continue
+						}
+						txo.PkScript[0] = b.ChainParams.PubKeyHashAddrID
+						txo.PkScript[21] = ovm.OP_PAY2PKH
+						txo.PkScript[22], txo.PkScript[23], txo.PkScript[24] = 0,0,0
+						dtx.TxOut = append(dtx.TxOut, txo)
+					}
+				}
+				var w bytes.Buffer
+				dtx.SerializeNoSignature(&w)
+				bucket.Put(tx.SrcTxHash[:], w.Bytes())
+				tx.ch <- struct{}{}
+				return nil
+			})
+
+		case <-interrupt:
+			close(txs)
+			return
+		}
+	}
 }

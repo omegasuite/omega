@@ -129,6 +129,9 @@ const (
 	DefinedDeployments
 )
 
+const defaultChainID = 1           // ID of this chain. each chain has a unique id
+const defaultSVPChainID = 0x800001 // Root xfer chain
+
 const (
 	Version1 = 0x10000
 	Version2 = 0x20000
@@ -290,6 +293,8 @@ type Params struct {
 
 	// whether we log time blocks received
 	LogBlockTime bool
+
+	ChainID uint32
 }
 
 // MainNetParams defines the network parameters for the main Omega network.
@@ -402,6 +407,7 @@ var MainNetParams = Params{
 	},
 	ViolationReportDeadline: 100,
 	ContractReqExp:          false,
+	ChainID:                 defaultChainID, // Omega
 }
 
 // RegressionNetParams defines the network parameters for the regression test
@@ -515,6 +521,7 @@ var RegressionNetParams = Params{
 	},
 	ViolationReportDeadline: 10,
 	ContractReqExp:          false,
+	ChainID:                 defaultChainID, // Omega
 }
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
@@ -630,6 +637,7 @@ var TestNet3Params = Params{
 	},
 	ViolationReportDeadline: 10,
 	ContractReqExp:          false,
+	ChainID:                 defaultChainID, // Omega
 }
 
 // SimNetParams defines the network parameters for the simulation test Bitcoin
@@ -747,6 +755,7 @@ var SimNetParams = Params{
 	},
 	ViolationReportDeadline: 10,
 	ContractReqExp:          false,
+	ChainID:                 defaultChainID, // Omega
 }
 
 // SVPMainNetParams defines the network parameters for the SVP XFER network.
@@ -829,6 +838,7 @@ var SVPMainNetParams = Params{
 	},
 	ViolationReportDeadline: 100,
 	ContractReqExp:          false,
+	ChainID:                 defaultSVPChainID, // Root xfer chain
 }
 
 var SVPTestNetParams = Params{
@@ -911,6 +921,7 @@ var SVPTestNetParams = Params{
 	},
 	ViolationReportDeadline: 10,
 	ContractReqExp:          false,
+	ChainID:                 defaultSVPChainID, // Root xfer chain
 }
 
 var (
@@ -1061,6 +1072,9 @@ func init() {
 	mustRegister(&TestNet3Params)
 	mustRegister(&RegressionNetParams)
 	mustRegister(&SimNetParams)
+
+	mustRegister(&SVPMainNetParams)
+	mustRegister(&SVPTestNetParams)
 }
 
 var ActiveNetParams [2]*Params

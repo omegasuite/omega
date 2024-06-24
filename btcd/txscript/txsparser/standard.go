@@ -144,6 +144,10 @@ func IsPubkey(script []byte) bool {
 	return false
 }
 
+func IsXChainXfer(script []byte) bool {
+	return script[0] == 0xCC
+}
+
 // isPubkeyHash returns true if the script passed is a pay-to-pubkey-hash
 // transaction, false otherwise.
 func IsPubkeyHash(script []byte) bool {

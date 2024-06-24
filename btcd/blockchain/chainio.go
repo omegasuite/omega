@@ -861,6 +861,11 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
+		// Create the pool of pending tx from another chain bucket
+		if _, err = meta.CreateBucket([]byte("RECVTXPOOL")); err != nil {
+			return err
+		}
+
 		// Save the genesis block to the block index database.
 		if err = dbStoreBlockNode(dbTx, node); err != nil {
 			return err
@@ -952,6 +957,14 @@ func (b *BlockChain) initChainState() error {
 		hasminertps = dbTx.Metadata().Bucket(minerTPSBucketName) != nil
 		hascomptx = dbTx.Metadata().Bucket(compendatedBucketName) != nil
 		hasaddrusage = dbTx.Metadata().Bucket(addrUseIndexKey) != nil
+
+		if dbTx.Metadata().Bucket([]byte("RECVTXPOOL")) == nil {
+			// Create the pool of pending tx from another chain bucket
+			if _, err := dbTx.Metadata().CreateBucket([]byte("RECVTXPOOL")); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 	if err != nil {

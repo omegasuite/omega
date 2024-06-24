@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
 	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
 	"time"
 )
@@ -42,11 +44,15 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		return true, nil, -1
 	}
 
-	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
+	if !b.IsSVP && block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		return false, fmt.Errorf("insifficient signatures"), -1
 	}
-	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts[1]) < 33 {
-		return false, fmt.Errorf("incorrect signatures"), -1
+	if !b.IsSVP && block.MsgBlock().Header.Nonce < 0 {
+		for _,sig := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+			if len(sig) < 33 {
+				return false, fmt.Errorf("incorrect signatures"), -1
+			}
+		}
 	}
 
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
@@ -65,18 +71,39 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	blockHeader := &block.MsgBlock().Header
 
 	newNode := b.MainChainNodeByHash(block.Hash())
+	storeBlock := true
+
+	if b.IsSVP {
+		// only insert block data if it contains a cross chain TX to us
+		// we include xfers to other chains to make the code simple
+		storeBlock = false
+		out:
+		for _,tx := range block.MsgBlock().Transactions[1:] {
+			for _,txo := range tx.TxOut {
+				var cid [4]byte
+				copy(cid[:], txo.PkScript[22:25])
+				cid[3] = 0
+				if txsparser.IsXChainXfer(txo.PkScript) && len(txo.PkScript) == 25 && common.LittleEndian.Uint32(cid[:]) == b.ChainParams.ChainID {
+					storeBlock = true
+					break out
+				}
+			}
+		}
+	}
 
 	// Insert the block into the database if it's not already there.
 	// This is necessary since it allows block download to be decoupled
 	// from the much more expensive connection logic.  It is also
 	// necessary to blocks that never become part of the main chain or
 	// blocks that fail to connect available for forfeture and compensation.
-	err = b.db.Update(func(dbTx database.Tx) error {
-		return dbStoreBlock(dbTx, block)
-	})
+	if storeBlock {
+		err = b.db.Update(func(dbTx database.Tx) error {
+			return dbStoreBlock(dbTx, block)
+		})
 
-	if err != nil {
-		return false, err, -1
+		if err != nil {
+			return false, err, -1
+		}
 	}
 
 	if newNode == nil {

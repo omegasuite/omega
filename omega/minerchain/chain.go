@@ -164,6 +164,7 @@ type MinerChain struct {
 
 	collaterals      [2016]int
 	nextAdjustHeight int32
+	IsSVP            bool
 }
 
 func (b *MinerChain) DSReport(p *wire.Violations) {
@@ -705,7 +706,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
-		if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
+		if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 			if r, err, _ := b.checkV2(block, newBest, blockchain.BFNone); !r {
 				if err != nil {
 					log.Infof("checkV2 failed for attaching block: %s", err.Error())
@@ -1489,6 +1490,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		violations:          make([]*wire.Violations, 0),
 		TxIndex:             config.IndexManager,
 		nextAdjustHeight:    -1,
+		IsSVP:               config.IsSVP,
 	}
 
 	// Initialize the chain state from the passed database.  When the db

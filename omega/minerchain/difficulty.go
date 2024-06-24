@@ -209,8 +209,8 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		coll = 1
 	}
 
-	v2 := lastNode.Data.GetVersion() >= chaincfg.Version2
-	v3 := lastNode.Data.GetVersion() >= chaincfg.Version3
+	v2 := b.IsSVP || lastNode.Data.GetVersion() >= chaincfg.Version2
+	v3 := b.IsSVP || lastNode.Data.GetVersion() >= chaincfg.Version3
 
 	// Return the previous block's difficulty requirements if this block
 	// is not at a difficulty retarget interval.
@@ -241,7 +241,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 				i = -1
 			} else if b.collaterals[j] == 0 && pb.Height < lastNode.Height-7 { // block is considered finalized after 7 confirmations
 				i--
-				if block.Version&0x7FFF0000 >= chaincfg.Version5 && block.Utxos != nil {
+				if (b.IsSVP || block.Version&0x7FFF0000 >= chaincfg.Version5) && block.Utxos != nil {
 					var op = block.Utxos
 
 					// it could have been spent, so we get the raw tx and find out its value
@@ -330,7 +330,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		block := pb.Data.(*blockchainNodeData).block
 		bb := b.blockChain.NodeByHash(&block.BestBlock)
 
-		if block.Collateral < coll && block.Version&0x7FFF0000 < chaincfg.Version5 {
+		if block.Collateral < coll && !b.IsSVP && block.Version&0x7FFF0000 < chaincfg.Version5 {
 			coll = block.Collateral
 		}
 
@@ -339,7 +339,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			if uint32(b.collaterals[j]) < coll {
 				coll = uint32(b.collaterals[j])
 			}
-		} else if v3 && block.Version&0x7FFF0000 >= chaincfg.Version5 && block.Utxos != nil {
+		} else if v3 && (b.IsSVP || block.Version&0x7FFF0000 >= chaincfg.Version5) && block.Utxos != nil {
 			var op = block.Utxos
 
 			// it could have been spent, so we get the raw tx and find out its value
@@ -423,7 +423,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		if mb != nil {
 			h = -mb.Data.GetNonce() - wire.MINER_RORATE_FREQ
 		}
-		if lastNode.Data.GetVersion() >= chaincfg.Version2 {
+		if b.IsSVP || lastNode.Data.GetVersion() >= chaincfg.Version2 {
 			h += dh
 		}
 		d = int(pb.Height - h)

@@ -11,6 +11,7 @@ package viewpoint
 import (
 	"bytes"
 	"fmt"
+	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
 	"sync"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -328,6 +329,11 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 		if txOut.IsNopaying() {
 			continue
 		}
+		if txsparser.IsXChainXfer(txOut.PkScript) {
+			// if it is cross chain txout, don't add it to utxo view, so it does not appear in this chain
+			continue
+		}
+
 		// Update existing entries.  All fields are updated because it's
 		// possible (although extremely unlikely) that the existing
 		// entry is being replaced by a different transaction with the

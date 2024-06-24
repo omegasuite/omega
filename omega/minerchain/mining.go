@@ -266,16 +266,17 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 		factorPOW = 1
 	}
 
-	if block.Version&0x7FFF0000 >= chaincfg.Version2 {
-		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(h))
-		if block.Version&0x7FFF0000 <= chaincfg.Version5 && targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))) > 0 {
-			targetDifficulty = m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))
-		} else if block.Version&0x7FFF0000 > chaincfg.Version5 && targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
-			targetDifficulty = m.cfg.ChainParams.PowLimit
-		}
-	} else if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
+	//	if block.Version&0x7FFF0000 >= chaincfg.Version2 {
+	targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(h))
+	//		if block.Version&0x7FFF0000 <= chaincfg.Version5 && targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))) > 0 {
+	//			targetDifficulty = m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))
+	//		} else
+	if block.Version&0x7FFF0000 > chaincfg.Version5 && targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
 		targetDifficulty = m.cfg.ChainParams.PowLimit
 	}
+	//	} else if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
+	//		targetDifficulty = m.cfg.ChainParams.PowLimit
+	//	}
 
 	// Initial state.
 	tbest := m.g.Chain.BestSnapshot()

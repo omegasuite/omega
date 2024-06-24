@@ -426,7 +426,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	if isMainChain {
 		b.Miners.ProcessOrphans(&b.Miners.BestSnapshot().Hash, BFNone)
-	} else if block.MsgBlock().Header.Nonce < 0 && block.MsgBlock().Header.Version >= chaincfg.Version2 {
+	} else if block.MsgBlock().Header.Nonce < 0 && (b.IsSVP || block.MsgBlock().Header.Version >= chaincfg.Version2) {
 		// CHECK if there is a miner violation
 		// block is in side chain
 		mblk, _ := b.BlockByHeight(block.Height()) //	main chain block
