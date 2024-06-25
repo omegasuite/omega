@@ -862,9 +862,7 @@ func (b *BlockChain) createChainState() error {
 		}
 
 		// Create the pool of pending tx from another chain bucket
-		if _, err = meta.CreateBucket([]byte("RECVTXPOOL")); err != nil {
-			return err
-		}
+		meta.CreateBucket([]byte("RECVTXPOOL"))
 
 		// Save the genesis block to the block index database.
 		if err = dbStoreBlockNode(dbTx, node); err != nil {

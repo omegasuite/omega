@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/famofchains/omega/consensus"
 	"strings"
@@ -611,7 +610,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	protocols = make([]*protocol, 0)
+	protocols = make([]*Protocol, 0)
 
 	// Work around defer not working after os.Exit()
 	p, quit := prepareServer(tcfg, 0)
@@ -691,7 +690,7 @@ func main() {
 	wg.Wait()
 }
 
-func retrievedefs(p * Protocol, q * Protocol)  {
+func retrievedefs(p *Protocol, q *Protocol) {
 	for true {
 		p.db.View(func(dbtx database.Tx) error {
 			bucket := dbtx.Metadata().Bucket([]byte("RECVTXPOOL"))

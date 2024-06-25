@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/database"
-	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
@@ -48,7 +47,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		return false, fmt.Errorf("insifficient signatures"), -1
 	}
 	if !b.IsSVP && block.MsgBlock().Header.Nonce < 0 {
-		for _,sig := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+		for _, sig := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 			if len(sig) < 33 {
 				return false, fmt.Errorf("incorrect signatures"), -1
 			}
@@ -77,13 +76,13 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		// only insert block data if it contains a cross chain TX to us
 		// we include xfers to other chains to make the code simple
 		storeBlock = false
-		out:
-		for _,tx := range block.MsgBlock().Transactions[1:] {
-			for _,txo := range tx.TxOut {
+	out:
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			for _, txo := range tx.TxOut {
 				var cid [4]byte
 				copy(cid[:], txo.PkScript[22:25])
 				cid[3] = 0
-				if txsparser.IsXChainXfer(txo.PkScript) && len(txo.PkScript) == 25 && common.LittleEndian.Uint32(cid[:]) == b.ChainParams.ChainID {
+				if wire.IsXChainXfer(txo.PkScript) && len(txo.PkScript) == 25 && common.LittleEndian.Uint32(cid[:]) == b.ChainParams.ChainID {
 					storeBlock = true
 					break out
 				}

@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
-	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/omega/ovm"
 	"github.com/omegasuite/famofchains/omega/token"
@@ -208,7 +207,7 @@ type BlockChain struct {
 	AddrUsage func(address btcutil.Address) uint32
 
 	// whther this chain is SVP of another chain
-	IsSVP bool
+	IsSVP    bool
 	XChainCh map[uint32]chan *XchMsg
 
 	// tmp data
@@ -216,11 +215,11 @@ type BlockChain struct {
 }
 
 type XchMsg struct {
-	DelOp	bool
-	SrcChainID	uint32
-	SrcTxHash chainhash.Hash
-	Msg *wire.MsgTx
-	ch chan struct{}
+	DelOp      bool
+	SrcChainID uint32
+	SrcTxHash  chainhash.Hash
+	Msg        *wire.MsgTx
+	ch         chan struct{}
 }
 
 func (b *BlockChain) InitCollateral() {
@@ -671,10 +670,10 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		log.Infof("Update LastRotation to %d", state.LastRotation)
 	}
 
-	if b.IsSVP {		// if we are svp, send only the tx whose destination is main chain
+	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			for _, txo := range tx.TxOut {
-				if txsparser.IsXChainXfer(txo.PkScript) {
+				if wire.IsXChainXfer(txo.PkScript) {
 					if len(txo.PkScript) != 25 {
 						return fmt.Errorf("Cross chain PkScript length is not 25b in %v", tx.TxHash())
 					}
@@ -685,7 +684,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			sent := map[uint32]struct{}{}
 			for _, txo := range tx.TxOut {
-				if txsparser.IsXChainXfer(txo.PkScript) {
+				if wire.IsXChainXfer(txo.PkScript) {
 					var cid [4]byte
 					copy(cid[:], txo.PkScript[22:25])
 					cid[3] = 0
@@ -855,10 +854,10 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		newTotalTxns, prevNode.CalcPastMedianTime(), // bits,
 		rotation) // prevNode.bits, b.BestSnapshot().LastRotation)
 
-	if b.IsSVP {		// if we are svp, send only the tx whose destination is main chain
+	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			for _, txo := range tx.TxOut {
-				if txsparser.IsXChainXfer(txo.PkScript) {
+				if wire.IsXChainXfer(txo.PkScript) {
 					if len(txo.PkScript) != 25 {
 						return fmt.Errorf("Cross chain PkScript length is not 25b in %v", tx.TxHash())
 					}
@@ -869,7 +868,7 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			sent := map[uint32]struct{}{}
 			for _, txo := range tx.TxOut {
-				if txsparser.IsXChainXfer(txo.PkScript) {
+				if wire.IsXChainXfer(txo.PkScript) {
 					var cid [4]byte
 					copy(cid[:], txo.PkScript[22:25])
 					cid[3] = 0
@@ -2753,7 +2752,7 @@ func (b *BlockChain) MaxContractExec(lastBlk chainhash.Hash, cbest chainhash.Has
 func (b *BlockChain) RecvXfer(txs chan *XchMsg, interrupt <-chan struct{}) {
 	for true {
 		select {
-		case tx := <-txs:		// received a cross chain tx
+		case tx := <-txs: // received a cross chain tx
 			b.db.Update(func(dbtx database.Tx) error {
 				bucket := dbtx.Metadata().Bucket([]byte("RECVTXPOOL"))
 				if tx.DelOp {
@@ -2761,14 +2760,14 @@ func (b *BlockChain) RecvXfer(txs chan *XchMsg, interrupt <-chan struct{}) {
 					bucket.Delete(tx.SrcTxHash[:])
 					return nil
 				}
-				dtx := wire.NewMsgTx(0x11)	// no lock
+				dtx := wire.NewMsgTx(0x11) // no lock
 				dtx.TxIn = []*wire.TxIn{&wire.TxIn{
 					PreviousOutPoint: wire.OutPoint{Hash: tx.SrcTxHash, Index: 0xFFFFFFFF},
-					SignatureIndex: 0x10000 | tx.SrcChainID,
+					SignatureIndex:   0x10000 | tx.SrcChainID,
 				}}
 
 				for _, txo := range tx.Msg.TxOut {
-					if txsparser.IsXChainXfer(txo.PkScript) {
+					if wire.IsXChainXfer(txo.PkScript) {
 						var dets [4]byte
 						copy(dets[:], txo.PkScript[22:25])
 						dets[3] = 0
@@ -2778,7 +2777,7 @@ func (b *BlockChain) RecvXfer(txs chan *XchMsg, interrupt <-chan struct{}) {
 						}
 						txo.PkScript[0] = b.ChainParams.PubKeyHashAddrID
 						txo.PkScript[21] = ovm.OP_PAY2PKH
-						txo.PkScript[22], txo.PkScript[23], txo.PkScript[24] = 0,0,0
+						txo.PkScript[22], txo.PkScript[23], txo.PkScript[24] = 0, 0, 0
 						dtx.TxOut = append(dtx.TxOut, txo)
 					}
 				}

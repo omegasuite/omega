@@ -389,7 +389,7 @@ type server struct {
 	alerted     map[int32]struct{}
 
 	// protocol data
-	prot *protocol
+	prot *Protocol
 }
 
 // serverPeer extends the peer to maintain state shared by the server and
@@ -3012,7 +3012,7 @@ func setupRPCListeners(cfg *config) ([]net.Listener, error) {
 // newServer returns a new btcd server configured to listen on addr for the
 // bitcoin network type specified by chainParams.  Use start to begin accepting
 // connections from peers.
-func newServer(listenAddrs []string, db, minerdb database.DB, prot *protocol, interrupt <-chan struct{}) (*server, error) {
+func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, interrupt <-chan struct{}) (*server, error) {
 	services := defaultServices
 	if prot.cfg.NoPeerBloomFilters {
 		services &^= common.SFNodeBloom
@@ -3145,7 +3145,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *protocol, in
 		Miner:        prot.cfg.signAddress,
 		PrivKey:      prot.cfg.privateKeys,
 		AddrUsage:    s.addrUseIndex.Usage,
-		IsSVP:		  prot.IsSvp,
+		IsSVP:        prot.IsSvp,
 		//		HashCache:    s.hashCache,
 	})
 	if err != nil {
@@ -3507,7 +3507,7 @@ func (s *server) Remove(n uint32) {
 // initListeners initializes the configured net listeners and adds any bound
 // addresses to the address manager. Returns the listeners and a NAT interface,
 // which is non-nil if UPnP is in use.
-func initListeners(amgr *addrmgr.AddrManager, listenAddrs []string, services common.ServiceFlag, cfg *protocol) ([]net.Listener, NAT, error) {
+func initListeners(amgr *addrmgr.AddrManager, listenAddrs []string, services common.ServiceFlag, cfg *Protocol) ([]net.Listener, NAT, error) {
 	// Listen for TCP connections at the configured addresses
 	netAddrs, err := parseListeners(listenAddrs)
 	if err != nil {
