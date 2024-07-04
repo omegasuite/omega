@@ -6,12 +6,12 @@
 package txscript
 
 import (
-	"fmt"
 	"encoding/binary"
+	"fmt"
 
-	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/btcd/chaincfg"
-//	"github.com/omegasuite/btcd/txscript/txsparser"
+	"github.com/omegasuite/btcd/txscript/txsparser"
+	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/ovm"
 )
 
