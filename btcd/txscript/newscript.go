@@ -8,7 +8,7 @@ import (
 	"github.com/omegasuite/btcd/blockchain/indexers"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg"
-//	"github.com/omegasuite/btcd/txscript/txsparser"
+	"github.com/omegasuite/btcd/txscript/txsparser"
 	"github.com/omegasuite/btcutil"
 )
 
