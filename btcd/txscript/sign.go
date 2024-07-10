@@ -23,7 +23,7 @@ import (
 // function is identical to RawTxInSignature, however the signature generated
 // signs a new sighash digest defined in BIP0143.
 func RawTxInSignature(tx *wire.MsgTx, idx int, subScript []byte,
-	key *btcec.PrivateKey,chainParams *chaincfg.Params) ([]byte, error) {
+	key *btcec.PrivateKey, chainParams *chaincfg.Params) ([]byte, error) {
 
 	hash, err := ovm.CalcSignatureHash(tx, idx, subScript, 0, chainParams)
 	if err != nil {
@@ -54,7 +54,7 @@ func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.P
 	var payscript []byte
 	switch subscript[21] {
 	case ovm.OP_PAY2PKH:
-		payscript = []byte{ byte(ovm.SIGNTEXT), byte(hashType) }
+		payscript = []byte{byte(ovm.SIGNTEXT), byte(hashType)}
 	case ovm.OP_PAYMULTISIG:
 		return []byte{}, fmt.Errorf("Internal error: SignatureScript does not support multi signature yet")
 	default:
@@ -84,7 +84,7 @@ func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.P
 func extractMSscript(subScript []byte, chainParams *chaincfg.Params) []byte {
 	builder := ovm.NewScriptBuilder()
 
-	builder.AddBytes(subScript[:8])		// PUSH 4 M N SIGNTEXT textcode
+	builder.AddBytes(subScript[:8]) // PUSH 4 M N SIGNTEXT textcode
 
 	nsigs := int(common.LittleEndian.Uint16(subScript[2:4]))
 
@@ -103,7 +103,7 @@ func extractMSscript(subScript []byte, chainParams *chaincfg.Params) []byte {
 			}
 
 			builder.AddOp(ovm.PUSH, []byte{subScript[i+1]}).
-				AddBytes(subScript[i+2:i+2+int(pushed)])
+				AddBytes(subScript[i+2 : i+2+int(pushed)])
 
 			i += 2 + int(pushed)
 
@@ -121,14 +121,14 @@ func extractMSscript(subScript []byte, chainParams *chaincfg.Params) []byte {
 						AddBytes(subScript[j+2 : j+2+int(pushed)])
 					j += 2 + int(pushed)
 				} else if script[j] == byte(ovm.SIGNTEXT) {
-					builder.AddOp(ovm.SIGNTEXT, []byte{subScript[j + 1]})
+					builder.AddOp(ovm.SIGNTEXT, []byte{subScript[j+1]})
 					j += 2
 				}
 			}
 
 		case ovm.SIGNTEXT:
 			nsigs--
-			builder.AddOp(ovm.SIGNTEXT, []byte{subScript[i + 1]})
+			builder.AddOp(ovm.SIGNTEXT, []byte{subScript[i+1]})
 			i += 2
 		}
 	}
@@ -151,12 +151,12 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 
 	// PUSH 4 M N SIGNTEXT textcode
 	builder.AddOp(ovm.PUSH, []byte{subScript[1]}).
-		AddBytes(subScript[2 : 2 + int(subScript[1])])
+		AddBytes(subScript[2 : 2+int(subScript[1])])
 	builder.AddOp(ovm.SIGNTEXT, []byte{subScript[7]})
 
 	signed := 0
 	nRequired := int(common.LittleEndian.Uint16(subScript[4:6]))
-	payscript = []byte{ byte(ovm.SIGNTEXT), byte(hashType) }
+	payscript = []byte{byte(ovm.SIGNTEXT), byte(hashType)}
 
 	for i := 8; i < len(subScript); {
 		switch ovm.OpCode(subScript[i]) {
@@ -164,8 +164,8 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 			pushed := subScript[i+1]
 			if pushed != 21 ||
 				(subScript[i+2] != chainParams.PubKeyHashAddrID &&
-				subScript[i+2] != chainParams.MultiSigAddrID &&
-				subScript[i+2] != chainParams.ScriptHashAddrID) {
+					subScript[i+2] != chainParams.MultiSigAddrID &&
+					subScript[i+2] != chainParams.ScriptHashAddrID) {
 				// it is not lock script. copy data until SIGNTEXT
 				for subScript[i] == byte(ovm.PUSH) {
 					pushed = subScript[i+1]
@@ -180,14 +180,14 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 
 			switch subScript[i+2] {
 			case chainParams.PubKeyHashAddrID:
-				pkscript := subScript[i + 3 : i + 23]
+				pkscript := subScript[i+3 : i+23]
 				kadr, _ := btcutil.NewAddressPubKeyHash(pkscript, chainParams)
 				key, _, err := kdb.GetKey(kadr)
 
 				if err != nil || key == nil {
 					// no matching key
 					builder.AddOp(ovm.PUSH, []byte{pushed}).
-						AddBytes(subScript[i+2:i+2+int(pushed)])
+						AddBytes(subScript[i+2 : i+2+int(pushed)])
 					i = i + 2 + int(pushed)
 					continue
 				}
@@ -196,7 +196,7 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 				if err != nil || sig == nil {
 					// no sig
 					builder.AddOp(ovm.PUSH, []byte{pushed}).
-						AddBytes(subScript[i+2:i+2+int(pushed)])
+						AddBytes(subScript[i+2 : i+2+int(pushed)])
 					i = i + 2 + int(pushed)
 					continue
 				}
@@ -228,11 +228,11 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 
 			case chainParams.MultiSigAddrID:
 				builder.AddOp(ovm.PUSH, []byte{pushed}).
-					AddBytes(subScript[i+2:i+2+int(pushed)])
+					AddBytes(subScript[i+2 : i+2+int(pushed)])
 
 				var script []byte
 
-				if subScript[i + 23] == byte(ovm.SIGNTEXT) {
+				if subScript[i+23] == byte(ovm.SIGNTEXT) {
 					// a new MS script, try to find redeem script
 					addr, _ := btcutil.NewAddressMultiSig(subScript[i+3:i+23], chainParams)
 
@@ -246,7 +246,7 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 						continue
 					}
 				} else {
-					script = extractMSscript(subScript[i + 23:], chainParams)
+					script = extractMSscript(subScript[i+23:], chainParams)
 					i = 2 + int(pushed) + len(script)
 				}
 
@@ -259,7 +259,7 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 							AddBytes(subScript[j+2 : j+2+int(pushed)])
 						j += 2 + int(pushed)
 					} else if sig[j] == byte(ovm.SIGNTEXT) {
-						builder.AddOp(ovm.SIGNTEXT, []byte{subScript[j + 1]})
+						builder.AddOp(ovm.SIGNTEXT, []byte{subScript[j+1]})
 						j += 2
 					}
 				}
@@ -283,9 +283,9 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 				}
 
 				builder.AddOp(ovm.PUSH, []byte{pushed}).
-					AddBytes(subScript[i+2:i+2+int(pushed)])
+					AddBytes(subScript[i+2 : i+2+int(pushed)])
 
-				ps, err := btcutil.NewAddressScriptHash(subScript[i+3 : i+23], chainParams)
+				ps, err := btcutil.NewAddressScriptHash(subScript[i+3:i+23], chainParams)
 				if err != nil {
 					continue
 				}
@@ -315,7 +315,7 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 			}
 
 		case ovm.SIGNTEXT:
-			builder.AddOp(ovm.SIGNTEXT, []byte{subScript[i + 1]})
+			builder.AddOp(ovm.SIGNTEXT, []byte{subScript[i+1]})
 			i += 2
 
 		default:
@@ -323,11 +323,13 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 		}
 	}
 
+	if signed == 0 {
+		return nil, nRequired, false
+	}
+
 	script := builder.Script()
 	return script, nRequired, signed >= nRequired
 }
-
-
 
 func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 	subScript []byte, kdb KeyDB, sdb ScriptDB, previousScript []byte, hashType SigHashType) ([]byte, txsparser.ScriptClass, []btcutil.Address, int, error) {
@@ -354,7 +356,7 @@ func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 
 	case txsparser.ScriptHashTy:
 		script, err := sdb.GetScript(addresses[0])
-		if err != nil {
+		if err != nil || script == nil {
 			return nil, class, nil, 0, err
 		}
 
@@ -367,7 +369,7 @@ func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 			return script, class, addresses, nrequired, nil
 		} else {
 			script, err := sdb.GetScript(addresses[0])
-			if err != nil {
+			if err != nil || script == nil {
 				return nil, class, nil, 0, err
 			}
 
@@ -440,19 +442,21 @@ func SignTxOutput(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 			return nil, err
 		}
 
-		// Append the p2sh script as the last push in the script.
-		builder := ovm.NewScriptBuilder().AddOp(ovm.PUSH, []byte{0}).AddBytes(realSigScript)
+		if realSigScript != nil {
+			// Append the p2sh script as the last push in the script.
+			builder := ovm.NewScriptBuilder().AddOp(ovm.PUSH, []byte{0}).AddBytes(realSigScript)
 
-		sigScript = builder.Script()
+			sigScript = builder.Script()
+		}
 		// TODO keep a copy of the script for merging.
 	}
 
 	return sigScript, nil
 
 	// Merge scripts. with any previous data, if any.
-//	mergedScript := mergeScripts(chainParams, tx, idx, pkScript, class,	addresses, nrequired, sigScript, previousScript)
-//	mergedScript := mergeScripts(class, sigScript, previousScript)
-//	return mergedScript, nil
+	//	mergedScript := mergeScripts(chainParams, tx, idx, pkScript, class,	addresses, nrequired, sigScript, previousScript)
+	//	mergedScript := mergeScripts(class, sigScript, previousScript)
+	//	return mergedScript, nil
 }
 
 // mergeScripts merges sigScript and prevScript assuming they are both
@@ -473,7 +477,7 @@ func mergeScripts(class txsparser.ScriptClass, sigScript, prevScript []byte) []b
 	switch class {
 	case txsparser.MultiSigTy:
 		return append(prevScript, sigScript...)
-/*		
+/*
 		p, h, err := ExtractSigHead(prevScript)
 		if err != nil {
 			return prevScript
@@ -496,4 +500,4 @@ func mergeScripts(class txsparser.ScriptClass, sigScript, prevScript []byte) []b
 		return prevScript
 	}
 }
- */
+*/
