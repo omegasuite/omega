@@ -30,11 +30,16 @@ const (
 	SCALEFACTORCAP             = 48
 	DifficultyRatio            = 4 // ratio of difficulty for tx chain and miner chain
 
-	Version2 = 0x20000
-	Version3 = 0x30000
-	Version4 = 0x40000
-	Version5 = 0x50000
-	Version6 = 0x60000
+	Version1  = 0x10000
+	Version2  = 0x20000
+	Version3  = 0x30000
+	Version4  = 0x40000
+	Version5  = 0x50000
+	Version6  = 0x60000
+	Version7  = 0x70000
+	Version8  = 0x80000
+	Version9  = 0x90000
+	Version10 = 0xA0000
 )
 
 // current code version
@@ -108,6 +113,55 @@ func (b *Violations) Write(w io.Writer) error {
 	return nil
 }
 
+type InstructionCode uint8
+
+const (
+	Pledge        = InstructionCode(1)
+	RetireReq     = InstructionCode(2)
+	Retire        = InstructionCode(3)
+	UplinkChain   = InstructionCode(4)
+	DownlinkChain = InstructionCode(5)
+	AddVersion    = InstructionCode(6)
+)
+
+type Instruction struct {
+	InstCode InstructionCode
+	InstData []byte
+}
+
+func (t *Instruction) serializeLen() int {
+	return 3 + len(t.InstData)
+}
+
+func (t *Instruction) serializer(w io.Writer) error {
+	if err := common.WriteElement(w, t.InstCode); err != nil {
+		return err
+	}
+	if err := common.WriteVarBytes(w, 0, t.InstData); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *Instruction) deserializer(r io.Reader) error {
+	if err := common.ReadElements(r, &t.InstCode); err != nil {
+		return err
+	}
+	if m, err := common.ReadVarBytes(r, 0, 1024, "InstData"); err != nil {
+		return err
+	} else {
+		t.InstData = m
+	}
+	return nil
+}
+
+func (t *Instruction) deserialize(d []byte) {
+	t.InstCode = InstructionCode(d[0])
+	n := common.LittleEndian.Uint16(d[1:])
+	t.InstData = make([]byte, n)
+	copy(t.InstData, d[3:])
+}
+
 // we use a dual block chain structure. one is Tx chain (normal block chain), one is committee candidate chain
 // MingingRightBlock is miner candidate chain struct
 type MingingRightBlock struct {
@@ -131,7 +185,7 @@ type MingingRightBlock struct {
 	// new committee member.
 	Miner [20]byte // address (pubkey hash) of new member for next committee
 
-	Connection []byte // connection info. either an IP:port address or an RSA pubkey
+	Connection []byte // connection info. an IP:port address
 
 	// Min Collateral required for the next block. ver. 0x20000
 	Collateral uint32 // Collateral required for the next block
@@ -142,6 +196,8 @@ type MingingRightBlock struct {
 	ViolationReport []*Violations // the double signers and proof
 	TphReports      []uint32      // report of TPS of preceeing miners
 	ContractLimit   int64         // alternative contract execution limit
+
+	Instructions []*Instruction
 }
 
 // difficulty target for new node submission is 1 min.

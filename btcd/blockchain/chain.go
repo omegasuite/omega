@@ -1538,6 +1538,47 @@ func (b *BlockChain) Canvas(block *btcutil.Block) *viewpoint.ViewPointSet {
 	return views
 }
 
+func (b *BlockChain) ExecOps(dbTx database.Tx, block *wire.MinerBlock, height uint32) {
+	for _, op := range block.MsgBlock().Instructions {
+		switch op.InstCode {
+		case wire.Pledge:
+			if !treasury.Declared(block.MsgBlock().Miner) {
+				treasury.Declare(dbTx, block.MsgBlock().Miner, op.InstData, height)
+			}
+
+		case wire.RetireReq:
+			treasury.PlantoRetire(dbTx, block.MsgBlock().Miner)
+
+		case wire.Retire:
+			treasury.Retire(dbTx, block.MsgBlock().Miner, height)
+
+		case wire.UplinkChain:
+			// TBD: set transfer chain for this transfer chain
+
+		case wire.DownlinkChain:
+			// TBD: add a base chain for this base chain
+		}
+	}
+
+	// in final version, no collateral is allowed w/o declaration
+	/*
+		if block.MsgBlock().Utxos != nil && !treasury.Declared(block.MsgBlock().Miner) {
+			return fmt.Errorf("Use collateral w/o declaration")
+		}
+	*/
+
+	if block.MsgBlock().Utxos != nil && treasury.Declared(block.MsgBlock().Miner) && !treasury.IsPledged(block.MsgBlock().Utxos) {
+		utxos := viewpoint.NewUtxoViewpoint()
+		utxos.FetchUtxosMain(b.db, map[wire.OutPoint]struct{}{*block.MsgBlock().Utxos: struct{}{}})
+
+		e := utxos.LookupEntry(*block.MsgBlock().Utxos)
+		if e != nil {
+			_, v := e.Amount.Value()
+			treasury.Pledge(dbTx, block.MsgBlock().Utxos, block.MsgBlock().Miner, v, uint32(b.BestChain.Height()))
+		}
+	}
+}
+
 // connectBestChain handles connecting the passed block to the chain while
 // respecting proper chain selection according to the chain with the most
 // proof of work.  In the typical case, the new block simply extends the main
