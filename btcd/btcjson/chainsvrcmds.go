@@ -222,10 +222,11 @@ func NewParseRawTransactionCmd(s string) *ParseRawTransactionCmd {
 
 // CreateRawTransactionCmd defines the createrawtransaction JSON-RPC command.
 type CreateRawTransactionCmd struct {
-	Inputs      []TransactionInput
-	Definitions []Definition
-	Amounts     []map[string]Token `jsonrpcusage:"{\"address\":token,...}"`
-	LockTime    *int64
+	Inputs       []TransactionInput
+	Definitions  []Definition
+	Amounts      []map[string]Token `jsonrpcusage:"{\"address\":token,...}"`
+	LockTime     *int64
+	Targetchains *[]uint32
 }
 
 // NewCreateRawTransactionCmd returns a new instance which can be used to issue
@@ -233,13 +234,14 @@ type CreateRawTransactionCmd struct {
 //
 // Amounts are in OMC.
 func NewCreateRawTransactionCmd(inputs []TransactionInput, defs []Definition, amounts []map[string]Token,
-	lockTime *int64) *CreateRawTransactionCmd {
+	targetchains *[]uint32, lockTime *int64) *CreateRawTransactionCmd {
 
 	return &CreateRawTransactionCmd{
-		Inputs:      inputs,
-		Definitions: defs,
-		Amounts:     amounts,
-		LockTime:    lockTime,
+		Inputs:       inputs,
+		Definitions:  defs,
+		Amounts:      amounts,
+		Targetchains: targetchains,
+		LockTime:     lockTime,
 	}
 }
 
@@ -273,6 +275,19 @@ func NewDecodeScriptCmd(hexScript string) *DecodeScriptCmd {
 type GetAddedNodeInfoCmd struct {
 	DNS  bool
 	Node *string
+}
+
+type MsgXrossL2 struct {
+	Utxo     string
+	Value    int64
+	PkScript string
+	Redeem   string
+}
+
+type BTCL2Data struct {
+	Hash   string
+	Height int32
+	Txs    []MsgXrossL2
 }
 
 // NewGetAddedNodeInfoCmd returns a new instance which can be used to issue a
@@ -732,6 +747,51 @@ type GetRawMempoolCmd struct {
 type GetIssuedTokensCmd struct {
 	Start *uint32 `jsonrpcdefault:"0"`
 	Count *uint32 `jsonrpcdefault:"100"`
+}
+
+// Createxferl2txoCmd defines the ceatexferl2txo JSON-RPC command.
+type Createxferl2txoCmd struct {
+	Amount    uint64
+	Address   [20]byte
+	AssetType *uint32 `jsonrpcdefault:"0"`
+}
+
+func NewCreatexferl2txoCmd(addr [20]byte) *Createxferl2txoCmd {
+	return &Createxferl2txoCmd{
+		Amount:  0,
+		Address: addr,
+	}
+}
+
+type GetTreasuryCmd struct {
+}
+type TreasuryAsset struct {
+	Typeid   uint64 // type id in L2
+	Amount   uint64 //
+	Outpoint string
+	Owners   []string // signatures required
+	Pkscript string
+}
+
+type GetSignersCmd struct {
+}
+type TreasuryPlgAsset struct {
+	Utxo     string
+	Amount   uint64
+	Firstuse uint32 // height when it becomes a signer
+}
+type TreasurySigners struct {
+	Address   string             // Address of signer
+	Pubkey    string             // Pubkey of signer
+	Voting    uint8              // Voting power in %
+	Retiring  bool               // whether is Retiring
+	Joined    uint32             // height when it becomes a signer
+	Pledged   []TreasuryPlgAsset // Assets Pledged
+	Btcprofit uint64             // profits in BTC
+}
+type GetBtcPoolCmd struct {
+}
+type GetL2PoolCmd struct {
 }
 
 // NewGetRawMempoolCmd returns a new instance which can be used to issue a
@@ -1209,6 +1269,12 @@ func init() {
 	MustRegisterCmd("getmempoolentry", (*GetMempoolEntryCmd)(nil), flags)
 	MustRegisterCmd("getissuedtokens", (*GetIssuedTokensCmd)(nil), flags)
 	MustRegisterCmd("getmempoolinfo", (*GetMempoolInfoCmd)(nil), flags)
+	MustRegisterCmd("createxferl2txo", (*Createxferl2txoCmd)(nil), flags)
+	MustRegisterCmd("gettreasury", (*GetTreasuryCmd)(nil), flags)
+	MustRegisterCmd("getsigners", (*GetSignersCmd)(nil), flags)
+	MustRegisterCmd("getbtcpool", (*GetBtcPoolCmd)(nil), flags)
+	MustRegisterCmd("getl2pool", (*GetL2PoolCmd)(nil), flags)
+	MustRegisterCmd("clearbtcl2pool", (*GetL2PoolCmd)(nil), flags)
 	MustRegisterCmd("getmininginfo", (*GetMiningInfoCmd)(nil), flags)
 	MustRegisterCmd("getnetworkinfo", (*GetNetworkInfoCmd)(nil), flags)
 	MustRegisterCmd("getnettotals", (*GetNetTotalsCmd)(nil), flags)
@@ -1220,6 +1286,7 @@ func init() {
 	MustRegisterCmd("gettxout", (*GetTxOutCmd)(nil), flags)
 	MustRegisterCmd("listutxos", (*ListUtxosCmd)(nil), flags)
 	MustRegisterCmd("getdefine", (*GetDefineCmd)(nil), flags)
+	MustRegisterCmd("getbtcl2Script", (*GetBtcL2ScriptCmd)(nil), flags)
 	MustRegisterCmd("gettxoutproof", (*GetTxOutProofCmd)(nil), flags)
 	MustRegisterCmd("gettxoutsetinfo", (*GetTxOutSetInfoCmd)(nil), flags)
 	MustRegisterCmd("getwork", (*GetWorkCmd)(nil), flags)

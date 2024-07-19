@@ -16,6 +16,7 @@ import (
 
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/wire"
@@ -287,7 +288,7 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 
 	for _, addr := range addrs {
 		t := token.Token{
-			TokenType: 0,
+			TokenType: common.OmegaCoinTyp, // Omega coin
 			Value: &token.NumToken{
 				Val: val,
 			},
@@ -321,6 +322,9 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 func spendTransaction(utxoView *viewpoint.ViewPointSet, tx *btcutil.Tx, height int32) error {
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		entry := utxoView.Utxo.LookupEntry(txIn.PreviousOutPoint)
@@ -373,12 +377,17 @@ func medianAdjustedTime(chainState *blockchain.BestState, timeSource chainutil.M
 	return newTimestamp
 }
 
+type BtcData struct {
+	chainParams *btcchaincfg.Params
+}
+
 // BlkTmplGenerator provides a type that can be used to generate block templates
 // based on a given mining Policy and source of transactions to choose from.
 // It also houses additional state required in order to ensure the templates
 // are built on top of the current best Chain and adhere to the consensus rules.
 type BlkTmplGenerator struct {
 	Policy      *Policy
+	btc         *BtcData
 	chainParams *chaincfg.Params
 	txSource    TxSource
 	Chain       *blockchain.BlockChain
@@ -386,6 +395,7 @@ type BlkTmplGenerator struct {
 
 	// only used by minerchain
 	Collateral []*wire.OutPoint
+	Pledge     map[wire.OutPoint]struct{}
 	//	sigCache    *txscript.SigCache
 	//	hashCache   *txscript.HashCache
 }
@@ -398,12 +408,13 @@ type BlkTmplGenerator struct {
 // consensus rules.
 func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 	txSource TxSource, chain *blockchain.BlockChain,
-	timeSource chainutil.MedianTimeSource) *BlkTmplGenerator {
+	timeSource chainutil.MedianTimeSource, btcparams *btcchaincfg.Params) *BlkTmplGenerator {
 	//	sigCache *txscript.SigCache,
 	//	hashCache *txscript.HashCache) *BlkTmplGenerator {
 
 	return &BlkTmplGenerator{
 		Policy:      policy,
+		btc:         &BtcData{chainParams: btcparams},
 		chainParams: params,
 		txSource:    txSource,
 		Chain:       chain,
@@ -515,7 +526,12 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	sortedByFee := g.Policy.BlockPrioritySize == 0
 	priorityQueue := newTxPriorityQueue(len(sourceTxns), sortedByFee)
 
-	views := g.Chain.Canvas(nil)
+	views, Vm := g.Chain.Canvas(nil)
+
+	if s.MsgBlock().ContractLimit > Vm.StepLimit {
+		Vm.StepLimit = s.MsgBlock().ContractLimit
+	}
+	stepLimit := Vm.StepLimit
 
 	var comptx []*wire.MsgTx
 	if s.MsgBlock().Version >= chaincfg.Version2 {
@@ -536,6 +552,64 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		blockTxns = append(blockTxns, btx)
 		spendTransaction(views, btx, nextBlockHeight)
 	}
+
+	// Check transactions in BTCL2Pool, include mature transactions here
+	views.Db.View(func(dbtx database.Tx) error {
+		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		heightbucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
+
+		hts := make(map[uint32]uint32)
+
+		cursor := bucket.Cursor()
+
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			h := common.LittleEndian.Uint32(cursor.Key())
+			if h+7 > ht { // not mature yet
+				continue
+			}
+			if h > minh {
+				continue
+			}
+
+			minh = h
+
+			xtx = &wire.BTCL2Data{}
+			err := xtx.Unserialize(cursor.Value())
+			if err != nil {
+				return err
+			}
+		}
+
+		if xtx == nil {
+			return nil
+		}
+
+		mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
+		mtx.LockTime = uint32(nextBlockHeight)
+		txin := wire.NewTxIn(&wire.OutPoint{Hash: *treasuary.Bhash2l2hash(xtx.Hash), Index: 0xFFFFFF}, minh)
+		mtx.AddTxIn(txin)
+		for _, txo := range xtx.Txs {
+			v := token.NumToken{
+				Val: txsparser.FindValue(txo.Value, txo.PkScript),
+			}
+			h := txsparser.FindRight(txo.PkScript)
+			right := (*chainhash.Hash)(nil)
+			if h != nil {
+				var h2 chainhash.Hash
+				copy(h2[:], h[:])
+				right = &h2
+			}
+			tokentype := txsparser.FindTokentype(txo.PkScript)
+			pkscript := treasuary.ScriptConvert(txo.PkScript)
+			txout := wire.NewTxOut(uint64(tokentype), &v, right, pkscript)
+			mtx.AddTxOut(txout)
+		}
+
+		btx := btcutil.NewTx(mtx)
+		blockTxns = append(blockTxns, btx)
+
+		return nil
+	})
 
 	blockUtxos := views.Utxo // blockchain.NewUtxoViewpoint()
 
@@ -642,7 +716,10 @@ mempoolLoop:
 				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
-				if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
+			if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
+				continue
+			}
+			if g.Chain.LockedCollaterals.Exists(&txin.PreviousOutPoint) {
 					locked = true
 					locks = txin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", txin.PreviousOutPoint.Index)
 					break
@@ -684,6 +761,9 @@ mempoolLoop:
 		for _, txIn := range tx.MsgTx().TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				// never here
+				continue
+			}
+			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				continue
 			}
 			originHash := &txIn.PreviousOutPoint.Hash
@@ -762,9 +842,37 @@ mempoolLoop:
 	// contract adds output to coinbase when mint, since we don't know coin Base Hash,
 	// we use a neg hash to hold the place.
 
+	Vm.SetCoinBaseOp(
+		func(txo wire.TxOut) wire.OutPoint {
+			msg := coinbaseTx.MsgTx()
+			if !coinbaseTx.HasOuts {
+				// this servers as a separater. only TokenType is serialized
+				to := wire.TxOut{}
+				to.Token = token.Token{TokenType: token.DefTypeSeparator}
+				msg.AddTxOut(&to)
+				coinbaseTx.HasOuts = true
+			}
+			msg.AddTxOut(&txo)
+			op := wire.OutPoint{coinBaseHash, uint32(len(msg.TxOut) - 1)}
+			views.Utxo.AddRawTxOut(op, &txo, false, nextBlockHeight)
+			return op
+		})
+	Vm.BlockNumber = func() uint64 {
+		return uint64(nextBlockHeight)
+	}
+	Vm.BlockTime = func() uint32 {
+		return uint32(ts.Unix())
+	}
+	Vm.BlockVersion = func() uint32 { return s.MsgBlock().Version &^ 0xFFFF }
+	//	Vm.Block = func() *btcutil.Block { return nil }
+	Vm.GetCoinBase = func() *btcutil.Tx { return coinbaseTx }
+	//	Vm.CheckExecCost = true
+
+	paidstoragefees := make(map[[20]byte]int64)
 	blksz := wire.MaxBlockHeaderPayload
 
 	// Choose which transactions make it into the block.
+skiprest:
 	for priorityQueue.Len() > 0 {
 		nt := time.Now()
 		if nt.UnixNano()-startTime > 40000*1e6 {
@@ -816,7 +924,7 @@ mempoolLoop:
 			for _, txo := range tx.MsgTx().TxOut {
 				if txo.IsSeparator() || txo.PkScript[0] == g.chainParams.ContractAddrID {
 					qualified = true
-				} else if txo.TokenType == 0 {
+				} else if txo.TokenType == common.OmegaCoinTyp {
 					sum += txo.Token.Value.(*token.NumToken).Val
 				} else {
 					qualified = true
@@ -885,6 +993,24 @@ mempoolLoop:
 			continue
 		}
 
+		// excute contracts if necessary. note, if the execution causes any change in
+		// in transaction, a new copy of tx will be returned.
+		savedCoinBase := *coinbaseTx.MsgTx().Copy()
+		newcoins := coinbaseTx.HasOuts
+		//		Vm.Paidfees = prioItem.fee + 10
+		executed, vmerr := Vm.ExecContract(tx, nextBlockHeight)
+		if vmerr != nil {
+			coinbaseTx.HasOuts = newcoins
+			*coinbaseTx.MsgTx() = savedCoinBase
+
+			//			if vmerr.Level() == omega.FatalLevel {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+
+			log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
+			logSkippedDeps(tx, deps)
+			continue
+		}
 		for ip := 0; ip < len(tx.MsgTx().TxOut); ip++ {
 			if tx.MsgTx().TxOut[ip].IsSeparator() {
 				continue
@@ -893,6 +1019,7 @@ mempoolLoop:
 				break
 			}
 		}
+		storage := blockchain.ContractNewStorage(tx, Vm, paidstoragefees)
 
 		tx.Executed = true
 
@@ -903,6 +1030,11 @@ mempoolLoop:
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			logSkippedDeps(tx, deps)
+			if executed {
+				coinbaseTx.HasOuts = newcoins
+				*coinbaseTx.MsgTx() = savedCoinBase
+				break skiprest // skip rest so we don't waste time on on more contracts
+			}
 
 			log.Infof("Skipping tx %s due to error in CheckTransactionInputs: %v", tx.Hash(), err)
 			continue
@@ -914,17 +1046,27 @@ mempoolLoop:
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			logSkippedDeps(tx, deps)
+			if executed {
+				coinbaseTx.HasOuts = newcoins
+				*coinbaseTx.MsgTx() = savedCoinBase
+				break skiprest // skip rest so we don't waste time on on more contracts
+			}
 
 			log.Infof("Skipping tx %s due to error in CheckTransactionIntegrity: %v", tx.Hash(), err)
 			continue
 		}
 
-		fees, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, 0, views, g.chainParams)
+		fees, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, storage, views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			logSkippedDeps(tx, deps)
+			if executed {
+				coinbaseTx.HasOuts = newcoins
+				*coinbaseTx.MsgTx() = savedCoinBase
+				break skiprest // skip rest so we don't waste time on on more contracts
+			}
 
 			log.Infof("Skipping tx %s due to error in CheckTransactionFeess: %v", tx.Hash(), err)
 			continue
@@ -935,6 +1077,11 @@ mempoolLoop:
 			log.Infof("Skipping tx %s because it would make block size exceeding the max", tx.Hash())
 
 			logSkippedDeps(tx, deps)
+			if executed {
+				coinbaseTx.HasOuts = newcoins
+				*coinbaseTx.MsgTx() = savedCoinBase
+				break skiprest // skip rest so we don't waste time on on more contracts
+			}
 
 			continue
 		}
@@ -974,6 +1121,8 @@ mempoolLoop:
 			}
 		}
 	}
+
+	contractExec := stepLimit - Vm.StepLimit
 
 	// add fees to miner outputs
 	m := int64(0)
@@ -1029,7 +1178,7 @@ mempoolLoop:
 		PrevBlock:    best.Hash,
 		MerkleRoot:   *merkles[len(merkles)-1],
 		Timestamp:    ts,
-		ContractExec: 0,
+		ContractExec: contractExec,
 		Nonce:        nonce,
 	}
 
@@ -1123,6 +1272,9 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	if nextBlockVersion >= chaincfg.Version2 {
 		usable := make(map[wire.OutPoint]struct{})
 		for _, c := range g.Collateral {
+		if g.Chain.HasUTXO(c) {
+			usable[*c] = struct{}{}
+		} else if g.Chain.IsPledged(c) {
 			usable[*c] = struct{}{}
 		}
 
@@ -1132,12 +1284,19 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 			}
 			p = p.Parent
 		}
-		if len(usable) == 0 {
+	k := len(usable)
+	if k == 0 && coll > 0 {
 			return nil, fmt.Errorf("No qualified collateral available out of %d collaterals.", len(g.Collateral))
 		}
+	if k > 0 {
+		k = rand.Intn(k)
+
 		for c, _ := range usable {
-			uc = &c
-			break
+			if k == 0 {
+				uc = &c
+				break
+			}
+			k--
 		}
 	}
 

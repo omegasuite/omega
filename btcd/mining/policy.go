@@ -56,6 +56,9 @@ func calcInputValueAge(tx *wire.MsgTx, utxoView *viewpoint.UtxoViewpoint, nextBl
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
+		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
+			continue
+		}
 		// Don't attempt to accumulate the total input age if the
 		// referenced transaction output doesn't exist.
 		entry := utxoView.LookupEntry(txIn.PreviousOutPoint)

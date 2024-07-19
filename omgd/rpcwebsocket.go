@@ -689,6 +689,9 @@ func (m *wsNotificationManager) subscribedClients(tx *btcutil.Tx,
 		if input.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
+		if input.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
+			continue
+		}
 		for quitChan, wsc := range clients {
 			wsc.Lock()
 			filter := wsc.filterData
@@ -1186,6 +1189,9 @@ func (m *wsNotificationManager) notifyForTxIns(ops map[wire.OutPoint]map[chan st
 	wscNotified := make(map[chan struct{}]struct{})
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		prevOut := &txIn.PreviousOutPoint
@@ -2124,6 +2130,9 @@ func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
 			if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
+			if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
+				continue
+			}
 			if _, ok := lookups.unspent[txin.PreviousOutPoint]; ok {
 				delete(lookups.unspent, txin.PreviousOutPoint)
 
@@ -2266,6 +2275,9 @@ func rescanBlockFilter(filter *wsClientFilter, block *btcutil.Block, params *cha
 			for _, input := range msgTx.TxIn {
 				if input.PreviousOutPoint.Hash.IsEqual(&zerohash) ||
 					!filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
+					continue
+				}
+				if input.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 					continue
 				}
 				if !added {

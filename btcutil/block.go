@@ -55,9 +55,15 @@ func (block *Block) CountSpentOutputs() int {
 	// Exclude the coinbase transaction since it can't spend anything.
 	var numSpent int
 	for _, tx := range block.Transactions()[1:] {
+		if tx.MsgTx().IsBtcL2() {
+			continue
+		}
 		numSpent += len(tx.MsgTx().TxIn)
 		for _, ti := range tx.MsgTx().TxIn {
 			if ti.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				numSpent--
+			}
+			if ti.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				numSpent--
 			}
 		}

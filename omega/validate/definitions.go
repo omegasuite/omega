@@ -269,6 +269,9 @@ func (s *MatchLoop) Add(cs string, loopcs string, loop *token.LoopDef) {
 }
 
 func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error {
+	if tx.MsgTx().IsBtcL2() {
+		return nil
+	}
 	// add definitions
 	pendBdr := make(map[chainhash.Hash][]*token.BorderDef)
 	redefbl := make(map[chainhash.Hash]struct{})
@@ -282,7 +285,10 @@ func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error
 	unxloops := make(MatchLoop, 0) // loops not intersect each other
 
 	for _, d := range tx.MsgTx().TxIn {
-		if d.PreviousOutPoint.Hash.IsEqual(&zerohash) || d.SignatureIndex == 0xFFFFFFFF {
+		if d.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		if d.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		utxo := views.Utxo.LookupEntry(d.PreviousOutPoint)
@@ -492,6 +498,9 @@ func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error
 
 			for _, txIn := range tx.MsgTx().TxIn {
 				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					continue
+				}
+				if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 					continue
 				}
 				utxo := views.Utxo.LookupEntry(txIn.PreviousOutPoint)

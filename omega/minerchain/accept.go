@@ -320,6 +320,35 @@ hit:
 	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
 }
 
+func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {
+	blk := block.MsgBlock()
+	if len(blk.Instructions) > 255 {
+		return fmt.Errorf("Too many ops in MR block")
+	}
+
+	for _, op := range blk.Instructions {
+		switch op.InstCode {
+		case wire.RetireReq:
+			if len(op.InstData) != 0 { // UTXO of asset to withdraw
+				return fmt.Errorf("Incorrect op data")
+			}
+
+		case wire.Retire:
+			if len(op.InstData) != 0 { // UTXO of asset to withdraw
+				return fmt.Errorf("Incorrect op data")
+			}
+			if !treasury.MayRetire(blk.Miner) {
+				return fmt.Errorf("Miner may not retire")
+			}
+
+		case wire.UplinkChain:
+
+		case wire.DownlinkChain:
+		}
+	}
+	return nil
+}
+
 // checkBlockContext peforms several validation checks on the block which depend
 // on its position within the block chain.
 //
@@ -487,6 +516,12 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		// fail if: 1. major version is less than expected
 		// 2. version is larger than expected
 		return fmt.Errorf("Incorrect block version")
+	}
+
+	// validate opes
+	err = b.ValidateOps(block)
+	if err != nil {
+		return err
 	}
 
 	return nil

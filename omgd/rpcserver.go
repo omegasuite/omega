@@ -158,6 +158,12 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getblockhash":    handleGetBlockHash,
 	"getblockheader":  handleGetBlockHeader,
 	"genmultisigaddr": handleGenMultiSigAddr,
+	"getbtcl2script":  handleGetBtcL2Script, // new, get a script for transfer Bitcoin to L2
+	"gettreasury":     handleGetTreasury,    // new
+	"getsigners":      handleGetSigners,     // new
+	"getbtcpool":      handleGetBtcPool,     // new
+	"getl2pool":       handleGetL2Pool,      // new
+	"clearbtcl2pool":  handleClearBtcL2Pool, // new
 
 	"getminerblock":       handleGetMinerBlock,       // New
 	"getminerblockheight": handleGetMinerBlockHeight, // New
@@ -167,9 +173,12 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	//	"searchborder":   		 handleSearchBorder,	// New
 	"gettpsview":      handleGetTPSView,
 	"gettpsreport":    handleGetTPSReport,
+	"contractcall":    handleContractCall, // New
+	"trycontract":     handleTryContract,  // New
 	"miningpolicy":    handleMiningPolicy, // New. miner specific policy
 	"tokenaddress":    handleTokenAddress, // New
 	"getissuedtokens": handleGetIssuedTokens,
+	"createxferl2tx":  handleCreatexferl2txo, // New, to create a TX for transferring BTC to L2 (i.e. sending BTC to designated address)
 
 	//	"getblocktemplate":      handleGetBlockTemplate,
 	"getconnectioncount":    handleGetConnectionCount,
@@ -197,6 +206,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"searchrawtransactions": handleSearchRawTransactions,
 	"searchspend":           handleSearchSpend,
 	"checkfork":             handleCheckFork,
+	"signrawtransaction":    handleSignRawTransaction,
 	"sendrawtransaction":    handleSendRawTransaction,
 	"confirmations":         handleConfirmations,
 	"recastrawtransaction":  handleRecastRawTransaction,
@@ -216,45 +226,45 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 // it lacks support for wallet functionality. For these commands the user
 // should ask a connected instance of btcwallet.
 var rpcAskWallet = map[string]struct{}{
-	"addmultisigaddress":     {},
-	"backupwallet":           {},
-	"createencryptedwallet":  {},
-	"createmultisig":         {},
-	"dumpprivkey":            {},
-	"dumpwallet":             {},
-	"encryptwallet":          {},
-	"getaccount":             {},
-	"getaccountaddress":      {},
-	"getaddressesbyaccount":  {},
-	"getbalance":             {},
-	"getnewaddress":          {},
-	"getrawchangeaddress":    {},
-	"getreceivedbyaccount":   {},
-	"getreceivedbyaddress":   {},
-	"gettransaction":         {},
-	"gettxoutsetinfo":        {},
-	"getunconfirmedbalance":  {},
-	"getwalletinfo":          {},
-	"importprivkey":          {},
-	"importwallet":           {},
-	"keypoolrefill":          {},
-	"listaccounts":           {},
-	"listaddressgroupings":   {},
-	"listlockunspent":        {},
-	"listreceivedbyaccount":  {},
-	"listreceivedbyaddress":  {},
-	"listsinceblock":         {},
-	"listtransactions":       {},
-	"listunspent":            {},
-	"lockunspent":            {},
-	"move":                   {},
-	"sendfrom":               {},
-	"sendmany":               {},
-	"sendtoaddress":          {},
-	"setaccount":             {},
-	"settxfee":               {},
-	"signmessage":            {},
-	"signrawtransaction":     {},
+	"addmultisigaddress":    {},
+	"backupwallet":          {},
+	"createencryptedwallet": {},
+	"createmultisig":        {},
+	"dumpprivkey":           {},
+	"dumpwallet":            {},
+	"encryptwallet":         {},
+	"getaccount":            {},
+	"getaccountaddress":     {},
+	"getaddressesbyaccount": {},
+	"getbalance":            {},
+	"getnewaddress":         {},
+	"getrawchangeaddress":   {},
+	"getreceivedbyaccount":  {},
+	"getreceivedbyaddress":  {},
+	"gettransaction":        {},
+	"gettxoutsetinfo":       {},
+	"getunconfirmedbalance": {},
+	"getwalletinfo":         {},
+	"importprivkey":         {},
+	"importwallet":          {},
+	"keypoolrefill":         {},
+	"listaccounts":          {},
+	"listaddressgroupings":  {},
+	"listlockunspent":       {},
+	"listreceivedbyaccount": {},
+	"listreceivedbyaddress": {},
+	"listsinceblock":        {},
+	"listtransactions":      {},
+	"listunspent":           {},
+	"lockunspent":           {},
+	"move":                  {},
+	"sendfrom":              {},
+	"sendmany":              {},
+	"sendtoaddress":         {},
+	"setaccount":            {},
+	"settxfee":              {},
+	"signmessage":           {},
+	//	"signrawtransaction":     {},
 	"walletlock":             {},
 	"walletpassphrase":       {},
 	"walletpassphrasechange": {},
@@ -316,6 +326,12 @@ var rpcLimited = map[string]struct{}{
 	"getnetworkhashps": {},
 	"getrawmempool":    {},
 	"getissuedtokens":  {},
+	"createxferl2txo":  {},
+	"gettreasury":      {}, // new
+	"getsigners":       {}, // new
+	"getbtcpool":       {}, // new
+	"getl2pool":        {}, // new
+	"clearbtcl2pool":   {}, // new
 
 	//	"clearmempool":          {},	this is admin command
 	"getrawtransaction":     {},
@@ -506,6 +522,42 @@ func createMultiSigScript(scripts [][]byte, n uint16, chainParams *chaincfg.Para
 
 	builder.AddOp(ovm.SIGNTEXT, []byte{byte(ovm.SigHashNone)})
 	return btcutil.Hash160(h), builder.Script()
+}
+
+// handleGetBtcL2Script handles getbtcl2script
+func handleGetBtcL2Script(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetBtcL2ScriptCmd)
+
+	from, err := btcutil.DecodeAddress(c.Address, s.cfg.ChainParams)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var hash [20]byte
+
+	if !from.IsForNet(s.cfg.ChainParams) || from.Version() != s.cfg.ChainParams.PubKeyHashAddrID {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCInvalidAddressOrKey,
+			Message: "Invalid address or key: " + c.Address,
+		}
+	}
+	copy(hash[:], from.ScriptAddress())
+
+	script, signers := treasury.Get75pctMSScript(hash)
+
+	snrs := make([]string, 0, len(signers))
+	for _, ss := range signers {
+		adr, _ := btcutil.NewAddressPubKeyHash(ss[:], s.cfg.ChainParams)
+		snrs = append(snrs, adr.EncodeAddress())
+	}
+
+	reply := &btcjson.BtcL2Script{
+		Addresses: snrs,
+		Script:    hex.EncodeToString(script),
+	}
+
+	return reply, nil
 }
 
 // handleAddNode handles addnode commands.
@@ -944,6 +996,73 @@ func handleTokenAddress(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	return address.EncodeAddress(), nil
 }
 
+// handleTryContract handles TryContract commands.
+func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.TryContractCmd)
+	// Deserialize and send off to tx relay
+	hexStr := c.HexTx
+	if len(hexStr)%2 != 0 {
+		hexStr = "0" + hexStr
+	}
+	serializedTx, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return nil, rpcDecodeHexError(hexStr)
+	}
+	var msgTx wire.MsgTx
+	err = msgTx.Deserialize(bytes.NewReader(serializedTx))
+	if err != nil {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCDeserialization,
+			Message: "TX decode failed: " + err.Error(),
+		}
+	}
+
+	vm := ovm.NewOVM(s.cfg.ChainParams)
+	views := s.cfg.Chain.NewViewPointSet()
+	vm.SetViewPoint(views)
+
+	best := s.cfg.Chain.BestSnapshot()
+	views.SetBestHash(&best.Hash)
+
+	vm.BlockNumber = func() uint64 { return uint64(best.Height + 1) }
+	nt := time.Now().Unix()
+	vm.BlockTime = func() uint32 { return uint32(nt) }
+	vm.BlockVersion = func() uint32 { return wire.CodeVersion }
+
+	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
+
+	if mb == nil {
+		return nil, fmt.Errorf("Unable to handle this request for now")
+	}
+	if mb.Data.GetContractExec() > vm.StepLimit {
+		vm.StepLimit = mb.Data.GetContractExec()
+	}
+
+	tx := btcutil.NewTx(&msgTx)
+
+	result, err := vm.TryContract(tx, best.Height)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return the serialized and hex-encoded transaction.  Note that this
+	// is intentionally not directly returning because the first return
+	// value is a string and it would result in returning an empty string to
+	// the client instead of nothing (nil) in the case of an error.
+	var w bytes.Buffer
+	err = tx.MsgTx().SerializeFull(&w)
+	if err != nil {
+		return nil, err
+	}
+
+	reply := &btcjson.TryResult{
+		Result: hex.EncodeToString(result),
+		Tx:     hex.EncodeToString(w.Bytes()),
+	}
+
+	return reply, nil
+}
+
 // handleMiningPolicy handles MiningPolicy commands.
 func handleMiningPolicy(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	txReply := &btcjson.MiningPolicy{
@@ -987,6 +1106,18 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCInvalidParameter,
 			Message: "Locktime out of range",
+		}
+	}
+
+	targetchains := []uint32{}
+	if c.Targetchains != nil {
+		targetchains = *c.Targetchains
+	}
+
+	if len(targetchains) != 0 && len(targetchains) != len(c.Amounts) {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCInvalidParameter,
+			Message: "Targetchains and Amounts mismatch",
 		}
 	}
 
@@ -1067,12 +1198,22 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 	// Add all transaction outputs to the transaction after performing
 	// some validity checks.
 	params := s.cfg.ChainParams
-	for _, mid := range c.Amounts {
+	for i, mid := range c.Amounts {
+		targetchain := uint32(0)
+		if len(targetchains) > 0 {
+			targetchain = targetchains[i]
+			if (targetchain & 0xFF000000) != 0 {
+				return nil, &btcjson.RPCError{
+					Code:    btcjson.ErrRPCInvalidParameter,
+					Message: "Invalid target chain",
+				}
+			}
+		}
 		for encodedAddr, amount := range mid {
 			// Decode the provided address.
 			var pkScript []byte
 			if encodedAddr == "contract" {
-				if amount.Script == nil {
+				if amount.Script == nil || targetchain != 0 {
 					return nil, &btcjson.RPCError{
 						Code:    btcjson.ErrRPCInvalidParameter,
 						Message: "Invalid contract script.",
@@ -1110,10 +1251,22 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 				if amount.Script != nil {
 					switch *amount.Script {
 					case "paynone":
+						if targetchain != 0 {
+							return nil, &btcjson.RPCError{
+								Code:    btcjson.ErrRPCInvalidAddressOrKey,
+								Message: "Can not send to black hole in another chain",
+							}
+						}
 						pkFunc = []byte{ovm.OP_PAY2NONE, 0, 0, 0}
 
 					case "payany":
 						pkFunc = []byte{ovm.OP_PAY2ANY, 0, 0, 0}
+						if targetchain != 0 {
+							return nil, &btcjson.RPCError{
+								Code:    btcjson.ErrRPCInvalidAddressOrKey,
+								Message: "Can not send to Anyone in another chain",
+							}
+						}
 					}
 				}
 				if !addr.IsForNet(params) {
@@ -1128,7 +1281,16 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 				pkScript = make([]byte, 25)
 				pkScript[0] = addr.Version()
 				copy(pkScript[1:], addr.ScriptAddress())
-				copy(pkScript[21:], pkFunc)
+
+				if targetchain != 0 {
+					pkScript[21] = ovm.OP_PAYCROSSCHAIN
+					var t [4]byte
+					common.LittleEndian.PutUint32(t[:], uint32(targetchain))
+					copy(pkScript[22:25], t[:3])
+					pkScript = append(pkScript, pkFunc...)
+				} else {
+					copy(pkScript[21:], pkFunc)
+				}
 			}
 
 			txOut := amount.ConvertTo(mtx)
@@ -1235,6 +1397,9 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		// error here.
 		//		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		if txIn.SignatureIndex == 0xFFFFFFFF && len(mtx.TxOut) == 0 {
 			continue
 		}
 		var disbuf string
@@ -1780,6 +1945,82 @@ func handleGetTPSReport(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 
 	return res, nil
 }
+
+func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.ContractCallCmd)
+
+	vm := ovm.NewOVM(s.cfg.ChainParams)
+	views := s.cfg.Chain.NewViewPointSet()
+	vm.SetViewPoint(views)
+
+	best := s.cfg.Chain.BestSnapshot()
+	vm.BlockTime = func() uint32 { return uint32(best.MedianTime.Unix()) }
+	vm.BlockNumber = func() uint64 { return uint64(best.Height) }
+	vm.BlockVersion = func() uint32 { return wire.CodeVersion }
+
+	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
+	if mb == nil {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCMisc,
+			Message: "Chain stalled.",
+		}
+	}
+	if mb.Data.GetContractExec() > vm.StepLimit {
+		vm.StepLimit = mb.Data.GetContractExec()
+	}
+
+	contract, err := ovm.AddressFromString(c.Contract)
+	if err != nil {
+		return nil, err
+	}
+
+	var srcBytes []byte
+	if len(c.Input)%2 == 0 {
+		srcBytes = []byte(c.Input)
+	} else {
+		srcBytes = make([]byte, 1+len(c.Input))
+		srcBytes[0] = '0'
+		copy(srcBytes[1:], c.Input)
+	}
+
+	input := make([]byte, len(srcBytes)/2)
+	if _, err := hex.Decode(input, srcBytes); err != nil {
+		return nil, err
+	}
+
+	ret, err := vm.ContractCall(contract, input)
+	return hex.EncodeToString(ret), err
+}
+
+/*
+func handleSearchBorder(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.SearchBorderCmd)
+
+	var hashes []chainhash.Hash
+
+	if err := s.cfg.DB.View(func(dbTx database.Tx) error {
+		hashes = viewpoint.Findborders(dbTx,
+			[4]uint32{uint32(c.Left) + 0x80000000,
+				uint32(c.Right) + 0x80000000,
+				uint32(c.Bottom) + 0x80000000,
+				uint32(c.Top) + 0x80000000}, c.Lod)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	if len(hashes) > 5000 {
+		hashes = hashes[:5000]
+	}
+
+	result := make([]string, len(hashes))
+	for i, h := range hashes {
+		result[i] = h.String()
+	}
+
+	return result, nil
+}
+*/
 
 // handleGetBlock implements the getblock command.
 func handleGetBlockTxHases(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
@@ -2637,10 +2878,14 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		// when multiple inputs reference the same transaction.
 		dependsMap := make(map[int64]struct{})
 		for _, txIn := range tx.TxIn {
-			if !txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
-					dependsMap[idx] = struct{}{}
-				}
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
+				continue
+			}
+			if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
+				dependsMap[idx] = struct{}{}
 			}
 		}
 		depends := make([]int64, 0, len(dependsMap))
@@ -3425,6 +3670,227 @@ func handleGetPeerInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	return infos, nil
 }
 
+func handleGetTreasury(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	mydb := s.cfg.DB
+	treasure := make(map[string]btcjson.TreasuryAsset)
+
+	mydb.View(func(tx database.Tx) error {
+		bucket := tx.Metadata().Bucket([]byte(common.INASSETS))
+		cursor := bucket.Cursor()
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			var outp wire.OutPoint
+			key := cursor.Key()
+			if len(key) == 8 {
+				// it is typemap
+				continue
+			}
+			outp.Hash.SetBytes(key[:32])
+			outp.Index = common.LittleEndian.Uint32(key[32:])
+			plg := &treasury.Asset{}
+			_, err := plg.Deserialize(cursor.Value())
+			if err != nil {
+				return err
+			}
+
+			fmt.Printf("Asset: %s => typeid: %x, amount: %d, outpoint: %s, pkscript: %x, owners: %d,", outp.String(), plg.Typeid, plg.Amount, plg.Outpoint.String(), plg.Pkscript, len(plg.Owners))
+			if len(plg.Owners) > 0 {
+				fmt.Printf(" owners: ")
+				for _, p := range plg.Owners {
+					fmt.Printf(" %x\n", p)
+				}
+			}
+			fmt.Printf("\n")
+			t := btcjson.TreasuryAsset{
+				Typeid:   plg.Typeid,
+				Amount:   plg.Amount,
+				Outpoint: plg.Outpoint.String(),
+				Owners:   []string{},
+				Pkscript: hex.EncodeToString(plg.Pkscript),
+			}
+			for _, u := range plg.Owners {
+				d, _ := btcutil.NewAddressPubKeyHash(u[:], s.cfg.ChainParams)
+				t.Owners = append(t.Owners, d.String())
+			}
+			treasure[outp.String()] = t
+		}
+		return nil
+	})
+	return treasure, nil
+}
+
+func handleGetSigners(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	mydb := s.cfg.DB
+
+	signers := make(map[string]btcjson.TreasurySigners)
+
+	mydb.View(func(tx database.Tx) error {
+		bucket := tx.Metadata().Bucket([]byte(common.BRIDGESIGNERS))
+		cursor := bucket.Cursor()
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			var addr [20]byte
+			copy(addr[:], cursor.Key())
+
+			t := &treasury.Signers{}
+			copy(t.Address[:], addr[:])
+			t.Pledged = make([]*treasury.PlgAsset, 0)
+
+			_, err := t.Deserialize(cursor.Value())
+			if err != nil {
+				continue
+			}
+
+			fmt.Printf("%x: address: %x, joined: %d, retiring: %d, voting: %d, pubkey: %x, pledges： %d\n", addr, t.Address, t.Joined, t.Retiring, t.Voting, t.Pubkey, len(t.Pledged))
+			for _, p := range t.Pledged {
+				fmt.Printf("Pledged: utxo: %s firstuse: %d amount: %d\n", p.Utxo.String(), p.Firstuse, p.Amount)
+			}
+
+			ad, _ := btcutil.NewAddressPubKeyHash(addr[:], s.cfg.ChainParams)
+
+			p := btcjson.TreasurySigners{
+				Address:   ad.String(),
+				Pubkey:    hex.EncodeToString(t.Pubkey), // Pubkey of signer
+				Voting:    t.Voting,                     // Voting power in %
+				Retiring:  t.Retiring,                   // whether is Retiring
+				Joined:    t.Joined,                     // height when it becomes a signer
+				Pledged:   []btcjson.TreasuryPlgAsset{}, // Assets Pledged
+				Btcprofit: t.Btcprofit,                  // profits in BTC
+			}
+
+			for _, q := range t.Pledged {
+				p.Pledged = append(p.Pledged, btcjson.TreasuryPlgAsset{
+					Utxo:     q.Utxo.String(),
+					Amount:   q.Amount,
+					Firstuse: q.Firstuse, // height when it becomes a signer
+				})
+			}
+
+			signers[ad.String()] = p
+		}
+		return nil
+	})
+	return signers, nil
+}
+
+func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	s.cfg.DB.Update(func(dbTx database.Tx) error {
+		bucketName := []byte(common.INCOMINGPOOL)
+		dbTx.Metadata().DeleteBucket(bucketName)
+		dbTx.Metadata().CreateBucket(bucketName)
+
+		bucketName = []byte(common.L2BTCPOOL)
+		dbTx.Metadata().DeleteBucket(bucketName)
+		dbTx.Metadata().CreateBucket(bucketName)
+
+		bucketName = []byte(common.INASSETS)
+		dbTx.Metadata().DeleteBucket(bucketName)
+		dbTx.Metadata().CreateBucket(bucketName)
+		return nil
+	})
+	return nil, nil
+}
+
+func handleGetBtcPool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	res := make(map[string]btcjson.BTCL2Data)
+	s.cfg.DB.View(func(dbTx database.Tx) error {
+		bucketName := []byte(common.INCOMINGPOOL)
+		bucket := dbTx.Metadata().Bucket(bucketName)
+		cursor := bucket.Cursor()
+
+		head := bucket.Get([]byte("BTCHeight")) // height of current BTC tip
+		if head != nil {
+			ht := common.LittleEndian.Uint32(head)
+			res["BTCHeight"] = btcjson.BTCL2Data{Height: int32(ht)}
+		}
+
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			if bytes.Compare(cursor.Key(), []byte("BTCHeight")) == 0 {
+				continue
+			}
+			h := common.LittleEndian.Uint32(cursor.Key())
+
+			fromBTC := common.BTCL2Data{}
+			fromBTC.Unserialize(cursor.Value())
+
+			t := btcjson.BTCL2Data{
+				Hash:   fromBTC.Hash.String(),
+				Height: fromBTC.Height,
+				Txs:    []btcjson.MsgXrossL2{},
+			}
+
+			for _, p := range fromBTC.Txs {
+				t.Txs = append(t.Txs, btcjson.MsgXrossL2{
+					Utxo:     p.Utxo.String(),
+					Value:    p.Value,
+					PkScript: hex.EncodeToString(p.PkScript),
+					Redeem:   hex.EncodeToString(p.Redeem),
+				})
+			}
+
+			res[fmt.Sprintf("%d", h)] = t
+		}
+		return nil
+	})
+	return res, nil
+}
+
+func handleGetL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	res := make(map[string]btcjson.BTCL2Data)
+	s.cfg.DB.View(func(dbTx database.Tx) error {
+		bucketName := []byte(common.L2BTCPOOL)
+		bucket := dbTx.Metadata().Bucket(bucketName)
+		cursor := bucket.Cursor()
+
+		head := bucket.Get([]byte("ChainHeight")) // height of current BTC tip
+		if head != nil {
+			ht := common.LittleEndian.Uint32(head)
+			res["ChainHeight"] = btcjson.BTCL2Data{Height: int32(ht)}
+		}
+
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			if len(cursor.Key()) != 4 {
+				continue
+			}
+			h := common.LittleEndian.Uint32(cursor.Key())
+			d := &common.BTCL2Data{}
+			d.Unserialize(cursor.Value())
+
+			t := btcjson.BTCL2Data{
+				Hash:   d.Hash.String(),
+				Height: d.Height,
+				Txs:    []btcjson.MsgXrossL2{},
+			}
+
+			for _, p := range d.Txs {
+				t.Txs = append(t.Txs, btcjson.MsgXrossL2{
+					Utxo:     p.Utxo.String(),
+					Value:    p.Value,
+					PkScript: hex.EncodeToString(p.PkScript),
+					Redeem:   hex.EncodeToString(p.Redeem),
+				})
+			}
+
+			res[fmt.Sprintf("%d", h)] = t
+		}
+
+		return nil
+	})
+	return res, nil
+}
+
+func handleCreatexferl2txo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.Createxferl2txoCmd)
+	if c.AssetType == nil || *c.AssetType == 0 {
+		pks, _ := treasury.Get75pctMSScript(c.Address)
+
+		result := btcwire.TxOut{
+			Value:    int64(c.Amount),
+			PkScript: pks,
+		}
+		return &result, nil
+	}
+	return nil, fmt.Errorf("Unsupported asset type")
+}
+
 // handleGetIssuedTokens implements the getissuedtokens command.
 func handleGetIssuedTokens(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	var IssuedTokenTypes = []byte("issuedTokens")
@@ -3810,8 +4276,9 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	}
 
 	if !(*(c.IncludeLocked)) {
-		p := wire.OutPoint{Hash: *txHash, Index: c.Vout}
-		if _, ok := s.cfg.Chain.LockedCollaterals[p]; ok {
+		p := &wire.OutPoint{Hash: *txHash, Index: c.Vout}
+
+		if s.cfg.Chain.LockedCollaterals.Exists(p) {
 			return nil, &btcjson.RPCError{
 				Code:    btcjson.ErrRPCInvalidTxVout,
 				Message: "Locked collateral.",
@@ -4155,6 +4622,9 @@ func fetchInputTxos(s *rpcServer, tx *wire.MsgTx) (map[wire.OutPoint]wire.TxOut,
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
+		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
+			continue
+		}
 
 		// Attempt to fetch and use the referenced transaction from the
 		// memory pool.
@@ -4256,6 +4726,9 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 			continue
 		}
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		if txIn.SignatureIndex == 0xFFFFFFFF && len(mtx.TxOut) == 0 {
 			continue
 		}
 		// The disassembled string will contain [error] inline
@@ -4985,6 +5458,397 @@ func handleRecastRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 	s.cfg.ConnMgr.RelayTransactions(txs)
 
 	return fmt.Sprintf("Done with %d txs", len(txs)), nil
+}
+
+// SignatureError records the underlying error when validating a transaction
+// input signature.
+type SignatureError struct {
+	InputIndex uint32
+	Error      error
+}
+
+// signRawTransaction handles the signrawtransaction command.
+func handleSignRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.SignRawTransactionCmd)
+
+	hexStr := c.RawTx
+	if len(hexStr)%2 != 0 {
+		hexStr = "0" + hexStr
+	}
+
+	serializedTx, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return nil, rpcDecodeHexError(hexStr)
+	}
+	if c.PrivKeys == nil {
+		return nil, fmt.Errorf("Unable to sign w/o paiv key")
+	}
+
+	param := s.cfg.ChainParams
+
+	if c.IsHash != nil && *c.IsHash {
+		for _, key := range *c.PrivKeys {
+			wif, err := btcutil.DecodeWIF(key)
+			if err != nil {
+				return nil, err
+			}
+
+			if !wif.IsForNet(s.cfg.ChainParams) {
+				s := "key network doesn't match wallet's"
+				return nil, errors.New(s)
+			}
+
+			key := wif.PrivKey
+			signature, err := key.Sign(serializedTx)
+			if err != nil {
+				return nil, fmt.Errorf("cannot sign tx input: %s", err)
+			}
+
+			return btcjson.SignRawTransactionResult{
+				Hex:      hex.EncodeToString(signature.Serialize()),
+				Complete: true,
+				Errors:   nil,
+			}, nil
+		}
+		return nil, nil
+	} else {
+		var tx wire.MsgTx
+
+		err = tx.Deserialize(bytes.NewBuffer(serializedTx))
+		//		err = tx.DeserializeNoWitness(bytes.NewBuffer(serializedTx))
+		if err != nil {
+			e := errors.New("TX decode failed")
+			return nil, e
+		}
+
+		var hashType txscript.SigHashType
+		switch *c.Flags {
+		case "ALL":
+			hashType = txscript.SigHashAll
+		case "NONE":
+			hashType = txscript.SigHashNone
+		case "SINGLE":
+			hashType = txscript.SigHashSingle
+		case "DOUBLE":
+			hashType = txscript.SigHashDouble
+		case "TRIPLE":
+			hashType = txscript.SigHashTriple
+		case "QUARDRUPLE":
+			hashType = txscript.SigHashQuardruple
+		case "ALL|ANYONECANPAY":
+			hashType = txscript.SigHashAll | txscript.SigHashAnyOneCanPay
+		case "NONE|ANYONECANPAY":
+			hashType = txscript.SigHashNone | txscript.SigHashAnyOneCanPay
+		case "SINGLE|ANYONECANPAY":
+			hashType = txscript.SigHashSingle | txscript.SigHashAnyOneCanPay
+		case "DOUBLE|ANYONECANPAY":
+			hashType = txscript.SigHashDouble | txscript.SigHashAnyOneCanPay
+		case "TRIPLE|ANYONECANPAY":
+			hashType = txscript.SigHashTriple | txscript.SigHashAnyOneCanPay
+		case "QUARDRUPLE|ANYONECANPAY":
+			hashType = txscript.SigHashQuardruple | txscript.SigHashAnyOneCanPay
+		default:
+			e := errors.New("Invalid sighash parameter")
+			return nil, e
+		}
+
+		// TODO: really we probably should look these up with btcd anyway to
+		// make sure that they match the blockchain if present.
+		inputs := make(map[wire.OutPoint][]byte)
+		scripts := make(map[string][]byte)
+		var cmdInputs []btcjson.RawTxInput
+		if c.Inputs != nil {
+			cmdInputs = *c.Inputs
+		}
+		for _, rti := range cmdInputs {
+			var inputHash *chainhash.Hash
+			var script []byte
+			var err error
+
+			if len(rti.Txid) > 0 {
+				inputHash, err = chainhash.NewHashFromStr(rti.Txid)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			if len(rti.ScriptPubKey) > 0 {
+				script, err = hex.DecodeString(rti.ScriptPubKey)
+				if err != nil {
+					return nil, err
+				}
+			}
+
+			// RedeemScript is used to get the scripts for signing.
+			if len(rti.RedeemScript) > 0 {
+				redeemScript, err := hex.DecodeString(rti.RedeemScript)
+				if err != nil {
+					return nil, err
+				}
+
+				switch redeemScript[0] {
+				case param.MultiSigAddrID:
+					scriptHash := btcutil.Hash160(redeemScript[1:])
+					addr, err := btcutil.NewAddressMultiSig(scriptHash, param)
+					if err != nil {
+						return nil, err
+					}
+					scripts[addr.String()] = redeemScript[1:]
+
+				case param.ScriptHashAddrID:
+					addr, err := btcutil.NewAddressScriptHash(redeemScript[1:], param)
+					if err != nil {
+						return nil, err
+					}
+					scripts[addr.String()] = redeemScript[1:]
+				}
+			}
+			if inputHash != nil && script != nil {
+				inputs[wire.OutPoint{
+					Hash:  *inputHash,
+					Index: rti.Vout,
+				}] = script
+			}
+		}
+
+		view := viewpoint.NewViewPointSet(s.cfg.DB)
+		requested := make(map[wire.OutPoint]struct{})
+
+		for _, txIn := range tx.TxIn {
+			if txIn.IsSepadding() {
+				continue
+			}
+			// Did we get this outpoint from the arguments?
+			if _, ok := inputs[txIn.PreviousOutPoint]; ok {
+				continue
+			}
+			requested[txIn.PreviousOutPoint] = struct{}{}
+		}
+
+		view.Utxo.FetchUtxosMain(s.cfg.DB, requested)
+
+		// Parse list of private keys, if present. If there are any keys here
+		// they are the keys that we may use for signing. If empty we will
+		// use any keys known to us already.
+		var keys map[string]*btcutil.WIF
+
+		keys = make(map[string]*btcutil.WIF)
+
+		for _, key := range *c.PrivKeys {
+			if len(key) == 0 {
+				continue
+			}
+			wif, err := btcutil.DecodeWIF(key)
+			if err != nil {
+				return nil, err
+			}
+
+			if !wif.IsForNet(param) {
+				s := "key network doesn't match wallet's"
+				return nil, errors.New(s)
+			}
+
+			addr, err := btcutil.NewAddressPubKey(wif.SerializePubKey(), param)
+
+			if err != nil {
+				return nil, err
+			}
+			keys[addr.EncodeAddress()] = wif
+			pkh := addr.AddressPubKeyHash()
+			pks := pkh.EncodeAddress()
+			keys[pks] = wif
+		}
+
+		for outPoint, _ := range requested {
+			e := view.Utxo.LookupEntry(outPoint)
+			if e != nil {
+				inputs[outPoint] = e.PkScript()
+			}
+		}
+
+		// All args collected. Now we can sign all the inputs that we can.
+		// `complete' denotes that we successfully signed all outputs and that
+		// all scripts will run to completion. This is returned as part of the
+		// reply.
+		signErrs, err := s.SignTransaction(&tx, hashType, inputs, keys, scripts, view)
+		if err != nil {
+			return nil, err
+		}
+
+		var buf bytes.Buffer
+		buf.Grow(tx.SerializeSize())
+
+		// All returned errors (not OOM, which panics) encounted during
+		// bytes.Buffer writes are unexpected.
+		if err = tx.Serialize(&buf); err != nil {
+			panic(err)
+		}
+
+		signErrors := make([]btcjson.SignRawTransactionError, 0, len(signErrs))
+		for _, e := range signErrs {
+			input := tx.TxIn[e.InputIndex]
+			signErrors = append(signErrors, btcjson.SignRawTransactionError{
+				TxID:      input.PreviousOutPoint.Hash.String(),
+				Vout:      input.PreviousOutPoint.Index,
+				ScriptSig: hex.EncodeToString(tx.SignatureScripts[input.SignatureIndex]),
+				Sequence:  input.Sequence,
+				Error:     e.Error.Error(),
+			})
+		}
+
+		return &btcjson.SignRawTransactionResult{
+			Hex:      hex.EncodeToString(buf.Bytes()),
+			Complete: len(signErrors) == 0,
+			Errors:   signErrors,
+		}, nil
+	}
+}
+
+// SignTransaction uses secrets of the wallet, as well as additional secrets
+// passed in by the caller, to create and add input signatures to a transaction.
+//
+// Transaction input script validation is used to confirm that all signatures
+// are valid.  For any invalid input, a SignatureError is added to the returns.
+// The final error return is reserved for unexpected or fatal errors, such as
+// being unable to determine a previous output script to redeem.
+//
+// The transaction pointed to by tx is modified by this function.
+func (s *rpcServer) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
+	additionalPrevScripts map[wire.OutPoint][]byte,
+	additionalKeysByAddress map[string]*btcutil.WIF,
+	redeemScriptsByAddress map[string][]byte, view *viewpoint.ViewPointSet) ([]SignatureError, error) {
+
+	ctx := ovm.Context{}
+	ctx.GetCoinBase = func() *btcutil.Tx { return nil }
+	ctx.GetTx = func() *btcutil.Tx { return btcutil.NewTx(tx) }
+	ctx.AddTxOutput = func(t wire.TxOut) int { return -1 }
+	ctx.AddDef = func(t token.Definition, b bool) chainhash.Hash { return chainhash.Hash{} }
+	ctx.GetUtxo = func(hash chainhash.Hash, seq uint64) *wire.TxOut { return nil }
+	ctx.BlockNumber = func() uint64 { return 0 }
+	ctx.BlockTime = func() uint32 { return 0 }
+
+	chainParams := s.cfg.ChainParams
+
+	svm := ovm.NewSigVM(chainParams)
+	svm.SetContext(ctx)
+	svm.StepLimit = chainParams.ContractExecLimit
+	intp := svm.Interpreter()
+
+	signed := make(map[uint32]struct{})
+
+	var signErrors []SignatureError
+	var zerohash chainhash.Hash
+
+	for i, txIn := range tx.TxIn {
+		if _, ok := signed[txIn.SignatureIndex]; ok {
+			continue
+		}
+
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		if txIn.SignatureIndex == 0xFFFFFFFF {
+			continue
+		}
+
+		prevOutScript, ok := additionalPrevScripts[txIn.PreviousOutPoint]
+		tmp := view.Utxo.LookupEntry(txIn.PreviousOutPoint)
+
+		if tmp == nil {
+			if !ok {
+				return nil, fmt.Errorf("%s not found", txIn.PreviousOutPoint.String())
+			}
+		} else {
+			if txsparser.IsMultiSig(tmp.PkScript()) {
+				if !ok || prevOutScript[0] != chainParams.MultiSigAddrID {
+					return nil, fmt.Errorf("Outpoint %s refers a multisig hash script, which requires a script", txIn.PreviousOutPoint.String())
+				}
+			} else if !ok {
+				prevOutScript = tmp.PkScript()
+			}
+		}
+
+		// Set up our callbacks that we pass to txscript so it can
+		// look up the appropriate keys and scripts by address.
+		getKey := txscript.KeyClosure(func(addr btcutil.Address) (*btcec.PrivateKey, bool, error) {
+			if len(additionalKeysByAddress) != 0 {
+				addrStr := addr.EncodeAddress()
+				wif, ok := additionalKeysByAddress[addrStr]
+				if ok {
+					return wif.PrivKey, wif.CompressPubKey, nil
+				}
+			}
+			return nil, false, nil
+		})
+		getScript := txscript.ScriptClosure(func(addr btcutil.Address) ([]byte, error) {
+			// If keys were provided then we can only use the
+			// redeem scripts provided with our inputs, too.
+			//				if len(additionalKeysByAddress) != 0 {
+			addrStr := addr.EncodeAddress()
+			script, ok := redeemScriptsByAddress[addrStr]
+			if ok {
+				return script, nil
+			}
+			return nil, nil
+		})
+
+		// SigHashSingle inputs can only be signed if there's a
+		// corresponding output. However this could be already signed,
+		// so we always verify the output.
+		if (hashType&txscript.SigHashMask) < txscript.SigHashSingle || i < len(tx.TxOut) {
+			//				txIn.SignatureIndex = uint32(i)
+			if tx.SignatureScripts == nil {
+				tx.SignatureScripts = make([][]byte, 0)
+			}
+			if len(tx.SignatureScripts) <= int(txIn.SignatureIndex) {
+				tx.SignatureScripts = append(tx.SignatureScripts, make([][]byte, int(txIn.SignatureIndex)-len(tx.SignatureScripts)+1)...)
+			}
+
+			script, err := txscript.SignTxOutput(chainParams,
+				tx, i, prevOutScript, hashType, getKey,
+				getScript, tx.SignatureScripts[txIn.SignatureIndex])
+			// Failure to sign isn't an error, it just means that
+			// the tx isn't complete.
+			if err != nil {
+				signErrors = append(signErrors, SignatureError{
+					InputIndex: uint32(i),
+					Error:      err,
+				})
+				continue
+			}
+			if len(script) == 0 {
+				continue
+			}
+			signed[txIn.SignatureIndex] = struct{}{}
+			tx.SignatureScripts[txIn.SignatureIndex] = script
+		}
+
+		pkScript := make([]byte, len(prevOutScript)-1)
+		copy(pkScript, prevOutScript[21:25])
+		copy(pkScript[4:], prevOutScript[1:21])
+
+		if len(pkScript) > 24 {
+			copy(pkScript[24:], prevOutScript[25:])
+		}
+
+		// Either it was already signed or we just signed it.
+		// Find out if it is completely satisfied or still needs more.
+		var w bytes.Buffer
+		tx.OmcEncode(&w, 0, wire.SignatureEncoding)
+		s := hex.EncodeToString(w.Bytes())
+		if tx.SignatureScripts[txIn.SignatureIndex] != nil && !intp.VerifySig(i, pkScript, tx.SignatureScripts[txIn.SignatureIndex]) {
+			signErrors = append(signErrors, SignatureError{
+				InputIndex: uint32(i),
+				Error:      fmt.Errorf(s),
+			})
+		} else if len(signErrors) > 0 {
+			signErrors = append(signErrors, SignatureError{
+				InputIndex: uint32(i),
+				Error:      fmt.Errorf(s),
+			})
+		}
+	}
+	return nil, nil
 }
 
 // handleSendRawTransaction implements the sendrawtransaction command.

@@ -675,7 +675,7 @@ loop:
 }
 
 func Sender(msg Message) []byte {
-	if msg == nil || miner == nil {
+	if msg == nil || miner == nil || miner.cfg == nil {
 		return nil
 	}
 	switch msg.(type) {
@@ -1485,7 +1485,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 		if txo.IsSeparator() {
 			break
 		}
-		if txo.TokenType == 0 {
+		if txo.TokenType == common.OmegaCoinTyp {
 			if eq < 0 {
 				eq = txo.Value.(*token.NumToken).Val
 			} else if eq != txo.Value.(*token.NumToken).Val {

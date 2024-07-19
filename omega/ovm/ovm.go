@@ -9,16 +9,19 @@
 package ovm
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/famofchains/omega"
 	"github.com/omegasuite/famofchains/omega/token"
 	"github.com/omegasuite/famofchains/omega/viewpoint"
+	"golang.org/x/crypto/ripemd160"
 	"sync/atomic"
 )
 
@@ -227,6 +230,23 @@ type OVM struct {
 
 	//	CheckExecCost	bool	// whether we will check execution cost. This will be true only when packing blocks, not wen validating
 	//	Paidfees int64
+}
+
+// NewOVM returns a new OVM. The returned OVM is not thread safe and should
+// only ever be used *once*.for each block
+func NewOVM(chainConfig *chaincfg.Params) *OVM {
+	evm := &OVM{
+		StateDB:            make(map[Address]*stateDB),
+		TokenTypes:         make(map[uint64]Address),
+		ExistingTokenTypes: make(map[uint64]Address),
+		chainConfig:        chainConfig,
+		lastBlock:          0,
+		//		CheckExecCost: false,
+	}
+	evm.StepLimit = chainConfig.ContractExecLimit // step limit the contract can run, node decided policy
+
+	evm.interpreter = NewInterpreter(evm)
+	return evm
 }
 
 func NewSigVM(chainConfig *chaincfg.Params) *OVM {
@@ -470,6 +490,58 @@ func (evm *OVM) Cancel() {
 	atomic.StoreInt32(&evm.abort, 1)
 }
 
+// Call executes the contract associated with the addr with the given input as
+// parameters. It also takes the necessary steps to reverse the state in case of an
+// execution error.
+func (evm *OVM) Call(d Address, method []byte, sent *token.Token, params []byte, pure byte) (ret []byte, err omega.Err) {
+	if evm.NoRecursion && evm.depth > 0 {
+		return nil, nil
+	}
+
+	var (
+		snapshot  = make(map[Address]*stateDB)
+		steplimit = evm.StepLimit
+	)
+	for adr, db := range evm.StateDB {
+		t := db.Copy()
+		snapshot[adr] = &t
+	}
+
+	if method[0] > OP_PUBLIC && bytes.Compare(method[1:], []byte{0, 0, 0}) == 0 {
+		return nil, omega.ScriptError(omega.ErrInternal, "May not call system method directly.")
+	}
+
+	// Initialise a new contract and set the code that is to be used by the EVM.
+	// The contract is a scoped environment for this execution context only.
+	contract := evm.NewContract(d, sent)
+
+	if contract == nil {
+		err := omega.ScriptError(omega.ErrInternal, "Contract does not exist")
+		err.ErrorLevel = omega.RecoverableLevel
+		return nil, err
+	}
+	if bytes.Compare(method, []byte{0, 0, 0, 0}) != 0 {
+		if err := contract.SetCallCode(method, evm.GetCode(d)); err != nil {
+			return nil, err
+		}
+		contract.isnew = false
+	} else {
+		contract.CodeAddr = []byte{0, 0, 0, 0}
+		contract.isnew = true
+	}
+	contract.pure = pure
+
+	ret, err = run(evm, contract, params)
+
+	if err != nil || !evm.writeback {
+		if err != nil {
+			evm.StepLimit = steplimit
+		}
+		evm.StateDB = snapshot
+	}
+	return ret, err
+}
+
 func (ovm *OVM) NewContract(d Address, value *token.Token) *Contract {
 	c := &Contract{
 		self:  AccountRef(d),
@@ -488,7 +560,119 @@ func (ovm *OVM) NewContract(d Address, value *token.Token) *Contract {
 		ovm.StateDB[d] = t
 	}
 
+	//	c.owner = ovm.StateDB[d].GetOwner()
+
 	return c
+}
+
+// Create creates a new contract using code as deployment code.
+func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, omega.Err) {
+	var d = contract.self.Address()
+
+	if _, ok := ovm.StateDB[d]; !ok {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract address incorrect.")
+	}
+	if ovm.StateDB[d].Exists(false) {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract already exists.")
+	}
+
+	tx := ovm.GetTx()
+	m := ovm.GetCurrentOutput()
+	coin := tx.MsgTx().TxOut[m.Index].Token
+	if coin.TokenType != 0 || coin.Value.(*token.NumToken).Val != 0 {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation does not take a value.")
+	}
+
+	if len(tx.MsgTx().TxIn) != 1 {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation must have exactly one input.")
+	}
+	// the only input must come from a pkh address so we can identify the creator
+	ovm.views.Utxo.FetchUtxosMain(ovm.DB, map[wire.OutPoint]struct{}{tx.MsgTx().TxIn[0].PreviousOutPoint: struct{}{}})
+	e := ovm.views.Utxo.LookupEntry(tx.MsgTx().TxIn[0].PreviousOutPoint)
+	if e == nil {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation input is not available.")
+	}
+	version, addr, _, _ := parsePkScript(e.PkScript())
+	if version != ovm.chainConfig.PubKeyHashAddrID {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creator must be a pubkeyhash address.")
+	}
+	var creator [21]byte
+	creator[0] = version
+	copy(creator[1:], addr)
+
+	ovm.StateDB[d].fresh = true
+
+	contract.Code = ByteCodeParser(data)
+	if err := ByteCodeValidator(contract.Code); err != nil {
+		return nil, err
+	}
+
+	ripemd160 := ripemd160.New()
+	ripemd160.Write(data)
+	hash := ripemd160.Sum(nil)
+
+	if bytes.Compare(hash, d[:]) != 0 {
+		return nil, omega.ScriptError(omega.ErrInternal, "contract address does not match code hash")
+	}
+
+	ovm.setAddress(d, contract.self.(AccountRef))
+
+	contract.CodeAddr = nil
+	ret, err := run(ovm, contract, nil) // contract constructor. ret is the real contract code, ex. constructor
+
+	if err != nil || len(ret) < 4 {
+		return nil, omega.ScriptError(omega.ErrInternal, "Fail to initialize contract.")
+	}
+
+	n := m.Index
+	msg := tx.MsgTx()
+
+	p := 4
+	p += common.VarIntSerializeSize(uint64(len(msg.TxDef)))
+	for _, ti := range msg.TxDef {
+		p += ti.SerializeSize()
+	}
+
+	p += common.VarIntSerializeSize(uint64(len(msg.TxIn)))
+	for _, ti := range msg.TxIn {
+		p += ti.SerializeSize()
+	}
+
+	p += common.VarIntSerializeSize(uint64(len(msg.TxOut)))
+	for i, ti := range msg.TxOut {
+		if i < int(n) {
+			p += ti.SerializeSize()
+		} else if i == int(n) {
+			p += ti.Token.SerializeSize() + 25 + common.VarIntSerializeSize(uint64(len(ti.PkScript)))
+		}
+	}
+
+	start := common.LittleEndian.Uint32(ret)
+	ln := len(msg.TxOut[n].PkScript) - 25
+	pks := msg.TxOut[n].PkScript[25:]
+	dd := 0
+	for i := 0; start > 0; i++ {
+		if pks[i] == '\n' {
+			start--
+		}
+		p++
+		ln--
+		dd++
+	}
+
+	pks = pks[dd:]
+
+	br := make([]byte, 40)
+	copy(br, (*tx.Hash())[:])
+	common.LittleEndian.PutUint32(br[32:], uint32(p))
+	common.LittleEndian.PutUint32(br[36:], uint32(ln))
+
+	ovm.setMeta(d, "code", br)
+	ovm.setMeta(d, "creator", creator[:])
+
+	log.Infof("Contract created: %x", d)
+
+	return nil, nil
 }
 
 // ChainConfig returns the environment's chain configuration

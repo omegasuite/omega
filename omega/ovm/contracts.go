@@ -31,6 +31,22 @@ type PrecompiledContract interface {
 	Run(input []byte, vunits []vunit) ([]byte, omega.Err) // Run runs the precompiled contract
 }
 
+// Create creates a new contract
+type create struct {
+	ovm      *OVM
+	contract *Contract
+}
+
+type meta struct {
+	ovm      *OVM
+	contract *Contract
+}
+
+type codebytes struct {
+	ovm      *OVM
+	contract *Contract
+}
+
 const (
 	OP_CREATE    = 0
 	OP_META      = 1
@@ -53,10 +69,23 @@ const (
 	//	OP_PAY2MULTISCRIPTH		= 0x44
 	OP_PAY2NONE = 0x45
 	OP_PAY2ANY  = 0x46
+
+	OP_PAYCROSSCHAIN = 0x66
 )
 
 // PrecompiledContracts contains the default set of pre-compiled contracts
 var PrecompiledContracts = map[[4]byte]func(evm *OVM, contract *Contract) PrecompiledContract{
+	([4]byte{OP_CREATE, 0, 0, 0}): func(evm *OVM, contract *Contract) PrecompiledContract {
+		return &create{evm, contract}
+	}, // create a contract
+	([4]byte{OP_META, 0, 0, 0}): func(evm *OVM, contract *Contract) PrecompiledContract {
+		contract.Code = nil
+		return &meta{evm, contract}
+	}, // meta
+	([4]byte{OP_CODEBYTES, 0, 0, 0}): func(evm *OVM, contract *Contract) PrecompiledContract {
+		contract.Code = nil
+		return &codebytes{evm, contract}
+	}, // OP_CODEBYTES
 	// pk script functions
 	([4]byte{OP_PAY2PKH, 0, 0, 0}): func(evm *OVM, contract *Contract) PrecompiledContract {
 		return &pay2pkh{}
@@ -415,4 +444,16 @@ func (in *Interpreter) RunPrecompiledContract(p PrecompiledContract, input []byt
 		input = append(input, res...)
 	}
 	return p.Run(input, vuints)
+}
+
+func (c *create) Run(input []byte, _ []vunit) ([]byte, omega.Err) {
+	return c.ovm.Create(input[4:], c.contract)
+}
+
+func (c *meta) Run(input []byte, _ []vunit) ([]byte, omega.Err) {
+	return c.ovm.GetMeta(c.contract.self.Address(), string(input[4:])), nil
+}
+
+func (c *codebytes) Run(input []byte, _ []vunit) ([]byte, omega.Err) {
+	return c.ovm.GetCode(c.contract.self.Address()), nil
 }

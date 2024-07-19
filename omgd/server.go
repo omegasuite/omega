@@ -377,7 +377,6 @@ type server struct {
 	cfCheckptCachesMtx sync.RWMutex
 	signAddress        []btcutil.Address
 	privKeys           []*btcec.PrivateKey
-	rsaPrivateKey      *rsa.PrivateKey
 	peerState          *peerState
 
 	//	Violations          map[[20]byte]struct{}
@@ -816,6 +815,11 @@ func (sp *serverPeer) OnInv(_ *peer.Peer, msg *wire.MsgInv) {
 	if len(newInv.InvList) > 0 {
 		sp.server.syncManager.QueueInv(newInv, sp.Peer)
 	}
+}
+
+func (sp *serverPeer) OnSolicitSigs(_ *peer.Peer, msg *wire.MsgSolicitSigs) {
+	treasuary.Signtx(msg)
+	Server.BroadcastMessage(msg, true, sp)
 }
 
 // OnHeaders is invoked when a peer receives a headers bitcoin
@@ -2599,8 +2603,23 @@ func (s *server) RelayInventory(invVect *wire.InvVect, data interface{}) {
 func (s *server) BroadcastMessage(msg wire.Message, exclPeers ...*serverPeer) {
 	// XXX: Need to determine if this is an alert that has already been
 	// broadcast and refrain from broadcasting again.
-	bmsg := broadcastMsg{message: msg, excludePeers: exclPeers}
-	s.broadcast <- bmsg
+	var h chainhash.Hash
+	if check {
+		var w bytes.Buffer
+		msg.OmcEncode(&w, 0, 0)
+		h = chainhash.DoubleHashH(w.Bytes())
+	}
+
+	if t,ok := s.Broadcasted[h]; !check || !ok {
+		if check {
+			s.Broadcasted[h] = time.Now().Unix()
+		}
+		bmsg := broadcastMsg{message: msg, excludePeers: exclPeers}
+		s.broadcast <- bmsg
+	} else if time.Now().Unix() - t > 300 {
+		// msg expired
+		delete(s.Broadcasted, h)
+	}	// don't rebroadcast in 5 minutes
 }
 
 // ConnectedCount returns the number of currently connected peers.
@@ -3070,19 +3089,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 	}
 	s.prot = prot
 
-	if prot.cfg.RsaPrivateKey != "" {
-		if file, err := os.Open(prot.cfg.RsaPrivateKey); err == nil {
-			defer file.Close()
-			if fileinfo, err := os.Stat(prot.cfg.RsaPrivateKey); err == nil {
-				fileStream := make([]byte, fileinfo.Size())
-				file.Read(fileStream)
-				block, _ := pem.Decode(fileStream)
-				s.rsaPrivateKey, _ = x509.ParsePKCS1PrivateKey(block.Bytes)
-			}
-		}
-	}
-
-	if prot.cfg.Generate && !prot.cfg.TxIndex { // must allow txindex when mining
+	if cfg.Generate && !cfg.TxIndex { // must allow txindex when mining
 		return nil, errors.New("Must enable tx index (width full history) when mining.")
 	}
 
@@ -3276,12 +3283,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		Generate: prot.cfg.Generate,
 	})
 
-	// This is the miner for miner chain
-	var rsa []byte
-	if s.rsaPrivateKey != nil {
-		rsa, _ = json.Marshal(s.rsaPrivateKey.Public())
-	}
-
 	if prot.cfg.GenerateMiner {
 		mcfg := &minerchain.Config{
 			ChainParams:            prot.activeNetParams.Params,
@@ -3290,7 +3291,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			ConnectedCount:         s.ConnectedCount,
 			IsCurrent:              s.syncManager.IsCurrent,
 			ExternalIPs:            prot.cfg.ExternalIPs,
-			RSAPubKey:              string(rsa),
 		}
 		if len(prot.cfg.signAddress) > 0 {
 			mcfg.MiningAddrs = prot.cfg.signAddress
@@ -3420,10 +3420,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			FeeEstimator: s.feeEstimator,
 		})
 
-		if s.rsaPrivateKey != nil {
-			s.rpcServer.rsapubkey = &s.rsaPrivateKey.PublicKey
-		}
-
 		if err != nil {
 			return nil, err
 		}
@@ -3437,72 +3433,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 	return &s, nil
 }
-
-/*
-func (s *server) IsBlack(n [20]byte) bool {
-	_,ok := s.BlackList[n]
-	return ok
-}
-
-func (s *server) IsGrey(n [20]byte) bool {
-	_,ok1 := s.BlackList[n]
-	_,ok2 := s.PendingBlackList[n]
-	return ok1 || ok2
-}
-
-func (s *server) Update(n uint32) {
-	for p, q := range s.PendingBlackList {
-		if q == n {
-			s.BlackList[p] = struct{}{}
-		}
-	}
-}
-
-func (s *server) Rollback(n uint32) {
-	found := false
-	for p, q := range s.PendingBlackList {
-		if q == n {
-			found = true
-			delete(s.BlackList, p)
-		} else if q < n {
-			found = true
-		}
-	}
-	if !found {
-		var h[4]byte
-		binary.LittleEndian.PutUint32(h[:], n)
-		// check db
-		s.minerdb.View(func (tx database.Tx) error {
-			meta := tx.Metadata()
-			bkt := meta.Bucket(minerchain.BlacklistKeyName)
-			d := bkt.Get(h[:])
-			if d == nil || len(d) == 0 {
-				return nil
-			}
-			for i := 0; i < len(d); i += 20 {
-				var name [20]byte
-				copy(name[:], d[i:i+20])
-				s.PendingBlackList[name] = n
-			}
-			s.Rollback(n)
-			return nil
-		})
-	}
-}
-
-func (s *server) Add(n uint32, p [20]byte) {
-	s.PendingBlackList[p] = n
-}
-
-func (s *server) Remove(n uint32) {
-	for p, q := range s.PendingBlackList {
-		if q == n {
-			delete(s.BlackList, p)
-			delete(s.PendingBlackList, p)
-		}
-	}
-}
-*/
 
 // initListeners initializes the configured net listeners and adds any bound
 // addresses to the address manager. Returns the listeners and a NAT interface,

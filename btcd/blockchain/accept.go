@@ -25,7 +25,7 @@ import (
 // their documentation for how the flags modify their behavior.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags) (bool, error, int32) {
+func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, btcblock *wire.BTCL2Data, flags BehaviorFlags) (bool, error, int32) {
 	// The height of this block is one more than the referenced previous
 	// block.
 	prevHash := &block.MsgBlock().Header.PrevBlock
@@ -82,7 +82,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 				var cid [4]byte
 				copy(cid[:], txo.PkScript[22:25])
 				cid[3] = 0
-				if wire.IsXChainXfer(txo.PkScript) && len(txo.PkScript) == 25 && common.LittleEndian.Uint32(cid[:]) == b.ChainParams.ChainID {
+				if txo.IsCrossChain() && len(txo.PkScript) == 25 && common.LittleEndian.Uint32(cid[:]) == b.ChainParams.ChainID {
 					storeBlock = true
 					break out
 				}
@@ -139,7 +139,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 			// Connect the passed block to the chain while respecting proper chain
 			// selection according to the chain with the most proof of work.  This
 			// also handles validation of the transaction scripts.
-			isMainChain, err = b.connectBestChain(newNode, block, flags)
+			isMainChain, err = b.connectBestChain(newNode, block, btcblock, flags)
 			if err != nil {
 				return false, err, -1
 			}

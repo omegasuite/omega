@@ -339,6 +339,9 @@ func (bf *Filter) matchTxAndUpdate(tx *btcutil.Tx) bool {
 		if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
+		if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
+			continue
+		}
 		if bf.matchesOutPoint(&txin.PreviousOutPoint) {
 			return true
 		}

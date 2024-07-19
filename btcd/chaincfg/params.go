@@ -265,6 +265,7 @@ type Params struct {
 	ScriptAddrID     byte // First byte of a P2SH address
 	ContractAddrID   byte // First byte of a P2C address
 	PrivateKeyID     byte // First byte of a WIF private key
+	CrossChainID     byte // First byte of a cross chain script
 
 	// BIP32 hierarchical deterministic extended key magics
 	HDPublicKeyID  [4]byte
@@ -312,7 +313,7 @@ var MainNetParams = Params{
 	GenesisHash:              &genesisHash,
 	GenesisMinerHash:         &genesisMinerHash,
 	PowLimit:                 mainPowLimit,
-	PowLimitBits:             0x1e00fff0,
+	PowLimitBits:             0x1e003ff0,
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 	SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
 	MinimalAward:             73242,
@@ -820,6 +821,7 @@ var SVPMainNetParams = Params{
 	ScriptAddrID:     0x13,
 	ContractAddrID:   0x88, // start with 8
 	PrivateKeyID:     0x80, // starts with 5 (uncompressed) or K (compressed)
+	CrossChainID:     0xcc,
 
 	HDPublicKeyID:  [4]byte{0x04, 0x88, 0xad, 0xe4},
 	HDPrivateKeyID: [4]byte{0x04, 0x88, 0xb2, 0x1e},

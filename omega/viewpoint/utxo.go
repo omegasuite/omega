@@ -328,7 +328,7 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 		if txOut.IsNopaying() {
 			continue
 		}
-		if wire.IsXChainXfer(txOut.PkScript) {
+		if txOut.IsCrossChain() {
 			// if it is cross chain txout, don't add it to utxo view, so it does not appear in this chain
 			continue
 		}
@@ -362,7 +362,7 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 // view does not contain the required utxos.
 func (view *ViewPointSet) ConnectTransaction(tx *btcutil.Tx, blockHeight int32, stxos *[]SpentTxOut) error {
 	// Coinbase transactions don't have any inputs to spend.
-	if tx.IsCoinBase() {
+	if tx.IsCoinBase() || tx.MsgTx().IsBtcL2() {
 		// Add the transaction's outputs as available utxos.
 		view.AddTxOuts(tx, blockHeight)
 		return nil
@@ -373,6 +373,9 @@ func (view *ViewPointSet) ConnectTransaction(tx *btcutil.Tx, blockHeight int32, 
 	// to it.
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		// Ensure the referenced utxo exists in the view.  This should
@@ -518,6 +521,9 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 		}
 		for txInIdx := len(tx.MsgTx().TxIn) - 1; txInIdx > -1; txInIdx-- {
 			if tx.MsgTx().TxIn[txInIdx].PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			if tx.MsgTx().TxIn[txInIdx].SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				continue
 			}
 			// Ensure the spent txout index is decremented to stay
@@ -955,8 +961,14 @@ func (view *ViewPointSet) FetchInputUtxos(block *btcutil.Block) error {
 	// what is already known (in-flight).
 	neededSet := make(map[wire.OutPoint]struct{})
 	for i, tx := range transactions[1:] {
+		if tx.MsgTx().IsBtcL2() {
+			continue
+		}
 		for _, txIn := range tx.MsgTx().TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				continue
 			}
 			// It is acceptable for a transaction input to reference

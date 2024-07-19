@@ -128,6 +128,10 @@ func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 			if err == nil {
 				privKey := dwif.PrivKey
 				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), prot.activeNetParams.Params)
+				if pkaddr.Format() != btcutil.PKFCompressed {
+					btcdLog.Errorf("Private key is not compressed")
+					return nil
+				}
 				if err == nil {
 					addr := pkaddr.AddressPubKeyHash()
 					if addr.IsForNet(activeNetParams[0].Params) {
@@ -146,6 +150,14 @@ func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 	prot.activeNetParams.Params.ExternalIPs = tcfg.ExternalIPs
 	prot.activeNetParams.Params.ContractReqExp = tcfg.ContractReqExp
 	prot.activeNetParams.Params.LogBlockTime = tcfg.LogBlockTime
+	treasury.PrivKeys = make([]*secp256k1.PrivateKey, len(cfg.privateKeys))
+	for i, k := range cfg.privateKeys {
+		key := secp256k1.ModNScalar{}
+		var bk [32]byte
+		copy(bk[:], k.Serialize())
+		key.SetBytes(&bk)
+		treasury.PrivKeys[i] = secp256k1.NewPrivateKey(&key)
+	}
 
 	prot.activeNetParams.Params.ChainCurrentStd = time.Hour * time.Duration(tcfg.ChainCurrentStd)
 	if tcfg.Concurrency <= 0 {
@@ -163,6 +175,7 @@ func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 	}
 
 	prot.Server = server
+	treasury.Server = server
 
 	defer func() {
 		if len(tcfg.privateKeys) == 0 && tcfg.Generate {
@@ -203,7 +216,9 @@ func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 			default:
 				continue
 			}
-			fmt.Printf("%s, %f\n", address.EncodeAddress(), float64(bal)/1e8)
+			for t, amt := range bal {
+				fmt.Printf("%s, %x => %f\n", address.EncodeAddress(), t, float64(amt)/1e8)
+			}
 		}
 	}
 

@@ -91,9 +91,40 @@ func DebugSetup(enable bool, comm chan []byte) {
 	}
 }
 
+// NewInterpreter returns a new instance of the Interpreter.
+func NewInterpreter(evm *OVM) *Interpreter {
+	a := &Interpreter{
+		evm:      evm,
+		JumpTable: omegaInstructionSet,
+	}
+
+	return a
+}
+
 var dbgcontract *Contract
 var dbgstack *Stack
 var readysent = false
+var dbgcodebase int
+
+func setdbgcontract(contract *Contract, addr Address, stack *Stack) {
+	dbgcontract, dbgstack, dbgcodebase = contract, stack, int(contract.libs[addr].address)
+
+	inspector = make(chan *DebugCmd, 10)
+
+	var prepend [2]byte
+	prepend[0] = 'C'
+	if dbgcontract.isnew {
+		prepend[1] = 'C'
+	} else {
+		prepend[1] = 'E'
+	}
+
+	debugNotifier <- append(prepend[:], addr[:]...)
+
+	readysent = false
+
+	<- attaching
+}
 
 func intrepdebug() {
 	var breakat int

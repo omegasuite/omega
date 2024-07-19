@@ -64,9 +64,6 @@ type Config struct {
 	// ExternalIPs, the ip we listen on
 	ExternalIPs []string
 
-	// RSAPubKey for people to connect to us
-	RSAPubKey string
-
 	// BlockTemplateGenerator identifies the instance to use in order to
 	// generate block templates that the miner will attempt to solve.
 	BlockTemplateGenerator *mining.BlkTmplGenerator
@@ -74,6 +71,8 @@ type Config struct {
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
 	MiningAddrs []btcutil.Address
+	Privkeys    []*btcec.PrivateKey
+	Retire      []btcutil.Address
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -420,6 +419,14 @@ func (m *CPUMiner) generateBlocks(quit chan struct{}, numWorkers uint32) {
 	// updates to the speed monitor.
 	m.workerWg.Add(1)
 
+	pendingMiner := make(map[[20]byte]struct{})
+	// shall load those between current rotation and MR chain top
+
+	for i := m.g.Chain.BestSnapshot().LastRotation + 1; i <= uint32(m.g.Chain.Miners.BestSnapshot().Height); i++ {
+		mr, _ := m.g.Chain.Miners.BlockByHeight(int32(i))
+		pendingMiner[mr.MsgBlock().Miner] = struct{}{}
+	}
+
 out:
 	for {
 		// Quit when the miner is stopped.
@@ -449,7 +456,7 @@ out:
 			continue
 		}
 
-		if len(m.cfg.MiningAddrs) == 0 || m.g.Chain.IsPacking {
+		if len(m.cfg.MiningAddrs) == 0 { // || m.g.Chain.IsPacking {
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -606,24 +613,7 @@ out:
 			time.Sleep(time.Second * 5)
 			continue
 		}
-		/*
-			bm := len(m.g.Chain.BlackedList)
-			if bm > 0 {
-				bl := make([]*wire.Violations, 0, bm)
-				for j := 0; j < bm; j++ {
-					n := m.g.Chain.BlackedList[j]
-					mb, _ := m.g.Chain.Miners.BlockByHash(&n.MRBlock)
-					if mb.Height() < template.Height-99 {
-						continue
-					}
-					bl = append(bl, n)
-				}
-				m.g.Chain.BlackedList = m.g.Chain.BlackedList[bm:]
-				if len(bl) > 0 {
-					block.MsgBlock().ViolationReport = bl
-				}
-			}
-		*/
+
 		m.submitBlockLock.Unlock()
 
 		var h1, h2 int64
@@ -637,13 +627,54 @@ out:
 			}
 			v, err := m.g.Chain.CheckCollateral(block, nil, 0)
 			if err != nil {
+			log.Infof(err.Error())
 				time.Sleep(time.Second * 5)
 				continue
+		}
+		block.MsgBlock().Instructions = make([]*wire.Instruction, 0)
+
+		if !treasury.Declared(block.MsgBlock().Miner) {
+			if _, ok := pendingMiner[block.MsgBlock().Miner]; !ok {
+				for i, k := range m.cfg.MiningAddrs {
+					if bytes.Compare(k.ScriptAddress(), block.MsgBlock().Miner[:]) == 0 {
+						decl := &wire.Instruction{
+							InstCode: wire.Pledge,
+							InstData: m.cfg.Privkeys[i].PubKey().SerializeCompressed(),
+						}
+						pendingMiner[block.MsgBlock().Miner] = struct{}{}
+						block.MsgBlock().Instructions = append(block.MsgBlock().Instructions, decl)
+						break
+					}
+				}
 			}
-			h1 = int64(v / c)
-			if h1 < 1 {
-				h1 = 1
+	retirecheck:
+		for _, r := range m.cfg.Retire {
+			if bytes.Compare(r.ScriptAddress(), block.MsgBlock().Miner[:]) == 0 {
+				decl := &wire.Instruction{
+					InstCode: wire.RetireReq,
+					InstData: nil,
+				}
+				block.MsgBlock().Instructions = append(block.MsgBlock().Instructions, decl)
+				for i, k := range m.cfg.MiningAddrs {
+					if bytes.Compare(k.ScriptAddress(), r.ScriptAddress()) == 0 {
+						m.cfg.MiningAddrs = append(m.cfg.MiningAddrs[:i], m.cfg.MiningAddrs[i+1:]...)
+						m.cfg.Privkeys = append(m.cfg.Privkeys[:i], m.cfg.Privkeys[i+1:]...)
+						break retirecheck
+					}
+				}
+				break retirecheck // never reaches here
 			}
+		}
+
+		if c != 0 {
+			h1 = int64(v / uint32(c))
+		} else {
+			h1 = int64(v)
+		}
+
+		if h1 < 1 {
+			h1 = 1
+		}
 
 			me := m.g.Chain.Miners.(*MinerChain)
 			prev, _ := me.BlockByHash(&block.MsgBlock().PrevBlock)
@@ -676,6 +707,12 @@ out:
 		if m.solveBlock(template, curHeight+1, h1+h2, quit, numWorkers) {
 			log.Infof("New miner block produced by %x at %d", signAddr.ScriptAddress(), template.Height)
 			m.submitBlock(block)
+			for i, r := range m.cfg.Retire {
+				if bytes.Compare(r.ScriptAddress(), block.MsgBlock().Miner[:]) == 0 {
+					m.cfg.Retire = append(m.cfg.Retire[:i], m.cfg.Retire[i+1:]...)
+					break
+				}
+			}
 		} else {
 			log.Infof("miner.solveBlock: No New block produced")
 		}
@@ -741,12 +778,20 @@ out:
 // already been started will have no effect.
 //
 // This function is safe for concurrent access.
-func (m *CPUMiner) Start(collateral []*wire.OutPoint) {
+func (m *CPUMiner) Start(collateral []*wire.OutPoint, pledge []*wire.OutPoint) {
 	m.Lock()
 	defer m.Unlock()
 
 	if collateral != nil {
 		m.g.Collateral = collateral
+	}
+	if m.g.Pledge == nil {
+		m.g.Pledge = make(map[wire.OutPoint]struct{})
+	}
+	if pledge != nil {
+		for _, p := range pledge {
+			m.g.Pledge[*p] = struct{}{}
+		}
 	}
 
 	// Nothing to do if the miner is already running or if running in

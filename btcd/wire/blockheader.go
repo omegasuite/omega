@@ -379,7 +379,11 @@ func (h *MingingRightBlock) Deserialize(r io.Reader) error {
 }
 
 func (h *MingingRightBlock) SerializeSize() int {
-	return minerBlockLen
+	n := 1
+	for _, p := range h.Instructions {
+		n += p.serializeLen()
+	}
+	return minerBlockLen + n
 }
 
 // Serialize encodes a block header from r into the receiver using a format
@@ -413,12 +417,16 @@ func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
 	bh.Connection = t
 
 	d, err := common.ReadVarInt(r, 0)
-	if err != nil || d == 0 {
+	if err != nil {
 		return nil
 	}
-	bh.Utxos = &OutPoint{}
-	if err = readOutPoint(r, 0, 0, bh.Utxos); err != nil {
-		return err
+	if d == 0 {
+		bh.Utxos = nil
+	} else {
+		bh.Utxos = &OutPoint{}
+		if err = readOutPoint(r, 0, 0, bh.Utxos); err != nil {
+			return err
+		}
 	}
 
 	d, err = common.ReadVarInt(r, 0)
@@ -462,6 +470,17 @@ func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
 		}
 		if err := common.ReadElements(r, &bh.ContractLimit); err != nil {
 			bh.ContractLimit = 0
+		}
+	}
+	var n uint8
+	if err := common.ReadElements(r, &n); err != nil {
+		bh.ContractLimit = 0
+	}
+	bh.Instructions = make([]*Instruction, n)
+	for i := uint8(0); i < n; i++ {
+		bh.Instructions[i] = &Instruction{}
+		if err := bh.Instructions[i].deserializer(r); err != nil {
+			return err
 		}
 	}
 
@@ -528,6 +547,14 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 			}
 		}
 		if err := common.WriteElement(w, bh.ContractLimit); err != nil {
+			return err
+		}
+	}
+	if err := common.WriteElement(w, uint8(len(bh.Instructions))); err != nil {
+		return err
+	}
+	for _, inst := range bh.Instructions {
+		if err := inst.serializer(w); err != nil {
 			return err
 		}
 	}

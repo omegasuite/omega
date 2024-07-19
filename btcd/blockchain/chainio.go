@@ -446,6 +446,9 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 			if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				numStxos--
 			}
+			if in.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
+				numStxos--
+			}
 		}
 	}
 
@@ -476,6 +479,9 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 		for txInIdx := len(tx.TxIn) - 1; txInIdx > -1; txInIdx-- {
 			txIn := tx.TxIn[txInIdx]
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
 				continue
 			}
 			stxo := &stxos[stxoIdx]
@@ -772,7 +778,7 @@ func (b *BlockChain) createChainState() error {
 	// set rotation to 0 or committee size?
 	b.stateSnapshot = newBestState(node, blockSize, numTxns,
 		numTxns, time.Unix(node.Data.TimeStamp(), 0), // b.ChainParams.PowLimitBits,
-		0)
+		2)
 
 	// Create the initial the database chain state including creating the
 	// necessary index buckets and inserting the genesis block.
@@ -780,6 +786,40 @@ func (b *BlockChain) createChainState() error {
 		meta := dbTx.Metadata()
 
 		var err error
+
+		// Create the bucket for pool of tx from BTC to L2
+		if _, err = meta.CreateBucket([]byte(common.INCOMINGPOOL)); err != nil {
+			return err
+		}
+
+		// Create the bucket for pool of tx from L2 to BTC
+		if _, err = meta.CreateBucket([]byte(common.L2BTCPOOL)); err != nil {
+			return err
+		}
+
+		// Create the bucket for bridge signers
+		if _, err = meta.CreateBucket([]byte(common.BRIDGESIGNERS)); err != nil {
+			return err
+		}
+		if _, err = meta.CreateBucket([]byte(common.RetiredBRIDGESIGNERS)); err != nil {
+			return err
+		}
+
+		// Create the bucket for in assets across bridge (Not BTC)
+		if _, err = meta.CreateBucket([]byte(common.INASSETS)); err != nil {
+			return err
+		}
+
+		// Create the bucket for out assets across bridge (Not BTC)
+		if _, err = meta.CreateBucket([]byte(common.OUTASSETS)); err != nil {
+			return err
+		}
+
+		// Create the bucket for out assets across bridge (Not BTC)
+		if _, err = meta.CreateBucket([]byte(common.BTCSpendlog)); err != nil {
+			return err
+		}
+
 		// Create the bucket that houses map from tokentype to contract.
 		if _, err = meta.CreateBucket(IssuedTokenTypes); err != nil {
 			return err
@@ -905,8 +945,86 @@ type indexer interface {
 	DbFetchTxIndexEntry(dbTx database.Tx, txHash *chainhash.Hash) (*database.BlockRegion, error)
 }
 
-func (b *BlockChain) GetAccounts() map[[21]byte]int64 {
-	accounts := make(map[[21]byte]int64)
+func clearBucket(bucket database.Bucket) {
+	cursor := bucket.Cursor()
+	for ok := cursor.First(); ok; ok = cursor.Next() {
+		bucket.Delete(cursor.Key())
+	}
+}
+
+func (b *BlockChain) ShowL2DB(clearAssets int) {
+	b.db.Update(func(dbTx database.Tx) error {
+		if clearAssets != 0 {
+			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			if (clearAssets & 1) != 0 {
+				clearBucket(bucket)
+			}
+			if (clearAssets & 2) != 0 {
+				bucket = dbTx.Metadata().Bucket([]byte(common.L2BTCPOOL))
+				clearBucket(bucket)
+			}
+			if (clearAssets & 4) != 0 {
+				bucket = dbTx.Metadata().Bucket([]byte(common.INASSETS))
+				clearBucket(bucket)
+			}
+			if (clearAssets & 8) != 0 {
+				bucket = dbTx.Metadata().Bucket([]byte(common.BRIDGESIGNERS))
+				clearBucket(bucket)
+			}
+		}
+
+		bucketName := []byte(common.INCOMINGPOOL)
+		bucket := dbTx.Metadata().Bucket(bucketName)
+		cursor := bucket.Cursor()
+
+		fmt.Printf("INCOMINGPOOL\n")
+
+		head := bucket.Get([]byte("BTCHeight")) // height of current BTC tip
+		if head != nil {
+			ht := common.LittleEndian.Uint32(head)
+			fmt.Printf("BTCHeight = %d\n", ht)
+		}
+
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			if bytes.Compare(cursor.Key(), []byte("BTCHeight")) == 0 {
+				continue
+			}
+			h := common.LittleEndian.Uint32(cursor.Key())
+
+			fromBTC := &common.BTCL2Data{}
+			err := fromBTC.Unserialize(cursor.Value())
+			if err != nil {
+				fmt.Printf("INCOMINGPOOL error at %d: %s\n", h, err.Error())
+			} else {
+				fmt.Printf("INCOMINGPOOL at %d: height=%d hash=%s len=%d\n", h, fromBTC.Height, fromBTC.Hash.String(), len(fromBTC.Txs))
+				for _, t := range fromBTC.Txs {
+					fmt.Printf("utxo=%s Value=%d PkScript=%x Redeem=%x\n", t.Utxo.String(), t.Value, t.PkScript, t.Redeem)
+				}
+			}
+		}
+
+		fmt.Printf("L2BTCPOOL\n")
+
+		bucketName = []byte(common.L2BTCPOOL)
+		bucket = dbTx.Metadata().Bucket(bucketName)
+		cursor = bucket.Cursor()
+
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			h := common.LittleEndian.Uint32(cursor.Key())
+			d := &common.BTCL2Data{}
+			d.Unserialize(cursor.Value())
+			fmt.Printf("height=%d block height=%d hash=%s len=%d\n", h, d.Height, d.Hash.String(), len(d.Txs))
+			for _, t := range d.Txs {
+				fmt.Printf("utxo=%s Value=%x PkScript=%x Redeem=%x\n", t.Utxo.String(), t.Value, t.PkScript, t.Redeem)
+			}
+		}
+
+		return nil
+	})
+}
+
+func (b *BlockChain) GetAccounts() map[[21]byte]map[uint64]uint64 {
+	accounts := make(map[[21]byte]map[uint64]uint64)
 	b.db.View(func(dbTx database.Tx) error {
 		utxoSetBucketName := []byte("utxosetv2")
 		utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
@@ -918,10 +1036,6 @@ func (b *BlockChain) GetAccounts() map[[21]byte]int64 {
 				return err
 			}
 
-			if entry.TokenType != 0 {
-				continue
-			}
-
 			pks := entry.PkScript()
 
 			var addr [21]byte
@@ -929,10 +1043,15 @@ func (b *BlockChain) GetAccounts() map[[21]byte]int64 {
 
 			_, v := entry.Amount.Value()
 			if _, ok := accounts[addr]; ok {
-				accounts[addr] = accounts[addr] + v
+				if _, ok := accounts[addr][entry.TokenType]; !ok {
+					accounts[addr] = make(map[uint64]uint64)
+					accounts[addr][entry.TokenType] = 0
+				}
 			} else {
-				accounts[addr] = v
+				accounts[addr] = make(map[uint64]uint64)
+				accounts[addr][entry.TokenType] = 0
 			}
+			accounts[addr][entry.TokenType] = accounts[addr][entry.TokenType] + uint64(v)
 		}
 		return nil
 	})
@@ -1029,6 +1148,10 @@ func (b *BlockChain) initChainState() error {
 			return err
 		}
 	}
+	b.db.Update(func(dbTx database.Tx) error {
+		dbTx.Metadata().CreateBucket([]byte(common.RetiredBRIDGESIGNERS))
+		return nil
+	})
 
 	unloaded := make(map[chainhash.Hash]int32)
 	buffer := make([]struct {
@@ -1742,6 +1865,9 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 	if !IsCoinBase(tx) {
 		for _, txIn := range tx.MsgTx().TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				continue
 			}
 			neededSet[txIn.PreviousOutPoint] = struct{}{}

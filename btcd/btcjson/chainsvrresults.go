@@ -597,6 +597,11 @@ type MultiSigAddr struct {
 	Script  string `json:"script"`
 }
 
+type BtcL2Script struct {
+	Addresses []string `json:"addresses"`
+	Script    string   `json:"script"`
+}
+
 // Try result
 type TryResult struct {
 	Result string `json:"result"`
@@ -610,7 +615,6 @@ type SearchRawTransactionsResult struct {
 	Txid          string       `json:"txid"`
 	Hash          string       `json:"hash"`
 	Size          string       `json:"size"`
-	Vsize         string       `json:"vsize"`
 	Version       int32        `json:"version"`
 	LockTime      uint32       `json:"locktime"`
 	Vin           []VinPrevOut `json:"vin"`

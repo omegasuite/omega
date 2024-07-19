@@ -33,6 +33,14 @@ const (
 
 	// NTBlockRejected indicates the associated block was rejected.
 	NTBlockRejected
+
+	// NTBTCTxConnected indicates the associated tx was connected in the
+	// BTC main chain.
+	NTBTCTxConnected
+
+	// NTBTCTXDisconnected indicates the associated tx was disconnected
+	// from the BTC main chain.
+	NTBTCTXDisconnected
 )
 
 // notificationTypeStrings is a map of notification types back to their constant

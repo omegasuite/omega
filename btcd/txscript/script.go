@@ -57,6 +57,9 @@ func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 		if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
+		if in.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
+			continue
+		}
 		// First write out the 32-byte transaction ID one of whose
 		// outputs are being referenced by this input.
 		b.Write(in.PreviousOutPoint.Hash[:])
@@ -81,6 +84,9 @@ func calcHashSequence(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
 	for _, in := range tx.TxIn {
 		if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		if in.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
 			continue
 		}
 		var buf [4]byte

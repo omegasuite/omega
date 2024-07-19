@@ -176,6 +176,10 @@ func NewOutPoint(hash *chainhash.Hash, index uint32) *OutPoint {
 	}
 }
 
+func (o *OutPoint) Equal(s *OutPoint) bool {
+	return o.Hash.IsEqual(&s.Hash) && o.Index == s.Index
+}
+
 func (o OutPoint) ToBytes() []byte {
 	buf := make([]byte, chainhash.HashSize+4)
 	copy(buf, o.Hash[:])
@@ -293,7 +297,8 @@ func (t *TxOut) SerializeSize() int {
 	return t.Token.SerializeSize() + n
 }
 
-const OP_PAY2NONE = 0x45 // from ovm.contracts. redeclare here to avoid circular importation
+const OP_PAY2NONE = 0x45      // from ovm.contracts. redeclare here to avoid circular importation
+const OP_PAYCROSSCHAIN = 0x66 // from ovm.contracts. redeclare here to avoid circular importation
 
 func (t *TxOut) IsNopaying() bool {
 	if t.TokenType&1 == 0 && t.Token.Value.(*token.NumToken).Val == 0 {
@@ -302,10 +307,21 @@ func (t *TxOut) IsNopaying() bool {
 	if t.PkScript[0] == 0x88 {
 		return false
 	}
+	if t.PkScript[0] == 0xcc { // cross chain tx
+		return true
+	}
 	if len(t.PkScript) < 22 || (t.PkScript[21] == OP_PAY2NONE && (len(t.PkScript) == 22 || bytes.Compare(t.PkScript[22:25], []byte{0, 0, 0}) == 0)) {
 		return true
 	}
 	return false
+}
+
+func (t *TxOut) IsContractCall() bool {
+	return t.PkScript[0] == 0x88
+}
+
+func (t *TxOut) IsCrossChain() bool {
+	return t.PkScript[0] != 0x88 && t.PkScript[21] == OP_PAYCROSSCHAIN
 }
 
 func (t *TxOut) HasRight() bool {
@@ -325,10 +341,6 @@ func NewTxOut(tokenType uint64, value token.TokenValue, rights *chainhash.Hash, 
 	t.Rights = rights
 	t.PkScript = pkScript
 	return &t
-}
-
-func IsXChainXfer(script []byte) bool {
-	return script[0] == 0xCC
 }
 
 // MsgTx implements the Message interface and represents a bitcoin tx message.
@@ -1281,7 +1293,7 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 		if to.IsSeparator() {
 			return true
 		}
-		if to.TokenType != 0 {
+		if to.TokenType != common.OmegaCoinTyp {
 			return false
 		}
 	}
@@ -1291,4 +1303,9 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 
 func (msg *MsgTx) RemapDef(to token.Definition) token.Definition {
 	return token.RemapDef(msg.TxDef, to)
+}
+
+func (msg *MsgTx) IsBtcL2() bool { // whether it is a TX from BTC to L2 xfer
+	return len(msg.TxIn) == 1 && msg.TxIn[0].PreviousOutPoint.Index == 0xFFFFFF &&
+		!msg.TxIn[0].PreviousOutPoint.Hash.IsEqual(&chainhash.Hash{})
 }

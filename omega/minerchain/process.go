@@ -167,6 +167,12 @@ func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode
 	if b.IsSVP {
 		return true, nil, nil
 	}
+	_, err := b.blockChain.CheckCollateral(block, &block.MsgBlock().BestBlock, flags)
+	if err != nil {
+		return false, err, nil
+	}
+
+	if block.MsgBlock().Utxos != nil {
 	for p, i := parent, int32(0); i <= b.chainParams.ViolationReportDeadline && p != nil; i++ {
 		if p.Data.GetVersion() < chaincfg.Version2 {
 			break
@@ -295,6 +301,19 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 		if r, err, hreq := b.checkV2(block, parent, flags); !r {
 			return false, false, err, hreq
+		}
+	for _, inst := range block.MsgBlock().Instructions {
+		switch inst.InstCode {
+		case wire.RetireReq:
+		case wire.Pledge:
+			m := btcutil.Hash160(inst.InstData)
+			if bytes.Compare(block.MsgBlock().Miner[:], m) != 0 {
+				return false, false, fmt.Errorf("Pledge Instruction not correct."), nil
+			}
+		case wire.Retire:
+		case wire.UplinkChain:
+		case wire.DownlinkChain:
+			return false, false, fmt.Errorf("Instruction not allowed in BOVM."), nil
 		}
 	} else if len(block.MsgBlock().ViolationReport) > 0 {
 		return false, false, fmt.Errorf("Unexpected blacklist"), nil

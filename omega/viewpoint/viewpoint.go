@@ -229,6 +229,12 @@ func (view *ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Spe
 				if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
+				if tx.MsgTx().IsBtcL2() {
+					continue
+				}
+				if in.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
+					continue
+				}
 				entry := view.Utxo.LookupEntry(in.PreviousOutPoint)
 				if entry == nil {
 					return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))

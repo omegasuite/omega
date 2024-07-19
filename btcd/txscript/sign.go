@@ -15,6 +15,7 @@ import (
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/ovm"
 )
 
 // RawTxInWitnessSignature returns the serialized ECDA signature for the input
@@ -46,7 +47,7 @@ func RawTxInSignature(tx *wire.MsgTx, idx int, subScript []byte,
 // uncompressed format based on compress. This format must match the same format
 // used to generate the payment address, or the script validation will fail.
 func SignatureScript(tx *wire.MsgTx, idx int, subscript []byte, privKey *btcec.PrivateKey,
-	compress bool, chainParams *chaincfg.Params, hashType txsparser.SigHashType) ([]byte, error) {
+	compress bool, chainParams *chaincfg.Params, hashType ovm.SigHashType) ([]byte, error) {
 	script := ovm.NewScriptBuilder()
 
 	// generate header data for preparing signature hash
@@ -142,7 +143,7 @@ func extractMSscript(subScript []byte, chainParams *chaincfg.Params) []byte {
 // legal to not be able to sign any of the outputs, no error is returned.
 func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 	kdb KeyDB, sdb ScriptDB,
-	chainParams *chaincfg.Params, hashType txsparser.SigHashType) ([]byte, int, bool) {
+	chainParams *chaincfg.Params, hashType ovm.SigHashType) ([]byte, int, bool) {
 	// generate header data for preparing signature hash
 	// subScript is either a redeem script, or a previously signed sig script
 	var payscript []byte
@@ -327,7 +328,7 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 }
 
 func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
-	subScript []byte, kdb KeyDB, sdb ScriptDB, previousScript []byte, hashType txsparser.SigHashType) ([]byte, txsparser.ScriptClass, []btcutil.Address, int, error) {
+	subScript []byte, kdb KeyDB, sdb ScriptDB, previousScript []byte, hashType ovm.SigHashType) ([]byte, txsparser.ScriptClass, []btcutil.Address, int, error) {
 
 	class, addresses, nrequired, err := ExtractPkScriptAddrs(subScript, chainParams)
 	if err != nil {
@@ -420,7 +421,7 @@ func (sc ScriptClosure) GetScript(address btcutil.Address) ([]byte, error) {
 // will be merged in a type-dependent manner with the newly generated.
 // signature script.
 func SignTxOutput(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
-	pkScript []byte, hashType txsparser.SigHashType, kdb KeyDB, sdb ScriptDB,
+	pkScript []byte, hashType ovm.SigHashType, kdb KeyDB, sdb ScriptDB,
 	previousScript []byte) ([]byte, error) {
 
 	sigScript, class, _, _, err := sign(chainParams, tx,
