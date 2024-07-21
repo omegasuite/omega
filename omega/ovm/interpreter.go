@@ -9,8 +9,8 @@
 package ovm
 
 import (
-	"fmt"
 	"encoding/binary"
+	"fmt"
 	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/omega"
 	"strings"
@@ -26,6 +26,7 @@ import (
 // The Interpreter will run the byte code VM based on the passed
 // configuration.
 type DebugCommand byte
+
 const (
 	Breakpoint = DebugCommand(iota)
 	Unbreak
@@ -39,30 +40,31 @@ const (
 	Terminated
 	Evaluate
 )
+
 type DebugCmd struct {
 	Cmd   DebugCommand
 	Data  []byte      // command come in
 	Reply chan []byte // returned info
 }
 type Interpreter struct {
-	evm      *OVM
+	evm *OVM
 
 	JumpTable [256]operation
 
-//	readOnly   bool   // Whether to throw on stateful modifications
+	//	readOnly   bool   // Whether to throw on stateful modifications
 	returnData []byte // Last CALL's return Data for subsequent reuse
 }
 
 // smart contract debugger
 var debugNotifier chan []byte
-var debugging 	bool              // whether we are debugging
-var breakpoints map[int]bool    // breaks at inst. PC
-var Control 	chan *DebugCmd      // chan for receiving Control
-var inspector	chan *DebugCmd // chan for inspect inst to prog. code
-var stepping 	bool            // whether we are stepping
-var stop		bool
-var attaching	chan struct{}
-var dbgreturn bool				// where user has clicked 'up'
+var debugging bool           // whether we are debugging
+var breakpoints map[int]bool // breaks at inst. PC
+var Control chan *DebugCmd   // chan for receiving Control
+var inspector chan *DebugCmd // chan for inspect inst to prog. code
+var stepping bool            // whether we are stepping
+var stop bool
+var attaching chan struct{}
+var dbgreturn bool // where user has clicked 'up'
 
 func DebugSetup(enable bool, comm chan []byte) {
 	if comm == nil {
@@ -95,7 +97,7 @@ func DebugSetup(enable bool, comm chan []byte) {
 // NewInterpreter returns a new instance of the Interpreter.
 func NewInterpreter(evm *OVM) *Interpreter {
 	a := &Interpreter{
-		evm:      evm,
+		evm:       evm,
 		JumpTable: omegaInstructionSet,
 	}
 
@@ -124,7 +126,7 @@ func setdbgcontract(contract *Contract, addr Address, stack *Stack) {
 
 	readysent = false
 
-	<- attaching
+	<-attaching
 }
 
 func intrepdebug() {
@@ -133,7 +135,7 @@ func intrepdebug() {
 
 	for debugging {
 		select {
-		case ctrl,ok := <-Control:
+		case ctrl, ok := <-Control:
 			if !ok {
 				debugging = false
 				break
@@ -197,11 +199,11 @@ func intrepdebug() {
 					waitingchan <- append([]byte{byte(Breaked)}, ctrl.Data...)
 				}
 
-			case Terminate:		// terminate by user. end debugging
+			case Terminate: // terminate by user. end debugging
 				inspector <- ctrl
 				debugging = false
 
-			case Terminated:	// natural termination of contract. in this case we will wait for next contract exec
+			case Terminated: // natural termination of contract. in this case we will wait for next contract exec
 				if waitingchan != nil {
 					waitingchan <- []byte{byte(Terminated)}
 				}
@@ -257,13 +259,13 @@ func intrepdebug() {
 
 func NewSigInterpreter(evm *OVM) *Interpreter {
 	return &Interpreter{
-		evm:      evm,
+		evm:       evm,
 		JumpTable: NewSignVMInstSet(),
 	}
 }
 
 func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack *Stack) omega.Err {
-	if (stack.data[stack.callTop].pure &^ INHERIT) != 0 {	// in.readOnly {
+	if (stack.data[stack.callTop].pure &^ INHERIT) != 0 { // in.readOnly {
 		// If the interpreter is operating in readonly mode, make sure no
 		// state-modifying operation is performed.
 		if operation.writes {
@@ -276,8 +278,8 @@ func (in *Interpreter) enforceRestrictions(op OpCode, operation operation, stack
 
 func DisasmString(code []byte) string {
 	var (
-		op    OpCode        // current opcode
-		pc   = uint64(0) // program counter
+		op OpCode      // current opcode
+		pc = uint64(0) // program counter
 	)
 	var s string
 
@@ -292,26 +294,26 @@ func DisasmString(code []byte) string {
 
 func (in *Interpreter) Step(code *inst) ([]byte, error) {
 	stack := Newstack()
-	pc   := int(0) // program counter
+	pc := int(0) // program counter
 
-	contract := & Contract{
+	contract := &Contract{
 		Code: []inst{*code},
 	}
 
 	op := code.op
 	operation := in.JumpTable[op]
 	if !operation.valid {
-			return nil, omega.ScriptError(omega.ErrInternal,fmt.Sprintf("invalid opcode 0x%x", int(op)))
-		}
+		return nil, omega.ScriptError(omega.ErrInternal, fmt.Sprintf("invalid opcode 0x%x", int(op)))
+	}
 	if err := in.enforceRestrictions(op, operation, stack); err != nil {
-			return nil, err
-		}
+		return nil, err
+	}
 	if operation.writes {
-			return nil, omega.ScriptError(omega.ErrInternal,"State modification is not allowed")
-		}
+		return nil, omega.ScriptError(omega.ErrInternal, "State modification is not allowed")
+	}
 
 	err := operation.execute(&pc, nil, contract, stack)
-	
+
 	return stack.data[0].space, err
 }
 
@@ -327,7 +329,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 	in.evm.depth++
 	defer func() {
 		if debugging {
-			Control <- &DebugCmd{ Terminated, nil, nil }
+			Control <- &DebugCmd{Terminated, nil, nil}
 		}
 		in.evm.depth--
 	}()
@@ -346,15 +348,15 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 	}
 
 	var (
-		op    OpCode        // current opcode
-		stack = Newstack()  // local stack
+		op    OpCode       // current opcode
+		stack = Newstack() // local stack
 		// For optimisation reason we're using uint64 as the program counter.
 		// It's theoretically possible to go above 2^64. The YP defines the PC
 		// to be uint256. Practically much less so feasible.
-		pc   = int(0) // program counter
+		pc = int(0) // program counter
 	)
-	contract.libs[Address([20]byte{})] = lib {
-		end: int32(len(contract.Code)),
+	contract.libs[Address([20]byte{})] = lib{
+		end:  int32(len(contract.Code)),
 		pure: contract.pure,
 	}
 	contract.Input = input
@@ -366,13 +368,13 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 		copy(stack.data[0].space[8:], input)
 	}
 
-/*	cost := int64(0)
-	allowance := in.evm.Paidfees * 100000
+	/*	cost := int64(0)
+		allowance := in.evm.Paidfees * 100000
 
-	if in.evm.chainConfig.ContractExecFee == 0 {
-		in.evm.CheckExecCost = false
-	}
- */
+		if in.evm.chainConfig.ContractExecFee == 0 {
+			in.evm.CheckExecCost = false
+		}
+	*/
 
 	if debugging && in.evm.chainConfig.Net == common.TestNet {
 		log.Info("start intrepdebug")
@@ -381,8 +383,8 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 		}
 	}
 
-//	debugging = true
-	var printInst = in.evm.chainConfig.Net == common.TestNet && strings.Contains(in.evm.chainConfig.ExternalIPs[0], ":8383")	// debugging
+	//	debugging = true
+	var printInst = in.evm.chainConfig.Net == common.TestNet && strings.Contains(in.evm.chainConfig.ExternalIPs[0], ":8383") // debugging
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
@@ -395,14 +397,14 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 			err.ErrorLevel = omega.RecoverableLevel
 			return nil, err
 		}
-/*
-		if in.evm.CheckExecCost {
-			cost += in.evm.chainConfig.ContractExecFee
-			if cost > allowance {
-				return nil, omega.ScriptError(omega.ErrInternal,"Exceeded gas limit")
+		/*
+			if in.evm.CheckExecCost {
+				cost += in.evm.chainConfig.ContractExecFee
+				if cost > allowance {
+					return nil, omega.ScriptError(omega.ErrInternal,"Exceeded gas limit")
+				}
 			}
-		}
- */
+		*/
 
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
@@ -418,15 +420,15 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 			return nil, err
 		}
 
-		if contract.pure & NOWRITE != 0 && operation.writes {
-			return nil, omega.ScriptError(omega.ErrInternal,"State modification is not allowed")
+		if contract.pure&NOWRITE != 0 && operation.writes {
+			return nil, omega.ScriptError(omega.ErrInternal, "State modification is not allowed")
 		}
 
 		// execute the operation
 		if printInst {
 			s := ""
 			for i := int32(0); i < stack.callTop; i++ {
-				s += "    ";
+				s += "    "
 			}
 			fmt.Printf("%s%d: %s(%c) %s\n", s, pc, op.String(), op, string(contract.GetBytes(pc)))
 		}
@@ -437,7 +439,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 		// if the operation clears the return Data (e.g. it has returning Data)
 		// set the last return to the result of the operation.
 		mln := ln + 4
-		if len(stack.data[0].space) < int(ln + 4) {
+		if len(stack.data[0].space) < int(ln+4) {
 			mln = uint32(len(stack.data[0].space))
 
 		}
@@ -456,10 +458,10 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 		case operation.halts:
 			return stack.data[0].space[4:mln], nil
 		case !operation.jumps:
-			if pc + 1 < int(contract.libs[stack.data[stack.callTop].inlib].end) {
+			if pc+1 < int(contract.libs[stack.data[stack.callTop].inlib].end) {
 				pc++
 			} else {
-				return nil, omega.ScriptError(omega.ErrInternal,"Instruction out of range.")
+				return nil, omega.ScriptError(omega.ErrInternal, "Instruction out of range.")
 			}
 		}
 	}
@@ -471,27 +473,27 @@ func (in *Interpreter) VerifySig(txinidx int, pkScript, sigScript []byte) bool {
 }
 
 func (in *Interpreter) verifySig(txinidx int, pkScript, sigScript []byte) bool {
-	if pkScript[0] < PAYFUNC_MIN || pkScript[0] > PAYFUNC_MAX {	// check validation function range
+	if pkScript[0] < PAYFUNC_MIN || pkScript[0] > PAYFUNC_MAX { // check validation function range
 		return false
 	}
 
-	contract := Contract {
+	contract := Contract{
 		Code: []inst{inst{OpCode(sigScript[0]), sigScript[1:]}},
-//		CodeHash: chainhash.Hash{},
+		//		CodeHash: chainhash.Hash{},
 		self: nil,
 		Args: make([]byte, 4),
-		pure: PUREMASK,	// don't allow state write, spending, add output, mint.
-					// actually its impossible since the inst set is limited
+		pure: PUREMASK, // don't allow state write, spending, add output, mint.
+		// actually its impossible since the inst set is limited
 	}
 
 	binary.LittleEndian.PutUint32(contract.Args[:], uint32(txinidx))
-	
-//	ret = append(pkScript[4:], ret[:]...)
-	contract.CodeAddr = []byte{ pkScript[0], 0, 0, 0 }
 
-	ret, err := run(in.evm, &contract, pkScript[4:])	// ret)
+	//	ret = append(pkScript[4:], ret[:]...)
+	contract.CodeAddr = []byte{pkScript[0], 0, 0, 0}
 
-	if err != nil || len(ret) != 1 || ret[0] != 1{
+	ret, err := run(in.evm, &contract, pkScript[4:]) // ret)
+
+	if err != nil || len(ret) != 1 || ret[0] != 1 {
 		return false
 	} else {
 		return true

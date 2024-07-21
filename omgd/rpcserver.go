@@ -177,6 +177,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"miningpolicy":    handleMiningPolicy, // New. miner specific policy
 	"tokenaddress":    handleTokenAddress, // New
 	"getissuedtokens": handleGetIssuedTokens,
+	"verifysig":       handleVerifySig,
 
 	//	"getblocktemplate":      handleGetBlockTemplate,
 	"getcfilter":            handleGetCFilter,
@@ -5711,6 +5712,41 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	}
 
 	return msg, nil
+}
+
+func handleVerifySig(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.VerifySigCmd)
+	// Deserialize and send off to tx relay
+	hexStr := c.HexTx
+	if len(hexStr)%2 != 0 {
+		hexStr = "0" + hexStr
+	}
+	serializedTx, err := hex.DecodeString(hexStr)
+	if err != nil {
+		return nil, rpcDecodeHexError(hexStr)
+	}
+	var msgTx wire.MsgTx
+	err = msgTx.Deserialize(bytes.NewReader(serializedTx))
+	if err != nil {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCDeserialization,
+			Message: "TX decode failed: " + err.Error(),
+		}
+	}
+
+	for _, s := range msgTx.SignatureScripts {
+		if len(s) == 0 {
+			return nil, internalRPCError("Incomplete signatures", "")
+		}
+	}
+
+	// Use 0 for the tag to represent local node.
+	tx := btcutil.NewTx(&msgTx)
+
+	views := s.cfg.Chain.NewViewPointSet()
+	err = ovm.VerifySigs(tx, s.cfg.ChainParams, 0, views)
+
+	return err == nil, nil
 }
 
 func handleConfirmations(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {

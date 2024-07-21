@@ -610,7 +610,6 @@ type SearchRawTransactionsResult struct {
 	Txid          string       `json:"txid"`
 	Hash          string       `json:"hash"`
 	Size          string       `json:"size"`
-	Vsize         string       `json:"vsize"`
 	Version       int32        `json:"version"`
 	LockTime      uint32       `json:"locktime"`
 	Vin           []VinPrevOut `json:"vin"`

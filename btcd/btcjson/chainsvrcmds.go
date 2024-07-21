@@ -1024,6 +1024,10 @@ type SendRawTransactionCmd struct {
 	FulllValidate *bool `jsonrpcdefault:"false"`
 }
 
+type VerifySigCmd struct {
+	HexTx string
+}
+
 // NewSendRawTransactionCmd returns a new instance which can be used to issue a
 // sendrawtransaction JSON-RPC command.
 //
@@ -1033,6 +1037,12 @@ func NewSendRawTransactionCmd(hexTx string, allowHighFees *bool) *SendRawTransac
 	return &SendRawTransactionCmd{
 		HexTx:         hexTx,
 		AllowHighFees: allowHighFees,
+	}
+}
+
+func NewVerifySigCmd(hexTx string) *VerifySigCmd {
+	return &VerifySigCmd{
+		HexTx: hexTx,
 	}
 }
 
@@ -1241,4 +1251,5 @@ func init() {
 	MustRegisterCmd("validateaddress", (*ValidateAddressCmd)(nil), flags)
 	MustRegisterCmd("verifymessage", (*VerifyMessageCmd)(nil), flags)
 	MustRegisterCmd("verifytxoutproof", (*VerifyTxOutProofCmd)(nil), flags)
+	MustRegisterCmd("verifysig", (*VerifySigCmd)(nil), flags)
 }

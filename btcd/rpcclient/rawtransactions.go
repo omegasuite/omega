@@ -160,7 +160,6 @@ func (c *Client) GetRawTransactionVerbose(txHash *chainhash.Hash, includeMempool
 	return c.GetRawTransactionVerboseAsync(txHash, includeMempool).Receive()
 }
 
-
 // FutureDecodeRawTransactionResult is a future promise to deliver the result
 // of a DecodeRawTransactionAsync RPC invocation (or an applicable error).
 type FutureDecodeRawTransactionResult chan *Response
@@ -245,7 +244,7 @@ func (c *Client) CreateRawTransactionAsync(inputs []btcjson.TransactionInput, de
 	convertedAmts := make([]map[string]btcjson.Token, 0, len(amounts))
 	for addr, amount := range amounts {
 		m := make(map[string]btcjson.Token, 0)
-		if amount.TokenType & 1 == 0 {
+		if amount.TokenType&1 == 0 {
 			t := amount
 			mt := btcutil.Amount(amount.Value["value"].(uint64))
 			t.Value["value"] = mt.ToOMC()
@@ -272,6 +271,8 @@ func (c *Client) CreateRawTransaction(inputs []btcjson.TransactionInput, definit
 // of a SendRawTransactionAsync RPC invocation (or an applicable error).
 type FutureSendRawTransactionResult chan *Response
 
+type FuturVerifySigResult chan *Response
+
 // Receive waits for the response promised by the future and returns the result
 // of submitting the encoded transaction to the server which then relays it to
 // the network.
@@ -289,6 +290,22 @@ func (r FutureSendRawTransactionResult) Receive() (*chainhash.Hash, error) {
 	}
 
 	return chainhash.NewHashFromStr(txHashStr)
+}
+
+func (r FuturVerifySigResult) Receive() (bool, error) {
+	res, err := receiveFuture(r)
+	if err != nil {
+		return false, err
+	}
+
+	// Unmarshal result as a string.
+	var result bool
+	err = json.Unmarshal(res, &result)
+	if err != nil {
+		return false, err
+	}
+
+	return result, nil
 }
 
 type FutureCheckForkResult chan *Response
@@ -321,7 +338,7 @@ func (c *Client) SendRawTransactionAsync(tx *wire.MsgTx, allowHighFees bool) Fut
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 
 		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
-//		if err := tx.Serialize(buf); err != nil {
+			//		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}
 		txHex = hex.EncodeToString(buf.Bytes())
@@ -331,10 +348,31 @@ func (c *Client) SendRawTransactionAsync(tx *wire.MsgTx, allowHighFees bool) Fut
 	return c.sendCmd(cmd)
 }
 
+func (c *Client) VerifySigAsync(tx *wire.MsgTx) FuturVerifySigResult {
+	txHex := ""
+	if tx != nil {
+		// Serialize the transaction and convert to hex string.
+		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
+
+		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
+			//		if err := tx.Serialize(buf); err != nil {
+			return newFutureError(err)
+		}
+		txHex = hex.EncodeToString(buf.Bytes())
+	}
+
+	cmd := btcjson.NewVerifySigCmd(txHex)
+	return c.sendCmd(cmd)
+}
+
 // SendRawTransaction submits the encoded transaction to the server which will
 // then relay it to the network.
 func (c *Client) SendRawTransaction(tx *wire.MsgTx, allowHighFees bool) (*chainhash.Hash, error) {
 	return c.SendRawTransactionAsync(tx, allowHighFees).Receive()
+}
+
+func (c *Client) VerifySig(tx *wire.MsgTx) (bool, error) {
+	return c.VerifySigAsync(tx).Receive()
 }
 
 func (c *Client) CheckForkAsync(txHex string) FutureCheckForkResult {
@@ -394,7 +432,7 @@ func (c *Client) SignRawTransactionAsync(tx *wire.MsgTx, privkeys []string) Futu
 		// Serialize the transaction and convert to hex string.
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
-//		if err := tx.Serialize(buf); err != nil {
+			//		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}
 		txHex = hex.EncodeToString(buf.Bytes())
@@ -469,7 +507,7 @@ func (c *Client) SignRawTransaction2Async(tx *wire.MsgTx, inputs []btcjson.RawTx
 		// Serialize the transaction and convert to hex string.
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
-//		if err := tx.Serialize(buf); err != nil {
+			//		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}
 		txHex = hex.EncodeToString(buf.Bytes())
@@ -507,7 +545,7 @@ func (c *Client) SignRawTransaction3Async(tx *wire.MsgTx,
 		// Serialize the transaction and convert to hex string.
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
-//		if err := tx.Serialize(buf); err != nil {
+			//		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}
 		txHex = hex.EncodeToString(buf.Bytes())
@@ -556,7 +594,7 @@ func (c *Client) SignRawTransaction4Async(tx *wire.MsgTx,
 		// Serialize the transaction and convert to hex string.
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
-//		if err := tx.Serialize(buf); err != nil {
+			//		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}
 		txHex = hex.EncodeToString(buf.Bytes())
