@@ -25,7 +25,7 @@ import (
 // their documentation for how the flags modify their behavior.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, btcblock *wire.BTCL2Data, flags BehaviorFlags) (bool, error, int32) {
+func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, btcblock *wire.XchainData, flags BehaviorFlags) (bool, error, int32) {
 	// The height of this block is one more than the referenced previous
 	// block.
 	prevHash := &block.MsgBlock().Header.PrevBlock

@@ -212,7 +212,7 @@ func Restore(p *wire.OutPoint) {
 		}
 		ck := v[:4]
 
-		d := wire.BTCL2Data{}
+		d := wire.XchainData{}
 
 		val := bucket.Get(ck)
 		if val == nil || len(val) == 0 {
@@ -241,7 +241,7 @@ func Spend(p *wire.OutPoint) {
 			if len(cursor.Key()) != 4 {
 				continue
 			}
-			d := wire.BTCL2Data{}
+			d := wire.XchainData{}
 			d.Unserialize(cursor.Value())
 			for i, txo := range d.Txs {
 				if txo.Utxo.Index == p.Index && bytes.Compare(txo.Utxo.Hash[:], p.Hash[:]) == 0 {
@@ -503,7 +503,7 @@ func HandleL2BTC(height int32) {
 				// not mature yet
 				continue
 			}
-			d := wire.BTCL2Data{}
+			d := wire.XchainData{}
 			d.Unserialize(cursor.Value())
 			if h != d.Height { // must
 				continue
@@ -580,7 +580,7 @@ func HandleL2BTC(height int32) {
 	})
 }
 
-func validateL2Tx(d *wire.BTCL2Data, tx *wire.MsgTx) bool {
+func validateL2Tx(d *wire.XchainData, tx *wire.MsgTx) bool {
 	btx := wire.NewMsgTx(wire.TxVersion)
 	total := int64(0)
 	for _, txo := range d.Txs {

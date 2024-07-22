@@ -11,6 +11,7 @@ import (
 	"container/list"
 	"encoding/hex"
 	"fmt"
+	btcwire "github.com/btcsuite/btcd/wire"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
@@ -622,7 +623,7 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 // it would be inefficient to repeat it.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Block, btcblock *wire.BTCL2Data,
+func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Block, btcblock *wire.XchainData,
 	view *viewpoint.ViewPointSet, stxos []viewpoint.SpentTxOut, vm *ovm.OVM) error {
 	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		return fmt.Errorf("insifficient signatures")

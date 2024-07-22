@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"container/heap"
 	"fmt"
+	treasuary "github.com/btcsuite/btcd/btc2omg/btcd/treasury"
+	"github.com/btcsuite/btcd/btc2omg/btcd/txscript/txsparser"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 
 	"math/rand"
@@ -553,60 +555,78 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		spendTransaction(views, btx, nextBlockHeight)
 	}
 
-	// Check transactions in BTCL2Pool, include mature transactions here
+	// Check transactions in INCOMINGPOOL, include mature transactions here
 	views.Db.View(func(dbtx database.Tx) error {
 		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 		heightbucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
 
 		hts := make(map[uint32]uint32)
-
 		cursor := bucket.Cursor()
+
+		seld := make(map[uint32]*wire.XchainData)
+		minh := make(map[uint32]uint32)
 
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			h := common.LittleEndian.Uint32(cursor.Key())
+			xtx := &wire.XchainData{}
+			err := xtx.Unserialize(cursor.Value())
+			if err != nil {
+				continue
+			}
+
+			ht, ok := hts[xtx.ChainID]
+			if !ok {
+				var k [4]byte
+				common.LittleEndian.PutUint32(k[:], xtx.ChainID)
+				t := heightbucket.Get(k[:])
+				if t != nil {
+					hts[xtx.ChainID] = common.LittleEndian.Uint32(t)
+					ht = hts[xtx.ChainID]
+				} else {
+					continue
+				}
+			}
+
 			if h+7 > ht { // not mature yet
 				continue
 			}
-			if h > minh {
-				continue
-			}
-
-			minh = h
-
-			xtx = &wire.BTCL2Data{}
-			err := xtx.Unserialize(cursor.Value())
-			if err != nil {
-				return err
+			if th, ok := minh[xtx.ChainID]; !ok || h < th {
+				minh[xtx.ChainID] = h
+				seld[xtx.ChainID] = xtx
 			}
 		}
 
-		if xtx == nil {
-			return nil
-		}
+		for _, xtx := range seld {
+			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
+			mtx.LockTime = uint32(nextBlockHeight)
+			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: 0x800000 | xtx.ChainID}, uint32(xtx.Height))
+			mtx.AddTxIn(txin)
+			for _, txo := range xtx.Txs {
+				v := token.NumToken{
+					Val: txo.Value,
+				}
+				tokentype := txo.TokenType
+				pkscript := txo.PkScript
+				if pkscript[21] == g.chainParams.CrossChainID {
+					var t [4]byte
+					copy(t, pkscript[22:25])
+					t[3] = 0
+					if common.LittleEndian.Uint32(t[:]) == g.chainParams.ChainID {
+						copy(pkscript[21:], pkscript[25:])
+						pkscript = pkscript[:len(pkscript) - 4]
+						if ((tokentype & 0x7FFFFF) >> 40) == uint64(g.chainParams.ChainID) {
+							tokentype = tokentype &^ 0xFFFFFF
+						}
+					}
+				}
 
-		mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
-		mtx.LockTime = uint32(nextBlockHeight)
-		txin := wire.NewTxIn(&wire.OutPoint{Hash: *treasuary.Bhash2l2hash(xtx.Hash), Index: 0xFFFFFF}, minh)
-		mtx.AddTxIn(txin)
-		for _, txo := range xtx.Txs {
-			v := token.NumToken{
-				Val: txsparser.FindValue(txo.Value, txo.PkScript),
+				txout := wire.NewTxOut(tokentype, &v, txo.Right, pkscript)
+				mtx.AddTxOut(txout)
 			}
-			h := txsparser.FindRight(txo.PkScript)
-			right := (*chainhash.Hash)(nil)
-			if h != nil {
-				var h2 chainhash.Hash
-				copy(h2[:], h[:])
-				right = &h2
-			}
-			tokentype := txsparser.FindTokentype(txo.PkScript)
-			pkscript := treasuary.ScriptConvert(txo.PkScript)
-			txout := wire.NewTxOut(uint64(tokentype), &v, right, pkscript)
-			mtx.AddTxOut(txout)
-		}
 
-		btx := btcutil.NewTx(mtx)
-		blockTxns = append(blockTxns, btx)
+			btx := btcutil.NewTx(mtx)
+			blockTxns = append(blockTxns, btx)
+		}
 
 		return nil
 	})
@@ -667,6 +687,32 @@ mempoolLoop:
 			continue
 		}
 		txDesc.Tried++
+
+		ok := true
+		for _,txo := range tx.MsgTx().TxOut {
+			if txo.IsSeparator() {
+				continue
+			}
+			if len(txo.PkScript) > 21 && txo.PkScript[21] == g.chainParams.CrossChainID {
+				var h [4]byte
+				copy(h[:], txo.PkScript[22:25])
+				h[3] = 0
+				if common.LittleEndian.Uint32(h[:]) == g.chainParams.ChainID {
+					ok = false
+					break
+				}
+				if (txo.TokenType >> 40) == 0 {
+					ok = false
+					break
+				}
+			}
+		}
+		if !ok {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			log.Infof("Reject bad tx %s", tx.Hash())
+			continue
+		}
 
 		tx.MsgTx().Strip()
 		tx.HasIns, tx.HasDefs, tx.HasOuts = false, false, false
