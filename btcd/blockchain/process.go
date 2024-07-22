@@ -6,9 +6,7 @@
 package blockchain
 
 import (
-	"bytes"
 	"fmt"
-	btcwire "github.com/btcsuite/btcd/wire"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
@@ -152,7 +150,7 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 				}
 			}
 
-			_, err, _ := b.maybeAcceptBlock(block, nil, flags)
+			_, err, _ := b.maybeAcceptBlock(block, flags)
 			return err != nil, nil
 		}
 		return true, nil
@@ -245,220 +243,6 @@ func (b *orphanBlock) NeedUpdate(ob chainutil.Orphaned) bool {
 
 func BlockToOrphan(block *btcutil.Block) chainutil.Orphaned {
 	return (*orphanBlock)(block)
-}
-
-func (b *BlockChain) CheckBTC(block *btcutil.Block) (*common.BTCL2Data, bool) {
-	fromBTC := (*common.BTCL2Data)(nil)
-	btcheight := uint32(0x7FFFFFFF)
-	matched := false
-
-	// check block referred in TxIn exists in INCOMINGPOOL
-	for _, tx := range block.MsgBlock().Transactions[1:] {
-		if tx.TxIn[0].PreviousOutPoint.Index != 0xFFFFFF {
-			continue
-		}
-		if matched { // there can be only one BTC tx in a block
-			return nil, false // error
-		}
-		if len(tx.TxIn) != 1 {
-			return nil, false // error
-		}
-
-		matched = true
-		// this is a TX
-		hash := tx.TxIn[0].PreviousOutPoint.Hash
-
-		err := b.db.View(func(dbtx database.Tx) error {
-			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-
-			ht := uint32(0)
-			head := bucket.Get([]byte("BTCHeight")) // height of current BTC tip
-			if head != nil {
-				ht = common.LittleEndian.Uint32(head)
-			}
-
-			cursor := bucket.Cursor()
-
-			// find lowest BTC block, and we will process this one
-			for ok := cursor.First(); ok; ok = cursor.Next() {
-				if len(cursor.Key()) > 4 { // this is "BTCHeight"
-					continue
-				}
-				h := common.LittleEndian.Uint32(cursor.Key())
-				if h+7 > ht {
-					continue
-				}
-				if h < btcheight {
-					btcheight = h
-					btc := &common.BTCL2Data{}
-					err := btc.Unserialize(cursor.Value())
-					if err != nil {
-						return err
-					}
-					bh := chainhash.Hash{}
-					copy(bh[:], btc.Hash[:])
-					if !bh.IsEqual(&hash) || btc.Height != int32(h) {
-						continue
-					}
-					fromBTC = btc
-					return nil
-				}
-			}
-			return nil
-		})
-		if err != nil || fromBTC == nil {
-			return nil, false
-		}
-		if len(tx.TxOut) != len(fromBTC.Txs) || btcheight != tx.TxIn[0].SignatureIndex {
-			return nil, false
-		}
-
-		txout := make(map[int]struct{})
-		for _, txo := range fromBTC.Txs {
-			v := txsparser.FindValue(txo.Value, txo.PkScript)
-			h := txsparser.FindRight(txo.PkScript)
-			right := (*chainhash.Hash)(nil)
-			if h != nil {
-				var h2 chainhash.Hash
-				copy(h2[:], h[:])
-				right = &h2
-			}
-			tokentype := txsparser.FindTokentype(txo.PkScript)
-			//			pkscript := treasury.ScriptConvert(txo.PkScript)
-
-			mtch := false
-			for j, mtxo := range tx.TxOut {
-				if _, ok := txout[j]; ok {
-					continue
-				}
-				if (tokentype&1) == 1 || mtxo.TokenType != uint64(tokentype) {
-					continue
-				}
-				if bytes.Compare(mtxo.PkScript, pkscript) != 0 {
-					continue
-				}
-				if (right == nil && mtxo.HasRight()) || (right != nil && !mtxo.HasRight()) {
-					continue
-				}
-				if mtxo.HasRight() && !right.IsEqual(mtxo.Rights) {
-					continue
-				}
-				if v != mtxo.Value.(*token.NumToken).Val {
-					continue
-				}
-				txout[j] = struct{}{}
-				mtch = true
-				break
-			}
-			if !mtch {
-				return nil, false
-			}
-		}
-
-		/*
-			for _, txo := range tx.TxOut {
-				// if txout is a transfer to BTC
-				if txo.IsSeparator() || txo.PkScript[0] != b.ChainParams.CrossChainID {
-					continue
-				}
-				if len(txo.PkScript) < 24 {
-					return nil, false
-				}
-				if bytes.Compare(txo.PkScript[1:4], []byte{0xFF, 0xFF, 0xFF, 0}) != 0 {
-					return nil, false
-				}
-			}
-
-			if len(tx.TxIn) == 0 {
-				continue
-			}
-
-			if tx.TxIn[0].PreviousOutPoint.Index == 0xFFFFFF && tx.TxIn[0].SignatureIndex == 0xFFFFFFFF {
-				// if tx is a transfer from BTC
-				if fromBTC == nil || len(tx.TxIn) > 1 {
-					return nil, false
-				}
-
-				// It is a transfer from BTC, record it
-				if bytes.Compare(hash[:], fromBTC.Hash[:]) != 0 {
-					return nil, false
-				}
-
-				// It is a transfer from BTC, validate it
-				mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoLock | wire.TxNoDefine)
-
-				rmatching := make(map[int]int)
-
-				err := b.db.View(func(dbtx database.Tx) error {
-					for i, txo := range fromBTC.Txs {
-						if treasuary.Matching(txo.PkScript) == 10 {
-							// This is a pledging script, does not correspond to a txo here
-							continue
-						}
-
-						v := token.NumToken{
-							Val: txsparser.FindValue(txo.Value, txo.PkScript),
-						}
-						h := txsparser.FindRight(txo.PkScript)
-						right := (*chainhash.Hash)(nil)
-						if h != nil {
-							var h2 chainhash.Hash
-							copy(h2[:], h[:])
-							right = &h2
-						}
-						txout := wire.NewTxOut(uint64(txsparser.FindTokentype(txo.PkScript)), &v,
-							right, treasuary.ScriptConvert(txo.PkScript))
-						match := false
-						for j, txo := range tx.TxOut {
-							if _, ok := rmatching[j]; !ok && txo.Match(txout) {
-								match = true
-								rmatching[j] = i
-								break
-							}
-						}
-						if !match {
-							return fmt.Errorf("Mismatch in BTC transfer")
-						}
-						fromBTC.Txs = append(fromBTC.Txs[:i], fromBTC.Txs[i+1:]...)
-						mtx.AddTxOut(txout)
-					}
-					return nil
-				})
-				if err != nil {
-					return nil, false
-				}
-			}
-
-		*/
-	}
-
-	return fromBTC, true
-}
-
-func (b *BlockChain) GetBTC(block *btcutil.Block) *common.BTCL2Data {
-	// check block referred in TxIn exists in INCOMINGPOOL
-	for _, tx := range block.MsgBlock().Transactions[1:] {
-		if !tx.IsBtcL2() {
-			continue
-		}
-
-		fromBTC := &common.BTCL2Data{}
-		fromBTC.Txs = make([]*common.MsgXrossL2, 0)
-		copy(fromBTC.Hash[:], tx.TxIn[0].PreviousOutPoint.Hash[:])
-		fromBTC.Height = int32(tx.TxIn[0].SignatureIndex)
-
-		for _, to := range tx.TxOut {
-			txo := &common.MsgXrossL2{}
-			txo.Value = to.Value.(*token.NumToken).Val
-			txo.Redeem = []byte{}
-			txo.Utxo = btcwire.OutPoint{}
-			//			txo.PkScript = treasury.RecoverBTCScript(to.PkScript)
-			fromBTC.Txs = append(fromBTC.Txs, txo)
-		}
-		return fromBTC
-	}
-
-	return nil
 }
 
 // ProcessBlock is the main workhorse for handling insertion of new blocks into
@@ -559,11 +343,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		} // re-examine it otherwise
 	}
 
-	btcblock, ok := b.CheckBTC(block)
-	if !ok {
-		return false, false, fmt.Errorf("CheckBTC failed"), -1, nil
-	}
-
 	// The block must not already exist as an orphan.
 	if !b.Orphans.CheckOrphan(blockHash, (*orphanBlock)(block)) {
 		str := fmt.Sprintf("already have block (orphan) %v", blockHash)
@@ -660,7 +439,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		}
 	}
 
-	isMainChain, err, missing := b.maybeAcceptBlock(block, btcblock, flags)
+	isMainChain, err, missing := b.maybeAcceptBlock(block, flags)
 	if missing > 0 {
 		return false, false, err, missing, nil
 	}

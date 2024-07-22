@@ -297,6 +297,53 @@ func (t *TxOut) SerializeSize() int {
 	return t.Token.SerializeSize() + n
 }
 
+func (t *TxOut) Serialize() []byte {
+	var w bytes.Buffer
+
+	common.WriteElement(&w, t.TokenType)
+
+	switch t.TokenType & 1 {
+	case 0:
+		common.WriteElement(&w, t.Value.(*token.NumToken).Val)
+
+	case 1:
+		common.WriteElement(&w, &t.Value.(*token.HashToken).Hash)
+	}
+	if (t.TokenType & 2) != 0 {
+		common.WriteElement(&w, t.Rights)
+	}
+	common.WriteVarInt(&w, 0, uint64(len(t.PkScript)))
+
+	binary.Write(&w, common.LittleEndian, t.PkScript)
+
+	return w.Bytes()
+}
+
+func (t *TxOut) DeSerialize(r []byte) int {
+	reader := bytes.NewBuffer(r)
+
+	common.ReadElement(reader, &t.TokenType)
+
+	switch t.TokenType & 1 {
+	case 0:
+		t.Value = &token.NumToken{}
+		common.ReadElement(reader, &t.Value.(*token.NumToken).Val)
+
+	case 1:
+		t.Value = &token.HashToken{}
+		common.ReadElement(reader, &t.Value.(*token.HashToken).Hash)
+	}
+	if (t.TokenType & 2) != 0 {
+		t.Rights = &chainhash.Hash{}
+		common.ReadElement(reader, t.Rights)
+	}
+
+	ln, _ := common.ReadVarInt(reader, 0)
+	t.PkScript = reader.Next(int(ln))
+
+	return reader.Len()
+}
+
 const OP_PAY2NONE = 0x45      // from ovm.contracts. redeclare here to avoid circular importation
 const OP_PAYCROSSCHAIN = 0x66 // from ovm.contracts. redeclare here to avoid circular importation
 

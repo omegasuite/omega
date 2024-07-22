@@ -68,7 +68,7 @@ func (ch ChainId) AddFunctionalityVersion(db database.DB, version uint32, funcs 
 	defer featureLock.Unlock()
 
 	t := allFuncs[ch]
-	u := make(map[uint32]struct{})
+	u := make(map[FuncId]struct{})
 	m := uint32(0)
 	for v, w := range t {
 		if v > m {
@@ -78,15 +78,15 @@ func (ch ChainId) AddFunctionalityVersion(db database.DB, version uint32, funcs 
 	if m >= version {
 		return false
 	}
-	accum := make(map[uint32]struct{})
+	accum := make(map[FuncId]struct{})
 	for k, f := range u {
 		accum[k] = f
 	}
 	for _, f := range funcs {
 		if f < 0 {
-			delete(accum, uint32(f))
+			delete(accum, FuncId(f))
 		} else {
-			accum[uint32(f)] = struct{}{}
+			accum[FuncId(f)] = struct{}{}
 		}
 	}
 	allFuncs[ch][version] = accum
@@ -124,17 +124,17 @@ func (ch ChainId) AddFunctionalityVersion(db database.DB, version uint32, funcs 
 			sort.Slice(fl, func(i, j int) bool {
 				return fl[i].Version < fl[j].Version
 			})
-			res := make(map[uint32]map[uint32]struct{})
-			accum := make(map[uint32]struct{})
+			res := make(map[uint32]map[FuncId]struct{})
+			accum := make(map[FuncId]struct{})
 			for _, f := range fl {
 				for _, g := range f.Feature {
 					if g > 0 {
-						accum[uint32(g)] = struct{}{}
+						accum[FuncId(g)] = struct{}{}
 					} else {
-						delete(accum, uint32(g))
+						delete(accum, FuncId(g))
 					}
 				}
-				dup := make(map[uint32]struct{})
+				dup := make(map[FuncId]struct{})
 				for k, v := range accum {
 					dup[k] = v
 				}
@@ -175,17 +175,17 @@ func LoadFunctionalityTable(db database.DB) {
 			sort.Slice(fl, func(i, j int) bool {
 				return fl[i].Version < fl[j].Version
 			})
-			res := make(map[uint32]map[uint32]struct{})
-			accum := make(map[uint32]struct{})
+			res := make(map[uint32]map[FuncId]struct{})
+			accum := make(map[FuncId]struct{})
 			for _, f := range fl {
 				for _, g := range f.Feature {
 					if g > 0 {
-						accum[uint32(g)] = struct{}{}
+						accum[FuncId(g)] = struct{}{}
 					} else {
-						delete(accum, uint32(g))
+						delete(accum, FuncId(g))
 					}
 				}
-				dup := make(map[uint32]struct{})
+				dup := make(map[FuncId]struct{})
 				for k, v := range accum {
 					dup[k] = v
 				}

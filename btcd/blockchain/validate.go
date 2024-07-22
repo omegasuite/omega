@@ -1670,6 +1670,38 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 	return txFeeInHao, nil
 }
 
+func ContractNewStorage(tx *btcutil.Tx, vm *ovm.OVM, paidstoragefees map[[20]byte]int64) int64 {
+	storagefees := make(map[[20]byte]int64)
+
+	for _, txOut := range tx.MsgTx().TxOut {
+		if txOut.IsSeparator() || !chaincfg.IsContractAddrID(txOut.PkScript[0]) {
+			continue
+		}
+
+		var addr [20]byte
+		copy(addr[:], txOut.PkScript[1:21])
+		if _, ok := storagefees[addr]; !ok {
+			storagefees[addr] = int64(vm.NewUage(addr))
+		}
+	}
+	storage := int64(0) // storage fees need to be paid by this tx
+	for addr, t := range storagefees {
+		if t <= 0 {
+			continue
+		}
+		if s, ok := paidstoragefees[addr]; ok {
+			if t <= s {
+				continue
+			}
+			storage += t - s
+		} else {
+			storage += t
+		}
+		paidstoragefees[addr] = t
+	}
+	return storage
+}
+
 // checkConnectBlock performs several checks to confirm connecting the passed
 // block to the chain represented by the passed view does not violate any rules.
 // In addition, the passed view is updated to spend all of the referenced
@@ -1895,7 +1927,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	}
 
 	totalFees := int64(0)
-	txFee := int64(0)
 
 	//	views.Rights = viewpoint.NewRightViewpoint()
 	//	views.Polygon = viewpoint.NewPolygonViewpoint()
@@ -1941,7 +1972,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			return err
 		}
 
-		txFee, err := CheckTransactionFees(tx, storages[i], views, b.ChainParams)
+		txFee, err := CheckTransactionFees(tx, block.MsgBlock().Header.Version, storages[i], views, b.ChainParams)
 		if err != nil {
 			return err
 		}
@@ -1956,7 +1987,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 					continue
 				}
-				if b.LockedCollaterals.Exists(&txin.PreviousOutPoint) {
+				if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; !ok {
 					return fmt.Errorf("Try to spend locked collateral")
 				}
 			}
@@ -1978,11 +2009,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		err = views.ConnectTransaction(tx, node.Height, stxos)
 		if err != nil {
 			return err
-		}
-	}
-	for hash, _ := range fromBTC {
-		if heights[hash] < top {
-			return fmt.Errorf("Mismatch in BTC transfer")
 		}
 	}
 

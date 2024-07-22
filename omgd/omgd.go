@@ -8,9 +8,13 @@ package main
 import (
 	"bytes"
 	"container/list"
+	"encoding/json"
 	"fmt"
+	"github.com/decred/dcrd/dcrec/secp256k1"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/famofchains/omega/consensus"
 	"strings"
@@ -46,7 +50,7 @@ type Protocol struct {
 	IsSvp           bool
 	db              database.DB
 	minerdb         database.DB
-	activeNetParams *params
+	activeNetParams *chaincfg.Params
 	running         bool
 }
 
@@ -59,7 +63,7 @@ func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 	interrupt := interruptListener()
 
 	// Load the block database.
-	db, err := loadBlockDB(tcfg, xfer)
+	db, err := loadBlockDB(tcfg)
 	if err != nil {
 		btcdLog.Errorf("%v", err)
 		return nil, true
@@ -72,7 +76,7 @@ func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 	}
 
 	// Load the block database.
-	minerdb, err := loadMinerDB(tcfg, xfer)
+	minerdb, err := loadMinerDB(tcfg)
 	if err != nil {
 		btcdLog.Errorf("%v", err)
 		return prot, true
@@ -463,7 +467,7 @@ func warnMultipleDBs(cfg *config) {
 // contains additional logic such warning the user if there are multiple
 // databases which consume space on the file system and ensuring the regression
 // test database is clean when in regression test mode.
-func loadBlockDB(cfg *config, xfer int) (database.DB, error) {
+func loadBlockDB(cfg *config) (database.DB, error) {
 	// The memdb backend does not have a file path associated with it, so
 	// handle it uniquely.  We also don't want to worry about the multiple
 	// database type warnings when running with the memory database.
@@ -486,7 +490,7 @@ func loadBlockDB(cfg *config, xfer int) (database.DB, error) {
 	removeRegressionDB(dbPath, cfg)
 
 	btcdLog.Infof("Loading block database from '%s'", dbPath)
-	db, err := database.Open(cfg.DbType, dbPath, activeNetParams[xfer].Net)
+	db, err := database.Open(cfg.DbType, dbPath, cfg.NetMagic)
 	if err != nil {
 		// Return the error if it's not because the database doesn't
 		// exist.
@@ -501,7 +505,7 @@ func loadBlockDB(cfg *config, xfer int) (database.DB, error) {
 		if err != nil {
 			return nil, err
 		}
-		db, err = database.Create(cfg.DbType, dbPath, activeNetParams[xfer].Net)
+		db, err = database.Create(cfg.DbType, dbPath, cfg.NetMagic)
 		if err != nil {
 			return nil, err
 		}
@@ -516,7 +520,7 @@ func loadBlockDB(cfg *config, xfer int) (database.DB, error) {
 // contains additional logic such warning the user if there are multiple
 // databases which consume space on the file system and ensuring the regression
 // test database is clean when in regression test mode.
-func loadMinerDB(cfg *config, xfer int) (database.DB, error) {
+func loadMinerDB(cfg *config) (database.DB, error) {
 	// The memdb backend does not have a file path associated with it, so
 	// handle it uniquely.  We also don't want to worry about the multiple
 	// database type warnings when running with the memory database.
@@ -532,7 +536,7 @@ func loadMinerDB(cfg *config, xfer int) (database.DB, error) {
 	removeRegressionDB(dbPath, cfg)
 
 	btcdLog.Infof("Loading miner database from '%s'", dbPath)
-	db, err := database.Open(cfg.DbType, dbPath, activeNetParams[xfer].Net)
+	db, err := database.Open(cfg.DbType, dbPath, cfg.NetMagic)
 	if err != nil {
 		// Return the error if it's not because the database doesn't
 		// exist.
@@ -547,7 +551,7 @@ func loadMinerDB(cfg *config, xfer int) (database.DB, error) {
 		if err != nil {
 			return nil, err
 		}
-		db, err = database.Create(cfg.DbType, dbPath, activeNetParams[xfer].Net)
+		db, err = database.Create(cfg.DbType, dbPath, cfg.NetMagic)
 		if err != nil {
 			return nil, err
 		}
@@ -563,7 +567,7 @@ func main() {
 	// Use all processor cores.
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	tcfg, _, err := loadConfig(0) // chain main options
+	tcfg, _, err := loadConfig("") // chain main options
 	if err != nil {
 		os.Exit(1)
 	}
@@ -635,71 +639,76 @@ func main() {
 	}
 
 	p.IsSvp = false
+	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
 
-	tcfg, _, err = loadConfig(1) // chain svp options
-	if err != nil {
-		os.Exit(1)
-	}
-
-	// Work around defer not working after os.Exit()
-	p, quit = prepareServer(tcfg, 1)
-	if quit {
-		if p != nil {
-			cleanup(p)
-		}
-		os.Exit(1)
-	}
-
-	p.IsSvp = true
-	protocols = append(protocols, p)
-	/*
-		err = protocols[0].Server.db.View(func(tx database.Tx) error {
-			bucket := tx.Metadata().Bucket([]byte("SVP Clients"))
-			cursor := bucket.Cursor()
-			for ok := cursor.First(); ok; ok = cursor.Next() {
-				cfg := config{}
-				cfg.deserialize(cursor.Value())
-				wg.Add(1)
-				p, quit := prepareServer(&cfg)
-				if quit {
-					cleanup(p)
-					return fmt.Errorf("fail to prepare Server")
-				}
-
-				if p != nil {
-					p.IsSvp = true
-					protocols = append(protocols, p)
-				}
-			}
+	p.db.Update(func(tx database.Tx) error {
+		bucket := tx.Metadata().Bucket([]byte("SVP Clients"))
+		if bucket == nil {
 			return nil
-		})
-
-		if err != nil {
-			for _, p := range protocols {
-				cleanup(p)
-			}
-			os.Exit(1)
 		}
-	*/
+		configbucket := tx.Metadata().Bucket([]byte("SVP Configuration"))
 
-	c := make(chan *blockchain.XchMsg, 256)
+		cursor := bucket.Cursor()
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			params := &chaincfg.GlobalParams{}
+			if err := json.Unmarshal(cursor.Value(), params); err != nil {
+				os.Exit(1)
+			}
 
-	for i, p := range protocols {
+			svpid := fmt.Sprintf("%x", uint32(params.Net))
+			tcfg, _, err := loadConfig(svpid)
+
+			var magic [4]byte
+			common.LittleEndian.PutUint32(magic[:], uint32(params.Net))
+
+			if err != nil {
+				tcfg = &config{}
+
+				v := configbucket.Get(magic[:])
+
+				if v != nil {
+					if err := json.Unmarshal(v, tcfg); err != nil {
+						os.Exit(1)
+					}
+				} else {
+					*tcfg = *protocols[0].cfg
+					tcfg.LogDir += "/" + svpid
+					tcfg.DataDir += "/" + svpid
+				}
+			}
+			v, _ := json.Marshal(tcfg)
+			configbucket.Put(magic[:], v)
+
+			p, quit = prepareServer(tcfg)
+			if quit || p == nil {
+				if p != nil {
+					cleanup(p)
+				}
+				os.Exit(1)
+			}
+
+			p.IsSvp = true
+			p.activeNetParams = &params{
+				&chaincfg.Params{GlobalParams: *params},
+				rpcPort: tcfg.RPCListeners,
+			}
+			p.activeNetParams.MainChainID = protocols[0].activeNetParams.ChainID
+			p.Server.chain.MainChain = protocols[0].Server.chain
+
+			protocols = append(protocols, p)
+		}
+
+		return nil
+	})
+
+	for _, p := range protocols {
 		wg.Add(1)
 		p.running = true
 
 		go runserver(p)
-
-		if i > 0 {
-			m := make(map[uint32]chan *blockchain.XchMsg)
-			m[protocols[0].Server.chain.ChainParams.ChainID] = c
-			p.Server.chain.XChainCh = m
-		}
 	}
-	protocols[0].Server.chain.XChainCh = nil
 
-	go protocols[0].Server.chain.RecvXfer(c, interrupt)
 	go retrievedefs(protocols[0], protocols[1])
 
 	wg.Wait()

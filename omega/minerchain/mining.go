@@ -71,8 +71,6 @@ type Config struct {
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
 	MiningAddrs []btcutil.Address
-	Privkeys    []*btcec.PrivateKey
-	Retire      []btcutil.Address
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -508,6 +506,9 @@ out:
 		// Choose a payment address at random.
 		rand.Seed(time.Now().Unix())
 		rnd := rand.Intn(len(m.cfg.MiningAddrs))
+		if m.cfg.ShareMining && rnd > 1 {
+			rnd = 1 // all addresses except for the first are external
+		}
 
 		mtch := false
 		qc := chainChoice
@@ -627,54 +628,18 @@ out:
 			}
 			v, err := m.g.Chain.CheckCollateral(block, nil, 0)
 			if err != nil {
-			log.Infof(err.Error())
 				time.Sleep(time.Second * 5)
 				continue
-		}
-		block.MsgBlock().Instructions = make([]*wire.Instruction, 0)
-
-		if !treasury.Declared(block.MsgBlock().Miner) {
-			if _, ok := pendingMiner[block.MsgBlock().Miner]; !ok {
-				for i, k := range m.cfg.MiningAddrs {
-					if bytes.Compare(k.ScriptAddress(), block.MsgBlock().Miner[:]) == 0 {
-						decl := &wire.Instruction{
-							InstCode: wire.Pledge,
-							InstData: m.cfg.Privkeys[i].PubKey().SerializeCompressed(),
-						}
-						pendingMiner[block.MsgBlock().Miner] = struct{}{}
-						block.MsgBlock().Instructions = append(block.MsgBlock().Instructions, decl)
-						break
-					}
-				}
 			}
-	retirecheck:
-		for _, r := range m.cfg.Retire {
-			if bytes.Compare(r.ScriptAddress(), block.MsgBlock().Miner[:]) == 0 {
-				decl := &wire.Instruction{
-					InstCode: wire.RetireReq,
-					InstData: nil,
-				}
-				block.MsgBlock().Instructions = append(block.MsgBlock().Instructions, decl)
-				for i, k := range m.cfg.MiningAddrs {
-					if bytes.Compare(k.ScriptAddress(), r.ScriptAddress()) == 0 {
-						m.cfg.MiningAddrs = append(m.cfg.MiningAddrs[:i], m.cfg.MiningAddrs[i+1:]...)
-						m.cfg.Privkeys = append(m.cfg.Privkeys[:i], m.cfg.Privkeys[i+1:]...)
-						break retirecheck
-					}
-				}
-				break retirecheck // never reaches here
+			block.MsgBlock().Instructions = make([]*wire.Instruction, 0)
+
+		
+				h1 = int64(v)
+			
+
+			if h1 < 1 {
+				h1 = 1
 			}
-		}
-
-		if c != 0 {
-			h1 = int64(v / uint32(c))
-		} else {
-			h1 = int64(v)
-		}
-
-		if h1 < 1 {
-			h1 = 1
-		}
 
 			me := m.g.Chain.Miners.(*MinerChain)
 			prev, _ := me.BlockByHash(&block.MsgBlock().PrevBlock)
@@ -707,12 +672,6 @@ out:
 		if m.solveBlock(template, curHeight+1, h1+h2, quit, numWorkers) {
 			log.Infof("New miner block produced by %x at %d", signAddr.ScriptAddress(), template.Height)
 			m.submitBlock(block)
-			for i, r := range m.cfg.Retire {
-				if bytes.Compare(r.ScriptAddress(), block.MsgBlock().Miner[:]) == 0 {
-					m.cfg.Retire = append(m.cfg.Retire[:i], m.cfg.Retire[i+1:]...)
-					break
-				}
-			}
 		} else {
 			log.Infof("miner.solveBlock: No New block produced")
 		}
@@ -784,14 +743,6 @@ func (m *CPUMiner) Start(collateral []*wire.OutPoint, pledge []*wire.OutPoint) {
 
 	if collateral != nil {
 		m.g.Collateral = collateral
-	}
-	if m.g.Pledge == nil {
-		m.g.Pledge = make(map[wire.OutPoint]struct{})
-	}
-	if pledge != nil {
-		for _, p := range pledge {
-			m.g.Pledge[*p] = struct{}{}
-		}
 	}
 
 	// Nothing to do if the miner is already running or if running in

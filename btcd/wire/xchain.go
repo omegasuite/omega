@@ -8,56 +8,28 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 type MsgXrossL2 struct {
-	Utxo      OutPoint
-	TokenType uint64
-	Value     int64
-	PkScript  []byte
-	Redeem    []byte
-	Right     *chainhash.Hash
+	Utxo OutPoint
+	Txo  TxOut
 }
 
 func (t *MsgXrossL2) Serialize() []byte {
-	res := make([]byte, 60, 100)
+	res := make([]byte, 56, 100)
 	copy(res, t.Utxo.Hash[:])
 	common.LittleEndian.PutUint32(res[32:], t.Utxo.Index)
-	common.LittleEndian.PutUint64(res[36:], t.TokenType)
-	common.LittleEndian.PutUint64(res[44:], uint64(t.Value))
-	common.LittleEndian.PutUint32(res[52:], uint32(len(t.PkScript)))
-	common.LittleEndian.PutUint32(res[56:], uint32(len(t.Redeem)))
-	res = append(res, t.PkScript...)
-	res = append(res, t.Redeem...)
+	common.LittleEndian.PutUint64(res[36:], t.Txo.TokenType)
 
-	if t.Right == nil {
-		res = append(res, 1)
-		res = append(res, t.Right[:]...)
-	} else {
-		res = append(res, 0)
-	}
+	res = append(res, t.Txo.Serialize()...)
 	return res
 }
 
-func (t *MsgXrossL2) UnSerialize(d []byte) (int, error) {
+func (t *MsgXrossL2) DeSerialize(d []byte) (int, error) {
 	copy(t.Utxo.Hash[:], d)
 	t.Utxo.Index = common.LittleEndian.Uint32(d[32:])
-	t.TokenType = int64(common.LittleEndian.Uint64(d[36:]))
-	t.Value = int64(common.LittleEndian.Uint64(d[44:]))
-	m := common.LittleEndian.Uint32(d[52:])
-	n := common.LittleEndian.Uint32(d[56:])
-
-	t.PkScript = d[60 : 60+m]
-	t.Redeem = d[60+m : 60+m+n]
-
-	t.Right = nil
-	if d[60+m+n] == 1 {
-		t.Right = &chainhash.Hash{}
-		copy(t.Right[:], d[60+m+n+1:])
-	}
-
-	return int(52 + m + n), nil
+	return t.Txo.DeSerialize(d[36:]), nil
 }
 
 type XchainData struct {
@@ -85,25 +57,12 @@ func (t *XchainData) Serialize() []byte {
 	w.Write(h[:])
 
 	for _, txo := range t.Txs {
-		var v [8]byte
-
-		_ = common.WriteElements(&w, &txo.Utxo.Hash, txo.Utxo.Index)
-
-		common.LittleEndian.PutUint64(v[:], uint64(txo.Value))
-		w.Write(v[:])
-
-		common.LittleEndian.PutUint32(h[:], uint32(len(txo.PkScript)))
-		w.Write(h[:])
-		w.Write(txo.PkScript)
-
-		common.LittleEndian.PutUint32(h[:], uint32(len(txo.Redeem)))
-		w.Write(h[:])
-		w.Write(txo.Redeem)
+		w.Write(txo.Serialize())
 	}
 	return w.Bytes()
 }
 
-func (t *XchainData) Unserialize(buf []byte) error {
+func (t *XchainData) DeSerialize(buf []byte) error {
 	m := len(buf)
 
 	if m < 40 {
@@ -128,35 +87,8 @@ func (t *XchainData) Unserialize(buf []byte) error {
 	}
 
 	for _, txo := range t.Txs {
-		if m < n+48 {
-			return fmt.Errorf("Insufficient data")
-		}
-
-		copy(txo.Utxo.Hash[:], buf[n:n+32])
-		n += 32
-		txo.Utxo.Index = common.LittleEndian.Uint32(buf[n : n+4])
-		n += 4
-
-		txo.Value = int64(common.LittleEndian.Uint64(buf[n : n+8]))
-		n += 8
-
-		h := common.LittleEndian.Uint32(buf[n : n+4])
-		n += 4
-
-		if m < n+int(h) {
-			return fmt.Errorf("Insufficient data")
-		}
-
-		txo.PkScript = make([]byte, h)
-		copy(txo.PkScript, buf[n:n+int(h)])
-		n += int(h)
-
-		h = common.LittleEndian.Uint32(buf[n : n+4])
-		n += 4
-
-		txo.Redeem = make([]byte, h)
-		copy(txo.Redeem, buf[n:n+int(h)])
-		n += int(h)
+		m, _ := txo.DeSerialize(buf[n:])
+		n += m
 	}
 	return nil
 }

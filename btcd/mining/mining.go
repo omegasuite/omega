@@ -9,8 +9,6 @@ import (
 	"bytes"
 	"container/heap"
 	"fmt"
-	treasuary "github.com/btcsuite/btcd/btc2omg/btcd/treasury"
-	"github.com/btcsuite/btcd/btc2omg/btcd/txscript/txsparser"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 
 	"math/rand"
@@ -18,9 +16,9 @@ import (
 
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
@@ -379,17 +377,12 @@ func medianAdjustedTime(chainState *blockchain.BestState, timeSource chainutil.M
 	return newTimestamp
 }
 
-type BtcData struct {
-	chainParams *btcchaincfg.Params
-}
-
 // BlkTmplGenerator provides a type that can be used to generate block templates
 // based on a given mining Policy and source of transactions to choose from.
 // It also houses additional state required in order to ensure the templates
 // are built on top of the current best Chain and adhere to the consensus rules.
 type BlkTmplGenerator struct {
 	Policy      *Policy
-	btc         *BtcData
 	chainParams *chaincfg.Params
 	txSource    TxSource
 	Chain       *blockchain.BlockChain
@@ -410,13 +403,12 @@ type BlkTmplGenerator struct {
 // consensus rules.
 func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 	txSource TxSource, chain *blockchain.BlockChain,
-	timeSource chainutil.MedianTimeSource, btcparams *btcchaincfg.Params) *BlkTmplGenerator {
+	timeSource chainutil.MedianTimeSource, btcparams *chaincfg.Params) *BlkTmplGenerator {
 	//	sigCache *txscript.SigCache,
 	//	hashCache *txscript.HashCache) *BlkTmplGenerator {
 
 	return &BlkTmplGenerator{
 		Policy:      policy,
-		btc:         &BtcData{chainParams: btcparams},
 		chainParams: params,
 		txSource:    txSource,
 		Chain:       chain,
@@ -567,9 +559,9 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		minh := make(map[uint32]uint32)
 
 		for ok := cursor.First(); ok; ok = cursor.Next() {
-			h := common.LittleEndian.Uint32(cursor.Key())
+			h := common.LittleEndian.Uint32(cursor.Key()[4:])
 			xtx := &wire.XchainData{}
-			err := xtx.Unserialize(cursor.Value())
+			err := xtx.DeSerialize(cursor.Value())
 			if err != nil {
 				continue
 			}
@@ -602,26 +594,20 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: 0x800000 | xtx.ChainID}, uint32(xtx.Height))
 			mtx.AddTxIn(txin)
 			for _, txo := range xtx.Txs {
-				v := token.NumToken{
-					Val: txo.Value,
-				}
-				tokentype := txo.TokenType
-				pkscript := txo.PkScript
-				if pkscript[21] == g.chainParams.CrossChainID {
+				if txo.Txo.PkScript[21] == g.chainParams.CrossChainID {
 					var t [4]byte
-					copy(t, pkscript[22:25])
+					copy(t[:], txo.Txo.PkScript[22:25])
 					t[3] = 0
 					if common.LittleEndian.Uint32(t[:]) == g.chainParams.ChainID {
-						copy(pkscript[21:], pkscript[25:])
-						pkscript = pkscript[:len(pkscript) - 4]
-						if ((tokentype & 0x7FFFFF) >> 40) == uint64(g.chainParams.ChainID) {
-							tokentype = tokentype &^ 0xFFFFFF
+						copy(txo.Txo.PkScript[21:], txo.Txo.PkScript[25:])
+						txo.Txo.PkScript = txo.Txo.PkScript[:len(txo.Txo.PkScript)-4]
+						if ((txo.Txo.TokenType & 0x7FFFFF) >> 40) == uint64(g.chainParams.ChainID) {
+							txo.Txo.TokenType = txo.Txo.TokenType &^ 0xFFFFFF
 						}
 					}
 				}
 
-				txout := wire.NewTxOut(tokentype, &v, txo.Right, pkscript)
-				mtx.AddTxOut(txout)
+				mtx.AddTxOut(&txo.Txo)
 			}
 
 			btx := btcutil.NewTx(mtx)
@@ -689,7 +675,7 @@ mempoolLoop:
 		txDesc.Tried++
 
 		ok := true
-		for _,txo := range tx.MsgTx().TxOut {
+		for _, txo := range tx.MsgTx().TxOut {
 			if txo.IsSeparator() {
 				continue
 			}
@@ -762,10 +748,10 @@ mempoolLoop:
 				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
-			if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
-				continue
-			}
-			if g.Chain.LockedCollaterals.Exists(&txin.PreviousOutPoint) {
+				if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
+					continue
+				}
+				if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
 					locked = true
 					locks = txin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", txin.PreviousOutPoint.Index)
 					break
@@ -1318,9 +1304,6 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	if nextBlockVersion >= chaincfg.Version2 {
 		usable := make(map[wire.OutPoint]struct{})
 		for _, c := range g.Collateral {
-		if g.Chain.HasUTXO(c) {
-			usable[*c] = struct{}{}
-		} else if g.Chain.IsPledged(c) {
 			usable[*c] = struct{}{}
 		}
 
@@ -1330,19 +1313,21 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 			}
 			p = p.Parent
 		}
-	k := len(usable)
-	if k == 0 && coll > 0 {
+
+		k := len(usable)
+		if k == 0 && coll > 0 {
 			return nil, fmt.Errorf("No qualified collateral available out of %d collaterals.", len(g.Collateral))
 		}
-	if k > 0 {
-		k = rand.Intn(k)
+		if k > 0 {
+			k = rand.Intn(k)
 
-		for c, _ := range usable {
-			if k == 0 {
-				uc = &c
-				break
+			for c, _ := range usable {
+				if k == 0 {
+					uc = &c
+					break
+				}
+				k--
 			}
-			k--
 		}
 	}
 

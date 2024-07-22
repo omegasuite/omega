@@ -11,10 +11,10 @@ import (
 	"container/list"
 	"encoding/hex"
 	"fmt"
-	btcwire "github.com/btcsuite/btcd/wire"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/famofchains/omega/chainmap"
 	"github.com/omegasuite/famofchains/omega/ovm"
 	"github.com/omegasuite/famofchains/omega/token"
 	"os"
@@ -25,7 +25,6 @@ import (
 	"github.com/omegasuite/famofchains/btcd/blockchain/bccompress"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/database"
-	"github.com/omegasuite/famofchains/btcd/treasury"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/famofchains/omega/viewpoint"
@@ -209,8 +208,8 @@ type BlockChain struct {
 	AddrUsage func(address btcutil.Address) uint32
 
 	// whther this chain is SVP of another chain
-	IsSVP    bool
-	XChainCh map[uint32]chan *XchMsg
+	IsSVP     bool
+	MainChain *BlockChain
 
 	// tmp data
 	BTfile *os.File
@@ -623,7 +622,7 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 // it would be inefficient to repeat it.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Block, btcblock *wire.XchainData,
+func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Block,
 	view *viewpoint.ViewPointSet, stxos []viewpoint.SpentTxOut, vm *ovm.OVM) error {
 	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		return fmt.Errorf("insifficient signatures")
@@ -677,29 +676,9 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			for _, txo := range tx.TxOut {
-				if txo.IsCrossChain() {
-					if len(txo.PkScript) != 25 {
-						return fmt.Errorf("Cross chain PkScript length is not 25b in %v", tx.TxHash())
-					}
-				}
-			}
-		}
-
-		for _, tx := range block.MsgBlock().Transactions[1:] {
-			sent := map[uint32]struct{}{}
-			for _, txo := range tx.TxOut {
-				if txo.IsCrossChain() {
-					var cid [4]byte
-					copy(cid[:], txo.PkScript[22:25])
-					cid[3] = 0
-					dest := common.LittleEndian.Uint32(cid[:]) // send the tx to chains we connect. avoid repeat
-					if ch, ok := b.XChainCh[dest]; ok {
-						if _, ok := sent[dest]; !ok {
-							done := make(chan struct{})
-							ch <- &XchMsg{false, tx.TxIn[0].SignatureIndex &^ 0x10000, tx.TxIn[0].PreviousOutPoint.Hash, tx, done}
-							sent[dest] = struct{}{}
-							<-done
-						}
+				if !txo.IsSeparator() && txo.IsCrossChain() {
+					if len(txo.PkScript) < 26 {
+						return fmt.Errorf("Cross chain PkScript length is less than 26b in %s", tx.TxHash().String())
 					}
 				}
 			}
@@ -749,6 +728,48 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 			return err
 		}
 
+		if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
+			mainchain := chainmap.ChainMap[b.ChainParams.MainChainID]
+			for _, tx := range block.MsgBlock().Transactions[1:] {
+				xchain := wire.XchainData{
+					ChainID: b.ChainParams.ChainID,
+					Hash:    *block.Hash(),
+					Height:  block.Height(),
+					Txs:     []*wire.MsgXrossL2{},
+				}
+				for i, txo := range tx.TxOut {
+					if !txo.IsSeparator() && txo.IsCrossChain() {
+						var cid [4]byte
+						copy(cid[:], txo.PkScript[22:25])
+						cid[3] = 0
+						dest := common.LittleEndian.Uint32(cid[:]) // destination of this tx
+
+						if !mainchain.PassThru(b.ChainParams.ChainID, dest) {
+							// if it will pass through the main chain, ignore it, otherwise add the tx to main chain
+							continue
+						}
+
+						t := &wire.MsgXrossL2{
+							Utxo: wire.OutPoint{
+								Hash:  tx.TxHash(),
+								Index: uint32(i),
+							},
+							Txo: *txo,
+						}
+						xchain.Txs = append(xchain.Txs, t)
+					}
+				}
+				bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+				heightbucket := dbTx.Metadata().Bucket([]byte(common.SVPHeights))
+
+				var k [8]byte
+				common.LittleEndian.PutUint32(k[:], b.ChainParams.ChainID)
+				common.LittleEndian.PutUint32(k[4:], uint32(block.Height()))
+				bucket.Put(k[:], xchain.Serialize())
+				heightbucket.Put(k[:4], k[4:])
+			}
+		}
+
 		// Allow the index manager to call each of the currently active
 		// optional indexes with the block being connected so they can
 		// update themselves accordingly.
@@ -759,71 +780,27 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 			}
 		}
 
-		if btcblock != nil {
-			for _, s := range btcblock.Txs {
-				// add it to INPOOL
-				treasury.Intake(dbTx, treasury.Boutp2l2outp(&s.Utxo), &treasury.AssetType{
-					Protocol: treasury.BITCOIN,
-					AssetID:  0,
-				}, uint64(s.Value), s.PkScript)
-			}
-			// remove entry in INCOMINGPOOL
-
-			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-			var h [4]byte
-			common.LittleEndian.PutUint32(h[:], uint32(btcblock.Height))
-			bucket.Delete(h[:])
-		}
-
-		// Handle transfers to BTC from L2
-		xtx := make([]*common.MsgXrossL2, 0)
-		for _, tx := range block.MsgBlock().Transactions[1:] {
-			for i, txo := range tx.TxOut {
-				if txo.IsSeparator() || !txo.IsCrossChain() {
-					continue
-				}
-				// take all across chain xfers
-				_, v := txo.Value.Value()
-				xtx = append(xtx, &common.MsgXrossL2{
-					Value: v,
-					Utxo: btcwire.OutPoint{
-						Hash:  *treasury.L2hash2Bhash(tx.TxHash()),
-						Index: uint32(i),
-					},
-					PkScript: txo.PkScript,
-				})
-			}
-		}
-
-		bucket := dbTx.Metadata().Bucket([]byte(common.L2BTCPOOL))
-		var h [4]byte
-		common.LittleEndian.PutUint32(h[:], uint32(block.Height()))
-		bucket.Put([]byte("ChainHeight"), h[:])
-
-		if len(xtx) > 0 {
-			d := common.BTCL2Data{
-				Hash:   *treasury.L2hash2Bhash(*block.Hash()),
-				Height: block.Height(),
-				Txs:    xtx,
-			}
-			bucket.Put(h[:], d.Serialize())
-		}
-
 		return nil
 	})
-	if block.Btctxfees > 0 {
-		treasury.BtcIncome(uint64(block.Btctxfees))
-	}
+
 	if err != nil {
 		return err
 	}
 
 	for i := 0; i < m; i++ {
+		c := b.collaterals[0]
+		delete(b.LockedCollaterals, c)
+
+		b.collaterals = b.collaterals[1:]
+
 		mb, _ := b.Miners.BlockByHeight(int32(rot) + int32(i) + 1)
-		c := mb.MsgBlock().Utxos
-		if c != nil {
-			b.LockedCollaterals.Add(c)
+		if mb == nil || mb.MsgBlock().Utxos == nil {
+			b.collaterals = append(b.collaterals, wire.OutPoint{})
+			continue
 		}
+		c = *mb.MsgBlock().Utxos
+		b.collaterals = append(b.collaterals, c)
+		b.LockedCollaterals[c] = struct{}{}
 	}
 
 	// Prune fully spent entries and mark all entries in the view unmodified
@@ -917,38 +894,6 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		newTotalTxns, prevNode.CalcPastMedianTime(), // bits,
 		rotation) // prevNode.bits, b.BestSnapshot().LastRotation)
 
-	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
-		for _, tx := range block.MsgBlock().Transactions[1:] {
-			for _, txo := range tx.TxOut {
-				if wire.IsXChainXfer(txo.PkScript) {
-					if len(txo.PkScript) != 25 {
-						return fmt.Errorf("Cross chain PkScript length is not 25b in %v", tx.TxHash())
-					}
-				}
-			}
-		}
-
-		for _, tx := range block.MsgBlock().Transactions[1:] {
-			sent := map[uint32]struct{}{}
-			for _, txo := range tx.TxOut {
-				if wire.IsXChainXfer(txo.PkScript) {
-					var cid [4]byte
-					copy(cid[:], txo.PkScript[22:25])
-					cid[3] = 0
-					dest := common.LittleEndian.Uint32(cid[:]) // send the tx to chains we connect. avoid repeat
-					if ch, ok := b.XChainCh[dest]; ok {
-						if _, ok := sent[dest]; !ok {
-							done := make(chan struct{})
-							ch <- &XchMsg{true, tx.TxIn[0].SignatureIndex &^ 0x10000, tx.TxIn[0].PreviousOutPoint.Hash, nil, done}
-							sent[dest] = struct{}{}
-							<-done
-						}
-					}
-				}
-			}
-		}
-	}
-
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
 		err := dbPutBestState(dbTx, state)
@@ -998,6 +943,22 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 			return err
 		}
 
+		if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
+			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			heightbucket := dbTx.Metadata().Bucket([]byte(common.SVPHeights))
+
+			var k [8]byte
+			common.LittleEndian.PutUint32(k[:], b.ChainParams.ChainID)
+			common.LittleEndian.PutUint32(k[4:], uint32(block.Height()))
+			bucket.Delete(k[:])
+
+			h := common.LittleEndian.Uint32(k[:4])
+			if h > uint32(block.Height()) {
+				common.LittleEndian.PutUint32(k[4:], uint32(block.Height()-1))
+				heightbucket.Put(k[:4], k[4:])
+			}
+		}
+
 		// Allow the index manager to call each of the currently active
 		// optional indexes with the block being disconnected so they
 		// can update themselves accordingly.
@@ -1008,23 +969,6 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 			}
 		}
 
-		btcblock := b.GetBTC(block)
-
-		if btcblock != nil {
-			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-			var h [4]byte
-			common.LittleEndian.PutUint32(h[:], uint32(btcblock.Height))
-			bucket.Put(h[:], btcblock.Serialize())
-		}
-
-		bucket := dbTx.Metadata().Bucket([]byte(common.L2BTCPOOL))
-		var h [4]byte
-		common.LittleEndian.PutUint32(h[:], uint32(block.Height()))
-		bucket.Delete(h[:])
-
-		common.LittleEndian.PutUint32(h[:], uint32(block.Height()-1))
-		bucket.Put([]byte("ChainHeight"), h[:])
-
 		return nil
 	})
 	if err != nil {
@@ -1032,11 +976,18 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	}
 
 	for i := 0; i < m; i++ {
-		mb, _ := b.Miners.BlockByHeight(int32(rot) - int32(i))
-		c := mb.MsgBlock().Utxos
-		if c != nil && treasury.Joined(c) == uint32(block.Height()) {
-			b.LockedCollaterals.Delete(c)
+		c := b.collaterals[b.ChainParams.ViolationReportDeadline-1]
+		delete(b.LockedCollaterals, c)
+		b.collaterals = b.collaterals[:b.ChainParams.ViolationReportDeadline-1]
+
+		mb, _ := b.Miners.BlockByHeight(int32(rot) - b.ChainParams.ViolationReportDeadline - int32(i))
+		if mb == nil || mb.MsgBlock().Utxos == nil {
+			b.collaterals = append([]wire.OutPoint{wire.OutPoint{}}, b.collaterals...)
+			continue
 		}
+		c = *mb.MsgBlock().Utxos
+		b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
+		b.LockedCollaterals[c] = struct{}{}
 	}
 
 	// Prune fully spent entries and mark all entries in the view unmodified
@@ -1393,9 +1344,9 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		// rule violation, mark it as invalid and mark all of its
 		// descendants as having an invalid ancestor.
 		if b.IsSVP {
-			err = b.checkConnectSVPBlock(n, block, views, Vm, &stxos)
+			err = b.checkConnectSVPBlock(n, block, views, &stxos)
 		} else {
-			err = b.checkConnectBlock(n, block, views, Vm, &stxos)
+			err = b.checkConnectBlock(n, block, views, &stxos, Vm)
 		}
 
 		// check proof of work
@@ -1509,11 +1460,6 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 
 		log.Infof("commit attaching block %d", n.Height)
 
-		btcblock, ok := b.CheckBTC(block)
-		if !ok {
-			return detachable, attachable, fmt.Errorf("CheckBTC failed")
-		}
-
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
 		err := views.FetchInputUtxos(block)
@@ -1591,7 +1537,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		}
 
 		// Update the database and chain state.
-		err = b.connectBlock(n, block, btcblock, views, stxos, Vm)
+		err = b.connectBlock(n, block, views, stxos, Vm)
 		if err != nil {
 			log.Infof("connectBlock error: " + err.Error())
 			return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
@@ -1624,10 +1570,6 @@ func (b *BlockChain) HasUTXO(u *wire.OutPoint) bool {
 
 	e := utxos.LookupEntry(*u)
 	return err == nil && e != nil
-}
-
-func (b *BlockChain) IsPledged(u *wire.OutPoint) bool {
-	return treasury.IsPledged(u)
 }
 
 // checkBlockSanity check whether the miner has provided sufficient collateral
@@ -1754,74 +1696,23 @@ func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm
 func (b *BlockChain) UnExecOps(dbTx database.Tx, block *wire.MinerBlock, height uint32) {
 	for _, op := range block.MsgBlock().Instructions {
 		switch op.InstCode {
-		case wire.Pledge:
-			if treasury.Declared(block.MsgBlock().Miner) {
-				treasury.UnDeclare(dbTx, block.MsgBlock().Miner)
-			}
-
-		case wire.RetireReq:
-			treasury.UnPlantoRetire(dbTx, block.MsgBlock().Miner)
-
-		case wire.Retire:
-			treasury.UnRetire(dbTx, block.MsgBlock().Miner, height)
-
 		case wire.UplinkChain:
 			// TBD: set transfer chain for this transfer chain
 
 		case wire.DownlinkChain:
 			// TBD: add a base chain for this base chain
 		}
-	}
-
-	// in final version, no collateral is allowed w/o declaration
-	/*
-		if block.MsgBlock().Utxos != nil && !treasury.Declared(block.MsgBlock().Miner) {
-			return fmt.Errorf("Use collateral w/o declaration")
-		}
-	*/
-
-	if block.MsgBlock().Utxos != nil && treasury.Declared(block.MsgBlock().Miner) && !treasury.IsPledged(block.MsgBlock().Utxos) {
-		treasury.UnPledge(dbTx, block.MsgBlock().Utxos, block.MsgBlock().Miner)
 	}
 }
 
 func (b *BlockChain) ExecOps(dbTx database.Tx, block *wire.MinerBlock, height uint32) {
 	for _, op := range block.MsgBlock().Instructions {
 		switch op.InstCode {
-		case wire.Pledge:
-			if !treasury.Declared(block.MsgBlock().Miner) {
-				treasury.Declare(dbTx, block.MsgBlock().Miner, op.InstData, height)
-			}
-
-		case wire.RetireReq:
-			treasury.PlantoRetire(dbTx, block.MsgBlock().Miner)
-
-		case wire.Retire:
-			treasury.Retire(dbTx, block.MsgBlock().Miner, height)
-
 		case wire.UplinkChain:
 			// TBD: set transfer chain for this transfer chain
 
 		case wire.DownlinkChain:
 			// TBD: add a base chain for this base chain
-		}
-	}
-
-	// in final version, no collateral is allowed w/o declaration
-	/*
-		if block.MsgBlock().Utxos != nil && !treasury.Declared(block.MsgBlock().Miner) {
-			return fmt.Errorf("Use collateral w/o declaration")
-		}
-	*/
-
-	if block.MsgBlock().Utxos != nil && treasury.Declared(block.MsgBlock().Miner) && !treasury.IsPledged(block.MsgBlock().Utxos) {
-		utxos := viewpoint.NewUtxoViewpoint()
-		utxos.FetchUtxosMain(b.db, map[wire.OutPoint]struct{}{*block.MsgBlock().Utxos: struct{}{}})
-
-		e := utxos.LookupEntry(*block.MsgBlock().Utxos)
-		if e != nil {
-			_, v := e.Amount.Value()
-			treasury.Pledge(dbTx, block.MsgBlock().Utxos, block.MsgBlock().Miner, v, uint32(b.BestChain.Height()))
 		}
 	}
 }
@@ -1840,7 +1731,7 @@ func (b *BlockChain) ExecOps(dbTx database.Tx, block *wire.MinerBlock, height ui
 //     This is useful when using checkpoints.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.Block, btcblock *common.BTCL2Data, flags BehaviorFlags) (bool, error) {
+func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.Block, flags BehaviorFlags) (bool, error) {
 	fastAdd := flags&BFFastAdd == BFFastAdd
 
 	flushIndexState := func() {
@@ -1927,7 +1818,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		}
 
 		// Connect the block to the main chain.
-		err := b.connectBlock(node, block, btcblock, views, stxos, Vm)
+		err := b.connectBlock(node, block, views, stxos, Vm)
 		if err != nil {
 			// If we got hit with a rule error, then we'll mark
 			// that status of the block as invalid and flush the
@@ -2937,7 +2828,8 @@ func New(config *Config) (*BlockChain, error) {
 		MinerTPH:          make(map[[20]byte]*TPHRecord),
 		ConsensusRange:    [2]int32{-1, -1},
 		AddrUsage:         config.AddrUsage,
-		LockedCollaterals: wire.NewCollaterals(),
+		collaterals:       make([]wire.OutPoint, params.ViolationReportDeadline),
+		LockedCollaterals: make(map[wire.OutPoint]struct{}),
 		IsPacking:         false,
 		BTfile:            f,
 		IsSVP:             config.IsSVP,
@@ -2967,11 +2859,6 @@ func New(config *Config) (*BlockChain, error) {
 	bestNode := b.BestChain.Tip()
 	log.Infof("Chain state (height %d, hash %v, totaltx %d)",
 		bestNode.Height, bestNode.Hash, b.stateSnapshot.TotalTxns)
-
-	err := treasury.Load(b.db, b.LockedCollaterals)
-	if err != nil {
-		return nil, err
-	}
 
 	return &b, nil
 }
@@ -3038,50 +2925,4 @@ func (b *BlockChain) MaxContractExec(lastBlk chainhash.Hash, cbest chainhash.Has
 		}
 	}
 	return m
-}
-
-func (b *BlockChain) RecvXfer(txs chan *XchMsg, interrupt <-chan struct{}) {
-	for true {
-		select {
-		case tx := <-txs: // received a cross chain tx
-			b.db.Update(func(dbtx database.Tx) error {
-				bucket := dbtx.Metadata().Bucket([]byte("RECVTXPOOL"))
-				if tx.DelOp {
-					// disconnect, remove from db
-					bucket.Delete(tx.SrcTxHash[:])
-					return nil
-				}
-				dtx := wire.NewMsgTx(0x11) // no lock
-				dtx.TxIn = []*wire.TxIn{&wire.TxIn{
-					PreviousOutPoint: wire.OutPoint{Hash: tx.SrcTxHash, Index: 0xFFFFFFFF},
-					SignatureIndex:   0x10000 | tx.SrcChainID,
-				}}
-
-				for _, txo := range tx.Msg.TxOut {
-					if wire.IsXChainXfer(txo.PkScript) {
-						var dets [4]byte
-						copy(dets[:], txo.PkScript[22:25])
-						dets[3] = 0
-						cid := common.LittleEndian.Uint32(dets[:])
-						if cid != b.ChainParams.ChainID {
-							continue
-						}
-						txo.PkScript[0] = b.ChainParams.PubKeyHashAddrID
-						txo.PkScript[21] = ovm.OP_PAY2PKH
-						txo.PkScript[22], txo.PkScript[23], txo.PkScript[24] = 0, 0, 0
-						dtx.TxOut = append(dtx.TxOut, txo)
-					}
-				}
-				var w bytes.Buffer
-				dtx.SerializeNoSignature(&w)
-				bucket.Put(tx.SrcTxHash[:], w.Bytes())
-				tx.ch <- struct{}{}
-				return nil
-			})
-
-		case <-interrupt:
-			close(txs)
-			return
-		}
-	}
 }
