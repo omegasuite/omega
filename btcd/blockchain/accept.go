@@ -15,6 +15,104 @@ import (
 	"time"
 )
 
+func (b *BlockChain) CheckCrossChainTx(tx * wire.MsgTx) error {
+	for _, txo := range tx.TxOut {
+		if txo.IsSeparator() || !txo.IsCrossChain() {
+			continue
+		}
+		if txo.IsContractCall() {
+			return fmt.Errorf("cross chain tx with contract call")
+		}
+		if len(txo.PkScript) != 26 && len(txo.PkScript) != 29 {
+			return fmt.Errorf("incorrect cross chain pkscript length")
+		}
+		if ((txo.TokenType >> 40) & 0xFFFFFF) == 0 {
+			return fmt.Errorf("Local tokentype in cross chain tx")
+		}
+		var chain [4]byte
+		copy(chain[:], txo.PkScript[22:25])
+		chain[3] = 0
+		cid := common.LittleEndian.Uint32(chain[:])
+		if cid == b.ChainParams.ChainID {
+			return fmt.Errorf("cross chain transferring to local chain")
+		}
+		if _,ok := chaimmap.ChainMap[cid]; !ok {
+			return fmt.Errorf("unknown cross chain destination")
+		}
+		if _,ok := chaimmap.ChainMap[txo.TokenType >> 40]; !ok {
+			return fmt.Errorf("unknown cross chain asset")
+		}
+	}
+	return nil
+}
+
+func (b *BlockChain) validateCrossChain(tx * wire.MsgTx) error {
+	if b.IsSVP {
+		return b.CheckCrossChainTx(tx)
+	}
+	if len(tx.TxIn) == 1 &&  (tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg) != 0 {
+		for _, txo := range tx.TxOut {
+			if txo.IsCrossChain() && (txo.TokenType & (0xFFFFFF << 40)) == 0 {
+				return fmt.Errorf("Local Tokentype is a cross chain tx")
+			}
+		}
+		return b.db.View(func(dbtx database.Tx) error {
+			bucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
+			var key [4]byte
+			h := tx.TxIn[0].SignatureIndex
+			rawc := tx.TxIn[0].PreviousOutPoint.Index
+			if (rawc & (wire.CrossChainFalg) >> 1) != 0 {
+				rawc = 0xFFFFFF - rawc
+			} else {
+				rawc = rawc &^ wire.CrossChainFalg
+			}
+			common.LittleEndian.PutUint32(key[:], rawc)
+			bh := bucket.Get(key[:4])
+			svph := common.LittleEndian.Uint32(bh)
+			if svph < h+chainmap.ChainMap[rawc].Mature {
+				return fmt.Errorf("cross chain tx is not validateCrossChain yet")
+			}
+
+			// ensure the txo are in the pool
+			bucket = dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			common.LittleEndian.PutUint32(key[4:], h)
+			v := bucket.Get(key[:])
+			if v == nil {
+				return fmt.Errorf("tx not in INCOMINGPOOL")
+			}
+			xdata := wire.XchainData{}
+			if err := xdata.DeSerialize(v); err != nil {
+				return err
+			}
+			if xdata.ChainID != rawc {
+				return fmt.Errorf("chain ID incorrect")
+			}
+			if !xdata.Hash.IsEqual(&tx.TxIn[0].PreviousOutPoint.Hash) {
+				return fmt.Errorf("block hash incorrect")
+			}
+			if uint32(xdata.Height) != h {
+				return fmt.Errorf("height incorrect")
+			}
+
+			for _, txo := range tx.TxOut {
+				match := false
+				for _, xto := range xdata.Txs {
+					if txo.Match(&xto.Txo) {
+						match = true
+						break
+					}
+				}
+				if !match {
+					return fmt.Errorf("txo mismatch")
+				}
+			}
+
+			return nil
+		})
+	}
+	return b.CheckCrossChainTx(tx)
+}
+
 // maybeAcceptBlock potentially accepts a block into the block chain and, if
 // accepted, returns whether or not it is on the main chain.  It performs
 // several validation checks which depend on its position within the block chain
@@ -69,11 +167,40 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	// on a side chain.
 	blockHeader := &block.MsgBlock().Header
 
+	// check cross chain txs
+	coinbase := block.MsgBlock().Transactions[0]
+	if (coinbase.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg) != 0 {
+		return false, fmt.Errorf("Coinbase tx can not be a cross chain transaction"), -1
+	}
+	for _, txo := range coinbase.TxOut {
+		if txo.IsSeparator() {
+			continue
+		}
+		if txo.IsCrossChain() {
+			return false, fmt.Errorf("Coinbase tx can not be a cross chain transaction"), -1
+		}
+	}
+	for _, tx := range block.MsgBlock().Transactions[1:] {
+		if len(tx.TxIn) == 1 &&  (tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg) != 0 {
+			for _, txo := range tx.TxOut {
+				if !txo.IsCrossChain() {
+					return false, fmt.Errorf("Mix of cross chain and regular txout"), -1
+				}
+				if (txo.TokenType & (0xFFFFFF << 40)) == 0 {
+					return false, fmt.Errorf("Local Tokentype is a cross chain tx"), -1
+				}
+			}
+		}
+		if err := b.validateCrossChain(tx); err != nil {
+			return false, err, -1
+		}
+	}
+
 	newNode := b.MainChainNodeByHash(block.Hash())
 	storeBlock := true
 
 	if b.IsSVP {
-		// only insert block data if it contains a cross chain TX to us
+		// only insert block data if it contains a cross chain TX
 		// we include xfers to other chains to make the code simple
 		storeBlock = false
 	out:
@@ -82,7 +209,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 				var cid [4]byte
 				copy(cid[:], txo.PkScript[22:25])
 				cid[3] = 0
-				if txo.IsCrossChain() && len(txo.PkScript) == 25 && common.LittleEndian.Uint32(cid[:]) == b.ChainParams.ChainID {
+				if txo.IsCrossChain() {
 					storeBlock = true
 					break out
 				}

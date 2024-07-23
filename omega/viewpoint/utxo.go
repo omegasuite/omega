@@ -362,7 +362,7 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 // view does not contain the required utxos.
 func (view *ViewPointSet) ConnectTransaction(tx *btcutil.Tx, blockHeight int32, stxos *[]SpentTxOut) error {
 	// Coinbase transactions don't have any inputs to spend.
-	if tx.IsCoinBase() || tx.MsgTx().IsBtcL2() {
+	if tx.IsCoinBase() {
 		// Add the transaction's outputs as available utxos.
 		view.AddTxOuts(tx, blockHeight)
 		return nil
@@ -375,7 +375,7 @@ func (view *ViewPointSet) ConnectTransaction(tx *btcutil.Tx, blockHeight int32, 
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
+		if txIn.SignatureIndex & wire.CrossChainFalg != 0 {
 			continue
 		}
 		// Ensure the referenced utxo exists in the view.  This should
@@ -961,14 +961,11 @@ func (view *ViewPointSet) FetchInputUtxos(block *btcutil.Block) error {
 	// what is already known (in-flight).
 	neededSet := make(map[wire.OutPoint]struct{})
 	for i, tx := range transactions[1:] {
-		if tx.MsgTx().IsBtcL2() {
+		if len(tx.MsgTx().TxIn) == 1 && tx.MsgTx().TxIn[0].SignatureIndex & wire.CrossChainFalg != 0 {
 			continue
 		}
 		for _, txIn := range tx.MsgTx().TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
-			}
-			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				continue
 			}
 			// It is acceptable for a transaction input to reference

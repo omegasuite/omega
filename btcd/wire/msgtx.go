@@ -29,6 +29,8 @@ const (
 	TxExpire         = 0x40 // feature: time lock is treated as expiration time
 	// in seconds since genesis
 
+	CrossChainFalg = 0x800000
+
 	// MaxTxInSequenceNum is the maximum sequence number the sequence field
 	// of a transaction input can be.
 	MaxTxInSequenceNum uint32 = 0xffffffff

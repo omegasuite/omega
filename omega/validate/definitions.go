@@ -288,7 +288,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error
 		if d.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
-		if d.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
+		if d.SignatureIndex & wire.CrossChainFalg !=0 {
 			continue
 		}
 		utxo := views.Utxo.LookupEntry(d.PreviousOutPoint)

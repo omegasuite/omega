@@ -113,7 +113,7 @@ func SequenceLockActive(sequenceLock *SequenceLock, blockHeight int32,
 	medianTimePast time.Time) bool {
 
 	// If either the seconds, or height relative-lock time has not yet
-	// reached, then the transaction is not yet mature according to its
+	// reached, then the transaction is not yet validateCrossChain according to its
 	// sequence locks.
 	if sequenceLock.Seconds >= medianTimePast.Unix() ||
 		sequenceLock.BlockHeight >= blockHeight {
@@ -156,15 +156,15 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 	// At this point, the transaction's lock time hasn't occurred yet, but
 	// the transaction might still be finalized if the sequence number
 	// for all transaction inputs is maxed out.
-	for _, txIn := range msgTx.TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
-			continue
-		}
-		if txIn.Sequence != math.MaxUint32 {
-			return false
+	if len(msgTx.TxIn) != 1 || (msgTx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) == 0 {
+		// miner packed cross chain
+		for _, txIn := range msgTx.TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			if txIn.Sequence != math.MaxUint32 {
+				return false
+			}
 		}
 	}
 	return true
@@ -1011,7 +1011,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 // CheckTransactionSanity function prior to calling this function.
 func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// Coinbase transactions have no inputs.
-	if IsCoinBase(tx) || tx.MsgTx().IsBtcL2() {
+	if IsCoinBase(tx)  {
 		return nil
 	}
 
@@ -1032,7 +1032,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 		if txIn.IsSepadding() {
 			continue
 		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
+		if txIn.SignatureIndex & wire.CrossChainFalg != 0 {
 			continue
 		}
 
@@ -1096,8 +1096,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 		lastHaoIn := totalIns[utxo.TokenType]
 		totalIns[utxo.TokenType] += originTxHao
 		if totalIns[utxo.TokenType] < lastHaoIn ||
-			(utxo.TokenType == common.OmegaCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) ||
-			(utxo.TokenType == 0 && totalIns[0] > btcutil.MaxHao) {
+			(utxo.TokenType == common.OmegaCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) {
 			str := fmt.Sprintf("total value of all transaction "+
 				"inputs is %v which is higher than max "+
 				"allowed value of %v", totalIns[utxo.TokenType],
@@ -1847,7 +1846,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	var unmached string
 
 	for i, tx := range transactions[1:] {
-		if runScripts && !tx.MsgTx().IsBtcL2() {
+		if runScripts && (len(tx.MsgTx().TxIn) != 1 || tx.MsgTx().TxIn[0].SignatureIndex & wire.CrossChainFalg == 0) {
 			err = ovm.VerifySigs(tx, b.ChainParams, 0, views)
 			if err != nil {
 				return err

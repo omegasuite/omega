@@ -579,9 +579,10 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 				}
 			}
 
-			if h+7 > ht { // not mature yet
+			if h+chainmap.ChainMap[xtx.ChainID].Mature > ht { // not mature yet
 				continue
 			}
+
 			if th, ok := minh[xtx.ChainID]; !ok || h < th {
 				minh[xtx.ChainID] = h
 				seld[xtx.ChainID] = xtx
@@ -590,8 +591,8 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 
 		for _, xtx := range seld {
 			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
-			mtx.LockTime = uint32(nextBlockHeight)
-			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: 0x800000 | xtx.ChainID}, uint32(xtx.Height))
+			mtx.LockTime = uint32(nextBlockHeight + 1)
+			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: wire.CrossChainFalg | xtx.ChainID}, uint32(xtx.Height))
 			mtx.AddTxIn(txin)
 			for _, txo := range xtx.Txs {
 				if txo.Txo.PkScript[21] == g.chainParams.CrossChainID {
