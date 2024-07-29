@@ -5743,8 +5743,19 @@ func handleVerifySig(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 	// Use 0 for the tag to represent local node.
 	tx := btcutil.NewTx(&msgTx)
 
-	views := s.cfg.Chain.NewViewPointSet()
-	err = ovm.VerifySigs(tx, s.cfg.ChainParams, 0, views)
+	view := viewpoint.NewViewPointSet(s.cfg.DB)
+	requested := make(map[wire.OutPoint]struct{})
+
+	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.IsSepadding() {
+			continue
+		}
+		requested[txIn.PreviousOutPoint] = struct{}{}
+	}
+
+	view.Utxo.FetchUtxosMain(s.cfg.DB, requested)
+
+	err = ovm.VerifySigs(tx, s.cfg.ChainParams, 0, view)
 
 	return err == nil, nil
 }
