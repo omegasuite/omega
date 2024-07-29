@@ -1017,6 +1017,10 @@ type SearchRawSpendCmd struct {
 	Skip     *int `jsonrpcdefault:"0"`
 }
 
+type VerifySigCmd struct {
+	HexTx string
+}
+
 // NewSearchRawTransactionsCmd returns a new instance which can be used to issue a
 // sendrawtransaction JSON-RPC command.
 //
@@ -1032,6 +1036,12 @@ func NewSearchRawTransactionsCmd(address string, verbose, skip, count *int, vinE
 		Reverse:     reverse,
 		FilterAddrs: filterAddrs,
 		Signatures:  nil,
+	}
+}
+
+func NewVerifySigCmd(hexTx string) *VerifySigCmd {
+	return &VerifySigCmd{
+		HexTx: hexTx,
 	}
 }
 
@@ -1308,4 +1318,5 @@ func init() {
 	MustRegisterCmd("validateaddress", (*ValidateAddressCmd)(nil), flags)
 	MustRegisterCmd("verifymessage", (*VerifyMessageCmd)(nil), flags)
 	MustRegisterCmd("verifytxoutproof", (*VerifyTxOutProofCmd)(nil), flags)
+	MustRegisterCmd("verifysig", (*VerifySigCmd)(nil), flags)
 }
