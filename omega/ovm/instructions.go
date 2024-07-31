@@ -1544,6 +1544,16 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 				scratch[top-1] = scratch[top]
 			}
 
+		case '[': // <<
+			m := scratch[top].Uint64()
+			x := big.NewInt(1 << m)
+			scratch[top-1] = scratch[top-1].Mul(scratch[top-1], x)
+
+		case ']': // >>
+			m := scratch[top].Uint64()
+			x := big.NewInt(1 << m)
+			scratch[top-1] = scratch[top-1].Div(scratch[top-1], x)
+
 		default:
 			return omega.ScriptError(omega.ErrInternal, "Malformed expression")
 		}
@@ -4416,6 +4426,7 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Er
 		start = inidx + uint32(SigHashSingle) - uint32(SigHashType(it)&SigHashMask)
 		t.TxOut = t.TxOut[start : inidx+1]
 		t.TxIn = t.TxIn[start : inidx+1]
+		t.LockTime = 0
 
 		if ovm.Context.BlockVersion() >= wire.Version3 {
 			for i := 0; i < len(t.TxIn); i++ {
