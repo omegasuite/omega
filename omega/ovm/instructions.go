@@ -4417,6 +4417,7 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Er
 		start = inidx + uint32(SigHashSingle) - uint32(SigHashType(it)&SigHashMask)
 		t.TxOut = t.TxOut[start : inidx+1]
 		t.TxIn = t.TxIn[start : inidx+1]
+		t.LockTime = 0
 
 		if ovm.Context.BlockVersion() >= wire.Version3 {
 			for i := 0; i < len(t.TxIn); i++ {
