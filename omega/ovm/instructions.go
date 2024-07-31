@@ -1545,6 +1545,16 @@ func opEval256(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 				scratch[top-1] = scratch[top]
 			}
 
+		case '[': // <<
+			m := scratch[top].Uint64()
+			x := big.NewInt(1 << m)
+			scratch[top-1] = scratch[top-1].Mul(scratch[top-1], x)
+
+		case ']': // >>
+			m := scratch[top].Uint64()
+			x := big.NewInt(1 << m)
+			scratch[top-1] = scratch[top-1].Div(scratch[top-1], x)
+
 		default:
 			return omega.ScriptError(omega.ErrInternal, "Malformed expression")
 		}
