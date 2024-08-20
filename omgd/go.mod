@@ -53,19 +53,16 @@ replace (
 	github.com/omegasuite/winsvc/winapi  => f:\Gopath\src\github.com\omegasuite\winsvc\winapi
 	github.com/omegasuite/snappy-go  => f:\Gopath\src\github.com/omegasuite/snappy-go
 	github.com/jessevdk/go-flags => f:\Gopath\src\github.com\jessevdk\go-flags
-
-	github.com/omegasuite/goleveldb/leveldb/storage => f:\Gopath\src\github.com\omegasuite\goleveldb\leveldb\storage
-	github.com/omegasuite/goleveldb/leveldb/journal => f:\Gopath\src\github.com\omegasuite\goleveldb\leveldb\journal
-	github.com/omegasuite/goleveldb/leveldb/memdb => f:\Gopath\src\github.com\omegasuite\goleveldb\leveldb\memdb
-	github.com/omegasuite/goleveldb/leveldb/table => f:\Gopath\src\github.com\omegasuite\goleveldb\leveldb\table
-	github.com/omegasuite/btcd/txscript => f:\Gopath\src\github.com\omegasuite\btcd\txscript
+	github.com/omegasuite/btcd/txscript => f:\Gopath\src\github.com/omegasuite\btcd\txscript
+	github.com/omegasuite/btcd/txscript/txsparser => f:\Gopath\src\github.com\omegasuite\btcd\txscript\txsparser
 )
 
 require (
+	github.com/omegasuite/btcd/txscript v1.0.0
+	github.com/omegasuite/btcd/txscript/txsparser v1.0.0
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/jessevdk/go-flags v1.5.0 // indirect
 	github.com/jrick/logrotate v1.0.0 // indirect
-	golang.org/x/sys v0.0.0-20210320140829-1e4c9ba3b0c4 // indirect
 	golang.org/x/crypto/ripemd160  v0.0.0 // indirect
 	
 	github.com/omegasuite/btcd/addrmgr v1.0.0 // indirect
@@ -101,16 +98,11 @@ require (
 	github.com/omegasuite/winsvc/eventlog v1.0.0 // indirect
 	github.com/omegasuite/winsvc/mgr v1.0.0 // indirect
 	github.com/omegasuite/winsvc/svc v1.0.0 // indirect
-	github.com/omegasuite/btcd/txscript v1.0.0 // indirect
-	
+
 	github.com/aead/siphash v1.0.0 // indirect
 	github.com/kkdai/bstream v1.0.0 // indirect
 	github.com/goinggo/mapstructure v1.0.0 // indirect
 	github.com/omegasuite/goleveldb/leveldb v1.0.0 // indirect
-	github.com/omegasuite/goleveldb/leveldb/journal v1.0.0 // indirect
-	github.com/omegasuite/goleveldb/leveldb/memdb v1.0.0 // indirect
-	github.com/omegasuite/goleveldb/leveldb/table v1.0.0 // indirect
-	github.com/omegasuite/goleveldb/leveldb/storage v1.0.0 // indirect
 	github.com/omegasuite/goleveldb/leveldb/comparer v1.0.0 // indirect
 	github.com/omegasuite/goleveldb/leveldb/errors v1.0.0 // indirect
 	github.com/omegasuite/goleveldb/leveldb/filter v1.0.0 // indirect

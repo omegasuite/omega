@@ -390,7 +390,7 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 // LockTimeToSequence converts the passed relative locktime to a sequence
 // number in accordance to BIP-68.
 // See: https://github.com/bitcoin/bips/blob/master/bip-0068.mediawiki
-//  * (Compatibility)
+//   - (Compatibility)
 func LockTimeToSequence(isSeconds bool, locktime uint32) uint32 {
 	// If we're expressing the relative lock time in blocks, then the
 	// corresponding sequence number is simply the desired input age.
@@ -914,7 +914,9 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		}
 		c = *mb.MsgBlock().Utxos
 		b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
-		b.LockedCollaterals[c] = struct{}{}
+		for _, c := range b.collaterals {
+			b.LockedCollaterals[c] = struct{}{}
+		}
 	}
 
 	// Prune fully spent entries and mark all entries in the view unmodified
@@ -1610,8 +1612,8 @@ func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm
 // a reorganization to become the main chain).
 //
 // The flags modify the behavior of this function as follows:
-//  - BFFastAdd: Avoids several expensive transaction validation operations.
-//    This is useful when using checkpoints.
+//   - BFFastAdd: Avoids several expensive transaction validation operations.
+//     This is useful when using checkpoints.
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.Block, flags BehaviorFlags) (bool, error) {
@@ -1828,8 +1830,8 @@ func (b *BlockChain) FindFork(node *chainutil.BlockNode) *chainutil.BlockNode {
 // isCurrent returns whether or not the chain believes it is current.  Several
 // factors are used to guess, but the key factors that allow the chain to
 // believe it is current are:
-//  - Latest block height is after the latest checkpoint (if enabled)
-//  - Latest block has a timestamp newer than 24 hours ago
+//   - Latest block height is after the latest checkpoint (if enabled)
+//   - Latest block has a timestamp newer than 24 hours ago
 //
 // This function MUST be called with the chain state lock held (for reads).
 func (b *BlockChain) isCurrent() bool {
@@ -1888,8 +1890,8 @@ func (b *BlockChain) SameChain(u, w chainhash.Hash) bool {
 // IsCurrent returns whether or not the chain believes it is current.  Several
 // factors are used to guess, but the key factors that allow the chain to
 // believe it is current are:
-//  - Latest block height is after the latest checkpoint (if enabled)
-//  - Latest block has a timestamp newer than 24 hours ago
+//   - Latest block height is after the latest checkpoint (if enabled)
+//   - Latest block has a timestamp newer than 24 hours ago
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) IsCurrent() bool {
@@ -2245,11 +2247,11 @@ func (b *BlockChain) Ancestor(blockNode *chainutil.BlockNode, blockHeight int32)
 //
 // In addition, there are two special cases:
 //
-// - When no locators are provided, the stop hash is treated as a request for
-//   that block, so it will either return the node associated with the stop hash
-//   if it is known, or nil if it is unknown
-// - When locators are provided, but none of them are known, nodes starting
-//   after the genesis block will be returned
+//   - When no locators are provided, the stop hash is treated as a request for
+//     that block, so it will either return the node associated with the stop hash
+//     if it is known, or nil if it is unknown
+//   - When locators are provided, but none of them are known, nodes starting
+//     after the genesis block will be returned
 //
 // This is primarily a helper function for the locateBlocks and locateHeaders
 // functions.
@@ -2438,11 +2440,11 @@ func (b *BlockChain) locateUncachedBlocks(locator chainhash.BlockLocator, hashSt
 //
 // In addition, there are two special cases:
 //
-// - When no locators are provided, the stop hash is treated as a request for
-//   that block, so it will either return the stop hash itself if it is known,
-//   or nil if it is unknown
-// - When locators are provided, but none of them are known, hashes starting
-//   after the genesis block will be returned
+//   - When no locators are provided, the stop hash is treated as a request for
+//     that block, so it will either return the stop hash itself if it is known,
+//     or nil if it is unknown
+//   - When locators are provided, but none of them are known, hashes starting
+//     after the genesis block will be returned
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) LocateBlocks(locator chainhash.BlockLocator, hashStop *chainhash.Hash, maxHashes uint32) []chainhash.Hash {
@@ -2525,11 +2527,11 @@ func (b *BlockChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 //
 // In addition, there are two special cases:
 //
-// - When no locators are provided, the stop hash is treated as a request for
-//   that header, so it will either return the header for the stop hash itself
-//   if it is known, or nil if it is unknown
-// - When locators are provided, but none of them are known, headers starting
-//   after the genesis block will be returned
+//   - When no locators are provided, the stop hash is treated as a request for
+//     that header, so it will either return the header for the stop hash itself
+//     if it is known, or nil if it is unknown
+//   - When locators are provided, but none of them are known, headers starting
+//     after the genesis block will be returned
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) LocateHeaders(locator chainhash.BlockLocator, hashStop *chainhash.Hash) []wire.BlockHeader {
