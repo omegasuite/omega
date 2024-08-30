@@ -914,9 +914,9 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		}
 		c = *mb.MsgBlock().Utxos
 		b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
-		for _, c := range b.collaterals {
-			b.LockedCollaterals[c] = struct{}{}
-		}
+	}
+	for _, c := range b.collaterals {
+		b.LockedCollaterals[c] = struct{}{}
 	}
 
 	// Prune fully spent entries and mark all entries in the view unmodified

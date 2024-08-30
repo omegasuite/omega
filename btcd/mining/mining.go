@@ -952,6 +952,7 @@ mempoolLoop:
 			*/
 			//			continue
 		}
+		/*
 		for ip := 0; ip < len(tx.MsgTx().TxOut); ip++ {
 			if tx.MsgTx().TxOut[ip].IsSeparator() {
 				continue
@@ -960,6 +961,7 @@ mempoolLoop:
 				break
 			}
 		}
+		 */
 		storage := blockchain.ContractNewStorage(tx, Vm, paidstoragefees)
 
 		tx.Executed = true

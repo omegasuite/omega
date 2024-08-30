@@ -675,7 +675,7 @@ loop:
 }
 
 func Sender(msg Message) []byte {
-	if msg == nil || miner == nil {
+	if msg == nil || miner == nil || miner.cfg == nil {
 		return nil
 	}
 	switch msg.(type) {
