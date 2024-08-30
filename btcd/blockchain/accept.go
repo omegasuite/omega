@@ -12,10 +12,11 @@ import (
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/chainmap"
 	"time"
 )
 
-func (b *BlockChain) CheckCrossChainTx(tx * wire.MsgTx) error {
+func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 	for _, txo := range tx.TxOut {
 		if txo.IsSeparator() || !txo.IsCrossChain() {
 			continue
@@ -36,23 +37,23 @@ func (b *BlockChain) CheckCrossChainTx(tx * wire.MsgTx) error {
 		if cid == b.ChainParams.ChainID {
 			return fmt.Errorf("cross chain transferring to local chain")
 		}
-		if _,ok := chaimmap.ChainMap[cid]; !ok {
+		if _, ok := chainmap.ChainMap[cid]; !ok {
 			return fmt.Errorf("unknown cross chain destination")
 		}
-		if _,ok := chaimmap.ChainMap[txo.TokenType >> 40]; !ok {
+		if _, ok := chainmap.ChainMap[uint32(txo.TokenType>>40)]; !ok {
 			return fmt.Errorf("unknown cross chain asset")
 		}
 	}
 	return nil
 }
 
-func (b *BlockChain) validateCrossChain(tx * wire.MsgTx) error {
+func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 	if b.IsSVP {
 		return b.CheckCrossChainTx(tx)
 	}
-	if len(tx.TxIn) == 1 &&  (tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg) != 0 {
+	if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
 		for _, txo := range tx.TxOut {
-			if txo.IsCrossChain() && (txo.TokenType & (0xFFFFFF << 40)) == 0 {
+			if txo.IsCrossChain() && (txo.TokenType&(0xFFFFFF<<40)) == 0 {
 				return fmt.Errorf("Local Tokentype is a cross chain tx")
 			}
 		}
@@ -181,7 +182,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		}
 	}
 	for _, tx := range block.MsgBlock().Transactions[1:] {
-		if len(tx.TxIn) == 1 &&  (tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg) != 0 {
+		if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
 			for _, txo := range tx.TxOut {
 				if !txo.IsCrossChain() {
 					return false, fmt.Errorf("Mix of cross chain and regular txout"), -1

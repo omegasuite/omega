@@ -56,7 +56,7 @@ type Protocol struct {
 
 var protocols []*Protocol
 
-func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
+func prepareServer(tcfg *config) (*Protocol, bool) {
 	// Get a channel that will be closed when a shutdown signal has been
 	// triggered either from an OS signal such as SIGINT (Ctrl+C) or from
 	// another subsystem such as the RPC server.
@@ -110,8 +110,8 @@ func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 		return prot, true
 	}
 
-	prot.activeNetParams = activeNetParams[xfer]
-	prot.activeNetParams.Params.MinRelayTxFee = int64(tcfg.minRelayTxFee)
+	prot.activeNetParams = activeNetParams
+	prot.activeNetParams.MinRelayTxFee = int64(tcfg.minRelayTxFee)
 
 	if tcfg.Generate && len(tcfg.privateKeys) == 0 {
 		// read from stdin. for security.
@@ -131,14 +131,14 @@ func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 			dwif, err := btcutil.DecodeWIF(pvk)
 			if err == nil {
 				privKey := dwif.PrivKey
-				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), prot.activeNetParams.Params)
+				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), prot.activeNetParams)
 				if pkaddr.Format() != btcutil.PKFCompressed {
 					btcdLog.Errorf("Private key is not compressed")
-					return nil
+					return nil, true
 				}
 				if err == nil {
 					addr := pkaddr.AddressPubKeyHash()
-					if addr.IsForNet(activeNetParams[0].Params) {
+					if addr.IsForNet(activeNetParams) {
 						tcfg.miningAddrs = append(tcfg.miningAddrs, addr)
 						tcfg.signAddress = append(tcfg.signAddress, addr)
 						tcfg.privateKeys = append(tcfg.privateKeys, privKey)
@@ -151,23 +151,21 @@ func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 		}
 	}
 
-	prot.activeNetParams.Params.ExternalIPs = tcfg.ExternalIPs
-	prot.activeNetParams.Params.ContractReqExp = tcfg.ContractReqExp
-	prot.activeNetParams.Params.LogBlockTime = tcfg.LogBlockTime
-	treasury.PrivKeys = make([]*secp256k1.PrivateKey, len(cfg.privateKeys))
-	for i, k := range cfg.privateKeys {
+	prot.activeNetParams.ExternalIPs = tcfg.ExternalIPs
+	prot.activeNetParams.ContractReqExp = tcfg.ContractReqExp
+	prot.activeNetParams.LogBlockTime = tcfg.LogBlockTime
+	for _, k := range tcfg.privateKeys {
 		key := secp256k1.ModNScalar{}
 		var bk [32]byte
 		copy(bk[:], k.Serialize())
 		key.SetBytes(&bk)
-		treasury.PrivKeys[i] = secp256k1.NewPrivateKey(&key)
 	}
 
-	prot.activeNetParams.Params.ChainCurrentStd = time.Hour * time.Duration(tcfg.ChainCurrentStd)
+	prot.activeNetParams.ChainCurrentStd = time.Hour * time.Duration(tcfg.ChainCurrentStd)
 	if tcfg.Concurrency <= 0 {
 		tcfg.Concurrency = 1
 	}
-	prot.activeNetParams.Params.SigVeriConcurrency = tcfg.Concurrency
+	prot.activeNetParams.SigVeriConcurrency = tcfg.Concurrency
 
 	// Create server and start it.
 	server, err := newServer(tcfg.Listeners, db, minerdb, prot, interrupt)
@@ -179,7 +177,6 @@ func prepareServer(tcfg *config, xfer int) (*Protocol, bool) {
 	}
 
 	prot.Server = server
-	treasury.Server = server
 
 	defer func() {
 		if len(tcfg.privateKeys) == 0 && tcfg.Generate {
@@ -234,7 +231,7 @@ func runserver(p *Protocol) {
 
 	if !p.IsSvp && p.running {
 		if len(p.cfg.privateKeys) != 0 && p.cfg.Generate {
-			go consensus.Consensus(p.Server, p.cfg.DataDir, p.cfg.signAddress, p.activeNetParams.Params)
+			go consensus.Consensus(p.Server, p.cfg.DataDir, p.cfg.signAddress, p.activeNetParams)
 			for _, sa := range p.cfg.signAddress {
 				btcdLog.Infof("Address of miner %s", sa.String())
 			}
@@ -632,7 +629,7 @@ func main() {
 	protocols = make([]*Protocol, 0)
 
 	// Work around defer not working after os.Exit()
-	p, quit := prepareServer(tcfg, 0)
+	p, quit := prepareServer(tcfg)
 	if quit && p != nil {
 		cleanup(p)
 		os.Exit(1)
@@ -689,10 +686,8 @@ func main() {
 			}
 
 			p.IsSvp = true
-			p.activeNetParams = &params{
-				&chaincfg.Params{GlobalParams: *params},
-				rpcPort: tcfg.RPCListeners,
-			}
+			p.activeNetParams = &chaincfg.Params{GlobalParams: *params}
+
 			p.activeNetParams.MainChainID = protocols[0].activeNetParams.ChainID
 			p.Server.chain.MainChain = protocols[0].Server.chain
 
@@ -725,7 +720,7 @@ func retrievedefs(p *Protocol, q *Protocol) {
 				r.Reset(cursor.Value()[:])
 				tx.Deserialize(&r)
 
-				undefined := p.Server.chain.UndefinedDefinitions(btcutil.NewTx(&tx), p.activeNetParams.Params)
+				undefined := p.Server.chain.UndefinedDefinitions(btcutil.NewTx(&tx), p.activeNetParams)
 				q.Server.GetDefinition(undefined)
 			}
 			return nil

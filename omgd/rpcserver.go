@@ -33,6 +33,9 @@ import (
 	"github.com/omegasuite/famofchains/btcd/mining"
 	"github.com/omegasuite/famofchains/btcd/mining/cpuminer"
 	"github.com/omegasuite/famofchains/btcd/peer"
+	"github.com/omegasuite/famofchains/btcd/txscript"
+	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
+
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
@@ -158,12 +161,6 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getblockhash":    handleGetBlockHash,
 	"getblockheader":  handleGetBlockHeader,
 	"genmultisigaddr": handleGenMultiSigAddr,
-	"getbtcl2script":  handleGetBtcL2Script, // new, get a script for transfer Bitcoin to L2
-	"gettreasury":     handleGetTreasury,    // new
-	"getsigners":      handleGetSigners,     // new
-	"getbtcpool":      handleGetBtcPool,     // new
-	"getl2pool":       handleGetL2Pool,      // new
-	"clearbtcl2pool":  handleClearBtcL2Pool, // new
 
 	"getminerblock":       handleGetMinerBlock,       // New
 	"getminerblockheight": handleGetMinerBlockHeight, // New
@@ -178,7 +175,6 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"miningpolicy":    handleMiningPolicy, // New. miner specific policy
 	"tokenaddress":    handleTokenAddress, // New
 	"getissuedtokens": handleGetIssuedTokens,
-	"createxferl2tx":  handleCreatexferl2txo, // New, to create a TX for transferring BTC to L2 (i.e. sending BTC to designated address)
 
 	//	"getblocktemplate":      handleGetBlockTemplate,
 	"getconnectioncount":    handleGetConnectionCount,
@@ -326,12 +322,6 @@ var rpcLimited = map[string]struct{}{
 	"getnetworkhashps": {},
 	"getrawmempool":    {},
 	"getissuedtokens":  {},
-	"createxferl2txo":  {},
-	"gettreasury":      {}, // new
-	"getsigners":       {}, // new
-	"getbtcpool":       {}, // new
-	"getl2pool":        {}, // new
-	"clearbtcl2pool":   {}, // new
 
 	//	"clearmempool":          {},	this is admin command
 	"getrawtransaction":     {},
@@ -522,42 +512,6 @@ func createMultiSigScript(scripts [][]byte, n uint16, chainParams *chaincfg.Para
 
 	builder.AddOp(ovm.SIGNTEXT, []byte{byte(ovm.SigHashNone)})
 	return btcutil.Hash160(h), builder.Script()
-}
-
-// handleGetBtcL2Script handles getbtcl2script
-func handleGetBtcL2Script(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.GetBtcL2ScriptCmd)
-
-	from, err := btcutil.DecodeAddress(c.Address, s.cfg.ChainParams)
-
-	if err != nil {
-		return nil, err
-	}
-
-	var hash [20]byte
-
-	if !from.IsForNet(s.cfg.ChainParams) || from.Version() != s.cfg.ChainParams.PubKeyHashAddrID {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCInvalidAddressOrKey,
-			Message: "Invalid address or key: " + c.Address,
-		}
-	}
-	copy(hash[:], from.ScriptAddress())
-
-	script, signers := treasury.Get75pctMSScript(hash)
-
-	snrs := make([]string, 0, len(signers))
-	for _, ss := range signers {
-		adr, _ := btcutil.NewAddressPubKeyHash(ss[:], s.cfg.ChainParams)
-		snrs = append(snrs, adr.EncodeAddress())
-	}
-
-	reply := &btcjson.BtcL2Script{
-		Addresses: snrs,
-		Script:    hex.EncodeToString(script),
-	}
-
-	return reply, nil
 }
 
 // handleAddNode handles addnode commands.
@@ -3670,227 +3624,6 @@ func handleGetPeerInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	return infos, nil
 }
 
-func handleGetTreasury(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	mydb := s.cfg.DB
-	treasure := make(map[string]btcjson.TreasuryAsset)
-
-	mydb.View(func(tx database.Tx) error {
-		bucket := tx.Metadata().Bucket([]byte(common.INASSETS))
-		cursor := bucket.Cursor()
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			var outp wire.OutPoint
-			key := cursor.Key()
-			if len(key) == 8 {
-				// it is typemap
-				continue
-			}
-			outp.Hash.SetBytes(key[:32])
-			outp.Index = common.LittleEndian.Uint32(key[32:])
-			plg := &treasury.Asset{}
-			_, err := plg.Deserialize(cursor.Value())
-			if err != nil {
-				return err
-			}
-
-			fmt.Printf("Asset: %s => typeid: %x, amount: %d, outpoint: %s, pkscript: %x, owners: %d,", outp.String(), plg.Typeid, plg.Amount, plg.Outpoint.String(), plg.Pkscript, len(plg.Owners))
-			if len(plg.Owners) > 0 {
-				fmt.Printf(" owners: ")
-				for _, p := range plg.Owners {
-					fmt.Printf(" %x\n", p)
-				}
-			}
-			fmt.Printf("\n")
-			t := btcjson.TreasuryAsset{
-				Typeid:   plg.Typeid,
-				Amount:   plg.Amount,
-				Outpoint: plg.Outpoint.String(),
-				Owners:   []string{},
-				Pkscript: hex.EncodeToString(plg.Pkscript),
-			}
-			for _, u := range plg.Owners {
-				d, _ := btcutil.NewAddressPubKeyHash(u[:], s.cfg.ChainParams)
-				t.Owners = append(t.Owners, d.String())
-			}
-			treasure[outp.String()] = t
-		}
-		return nil
-	})
-	return treasure, nil
-}
-
-func handleGetSigners(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	mydb := s.cfg.DB
-
-	signers := make(map[string]btcjson.TreasurySigners)
-
-	mydb.View(func(tx database.Tx) error {
-		bucket := tx.Metadata().Bucket([]byte(common.BRIDGESIGNERS))
-		cursor := bucket.Cursor()
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			var addr [20]byte
-			copy(addr[:], cursor.Key())
-
-			t := &treasury.Signers{}
-			copy(t.Address[:], addr[:])
-			t.Pledged = make([]*treasury.PlgAsset, 0)
-
-			_, err := t.Deserialize(cursor.Value())
-			if err != nil {
-				continue
-			}
-
-			fmt.Printf("%x: address: %x, joined: %d, retiring: %d, voting: %d, pubkey: %x, pledges： %d\n", addr, t.Address, t.Joined, t.Retiring, t.Voting, t.Pubkey, len(t.Pledged))
-			for _, p := range t.Pledged {
-				fmt.Printf("Pledged: utxo: %s firstuse: %d amount: %d\n", p.Utxo.String(), p.Firstuse, p.Amount)
-			}
-
-			ad, _ := btcutil.NewAddressPubKeyHash(addr[:], s.cfg.ChainParams)
-
-			p := btcjson.TreasurySigners{
-				Address:   ad.String(),
-				Pubkey:    hex.EncodeToString(t.Pubkey), // Pubkey of signer
-				Voting:    t.Voting,                     // Voting power in %
-				Retiring:  t.Retiring,                   // whether is Retiring
-				Joined:    t.Joined,                     // height when it becomes a signer
-				Pledged:   []btcjson.TreasuryPlgAsset{}, // Assets Pledged
-				Btcprofit: t.Btcprofit,                  // profits in BTC
-			}
-
-			for _, q := range t.Pledged {
-				p.Pledged = append(p.Pledged, btcjson.TreasuryPlgAsset{
-					Utxo:     q.Utxo.String(),
-					Amount:   q.Amount,
-					Firstuse: q.Firstuse, // height when it becomes a signer
-				})
-			}
-
-			signers[ad.String()] = p
-		}
-		return nil
-	})
-	return signers, nil
-}
-
-func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	s.cfg.DB.Update(func(dbTx database.Tx) error {
-		bucketName := []byte(common.INCOMINGPOOL)
-		dbTx.Metadata().DeleteBucket(bucketName)
-		dbTx.Metadata().CreateBucket(bucketName)
-
-		bucketName = []byte(common.L2BTCPOOL)
-		dbTx.Metadata().DeleteBucket(bucketName)
-		dbTx.Metadata().CreateBucket(bucketName)
-
-		bucketName = []byte(common.INASSETS)
-		dbTx.Metadata().DeleteBucket(bucketName)
-		dbTx.Metadata().CreateBucket(bucketName)
-		return nil
-	})
-	return nil, nil
-}
-
-func handleGetBtcPool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	res := make(map[string]btcjson.BTCL2Data)
-	s.cfg.DB.View(func(dbTx database.Tx) error {
-		bucketName := []byte(common.INCOMINGPOOL)
-		bucket := dbTx.Metadata().Bucket(bucketName)
-		cursor := bucket.Cursor()
-
-		head := bucket.Get([]byte("BTCHeight")) // height of current BTC tip
-		if head != nil {
-			ht := common.LittleEndian.Uint32(head)
-			res["BTCHeight"] = btcjson.BTCL2Data{Height: int32(ht)}
-		}
-
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			if bytes.Compare(cursor.Key(), []byte("BTCHeight")) == 0 {
-				continue
-			}
-			h := common.LittleEndian.Uint32(cursor.Key())
-
-			fromBTC := common.BTCL2Data{}
-			fromBTC.Unserialize(cursor.Value())
-
-			t := btcjson.BTCL2Data{
-				Hash:   fromBTC.Hash.String(),
-				Height: fromBTC.Height,
-				Txs:    []btcjson.MsgXrossL2{},
-			}
-
-			for _, p := range fromBTC.Txs {
-				t.Txs = append(t.Txs, btcjson.MsgXrossL2{
-					Utxo:     p.Utxo.String(),
-					Value:    p.Value,
-					PkScript: hex.EncodeToString(p.PkScript),
-					Redeem:   hex.EncodeToString(p.Redeem),
-				})
-			}
-
-			res[fmt.Sprintf("%d", h)] = t
-		}
-		return nil
-	})
-	return res, nil
-}
-
-func handleGetL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	res := make(map[string]btcjson.BTCL2Data)
-	s.cfg.DB.View(func(dbTx database.Tx) error {
-		bucketName := []byte(common.L2BTCPOOL)
-		bucket := dbTx.Metadata().Bucket(bucketName)
-		cursor := bucket.Cursor()
-
-		head := bucket.Get([]byte("ChainHeight")) // height of current BTC tip
-		if head != nil {
-			ht := common.LittleEndian.Uint32(head)
-			res["ChainHeight"] = btcjson.BTCL2Data{Height: int32(ht)}
-		}
-
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			if len(cursor.Key()) != 4 {
-				continue
-			}
-			h := common.LittleEndian.Uint32(cursor.Key())
-			d := &common.BTCL2Data{}
-			d.Unserialize(cursor.Value())
-
-			t := btcjson.BTCL2Data{
-				Hash:   d.Hash.String(),
-				Height: d.Height,
-				Txs:    []btcjson.MsgXrossL2{},
-			}
-
-			for _, p := range d.Txs {
-				t.Txs = append(t.Txs, btcjson.MsgXrossL2{
-					Utxo:     p.Utxo.String(),
-					Value:    p.Value,
-					PkScript: hex.EncodeToString(p.PkScript),
-					Redeem:   hex.EncodeToString(p.Redeem),
-				})
-			}
-
-			res[fmt.Sprintf("%d", h)] = t
-		}
-
-		return nil
-	})
-	return res, nil
-}
-
-func handleCreatexferl2txo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.Createxferl2txoCmd)
-	if c.AssetType == nil || *c.AssetType == 0 {
-		pks, _ := treasury.Get75pctMSScript(c.Address)
-
-		result := btcwire.TxOut{
-			Value:    int64(c.Amount),
-			PkScript: pks,
-		}
-		return &result, nil
-	}
-	return nil, fmt.Errorf("Unsupported asset type")
-}
-
 // handleGetIssuedTokens implements the getissuedtokens command.
 func handleGetIssuedTokens(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	var IssuedTokenTypes = []byte("issuedTokens")
@@ -4278,7 +4011,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	if !(*(c.IncludeLocked)) {
 		p := &wire.OutPoint{Hash: *txHash, Index: c.Vout}
 
-		if s.cfg.Chain.LockedCollaterals.Exists(p) {
+		if _, ok := s.cfg.Chain.LockedCollaterals[*p]; ok {
 			return nil, &btcjson.RPCError{
 				Code:    btcjson.ErrRPCInvalidTxVout,
 				Message: "Locked collateral.",
@@ -5521,32 +5254,32 @@ func handleSignRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 			return nil, e
 		}
 
-		var hashType txscript.SigHashType
+		var hashType ovm.SigHashType
 		switch *c.Flags {
 		case "ALL":
-			hashType = txscript.SigHashAll
+			hashType = ovm.SigHashAll
 		case "NONE":
-			hashType = txscript.SigHashNone
+			hashType = ovm.SigHashNone
 		case "SINGLE":
-			hashType = txscript.SigHashSingle
+			hashType = ovm.SigHashSingle
 		case "DOUBLE":
-			hashType = txscript.SigHashDouble
+			hashType = ovm.SigHashDouble
 		case "TRIPLE":
-			hashType = txscript.SigHashTriple
+			hashType = ovm.SigHashTriple
 		case "QUARDRUPLE":
-			hashType = txscript.SigHashQuardruple
+			hashType = ovm.SigHashQuardruple
 		case "ALL|ANYONECANPAY":
-			hashType = txscript.SigHashAll | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashAll | ovm.SigHashAnyOneCanPay
 		case "NONE|ANYONECANPAY":
-			hashType = txscript.SigHashNone | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashNone | ovm.SigHashAnyOneCanPay
 		case "SINGLE|ANYONECANPAY":
-			hashType = txscript.SigHashSingle | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashSingle | ovm.SigHashAnyOneCanPay
 		case "DOUBLE|ANYONECANPAY":
-			hashType = txscript.SigHashDouble | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashDouble | ovm.SigHashAnyOneCanPay
 		case "TRIPLE|ANYONECANPAY":
-			hashType = txscript.SigHashTriple | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashTriple | ovm.SigHashAnyOneCanPay
 		case "QUARDRUPLE|ANYONECANPAY":
-			hashType = txscript.SigHashQuardruple | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashQuardruple | ovm.SigHashAnyOneCanPay
 		default:
 			e := errors.New("Invalid sighash parameter")
 			return nil, e
@@ -5713,7 +5446,7 @@ func handleSignRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 // being unable to determine a previous output script to redeem.
 //
 // The transaction pointed to by tx is modified by this function.
-func (s *rpcServer) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
+func (s *rpcServer) SignTransaction(tx *wire.MsgTx, hashType ovm.SigHashType,
 	additionalPrevScripts map[wire.OutPoint][]byte,
 	additionalKeysByAddress map[string]*btcutil.WIF,
 	redeemScriptsByAddress map[string][]byte, view *viewpoint.ViewPointSet) ([]SignatureError, error) {
@@ -5795,7 +5528,7 @@ func (s *rpcServer) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashTyp
 		// SigHashSingle inputs can only be signed if there's a
 		// corresponding output. However this could be already signed,
 		// so we always verify the output.
-		if (hashType&txscript.SigHashMask) < txscript.SigHashSingle || i < len(tx.TxOut) {
+		if (hashType&ovm.SigHashMask) < ovm.SigHashSingle || i < len(tx.TxOut) {
 			//				txIn.SignatureIndex = uint32(i)
 			if tx.SignatureScripts == nil {
 				tx.SignatureScripts = make([][]byte, 0)

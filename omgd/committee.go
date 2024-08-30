@@ -441,8 +441,7 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 
 	if ok && !sp.closed && len(sp.queue) < 50 {
 		sp.queue <- msgnb{m, nil}
-	}
-	else if !ok || sp == nil {
+	} else if !ok || sp == nil {
 		mb, _ := s.chain.Miners.BlockByHeight(h)
 		if mb != nil {
 			go s.makeConnection(mb.MsgBlock().Connection, p, h)

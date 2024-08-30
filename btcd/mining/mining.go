@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 
+	"github.com/omegasuite/famofchains/omega/chainmap"
 	"math/rand"
 	"time"
 

@@ -506,9 +506,6 @@ out:
 		// Choose a payment address at random.
 		rand.Seed(time.Now().Unix())
 		rnd := rand.Intn(len(m.cfg.MiningAddrs))
-		if m.cfg.ShareMining && rnd > 1 {
-			rnd = 1 // all addresses except for the first are external
-		}
 
 		mtch := false
 		qc := chainChoice
@@ -605,8 +602,6 @@ out:
 
 		if len(m.cfg.ExternalIPs) > 0 {
 			block.MsgBlock().Connection = []byte(m.cfg.ExternalIPs[0])
-		} else if len(m.cfg.RSAPubKey) > 0 {
-			block.MsgBlock().Connection = []byte(m.cfg.RSAPubKey)
 		} else {
 			m.submitBlockLock.Unlock()
 			m.Stale = true
@@ -633,10 +628,7 @@ out:
 			}
 			block.MsgBlock().Instructions = make([]*wire.Instruction, 0)
 
-		
-				h1 = int64(v)
-			
-
+			h1 = int64(v)
 			if h1 < 1 {
 				h1 = 1
 			}
@@ -737,7 +729,7 @@ out:
 // already been started will have no effect.
 //
 // This function is safe for concurrent access.
-func (m *CPUMiner) Start(collateral []*wire.OutPoint, pledge []*wire.OutPoint) {
+func (m *CPUMiner) Start(collateral []*wire.OutPoint) {
 	m.Lock()
 	defer m.Unlock()
 

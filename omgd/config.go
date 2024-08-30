@@ -732,7 +732,7 @@ func applyConfig(cfg *config) error {
 		}
 		cfg.RPCListeners = make([]string, 0, len(addrs))
 		for _, addr := range addrs {
-			addr = net.JoinHostPort(addr, activeNetParams.rpcPort)
+			addr = net.JoinHostPort(addr, activeNetParams.RpcPort)
 			cfg.RPCListeners = append(cfg.RPCListeners, addr)
 		}
 	}
@@ -816,7 +816,7 @@ func applyConfig(cfg *config) error {
 	// Check mining addresses are valid and saved parsed versions.
 	cfg.miningAddrs = make([]btcutil.Address, 0, len(cfg.MiningAddrs)+len(cfg.PrivKeys))
 	for _, strAddr := range cfg.MiningAddrs {
-		addr, err := btcutil.DecodeAddress(strAddr, activeNetParams.Params)
+		addr, err := btcutil.DecodeAddress(strAddr, activeNetParams)
 		if err != nil {
 			str := "%s: mining address '%s' failed to decode: %v"
 			err := fmt.Errorf(str, funcName, strAddr, err)
@@ -824,7 +824,7 @@ func applyConfig(cfg *config) error {
 			fmt.Fprintln(os.Stderr, usageMessage)
 			return err
 		}
-		if !addr.IsForNet(activeNetParams.Params) {
+		if !addr.IsForNet(activeNetParams) {
 			str := "%s: mining address '%s' is on the wrong network"
 			err := fmt.Errorf(str, funcName, strAddr)
 			fmt.Fprintln(os.Stderr, err)
@@ -843,7 +843,7 @@ func applyConfig(cfg *config) error {
 			if err == nil {
 				privKey := dwif.PrivKey
 				//			pkaddr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
-				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
+				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams)
 
 				if err != nil {
 					str := "%s: mining address '%s' failed to decode: %v"
@@ -854,7 +854,7 @@ func applyConfig(cfg *config) error {
 				}
 
 				addr := pkaddr.AddressPubKeyHash()
-				if !addr.IsForNet(activeNetParams.Params) {
+				if !addr.IsForNet(activeNetParams) {
 					str := "%s: mining address '%s' is on the wrong network"
 					err := fmt.Errorf(str, funcName, cfg.PrivKeys)
 					fmt.Fprintln(os.Stderr, err)
@@ -903,7 +903,7 @@ func applyConfig(cfg *config) error {
 
 	// Add default port to all rpc listener addresses if needed and remove
 	// duplicate addresses.
-	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.rpcPort)
+	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.RpcPort)
 	/*
 		// Only allow TLS to be disabled if the RPC is bound to localhost
 		// addresses.

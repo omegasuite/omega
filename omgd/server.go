@@ -12,14 +12,10 @@ import (
 	//	"bufio"
 	"bytes"
 	"crypto/rand"
-	"crypto/rsa"
 	//	"crypto/sha256"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/binary"
-	//	"encoding/hex"
-	"encoding/json"
-	"encoding/pem"
+
 	"errors"
 	"fmt"
 	"github.com/davecgh/go-spew/spew"
@@ -815,11 +811,6 @@ func (sp *serverPeer) OnInv(_ *peer.Peer, msg *wire.MsgInv) {
 	if len(newInv.InvList) > 0 {
 		sp.server.syncManager.QueueInv(newInv, sp.Peer)
 	}
-}
-
-func (sp *serverPeer) OnSolicitSigs(_ *peer.Peer, msg *wire.MsgSolicitSigs) {
-	treasuary.Signtx(msg)
-	Server.BroadcastMessage(msg, true, sp)
 }
 
 // OnHeaders is invoked when a peer receives a headers bitcoin
@@ -2604,22 +2595,14 @@ func (s *server) BroadcastMessage(msg wire.Message, exclPeers ...*serverPeer) {
 	// XXX: Need to determine if this is an alert that has already been
 	// broadcast and refrain from broadcasting again.
 	var h chainhash.Hash
-	if check {
-		var w bytes.Buffer
-		msg.OmcEncode(&w, 0, 0)
-		h = chainhash.DoubleHashH(w.Bytes())
-	}
 
-	if t,ok := s.Broadcasted[h]; !check || !ok {
-		if check {
-			s.Broadcasted[h] = time.Now().Unix()
-		}
+	if t, ok := s.Broadcasted[h]; !ok {
 		bmsg := broadcastMsg{message: msg, excludePeers: exclPeers}
 		s.broadcast <- bmsg
-	} else if time.Now().Unix() - t > 300 {
+	} else if time.Now().Unix()-t > 300 {
 		// msg expired
 		delete(s.Broadcasted, h)
-	}	// don't rebroadcast in 5 minutes
+	} // don't rebroadcast in 5 minutes
 }
 
 // ConnectedCount returns the number of currently connected peers.
@@ -3061,7 +3044,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 	}
 
 	s := server{
-		chainParams:            prot.activeNetParams.Params,
+		chainParams:            prot.activeNetParams,
 		addrManager:            amgr,
 		newPeers:               make(chan *serverPeer, prot.cfg.MaxPeers),
 		donePeers:              make(chan *serverPeer, prot.cfg.MaxPeers),

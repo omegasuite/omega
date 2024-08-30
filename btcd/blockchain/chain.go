@@ -979,7 +979,6 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		c := b.collaterals[b.ChainParams.ViolationReportDeadline-1]
 		delete(b.LockedCollaterals, c)
 		b.collaterals = b.collaterals[:b.ChainParams.ViolationReportDeadline-1]
-
 		mb, _ := b.Miners.BlockByHeight(int32(rot) - b.ChainParams.ViolationReportDeadline - int32(i))
 		if mb == nil || mb.MsgBlock().Utxos == nil {
 			b.collaterals = append([]wire.OutPoint{wire.OutPoint{}}, b.collaterals...)
@@ -987,6 +986,8 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		}
 		c = *mb.MsgBlock().Utxos
 		b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
+	}
+	for _, c := range b.collaterals {
 		b.LockedCollaterals[c] = struct{}{}
 	}
 
