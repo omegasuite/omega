@@ -1011,7 +1011,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 // CheckTransactionSanity function prior to calling this function.
 func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// Coinbase transactions have no inputs.
-	if IsCoinBase(tx)  {
+	if IsCoinBase(tx) {
 		return nil
 	}
 
@@ -1032,7 +1032,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 		if txIn.IsSepadding() {
 			continue
 		}
-		if txIn.SignatureIndex & wire.CrossChainFalg != 0 {
+		if txIn.SignatureIndex&wire.CrossChainFalg != 0 {
 			continue
 		}
 
@@ -1846,7 +1846,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	var unmached string
 
 	for i, tx := range transactions[1:] {
-		if runScripts && (len(tx.MsgTx().TxIn) != 1 || tx.MsgTx().TxIn[0].SignatureIndex & wire.CrossChainFalg == 0) {
+		if runScripts && (len(tx.MsgTx().TxIn) != 1 || tx.MsgTx().TxIn[0].SignatureIndex&wire.CrossChainFalg == 0) {
 			err = ovm.VerifySigs(tx, b.ChainParams, 0, views)
 			if err != nil {
 				return err

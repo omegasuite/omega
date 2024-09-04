@@ -21,6 +21,7 @@ import (
 	"github.com/omegasuite/famofchains/btcd/mempool"
 	"github.com/omegasuite/famofchains/btcd/peer"
 	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/go-socks/socks"
 	"io"
@@ -176,7 +177,7 @@ type config struct {
 	Concurrency     int    `long:"concurrency" description:"Concurrency"`
 	LogBlockTime    bool   `long:"logblocktime" description:"Log the time that blocks are received"`
 	Accounts        bool   `long:"accounts" description:"list omega accounts & balance"`
-	NetMagic        uint32
+	NetMagic        common.OmegaNet
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -408,7 +409,7 @@ func newConfigParser(cfg *config, so *serviceOptions, options flags.Options) *fl
 // The above results in btcd functioning properly without any config settings
 // while still allowing the user to override settings with config files and
 // command line options.  Command line options always take precedence.
-func loadConfig(sec string) (*config, []string, error) {
+func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error) {
 	// Default config.
 	cfg := config{
 		ConfigFile:           defaultConfigFile,
@@ -442,6 +443,11 @@ func loadConfig(sec string) (*config, []string, error) {
 		Concurrency:          1,
 		LogBlockTime:         false,
 		Accounts:             false,
+		NetMagic:             common.MainNet,
+	}
+
+	if uint32(omegaNet) != 0 {
+		cfg.NetMagic = omegaNet
 	}
 
 	// Service options which are only added on Windows.
@@ -485,6 +491,9 @@ func loadConfig(sec string) (*config, []string, error) {
 	// Load additional config from file.
 	var configFileError error
 	parser := newConfigParser(&cfg, &serviceOpts, flags.Default)
+	if sec != "" {
+		parser.AddGroup(sec, sec, &cfg)
+	}
 
 	if !(preCfg.RegressionTest || preCfg.SimNet) || preCfg.ConfigFile !=
 		defaultConfigFile {
@@ -732,7 +741,7 @@ func applyConfig(cfg *config) error {
 		}
 		cfg.RPCListeners = make([]string, 0, len(addrs))
 		for _, addr := range addrs {
-			addr = net.JoinHostPort(addr, activeNetParams.rpcPort)
+			addr = net.JoinHostPort(addr, activeNetParams.RpcPort)
 			cfg.RPCListeners = append(cfg.RPCListeners, addr)
 		}
 	}
@@ -816,7 +825,7 @@ func applyConfig(cfg *config) error {
 	// Check mining addresses are valid and saved parsed versions.
 	cfg.miningAddrs = make([]btcutil.Address, 0, len(cfg.MiningAddrs)+len(cfg.PrivKeys))
 	for _, strAddr := range cfg.MiningAddrs {
-		addr, err := btcutil.DecodeAddress(strAddr, activeNetParams.Params)
+		addr, err := btcutil.DecodeAddress(strAddr, activeNetParams)
 		if err != nil {
 			str := "%s: mining address '%s' failed to decode: %v"
 			err := fmt.Errorf(str, funcName, strAddr, err)
@@ -824,7 +833,7 @@ func applyConfig(cfg *config) error {
 			fmt.Fprintln(os.Stderr, usageMessage)
 			return err
 		}
-		if !addr.IsForNet(activeNetParams.Params) {
+		if !addr.IsForNet(activeNetParams) {
 			str := "%s: mining address '%s' is on the wrong network"
 			err := fmt.Errorf(str, funcName, strAddr)
 			fmt.Fprintln(os.Stderr, err)
@@ -843,7 +852,7 @@ func applyConfig(cfg *config) error {
 			if err == nil {
 				privKey := dwif.PrivKey
 				//			pkaddr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
-				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
+				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams)
 
 				if err != nil {
 					str := "%s: mining address '%s' failed to decode: %v"
@@ -854,7 +863,7 @@ func applyConfig(cfg *config) error {
 				}
 
 				addr := pkaddr.AddressPubKeyHash()
-				if !addr.IsForNet(activeNetParams.Params) {
+				if !addr.IsForNet(activeNetParams) {
 					str := "%s: mining address '%s' is on the wrong network"
 					err := fmt.Errorf(str, funcName, cfg.PrivKeys)
 					fmt.Fprintln(os.Stderr, err)
@@ -903,7 +912,7 @@ func applyConfig(cfg *config) error {
 
 	// Add default port to all rpc listener addresses if needed and remove
 	// duplicate addresses.
-	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.rpcPort)
+	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.RpcPort)
 	/*
 		// Only allow TLS to be disabled if the RPC is bound to localhost
 		// addresses.

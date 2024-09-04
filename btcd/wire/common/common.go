@@ -50,8 +50,12 @@ const (
 
 // These constants define the bucket names and meta keys.
 const (
-	INCOMINGPOOL string = "SVP-MAINPool" // bucket for assets pending transfer from SVP chain to main chain
+	INCOMINGPOOL string = "IncomingPool" // bucket for assets pending incoming transfer
+	OUTGOINGPOOL string = "OutgoingPool" // bucket for assets pending outgoing transfer
 	SVPHeights   string = "SVPHeights"   // key in INCOMINGPOOL bucket for the current SVP chain height
+
+	ReceivedXCAssets string = "ReceivedXCAssets" // bucket for received cross chain assets
+	SentXCAssets     string = "SentXCAssets"     // bucket for sent cross chain assets
 )
 
 // MaxMessagePayload is the maximum bytes a message can be regardless of other
@@ -922,19 +926,19 @@ const (
 	// SimNet represents the simulation test network.
 	SimNet OmegaNet = 0xe10b70ad
 
-	SVPMainNet = 0x665872cc
-	SVPTestNet = 0x625678cd
+	//	SVPMainNet = 0x665872cc
+	//	SVPTestNet = 0x625678cd
 )
 
 // bnStrings is a map of omega networks back to their constant names for
 // pretty printing.
 var bnStrings = map[OmegaNet]string{
-	MainNet:    "OmgMain",
-	RegNet:     "OmgReg",
-	TestNet:    "OmgTest",
-	SimNet:     "OmgSim",
-	SVPMainNet: "SVPMain",
-	SVPTestNet: "SVPTest",
+	MainNet: "OmgMain",
+	RegNet:  "OmgReg",
+	TestNet: "OmgTest",
+	SimNet:  "OmgSim",
+	//	SVPMainNet: "SVPMain",
+	//	SVPTestNet: "SVPTest",
 }
 
 // String returns the OmegaNet in human-readable form.

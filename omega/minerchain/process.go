@@ -185,7 +185,7 @@ func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode
 		}
 	}
 	// check the coin for collateral exists and have correct amount
-	_, err := b.blockChain.CheckCollateral(block, &block.MsgBlock().BestBlock, flags)
+	_, err = b.blockChain.CheckCollateral(block, &block.MsgBlock().BestBlock, flags)
 	if err != nil {
 		return false, err, nil
 	}
@@ -311,8 +311,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 			}
 		}
 	} else if len(block.MsgBlock().ViolationReport) > 0 {
-			return false, false, fmt.Errorf("Unexpected blacklist"), nil
-		}
+		return false, false, fmt.Errorf("Unexpected blacklist"), nil
 	}
 
 	// the rule is new ContractLimit must not less than prev ContractLimit

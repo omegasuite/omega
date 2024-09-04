@@ -337,9 +337,9 @@ func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {
 			if len(op.InstData) != 0 { // UTXO of asset to withdraw
 				return fmt.Errorf("Incorrect op data")
 			}
-			if !treasury.MayRetire(blk.Miner) {
-				return fmt.Errorf("Miner may not retire")
-			}
+			//			if !treasury.MayRetire(blk.Miner) {
+			//				return fmt.Errorf("Miner may not retire")
+			//			}
 
 		case wire.UplinkChain:
 
