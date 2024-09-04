@@ -21,6 +21,7 @@ import (
 	"github.com/omegasuite/famofchains/btcd/mempool"
 	"github.com/omegasuite/famofchains/btcd/peer"
 	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/go-socks/socks"
 	"io"
@@ -176,7 +177,7 @@ type config struct {
 	Concurrency     int    `long:"concurrency" description:"Concurrency"`
 	LogBlockTime    bool   `long:"logblocktime" description:"Log the time that blocks are received"`
 	Accounts        bool   `long:"accounts" description:"list omega accounts & balance"`
-	NetMagic        uint32
+	NetMagic        common.OmegaNet
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -408,7 +409,7 @@ func newConfigParser(cfg *config, so *serviceOptions, options flags.Options) *fl
 // The above results in btcd functioning properly without any config settings
 // while still allowing the user to override settings with config files and
 // command line options.  Command line options always take precedence.
-func loadConfig(sec string) (*config, []string, error) {
+func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error) {
 	// Default config.
 	cfg := config{
 		ConfigFile:           defaultConfigFile,
@@ -442,6 +443,11 @@ func loadConfig(sec string) (*config, []string, error) {
 		Concurrency:          1,
 		LogBlockTime:         false,
 		Accounts:             false,
+		NetMagic:             common.MainNet,
+	}
+
+	if uint32(omegaNet) != 0 {
+		cfg.NetMagic = omegaNet
 	}
 
 	// Service options which are only added on Windows.
@@ -485,6 +491,9 @@ func loadConfig(sec string) (*config, []string, error) {
 	// Load additional config from file.
 	var configFileError error
 	parser := newConfigParser(&cfg, &serviceOpts, flags.Default)
+	if sec != "" {
+		parser.AddGroup(sec, sec, &cfg)
+	}
 
 	if !(preCfg.RegressionTest || preCfg.SimNet) || preCfg.ConfigFile !=
 		defaultConfigFile {

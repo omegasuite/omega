@@ -170,7 +170,6 @@ func prepareServer(tcfg *config) (*Protocol, bool) {
 	// Create server and start it.
 	server, err := newServer(tcfg.Listeners, db, minerdb, prot, interrupt)
 	if err != nil {
-		// TODO: this logging could do with some beautifying.
 		btcdLog.Errorf("Unable to start server on %v: %v",
 			tcfg.Listeners, err)
 		return prot, true
@@ -564,7 +563,7 @@ func main() {
 	// Use all processor cores.
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	tcfg, _, err := loadConfig("") // chain main options
+	tcfg, _, err := loadConfig("Main Options", 0) // chain main options
 	if err != nil {
 		os.Exit(1)
 	}
@@ -633,6 +632,8 @@ func main() {
 	if quit && p != nil {
 		cleanup(p)
 		os.Exit(1)
+	} else if quit {
+		os.Exit(1)
 	}
 
 	p.IsSvp = false
@@ -654,7 +655,7 @@ func main() {
 			}
 
 			svpid := fmt.Sprintf("%x", uint32(params.Net))
-			tcfg, _, err := loadConfig(svpid)
+			tcfg, _, err := loadConfig(svpid, params.Net)
 
 			var magic [4]byte
 			common.LittleEndian.PutUint32(magic[:], uint32(params.Net))
@@ -697,14 +698,16 @@ func main() {
 		return nil
 	})
 
-	for _, p := range protocols {
+	for i, p := range protocols {
 		wg.Add(1)
 		p.running = true
 
 		go runserver(p)
-	}
 
-	go retrievedefs(protocols[0], protocols[1])
+		if i > 0 {
+			go retrievedefs(protocols[0], protocols[i])
+		}
+	}
 
 	wg.Wait()
 }

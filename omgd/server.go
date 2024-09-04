@@ -3072,7 +3072,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 	}
 	s.prot = prot
 
-	if cfg.Generate && !cfg.TxIndex { // must allow txindex when mining
+	if prot.cfg.Generate && !prot.cfg.TxIndex { // must allow txindex when mining
 		return nil, errors.New("Must enable tx index (width full history) when mining.")
 	}
 
@@ -3102,11 +3102,11 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 	}
 	if prot.cfg.AddrIndex {
 		indxLog.Info("Address index is enabled")
-		s.addrIndex = indexers.NewAddrIndex(db, prot.activeNetParams.Params)
+		s.addrIndex = indexers.NewAddrIndex(db, prot.activeNetParams)
 		indexes = append(indexes, s.addrIndex)
 	}
 
-	s.addrUseIndex = indexers.NewAddrUseIndex(db, prot.activeNetParams.Params)
+	s.addrUseIndex = indexers.NewAddrUseIndex(db, prot.activeNetParams)
 	indexes = append(indexes, s.addrUseIndex)
 
 	// Create an index manager if any of the optional indexes are enabled.
@@ -3188,7 +3188,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			MinRelayTxFee:        prot.cfg.minRelayTxFee,
 			MaxTxVersion:         2,
 		},
-		ChainParams:   prot.activeNetParams.Params,
+		ChainParams:   prot.activeNetParams,
 		FetchUtxoView: s.chain.FetchUtxoView,
 		//		Views: s.chain.NewViewPointSet(),
 		BestHeight:     func() int32 { return s.chain.BestSnapshot().Height },
@@ -3231,11 +3231,11 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		TxMinFreeFee:      prot.cfg.minRelayTxFee,
 	}
 	blockTemplateGenerator := mining.NewBlkTmplGenerator(&policy,
-		s.chainParams, s.txMemPool, s.chain, s.timeSource)
+		s.chainParams, s.txMemPool, s.chain, s.timeSource, prot.activeNetParams)
 	//		s.sigCache, s.hashCache)
 	// This is the miner for Tx chain
 	s.cpuMiner = cpuminer.New(&cpuminer.Config{
-		ChainParams:            prot.activeNetParams.Params,
+		ChainParams:            prot.activeNetParams,
 		BlockTemplateGenerator: blockTemplateGenerator,
 		MiningAddrs:            prot.cfg.miningAddrs,
 		SignAddress:            prot.cfg.signAddress,
@@ -3251,7 +3251,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			if err != nil {
 				return false
 			}
-			w, err := btcutil.NewWIF(key, prot.activeNetParams.Params, true)
+			w, err := btcutil.NewWIF(key, prot.activeNetParams, true)
 			if err != nil {
 				return false
 			}
@@ -3268,7 +3268,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 	if prot.cfg.GenerateMiner {
 		mcfg := &minerchain.Config{
-			ChainParams:            prot.activeNetParams.Params,
+			ChainParams:            prot.activeNetParams,
 			BlockTemplateGenerator: blockTemplateGenerator,
 			ProcessBlock:           s.syncManager.ProcessMinerBlock,
 			ConnectedCount:         s.ConnectedCount,
@@ -3391,7 +3391,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			SyncMgr:      &rpcSyncMgr{&s, s.syncManager},
 			TimeSource:   s.timeSource,
 			Chain:        s.chain,
-			ChainParams:  prot.activeNetParams.Params,
+			ChainParams:  prot.activeNetParams,
 			DB:           db,
 			MinerDB:      minerdb,
 			TxMemPool:    s.txMemPool,
