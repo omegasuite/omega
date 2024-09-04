@@ -10,6 +10,7 @@ package minerchain
 
 import (
 	"bytes"
+	"github.com/davecgh/go-spew/spew"
 	//	"fmt"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
@@ -589,6 +590,7 @@ out:
 				}
 				if inrange && len(vb) > 0 {
 					t = append(t, v)
+					log.Infof("violation: ", spew.Sdump(v))
 				}
 			}
 			sort.Slice(t, func(i int, j int) bool {
@@ -596,7 +598,7 @@ out:
 			})
 			block.MsgBlock().ViolationReport = t
 			if len(t) > 0 {
-				log.Infof("violation report -- %d", len(t))
+				log.Infof("violation report -- %d items at height %d", len(t), block.Height())
 			}
 		}
 
