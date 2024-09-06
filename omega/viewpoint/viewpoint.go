@@ -16,7 +16,6 @@ import (
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega"
 	"github.com/omegasuite/famofchains/omega/token"
 )
 
@@ -137,56 +136,7 @@ func DbPutViews(dbTx database.Tx, view *ViewPointSet) error {
 	return DbPutRightView(dbTx, view.Rights)
 }
 
-var GlobalBoundingBox = func() BoundingBox {
-	box := BoundingBox{}
-	box.Reset()
-	for _, b := range omega.InitDefs {
-		switch b.(type) {
-		case *token.BorderDef:
-			v := b.(*token.BorderDef).Begin
-			box.Expand(v.Lat(), v.Lng())
-		}
-	}
-	return box
-}()
-
 func DbPutGensisTransaction(dbTx database.Tx, tx *btcutil.Tx, view *ViewPointSet) error {
-	bdrview := view.Border
-	plgview := view.Polygon
-	rtview := view.Rights
-
-	for _, d := range tx.MsgTx().TxDef {
-		if d.IsSeparator() {
-			continue
-		}
-		switch d.(type) {
-		case *token.BorderDef:
-			b := d.(*token.BorderDef)
-			view.addBorder(b)
-
-			if !b.Father.IsEqual(&chainhash.Hash{}) {
-				view.Border.LookupEntry(b.Father).RefCnt++
-			}
-			break
-		case *token.PolygonDef:
-			view.addPolygon(d.(*token.PolygonDef), true, GlobalBoundingBox)
-			bdr := view.Flattern(d.(*token.PolygonDef).Loops)
-			for _, loop := range bdr {
-				for _, b := range loop {
-					view.Border.LookupEntry(b).RefCnt++
-				}
-			}
-			break
-		case *token.RightDef:
-			view.AddRight(d.(*token.RightDef))
-			break
-		}
-	}
-
-	DbPutBorderView(dbTx, bdrview)
-	DbPutRightView(dbTx, rtview)
-	DbPutPolygonView(dbTx, plgview)
-
 	view.AddTxOuts(tx, 0)
 
 	return DbPutUtxoView(dbTx, view.Utxo)

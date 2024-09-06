@@ -915,10 +915,6 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
-		if err = viewpoint.DbPutGensisTransaction(dbTx, txs[1], views); err != nil {
-			return err
-		}
-
 		// Store the genesis block into the database.
 		return dbStoreBlock(dbTx, genesisBlock)
 	})
