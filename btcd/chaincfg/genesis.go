@@ -9,8 +9,6 @@ import (
 	"github.com/omegasuite/famofchains/omega"
 )
 
-var InitDefs = omega.InitDefs
-
 // genesisMerkleRoot is the hash of the first transaction in the genesis block
 // for the main network. ----
 var genesisMerkleRoot = omega.MainNetGenesisMerkleRoot

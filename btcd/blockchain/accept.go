@@ -7,6 +7,7 @@ package blockchain
 
 import (
 	"fmt"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/wire"
@@ -142,10 +143,10 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		return true, nil, -1
 	}
 
-	if !b.IsSVP && block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
+	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		return false, fmt.Errorf("insifficient signatures"), -1
 	}
-	if !b.IsSVP && block.MsgBlock().Header.Nonce < 0 {
+	if block.MsgBlock().Header.Nonce < 0 {
 		for _, sig := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
 			if len(sig) < 33 {
 				return false, fmt.Errorf("incorrect signatures"), -1
@@ -181,19 +182,63 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 			return false, fmt.Errorf("Coinbase tx can not be a cross chain transaction"), -1
 		}
 	}
-	for _, tx := range block.MsgBlock().Transactions[1:] {
-		if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
-			for _, txo := range tx.TxOut {
-				if !txo.IsCrossChain() {
-					return false, fmt.Errorf("Mix of cross chain and regular txout"), -1
+	if !b.IsSVP {
+		m := chainmap.ChainMap[b.ChainParams.ChainID]
+		initems := make(map[chainhash.Hash]*wire.XchainData)
+		b.db.View(func(dbtx database.Tx) error {
+			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			for _, tx := range block.MsgBlock().Transactions[1:] {
+				if len(tx.TxIn) != 1 || (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) == 0 {
+					continue
 				}
-				if (txo.TokenType & (0xFFFFFF << 40)) == 0 {
-					return false, fmt.Errorf("Local Tokentype is a cross chain tx"), -1
+				if _, ok := initems[tx.TxIn[0].PreviousOutPoint.Hash]; ok {
+					return fmt.Errorf("Duplicated Cross chain item.")
+				}
+				t := bucket.Get(tx.TxIn[0].PreviousOutPoint.Hash[:])
+				if t == nil {
+					return fmt.Errorf("Cross chain item does not exist. SVP chain not ready?")
+				}
+				x := &wire.XchainData{}
+				x.DeSerialize(t)
+				initems[tx.TxIn[0].PreviousOutPoint.Hash] = x
+			}
+			return nil
+		})
+		if err != nil {
+			return false, err, -1
+		}
+
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
+				srcchain := tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainSrcMask
+				x := initems[tx.TxIn[0].PreviousOutPoint.Hash]
+
+				for _, txo := range tx.TxOut {
+					if txo.IsCrossChain() {
+						var cid [4]byte
+						copy(cid[:], txo.PkScript[22:25])
+						cid[3] = 0
+						destchain := common.LittleEndian.Uint32(cid[:])
+						if destchain == 0 {
+							destchain = b.ChainParams.ChainID
+						}
+						if !m.PassThru(srcchain, destchain) {
+							return fmt.Errorf("Mix of cross chain and regular txout")
+						}
+					} else {
+						if (txo.TokenType & (0xFFFFFF << 40)) == 0 {
+							return fmt.Errorf("Local Tokentype is a cross chain tx")
+						}
+					}
+				}
+
+				if err != nil {
+					return false, err, -1
 				}
 			}
-		}
-		if err := b.validateCrossChain(tx); err != nil {
-			return false, err, -1
+			if err := b.validateCrossChain(tx); err != nil {
+				return false, err, -1
+			}
 		}
 	}
 
