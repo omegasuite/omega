@@ -718,55 +718,77 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 
 		if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
 			mainchain := chainmap.ChainMap[b.ChainParams.MainChainID]
+			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 			for _, tx := range block.MsgBlock().Transactions[1:] {
-				xchain := wire.XchainData{
-					ChainID: b.ChainParams.ChainID,
-					Hash:    *block.Hash(),
-					Height:  block.Height(),
-					Txs:     []*wire.MsgXrossL2{},
-					Finalized: 0,
-				}
-				if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg == 0 {
-					continue
-				}
-				for i, txo := range tx.TxOut {
-					if !txo.IsSeparator() && txo.IsCrossChain() {
-						var cid [4]byte
-						copy(cid[:], txo.PkScript[22:25])
-						cid[3] = 0
-						dest := common.LittleEndian.Uint32(cid[:]) // destination of this tx
-
-						if !mainchain.PassThru(b.ChainParams.ChainID, dest) {
-							// if it will pass through the main chain, ignore it, otherwise add the tx to main chain
-							continue
-						}
-
-						t := &wire.MsgXrossL2{
-							Utxo: wire.OutPoint{
-								Hash:  tx.TxHash(),
-								Index: uint32(i),
-							},
-							Txo: *txo,
-						}
-						xchain.Txs = append(xchain.Txs, t)
+				var xchain *wire.XchainData
+				if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
+					xchain = &wire.XchainData{
+						ChainID:   b.ChainParams.ChainID,
+						Hash:      *block.Hash(),
+						Height:    block.Height(),
+						Txs:       []*wire.MsgXrossL2{},
+						Finalized: 0,
+					}
+				} else {
+					xchain = &wire.XchainData{
+						ChainID:   tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
+						Hash:      tx.TxIn[0].PreviousOutPoint.Hash,
+						Height:    int32(tx.TxIn[0].PreviousOutPoint.Index),
+						Txs:       []*wire.MsgXrossL2{},
+						Finalized: 0,
 					}
 				}
-				bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-				heightbucket := dbTx.Metadata().Bucket([]byte(common.SVPHeights))
+				for i, txo := range tx.TxOut {
+					if txo.IsSeparator() || !txo.IsCrossChain() {
+						continue
+					}
+					var cid [4]byte
+					copy(cid[:], txo.PkScript[22:25])
+					cid[3] = 0
+					dest := common.LittleEndian.Uint32(cid[:]) // destination of this tx
 
-				var k [8]byte
-				common.LittleEndian.PutUint32(k[:], b.ChainParams.ChainID)
-				common.LittleEndian.PutUint32(k[4:], uint32(block.Height()))
+					if !mainchain.PassThru(xchain.ChainID, dest) {
+						// if it will pass through the main chain, ignore it, otherwise add the tx to main chain
+						continue
+					}
+
+					t := &wire.MsgXrossL2{
+						Utxo: wire.OutPoint{
+							Hash:  tx.TxHash(),
+							Index: uint32(i),
+						},
+						Txo: *txo,
+					}
+					xchain.Txs = append(xchain.Txs, t)
+				}
+
+				var k [36]byte
+				copy(k[:], xchain.Hash[:])
+				common.LittleEndian.PutUint32(k[32:], uint32(xchain.ChainID|wire.CrossChainFalg))
 				bucket.Put(k[:], xchain.Serialize())
-				heightbucket.Put(k[:4], k[4:])
 			}
 		} else {
 			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			bucketrb := dbTx.Metadata().Bucket([]byte(common.ROLLBACKPOOL))
+			rbd := make([]byte, 4, 1024)
+			n := 0
 			for _, tx := range block.MsgBlock().Transactions[1:] {
-				if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg == 0 {
+				if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
 					continue
 				}
+				var h [4]byte
+				d := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
+				common.LittleEndian.PutUint32(rbd[:], uint32(len(d)))
+				rbd = append(rbd, h[:]...)
+				rbd = append(rbd, d...)
+				n++
 				bucket.Delete(tx.TxIn[0].PreviousOutPoint.ToBytes())
+			}
+			if n > 0 {
+				var h [4]byte
+				common.LittleEndian.PutUint32(h[:], uint32(block.Height()))
+				common.LittleEndian.PutUint32(rbd[:], uint32(n))
+				bucketrb.Put(h[:], rbd)
 			}
 		}
 
@@ -945,17 +967,42 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 
 		if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
 			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-			heightbucket := dbTx.Metadata().Bucket([]byte(common.SVPHeights))
+			for _, tx := range block.MsgBlock().Transactions[1:] {
+				var k [36]byte
 
-			var k [8]byte
-			common.LittleEndian.PutUint32(k[:], b.ChainParams.ChainID)
-			common.LittleEndian.PutUint32(k[4:], uint32(block.Height()))
-			bucket.Delete(k[:])
+				if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
+					copy(k[:], (*block.Hash())[:])
+					common.LittleEndian.PutUint32(k[32:], uint32(b.ChainParams.ChainID|wire.CrossChainFalg))
+				} else {
+					copy(k[:], tx.TxIn[0].PreviousOutPoint.Hash[:])
+					common.LittleEndian.PutUint32(k[32:], uint32(tx.TxIn[0].PreviousOutPoint.Index))
+				}
 
-			h := common.LittleEndian.Uint32(k[:4])
-			if h > uint32(block.Height()) {
-				common.LittleEndian.PutUint32(k[4:], uint32(block.Height()-1))
-				heightbucket.Put(k[:4], k[4:])
+				bucket.Delete(k[:])
+			}
+		} else {
+			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			bucketrb := dbTx.Metadata().Bucket([]byte(common.ROLLBACKPOOL))
+
+			var h [4]byte
+			common.LittleEndian.PutUint32(h[:], uint32(block.Height()))
+			rbd := bucketrb.Get(h[:])
+
+			if rbd != nil {
+				bucketrb.Delete(h[:])
+				n, m := common.LittleEndian.Uint32(rbd), uint32(4)
+				for i := uint32(0); i < n; i++ {
+					l := common.LittleEndian.Uint32(rbd[m:])
+					m += 4
+					data := rbd[m : m+l]
+					xchain := &wire.XchainData{}
+					xchain.DeSerialize(data)
+
+					var key [36]byte
+					copy(key[:], xchain.Hash[:])
+					common.LittleEndian.PutUint32(key[32:], xchain.ChainID|wire.CrossChainFalg)
+					bucket.Put(key[:], data)
+				}
 			}
 		}
 

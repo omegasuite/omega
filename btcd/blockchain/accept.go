@@ -18,12 +18,37 @@ import (
 )
 
 func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
+	if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
+		src := tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+		for _, txo := range tx.TxOut {
+			if txo.IsCrossChain() && (txo.TokenType&(0xFFFFFF<<40)) == 0 {
+				return fmt.Errorf("Local Tokentype is a cross chain tx")
+			}
+			var h [4]byte
+			copy(h[:], txo.PkScript[22:25])
+			h[3] = 0
+			dest := common.LittleEndian.Uint32(h[:])
+			if src != uint32(txo.TokenType>>40) && uint32(txo.TokenType>>40) != dest {
+				return fmt.Errorf("Incorrect cross chain destination")
+			}
+		}
+	}
 	for _, txo := range tx.TxOut {
 		if txo.IsSeparator() || !txo.IsCrossChain() {
 			continue
 		}
 		if txo.IsContractCall() {
 			return fmt.Errorf("cross chain tx with contract call")
+		}
+		var h [4]byte
+		copy(h[:], txo.PkScript[22:25])
+		h[3] = 0
+		dest := common.LittleEndian.Uint32(h[:])
+		if uint32(txo.TokenType>>40) != b.ChainParams.ChainID && uint32(txo.TokenType>>40) != dest {
+			return fmt.Errorf("Incorrect cross chain destination")
+		}
+		if uint32(txo.TokenType>>40) == b.ChainParams.ChainID && uint32(txo.TokenType>>40) == dest {
+			return fmt.Errorf("Incorrect cross chain destination")
 		}
 		if len(txo.PkScript) != 26 && len(txo.PkScript) != 29 {
 			return fmt.Errorf("incorrect cross chain pkscript length")
@@ -49,35 +74,33 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 }
 
 func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
-	if b.IsSVP {
-		return b.CheckCrossChainTx(tx)
+	if err := b.CheckCrossChainTx(tx); err != nil {
+		return err
 	}
-	if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
-		for _, txo := range tx.TxOut {
-			if txo.IsCrossChain() && (txo.TokenType&(0xFFFFFF<<40)) == 0 {
-				return fmt.Errorf("Local Tokentype is a cross chain tx")
-			}
-		}
+	if !b.IsSVP && len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
 		return b.db.View(func(dbtx database.Tx) error {
-			bucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
-			var key [4]byte
-			h := tx.TxIn[0].SignatureIndex
-			rawc := tx.TxIn[0].PreviousOutPoint.Index
-			if (rawc & (wire.CrossChainFalg) >> 1) != 0 {
-				rawc = 0xFFFFFF - rawc
-			} else {
-				rawc = rawc &^ wire.CrossChainFalg
-			}
-			common.LittleEndian.PutUint32(key[:], rawc)
-			bh := bucket.Get(key[:4])
-			svph := common.LittleEndian.Uint32(bh)
-			if svph < h+chainmap.ChainMap[rawc].Mature {
-				return fmt.Errorf("cross chain tx is not validateCrossChain yet")
-			}
+			// bucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
+			var key [32]byte
+			rawc := tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+			/*
+				h := tx.TxIn[0].SignatureIndex
+				if (rawc & (wire.CrossChainFalg) >> 1) != 0 {
+					rawc = 0xFFFFFF - rawc
+				} else {
+					rawc = rawc &^ wire.CrossChainFalg
+				}
+				common.LittleEndian.PutUint32(key[:], rawc)
+				bh := bucket.Get(key[:4])
+				svph := common.LittleEndian.Uint32(bh)
+				if svph < h+chainmap.ChainMap[rawc].Mature {
+					return fmt.Errorf("cross chain tx is not validateCrossChain yet")
+				}
+			*/
 
 			// ensure the txo are in the pool
-			bucket = dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-			common.LittleEndian.PutUint32(key[4:], h)
+			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			copy(key[:], tx.TxIn[0].PreviousOutPoint.Hash[:])
+			common.LittleEndian.PutUint32(key[32:], tx.TxIn[0].PreviousOutPoint.Index)
 			v := bucket.Get(key[:])
 			if v == nil {
 				return fmt.Errorf("tx not in INCOMINGPOOL")
@@ -86,21 +109,28 @@ func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 			if err := xdata.DeSerialize(v); err != nil {
 				return err
 			}
+			if xdata.Finalized == 0 {
+				return fmt.Errorf("tx not finalized")
+			}
 			if xdata.ChainID != rawc {
 				return fmt.Errorf("chain ID incorrect")
+			}
+			if len(tx.TxOut) != len(xdata.Txs) {
+				return fmt.Errorf("txout size incorrect")
 			}
 			if !xdata.Hash.IsEqual(&tx.TxIn[0].PreviousOutPoint.Hash) {
 				return fmt.Errorf("block hash incorrect")
 			}
-			if uint32(xdata.Height) != h {
-				return fmt.Errorf("height incorrect")
-			}
+			//			if uint32(xdata.Height) != h {
+			//				return fmt.Errorf("height incorrect")
+			//			}
 
 			for _, txo := range tx.TxOut {
 				match := false
-				for _, xto := range xdata.Txs {
+				for i, xto := range xdata.Txs {
 					if txo.Match(&xto.Txo) {
 						match = true
+						xdata.Txs = append(xdata.Txs[:i], xdata.Txs[i+1:]...)
 						break
 					}
 				}
@@ -112,7 +142,7 @@ func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 			return nil
 		})
 	}
-	return b.CheckCrossChainTx(tx)
+	return nil
 }
 
 // maybeAcceptBlock potentially accepts a block into the block chain and, if
