@@ -86,7 +86,7 @@ func IsCoinBaseTx(msgTx *wire.MsgTx) bool {
 		if to.IsSeparator() {
 			continue
 		}
-		if to.TokenType != common.OmegaCoinTyp {
+		if to.TokenType != common.FeeCoinTyp {
 			return false
 		}
 	}
@@ -249,7 +249,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 				"value of %v", hao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if txOut.TokenType == common.OmegaCoinTyp && hao > btcutil.MaxHao {
+		if txOut.TokenType == common.FeeCoinTyp && hao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v", hao,
 				btcutil.MaxHao)
@@ -271,7 +271,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 				btcutil.MaxHao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if txOut.TokenType == common.OmegaCoinTyp && totals[txOut.TokenType] > btcutil.MaxHao {
+		if txOut.TokenType == common.FeeCoinTyp && totals[txOut.TokenType] > btcutil.MaxHao {
 			str := fmt.Sprintf("total value of all transaction "+
 				"outputs is %v which is higher than max "+
 				"allowed value of %v", totals[txOut.TokenType],
@@ -506,7 +506,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			if txo.IsSeparator() {
 				break
 			}
-			if txo.TokenType != common.OmegaCoinTyp {
+			if txo.TokenType != common.FeeCoinTyp {
 				return fmt.Errorf("Coinbase output tokentype is not 0."), false
 			}
 			if txo.Value.(*token.NumToken).Val != awd {
@@ -1082,7 +1082,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 				"value of %v", btcutil.Amount(originTxHao))
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if utxo.TokenType == common.OmegaCoinTyp && originTxHao > btcutil.MaxHao {
+		if utxo.TokenType == common.FeeCoinTyp && originTxHao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v",
 				btcutil.Amount(originTxHao),
@@ -1096,7 +1096,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 		lastHaoIn := totalIns[utxo.TokenType]
 		totalIns[utxo.TokenType] += originTxHao
 		if totalIns[utxo.TokenType] < lastHaoIn ||
-			(utxo.TokenType == common.OmegaCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) {
+			(utxo.TokenType == common.FeeCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) {
 			str := fmt.Sprintf("total value of all transaction "+
 				"inputs is %v which is higher than max "+
 				"allowed value of %v", totalIns[utxo.TokenType],
@@ -1505,7 +1505,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ve
 				txOut.Token.Value.(*token.HashToken).Hash.IsEqual(&tk.Value.(*token.HashToken).Hash) {
 				rem--
 				match = true
-				inputs[j].TokenType = common.OmegaCoinTyp // no further matching
+				inputs[j].TokenType = common.FeeCoinTyp // no further matching
 				break
 			}
 		}
@@ -2043,7 +2043,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		if txOut.IsSeparator() {
 			break
 		}
-		if txOut.TokenType == common.OmegaCoinTyp {
+		if txOut.TokenType == common.FeeCoinTyp {
 			totalHaoOut += txOut.Value.(*token.NumToken).Val
 		}
 	}

@@ -245,6 +245,51 @@ func BlockToOrphan(block *btcutil.Block) chainutil.Orphaned {
 	return (*orphanBlock)(block)
 }
 
+func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
+	r := b.db.View(func(dbtx database.Tx) error {
+		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg == 0 {
+				continue
+			}
+			xtx := &wire.XchainData{}
+			tntx := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
+			if tntx == nil {
+				return fmt.Errorf("error")
+			}
+			if err := xtx.DeSerialize(tntx); err != nil || xtx.Finalized == 0 {
+				return fmt.Errorf("error")
+			}
+
+			if tx.TxIn[0].PreviousOutPoint.Index != uint32(xtx.Height) {
+				return fmt.Errorf("error")
+			}
+
+			for i, txo := range xtx.Txs {
+				if txo.Txo.PkScript[21] == b.ChainParams.CrossChainID {
+					var t [4]byte
+					copy(t[:], txo.Txo.PkScript[22:25])
+					t[3] = 0
+					if common.LittleEndian.Uint32(t[:]) == b.ChainParams.ChainID {
+						copy(txo.Txo.PkScript[21:], txo.Txo.PkScript[25:])
+						txo.Txo.PkScript = txo.Txo.PkScript[:len(txo.Txo.PkScript)-4]
+						if ((txo.Txo.TokenType & 0x7FFFFF) >> 40) == uint64(b.ChainParams.ChainID) {
+							txo.Txo.TokenType = txo.Txo.TokenType &^ 0x7FFFFF
+						}
+					}
+				}
+				if !txo.Txo.Match(tx.TxOut[i]) {
+					return fmt.Errorf("error")
+				}
+			}
+		}
+
+		return nil
+	})
+	return r == nil
+}
+
 // ProcessBlock is the main workhorse for handling insertion of new blocks into
 // the block chain.  It includes functionality such as rejecting duplicate
 // blocks, ensuring blocks follow all rules, orphan handling, and insertion into
@@ -396,6 +441,21 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 				"last checkpoint timestamp %v", blockHash,
 				blockHeader.Timestamp, checkpointTime)
 			return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1, nil
+		}
+	}
+
+	if !b.IsSVP && b.MatchInpool(block) {
+		str := fmt.Sprintf("Tx in block does not match in pool %v", blockHash)
+		return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1, nil
+	}
+
+	for _, tx := range block.MsgBlock().Transactions[1:] {
+		for _, txo := range tx.TxOut {
+			if !txo.IsSeparator() && txo.IsCrossChain() {
+				if len(txo.PkScript) < 25 {
+					return false, false, fmt.Errorf("Cross chain PkScript length is less than 25b in %s", tx.TxHash().String()), -1, nil
+				}
+			}
 		}
 	}
 

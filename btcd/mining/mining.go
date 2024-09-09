@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 
-	"github.com/omegasuite/famofchains/omega/chainmap"
 	"math/rand"
 	"time"
 
@@ -19,7 +18,6 @@ import (
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/blockchain"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
@@ -289,7 +287,7 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 
 	for _, addr := range addrs {
 		t := token.Token{
-			TokenType: common.OmegaCoinTyp, // Omega coin
+			TokenType: common.FeeCoinTyp,
 			Value: &token.NumToken{
 				Val: val,
 			},
@@ -549,75 +547,8 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	}
 
 	// Check transactions in INCOMINGPOOL, include mature transactions here
-	views.Db.View(func(dbtx database.Tx) error {
-		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-		heightbucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
-
-		hts := make(map[uint32]uint32)
-		cursor := bucket.Cursor()
-
-		seld := make(map[uint32]*wire.XchainData)
-		minh := make(map[uint32]uint32)
-
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			h := common.LittleEndian.Uint32(cursor.Key()[4:])
-			xtx := &wire.XchainData{}
-			err := xtx.DeSerialize(cursor.Value())
-			if err != nil {
-				continue
-			}
-
-			ht, ok := hts[xtx.ChainID]
-			if !ok {
-				var k [4]byte
-				common.LittleEndian.PutUint32(k[:], xtx.ChainID)
-				t := heightbucket.Get(k[:])
-				if t != nil {
-					hts[xtx.ChainID] = common.LittleEndian.Uint32(t)
-					ht = hts[xtx.ChainID]
-				} else {
-					continue
-				}
-			}
-
-			if h+chainmap.ChainMap[xtx.ChainID].Mature > ht { // not mature yet
-				continue
-			}
-
-			if th, ok := minh[xtx.ChainID]; !ok || h < th {
-				minh[xtx.ChainID] = h
-				seld[xtx.ChainID] = xtx
-			}
-		}
-
-		for _, xtx := range seld {
-			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
-			mtx.LockTime = uint32(nextBlockHeight + 1)
-			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: wire.CrossChainFalg | xtx.ChainID}, uint32(xtx.Height))
-			mtx.AddTxIn(txin)
-			for _, txo := range xtx.Txs {
-				if txo.Txo.PkScript[21] == g.chainParams.CrossChainID {
-					var t [4]byte
-					copy(t[:], txo.Txo.PkScript[22:25])
-					t[3] = 0
-					if common.LittleEndian.Uint32(t[:]) == g.chainParams.ChainID {
-						copy(txo.Txo.PkScript[21:], txo.Txo.PkScript[25:])
-						txo.Txo.PkScript = txo.Txo.PkScript[:len(txo.Txo.PkScript)-4]
-						if ((txo.Txo.TokenType & 0x7FFFFF) >> 40) == uint64(g.chainParams.ChainID) {
-							txo.Txo.TokenType = txo.Txo.TokenType &^ 0xFFFFFF
-						}
-					}
-				}
-
-				mtx.AddTxOut(&txo.Txo)
-			}
-
-			btx := btcutil.NewTx(mtx)
-			blockTxns = append(blockTxns, btx)
-		}
-
-		return nil
-	})
+	inp := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight))
+	blockTxns = append(blockTxns, inp...)
 
 	blockUtxos := views.Utxo // blockchain.NewUtxoViewpoint()
 
@@ -958,7 +889,7 @@ skiprest:
 			for _, txo := range tx.MsgTx().TxOut {
 				if txo.IsSeparator() || txo.PkScript[0] == g.chainParams.ContractAddrID {
 					qualified = true
-				} else if txo.TokenType == common.OmegaCoinTyp {
+				} else if txo.TokenType == common.FeeCoinTyp {
 					sum += txo.Token.Value.(*token.NumToken).Val
 				} else {
 					qualified = true

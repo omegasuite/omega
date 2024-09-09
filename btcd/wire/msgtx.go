@@ -1343,7 +1343,7 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 		if to.IsSeparator() {
 			return true
 		}
-		if to.TokenType != common.OmegaCoinTyp {
+		if to.TokenType != common.FeeCoinTyp {
 			return false
 		}
 	}

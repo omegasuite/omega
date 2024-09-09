@@ -673,18 +673,6 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		log.Infof("Update LastRotation to %d", state.LastRotation)
 	}
 
-	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
-		for _, tx := range block.MsgBlock().Transactions[1:] {
-			for _, txo := range tx.TxOut {
-				if !txo.IsSeparator() && txo.IsCrossChain() {
-					if len(txo.PkScript) < 26 {
-						return fmt.Errorf("Cross chain PkScript length is less than 26b in %s", tx.TxHash().String())
-					}
-				}
-			}
-		}
-	}
-
 	// Atomically insert info into the database.
 	err = b.db.Update(func(dbTx database.Tx) error {
 		if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
@@ -736,6 +724,10 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 					Hash:    *block.Hash(),
 					Height:  block.Height(),
 					Txs:     []*wire.MsgXrossL2{},
+					Finalized: 0,
+				}
+				if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg == 0 {
+					continue
 				}
 				for i, txo := range tx.TxOut {
 					if !txo.IsSeparator() && txo.IsCrossChain() {
@@ -767,6 +759,14 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 				common.LittleEndian.PutUint32(k[4:], uint32(block.Height()))
 				bucket.Put(k[:], xchain.Serialize())
 				heightbucket.Put(k[:4], k[4:])
+			}
+		} else {
+			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			for _, tx := range block.MsgBlock().Transactions[1:] {
+				if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg == 0 {
+					continue
+				}
+				bucket.Delete(tx.TxIn[0].PreviousOutPoint.ToBytes())
 			}
 		}
 
@@ -1639,7 +1639,7 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest *chainhash.H
 		return 0, fmt.Errorf("Collateral does not exist.")
 	}
 
-	if e.TokenType != common.OmegaCoinTyp {
+	if e.TokenType != common.FeeCoinTyp {
 		return 0, fmt.Errorf("Collateral is not OTC.")
 	}
 
@@ -1716,6 +1716,51 @@ func (b *BlockChain) ExecOps(dbTx database.Tx, block *wire.MinerBlock, height ui
 			// TBD: add a base chain for this base chain
 		}
 	}
+}
+
+func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
+	r := make([]*btcutil.Tx, 0)
+	b.db.View(func(dbtx database.Tx) error {
+		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		//		heightbucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
+		//		hts := make(map[uint32]uint32)
+		cursor := bucket.Cursor()
+
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			xtx := &wire.XchainData{}
+			err := xtx.DeSerialize(cursor.Value())
+			if err != nil || xtx.Finalized == 0 {
+				continue
+			}
+
+			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
+			mtx.LockTime = nextBlockHeight + 1
+			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: wire.CrossChainFalg | xtx.ChainID}, uint32(xtx.Height))
+			mtx.AddTxIn(txin)
+			for _, txo := range xtx.Txs {
+				if txo.Txo.PkScript[21] == b.ChainParams.CrossChainID {
+					var t [4]byte
+					copy(t[:], txo.Txo.PkScript[22:25])
+					t[3] = 0
+					if common.LittleEndian.Uint32(t[:]) == b.ChainParams.ChainID {
+						copy(txo.Txo.PkScript[21:], txo.Txo.PkScript[25:])
+						txo.Txo.PkScript = txo.Txo.PkScript[:len(txo.Txo.PkScript)-4]
+						if ((txo.Txo.TokenType & 0x7FFFFF) >> 40) == uint64(b.ChainParams.ChainID) {
+							txo.Txo.TokenType = txo.Txo.TokenType &^ 0x7FFFFF
+						}
+					}
+				}
+
+				mtx.AddTxOut(&txo.Txo)
+			}
+
+			btx := btcutil.NewTx(mtx)
+			r = append(r, btx)
+		}
+
+		return nil
+	})
+	return r
 }
 
 // connectBestChain handles connecting the passed block to the chain while

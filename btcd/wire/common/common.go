@@ -28,7 +28,7 @@ const (
 	// binaryFreeListMaxItems is the number of buffers to keep in the free
 	// list to use for binary serialization and deserialization.
 	BinaryFreeListMaxItems = 1024
-	OmegaCoinTyp           = 0x10000000000
+	FeeCoinTyp             = 0 // type of coin for tx fee
 )
 
 // InvType represents the allowed types of inventory vectors.  See InvVect.

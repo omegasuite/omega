@@ -1486,7 +1486,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 		if txo.IsSeparator() {
 			break
 		}
-		if txo.TokenType == common.OmegaCoinTyp {
+		if txo.TokenType == common.FeeCoinTyp {
 			if eq < 0 {
 				eq = txo.Value.(*token.NumToken).Val
 			} else if eq != txo.Value.(*token.NumToken).Val {
