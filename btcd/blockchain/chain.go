@@ -792,6 +792,69 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 			}
 		}
 
+		if !b.IsSVP {
+			mainchain := chainmap.ChainMap[b.ChainParams.MainChainID]
+			bucket := dbTx.Metadata().Bucket([]byte(common.XCAssets))
+			for _, tx := range block.MsgBlock().Transactions[1:] {
+				for _, txo := range tx.TxOut {
+					if txo.IsSeparator() {
+						continue
+					}
+					dest := txo.DestChain()
+					var assetKey [44]byte
+					var tokentype uint64
+					var tokensrc uint32
+					common.LittleEndian.PutUint32(assetKey[:], dest)
+					if uint32(txo.TokenType>>40) == b.ChainParams.ChainID {
+						tokensrc = b.ChainParams.ChainID
+						tokentype = txo.TokenType &^ 0xFFFFFF0000000000
+					} else {
+						tokentype = txo.TokenType
+						tokensrc = uint32(txo.TokenType >> 40)
+					}
+					common.LittleEndian.PutUint64(assetKey[4:], tokentype)
+
+					v, d := int64(0), int64(0)
+					switch txo.TokenType & 3 {
+					case 0:
+						d = txo.Value.(*token.NumToken).Val
+					case 1:
+						d = 1
+					case 2:
+						d = txo.Value.(*token.NumToken).Val
+					}
+
+					out := true
+					if len(tx.TxIn) == 1 && tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
+
+					} else {
+
+					}
+
+					if dest == 0 {
+						continue
+					}
+
+					copy(assetKey[12:], zerohash[:])
+
+					switch tokentype & 3 {
+					case 1:
+						copy(assetKey[12:], txo.Value.(*token.HashToken).Hash[:])
+					case 2:
+						if txo.Rights != nil {
+							copy(assetKey[12:], txo.Rights[:])
+						}
+					case 3:
+						panic("func not implemented")
+					}
+					val := bucket.Get(assetKey[:])
+					if val != nil {
+						v = int64(common.LittleEndian.Uint64(val))
+					}
+				}
+			}
+		}
+
 		// Allow the index manager to call each of the currently active
 		// optional indexes with the block being connected so they can
 		// update themselves accordingly.

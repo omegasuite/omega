@@ -791,17 +791,9 @@ func (b *BlockChain) createChainState() error {
 		if _, err = meta.CreateBucket([]byte(common.INCOMINGPOOL)); err != nil {
 			return err
 		}
-		// Create the bucket for pool of outgoing tx
-		if _, err = meta.CreateBucket([]byte(common.OUTGOINGPOOL)); err != nil {
-			return err
-		}
 
-		// Create the bucket for received cross chain assets
-		if _, err = meta.CreateBucket([]byte(common.ReceivedXCAssets)); err != nil {
-			return err
-		}
-		// Create the bucket for sent cross chain assets
-		if _, err = meta.CreateBucket([]byte(common.SentXCAssets)); err != nil {
+		// Create the bucket for cross chain assets
+		if _, err = meta.CreateBucket([]byte(common.XCAssets)); err != nil {
 			return err
 		}
 
@@ -1089,17 +1081,9 @@ func (b *BlockChain) initChainState() error {
 		if _, err = meta.CreateBucket([]byte(common.INCOMINGPOOL)); err != nil {
 			return err
 		}
-		// Create the bucket for pool of outgoing tx
-		if _, err = meta.CreateBucket([]byte(common.OUTGOINGPOOL)); err != nil {
-			return err
-		}
 
-		// Create the bucket for received cross chain assets
-		if _, err = meta.CreateBucket([]byte(common.ReceivedXCAssets)); err != nil {
-			return err
-		}
-		// Create the bucket for sent cross chain assets
-		if _, err = meta.CreateBucket([]byte(common.SentXCAssets)); err != nil {
+		// Create the bucket for cross chain assets
+		if _, err = meta.CreateBucket([]byte(common.XCAssets)); err != nil {
 			return err
 		}
 		return nil

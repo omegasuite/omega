@@ -51,12 +51,9 @@ const (
 // These constants define the bucket names and meta keys.
 const (
 	INCOMINGPOOL string = "IncomingPool" // bucket for assets pending incoming transfer
-	OUTGOINGPOOL string = "OutgoingPool" // bucket for assets pending outgoing transfer
-	SVPHeights   string = "SVPHeights"   // key in INCOMINGPOOL bucket for the current SVP chain height
 	ROLLBACKPOOL string = "ROLLBACKPOOL" // key in INCOMINGPOOL bucket for the current SVP chain height
 
-	ReceivedXCAssets string = "ReceivedXCAssets" // bucket for received cross chain assets
-	SentXCAssets     string = "SentXCAssets"     // bucket for sent cross chain assets
+	XCAssets string = "XCAssets" // bucket for cross chain assets
 )
 
 // MaxMessagePayload is the maximum bytes a message can be regardless of other

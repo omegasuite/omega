@@ -374,6 +374,16 @@ func (t *TxOut) IsCrossChain() bool {
 	return t.PkScript[0] != 0x88 && t.PkScript[21] == OP_PAYCROSSCHAIN
 }
 
+func (t *TxOut) DestChain() uint32 {
+	if t.PkScript[0] == 0x88 || t.PkScript[21] != OP_PAYCROSSCHAIN {
+		return 0
+	}
+	var h [4]byte
+	copy(h[:], t.PkScript[22:25])
+	h[3] = 0
+	return common.LittleEndian.Uint32(h[:])
+}
+
 func (t *TxOut) HasRight() bool {
 	return t.Token.HasRight()
 }
