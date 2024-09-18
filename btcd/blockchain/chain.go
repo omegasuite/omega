@@ -793,21 +793,27 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		}
 
 		if !b.IsSVP {
-			mainchain := chainmap.ChainMap[b.ChainParams.MainChainID]
 			bucket := dbTx.Metadata().Bucket([]byte(common.XCAssets))
 			for _, tx := range block.MsgBlock().Transactions[1:] {
+				svp := uint32(0)
+				if len(tx.TxIn) == 1 && tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
+					svp = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+				}
 				for _, txo := range tx.TxOut {
-					if txo.IsSeparator() {
+					if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
 						continue
 					}
 					dest := txo.DestChain()
-					var assetKey [44]byte
+					if dest == 0 {
+						dest = b.ChainParams.MainChainID
+					}
+					assetKey := make([]byte, 12, 76)
 					var tokentype uint64
 					var tokensrc uint32
 					common.LittleEndian.PutUint32(assetKey[:], dest)
-					if uint32(txo.TokenType>>40) == b.ChainParams.ChainID {
+					if uint32(txo.TokenType>>40) == 0 {
 						tokensrc = b.ChainParams.ChainID
-						tokentype = txo.TokenType &^ 0xFFFFFF0000000000
+						tokentype = (txo.TokenType & 0xFFFFFFFFFF) | (uint64(b.ChainParams.ChainID) << 40)
 					} else {
 						tokentype = txo.TokenType
 						tokensrc = uint32(txo.TokenType >> 40)
@@ -816,41 +822,40 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 
 					v, d := int64(0), int64(0)
 					switch txo.TokenType & 3 {
-					case 0:
+					case 0, 2:
 						d = txo.Value.(*token.NumToken).Val
-					case 1:
+					case 1, 3:
 						d = 1
-					case 2:
-						d = txo.Value.(*token.NumToken).Val
 					}
 
-					out := true
-					if len(tx.TxIn) == 1 && tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
-
-					} else {
-
-					}
+					out := dest != tokensrc
 
 					if dest == 0 {
 						continue
 					}
 
-					copy(assetKey[12:], zerohash[:])
-
-					switch tokentype & 3 {
-					case 1:
-						copy(assetKey[12:], txo.Value.(*token.HashToken).Hash[:])
-					case 2:
-						if txo.Rights != nil {
-							copy(assetKey[12:], txo.Rights[:])
-						}
-					case 3:
-						panic("func not implemented")
+					if (tokentype & 1) == 1 {
+						assetKey = append(assetKey, txo.Value.(*token.HashToken).Hash[:]...)
 					}
-					val := bucket.Get(assetKey[:])
+					if (tokentype & 2) == 2 {
+						if txo.Rights != nil {
+							assetKey = append(assetKey, txo.Rights[:]...)
+						}
+					}
+					val := bucket.Get(assetKey)
 					if val != nil {
 						v = int64(common.LittleEndian.Uint64(val))
 					}
+					if out {
+						v += d
+					} else if v >= d {
+						v -= d
+					} else {
+						return fmt.Errorf("back value excees out value")
+					}
+					val = make([]byte, 8)
+					common.LittleEndian.PutUint64(val, uint64(v))
+					bucket.Put(assetKey, val)
 				}
 			}
 		}
