@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/famofchains/omega/chainmap"
 	"math/big"
 	//	"sort"
 	"time"
@@ -1847,4 +1848,228 @@ func (b *BlockChain) dbHeightofHash(key chainhash.Hash) int32 {
 		return int32(common.LittleEndian.Uint32(d))
 	}
 	return -1
+}
+
+func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) error {
+	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
+		mainchain := chainmap.ChainMap[b.ChainParams.MainChainID]
+		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			var xchain *wire.XchainData
+			if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
+				xchain = &wire.XchainData{
+					ChainID:   b.ChainParams.ChainID,
+					Hash:      *block.Hash(),
+					Height:    block.Height(),
+					Txs:       []*wire.MsgXrossL2{},
+					Finalized: 0,
+				}
+			} else {
+				xchain = &wire.XchainData{
+					ChainID:   tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
+					Hash:      tx.TxIn[0].PreviousOutPoint.Hash,
+					Height:    int32(tx.TxIn[0].PreviousOutPoint.Index),
+					Txs:       []*wire.MsgXrossL2{},
+					Finalized: 0,
+				}
+			}
+			for i, txo := range tx.TxOut {
+				if txo.IsSeparator() || !txo.IsCrossChain() {
+					continue
+				}
+				var cid [4]byte
+				copy(cid[:], txo.PkScript[22:25])
+				cid[3] = 0
+				dest := common.LittleEndian.Uint32(cid[:]) // destination of this tx
+
+				if !mainchain.PassThru(xchain.ChainID, dest) {
+					// if it will pass through the main chain, ignore it, otherwise add the tx to main chain
+					continue
+				}
+
+				t := &wire.MsgXrossL2{
+					Utxo: wire.OutPoint{
+						Hash:  tx.TxHash(),
+						Index: uint32(i),
+					},
+					Txo: *txo,
+				}
+				xchain.Txs = append(xchain.Txs, t)
+			}
+
+			var k [36]byte
+			copy(k[:], xchain.Hash[:])
+			common.LittleEndian.PutUint32(k[32:], uint32(xchain.ChainID|wire.CrossChainFalg))
+			bucket.Put(k[:], xchain.Serialize())
+		}
+	} else {
+		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		bucketrb := dbTx.Metadata().Bucket([]byte(common.ROLLBACKPOOL))
+		rbd := make([]byte, 4, 1024)
+		n := 0
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
+				continue
+			}
+			var h [4]byte
+			d := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
+			common.LittleEndian.PutUint32(rbd[:], uint32(len(d)))
+			rbd = append(rbd, h[:]...)
+			rbd = append(rbd, d...)
+			n++
+			bucket.Delete(tx.TxIn[0].PreviousOutPoint.ToBytes())
+		}
+		if n > 0 {
+			var h [4]byte
+			common.LittleEndian.PutUint32(h[:], uint32(block.Height()))
+			common.LittleEndian.PutUint32(rbd[:], uint32(n))
+			bucketrb.Put(h[:], rbd)
+		}
+	}
+
+	if !b.IsSVP {
+		bucket := dbTx.Metadata().Bucket([]byte(common.XCAssets))
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			svp := uint32(0)
+			if len(tx.TxIn) == 1 && tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
+				svp = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+			}
+			for _, txo := range tx.TxOut {
+				if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
+					continue
+				}
+				dest := txo.DestChain()
+				if dest == 0 {
+					dest = b.ChainParams.MainChainID
+				}
+				assetKey := make([]byte, 12, 76)
+				var tokentype uint64
+				var tokensrc uint32
+				common.LittleEndian.PutUint32(assetKey[:], dest)
+				if uint32(txo.TokenType>>40) == 0 {
+					tokensrc = b.ChainParams.ChainID
+					tokentype = (txo.TokenType & 0xFFFFFFFFFF) | (uint64(b.ChainParams.ChainID) << 40)
+				} else {
+					tokentype = txo.TokenType
+					tokensrc = uint32(txo.TokenType >> 40)
+				}
+				common.LittleEndian.PutUint64(assetKey[4:], tokentype)
+
+				v, d := int64(0), int64(0)
+				switch txo.TokenType & 3 {
+				case 0, 2:
+					d = txo.Value.(*token.NumToken).Val
+				case 1, 3:
+					d = 1
+				}
+
+				out := dest != tokensrc
+
+				if (tokentype & 1) == 1 {
+					assetKey = append(assetKey, txo.Value.(*token.HashToken).Hash[:]...)
+				}
+				if (tokentype & 2) == 2 {
+					if txo.Rights != nil {
+						assetKey = append(assetKey, txo.Rights[:]...)
+					}
+				}
+				val := bucket.Get(assetKey)
+				if val != nil {
+					v = int64(common.LittleEndian.Uint64(val))
+				}
+				if out {
+					v += d
+				} else if v >= d {
+					v -= d
+				} else {
+					return fmt.Errorf("back value excees out value")
+				}
+				val = make([]byte, 8)
+				common.LittleEndian.PutUint64(val, uint64(v))
+				bucket.Put(assetKey, val)
+			}
+		}
+	}
+	return nil
+}
+
+func (b *BlockChain) dbRestoreCrossChain(dbTx database.Tx, block *btcutil.Block) error {
+	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
+		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			var k [36]byte
+
+			if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
+				copy(k[:], (*block.Hash())[:])
+				common.LittleEndian.PutUint32(k[32:], uint32(b.ChainParams.ChainID|wire.CrossChainFalg))
+			} else {
+				copy(k[:], tx.TxIn[0].PreviousOutPoint.Hash[:])
+				common.LittleEndian.PutUint32(k[32:], uint32(tx.TxIn[0].PreviousOutPoint.Index))
+			}
+
+			bucket.Delete(k[:])
+		}
+	} else {
+		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		bucketrb := dbTx.Metadata().Bucket([]byte(common.ROLLBACKPOOL))
+
+		var h [4]byte
+		common.LittleEndian.PutUint32(h[:], uint32(block.Height()))
+		rbd := bucketrb.Get(h[:])
+
+		if rbd != nil {
+			bucketrb.Delete(h[:])
+			n, m := common.LittleEndian.Uint32(rbd), uint32(4)
+			for i := uint32(0); i < n; i++ {
+				l := common.LittleEndian.Uint32(rbd[m:])
+				m += 4
+				data := rbd[m : m+l]
+				xchain := &wire.XchainData{}
+				xchain.DeSerialize(data)
+
+				var key [36]byte
+				copy(key[:], xchain.Hash[:])
+				common.LittleEndian.PutUint32(key[32:], xchain.ChainID|wire.CrossChainFalg)
+				bucket.Put(key[:], data)
+			}
+		}
+	}
+	if !b.IsSVP {
+		bucket := dbTx.Metadata().Bucket([]byte(common.XCAssets))
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			svp := uint32(0)
+			if len(tx.TxIn) == 1 && tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
+				svp = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+			}
+			for _, txo := range tx.TxOut {
+				if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
+					continue
+				}
+				dest := txo.DestChain()
+				if dest == 0 {
+					dest = b.ChainParams.MainChainID
+				}
+				assetKey := make([]byte, 12, 76)
+				var tokentype uint64
+				common.LittleEndian.PutUint32(assetKey[:], dest)
+				if uint32(txo.TokenType>>40) == 0 {
+					tokentype = (txo.TokenType & 0xFFFFFFFFFF) | (uint64(b.ChainParams.ChainID) << 40)
+				} else {
+					tokentype = txo.TokenType
+				}
+				common.LittleEndian.PutUint64(assetKey[4:], tokentype)
+
+				if (tokentype & 1) == 1 {
+					assetKey = append(assetKey, txo.Value.(*token.HashToken).Hash[:]...)
+				}
+				if (tokentype & 2) == 2 {
+					if txo.Rights != nil {
+						assetKey = append(assetKey, txo.Rights[:]...)
+					}
+				}
+				bucket.Delete(assetKey)
+			}
+		}
+	}
+	return nil
 }
