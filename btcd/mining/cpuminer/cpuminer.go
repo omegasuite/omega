@@ -443,6 +443,11 @@ func (m *CPUMiner) AddMiningKey(miningAddr *btcec.PrivateKey) bool {
 func (m *CPUMiner) generateBlocks() {
 	log.Info("Starting generate blocks")
 
+	if !m.cfg.Generate && m.cfg.DisablePOWMining && !m.cfg.EnablePOWMining {
+		m.wg.Done()
+		return
+	}
+
 	// Start a ticker which is used to signal checks for stale work and
 	// updates to the speed monitor.
 	ticker := time.NewTicker(time.Second * hashUpdateSecs)
