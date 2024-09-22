@@ -135,8 +135,21 @@ type CPUMiner struct {
 	generating bool
 }
 
-func (m *CPUMiner) IsGenerating() bool {
-	return m.started && m.generating
+func (m *CPUMiner) IsPendingGenerating() bool { // whether we are generating or next in line to generate
+	r := m.started && m.generating
+	if m.started && !r {
+		// check if we are the next
+		mrb, _ := m.g.Chain.Miners.BlockByHeight(int32(m.g.BestSnapshot().LastRotation) + 1)
+		addr := mrb.MsgBlock().Miner[:]
+		if len(m.cfg.SignAddress) != 0 {
+			for _, pt := range m.cfg.SignAddress {
+				if bytes.Compare(pt.ScriptAddress(), addr) == 0 {
+					return true
+				}
+			}
+		}
+	}
+	return r
 }
 
 // speedMonitor handles tracking the number of hashes per second the mining

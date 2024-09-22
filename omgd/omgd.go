@@ -339,6 +339,7 @@ func btcdMain(serverChan chan<- *server) error {
 					pprof.Lookup("mutex").WriteTo(&wbuf, 1)
 					pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
 					btcdLog.Infof("pprof Info: \n%s", wbuf.String())
+					btcdLog.Infof("Voluntary shutdown after no new block for 10 min.")
 					break
 				}
 				if cfg.MemLimit != 0 && runtime.GOOS == "linux" {
@@ -350,23 +351,29 @@ func btcdMain(serverChan chan<- *server) error {
 
 					var mem uint32
 					fmt.Sscanf("%d", string(contents), &mem)
-					if mem > cfg.MemLimit {
-						if cfg.Generate {
-							// wait until not generating blocks
-							for i := 30; i > 0 && server.cpuMiner.IsGenerating(); i-- {
+					if mem <= cfg.MemLimit {
+						continue
+					}
+
+					if cfg.Generate && server.cpuMiner.IsPendingGenerating() {
+						// wait until not generating blocks
+						plive := live
+						time.Sleep(20 * time.Second)
+						/*
+							for i := 30; i > 0 && server.cpuMiner.IsGenerating() && live != plive; i-- {
+								plive = live
 								time.Sleep(20 * time.Second)
 							}
-							if server.cpuMiner.IsGenerating() {
-								continue
-							}
+						*/
+						if live != plive {
+							continue
 						}
-						btcdLog.Infof("Voluntary shutdown for exceeding memory limit (%d).", mem)
-						break
 					}
+
+					btcdLog.Infof("Voluntary shutdown for exceeding memory limit (%d).", mem)
+					break
 				}
 			}
-
-			btcdLog.Infof("Voluntary shutdown after no new block for 10 min.")
 
 			shutdownRequestChannel <- struct{}{}
 		}()
