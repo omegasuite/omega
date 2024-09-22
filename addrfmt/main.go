@@ -17,38 +17,47 @@ var detail = int(4)
 
 func atype(netID byte) (itype string, convto []byte) {
 	switch netID {
-	case 0x00:	// mainnet PubKeyHashAddrID
+	case 0x00: // mainnet PubKeyHashAddrID
 		itype = "mainnet PubKeyHashAddr"
 		convto = []byte{0x6f, 0x3f}
-	case 0x05:	// mainnet ScriptHashAddrID
+	case 0x05: // mainnet ScriptHashAddrID
 		itype = "mainnet ScriptHashAddr"
 		convto = []byte{0xc4, 0x7b}
-	case 0x88:	// ContractAddrID
+	case 0x88: // ContractAddrID
 		itype = "ContractAddr"
 		convto = []byte{0x88, 0x88}
-	case 0x80:	// mainnet PrivateKeyID
+	case 0x80: // mainnet PrivateKeyID
 		itype = "mainnet PrivateKey"
 		convto = []byte{0xef, 0x64}
+	case 0x78: //mainnet MultiSigAddrID
+		itype = "mainnet MultiSigAddr"
+		convto = []byte{0x67, 0x60}
 
-	case 0x6f:	// testnet PubKeyHashAddrID
+	case 0x6f: // testnet PubKeyHashAddrID
 		itype = "testnet PubKeyHashAddr"
 		convto = []byte{0x00, 0x3f}
-	case 0xc4:	// testnet ScriptHashAddrID
+	case 0xc4: // testnet ScriptHashAddrID
 		itype = "testnet ScriptHashAddr"
 		convto = []byte{0x05, 0x7b}
-	case 0xef:	// testnet PrivateKeyID
+	case 0xef: // testnet PrivateKeyID
 		itype = "testnet PrivateKey"
 		convto = []byte{0x80, 0x64}
+	case 0x67: //testnet MultiSigAddrID
+		itype = "testnet MultiSigAddr"
+		convto = []byte{0x78, 0x60}
 
-	case 0x3f:	// simnet PubKeyHashAddrID
+	case 0x3f: // simnet PubKeyHashAddrID
 		itype = "simnet PubKeyHashAddr"
 		convto = []byte{0x6f, 0x00}
-	case 0x7b:	// simnet ScriptHashAddrID
+	case 0x7b: // simnet ScriptHashAddrID
 		itype = "simnet ScriptHashAddr"
 		convto = []byte{0xc4, 0x05}
-	case 0x64:	// simnet PrivateKeyID
+	case 0x64: // simnet PrivateKeyID
 		itype = "simnet PrivateKey"
 		convto = []byte{0xef, 0x80}
+	case 0x60: //simnet MultiSigAddrID
+		itype = "simnet MultiSigAddr"
+		convto = []byte{0x67, 0x78}
 	}
 	return itype, convto
 }
@@ -62,7 +71,7 @@ func main() {
 		wif, _ := reader.ReadString('\n')
 		wb := []byte(wif)
 		decodedLen := len(wb)
-		for wb[decodedLen - 1] == '\n' || wb[decodedLen - 1] == '\r' {
+		for wb[decodedLen-1] == '\n' || wb[decodedLen-1] == '\r' {
 			decodedLen--
 		}
 
@@ -83,7 +92,7 @@ func main() {
 		decodedLen = len(wifdecoded)
 
 		itype, convto := atype(netID)
-		fmt.Printf("Key is %s\nBytes: %x\n", itype, wifdecoded[1:decodedLen-4])
+		fmt.Printf("Key is %s\nBytes: %x\n", itype, wifdecoded[:decodedLen-4])
 
 		if convto != nil {
 			for _, t := range convto {
