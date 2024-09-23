@@ -1711,12 +1711,13 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 			}
 			dc := txo.DestChain()
 			if chainmap.ChainMap[dc] == nil {
+				b.SrvReq <- ReqChain(dc)
 				return fmt.Errorf("Dest chain unknown %d", dc)
 			}
 			if dc == b.ChainParams.MainChainID {
 				return fmt.Errorf("Can not cross chain to self")
 			}
-			if (txo.TokenType >> 40) != 0 && uint32(txo.TokenType >> 40) != dc && !chain.PassThru(uint32(txo.TokenType >> 40), dc) {
+			if (txo.TokenType>>40) != 0 && uint32(txo.TokenType>>40) != dc && !chain.PassThru(uint32(txo.TokenType>>40), dc) {
 				return fmt.Errorf("Cross chain tx not in propgation path")
 			}
 		}
@@ -1833,7 +1834,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 				var vk [76]byte
 				copy(vk[:], assetKey)
 
-				if _,ok := assets[vk]; !ok {
+				if _, ok := assets[vk]; !ok {
 					val := xcbucket.Get(assetKey)
 					if val != nil {
 						assets[vk] = int64(common.LittleEndian.Uint64(val))
@@ -2129,7 +2130,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			}
 		}
 
-		if flag & BFFastAdd == 0 {
+		if flag&BFFastAdd == 0 {
 			err = CheckTransactionIntegrity(tx, views, block.MsgBlock().Header.Version)
 			if err != nil {
 				return err
@@ -2176,7 +2177,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 
-	if block.MsgBlock().Header.Version >= chaincfg.Version2 && flag & BFFastAdd == 0 {
+	if block.MsgBlock().Header.Version >= chaincfg.Version2 && flag&BFFastAdd == 0 {
 		err = b.CheckForfeit(block, node.Parent, views)
 		if err != nil {
 			return err

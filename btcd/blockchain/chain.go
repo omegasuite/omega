@@ -212,6 +212,8 @@ type BlockChain struct {
 
 	// tmp data
 	BTfile *os.File
+
+	SrvReq chan interface{}
 }
 
 type XchMsg struct {
@@ -2752,7 +2754,12 @@ type Config struct {
 	// signature cache.
 	//	HashCache *txscript.HashCache
 	AddrUsage func(address btcutil.Address) uint32
+
+	// server requests
+	SrvReq <-chan interface{}
 }
+
+type ReqChain uint32
 
 // New returns a BlockChain instance using the provided configuration details.
 func New(config *Config) (*BlockChain, error) {
@@ -2818,6 +2825,7 @@ func New(config *Config) (*BlockChain, error) {
 		IsPacking:         false,
 		BTfile:            f,
 		IsSVP:             config.IsSVP,
+		SrvReq:            config.SrvReq,
 	}
 
 	// Initialize the chain state from the passed database.  When the db

@@ -18,21 +18,11 @@ import (
 )
 
 func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
+	src := uint32(0)
 	if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
-		src := tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
-		for _, txo := range tx.TxOut {
-			if txo.IsCrossChain() && (txo.TokenType&(0xFFFFFF<<40)) == 0 {
-				return fmt.Errorf("Local Tokentype is a cross chain tx")
-			}
-			var h [4]byte
-			copy(h[:], txo.PkScript[22:25])
-			h[3] = 0
-			dest := common.LittleEndian.Uint32(h[:])
-			if src != uint32(txo.TokenType>>40) && uint32(txo.TokenType>>40) != dest {
-				return fmt.Errorf("Incorrect cross chain destination")
-			}
-		}
+		src = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
 	}
+
 	for _, txo := range tx.TxOut {
 		if txo.IsSeparator() || !txo.IsCrossChain() {
 			continue
@@ -40,14 +30,29 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		if txo.IsContractCall() {
 			return fmt.Errorf("cross chain tx with contract call")
 		}
+
+		tdest := uint32((txo.TokenType >> 40) &^ wire.CrossChainFalg)
+		if _, ok := chainmap.ChainMap[tdest]; tdest != 0 && !ok {
+			b.SrvReq <- ReqChain(tdest)
+			return fmt.Errorf("Cross chain TokenType not found")
+		}
+
+		if tdest != 0 && tdest != src && tdest != txo.DestChain() {
+			return fmt.Errorf("Invalid cross chain tokentype")
+		}
+
+		if src != 0 && tdest == 0 {
+			return fmt.Errorf("Local Tokentype in a cross chain tx")
+		}
+
 		var h [4]byte
 		copy(h[:], txo.PkScript[22:25])
 		h[3] = 0
 		dest := common.LittleEndian.Uint32(h[:])
-		if uint32(txo.TokenType>>40) != b.ChainParams.ChainID && uint32(txo.TokenType>>40) != dest {
+		if tdest != b.ChainParams.ChainID && tdest != dest {
 			return fmt.Errorf("Incorrect cross chain destination")
 		}
-		if uint32(txo.TokenType>>40) == b.ChainParams.ChainID && uint32(txo.TokenType>>40) == dest {
+		if uint32(txo.TokenType>>40) == b.ChainParams.ChainID && tdest == dest {
 			return fmt.Errorf("Incorrect cross chain destination")
 		}
 		if len(txo.PkScript) != 26 && len(txo.PkScript) != 29 {
@@ -64,12 +69,14 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 			return fmt.Errorf("cross chain transferring to local chain")
 		}
 		if _, ok := chainmap.ChainMap[cid]; !ok {
+			b.SrvReq <- ReqChain(cid)
 			return fmt.Errorf("unknown cross chain destination")
 		}
-		if _, ok := chainmap.ChainMap[uint32(txo.TokenType>>40)]; !ok {
-			return fmt.Errorf("unknown cross chain asset")
+		if src != 0 && src != tdest && tdest != cid {
+			return fmt.Errorf("Incorrect cross chain destination")
 		}
 	}
+
 	return nil
 }
 

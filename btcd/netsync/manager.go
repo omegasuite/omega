@@ -891,6 +891,10 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	if _, ok := sm.cachedBlocks[*blockHash]; behaviorFlags&blockchain.BFNoConnect != blockchain.BFNoConnect || !ok {
 		isMainchain, isOrphan, err, missing, orp = sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
+		if err != nil {
+			sm.msgChan <-
+		}
+
 		b1 = sm.chain.BestSnapshot()
 		b2 = sm.chain.Miners.BestSnapshot()
 
@@ -1967,10 +1971,14 @@ func (sm *SyncManager) CachedBlock(h chainhash.Hash) *btcutil.Block {
 }
 
 func (sm *SyncManager) Broadcast(m wire.Message, ps *string) {
-	sm.broadcast(nil, m, ps)
+	sm.broadcast(nil, m, ps, false)
 }
 
-func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string) {
+func (sm *SyncManager) Randcast(m wire.Message, ps *string) {
+	sm.broadcast(nil, m, ps, true)
+}
+
+func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string, random bool) {
 	var h chainhash.Hash
 	var w bytes.Buffer
 
@@ -1985,11 +1993,19 @@ func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string) {
 
 	now := time.Now().Unix()
 
+	n, i, f := rand.Int()%len(sm.peerStates), 0, false
+
 	if _, ok := sm.castedMsg[h]; !ok {
 		sm.castedMsg[h] = now
 		for peer, _ := range sm.peerStates {
+			if random && i != n && !f {
+				continue
+			}
+			i++
+			f = true
 			if p == nil || (peer.ID() != p.ID() && (ps == nil || peer.Addr() != *ps)) {
 				peer.QueueMessageWithEncoding(m, nil, wire.FullEncoding)
+				f = false
 			}
 		}
 	}
@@ -2053,7 +2069,7 @@ out:
 					msg.hash,
 					msg.signatures,
 				}
-				sm.broadcast(msg.peer, &b, nil)
+				sm.broadcast(msg.peer, &b, nil, false)
 
 			case *blockMsg:
 				sm.handleBlockMsg(msg)

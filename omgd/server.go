@@ -12,6 +12,7 @@ import (
 	//	"bufio"
 	"bytes"
 	"crypto/rand"
+	"github.com/omegasuite/famofchains/omega/chainmap"
 	//	"crypto/sha256"
 	"crypto/tls"
 	"encoding/binary"
@@ -385,6 +386,9 @@ type server struct {
 
 	// protocol data
 	prot *Protocol
+
+	// server requests
+	srvReq chan interface{}
 }
 
 // serverPeer extends the peer to maintain state shared by the server and
@@ -1306,6 +1310,126 @@ func (sp *serverPeer) OnRead(_ *peer.Peer, bytesRead int, msg wire.Message, err 
 // the bytes sent by the server.
 func (sp *serverPeer) OnWrite(_ *peer.Peer, bytesWritten int, msg wire.Message, err error) {
 	sp.server.AddBytesSent(uint64(bytesWritten))
+}
+
+func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
+	if sp.server.chainParams.ChainID != msg.ChainId {
+		// forwarding
+		for _, p := range protocols {
+			if p.Server.chainParams.ChainID == sp.server.chainParams.ChainID {
+				continue
+			}
+			chain := chainmap.ChainMap[p.Server.chainParams.ChainID]
+			if chain.PassThru(sp.server.chainParams.ChainID, msg.ChainId) {
+				p.Server.Randcast(msg, nil)
+				return
+			}
+		}
+		return
+	}
+
+	reply := &wire.MsgReFinal{
+		ChainId: msg.ChainId,
+		Block:   msg.Block,
+	}
+	block, err := sp.server.chain.BlockByHash(&msg.Block)
+	if err != nil || block == nil {
+		return
+	}
+	state := sp.server.chain.BestSnapshot()
+
+	if state.Height-600 > block.Height() {
+		if sp.server.chain.InBestChain(&msg.Block) {
+			reply.ETA = 0
+		} else {
+			reply.ETA = -1
+		}
+	} else {
+		reply.ETA = (block.Height() + 600 - state.Height) * 4
+	}
+
+	// Push the result.
+	sp.QueueMessage(reply, nil)
+}
+
+func (sp *serverPeer) OnFinal(_ *peer.Peer, msg *wire.MsgReFinal) {
+	if msg.ETA > 0 {
+		return
+	}
+
+	protocols[0].db.Update(func(dbtx database.Tx) error {
+		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+
+		var k [36]byte
+		copy(k[:], msg.Block[:])
+		common.LittleEndian.PutUint32(k[32:], uint32(msg.ChainId|wire.CrossChainFalg))
+		xdata := wire.XchainData{}
+
+		d := bucket.Get(k[:])
+		if d == nil {
+			return nil
+		}
+
+		if err := xdata.DeSerialize(d); err != nil {
+			return nil
+		}
+
+		if msg.ETA == 0 {
+			xdata.Finalized = 1
+			bucket.Put(k[:], xdata.Serialize())
+		} else {
+			bucket.Delete(k[:])
+		}
+
+		return nil
+	})
+}
+
+func (sp *serverPeer) OnGetChainMap(_ *peer.Peer, msg *wire.MsgGetChainMap) {
+	if msg.Sequence < 0 {
+		msg.Sequence = 0
+	}
+	if sp.server.chain.ChainParams.ChainID != chainmap.ROOT {
+		// forwarding
+		for _, p := range protocols {
+			if p.Server.chainParams.ChainID == sp.server.chainParams.ChainID {
+				continue
+			}
+			chain := chainmap.ChainMap[p.Server.chainParams.ChainID]
+			if chain.PassThru(sp.server.chainParams.ChainID, chainmap.ROOT) {
+				p.Server.Randcast(msg, nil)
+				return
+			}
+		}
+		return
+	}
+
+	reply := &wire.MsgChainMap{}
+	reply.Count = uint32(len(chainmap.ChainMap)) - msg.Sequence
+	reply.Chains = make([]chainmap.ChainDescriptor, 0)
+	for id, m := range chainmap.ChainMap {
+		if id <= msg.Sequence {
+			continue
+		}
+		reply.Chains = append(reply.Chains, *m)
+	}
+
+	sort.Slice(reply.Chains, func(i, j int) bool {
+		return reply.Chains[i].ChainID < reply.Chains[j].ChainID
+	})
+
+	// Push the result.
+	sp.QueueMessage(reply, nil)
+}
+
+func (sp *serverPeer) OnChainMap(_ *peer.Peer, msg *wire.MsgChainMap) {
+	if msg.Count <= 0 {
+		return
+	}
+
+	for _, p := range msg.Chains {
+		chainmap.AddChain(sp.server.db, &p)
+	}
 }
 
 func (sp *serverPeer) OnReject(p *peer.Peer, msg *wire.MsgReject) {
@@ -2319,6 +2443,11 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 			OnReject:       sp.OnReject,
 			OnAlert:        sp.OnAlert,
 			OnSignatures:   sp.OnSignatures,
+
+			OnFinalized:   sp.OnFinalized,
+			OnFinal:       sp.OnFinal,
+			OnGetChainMap: sp.OnGetChainMap,
+			OnChainMap:    sp.OnChainMap,
 		},
 		NewestBlock:       sp.newestBlock,
 		NewestMinerBlock:  sp.newestMinerBlock,
@@ -2395,6 +2524,10 @@ func (s *server) outboundPeerConnected(c *connmgr.ConnReq, conn net.Conn) {
 
 func (s *server) Broadcast(m wire.Message, ps *string) {
 	s.syncManager.Broadcast(m, ps)
+}
+
+func (s *server) Randcast(m wire.Message, ps *string) {
+	s.syncManager.Randcast(m, ps)
 }
 
 // peerDoneHandler handles peer disconnects by notifiying the server that it's
@@ -3123,6 +3256,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 	// Create a new block chain instance with the appropriate configuration.
 	var err error
+	s.srvReq = make(chan struct{}, 50)
 	s.chain, err = minerchain.New(&blockchain.Config{
 		DB:          s.db,
 		MinerDB:     s.minerdb,
@@ -3136,6 +3270,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		PrivKey:      prot.cfg.privateKeys,
 		AddrUsage:    s.addrUseIndex.Usage,
 		IsSVP:        prot.IsSvp,
+		SrvReq:       s.srvReq,
 		//		HashCache:    s.hashCache,
 	})
 	if err != nil {
@@ -3143,6 +3278,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 	}
 
 	s.chain.Subscribe(s.chain.TphNotice)
+	go s.handleSrvReq()
 
 	// Search for a FeeEstimator state in the database. If none can be found
 	// or if it cannot be loaded, create a new one.
@@ -3688,4 +3824,41 @@ func mergeCheckpoints(defaultCheckpoints, additional []chaincfg.Checkpoint) []ch
 	}
 	sort.Sort(checkpointSorter(checkpoints))
 	return checkpoints
+}
+
+func (s *server) RequestChain(chain uint32) {
+	if _, ok := chainmap.ChainMap[chain]; ok {
+		return
+	}
+	if s.chainParams.ChainID == chainmap.ROOT {
+		return
+	}
+	for _, p := range protocols {
+		if p.Server.chainParams.ChainID == s.chainParams.ChainID {
+			continue
+		}
+		chain, ok := chainmap.ChainMap[p.Server.chainParams.ChainID]
+		if !ok {
+			continue
+		}
+		if chain.PassThru(s.chainParams.ChainID, chainmap.ROOT) {
+			s.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
+			return
+		}
+	}
+}
+
+func (s *server) handleSrvReq() {
+	for true {
+		select {
+		case r := <-s.srvReq:
+			switch r.(type) {
+			case blockchain.ReqChain:
+				s.RequestChain(uint32(r.(blockchain.ReqChain)))
+			}
+
+		case <-s.quit:
+			return
+		}
+	}
 }

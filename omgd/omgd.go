@@ -16,6 +16,7 @@ import (
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/chainmap"
 	"github.com/omegasuite/famofchains/omega/consensus"
 	"strings"
 	"sync"
@@ -636,6 +637,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	chainmap.LoadChainMap(p.db)
+	p.Server.RequestChain(0)
+
 	p.IsSvp = false
 	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
@@ -706,10 +710,35 @@ func main() {
 
 		if i > 0 {
 			go retrievedefs(protocols[0], protocols[i])
+		} else {
+			go checkfinal()
 		}
 	}
 
 	wg.Wait()
+}
+
+func checkfinal() {
+	for true {
+		protocols[0].db.View(func(dbtx database.Tx) error {
+			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				xdata := wire.XchainData{}
+				if err := xdata.DeSerialize(cursor.Value()); err != nil || xdata.Finalized == 1 {
+					continue
+				}
+				for _, p := range protocols[1:] {
+					chain := chainmap.ChainMap[p.Server.chainParams.ChainID]
+					if chain.PassThru(protocols[0].Server.chainParams.MainChainID, xdata.ChainID) {
+						p.Server.Randcast(wire.NewMsgFinalized(xdata.ChainID, xdata.Hash), nil)
+					}
+				}
+			}
+			return nil
+		})
+		time.Sleep(15 * time.Second)
+	}
 }
 
 func retrievedefs(p *Protocol, q *Protocol) {

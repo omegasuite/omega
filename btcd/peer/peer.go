@@ -20,12 +20,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/go-socks/socks"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/go-socks/socks"
 )
 
 const (
@@ -108,8 +108,8 @@ type MessageListeners struct {
 	// OnAddr is invoked when a peer receives an addr bitcoin message.
 	OnAddr func(p *Peer, msg *wire.MsgAddr)
 
-//	OnInvitation func(p *Peer, msg *wire.MsgInvitation)
-//	OnAckInvitation func(p *Peer, msg *wire.MsgAckInvitation)
+	//	OnInvitation func(p *Peer, msg *wire.MsgInvitation)
+	//	OnAckInvitation func(p *Peer, msg *wire.MsgAckInvitation)
 
 	// OnPing is invoked when a peer receives a ping bitcoin message.
 	OnPing func(p *Peer, msg *wire.MsgPing)
@@ -127,7 +127,7 @@ type MessageListeners struct {
 	OnTx func(p *Peer, msg *wire.MsgTx)
 
 	// OnBlock is invoked when a peer receives a block bitcoin message.
-	OnBlock func(p *Peer, msg *wire.MsgBlock, buf []byte)
+	OnBlock      func(p *Peer, msg *wire.MsgBlock, buf []byte)
 	OnMinerBlock func(p *Peer, msg *wire.MingingRightBlock, buf []byte)
 
 	OnSignatures func(p *Peer, msg *wire.MsgSignatures)
@@ -226,6 +226,12 @@ type MessageListeners struct {
 	// circumstances such as keeping track of server-wide byte counts.
 	OnWrite func(p *Peer, bytesWritten int, msg wire.Message, err error)
 
+	OnFinalized func(p *Peer, msg *wire.MsgFinalized)
+	OnFinal     func(p *Peer, msg *wire.MsgReFinal)
+
+	OnGetChainMap func(p *Peer, msg *wire.MsgGetChainMap)
+	OnChainMap    func(p *Peer, msg *wire.MsgChainMap)
+
 	PushGetBlock func(p *Peer)
 }
 
@@ -236,7 +242,7 @@ type Config struct {
 	// peer will report a block height of 0, however it is good practice for
 	// peers to specify this so their currently best known is accurately
 	// reported.
-	NewestBlock HashFunc
+	NewestBlock      HashFunc
 	NewestMinerBlock HashFunc
 
 	// HostToNetAddress returns the netaddress for the given host. This can be
@@ -375,25 +381,25 @@ type stallControlMsg struct {
 
 // StatsSnap is a snapshot of peer stats at a point in time.
 type StatsSnap struct {
-	ID             int32
-	Addr           string
-	Services       common.ServiceFlag
-	LastSend       time.Time
-	LastRecv       time.Time
-	BytesSent      uint64
-	BytesRecv      uint64
-	ConnTime       time.Time
-	TimeOffset     int64
-	Version        uint32
-	UserAgent      string
-	Inbound        bool
-	StartingHeight int32
+	ID                  int32
+	Addr                string
+	Services            common.ServiceFlag
+	LastSend            time.Time
+	LastRecv            time.Time
+	BytesSent           uint64
+	BytesRecv           uint64
+	ConnTime            time.Time
+	TimeOffset          int64
+	Version             uint32
+	UserAgent           string
+	Inbound             bool
+	StartingHeight      int32
 	StartingMinerHeight int32
-	LastBlock      int32
-	LastMinerBlock int32
-	LastPingNonce  uint64
-	LastPingTime   time.Time
-	LastPingMicros int64
+	LastBlock           int32
+	LastMinerBlock      int32
+	LastPingNonce       uint64
+	LastPingTime        time.Time
+	LastPingMicros      int64
 }
 
 // HashFunc is a function which returns a block hash, height and error
@@ -465,16 +471,16 @@ type Peer struct {
 
 	wireEncoding wire.MessageEncoding
 
-	knownInventory     *mruInventoryMap
-	prevGetBlocksMtx   sync.Mutex
-	prevGetBlocksBegin *chainhash.Hash
-	prevGetBlocksStop  *chainhash.Hash
+	knownInventory          *mruInventoryMap
+	prevGetBlocksMtx        sync.Mutex
+	prevGetBlocksBegin      *chainhash.Hash
+	prevGetBlocksStop       *chainhash.Hash
 	prevGetMinerBlocksBegin *chainhash.Hash
 	prevGetMinerBlocksStop  *chainhash.Hash
 
-	prevGetHdrsMtx     sync.Mutex
-	prevGetHdrsBegin   *chainhash.Hash
-	prevGetHdrsStop    *chainhash.Hash
+	prevGetHdrsMtx   sync.Mutex
+	prevGetHdrsBegin *chainhash.Hash
+	prevGetHdrsStop  *chainhash.Hash
 
 	// These fields keep track of statistics for the peer and are protected
 	// by the statsMtx mutex.
@@ -489,9 +495,9 @@ type Peer struct {
 	lastMinerBlock          int32
 	lastAnnouncedMinerBlock *chainhash.Hash
 
-	lastPingNonce      uint64    // Set to nonce if we have a pending ping.
-	lastPingTime       time.Time // Time we sent last ping.
-	lastPingMicros     int64     // Time for last ping to return.
+	lastPingNonce  uint64    // Set to nonce if we have a pending ping.
+	lastPingTime   time.Time // Time we sent last ping.
+	lastPingMicros int64     // Time for last ping to return.
 
 	stallControl  chan stallControlMsg
 	outputQueue   chan outMsg
@@ -504,10 +510,10 @@ type Peer struct {
 	quit          chan struct{}
 
 	// identity of peer, if not set, -1 and nil
-	Committee     int32		// place in committee, i.e. miner chain height
-	Miner         [20]byte	// a copy of miner in the miner block to avoid lookup
-	TxSent		  int32		// highest tx block we have sent
-	MinerSent	  int32		// highest miner block we have sent
+	Committee int32    // place in committee, i.e. miner chain height
+	Miner     [20]byte // a copy of miner in the miner block to avoid lookup
+	TxSent    int32    // highest tx block we have sent
+	MinerSent int32    // highest miner block we have sent
 }
 
 var stallCount = make(map[string]int)
@@ -526,7 +532,7 @@ func (p *Peer) String() string {
 func (p *Peer) UpdateLastBlockHeight(newHeight int32) {
 	p.statsMtx.Lock()
 	if p.lastBlock < newHeight {
-	log.Tracef("Updating last block height of peer %s from %v to %v", p.Addr(), p.lastBlock, newHeight)
+		log.Tracef("Updating last block height of peer %s from %v to %v", p.Addr(), p.lastBlock, newHeight)
 		p.lastBlock = newHeight
 	}
 	p.statsMtx.Unlock()
@@ -535,7 +541,7 @@ func (p *Peer) UpdateLastBlockHeight(newHeight int32) {
 func (p *Peer) UpdateLastMinerBlockHeight(newHeight int32) {
 	p.statsMtx.Lock()
 	if p.lastMinerBlock < newHeight {
-	log.Tracef("Updating last block height of peer %v from %v to %v", p.addr, p.lastBlock, newHeight)
+		log.Tracef("Updating last block height of peer %v from %v to %v", p.addr, p.lastBlock, newHeight)
 		p.lastMinerBlock = newHeight
 	}
 	p.statsMtx.Unlock()
@@ -585,25 +591,25 @@ func (p *Peer) StatsSnapshot() *StatsSnap {
 
 	// Get a copy of all relevant flags and stats.
 	statsSnap := &StatsSnap{
-		ID:             id,
-		Addr:           addr,
-		UserAgent:      userAgent,
-		Services:       services,
-		LastSend:       p.LastSend(),
-		LastRecv:       p.LastRecv(),
-		BytesSent:      p.BytesSent(),
-		BytesRecv:      p.BytesReceived(),
-		ConnTime:       p.timeConnected,
-		TimeOffset:     p.timeOffset,
-		Version:        protocolVersion,
-		Inbound:        p.inbound,
-		StartingHeight: p.startingHeight,
+		ID:                  id,
+		Addr:                addr,
+		UserAgent:           userAgent,
+		Services:            services,
+		LastSend:            p.LastSend(),
+		LastRecv:            p.LastRecv(),
+		BytesSent:           p.BytesSent(),
+		BytesRecv:           p.BytesReceived(),
+		ConnTime:            p.timeConnected,
+		TimeOffset:          p.timeOffset,
+		Version:             protocolVersion,
+		Inbound:             p.inbound,
+		StartingHeight:      p.startingHeight,
 		StartingMinerHeight: p.startingMinerHeight,
-		LastBlock:      p.lastBlock,
-		LastMinerBlock: p.lastMinerBlock,
-		LastPingNonce:  p.lastPingNonce,
-		LastPingMicros: p.lastPingMicros,
-		LastPingTime:   p.lastPingTime,
+		LastBlock:           p.lastBlock,
+		LastMinerBlock:      p.lastMinerBlock,
+		LastPingNonce:       p.lastPingNonce,
+		LastPingMicros:      p.lastPingMicros,
+		LastPingTime:        p.lastPingTime,
 	}
 
 	p.statsMtx.RUnlock()
@@ -932,13 +938,13 @@ func (p *Peer) PushGetBlocksMsg(locator, mlocator chainhash.BlockLocator, stopHa
 	p.prevGetBlocksMtx.Lock()
 	isDuplicate :=
 		((p.prevGetBlocksStop == nil && stopHash == nil) || (p.prevGetBlocksStop != nil && stopHash != nil && stopHash.IsEqual(p.prevGetBlocksStop))) &&
-		((p.prevGetBlocksBegin == nil && beginHash == nil) || (p.prevGetBlocksBegin != nil && beginHash != nil && beginHash.IsEqual(p.prevGetBlocksBegin))) &&
-		((p.prevGetMinerBlocksStop == nil && mstopHash == nil) || (p.prevGetMinerBlocksStop != nil && mstopHash != nil && mstopHash.IsEqual(p.prevGetMinerBlocksStop))) &&
-		((p.prevGetMinerBlocksBegin == nil && mbeginHash == nil) || (p.prevGetMinerBlocksBegin != nil && mbeginHash != nil && mbeginHash.IsEqual(p.prevGetMinerBlocksBegin)))
+			((p.prevGetBlocksBegin == nil && beginHash == nil) || (p.prevGetBlocksBegin != nil && beginHash != nil && beginHash.IsEqual(p.prevGetBlocksBegin))) &&
+			((p.prevGetMinerBlocksStop == nil && mstopHash == nil) || (p.prevGetMinerBlocksStop != nil && mstopHash != nil && mstopHash.IsEqual(p.prevGetMinerBlocksStop))) &&
+			((p.prevGetMinerBlocksBegin == nil && mbeginHash == nil) || (p.prevGetMinerBlocksBegin != nil && mbeginHash != nil && mbeginHash.IsEqual(p.prevGetMinerBlocksBegin)))
 
 	p.prevGetBlocksMtx.Unlock()
 
-	if isDuplicate && p.lastSend + 180 > time.Now().Unix() {
+	if isDuplicate && p.lastSend+180 > time.Now().Unix() {
 		log.Tracef("Filtering duplicate [getblocks] with begin hash %v, stop hash %v", beginHash, stopHash)
 		return nil
 	}
@@ -1106,9 +1112,9 @@ func (p *Peer) readMessage(encoding wire.MessageEncoding) (wire.Message, []byte,
 		return fmt.Sprintf("Received %v%s from %s",
 			msg.Command(), summary, p)
 	}))
-//	log.Infof("%v", newLogClosure(func() string {
-//		return spew.Sdump(msg)
-//	}))
+	//	log.Infof("%v", newLogClosure(func() string {
+	//		return spew.Sdump(msg)
+	//	}))
 	log.Tracef("%v", newLogClosure(func() string {
 		return spew.Sdump(buf)
 	}))
@@ -1278,7 +1284,7 @@ func (p *Peer) stallHandler() {
 	defer stallTicker.Stop()
 
 	if !p.Inbound() {
-		if _,ok := stallCount[p.String()]; !ok {
+		if _, ok := stallCount[p.String()]; !ok {
 			stallCount[p.String()] = 1
 		}
 	}
@@ -1361,7 +1367,7 @@ out:
 			now := time.Now()
 			offset := deadlineOffset
 
-			if _,ok := stallCount[p.String()]; ok && !p.Inbound() {
+			if _, ok := stallCount[p.String()]; ok && !p.Inbound() {
 				offset += time.Duration(stallCount[p.String()] * 1e10)
 			}
 
@@ -1376,15 +1382,15 @@ out:
 					continue
 				}
 
-//				if p.Committee > 0 {
-					// keep connected if it is a committee member
-//					continue
-//				}
+				//				if p.Committee > 0 {
+				// keep connected if it is a committee member
+				//					continue
+				//				}
 
-				if sc,ok := stallCount[p.String()]; ok {
+				if sc, ok := stallCount[p.String()]; ok {
 					log.Infof("Peer %s appears to be stalled or "+
 						"misbehaving, %s command %d seconds timeout. stallcount = %d -- "+
-						"disconnecting", p, command, sc * 10, sc)
+						"disconnecting", p, command, sc*10, sc)
 					stallCount[p.String()] = sc + 1
 				} else {
 					log.Infof("Peer %s appears to be stalled or "+
@@ -1434,14 +1440,14 @@ cleanup:
 func (p *Peer) inHandler() {
 	// The timer is stopped when a new message is received and reset after it
 	// is processed.
-//	var lastmsg string
+	//	var lastmsg string
 	idleTimer := time.AfterFunc(idleTimeout, func() {
 		if p.Committee <= 0 {
 			log.Warnf("Peer %s no answer for %s -- disconnecting", p, idleTimeout)
 			p.Disconnect("inHandler @ idleTimeout")
 		}
-//		log.Infof("Peer %s no answer for %s -- disconnecting. Last msg is %s", p, idleTimeout, lastmsg)
-//		p.Disconnect("inHandler @ idleTimeout")
+		//		log.Infof("Peer %s no answer for %s -- disconnecting. Last msg is %s", p, idleTimeout, lastmsg)
+		//		p.Disconnect("inHandler @ idleTimeout")
 	})
 
 	var seq int
@@ -1487,7 +1493,7 @@ out:
 			break out
 		}
 
-//		log.Infof("%s inHandler %d %d read: %s", p.Addr(), p.id, seq, rmsg.Command())
+		//		log.Infof("%s inHandler %d %d read: %s", p.Addr(), p.id, seq, rmsg.Command())
 
 		atomic.StoreInt64(&p.lastRecv, time.Now().Unix())
 		p.stallControl <- stallControlMsg{sccReceiveMessage, rmsg}
@@ -1495,7 +1501,7 @@ out:
 		// Handle each supported message type.
 		p.stallControl <- stallControlMsg{sccHandlerStart, rmsg}
 
-//		lastmsg = rmsg.Command()
+		//		lastmsg = rmsg.Command()
 
 		switch msg := rmsg.(type) {
 		case *wire.MsgVersion:
@@ -1506,7 +1512,7 @@ out:
 			break out
 
 		case *wire.MsgVerAck:
-//			log.Infof("inHandler MsgVerAck")
+			//			log.Infof("inHandler MsgVerAck")
 
 			// No read lock is necessary because verAckReceived is not written
 			// to in any other goroutine.
@@ -1529,50 +1535,50 @@ out:
 			}
 
 		case *wire.MsgAddr:
-//			log.Infof("inHandler MsgAddr")
+			//			log.Infof("inHandler MsgAddr")
 			if p.cfg.Listeners.OnAddr != nil {
 				p.cfg.Listeners.OnAddr(p, msg)
 			}
-/*
-		case *wire.MsgInvitation:
-			if p.cfg.Listeners.OnInvitation != nil {
-				p.cfg.Listeners.OnInvitation(p, msg)
-			}
+			/*
+				case *wire.MsgInvitation:
+					if p.cfg.Listeners.OnInvitation != nil {
+						p.cfg.Listeners.OnInvitation(p, msg)
+					}
 
-		case *wire.MsgAckInvitation:
-			if p.cfg.Listeners.OnAckInvitation != nil {
-				p.cfg.Listeners.OnAckInvitation(p, msg)
-			}
- */
+				case *wire.MsgAckInvitation:
+					if p.cfg.Listeners.OnAckInvitation != nil {
+						p.cfg.Listeners.OnAckInvitation(p, msg)
+					}
+			*/
 
 		case *wire.MsgPing:
-//			log.Infof("inHandler MsgPing")
+			//			log.Infof("inHandler MsgPing")
 			p.handlePingMsg(msg)
 			if p.cfg.Listeners.OnPing != nil {
 				p.cfg.Listeners.OnPing(p, msg)
 			}
 
 		case *wire.MsgPong:
-//			log.Infof("inHandler MsgPong")
+			//			log.Infof("inHandler MsgPong")
 			p.handlePongMsg(msg)
 			if p.cfg.Listeners.OnPong != nil {
 				p.cfg.Listeners.OnPong(p, msg)
 			}
 
 		case *wire.MsgAlert:
-//			log.Infof("inHandler MsgAlert")
+			//			log.Infof("inHandler MsgAlert")
 			if p.cfg.Listeners.OnAlert != nil {
 				p.cfg.Listeners.OnAlert(p, msg)
 			}
 
 		case *wire.MsgMemPool:
-//			log.Infof("inHandler MsgMemPool")
+			//			log.Infof("inHandler MsgMemPool")
 			if p.cfg.Listeners.OnMemPool != nil {
 				p.cfg.Listeners.OnMemPool(p, msg)
 			}
 
 		case *wire.MsgTx:
-//			log.Infof("inHandler MsgTx")
+			//			log.Infof("inHandler MsgTx")
 			if p.cfg.Listeners.OnTx != nil {
 				p.cfg.Listeners.OnTx(p, msg)
 			}
@@ -1590,7 +1596,7 @@ out:
 			}
 
 		case *wire.MingingRightBlock:
-//			log.Infof("inHandler MingingRightBlock")
+			//			log.Infof("inHandler MingingRightBlock")
 			if p.cfg.Listeners.OnMinerBlock != nil {
 				p.cfg.Listeners.OnMinerBlock(p, msg, buf)
 			}
@@ -1602,13 +1608,13 @@ out:
 			}
 
 		case *wire.MsgHeaders:
-//			log.Infof("inHandler MsgHeaders")
+			//			log.Infof("inHandler MsgHeaders")
 			if p.cfg.Listeners.OnHeaders != nil {
 				p.cfg.Listeners.OnHeaders(p, msg)
 			}
 
 		case *wire.MsgNotFound:
-//			log.Infof("inHandler MsgNotFound")
+			//			log.Infof("inHandler MsgNotFound")
 			if p.cfg.Listeners.OnNotFound != nil {
 				p.cfg.Listeners.OnNotFound(p, msg)
 			}
@@ -1620,79 +1626,79 @@ out:
 			}
 
 		case *wire.MsgGetBlocks:
-//			log.Infof("inHandler MsgGetBlocks")
+			//			log.Infof("inHandler MsgGetBlocks")
 			if p.cfg.Listeners.OnGetBlocks != nil {
 				p.cfg.Listeners.OnGetBlocks(p, msg)
 			}
 
 		case *wire.MsgGetMinerBlocks:
-//			log.Infof("inHandler MsgGetMinerBlocks")
+			//			log.Infof("inHandler MsgGetMinerBlocks")
 			if p.cfg.Listeners.OnGetMinerBlocks != nil {
 				p.cfg.Listeners.OnGetMinerBlocks(p, msg)
 			}
 
 		case *wire.MsgGetHeaders:
-//			log.Infof("inHandler MsgGetHeaders")
+			//			log.Infof("inHandler MsgGetHeaders")
 			if p.cfg.Listeners.OnGetHeaders != nil {
 				p.cfg.Listeners.OnGetHeaders(p, msg)
 			}
 
 		case *wire.MsgGetCFilters:
-//			log.Infof("inHandler MsgGetCFilters")
+			//			log.Infof("inHandler MsgGetCFilters")
 			if p.cfg.Listeners.OnGetCFilters != nil {
 				p.cfg.Listeners.OnGetCFilters(p, msg)
 			}
 
 		case *wire.MsgGetCFHeaders:
-//			log.Infof("inHandler MsgGetCFHeaders")
+			//			log.Infof("inHandler MsgGetCFHeaders")
 			if p.cfg.Listeners.OnGetCFHeaders != nil {
 				p.cfg.Listeners.OnGetCFHeaders(p, msg)
 			}
 
 		case *wire.MsgGetCFCheckpt:
-//			log.Infof("inHandler MsgGetCFCheckpt")
+			//			log.Infof("inHandler MsgGetCFCheckpt")
 			if p.cfg.Listeners.OnGetCFCheckpt != nil {
 				p.cfg.Listeners.OnGetCFCheckpt(p, msg)
 			}
 
 		case *wire.MsgCFilter:
-//			log.Infof("inHandler MsgCFilter")
+			//			log.Infof("inHandler MsgCFilter")
 			if p.cfg.Listeners.OnCFilter != nil {
 				p.cfg.Listeners.OnCFilter(p, msg)
 			}
 
 		case *wire.MsgCFHeaders:
-//			log.Infof("inHandler MsgCFHeaders")
+			//			log.Infof("inHandler MsgCFHeaders")
 			if p.cfg.Listeners.OnCFHeaders != nil {
 				p.cfg.Listeners.OnCFHeaders(p, msg)
 			}
 
 		case *wire.MsgFeeFilter:
-//			log.Infof("inHandler MsgFeeFilter")
+			//			log.Infof("inHandler MsgFeeFilter")
 			if p.cfg.Listeners.OnFeeFilter != nil {
 				p.cfg.Listeners.OnFeeFilter(p, msg)
 			}
 
 		case *wire.MsgFilterAdd:
-//			log.Infof("inHandler MsgFilterAdd")
+			//			log.Infof("inHandler MsgFilterAdd")
 			if p.cfg.Listeners.OnFilterAdd != nil {
 				p.cfg.Listeners.OnFilterAdd(p, msg)
 			}
 
 		case *wire.MsgFilterClear:
-//			log.Infof("inHandler MsgFilterClear")
+			//			log.Infof("inHandler MsgFilterClear")
 			if p.cfg.Listeners.OnFilterClear != nil {
 				p.cfg.Listeners.OnFilterClear(p, msg)
 			}
 
 		case *wire.MsgFilterLoad:
-//			log.Infof("inHandler MsgFilterLoad")
+			//			log.Infof("inHandler MsgFilterLoad")
 			if p.cfg.Listeners.OnFilterLoad != nil {
 				p.cfg.Listeners.OnFilterLoad(p, msg)
 			}
 
 		case *wire.MsgMerkleBlock:
-//			log.Infof("inHandler MsgMerkleBlock")
+			//			log.Infof("inHandler MsgMerkleBlock")
 			if p.cfg.Listeners.OnMerkleBlock != nil {
 				p.cfg.Listeners.OnMerkleBlock(p, msg)
 			}
@@ -1704,7 +1710,7 @@ out:
 			}
 
 		case *wire.MsgSendHeaders:
-//			log.Infof("inHandler MsgSendHeaders")
+			//			log.Infof("inHandler MsgSendHeaders")
 			p.flagsMtx.Lock()
 			p.sendHeadersPreferred = true
 			p.flagsMtx.Unlock()
@@ -1740,12 +1746,32 @@ out:
 				log.Infof("inHandler consensus.VerifySig failed")
 			}
 
+		case *wire.MsgFinalized:
+			if p.cfg.Listeners.OnFinalized != nil {
+				p.cfg.Listeners.OnFinalized(p, msg)
+			}
+
+		case *wire.MsgReFinal:
+			if p.cfg.Listeners.OnFinal != nil {
+				p.cfg.Listeners.OnFinal(p, msg)
+			}
+
+		case *wire.MsgGetChainMap:
+			if p.cfg.Listeners.OnGetChainMap != nil {
+				p.cfg.Listeners.OnGetChainMap(p, msg)
+			}
+
+		case *wire.MsgChainMap:
+			if p.cfg.Listeners.OnChainMap != nil {
+				p.cfg.Listeners.OnChainMap(p, msg)
+			}
+
 		default:
-//			log.Infof("inHandler default")
+			//			log.Infof("inHandler default")
 			log.Debugf("Received unhandled message of type %v "+
 				"from %v", rmsg.Command(), p)
 		}
-//		lastmsg = ""
+		//		lastmsg = ""
 		log.Debugf("inHandler %d %d message processed", p.id, seq)
 		seq++
 		p.stallControl <- stallControlMsg{sccHandlerDone, rmsg}
@@ -1754,7 +1780,7 @@ out:
 		idleTimer.Reset(idleTimeout)
 	}
 
-//	log.Infof("atomic.LoadInt32(&p.disconnect) = %d", atomic.LoadInt32(&p.disconnect))
+	//	log.Infof("atomic.LoadInt32(&p.disconnect) = %d", atomic.LoadInt32(&p.disconnect))
 
 	// Ensure the idle timer is stopped to avoid leaking the resource.
 	idleTimer.Stop()
@@ -1799,7 +1825,7 @@ out:
 	for {
 		select {
 		case msg := <-p.outputQueue:
-			log.Tracef("output %s, queue = %d", msg.msg.Command(), len(p.sendQueue) + pendingMsgs.Len())
+			log.Tracef("output %s, queue = %d", msg.msg.Command(), len(p.sendQueue)+pendingMsgs.Len())
 			waiting = queuePacket(msg, pendingMsgs, waiting)
 
 		// This channel is notified when a message has been sent across
@@ -1948,10 +1974,10 @@ out:
 
 			p.stallControl <- stallControlMsg{sccSendMessage, msg.msg}
 
-//			if msg.msg.Command() == wire.CmdGetData && len(msg.msg.(*wire.MsgGetData).InvList) == 1 {
-//				log.Infof("GetData %s actually sent to %s", msg.msg.(*wire.MsgGetData).InvList[0].Hash.String(), p.Addr())
-//			}
-//			log.Infof("%s actually sent to %s", msg.msg.Command(), p.Addr())
+			//			if msg.msg.Command() == wire.CmdGetData && len(msg.msg.(*wire.MsgGetData).InvList) == 1 {
+			//				log.Infof("GetData %s actually sent to %s", msg.msg.(*wire.MsgGetData).InvList[0].Hash.String(), p.Addr())
+			//			}
+			//			log.Infof("%s actually sent to %s", msg.msg.Command(), p.Addr())
 
 			err := p.writeMessage(msg.msg, msg.encoding)
 			if err != nil {
@@ -2019,7 +2045,7 @@ out:
 				log.Errorf("Not sending ping to %s: %v", p, err)
 				continue
 			}
-			_,latest,_ := p.cfg.NewestBlock()
+			_, latest, _ := p.cfg.NewestBlock()
 			p.QueueMessage(wire.NewMsgPing(nonce, latest), nil)
 
 		case <-p.quit:
@@ -2102,7 +2128,7 @@ func (p *Peer) Disconnect(s string) {
 
 	log.Infof("Disconnecting %s by reason %s", p.String(), s)
 
-//	log.Debugf("Disconnecting %s by %s", p, s)
+	//	log.Debugf("Disconnecting %s by %s", p, s)
 	if atomic.LoadInt32(&p.connected) != 0 {
 		p.conn.Close()
 	}
@@ -2114,7 +2140,7 @@ const FREQPERIOD = 60
 
 type recentState struct {
 	lasttime uint32
-	latests [MAX_NEW_CON_PER_IP]int32
+	latests  [MAX_NEW_CON_PER_IP]int32
 }
 
 var recentConns = make(map[string]recentState)
@@ -2154,7 +2180,7 @@ func (p *Peer) readRemoteVersionMsg() error {
 			}
 			samelatest = samelatest && r.latests[i] == msg.LastBlock
 		}
-		if i >= MAX_NEW_CON_PER_IP && samelatest && uint32(time.Now().Unix()) - r.lasttime < FREQPERIOD {
+		if i >= MAX_NEW_CON_PER_IP && samelatest && uint32(time.Now().Unix())-r.lasttime < FREQPERIOD {
 			// reject it
 			reason := "too many connects from seemingly the same node"
 			rejectMsg := wire.NewMsgReject(msg.Command(), common.RejectMalformed,
@@ -2171,7 +2197,7 @@ func (p *Peer) readRemoteVersionMsg() error {
 			r.latests[i] = msg.LastBlock
 		}
 	} else {
-		recentConns[p.na.IP.String()] = recentState {uint32(time.Now().Unix()), [MAX_NEW_CON_PER_IP]int32{msg.LastBlock,0,0,0,0}}
+		recentConns[p.na.IP.String()] = recentState{uint32(time.Now().Unix()), [MAX_NEW_CON_PER_IP]int32{msg.LastBlock, 0, 0, 0, 0}}
 	}
 	cntconlock.Unlock()
 
@@ -2464,8 +2490,8 @@ func newPeerBase(origCfg *Config, inbound bool) *Peer {
 		cfg:             cfg, // Copy so caller can't mutate.
 		services:        cfg.Services,
 		protocolVersion: cfg.ProtocolVersion,
-		lastBlock: 0,
-		lastMinerBlock: 0,
+		lastBlock:       0,
+		lastMinerBlock:  0,
 	}
 
 	return &p
