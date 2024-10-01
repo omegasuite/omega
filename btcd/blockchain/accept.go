@@ -248,7 +248,6 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
 				srcchain := tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainSrcMask
-				x := initems[tx.TxIn[0].PreviousOutPoint.Hash]
 
 				for _, txo := range tx.TxOut {
 					if txo.IsCrossChain() {
@@ -260,11 +259,11 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 							destchain = b.ChainParams.ChainID
 						}
 						if !m.PassThru(srcchain, destchain) {
-							return fmt.Errorf("Mix of cross chain and regular txout")
+							return false, fmt.Errorf("Mix of cross chain and regular txout"), -1
 						}
 					} else {
 						if (txo.TokenType & (0xFFFFFF << 40)) == 0 {
-							return fmt.Errorf("Local Tokentype is a cross chain tx")
+							return false, fmt.Errorf("Local Tokentype is a cross chain tx"), -1
 						}
 					}
 				}

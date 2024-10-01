@@ -10,6 +10,7 @@ import (
 	"container/heap"
 	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
+	"github.com/omegasuite/famofchains/omega/chainmap"
 
 	"math/rand"
 	"time"
@@ -1289,6 +1290,25 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		Utxos:           uc,
 		ViolationReport: make([]*wire.Violations, 0),
 		ContractLimit:   contractlim,
+		Instructions:    nil,
+	}
+
+	if nextBlockVersion >= chaincfg.Version6 && g.chainParams.AddChain != nil && g.chainParams.ChainID == chainmap.ROOT {
+		exist := false
+		ac := g.chainParams.AddChain.(*chainmap.ChainDescriptor)
+		for _, c := range chainmap.ChainMap {
+			if ac.Magic == c.Magic || ac.Dns == c.Dns || ac.Genesis.IsEqual(&c.Genesis) ||
+				(c.MRChain && ac.MRChain && ac.MrGenesis.IsEqual(&c.MrGenesis)) {
+				exist = true
+			}
+		}
+		if !exist {
+			ac.ChainID = uint32(len(chainmap.ChainMap) + 1)
+			msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
+				InstCode: wire.AddChain,
+				InstData: (*wire.ChainDescriptor)(ac).Serialize(),
+			}}
+		}
 	}
 
 	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())
@@ -1309,6 +1329,8 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 						v = 1
 					}
 					msgBlock.TphReports[j] = v
+				} else if msgBlock.TphReports[j] == 0 {
+					msgBlock.TphReports[j] = 1
 				}
 			}
 			sum += v
@@ -1323,6 +1345,9 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 			msgBlock.MeanTPH = (v2*63 + sum) >> 6
 		} else {
 			msgBlock.MeanTPH = sum
+		}
+		if msgBlock.MeanTPH == 0 {
+			msgBlock.MeanTPH = 1
 		}
 	}
 

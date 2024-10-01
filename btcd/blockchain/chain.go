@@ -10,10 +10,12 @@ import (
 	"bytes"
 	"container/list"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/famofchains/omega/chainmap"
 	"github.com/omegasuite/famofchains/omega/ovm"
 	"github.com/omegasuite/famofchains/omega/token"
 	"os"
@@ -676,19 +678,6 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 
 	// Atomically insert info into the database.
 	err = b.db.Update(func(dbTx database.Tx) error {
-		if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
-			// a rotation block, needs to execute ops in 1 MR block
-			mrb, _ := b.Miners.BlockByHeight(-(wire.MINER_RORATE_FREQ + block.MsgBlock().Header.Nonce))
-			b.ExecOps(dbTx, mrb, uint32(block.Height()))
-		} else if block.MsgBlock().Header.Nonce > 0 {
-			// a POW block, needs to execute ops in 2 MR blocks
-			rot := int32(b.BestSnapshot().LastRotation)
-			mrb, _ := b.Miners.BlockByHeight(rot - 1)
-			b.ExecOps(dbTx, mrb, uint32(block.Height()))
-			mrb, _ = b.Miners.BlockByHeight(rot)
-			b.ExecOps(dbTx, mrb, uint32(block.Height()))
-		}
-
 		// Update best block state.
 		err := dbPutBestState(dbTx, state)
 		if err != nil {
@@ -739,6 +728,21 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		return err
 	}
 
+	if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
+		// a rotation block, needs to execute ops in 1 MR block
+		mrb, _ := b.Miners.BlockByHeight(-(wire.MINER_RORATE_FREQ + block.MsgBlock().Header.Nonce))
+		b.ExecOps(mrb, uint32(block.Height()))
+	} else if block.MsgBlock().Header.Nonce > 0 {
+		// a POW block, needs to execute ops in 2 MR blocks
+		rot := int32(b.BestSnapshot().LastRotation)
+		mrb, _ := b.Miners.BlockByHeight(rot - 1)
+		if mrb != nil {
+			b.ExecOps(mrb, uint32(block.Height()))
+		}
+		mrb, _ = b.Miners.BlockByHeight(rot)
+		b.ExecOps(mrb, uint32(block.Height()))
+	}
+
 	for i := 0; i < m; i++ {
 		c := b.collaterals[0]
 		delete(b.LockedCollaterals, c)
@@ -752,6 +756,8 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		}
 		c = *mb.MsgBlock().Utxos
 		b.collaterals = append(b.collaterals, c)
+	}
+	for _, c := range b.collaterals {
 		b.LockedCollaterals[c] = struct{}{}
 	}
 
@@ -853,19 +859,6 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 			return err
 		}
 
-		if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
-			// a rotation block, needs to execute ops in 1 MR block
-			mrb, _ := b.Miners.BlockByHeight(-(wire.MINER_RORATE_FREQ + block.MsgBlock().Header.Nonce))
-			b.UnExecOps(dbTx, mrb, uint32(block.Height()))
-		} else if block.MsgBlock().Header.Nonce > 0 {
-			// a POW block, needs to execute ops in 2 MR blocks
-			rot := int32(b.BestSnapshot().LastRotation)
-			mrb, _ := b.Miners.BlockByHeight(rot)
-			b.UnExecOps(dbTx, mrb, uint32(block.Height()))
-			mrb, _ = b.Miners.BlockByHeight(rot - 1)
-			b.UnExecOps(dbTx, mrb, uint32(block.Height()))
-		}
-
 		// Remove the block hash and height from the block index which
 		// tracks the main chain.
 		err = DbRemoveBlockIndex(dbTx, block.Hash(), node.Height)
@@ -914,6 +907,19 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	})
 	if err != nil {
 		return err
+	}
+
+	if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
+		// a rotation block, needs to execute ops in 1 MR block
+		mrb, _ := b.Miners.BlockByHeight(-(wire.MINER_RORATE_FREQ + block.MsgBlock().Header.Nonce))
+		b.UnExecOps(mrb, uint32(block.Height()))
+	} else if block.MsgBlock().Header.Nonce > 0 {
+		// a POW block, needs to execute ops in 2 MR blocks
+		rot := int32(b.BestSnapshot().LastRotation)
+		mrb, _ := b.Miners.BlockByHeight(rot)
+		b.UnExecOps(mrb, uint32(block.Height()))
+		mrb, _ = b.Miners.BlockByHeight(rot - 1)
+		b.UnExecOps(mrb, uint32(block.Height()))
 	}
 
 	for i := 0; i < m; i++ {
@@ -1635,26 +1641,120 @@ func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm
 	return views, Vm
 }
 
-func (b *BlockChain) UnExecOps(dbTx database.Tx, block *wire.MinerBlock, height uint32) {
+type addchaindata struct {
+	Name            string `json:"name"`
+	ChainId         uint32 `json:"chainid"`
+	Dns             string `json:"dns"`
+	Port            string `json:"port"`
+	Rpcport         string `json:"rpcport"`
+	Magic           string `json:"magic"`
+	Gensishash      string `json:"gensishash"`
+	Minergensishash string `json:"minergensishash"`
+	Parent          uint32 `json:"parent"`
+}
+
+func (m *addchaindata) Match(c *addchaindata) bool {
+	return m.ChainId == c.ChainId && m.Name == c.Name && m.Dns == c.Dns &&
+		m.Port == c.Port && m.Rpcport == c.Rpcport && m.Magic == c.Magic &&
+		m.Gensishash == c.Gensishash && m.Minergensishash == c.Minergensishash && m.Parent == c.Parent
+}
+
+func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) {
 	for _, op := range block.MsgBlock().Instructions {
 		switch op.InstCode {
-		case wire.UplinkChain:
-			// TBD: set transfer chain for this transfer chain
-
-		case wire.DownlinkChain:
-			// TBD: add a base chain for this base chain
+		case wire.AddChain:
+			if b.ChainParams.ChainID != chainmap.ROOT {
+				// can only add to root chain
+				return
+			}
+			// should drop chain if this is where we add chain
+			var meta addchaindata
+			err := json.Unmarshal(op.InstData, &meta)
+			if err != nil {
+				continue
+			}
+			if _, ok := chainmap.ChainMap[meta.ChainId]; !ok {
+				continue
+			}
+			if chainmap.ChainMap[meta.ChainId].Height != uint32(block.Height()) {
+				continue
+			}
+			chainmap.RemoveChain(b.db, meta.ChainId)
 		}
 	}
 }
 
-func (b *BlockChain) ExecOps(dbTx database.Tx, block *wire.MinerBlock, height uint32) {
+func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 	for _, op := range block.MsgBlock().Instructions {
 		switch op.InstCode {
-		case wire.UplinkChain:
-			// TBD: set transfer chain for this transfer chain
+		case wire.AddChain:
+			// TBD: add a blockchain to FOC
+			if b.ChainParams.ChainID != chainmap.ROOT {
+				return
+			}
 
-		case wire.DownlinkChain:
-			// TBD: add a base chain for this base chain
+			var meta addchaindata
+			err := json.Unmarshal(op.InstData, &meta)
+			if err != nil {
+				continue
+			}
+			if _, ok := chainmap.ChainMap[meta.ChainId]; ok {
+				continue
+			}
+			cd := &chainmap.ChainDescriptor{}
+			h, err := hex.DecodeString(meta.Gensishash)
+			if err != nil || h == nil || len(h) != 32 {
+				continue
+			}
+			copy(cd.Genesis[:], h)
+			h, err = hex.DecodeString(meta.Minergensishash)
+			if err != nil || h == nil || len(h) != 32 {
+				cd.MRChain = false
+			} else {
+				cd.MRChain = true
+				copy(cd.MrGenesis[:], h)
+			}
+			cd.Dns = meta.Dns
+			cd.Parent = meta.Parent
+			cd.DefaultPort = meta.Port
+			cd.DefaultRPCPort = meta.Rpcport
+			h, err = hex.DecodeString(meta.Magic)
+			if err != nil || h == nil || len(h) != 4 {
+				continue
+			}
+			cd.Magic = common.BigEndian.Uint32(h)
+			cd.ChainID = meta.ChainId
+			cd.Height = uint32(block.Height())
+
+			// if 100 MR block all having this inst, then add it
+			mr := b.Miners
+			top := mr.BestSnapshot().Height - 1
+			agreed := 0
+			for i := 0; i < 100; i++ {
+				blk, err := mr.BlockByHeight(top)
+				top--
+				if err != nil || blk == nil || top == 0 {
+					break
+				}
+				for _, op2 := range blk.MsgBlock().Instructions {
+					switch op2.InstCode {
+					case wire.AddChain:
+						var meta2 addchaindata
+						err = json.Unmarshal(op2.InstData, &meta2)
+						if err != nil {
+							continue
+						}
+						if meta2.Match(&meta) {
+							agreed++
+							break
+						}
+					}
+				}
+			}
+			if agreed == 100 {
+				// add it to chainmap
+				chainmap.AddChain(b.db, cd)
+			}
 		}
 	}
 }
@@ -1957,7 +2057,7 @@ func (b *BlockChain) isCurrent() bool {
 		return false
 	}
 
-	if b.ChainParams.Name == "mainnet" {
+	if b.ChainParams.Name == "mainnet" && b.BestChain.Height() > wire.CommitteeSize {
 		// Not current if the latest best block has a timestamp before 24 hours
 		// ago.
 		//
@@ -2756,7 +2856,7 @@ type Config struct {
 	AddrUsage func(address btcutil.Address) uint32
 
 	// server requests
-	SrvReq <-chan interface{}
+	SrvReq chan interface{}
 }
 
 type ReqChain uint32

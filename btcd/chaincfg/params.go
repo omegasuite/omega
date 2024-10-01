@@ -304,6 +304,8 @@ type Params struct {
 	LogBlockTime bool
 
 	MainChainID uint32
+
+	AddChain interface{}
 }
 
 // MainNetParams defines the network parameters for the main Omega network.

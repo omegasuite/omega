@@ -891,10 +891,6 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	if _, ok := sm.cachedBlocks[*blockHash]; behaviorFlags&blockchain.BFNoConnect != blockchain.BFNoConnect || !ok {
 		isMainchain, isOrphan, err, missing, orp = sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
-		if err != nil {
-			sm.msgChan <-
-		}
-
 		b1 = sm.chain.BestSnapshot()
 		b2 = sm.chain.Miners.BestSnapshot()
 

@@ -14,13 +14,13 @@ import (
 
 type MsgFinalized struct {
 	ChainId uint32 // id of the chain
-	Block chainhash.Hash
+	Block   chainhash.Hash
 }
 
 type MsgReFinal struct {
 	ChainId uint32 // id of the chain
-	Block chainhash.Hash
-	ETA   int32 // expected final time
+	Block   chainhash.Hash
+	ETA     int32 // expected final time
 }
 
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
@@ -124,7 +124,7 @@ func (msg *MsgReFinal) MaxPayloadLength(pver uint32) uint32 {
 
 // NewMsgAlert returns a new bitcoin alert message that conforms to the Message
 // interface.  See MsgAlert for details.
-func NewMsgFinal(chain uint32, tx chainhash.Hash, eta uint32) *MsgReFinal {
+func NewMsgFinal(chain uint32, tx chainhash.Hash, eta int32) *MsgReFinal {
 	return &MsgReFinal{
 		ChainId: chain,
 		Block:   tx,

@@ -916,13 +916,13 @@ func (f ServiceFlag) String() string {
 // better idea to simply disconnect clients that are misbehaving over TCP.
 const (
 	// MainNet represents the main Zentrophy network.
-	MainNet OmegaNet = 0x956ca366
+	MainNet OmegaNet = 0x956ca476 //	0x956ca366
 	// RegNet represents the regression test network.
-	RegNet OmegaNet = 0x6241456c
+	RegNet OmegaNet = 0x6241467c // 0x6241456c
 	// TestNet represents the test network.
-	TestNet OmegaNet = 0x709c5fed
+	TestNet OmegaNet = 0x709c60fd // 0x709c5fed
 	// SimNet represents the simulation test network.
-	SimNet OmegaNet = 0xe10b70ad
+	SimNet OmegaNet = 0xe10b71bd // 0xe10b70ad
 
 	//	SVPMainNet = 0x665872cc
 	//	SVPTestNet = 0x625678cd

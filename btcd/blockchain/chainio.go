@@ -879,9 +879,6 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
-		// Create the pool of pending tx from another chain bucket
-		meta.CreateBucket([]byte("RECVTXPOOL"))
-
 		// Save the genesis block to the block index database.
 		if err = dbStoreBlockNode(dbTx, node); err != nil {
 			return err
@@ -1087,6 +1084,11 @@ func (b *BlockChain) initChainState() error {
 		if _, err = meta.CreateBucket([]byte(common.XCAssets)); err != nil {
 			return err
 		}
+
+		if _, err = meta.CreateBucket([]byte("ChainMap")); err != nil {
+			return err
+		}
+
 		return nil
 	})
 

@@ -469,7 +469,7 @@ out:
 		curHeight := m.g.Chain.Miners.BestSnapshot().Height
 
 		if curHeight == 0 && !isCurrent {
-			time.Sleep(time.Minute * 10)
+			time.Sleep(time.Second * 10)
 			curHeight = m.g.Chain.Miners.BestSnapshot().Height
 		}
 

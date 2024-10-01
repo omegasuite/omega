@@ -33,6 +33,8 @@ import (
 	"github.com/omegasuite/famofchains/btcd/mining"
 	"github.com/omegasuite/famofchains/btcd/mining/cpuminer"
 	"github.com/omegasuite/famofchains/btcd/peer"
+	"github.com/omegasuite/famofchains/btcd/txscript"
+	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
@@ -158,12 +160,12 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getblockhash":    handleGetBlockHash,
 	"getblockheader":  handleGetBlockHeader,
 	"genmultisigaddr": handleGenMultiSigAddr,
-	"getbtcl2script":  handleGetBtcL2Script, // new, get a script for transfer Bitcoin to L2
-	"gettreasury":     handleGetTreasury,    // new
-	"getsigners":      handleGetSigners,     // new
-	"getbtcpool":      handleGetBtcPool,     // new
-	"getl2pool":       handleGetL2Pool,      // new
-	"clearbtcl2pool":  handleClearBtcL2Pool, // new
+	//	"getbtcl2script":  handleGetBtcL2Script, // new, get a script for transfer Bitcoin to L2
+	//	"gettreasury":     handleGetTreasury,    // new
+	//	"getsigners":      handleGetSigners,     // new
+	//  "getbtcpool":     handleGetBtcPool,     // new
+	// "getl2pool":      handleGetL2Pool,      // new
+	"clearbtcl2pool": handleClearBtcL2Pool, // new
 
 	"getminerblock":       handleGetMinerBlock,       // New
 	"getminerblockheight": handleGetMinerBlockHeight, // New
@@ -178,8 +180,8 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"miningpolicy":    handleMiningPolicy, // New. miner specific policy
 	"tokenaddress":    handleTokenAddress, // New
 	"getissuedtokens": handleGetIssuedTokens,
-	"createxferl2tx":  handleCreatexferl2txo, // New, to create a TX for transferring BTC to L2 (i.e. sending BTC to designated address)
-	"verifysig":       handleVerifySig,
+	// "createxferl2tx":  handleCreatexferl2txo, // New, to create a TX for transferring BTC to L2 (i.e. sending BTC to designated address)
+	"verifysig": handleVerifySig,
 
 	//	"getblocktemplate":      handleGetBlockTemplate,
 	"getconnectioncount":    handleGetConnectionCount,
@@ -525,6 +527,7 @@ func createMultiSigScript(scripts [][]byte, n uint16, chainParams *chaincfg.Para
 	return btcutil.Hash160(h), builder.Script()
 }
 
+/*
 // handleGetBtcL2Script handles getbtcl2script
 func handleGetBtcL2Script(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetBtcL2ScriptCmd)
@@ -560,6 +563,8 @@ func handleGetBtcL2Script(s *rpcServer, cmd interface{}, closeChan <-chan struct
 
 	return reply, nil
 }
+
+*/
 
 // handleAddNode handles addnode commands.
 func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
@@ -3671,6 +3676,7 @@ func handleGetPeerInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	return infos, nil
 }
 
+/*
 func handleGetTreasury(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	mydb := s.cfg.DB
 	treasure := make(map[string]btcjson.TreasuryAsset)
@@ -3772,24 +3778,28 @@ func handleGetSigners(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 	return signers, nil
 }
 
+*/
+
 func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	s.cfg.DB.Update(func(dbTx database.Tx) error {
 		bucketName := []byte(common.INCOMINGPOOL)
 		dbTx.Metadata().DeleteBucket(bucketName)
 		dbTx.Metadata().CreateBucket(bucketName)
+		/*
+			bucketName = []byte(common.L2BTCPOOL)
+			dbTx.Metadata().DeleteBucket(bucketName)
+			dbTx.Metadata().CreateBucket(bucketName)
 
-		bucketName = []byte(common.L2BTCPOOL)
-		dbTx.Metadata().DeleteBucket(bucketName)
-		dbTx.Metadata().CreateBucket(bucketName)
-
-		bucketName = []byte(common.INASSETS)
-		dbTx.Metadata().DeleteBucket(bucketName)
-		dbTx.Metadata().CreateBucket(bucketName)
+			bucketName = []byte(common.INASSETS)
+			dbTx.Metadata().DeleteBucket(bucketName)
+			dbTx.Metadata().CreateBucket(bucketName)
+		*/
 		return nil
 	})
 	return nil, nil
 }
 
+/*
 func handleGetBtcPool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	res := make(map[string]btcjson.BTCL2Data)
 	s.cfg.DB.View(func(dbTx database.Tx) error {
@@ -3833,7 +3843,8 @@ func handleGetBtcPool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 	})
 	return res, nil
 }
-
+*/
+/*
 func handleGetL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	res := make(map[string]btcjson.BTCL2Data)
 	s.cfg.DB.View(func(dbTx database.Tx) error {
@@ -3877,7 +3888,8 @@ func handleGetL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 	})
 	return res, nil
 }
-
+*/
+/*
 func handleCreatexferl2txo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.Createxferl2txoCmd)
 	if c.AssetType == nil || *c.AssetType == 0 {
@@ -3891,6 +3903,7 @@ func handleCreatexferl2txo(s *rpcServer, cmd interface{}, closeChan <-chan struc
 	}
 	return nil, fmt.Errorf("Unsupported asset type")
 }
+*/
 
 // handleGetIssuedTokens implements the getissuedtokens command.
 func handleGetIssuedTokens(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
@@ -4279,7 +4292,7 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	if !(*(c.IncludeLocked)) {
 		p := &wire.OutPoint{Hash: *txHash, Index: c.Vout}
 
-		if s.cfg.Chain.LockedCollaterals.Exists(p) {
+		if _, ok := s.cfg.Chain.LockedCollaterals[*p]; ok {
 			return nil, &btcjson.RPCError{
 				Code:    btcjson.ErrRPCInvalidTxVout,
 				Message: "Locked collateral.",
@@ -5468,7 +5481,7 @@ type SignatureError struct {
 	Error      error
 }
 
-// signRawTransaction handles the signrawtransaction command.
+// handleSignRawTransaction handles the signrawtransaction command.
 func handleSignRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.SignRawTransactionCmd)
 
@@ -5522,32 +5535,32 @@ func handleSignRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 			return nil, e
 		}
 
-		var hashType txscript.SigHashType
+		var hashType ovm.SigHashType
 		switch *c.Flags {
 		case "ALL":
-			hashType = txscript.SigHashAll
+			hashType = ovm.SigHashAll
 		case "NONE":
-			hashType = txscript.SigHashNone
+			hashType = ovm.SigHashNone
 		case "SINGLE":
-			hashType = txscript.SigHashSingle
+			hashType = ovm.SigHashSingle
 		case "DOUBLE":
-			hashType = txscript.SigHashDouble
+			hashType = ovm.SigHashDouble
 		case "TRIPLE":
-			hashType = txscript.SigHashTriple
+			hashType = ovm.SigHashTriple
 		case "QUARDRUPLE":
-			hashType = txscript.SigHashQuardruple
+			hashType = ovm.SigHashQuardruple
 		case "ALL|ANYONECANPAY":
-			hashType = txscript.SigHashAll | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashAll | ovm.SigHashAnyOneCanPay
 		case "NONE|ANYONECANPAY":
-			hashType = txscript.SigHashNone | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashNone | ovm.SigHashAnyOneCanPay
 		case "SINGLE|ANYONECANPAY":
-			hashType = txscript.SigHashSingle | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashSingle | ovm.SigHashAnyOneCanPay
 		case "DOUBLE|ANYONECANPAY":
-			hashType = txscript.SigHashDouble | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashDouble | ovm.SigHashAnyOneCanPay
 		case "TRIPLE|ANYONECANPAY":
-			hashType = txscript.SigHashTriple | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashTriple | ovm.SigHashAnyOneCanPay
 		case "QUARDRUPLE|ANYONECANPAY":
-			hashType = txscript.SigHashQuardruple | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashQuardruple | ovm.SigHashAnyOneCanPay
 		default:
 			e := errors.New("Invalid sighash parameter")
 			return nil, e
@@ -5714,7 +5727,7 @@ func handleSignRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 // being unable to determine a previous output script to redeem.
 //
 // The transaction pointed to by tx is modified by this function.
-func (s *rpcServer) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
+func (s *rpcServer) SignTransaction(tx *wire.MsgTx, hashType ovm.SigHashType,
 	additionalPrevScripts map[wire.OutPoint][]byte,
 	additionalKeysByAddress map[string]*btcutil.WIF,
 	redeemScriptsByAddress map[string][]byte, view *viewpoint.ViewPointSet) ([]SignatureError, error) {
@@ -5796,7 +5809,7 @@ func (s *rpcServer) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashTyp
 		// SigHashSingle inputs can only be signed if there's a
 		// corresponding output. However this could be already signed,
 		// so we always verify the output.
-		if (hashType&txscript.SigHashMask) < txscript.SigHashSingle || i < len(tx.TxOut) {
+		if (hashType&ovm.SigHashMask) < ovm.SigHashSingle || i < len(tx.TxOut) {
 			//				txIn.SignatureIndex = uint32(i)
 			if tx.SignatureScripts == nil {
 				tx.SignatureScripts = make([][]byte, 0)

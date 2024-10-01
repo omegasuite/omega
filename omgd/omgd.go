@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"container/list"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/decred/dcrd/dcrec/secp256k1"
@@ -69,6 +70,14 @@ func prepareServer(tcfg *config) (*Protocol, bool) {
 		btcdLog.Errorf("%v", err)
 		return nil, true
 	}
+
+	db.Update(func(dbTx database.Tx) error {
+		meta := dbTx.Metadata()
+		if _, err = meta.CreateBucket([]byte("ChainMap")); err != nil {
+			return err
+		}
+		return nil
+	})
 
 	prot := &Protocol{
 		cfg:     tcfg,
@@ -167,6 +176,55 @@ func prepareServer(tcfg *config) (*Protocol, bool) {
 		tcfg.Concurrency = 1
 	}
 	prot.activeNetParams.SigVeriConcurrency = tcfg.Concurrency
+
+	prot.activeNetParams.AddChain = nil
+	if tcfg.AddChain != "" {
+		type ChainDescriptor struct {
+			Magic          string
+			MRChain        byte
+			Genesis        string
+			MrGenesis      string
+			Parent         uint32
+			Dns            string
+			DefaultPort    string
+			DefaultRPCPort string
+		}
+
+		nc := &ChainDescriptor{}
+		err := json.Unmarshal([]byte(tcfg.AddChain), nc)
+		if err != nil {
+			btcdLog.Errorf("Unable to parse AddChain commanf %s", tcfg.AddChain)
+			return nil, false
+		}
+		prot.activeNetParams.AddChain = &chainmap.ChainDescriptor{
+			Parent:         nc.Parent,
+			Dns:            nc.Dns,
+			DefaultPort:    nc.DefaultPort,
+			DefaultRPCPort: nc.DefaultRPCPort,
+			MRChain:        false,
+		}
+		h, err := hex.DecodeString(nc.Genesis)
+		if err != nil || len(h) != 32 {
+			btcdLog.Errorf("Unable to parse AddChain command %s", tcfg.AddChain)
+			return nil, false
+		}
+		copy((*wire.ChainDescriptor)(prot.activeNetParams.AddChain.(*chainmap.ChainDescriptor)).Genesis[:], h)
+		if nc.MRChain != 0 {
+			(*wire.ChainDescriptor)(prot.activeNetParams.AddChain.(*chainmap.ChainDescriptor)).MRChain = true
+			h, err := hex.DecodeString(nc.MrGenesis)
+			if err != nil || len(h) != 32 {
+				btcdLog.Errorf("Unable to parse AddChain commanf %s", tcfg.AddChain)
+				return nil, false
+			}
+			copy((*wire.ChainDescriptor)(prot.activeNetParams.AddChain.(*chainmap.ChainDescriptor)).MrGenesis[:], h)
+		}
+		h, err = hex.DecodeString(nc.Magic)
+		if err != nil {
+			btcdLog.Errorf("Unable to parse AddChain commanf %s", tcfg.AddChain)
+			return nil, false
+		}
+		(*wire.ChainDescriptor)(prot.activeNetParams.AddChain.(*chainmap.ChainDescriptor)).Magic = common.LittleEndian.Uint32(h)
+	}
 
 	// Create server and start it.
 	server, err := newServer(tcfg.Listeners, db, minerdb, prot, interrupt)

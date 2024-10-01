@@ -1406,12 +1406,12 @@ func (sp *serverPeer) OnGetChainMap(_ *peer.Peer, msg *wire.MsgGetChainMap) {
 
 	reply := &wire.MsgChainMap{}
 	reply.Count = uint32(len(chainmap.ChainMap)) - msg.Sequence
-	reply.Chains = make([]chainmap.ChainDescriptor, 0)
+	reply.Chains = make([]wire.ChainDescriptor, 0)
 	for id, m := range chainmap.ChainMap {
 		if id <= msg.Sequence {
 			continue
 		}
-		reply.Chains = append(reply.Chains, *m)
+		reply.Chains = append(reply.Chains, *(*wire.ChainDescriptor)(m))
 	}
 
 	sort.Slice(reply.Chains, func(i, j int) bool {
@@ -1428,7 +1428,7 @@ func (sp *serverPeer) OnChainMap(_ *peer.Peer, msg *wire.MsgChainMap) {
 	}
 
 	for _, p := range msg.Chains {
-		chainmap.AddChain(sp.server.db, &p)
+		chainmap.AddChain(sp.server.db, (*chainmap.ChainDescriptor)(&p))
 	}
 }
 
@@ -3256,7 +3256,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 	// Create a new block chain instance with the appropriate configuration.
 	var err error
-	s.srvReq = make(chan struct{}, 50)
+	s.srvReq = make(chan interface{}, 50)
 	s.chain, err = minerchain.New(&blockchain.Config{
 		DB:          s.db,
 		MinerDB:     s.minerdb,

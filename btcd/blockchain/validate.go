@@ -397,7 +397,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 	}
 
 	if header.Nonce > 0 {
-		s, err := b.Miners.BlockByHeight(int32(rotate + 2))
+		s, err := b.Miners.BlockByHeight(int32(rotate))
 		if err != nil || s == nil {
 			// will make the block orphan, because miner chain is not ready
 			return nil, true
@@ -426,9 +426,9 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			// The block hash must be less than the claimed target.
 			hash := header.BlockHash()
 			hashNum := HashToBig(&hash)
-			if block.Height() < 383300 {
+			/*if block.Height() < 383300 {
 				target = target.Mul(target, big.NewInt(wire.DifficultyRatio))
-			} else if block.MsgBlock().Header.Version < chaincfg.Version2 {
+			} else */if block.MsgBlock().Header.Version < chaincfg.Version2 {
 				hashNum = hashNum.Mul(hashNum, big.NewInt(wire.DifficultyRatio))
 			} else if block.MsgBlock().Header.Version >= wire.Version2 {
 				/*
@@ -443,7 +443,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 						pows = 0
 					}
 				*/
-				target = target.Mul(target, big.NewInt(40))
+				target = target.Mul(target, big.NewInt(40)) // TBD: pow algo
 			}
 
 			if hashNum.Cmp(target) > 0 {
@@ -873,7 +873,7 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 			}
 		}
 		if p == nil {
-			rotate = dr
+			rotate = dr - wire.POWRotate
 		} else {
 			rotate = -p.Data.GetNonce() - wire.MINER_RORATE_FREQ + dr
 		}

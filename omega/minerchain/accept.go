@@ -68,7 +68,7 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 		p2 := b.IsSVP || prevNode.Data.(*blockchainNodeData).block.Version&0x7FFF0000 >= chaincfg.Version2
 		v2 := prevNode.Data.(*blockchainNodeData).block.MeanTPH
 		for _, v := range block.MsgBlock().TphReports {
-			if p2 && (v > v2*8 || 8*v < v2) {
+			if p2 && (v > v2*8 || 8*v < v2) && v2 > 0 {
 				return false, ruleError(ErrInvalidAncestorBlock, "Out of range TPH score")
 			}
 			sum += v
@@ -83,6 +83,9 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 			meanTPH = (v2*63 + sum) >> 6
 		} else {
 			meanTPH = sum
+		}
+		if meanTPH == 0 {
+			meanTPH = 1
 		}
 		if meanTPH != block.MsgBlock().MeanTPH {
 			return false, ruleError(ErrInvalidAncestorBlock, "Incorrect mean TPH score")
@@ -328,22 +331,10 @@ func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {
 
 	for _, op := range blk.Instructions {
 		switch op.InstCode {
-		case wire.RetireReq:
+		case wire.AddChain:
 			if len(op.InstData) != 0 { // UTXO of asset to withdraw
 				return fmt.Errorf("Incorrect op data")
 			}
-
-		case wire.Retire:
-			if len(op.InstData) != 0 { // UTXO of asset to withdraw
-				return fmt.Errorf("Incorrect op data")
-			}
-			//			if !treasury.MayRetire(blk.Miner) {
-			//				return fmt.Errorf("Miner may not retire")
-			//			}
-
-		case wire.UplinkChain:
-
-		case wire.DownlinkChain:
 		}
 	}
 	return nil

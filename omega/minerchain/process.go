@@ -306,8 +306,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 
 		for _, inst := range block.MsgBlock().Instructions {
 			switch inst.InstCode {
-			case wire.UplinkChain:
-			case wire.DownlinkChain:
+			case wire.AddChain:
 			}
 		}
 	} else if len(block.MsgBlock().ViolationReport) > 0 {

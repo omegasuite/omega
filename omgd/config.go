@@ -178,6 +178,7 @@ type config struct {
 	LogBlockTime    bool   `long:"logblocktime" description:"Log the time that blocks are received"`
 	Accounts        bool   `long:"accounts" description:"list omega accounts & balance"`
 	NetMagic        common.OmegaNet
+	AddChain        string `long:"addchain" description:"Add a blockchain to FOC"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -444,6 +445,7 @@ func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error)
 		LogBlockTime:         false,
 		Accounts:             false,
 		NetMagic:             common.MainNet,
+		AddChain:             "",
 	}
 
 	if uint32(omegaNet) != 0 {

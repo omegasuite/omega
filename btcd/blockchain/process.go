@@ -250,7 +250,7 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 
 		for _, tx := range block.MsgBlock().Transactions[1:] {
-			if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg == 0 {
+			if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
 				continue
 			}
 			xtx := &wire.XchainData{}
@@ -444,7 +444,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		}
 	}
 
-	if !b.IsSVP && b.MatchInpool(block) {
+	if !b.IsSVP && !b.MatchInpool(block) {
 		str := fmt.Sprintf("Tx in block does not match in pool %v", blockHash)
 		return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1, nil
 	}
@@ -452,7 +452,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	for _, tx := range block.MsgBlock().Transactions[1:] {
 		for _, txo := range tx.TxOut {
 			if !txo.IsSeparator() && txo.IsCrossChain() {
-				if len(txo.PkScript) < 25 {
+				if len(txo.PkScript) < 26 {
 					return false, false, fmt.Errorf("Cross chain PkScript length is less than 25b in %s", tx.TxHash().String()), -1, nil
 				}
 			}

@@ -116,12 +116,7 @@ func (b *Violations) Write(w io.Writer) error {
 type InstructionCode uint8
 
 const (
-	Pledge        = InstructionCode(1)
-	RetireReq     = InstructionCode(2)
-	Retire        = InstructionCode(3)
-	UplinkChain   = InstructionCode(4)
-	DownlinkChain = InstructionCode(5)
-	AddVersion    = InstructionCode(6)
+	AddChain = InstructionCode(1)
 )
 
 type Instruction struct {
@@ -470,17 +465,22 @@ func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
 		}
 		if err := common.ReadElements(r, &bh.ContractLimit); err != nil {
 			bh.ContractLimit = 0
+			bh.Instructions = make([]*Instruction, 0)
+			return nil
 		}
 	}
-	var n uint8
-	if err := common.ReadElements(r, &n); err != nil {
-		bh.ContractLimit = 0
-	}
-	bh.Instructions = make([]*Instruction, n)
-	for i := uint8(0); i < n; i++ {
-		bh.Instructions[i] = &Instruction{}
-		if err := bh.Instructions[i].deserializer(r); err != nil {
-			return err
+	if bh.Version >= Version6 {
+		var n uint8
+		if err := common.ReadElements(r, &n); err != nil {
+			bh.Instructions = make([]*Instruction, 0)
+			return nil
+		}
+		bh.Instructions = make([]*Instruction, n)
+		for i := uint8(0); i < n; i++ {
+			bh.Instructions[i] = &Instruction{}
+			if err := bh.Instructions[i].deserializer(r); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -550,12 +550,14 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 			return err
 		}
 	}
-	if err := common.WriteElement(w, uint8(len(bh.Instructions))); err != nil {
-		return err
-	}
-	for _, inst := range bh.Instructions {
-		if err := inst.serializer(w); err != nil {
+	if bh.Version >= Version6 {
+		if err := common.WriteElement(w, uint8(len(bh.Instructions))); err != nil {
 			return err
+		}
+		for _, inst := range bh.Instructions {
+			if err := inst.serializer(w); err != nil {
+				return err
+			}
 		}
 	}
 

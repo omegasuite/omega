@@ -201,7 +201,7 @@ func (b *MinerChain) NextRequiredDifficulty(lastNode *chainutil.BlockNode, newBl
 // while this function accepts any block node.
 func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, uint32, error) {
 	if lastNode == nil || lastNode.Height < b.blocksPerRetarget+10 {
-		return b.chainParams.PowLimitBits, 1, nil
+		return b.chainParams.PowLimitBits, 0, nil
 	}
 
 	coll := lastNode.Data.(*blockchainNodeData).block.Collateral
