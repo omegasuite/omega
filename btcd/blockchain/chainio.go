@@ -797,6 +797,9 @@ func (b *BlockChain) createChainState() error {
 		if _, err = meta.CreateBucket([]byte(common.XCAssets)); err != nil {
 			return err
 		}
+		if _, err = meta.CreateBucket([]byte(common.ROLLBACKPOOL)); err != nil {
+			return err
+		}
 
 		// Create the bucket that houses map from tokentype to contract.
 		if _, err = meta.CreateBucket(IssuedTokenTypes); err != nil {
@@ -1072,22 +1075,11 @@ func (b *BlockChain) initChainState() error {
 
 	b.db.Update(func(dbTx database.Tx) error {
 		meta := dbTx.Metadata()
-
-		var err error
-
 		// Create the bucket for pool of incoming tx
-		if _, err = meta.CreateBucket([]byte(common.INCOMINGPOOL)); err != nil {
-			return err
-		}
-
-		// Create the bucket for cross chain assets
-		if _, err = meta.CreateBucket([]byte(common.XCAssets)); err != nil {
-			return err
-		}
-
-		if _, err = meta.CreateBucket([]byte("ChainMap")); err != nil {
-			return err
-		}
+		meta.CreateBucket([]byte(common.INCOMINGPOOL))
+		meta.CreateBucket([]byte(common.XCAssets))
+		meta.CreateBucket([]byte(common.ROLLBACKPOOL))
+		meta.CreateBucket([]byte("ChainMap"))
 
 		return nil
 	})

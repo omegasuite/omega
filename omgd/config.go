@@ -748,6 +748,12 @@ func applyConfig(cfg *config) error {
 		}
 	}
 
+	if cfg.DisableRPC {
+		activeNetParams.RpcPort = ""
+	} else if len(cfg.RPCListeners) != 0 {
+		activeNetParams.RpcPort = strings.Split(cfg.RPCListeners[0], ":")[1]
+	}
+
 	if cfg.RPCMaxConcurrentReqs < 0 {
 		str := "%s: The rpcmaxwebsocketconcurrentrequests option may " +
 			"not be less than 0 -- parsed [%d]"

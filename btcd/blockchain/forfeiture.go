@@ -68,6 +68,9 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 			pmh = -(q.Data.GetNonce() + wire.MINER_RORATE_FREQ) + int32(m)
 			prevminer = g.Miners.NodeByHeight(pmh - 1)
 			rbase = pmh - g.ChainParams.ViolationReportDeadline - int32(m)
+			if rbase < 0 {
+				rbase = 0
+			}
 			for j, h := 0, rbase; j < m; j++ {
 				mb, err := g.Miners.BlockByHeight(h)
 				if err != nil {

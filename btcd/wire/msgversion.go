@@ -8,10 +8,10 @@ package wire
 import (
 	"bytes"
 	"fmt"
+	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"io"
 	"strings"
 	"time"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
 )
 
 // MaxUserAgentLen is the maximum allowed length for the user agent field in a
@@ -44,6 +44,9 @@ type MsgVersion struct {
 	// Address of the local peer.
 	AddrMe NetAddress
 
+	// My Rpc Port.
+	RpcPort string
+
 	// Unique value associated with message that is used to detect self
 	// connections.
 	Nonce uint64
@@ -53,7 +56,7 @@ type MsgVersion struct {
 	UserAgent string
 
 	// Last block seen by the generator of the version message.
-	LastBlock int32
+	LastBlock      int32
 	LastMinerBlock int32
 
 	// Don't announce transactions to peer.
@@ -106,12 +109,19 @@ func (msg *MsgVersion) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) 
 			return err
 		}
 	}
+
+	msg.RpcPort, err = common.ReadVarString(r, pver)
+	if err != nil {
+		return err
+	}
+
 	if buf.Len() > 0 {
 		err = readElement(buf, &msg.Nonce)
 		if err != nil {
 			return err
 		}
 	}
+
 	if buf.Len() > 0 {
 		userAgent, err := common.ReadVarString(buf, pver)
 		if err != nil {
@@ -178,6 +188,11 @@ func (msg *MsgVersion) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) 
 		return err
 	}
 
+	err = common.WriteVarBytes(w, pver, []byte(msg.RpcPort))
+	if err != nil {
+		return err
+	}
+
 	err = writeElement(w, msg.Nonce)
 	if err != nil {
 		return err
@@ -200,8 +215,8 @@ func (msg *MsgVersion) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) 
 
 	err = writeElement(w, !msg.DisableRelayTx)
 	if err != nil {
-			return err
-		}
+		return err
+	}
 
 	return nil
 }
@@ -242,8 +257,9 @@ func NewMsgVersion(me *NetAddress, you *NetAddress, nonce uint64,
 		Nonce:           nonce,
 		UserAgent:       DefaultUserAgent,
 		LastBlock:       lastBlock,
-		LastMinerBlock:	 LastMinerBlock,
+		LastMinerBlock:  LastMinerBlock,
 		DisableRelayTx:  false,
+		RpcPort:         "8789",
 	}
 }
 

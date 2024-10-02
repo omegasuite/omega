@@ -140,6 +140,7 @@ var rpcHandlers map[string]commandHandler
 var rpcHandlersBeforeInit = map[string]commandHandler{
 	"addnode":               handleAddNode,
 	"createrawtransaction":  handleCreateRawTransaction,
+	"crt":                   handleCreateRawTransaction,
 	"parserawtransaction":   handleParseRawTransaction,
 	"debuglevel":            handleDebugLevel,
 	"decoderawtransaction":  handleDecodeRawTransaction,
@@ -149,15 +150,20 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getaddednodeinfo":      handleGetAddedNodeInfo,
 	"getbestblock":          handleGetBestBlock, // Changed: get the best block of both chains
 	"getbestblockhash":      handleGetBestBlockHash,
+	"gbbh":                  handleGetBestBlockHash,
 	"getbestminerblockhash": handleGetBestMinerBlockHash, // New
 	"getblock":              handleGetBlock,
+	"gbk":                   handleGetBlock,
 	"getblockchaininfo":     handleGetBlockChainInfo, // Changed: get info. for both chains
+	"gbi":                   handleGetBlockChainInfo, // Changed: get info. for both chains
 	//	"alert":			     handleAlert,
 	"addminingkey":  handleAddMiningKey,
 	"addcollateral": handleAddCollateral,
 
 	"getblockcount":   handleGetBlockCount,
+	"gbc":             handleGetBlockCount,
 	"getblockhash":    handleGetBlockHash,
+	"gbh":             handleGetBlockHash,
 	"getblockheader":  handleGetBlockHeader,
 	"genmultisigaddr": handleGenMultiSigAddr,
 	//	"getbtcl2script":  handleGetBtcL2Script, // new, get a script for transfer Bitcoin to L2
@@ -168,10 +174,13 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"clearbtcl2pool": handleClearBtcL2Pool, // new
 
 	"getminerblock":       handleGetMinerBlock,       // New
+	"getmbk":              handleGetMinerBlock,       // New
 	"getminerblockheight": handleGetMinerBlockHeight, // New
 	"getminerblockcount":  handleGetMinerBlockCount,  // New
 	"getminerblockhash":   handleGetMinerBlockHash,   // New
+	"getmbkh":             handleGetMinerBlockHash,   // New
 	"getblocktxhashes":    handleGetBlockTxHases,     // New
+	"gbkth":               handleGetBlockTxHases,     // New
 	//	"searchborder":   		 handleSearchBorder,	// New
 	"gettpsview":      handleGetTPSView,
 	"gettpsreport":    handleGetTPSReport,
@@ -197,6 +206,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getnettotals":          handleGetNetTotals,
 	"getnetworkhashps":      handleGetNetworkHashPS,
 	"getpeerinfo":           handleGetPeerInfo,
+	"gps":                   handleGetPeerInfo,
 	"getrawmempool":         handleGetRawMempool,
 	"clearmempool":          handleClearMempool,
 	"getrawtransaction":     handleGetRawTransaction,
@@ -207,10 +217,12 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"node":                  handleNode,
 	"ping":                  handlePing,
 	"searchrawtransactions": handleSearchRawTransactions,
+	"schrt":                 handleSearchRawTransactions,
 	"searchspend":           handleSearchSpend,
 	"checkfork":             handleCheckFork,
 	"signrawtransaction":    handleSignRawTransaction,
 	"sendrawtransaction":    handleSendRawTransaction,
+	"srt":                   handleSendRawTransaction,
 	"confirmations":         handleConfirmations,
 	"recastrawtransaction":  handleRecastRawTransaction,
 	"setgenerate":           handleSetGenerate,
@@ -232,6 +244,7 @@ var rpcAskWallet = map[string]struct{}{
 	"addmultisigaddress":    {},
 	"backupwallet":          {},
 	"createencryptedwallet": {},
+	"crt":                   {},
 	"createmultisig":        {},
 	"dumpprivkey":           {},
 	"dumpwallet":            {},
@@ -302,23 +315,31 @@ var rpcLimited = map[string]struct{}{
 
 	// HTTP/S-only commands
 	"getblockchaininfo":     {}, // Changed: get info. for both chains
+	"gbi":                   {}, // Changed: get info. for both chains
 	"createrawtransaction":  {},
 	"decoderawtransaction":  {},
 	"decodescript":          {},
 	"estimatefee":           {},
 	"getbestblock":          {},
 	"getbestblockhash":      {},
+	"gbbh":                  {},
 	"getbestminerblockhash": {},
 	"getblock":              {},
+	"gbk":                   {},
 	"getminerblock":         {},
+	"getmbk":                {},
 	"getminerblockheight":   {},
 	"getblockcount":         {},
+	"gbc":                   {},
 	"getblockhash":          {},
+	"gbh":                   {},
 	"getblocktxhashes":      {},
+	"gbkth":                 {},
 	"searchborder":          {},
 	"getblockheader":        {},
 	"getminerblockcount":    {},
 	"getminerblockhash":     {},
+	"getmbkh":               {},
 	//	"getcfilter":            {},
 	//	"getcfilterheader":      {},
 	"getcurrentnet":    {},
@@ -335,7 +356,8 @@ var rpcLimited = map[string]struct{}{
 	"getbtcpool":       {}, // new
 	"getl2pool":        {}, // new
 	"clearbtcl2pool":   {}, // new
-
+	"signrawtransaction": {},
+	
 	//	"clearmempool":          {},	this is admin command
 	"getrawtransaction":     {},
 	"gettxout":              {},
@@ -346,7 +368,9 @@ var rpcLimited = map[string]struct{}{
 	"contractcall":          {},
 	"trycontract":           {},
 	"searchrawtransactions": {},
+	"schrt":                 {},
 	"sendrawtransaction":    {},
+	"srt":                   {},
 	"confirmations":         {},
 	//	"submitblock":           {},
 	"uptime":              {},
@@ -363,6 +387,7 @@ var rpcLimited = map[string]struct{}{
 	"getmempoolinfo":      {},
 	"getmininginfo":       {},
 	"getpeerinfo":         {},
+	"gps":                 {},
 	"node":                {},
 	"ping":                {},
 }
@@ -3665,6 +3690,7 @@ func handleGetPeerInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 			BanScore:            int32(p.BanScore()),
 			FeeFilter:           p.FeeFilter(),
 			SyncNode:            statsSnap.ID == syncPeerID,
+			RpcPort:             statsSnap.RpcPort,
 		}
 		if p.ToPeer().LastPingNonce() != 0 {
 			wait := float64(time.Since(statsSnap.LastPingTime).Nanoseconds())

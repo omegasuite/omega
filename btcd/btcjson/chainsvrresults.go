@@ -276,6 +276,7 @@ type GetPeerInfoResult struct {
 	Version             uint32  `json:"version"`
 	SubVer              string  `json:"subver"`
 	Inbound             bool    `json:"inbound"`
+	RpcPort             string  `json:"rpcport"`
 	StartingHeight      int32   `json:"startingheight"`
 	StartingMinerHeight int32   `json:"startingminerheight"`
 	CurrentHeight       int32   `json:"currentheight,omitempty"`

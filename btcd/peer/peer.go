@@ -400,6 +400,7 @@ type StatsSnap struct {
 	LastPingNonce       uint64
 	LastPingTime        time.Time
 	LastPingMicros      int64
+	RpcPort             string
 }
 
 // HashFunc is a function which returns a block hash, height and error
@@ -514,6 +515,8 @@ type Peer struct {
 	Miner     [20]byte // a copy of miner in the miner block to avoid lookup
 	TxSent    int32    // highest tx block we have sent
 	MinerSent int32    // highest miner block we have sent
+
+	RpcPort string
 }
 
 var stallCount = make(map[string]int)
@@ -610,6 +613,7 @@ func (p *Peer) StatsSnapshot() *StatsSnap {
 		LastPingNonce:       p.lastPingNonce,
 		LastPingMicros:      p.lastPingMicros,
 		LastPingTime:        p.lastPingTime,
+		RpcPort:             p.RpcPort,
 	}
 
 	p.statsMtx.RUnlock()
@@ -2166,6 +2170,7 @@ func (p *Peer) readRemoteVersionMsg() error {
 		_ = p.writeMessage(rejectMsg, wire.LatestEncoding)
 		return errors.New(reason)
 	}
+	p.RpcPort = msg.RpcPort
 
 	// check dup conn from same IP & latest state, if more than 5 recently, reject it
 	cntconlock.Lock()
@@ -2327,6 +2332,8 @@ func (p *Peer) localVersionMsg() (*wire.MsgVersion, error) {
 	msg := wire.NewMsgVersion(ourNA, theirNA, nonce, blockNum, minerBlockNum)
 	msg.AddUserAgent(p.cfg.UserAgentName, p.cfg.UserAgentVersion,
 		p.cfg.UserAgentComments...)
+
+	msg.RpcPort = p.cfg.ChainParams.RpcPort
 
 	// Advertise local services.
 	msg.Services = p.cfg.Services
@@ -2492,6 +2499,7 @@ func newPeerBase(origCfg *Config, inbound bool) *Peer {
 		protocolVersion: cfg.ProtocolVersion,
 		lastBlock:       0,
 		lastMinerBlock:  0,
+		RpcPort:         "8789",
 	}
 
 	return &p

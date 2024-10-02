@@ -1978,6 +1978,10 @@ func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string, ra
 	var h chainhash.Hash
 	var w bytes.Buffer
 
+	if len(sm.peerStates) == 0 {
+		return
+	}
+
 	w.Write([]byte(m.Command()))
 	m.OmcEncode(&w, 0, wire.FullEncoding)
 	copy(h[:], chainhash.HashB(w.Bytes()))
