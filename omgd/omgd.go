@@ -421,13 +421,13 @@ func setTip(tx, miner string, chain *blockchain.BlockChain) bool {
 
 	mstate := chain.Miners.BestSnapshot()
 
-	if !chain.SameChain(*txtip, state.Hash) {
+	if !chain.SameChain(state.Hash, *txtip) {
 		fmt.Printf("New tx tip %s not in same chain as current tip %s\n", txtip.String(), state.Hash.String())
 		return false
 	}
 
 	pb := minerblk.MsgBlock().PrevBlock
-	for i := minerblk.Height() - 1; i > mstate.Height; i-- {
+	for i := minerblk.Height() - 1; i < mstate.Height; i-- {
 		fmt.Printf("Add miner block %s\n", pb.String())
 		pbb, err := chain.Miners.DBBlockByHash(&pb)
 		if err != nil || pbb == nil {
