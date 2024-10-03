@@ -180,7 +180,7 @@ func (view *ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Spe
 				if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
-				if (in.SignatureIndex & wire.CrossChainFalg) != 0 {
+				if (in.PreviousOutPoint.Index & wire.CrossChainFalg) != 0 {
 					continue
 				}
 				entry := view.Utxo.LookupEntry(in.PreviousOutPoint)

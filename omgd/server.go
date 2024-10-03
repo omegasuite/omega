@@ -2724,12 +2724,20 @@ func (s *server) RelayInventory(invVect *wire.InvVect, data interface{}) {
 
 // BroadcastMessage sends msg to all peers currently connected to the server
 // except those in the passed peers to exclude.
-func (s *server) BroadcastMessage(msg wire.Message, exclPeers ...*serverPeer) {
+func (s *server) BroadcastMessage(msg wire.Message, check bool, exclPeers ...*serverPeer) {
 	// XXX: Need to determine if this is an alert that has already been
 	// broadcast and refrain from broadcasting again.
 	var h chainhash.Hash
+	if check {
+		var w bytes.Buffer
+		msg.OmcEncode(&w, 0, 0)
+		h = chainhash.DoubleHashH(w.Bytes())
+	}
 
-	if t, ok := s.Broadcasted[h]; !ok {
+	if t,ok := s.Broadcasted[h]; !check || !ok {
+		if check {
+			s.Broadcasted[h] = time.Now().Unix()
+		}
 		bmsg := broadcastMsg{message: msg, excludePeers: exclPeers}
 		s.broadcast <- bmsg
 	} else if time.Now().Unix()-t > 300 {

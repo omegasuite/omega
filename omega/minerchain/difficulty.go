@@ -499,9 +499,6 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		coll = 100
 	}
 	coll = (coll * 7) >> 3
-	if coll == 0 {
-		coll = 1
-	}
 	return newTargetBits, coll, nil
 }
 

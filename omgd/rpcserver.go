@@ -3708,7 +3708,7 @@ func handleGetTreasury(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	treasure := make(map[string]btcjson.TreasuryAsset)
 
 	mydb.View(func(tx database.Tx) error {
-		bucket := tx.Metadata().Bucket([]byte(common.INASSETS))
+		bucket := tx.Metadata().Bucket([]byte(common.XCAssets))
 		cursor := bucket.Cursor()
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			var outp wire.OutPoint
@@ -3816,7 +3816,7 @@ func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct
 			dbTx.Metadata().DeleteBucket(bucketName)
 			dbTx.Metadata().CreateBucket(bucketName)
 
-			bucketName = []byte(common.INASSETS)
+			bucketName = []byte(common.XCAssets)
 			dbTx.Metadata().DeleteBucket(bucketName)
 			dbTx.Metadata().CreateBucket(bucketName)
 		*/
@@ -3829,7 +3829,7 @@ func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct
 func handleGetBtcPool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	res := make(map[string]btcjson.BTCL2Data)
 	s.cfg.DB.View(func(dbTx database.Tx) error {
-		bucketName := []byte(common.INCOMINGPOOL)
+		bucketName := []byte(common.BTCL2POOL)
 		bucket := dbTx.Metadata().Bucket(bucketName)
 		cursor := bucket.Cursor()
 

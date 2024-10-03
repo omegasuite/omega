@@ -557,6 +557,7 @@ func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error)
 	// Count number of network flags passed; assign active network params
 	// while we're at it
 	if cfg.TestNet {
+
 		activeNetParams = &chaincfg.TestNet3Params
 	}
 

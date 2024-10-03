@@ -10,6 +10,7 @@ import (
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
+	"github.com/omegasuite/famofchains/omega/ovm"
 
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
@@ -267,7 +268,7 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 			}
 
 			for i, txo := range xtx.Txs {
-				if txo.Txo.PkScript[21] == b.ChainParams.CrossChainID {
+				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
 					var t [4]byte
 					copy(t[:], txo.Txo.PkScript[22:25])
 					t[3] = 0

@@ -15,6 +15,7 @@ const maxRcdPerMiner = 10  // max records we keep for each miner
 const CONTRACTTXRATIO = 30 // when calculating TPS, every 30 contract exec steps = 1 sig
 
 // TPHRecord houses information about miners's TPS record.
+//
 type TphPocket struct {
 	StartTime  time.Time
 	EndTime    time.Time

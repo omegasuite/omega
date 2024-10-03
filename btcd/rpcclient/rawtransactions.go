@@ -239,7 +239,7 @@ func (r FutureCreateRawTransactionResult) Receive() (*wire.MsgTx, error) {
 //
 // See CreateRawTransaction for the blocking version and more details.
 func (c *Client) CreateRawTransactionAsync(inputs []btcjson.TransactionInput, definitions []btcjson.Definition,
-	amounts map[btcutil.Address]btcjson.Token, lockTime *int64) FutureCreateRawTransactionResult {
+	amounts map[btcutil.Address]btcjson.Token, targetchains *[]uint32, lockTime *int64) FutureCreateRawTransactionResult {
 
 	convertedAmts := make([]map[string]btcjson.Token, 0, len(amounts))
 	for addr, amount := range amounts {
@@ -255,7 +255,7 @@ func (c *Client) CreateRawTransactionAsync(inputs []btcjson.TransactionInput, de
 			convertedAmts = append(convertedAmts, m)
 		}
 	}
-	cmd := btcjson.NewCreateRawTransactionCmd(inputs, definitions, convertedAmts, lockTime)
+	cmd := btcjson.NewCreateRawTransactionCmd(inputs, definitions, convertedAmts, targetchains, lockTime)
 	return c.sendCmd(cmd)
 }
 

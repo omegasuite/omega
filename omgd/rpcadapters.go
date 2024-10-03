@@ -204,7 +204,7 @@ func (cm *rpcConnManager) PersistentPeers() []rpcserverPeer {
 // This function is safe for concurrent access and is part of the
 // rpcserverConnManager interface implementation.
 func (cm *rpcConnManager) BroadcastMessage(msg wire.Message) {
-	cm.server.BroadcastMessage(msg)
+	cm.server.BroadcastMessage(msg, false)
 }
 
 // AddRebroadcastInventory adds the provided inventory to the list of

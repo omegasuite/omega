@@ -9,7 +9,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
-	"strings"
+
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -277,7 +277,6 @@ type Params struct {
 	ScriptAddrID     byte // First byte of a P2SH address
 	ContractAddrID   byte // First byte of a P2C address
 	PrivateKeyID     byte // First byte of a WIF private key
-	CrossChainID     byte // First byte of a cross chain script
 
 	// BIP32 hierarchical deterministic extended key magics
 	HDPublicKeyID  [4]byte
@@ -794,13 +793,13 @@ var (
 )
 
 var (
-	registeredNets       = make(map[common.OmegaNet]struct{})
-	pubKeyHashAddrIDs    = make(map[byte]struct{})
-	multisigAddrIDs      = make(map[byte]struct{})
-	contractAddrIDs      = make(map[byte]struct{})
-	scriptHashAddrIDs    = make(map[byte]struct{})
-	bech32SegwitPrefixes = make(map[string]struct{})
-	hdPrivToPubKeyIDs    = make(map[[4]byte][]byte)
+	registeredNets    = make(map[common.OmegaNet]struct{})
+	pubKeyHashAddrIDs = make(map[byte]struct{})
+	multisigAddrIDs   = make(map[byte]struct{})
+	contractAddrIDs   = make(map[byte]struct{})
+	scriptHashAddrIDs = make(map[byte]struct{})
+
+	hdPrivToPubKeyIDs = make(map[[4]byte][]byte)
 )
 
 // String returns the hostname of the DNS seed in human-readable form.
@@ -828,9 +827,6 @@ func Register(params *Params) error {
 	scriptHashAddrIDs[params.ScriptHashAddrID] = struct{}{}
 	hdPrivToPubKeyIDs[params.HDPrivateKeyID] = params.HDPublicKeyID[:]
 
-	// A valid Bech32 encoded segwit address always has as prefix the
-	// human-readable part for the given net followed by '1'.
-	bech32SegwitPrefixes[params.Bech32HRPSegwit+"1"] = struct{}{}
 	return nil
 }
 
@@ -874,15 +870,6 @@ func IsMultiSigAddrID(id byte) bool {
 // used when decoding an address string into a specific address type.
 func IsContractAddrID(id byte) bool {
 	_, ok := contractAddrIDs[id]
-	return ok
-}
-
-// IsBech32SegwitPrefix returns whether the prefix is a known prefix for segwit
-// addresses on any default or registered network.  This is used when decoding
-// an address string into a specific address type.
-func IsBech32SegwitPrefix(prefix string) bool {
-	prefix = strings.ToLower(prefix)
-	_, ok := bech32SegwitPrefixes[prefix]
 	return ok
 }
 

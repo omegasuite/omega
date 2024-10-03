@@ -114,7 +114,7 @@ func SequenceLockActive(sequenceLock *SequenceLock, blockHeight int32,
 	medianTimePast time.Time) bool {
 
 	// If either the seconds, or height relative-lock time has not yet
-	// reached, then the transaction is not yet validateCrossChain according to its
+	// reached, then the transaction is not yet mature according to its
 	// sequence locks.
 	if sequenceLock.Seconds >= medianTimePast.Unix() ||
 		sequenceLock.BlockHeight >= blockHeight {
@@ -157,17 +157,20 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 	// At this point, the transaction's lock time hasn't occurred yet, but
 	// the transaction might still be finalized if the sequence number
 	// for all transaction inputs is maxed out.
-	if len(msgTx.TxIn) != 1 || (msgTx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) == 0 {
-		// miner packed cross chain
-		for _, txIn := range msgTx.TxIn {
-			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
-			}
-			if txIn.Sequence != math.MaxUint32 {
-				return false
-			}
+
+	// miner packed cross chain
+	for _, txIn := range msgTx.TxIn {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		if len(msgTx.TxIn) != 1 || (msgTx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
+			continue
+		}
+		if txIn.Sequence != math.MaxUint32 {
+			return false
 		}
 	}
+
 	return true
 }
 
@@ -267,9 +270,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		}
 
 		if totals[txOut.TokenType] < 0 {
-			str := fmt.Sprintf("total value of all transaction "+
-				"outputs exceeds max allowed value of %v",
-				btcutil.MaxHao)
+			str := fmt.Sprintf("transaction output is negative")
 			return ruleError(ErrBadTxOutValue, str)
 		}
 		if txOut.TokenType == common.FeeCoinTyp && totals[txOut.TokenType] > btcutil.MaxHao {
@@ -1747,7 +1748,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: wire.CrossChainFalg | xtx.ChainID}, uint32(xtx.Height))
 			mtx.AddTxIn(txin)
 			for _, txo := range xtx.Txs {
-				if txo.Txo.PkScript[21] == b.ChainParams.CrossChainID {
+				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
 					var t [4]byte
 					copy(t[:], txo.Txo.PkScript[22:25])
 					t[3] = 0

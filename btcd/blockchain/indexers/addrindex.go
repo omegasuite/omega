@@ -773,6 +773,9 @@ func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
+				if txIn.PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
+					continue
+				}
 				// We'll access the slice of all the
 				// transactions spent in this block properly
 				// ordered to fetch the previous input script.
@@ -786,7 +789,7 @@ func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 		}
 
 		for _, txOut := range tx.MsgTx().TxOut {
-			if txOut.IsSeparator() {
+			if txOut.IsSeparator() || txOut.IsCrossChain() {
 				continue
 			}
 			idx.indexPkScript(data, txOut.PkScript, txIdx)
@@ -948,6 +951,9 @@ func (idx *AddrIndex) AddUnconfirmedTx(tx *btcutil.Tx, utxoView *viewpoint.UtxoV
 	// already known to exist.
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		if txIn.PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
 			continue
 		}
 		entry := utxoView.LookupEntry(txIn.PreviousOutPoint)

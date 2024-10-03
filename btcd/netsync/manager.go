@@ -245,7 +245,7 @@ type SyncManager struct {
 	syncjobs    []*pendginGetBlocks
 	lastBlockOp string // for debug
 	bshutdown   bool
-	castmx      sync.Mutex
+	smtx        sync.Mutex
 
 	tmpblksrc map[chainhash.Hash]*peerpkg.Peer
 }
@@ -331,6 +331,12 @@ func (sm *SyncManager) AddSyncJob(peer *peerpkg.Peer, locator, mlocator chainhas
 		copy(h[p+chainhash.HashSize:], mstopHash[:])
 	}
 	hash := chainhash.DoubleHashH(h[:])
+
+	sm.smtx.Lock()
+	defer func() {
+		sm.smtx.Unlock()
+	}()
+
 	for i := 0; i < len(sm.syncjobs); i++ {
 		if hash == sm.syncjobs[i].hash {
 			return
@@ -372,6 +378,11 @@ func (sm *SyncManager) updateSyncPeer() {
 			}
 		}
 	}
+
+	sm.smtx.Lock()
+	defer func() {
+		sm.smtx.Unlock()
+	}()
 
 	n := len(sm.syncjobs)
 
@@ -436,7 +447,9 @@ func (sm *SyncManager) updateSyncPeer() {
 
 func (sm *SyncManager) clearSync() {
 	sm.syncPeer = nil
+	sm.smtx.Lock()
 	sm.syncjobs = sm.syncjobs[:0]
+	sm.smtx.Unlock()
 }
 
 // startSync will choose the best peer among the available candidate peers to
@@ -1986,9 +1999,9 @@ func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string, ra
 	m.OmcEncode(&w, 0, wire.FullEncoding)
 	copy(h[:], chainhash.HashB(w.Bytes()))
 
-	sm.castmx.Lock()
+	sm.smtx.Lock()
 	defer func() {
-		sm.castmx.Unlock()
+		sm.smtx.Unlock()
 	}()
 
 	now := time.Now().Unix()
@@ -2166,7 +2179,9 @@ out:
 			log.Debugf("blockHandler finished with message: ", reflect.TypeOf(m).String())
 
 		case <-sm.quit:
+			sm.smtx.Lock()
 			sm.syncjobs = sm.syncjobs[:0]
+			sm.smtx.Unlock()
 			break out
 		}
 		sm.lastBlockOp += " ... Done."

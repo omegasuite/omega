@@ -208,6 +208,7 @@ func (mp *TxPool) removeOrphan(tx *btcutil.Tx, removeRedeemers bool) {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
+
 		orphans, exists := mp.orphansByPrev[txIn.PreviousOutPoint]
 		if exists {
 			delete(orphans, *txHash)
@@ -979,6 +980,9 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
+		}
+		if txIn.PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
+			return nil, nil, fmt.Errorf("Input invalid")
 		}
 		// Ensure the referenced input transaction is available.
 		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)

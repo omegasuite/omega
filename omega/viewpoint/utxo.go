@@ -375,7 +375,7 @@ func (view *ViewPointSet) ConnectTransaction(tx *btcutil.Tx, blockHeight int32, 
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
-		if txIn.SignatureIndex & wire.CrossChainFalg != 0 {
+		if txIn.PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
 			continue
 		}
 		// Ensure the referenced utxo exists in the view.  This should
@@ -961,7 +961,7 @@ func (view *ViewPointSet) FetchInputUtxos(block *btcutil.Block) error {
 	// what is already known (in-flight).
 	neededSet := make(map[wire.OutPoint]struct{})
 	for i, tx := range transactions[1:] {
-		if len(tx.MsgTx().TxIn) == 1 && tx.MsgTx().TxIn[0].SignatureIndex & wire.CrossChainFalg != 0 {
+		if len(tx.MsgTx().TxIn) == 1 && tx.MsgTx().TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
 			continue
 		}
 		for _, txIn := range tx.MsgTx().TxIn {

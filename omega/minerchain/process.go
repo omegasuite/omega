@@ -177,7 +177,7 @@ func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode
 			if p.Data.GetVersion() < chaincfg.Version2 {
 				break
 			}
-			if *block.MsgBlock().Utxos == *p.Data.(*blockchainNodeData).block.Utxos {
+			if p.Data.(*blockchainNodeData).block.Utxos != nil && *block.MsgBlock().Utxos == *p.Data.(*blockchainNodeData).block.Utxos {
 				// not allowed same utxo in 100 blks
 				return false, fmt.Errorf("Re-use UTXO for collateral within 100 miner blocks"), nil
 			}

@@ -1594,7 +1594,7 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest *chainhash.H
 		return 0, fmt.Errorf("Insufficient Collateral.")
 	}
 
-	if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version3 {
+	if !b.IsSVP && block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version3 {
 		pks := e.PkScript()
 		if bytes.Compare(pks[1:21], block.MsgBlock().Miner[:]) != 0 {
 			return 0, fmt.Errorf("Collateral belongs to someone else.")
@@ -1779,7 +1779,7 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
 			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: wire.CrossChainFalg | xtx.ChainID}, uint32(xtx.Height))
 			mtx.AddTxIn(txin)
 			for _, txo := range xtx.Txs {
-				if txo.Txo.PkScript[21] == b.ChainParams.CrossChainID {
+				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
 					var t [4]byte
 					copy(t[:], txo.Txo.PkScript[22:25])
 					t[3] = 0

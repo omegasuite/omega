@@ -386,23 +386,25 @@ func (self *Syncer) process(cmd interface{}) bool {
 		if self.sigGiven >= 0 {
 			return false
 		}
-		if tree.block != nil {
-			log.Infof("newtree %s at %d width %d txs", tree.hash.String(), self.Height, len(tree.block.MsgBlock().Transactions))
-		} else {
-			log.Infof("newtree %s at %d", tree.hash.String(), self.Height)
-		}
+		//		if tree.block != nil {
+		//			log.Infof("newtree %s at %d width %d txs", tree.hash.String(), self.Height, len(tree.block.MsgBlock().Transactions))
+		//		} else {
+		//			log.Infof("newtree %s at %d", tree.hash.String(), self.Height)
+		//		}
 
 		if !self.validateMsg(tree.creator, nil, nil) {
 			log.Infof("tree creator %x is not a member of committee", tree.creator)
 			return false
 		}
 
-		if tree.block != nil &&
-			len(tree.block.MsgBlock().Transactions) > 1 &&
-			len(tree.block.MsgBlock().Transactions[1].TxIn) > 1 &&
-			tree.block.MsgBlock().Transactions[1].TxIn[0].SignatureIndex == 0xFFFFFFFF {
-			log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
-		}
+		/*
+			if tree.block != nil &&
+				len(tree.block.MsgBlock().Transactions) > 1 &&
+				len(tree.block.MsgBlock().Transactions[1].TxIn) > 1 &&
+				tree.block.MsgBlock().Transactions[1].TxIn[0].SignatureIndex == 0xFFFFFFFF {
+				log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
+			}
+		*/
 
 		self.handeling = "New tree"
 		c := self.Members[tree.creator]
@@ -460,7 +462,7 @@ func (self *Syncer) process(cmd interface{}) bool {
 				return false
 			}
 
-			log.Infof("MsgKnowledge originated from %d with %v", self.Members[k.Finder], k.K)
+			//			log.Infof("MsgKnowledge originated from %d with %v", self.Members[k.Finder], k.K)
 
 			if bytes.Compare(self.forest[k.Finder].hash[:], k.M[:]) != 0 {
 				// reset it

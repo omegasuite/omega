@@ -613,7 +613,7 @@ mempoolLoop:
 			if txo.IsSeparator() {
 				continue
 			}
-			if len(txo.PkScript) > 21 && txo.PkScript[21] == g.chainParams.CrossChainID {
+			if len(txo.PkScript) > 21 && txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
 				var h [4]byte
 				copy(h[:], txo.PkScript[22:25])
 				h[3] = 0

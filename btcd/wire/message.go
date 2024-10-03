@@ -181,6 +181,18 @@ func makeEmptyMessage(command string) (Message, error) {
 	case CmdAlert:
 		msg = &MsgAlert{}
 
+	case CmdFinalized:
+		msg = &MsgFinalized{}
+
+	case CmdFinal:
+		msg = &MsgReFinal{}
+
+	case CmdGetChainMap:
+		msg = &MsgGetChainMap{}
+
+	case CmdChainMap:
+		msg = &MsgChainMap{}
+
 	case CmdMemPool:
 		msg = &MsgMemPool{}
 

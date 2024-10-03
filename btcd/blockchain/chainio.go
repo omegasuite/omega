@@ -989,13 +989,13 @@ func (b *BlockChain) GetAccounts() map[[21]byte]map[uint64]uint64 {
 func (b *BlockChain) initChainState() error {
 	// Determine the state of the chain database. We may need to initialize
 	// everything from scratch or upgrade certain buckets.
-	var initialized, hasBlockIndex, hasminertps, hascomptx, hasaddrusage bool
+	var initialized, hasBlockIndex, hascomptx, hasaddrusage bool
 	var addrUseIndexKey = []byte("usebyaddridx")
 
 	err := b.db.Update(func(dbTx database.Tx) error {
 		initialized = dbTx.Metadata().Get(chainStateKeyName) != nil
 		hasBlockIndex = dbTx.Metadata().Bucket(blockIndexBucketName) != nil
-		hasminertps = dbTx.Metadata().Bucket(minerTPSBucketName) != nil
+		//		hasminertps = dbTx.Metadata().Bucket(minerTPSBucketName) != nil
 		hascomptx = dbTx.Metadata().Bucket(compendatedBucketName) != nil
 		hasaddrusage = dbTx.Metadata().Bucket(addrUseIndexKey) != nil
 
@@ -1022,17 +1022,12 @@ func (b *BlockChain) initChainState() error {
 		panic("block index mssing")
 	}
 
-	if !hasminertps {
-		err := b.db.Update(func(dbTx database.Tx) error {
-			if _, err = dbTx.Metadata().CreateBucket(minerTPSBucketName); err != nil {
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-	}
+	b.db.Update(func(dbTx database.Tx) error {
+		dbTx.Metadata().CreateBucket(minerTPSBucketName)
+		//		dbTx.Metadata().CreateBucket([]byte(common.BTCSpendlog))
+		return nil
+	})
+
 	if !hasaddrusage {
 		err := b.db.Update(func(dbTx database.Tx) error {
 			if _, err = dbTx.Metadata().CreateBucket(addrUseIndexKey); err != nil {

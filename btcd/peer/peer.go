@@ -519,6 +519,7 @@ type Peer struct {
 	RpcPort string
 }
 
+var stallMtx sync.Mutex
 var stallCount = make(map[string]int)
 
 // String returns the peer's address and directionality as a human-readable
@@ -1288,9 +1289,11 @@ func (p *Peer) stallHandler() {
 	defer stallTicker.Stop()
 
 	if !p.Inbound() {
+		stallMtx.Lock()
 		if _, ok := stallCount[p.String()]; !ok {
 			stallCount[p.String()] = 1
 		}
+		stallMtx.Unlock()
 	}
 
 	// ioStopped is used to detect when both the input and output handler
@@ -1371,6 +1374,7 @@ out:
 			now := time.Now()
 			offset := deadlineOffset
 
+			stallMtx.Lock()
 			if _, ok := stallCount[p.String()]; ok && !p.Inbound() {
 				offset += time.Duration(stallCount[p.String()] * 1e10)
 			}
@@ -1404,6 +1408,7 @@ out:
 				p.Disconnect("stallHandler")
 				break
 			}
+			stallMtx.Unlock()
 
 			// Reset the deadline offset for the next tick.
 			deadlineOffset = 0
