@@ -129,7 +129,8 @@ const (
 	DefinedDeployments
 )
 
-const defaultChainID = 1           // ID of this chain. each chain has a unique id
+const DefaultChainID = 1           // ID of this chain. each chain has a unique id
+const DefaultParentChainID = 0     // ID of this chain. each chain has a unique id
 const defaultSVPChainID = 0x800001 // Root xfer chain
 
 const (
@@ -243,6 +244,9 @@ type GlobalParams struct { // The params that must be the same for every node in
 type Params struct {
 	GlobalParams
 
+	// parent chainid of main chain
+	ParentChainId uint32
+
 	// external IPs that peers can reach us
 	ExternalIPs []string
 
@@ -341,9 +345,11 @@ var MainNetParams = Params{
 			Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
 		},
 		ViolationReportDeadline: 100,
-		ChainID:                 defaultChainID, // Omega
+		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "8789",
 	},
+
+	ParentChainId: DefaultParentChainID,
 
 	// Chain parameters
 	GenesisBlock:      &genesisBlock,
@@ -457,10 +463,11 @@ var RegressionNetParams = Params{
 			Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
 		},
 		ViolationReportDeadline: 10,
-		ChainID:                 defaultChainID, // Omega
+		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "18840",
 	},
 
+	ParentChainId: DefaultParentChainID,
 	// Chain parameters
 	GenesisBlock:      &regTestGenesisBlock,
 	GenesisMinerBlock: &regTestGenesisMinerBlock,
@@ -576,10 +583,11 @@ var TestNet3Params = Params{
 			Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
 		},
 		ViolationReportDeadline: 10,
-		ChainID:                 defaultChainID, // Omega
+		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "18840",
 	},
 
+	ParentChainId: DefaultParentChainID,
 	// Chain parameters
 	GenesisBlock:      &testNet3GenesisBlock,
 	GenesisMinerBlock: &testNet3GenesisMinerBlock,
@@ -697,10 +705,11 @@ var SimNetParams = Params{
 			Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
 		},
 		ViolationReportDeadline: 10,
-		ChainID:                 defaultChainID, // Omega
+		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "18840",
 	},
 
+	ParentChainId: DefaultParentChainID,
 	// Chain parameters
 	GenesisBlock:      &simNetGenesisBlock,
 	GenesisMinerBlock: &simNetGenesisMinerBlock,

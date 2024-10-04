@@ -1389,17 +1389,13 @@ func (sp *serverPeer) OnGetChainMap(_ *peer.Peer, msg *wire.MsgGetChainMap) {
 	if msg.Sequence < 0 {
 		msg.Sequence = 0
 	}
-	if sp.server.chain.ChainParams.ChainID != chainmap.ROOT {
+	if protocols[0].Server.chain.ChainParams.ChainID != chainmap.ROOT {
 		// forwarding
-		for _, p := range protocols {
-			if p.Server.chainParams.ChainID == sp.server.chainParams.ChainID {
+		for _, p := range protocols[1:] {
+			if p.Server.chainParams.ChainID != protocols[0].Server.chainParams.ParentChainId {
 				continue
 			}
-			chain := chainmap.ChainMap[p.Server.chainParams.ChainID]
-			if chain.PassThru(sp.server.chainParams.ChainID, chainmap.ROOT) {
-				p.Server.Randcast(msg, nil)
-				return
-			}
+			p.Server.Randcast(msg, nil)
 		}
 		return
 	}
@@ -1427,8 +1423,13 @@ func (sp *serverPeer) OnChainMap(_ *peer.Peer, msg *wire.MsgChainMap) {
 		return
 	}
 
+	added := false
 	for _, p := range msg.Chains {
-		chainmap.AddChain(sp.server.db, (*chainmap.ChainDescriptor)(&p))
+		added = chainmap.AddChain(sp.server.db, (*chainmap.ChainDescriptor)(&p)) || added
+	}
+	// shutdown & reboot
+	if added {
+		shutdownRequestChannel <- struct{}{}
 	}
 }
 
@@ -2734,7 +2735,7 @@ func (s *server) BroadcastMessage(msg wire.Message, check bool, exclPeers ...*se
 		h = chainhash.DoubleHashH(w.Bytes())
 	}
 
-	if t,ok := s.Broadcasted[h]; !check || !ok {
+	if t, ok := s.Broadcasted[h]; !check || !ok {
 		if check {
 			s.Broadcasted[h] = time.Now().Unix()
 		}
@@ -3834,8 +3835,8 @@ func mergeCheckpoints(defaultCheckpoints, additional []chaincfg.Checkpoint) []ch
 	return checkpoints
 }
 
-func (s *server) RequestChain(chain uint32) {
-	if _, ok := chainmap.ChainMap[chain]; ok {
+func (s *server) RequestChain(chainid uint32) {
+	if _, ok := chainmap.ChainMap[chainid]; ok {
 		return
 	}
 	if s.chainParams.ChainID == chainmap.ROOT {

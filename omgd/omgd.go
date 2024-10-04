@@ -695,82 +695,84 @@ func main() {
 		os.Exit(1)
 	}
 
-	chainmap.LoadChainMap(p.db)
-	p.Server.RequestChain(0)
-
 	p.IsSvp = false
 	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
 
-	p.db.Update(func(tx database.Tx) error {
-		bucket := tx.Metadata().Bucket([]byte("SVP Clients"))
-		if bucket == nil {
-			return nil
+	chainmap.LoadChainMap(p.db)
+
+	wg.Add(1)
+	p.running = true
+
+	go runserver(p)
+	go checkfinal()
+
+	p.Server.RequestChain(0)
+
+	for _, c := range chainmap.ChainMap {
+		if c.ChainID != chaincfg.DefaultParentChainID && c.Parent != p.Server.chainParams.ChainID {
+			continue
 		}
-		configbucket := tx.Metadata().Bucket([]byte("SVP Configuration"))
+		dparams := &chaincfg.GlobalParams{}
+		if err := json.Unmarshal([]byte(c.GlobalParams), dparams); err != nil {
+			os.Exit(1)
+		}
 
-		cursor := bucket.Cursor()
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			params := &chaincfg.GlobalParams{}
-			if err := json.Unmarshal(cursor.Value(), params); err != nil {
-				os.Exit(1)
-			}
+		var magic [4]byte
+		common.LittleEndian.PutUint32(magic[:], uint32(dparams.Net))
+		vcfg := &config{}
 
-			svpid := fmt.Sprintf("%x", uint32(params.Net))
-			tcfg, _, err := loadConfig(svpid, params.Net)
+		err = p.db.Update(func(tx database.Tx) error {
+			configbucket := tx.Metadata().Bucket([]byte("SVP Configuration"))
 
-			var magic [4]byte
-			common.LittleEndian.PutUint32(magic[:], uint32(params.Net))
+			svpid := fmt.Sprintf("%x", uint32(dparams.Net))
+			vcfg, _, err = loadConfig(svpid, dparams.Net)
 
 			if err != nil {
-				tcfg = &config{}
-
 				v := configbucket.Get(magic[:])
 
 				if v != nil {
-					if err := json.Unmarshal(v, tcfg); err != nil {
-						os.Exit(1)
+					if err = json.Unmarshal(v, vcfg); err != nil {
+						return err
 					}
 				} else {
-					*tcfg = *protocols[0].cfg
-					tcfg.LogDir += "/" + svpid
-					tcfg.DataDir += "/" + svpid
+					*vcfg = *protocols[0].cfg
+					vcfg.LogDir += "/" + svpid
+					vcfg.DataDir += "/" + svpid
 				}
 			}
-			v, _ := json.Marshal(tcfg)
+			v, _ := json.Marshal(vcfg)
 			configbucket.Put(magic[:], v)
-
-			p, quit = prepareServer(tcfg)
-			if quit || p == nil {
-				if p != nil {
-					cleanup(p)
-				}
-				os.Exit(1)
-			}
-
-			p.IsSvp = true
-			p.activeNetParams = &chaincfg.Params{GlobalParams: *params}
-
-			p.activeNetParams.MainChainID = protocols[0].activeNetParams.ChainID
-			p.Server.chain.MainChain = protocols[0].Server.chain
-
-			protocols = append(protocols, p)
+			return nil
+		})
+		if err != nil {
+			os.Exit(1)
 		}
 
-		return nil
-	})
+		p, quit = prepareServer(vcfg)
+		if quit || p == nil {
+			if p != nil {
+				cleanup(p)
+			}
+			os.Exit(1)
+		}
 
-	for i, p := range protocols {
+		p.IsSvp = true
+		p.activeNetParams = &chaincfg.Params{GlobalParams: *dparams}
+
+		p.activeNetParams.MainChainID = protocols[0].activeNetParams.ChainID
+		p.Server.chain.MainChain = protocols[0].Server.chain
+
+		protocols = append(protocols, p)
+	}
+
+	for i, p := range protocols[1:] {
 		wg.Add(1)
 		p.running = true
 
 		go runserver(p)
 
-		if i > 0 {
-			go retrievedefs(protocols[0], protocols[i])
-		} else {
-			go checkfinal()
-		}
+		go retrievedefs(protocols[0], protocols[i])
 	}
 
 	wg.Wait()

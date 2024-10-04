@@ -26,6 +26,7 @@ type ChainDescriptor struct {
 	DefaultPort    string
 	DefaultRPCPort string
 	Height         uint32
+	GlobalParams   string
 }
 
 func (t *ChainDescriptor) Serialize() []byte {
@@ -68,6 +69,11 @@ func (t *ChainDescriptor) OmcEncode(w io.Writer) error {
 		return err
 	}
 	_, err = w.Write([]byte(t.DefaultRPCPort))
+	if err != nil {
+		return err
+	}
+
+	err = common.WriteVarBytes(w, 0, []byte(t.GlobalParams))
 	if err != nil {
 		return err
 	}
@@ -120,6 +126,11 @@ func (t *ChainDescriptor) OmcDecode(r io.Reader) error {
 		return err
 	}
 	t.DefaultRPCPort = string(buf)
+
+	t.GlobalParams, err = common.ReadVarString(r, 0)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }

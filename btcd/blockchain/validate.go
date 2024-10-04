@@ -2152,7 +2152,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 					if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 						continue
 					}
-					if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; !ok {
+					if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; ok {
 						return fmt.Errorf("Try to spend locked collateral")
 					}
 				}

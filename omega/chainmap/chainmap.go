@@ -10,6 +10,8 @@ package chainmap
 
 import (
 	"encoding/hex"
+	"encoding/json"
+	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
@@ -133,6 +135,12 @@ func AddChain(db database.DB, c *ChainDescriptor) bool {
 
 	if _, ok := ChainMap[c.Parent]; c.Parent != 0 && !ok {
 		return false
+	}
+
+	params := &chaincfg.GlobalParams{}
+	err := json.Unmarshal([]byte(c.GlobalParams), params)
+	if err != nil {
+		panic("bad GlobalParams data")
 	}
 
 	db.Update(func(tx database.Tx) error {
