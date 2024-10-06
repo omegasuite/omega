@@ -8,6 +8,7 @@ package mining
 import (
 	"bytes"
 	"container/heap"
+	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
 	"github.com/omegasuite/famofchains/omega/chainmap"
@@ -1293,21 +1294,24 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		Instructions:    nil,
 	}
 
-	if nextBlockVersion >= chaincfg.Version6 && g.chainParams.AddChain != nil && g.chainParams.ChainID == chainmap.ROOT {
+	if nextBlockVersion >= chaincfg.Version5 && g.chainParams.AddChain != nil && g.chainParams.ChainID == chainmap.ROOT {
 		exist := false
 		ac := g.chainParams.AddChain.(*chainmap.ChainDescriptor)
 		for _, c := range chainmap.ChainMap {
-			if ac.Magic == c.Magic || ac.Dns == c.Dns || ac.Genesis.IsEqual(&c.Genesis) ||
-				(c.MRChain && ac.MRChain && ac.MrGenesis.IsEqual(&c.MrGenesis)) {
+			if ac.Magic == c.Magic || (ac.Dns == c.Dns && ac.DefaultPort == c.DefaultPort) || ac.Genesis == c.Genesis ||
+				(c.MRChain && ac.MRChain && ac.MrGenesis == c.MrGenesis) {
 				exist = true
 			}
 		}
 		if !exist {
 			ac.ChainID = uint32(len(chainmap.ChainMap) + 1)
-			msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
-				InstCode: wire.AddChain,
-				InstData: (*wire.ChainDescriptor)(ac).Serialize(),
-			}}
+			md, err := json.Marshal(ac)
+			if err == nil {
+				msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
+					InstCode: wire.AddChain,
+					InstData: md,
+				}}
+			}
 		}
 	}
 

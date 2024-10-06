@@ -10,11 +10,13 @@ package minerchain
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/famofchains/omega/chainmap"
 	"sort"
 
 	//	"github.com/omegasuite/btcutil/base58"
@@ -332,8 +334,13 @@ func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {
 	for _, op := range blk.Instructions {
 		switch op.InstCode {
 		case wire.AddChain:
-			if len(op.InstData) != 0 { // UTXO of asset to withdraw
+			if len(op.InstData) == 0 { // UTXO of asset to withdraw
 				return fmt.Errorf("Incorrect op data")
+			}
+			ac := chainmap.ChainDescriptor{}
+			err := json.Unmarshal(op.InstData, &ac)
+			if err != nil {
+				return err
 			}
 		}
 	}

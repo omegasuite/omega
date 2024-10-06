@@ -383,7 +383,7 @@ func (b *MinerChain) initChainState() error {
 // deserializeBlockRow parses a value in the block index bucket into a block
 // header and block status bitfield.
 func deserializeBlockRow(blockRow []byte) (*wire.MinerBlock, chainutil.BlockStatus, error) {
-	buffer := bytes.NewReader(blockRow)
+	buffer := bytes.NewReader(blockRow[:len(blockRow)-1])
 
 	var header wire.MingingRightBlock
 	err := header.Deserialize(buffer)
@@ -391,15 +391,18 @@ func deserializeBlockRow(blockRow []byte) (*wire.MinerBlock, chainutil.BlockStat
 		return nil, chainutil.StatusNone, err
 	}
 
-	statusByte, err := buffer.ReadByte()
-	if err != nil {
-		// make sure we get the last byte
-		buffer.UnreadByte()
-		statusByte, err = buffer.ReadByte()
+	statusByte := blockRow[len(blockRow)-1]
+	/*
+		statusByte, err := buffer.ReadByte()
 		if err != nil {
-			return nil, chainutil.StatusNone, err
+			// make sure we get the last byte
+			buffer.UnreadByte()
+			statusByte, err = buffer.ReadByte()
+			if err != nil {
+				return nil, chainutil.StatusNone, err
+			}
 		}
-	}
+	*/
 
 	return wire.NewMinerBlock(&header), chainutil.BlockStatus(statusByte), nil
 }

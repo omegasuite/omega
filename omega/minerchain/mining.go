@@ -626,7 +626,7 @@ out:
 				time.Sleep(time.Second * 5)
 				continue
 			}
-			block.MsgBlock().Instructions = make([]*wire.Instruction, 0)
+			//			block.MsgBlock().Instructions = make([]*wire.Instruction, 0)
 
 			h1 = int64(v)
 			if h1 < 1 {

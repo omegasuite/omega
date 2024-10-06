@@ -6,7 +6,6 @@ package wire
 
 import (
 	"bytes"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"io"
 )
@@ -18,8 +17,8 @@ type MsgGetChainMap struct {
 type ChainDescriptor struct {
 	Magic          uint32
 	MRChain        bool
-	Genesis        chainhash.Hash
-	MrGenesis      chainhash.Hash
+	Genesis        string
+	MrGenesis      string
 	Parent         uint32
 	ChainID        uint32
 	Dns            string
@@ -50,12 +49,20 @@ func (t *ChainDescriptor) OmcEncode(w io.Writer) error {
 		return err
 	}
 
-	err = common.WriteElements(w, t.Genesis, t.MrGenesis, t.Parent, t.ChainID)
+	err = common.WriteVarBytes(w, 0, []byte(t.Genesis))
+	if err != nil {
+		return err
+	}
+	err = common.WriteVarBytes(w, 0, []byte(t.MrGenesis))
+	if err != nil {
+		return err
+	}
+	err = common.WriteElements(w, t.Parent, t.ChainID)
 	if err != nil {
 		return err
 	}
 
-	err = common.WriteElements(w, t.Genesis, uint32(len(t.Dns)), uint32(len(t.DefaultPort)), uint32(len(t.DefaultRPCPort)))
+	err = common.WriteElements(w, uint32(len(t.Dns)), uint32(len(t.DefaultPort)), uint32(len(t.DefaultRPCPort)))
 	if err != nil {
 		return err
 	}
@@ -94,7 +101,16 @@ func (t *ChainDescriptor) OmcDecode(r io.Reader) error {
 		t.MRChain = false
 	}
 
-	err = common.ReadElements(r, &t.Genesis, &t.MrGenesis, &t.Parent, &t.ChainID)
+	t.Genesis, err = common.ReadVarString(r, 0)
+	if err != nil {
+		return err
+	}
+	t.MrGenesis, err = common.ReadVarString(r, 0)
+	if err != nil {
+		return err
+	}
+
+	err = common.ReadElements(r, &t.Parent, &t.ChainID)
 	if err != nil {
 		return err
 	}
@@ -143,7 +159,7 @@ func (t *ChainDescriptor) Deserialize(res []byte) bool {
 
 	var r bytes.Reader
 	r.Reset(res)
-	return t.OmcDecode(&r) != nil
+	return t.OmcDecode(&r) == nil
 	/*
 		ln := len(res)
 		if ln < 81+12 {

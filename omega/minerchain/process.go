@@ -303,12 +303,6 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		if r, err, hreq := b.checkV2(block, parent, flags); !r {
 			return false, false, err, hreq
 		}
-
-		for _, inst := range block.MsgBlock().Instructions {
-			switch inst.InstCode {
-			case wire.AddChain:
-			}
-		}
 	} else if len(block.MsgBlock().ViolationReport) > 0 {
 		return false, false, fmt.Errorf("Unexpected blacklist"), nil
 	}

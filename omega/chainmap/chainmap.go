@@ -9,8 +9,8 @@
 package chainmap
 
 import (
-	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"github.com/omegasuite/famofchains/btcd/chaincfg"
 	"github.com/omegasuite/famofchains/btcd/database"
 	"github.com/omegasuite/famofchains/btcd/wire"
@@ -63,11 +63,23 @@ var RootMeta = &ChainDescriptor{
 	MRChain:        true,
 	Parent:         0,
 	ChainID:        ROOT,
-	// Genesis: 0000000fca59d9ceb85d0c076c211bc84391d8de5352597e825c453a2f5be963
-	// MrGenesis: 0000003c37c434f066dfed9f8569803dfcde9b318fc22b6b1fac11b32623a826
+	Genesis:        "0000000fca59d9ceb85d0c076c211bc84391d8de5352597e825c453a2f5be963",
+	MrGenesis:      "0000003c37c434f066dfed9f8569803dfcde9b318fc22b6b1fac11b32623a826",
 }
 
-func LoadChainMap(db database.DB) {
+var ParentChain = &ChainDescriptor{
+	Magic:          0,  // 0x956ca366,
+	Dns:            "", // "omegasuite.org",
+	DefaultPort:    "",
+	DefaultRPCPort: "",
+	MRChain:        false,
+	Parent:         0,
+	ChainID:        0,
+	Genesis:        "",
+	MrGenesis:      "",
+}
+
+func LoadChainMap(db database.DB, isroot bool) {
 	ChainMap = make(map[uint32]*ChainDescriptor)
 
 	db.Update(func(tx database.Tx) error {
@@ -80,9 +92,13 @@ func LoadChainMap(db database.DB) {
 		cursor := bucket.Cursor()
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			t := &wire.ChainDescriptor{}
-			t.Deserialize(cursor.Value())
+			if !t.Deserialize(cursor.Value()) {
+				break
+			}
 			k := common.LittleEndian.Uint32(cursor.Key())
 			ChainMap[k] = (*ChainDescriptor)(t)
+			s, _ := json.Marshal(t)
+			fmt.Printf("chain data: %s\n", s)
 		}
 
 		bad := false
@@ -102,12 +118,12 @@ func LoadChainMap(db database.DB) {
 			}
 		}
 
-		if _, ok := ChainMap[ROOT]; !ok || bad {
+		if _, ok := ChainMap[ROOT]; isroot && (!ok || bad) {
 			ChainMap = map[uint32]*ChainDescriptor{}
-			h, _ := hex.DecodeString("0000000fca59d9ceb85d0c076c211bc84391d8de5352597e825c453a2f5be963")
-			RootMeta.Genesis.SetBytes(h)
-			h, _ = hex.DecodeString("0000003c37c434f066dfed9f8569803dfcde9b318fc22b6b1fac11b32623a826")
-			RootMeta.MrGenesis.SetBytes(h)
+			//			h, _ := hex.DecodeString("0000000fca59d9ceb85d0c076c211bc84391d8de5352597e825c453a2f5be963")
+			RootMeta.Genesis = "0000000fca59d9ceb85d0c076c211bc84391d8de5352597e825c453a2f5be963"
+			//			h, _ = hex.DecodeString("0000003c37c434f066dfed9f8569803dfcde9b318fc22b6b1fac11b32623a826")
+			RootMeta.MrGenesis = "0000003c37c434f066dfed9f8569803dfcde9b318fc22b6b1fac11b32623a826"
 			ChainMap[ROOT] = RootMeta
 
 			meta.DeleteBucket(bucketname)
@@ -124,7 +140,7 @@ func AddChain(db database.DB, c *ChainDescriptor) bool {
 	}
 
 	for _, d := range ChainMap {
-		if d.Magic == c.Magic || d.Dns == c.Dns || d.Genesis.IsEqual(&c.Genesis) || (c.MRChain && d.MRChain && d.MrGenesis.IsEqual(&c.MrGenesis)) {
+		if d.Magic == c.Magic || d.Dns == c.Dns || d.Genesis == c.Genesis || (c.MRChain && d.MRChain && d.MrGenesis == c.MrGenesis) {
 			return false
 		}
 	}

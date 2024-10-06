@@ -49,6 +49,11 @@ type GetBlockVerboseResult struct {
 	NextHash     string        `json:"nextblockhash,omitempty"`
 }
 
+type Instruction struct {
+	InstCode uint32
+	InstData string
+}
+
 type GetMinerBlockVerboseResult struct {
 	Hash          string             `json:"hash"`
 	Confirmations int64              `json:"confirmations"`
@@ -66,6 +71,7 @@ type GetMinerBlockVerboseResult struct {
 	Best          string             `json:"best"`
 	Collateral    string             `json:"collateral"`
 	Violations    []*wire.Violations `json:"violations"`
+	Instructions  []Instruction      `json:"instructions"`
 }
 
 // CreateMultiSigResult models the data returned from the createmultisig

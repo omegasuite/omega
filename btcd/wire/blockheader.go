@@ -469,18 +469,19 @@ func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
 			return nil
 		}
 	}
-	if bh.Version >= Version6 {
-		var n uint8
-		if err := common.ReadElements(r, &n); err != nil {
-			bh.Instructions = make([]*Instruction, 0)
+	if bh.Version >= Version5 {
+		bh.Instructions = make([]*Instruction, 0)
+		d, err = common.ReadVarInt(r, 0)
+		if err != nil || d == 0 {
 			return nil
 		}
-		bh.Instructions = make([]*Instruction, n)
-		for i := uint8(0); i < n; i++ {
-			bh.Instructions[i] = &Instruction{}
-			if err := bh.Instructions[i].deserializer(r); err != nil {
+
+		for i := uint64(0); i < d; i++ {
+			p := &Instruction{}
+			if err := p.deserializer(r); err != nil {
 				return err
 			}
+			bh.Instructions = append(bh.Instructions, p)
 		}
 	}
 
@@ -550,10 +551,17 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 			return err
 		}
 	}
-	if bh.Version >= Version6 {
-		if err := common.WriteElement(w, uint8(len(bh.Instructions))); err != nil {
+
+	if len(bh.Instructions) == 0 && bh.Version < Version6 {
+		return nil
+	}
+
+	if bh.Version >= Version5 {
+		err := common.WriteVarInt(w, 0, uint64(len(bh.Instructions)))
+		if err != nil {
 			return err
 		}
+
 		for _, inst := range bh.Instructions {
 			if err := inst.serializer(w); err != nil {
 				return err

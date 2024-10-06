@@ -58,26 +58,33 @@ type Protocol struct {
 
 var protocols []*Protocol
 
-func prepareServer(tcfg *config) (*Protocol, bool) {
+func prepareServer(tcfg *config, pdb database.DB) (*Protocol, bool) {
 	// Get a channel that will be closed when a shutdown signal has been
 	// triggered either from an OS signal such as SIGINT (Ctrl+C) or from
 	// another subsystem such as the RPC server.
 	interrupt := interruptListener()
 
-	// Load the block database.
-	db, err := loadBlockDB(tcfg)
-	if err != nil {
-		btcdLog.Errorf("%v", err)
-		return nil, true
-	}
+	var db, minerdb database.DB
+	var err error
 
-	db.Update(func(dbTx database.Tx) error {
-		meta := dbTx.Metadata()
-		if _, err = meta.CreateBucket([]byte("ChainMap")); err != nil {
-			return err
+	db = pdb
+	// Load the block database.
+	if pdb == nil {
+		// Load the block database.
+		db, err = loadBlockDB(tcfg)
+		if err != nil {
+			btcdLog.Errorf("%v", err)
+			return nil, true
 		}
-		return nil
-	})
+
+		db.Update(func(dbTx database.Tx) error {
+			meta := dbTx.Metadata()
+			if _, err = meta.CreateBucket([]byte("ChainMap")); err != nil {
+				return err
+			}
+			return nil
+		})
+	}
 
 	prot := &Protocol{
 		cfg:     tcfg,
@@ -86,7 +93,7 @@ func prepareServer(tcfg *config) (*Protocol, bool) {
 	}
 
 	// Load the block database.
-	minerdb, err := loadMinerDB(tcfg)
+	minerdb, err = loadMinerDB(tcfg)
 	if err != nil {
 		btcdLog.Errorf("%v", err)
 		return prot, true
@@ -179,51 +186,13 @@ func prepareServer(tcfg *config) (*Protocol, bool) {
 
 	prot.activeNetParams.AddChain = nil
 	if tcfg.AddChain != "" {
-		type ChainDescriptor struct {
-			Magic          string
-			MRChain        byte
-			Genesis        string
-			MrGenesis      string
-			Parent         uint32
-			Dns            string
-			DefaultPort    string
-			DefaultRPCPort string
-		}
-
-		nc := &ChainDescriptor{}
+		nc := &chainmap.ChainDescriptor{}
 		err := json.Unmarshal([]byte(tcfg.AddChain), nc)
 		if err != nil {
 			btcdLog.Errorf("Unable to parse AddChain commanf %s", tcfg.AddChain)
 			return nil, false
 		}
-		prot.activeNetParams.AddChain = &chainmap.ChainDescriptor{
-			Parent:         nc.Parent,
-			Dns:            nc.Dns,
-			DefaultPort:    nc.DefaultPort,
-			DefaultRPCPort: nc.DefaultRPCPort,
-			MRChain:        false,
-		}
-		h, err := hex.DecodeString(nc.Genesis)
-		if err != nil || len(h) != 32 {
-			btcdLog.Errorf("Unable to parse AddChain command %s", tcfg.AddChain)
-			return nil, false
-		}
-		copy((*wire.ChainDescriptor)(prot.activeNetParams.AddChain.(*chainmap.ChainDescriptor)).Genesis[:], h)
-		if nc.MRChain != 0 {
-			(*wire.ChainDescriptor)(prot.activeNetParams.AddChain.(*chainmap.ChainDescriptor)).MRChain = true
-			h, err := hex.DecodeString(nc.MrGenesis)
-			if err != nil || len(h) != 32 {
-				btcdLog.Errorf("Unable to parse AddChain commanf %s", tcfg.AddChain)
-				return nil, false
-			}
-			copy((*wire.ChainDescriptor)(prot.activeNetParams.AddChain.(*chainmap.ChainDescriptor)).MrGenesis[:], h)
-		}
-		h, err = hex.DecodeString(nc.Magic)
-		if err != nil {
-			btcdLog.Errorf("Unable to parse AddChain commanf %s", tcfg.AddChain)
-			return nil, false
-		}
-		(*wire.ChainDescriptor)(prot.activeNetParams.AddChain.(*chainmap.ChainDescriptor)).Magic = common.LittleEndian.Uint32(h)
+		prot.activeNetParams.AddChain = nc
 	}
 
 	// Create server and start it.
@@ -300,6 +269,9 @@ func runserver(p *Protocol) {
 
 	if p.running {
 		p.Server.Start()
+		if p.Server.chainParams.ChainID == chaincfg.DefaultParentChainID {
+			p.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
+		}
 	}
 
 	fmt.Printf("The system is %s", runtime.GOOS)
@@ -684,10 +656,42 @@ func main() {
 		os.Exit(1)
 	}
 
+	db, _ := loadBlockDB(tcfg)
+	if db == nil {
+		fmt.Fprintf(os.Stderr, "failed to open database: %s\n", tcfg.DataDir)
+		os.Exit(1)
+	}
+	if chaincfg.DefaultChainID == chainmap.ROOT {
+		s, _ := json.Marshal(activeNetParams.GlobalParams)
+		chainmap.RootMeta.GlobalParams = string(s)
+	}
+	chainmap.LoadChainMap(db, chaincfg.DefaultChainID == chainmap.ROOT)
+
+	if _, ok := chainmap.ChainMap[chaincfg.DefaultParentChainID]; chaincfg.DefaultParentChainID != 0 && !ok {
+		// create a svp server for parent
+		pcfg, _, err := loadConfig("Parent Options", 0) // chain main options
+		if err != nil {
+			os.Exit(1)
+		}
+		pcfg.DbType = tcfg.DbType
+		pcfg.DataDir = tcfg.DataDir
+		pcfg.NetMagic = common.OmegaNet(chainmap.ParentChain.Magic)
+		p, quit := prepareServer(pcfg, db)
+		if quit || p == nil {
+			os.Exit(1)
+		}
+		p.db = db
+		p.Server.db = db
+		p.Server.Randcast(wire.NewMsgGetChainMap(uint32(0)), nil)
+		time.Sleep(2 * time.Minute)
+		db.Close()
+		os.Exit(1)
+	}
+
 	protocols = make([]*Protocol, 0)
 
 	// Work around defer not working after os.Exit()
-	p, quit := prepareServer(tcfg)
+	p, quit := prepareServer(tcfg, db)
 	if quit && p != nil {
 		cleanup(p)
 		os.Exit(1)
@@ -699,15 +703,11 @@ func main() {
 	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
 
-	chainmap.LoadChainMap(p.db)
-
 	wg.Add(1)
 	p.running = true
 
 	go runserver(p)
 	go checkfinal()
-
-	p.Server.RequestChain(0)
 
 	for _, c := range chainmap.ChainMap {
 		if c.ChainID != chaincfg.DefaultParentChainID && c.Parent != p.Server.chainParams.ChainID {
@@ -749,7 +749,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		p, quit = prepareServer(vcfg)
+		p, quit = prepareServer(vcfg, nil)
 		if quit || p == nil {
 			if p != nil {
 				cleanup(p)
@@ -759,6 +759,12 @@ func main() {
 
 		p.IsSvp = true
 		p.activeNetParams = &chaincfg.Params{GlobalParams: *dparams}
+
+		h, _ := hex.DecodeString(c.Genesis)
+		copy(p.activeNetParams.GenesisHash[:], h)
+		h, _ = hex.DecodeString(c.MrGenesis)
+		copy(p.activeNetParams.GenesisMinerHash[:], h)
+		p.activeNetParams.PowLimit = blockchain.CompactToBig(dparams.PowLimitBits)
 
 		p.activeNetParams.MainChainID = protocols[0].activeNetParams.ChainID
 		p.Server.chain.MainChain = protocols[0].Server.chain

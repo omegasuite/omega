@@ -1702,23 +1702,14 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 				continue
 			}
 			cd := &chainmap.ChainDescriptor{}
-			h, err := hex.DecodeString(meta.Gensishash)
-			if err != nil || h == nil || len(h) != 32 {
-				continue
-			}
-			copy(cd.Genesis[:], h)
-			h, err = hex.DecodeString(meta.Minergensishash)
-			if err != nil || h == nil || len(h) != 32 {
-				cd.MRChain = false
-			} else {
-				cd.MRChain = true
-				copy(cd.MrGenesis[:], h)
-			}
+			cd.Genesis = meta.Gensishash
+			cd.MrGenesis = meta.Minergensishash
+			cd.MRChain = meta.Minergensishash != ""
 			cd.Dns = meta.Dns
 			cd.Parent = meta.Parent
 			cd.DefaultPort = meta.Port
 			cd.DefaultRPCPort = meta.Rpcport
-			h, err = hex.DecodeString(meta.Magic)
+			h, err := hex.DecodeString(meta.Magic)
 			if err != nil || h == nil || len(h) != 4 {
 				continue
 			}

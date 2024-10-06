@@ -166,14 +166,6 @@ type GlobalParams struct { // The params that must be the same for every node in
 	// as one method to discover peers.
 	DNSSeeds []DNSSeed
 
-	// GenesisHash is the starting block hash.
-	GenesisHash      *chainhash.Hash
-	GenesisMinerHash *chainhash.Hash
-
-	// PowLimit defines the highest allowed proof of work value for a block
-	// as a uint256.
-	PowLimit *big.Int
-
 	// PowLimitBits defines the highest allowed proof of work value for a
 	// block in compact form.
 	PowLimitBits uint32
@@ -243,6 +235,14 @@ type GlobalParams struct { // The params that must be the same for every node in
 // and keys for one network from those intended for use on another network.
 type Params struct {
 	GlobalParams
+
+	// GenesisHash is the starting block hash.
+	GenesisHash      *chainhash.Hash
+	GenesisMinerHash *chainhash.Hash
+
+	// PowLimit defines the highest allowed proof of work value for a block
+	// as a uint256.
+	PowLimit *big.Int
 
 	// parent chainid of main chain
 	ParentChainId uint32
@@ -320,9 +320,6 @@ var MainNetParams = Params{
 		DNSSeeds: []DNSSeed{
 			{"omegasuite.org", false},
 		},
-		GenesisHash:              &genesisHash,
-		GenesisMinerHash:         &genesisMinerHash,
-		PowLimit:                 mainPowLimit,
 		PowLimitBits:             0x1e003ff0,
 		CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 		SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
@@ -348,6 +345,10 @@ var MainNetParams = Params{
 		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "8789",
 	},
+
+	GenesisHash:      &genesisHash,
+	GenesisMinerHash: &genesisMinerHash,
+	PowLimit:         mainPowLimit,
 
 	ParentChainId: DefaultParentChainID,
 
@@ -438,9 +439,6 @@ var RegressionNetParams = Params{
 		Net:                      common.RegNet,
 		DefaultPort:              "18484",
 		DNSSeeds:                 []DNSSeed{},
-		GenesisHash:              &regTestGenesisHash,
-		GenesisMinerHash:         &regTestGenesisMinerHash,
-		PowLimit:                 regressionPowLimit,
 		PowLimitBits:             0x207fffff,
 		CoinbaseMaturity:         10,
 		SubsidyReductionInterval: 150 * wire.MINER_RORATE_FREQ,
@@ -466,6 +464,10 @@ var RegressionNetParams = Params{
 		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "18840",
 	},
+
+	GenesisHash:      &regTestGenesisHash,
+	GenesisMinerHash: &regTestGenesisMinerHash,
+	PowLimit:         regressionPowLimit,
 
 	ParentChainId: DefaultParentChainID,
 	// Chain parameters
@@ -558,9 +560,6 @@ var TestNet3Params = Params{
 		DNSSeeds: []DNSSeed{
 			{"omegasuite.org", false},
 		},
-		GenesisHash:              &testNet3GenesisHash,
-		GenesisMinerHash:         &testNet3GenesisMinerHash,
-		PowLimit:                 testNet3PowLimit,
 		PowLimitBits:             0x1f0fffff, // 0x1d3fffff
 		CoinbaseMaturity:         10,
 		SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
@@ -586,6 +585,10 @@ var TestNet3Params = Params{
 		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "18840",
 	},
+
+	GenesisHash:      &testNet3GenesisHash,
+	GenesisMinerHash: &testNet3GenesisMinerHash,
+	PowLimit:         testNet3PowLimit,
 
 	ParentChainId: DefaultParentChainID,
 	// Chain parameters
@@ -680,9 +683,6 @@ var SimNetParams = Params{
 		Net:                      common.SimNet,
 		DefaultPort:              "18585",
 		DNSSeeds:                 []DNSSeed{}, // NOTE: There must NOT be any seeds.
-		GenesisHash:              &simNetGenesisHash,
-		GenesisMinerHash:         &simNetGenesisMinerHash,
-		PowLimit:                 simNetPowLimit,
 		PowLimitBits:             0x207fffff,
 		CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 		SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
@@ -708,6 +708,10 @@ var SimNetParams = Params{
 		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "18840",
 	},
+
+	GenesisHash:      &simNetGenesisHash,
+	GenesisMinerHash: &simNetGenesisMinerHash,
+	PowLimit:         simNetPowLimit,
 
 	ParentChainId: DefaultParentChainID,
 	// Chain parameters

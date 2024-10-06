@@ -342,22 +342,22 @@ var rpcLimited = map[string]struct{}{
 	"getmbkh":               {},
 	//	"getcfilter":            {},
 	//	"getcfilterheader":      {},
-	"getcurrentnet":    {},
-	"getdifficulty":    {},
-	"getheaders":       {},
-	"getinfo":          {},
-	"getnettotals":     {},
-	"getnetworkhashps": {},
-	"getrawmempool":    {},
-	"getissuedtokens":  {},
-	"createxferl2txo":  {},
-	"gettreasury":      {}, // new
-	"getsigners":       {}, // new
-	"getbtcpool":       {}, // new
-	"getl2pool":        {}, // new
-	"clearbtcl2pool":   {}, // new
+	"getcurrentnet":      {},
+	"getdifficulty":      {},
+	"getheaders":         {},
+	"getinfo":            {},
+	"getnettotals":       {},
+	"getnetworkhashps":   {},
+	"getrawmempool":      {},
+	"getissuedtokens":    {},
+	"createxferl2txo":    {},
+	"gettreasury":        {}, // new
+	"getsigners":         {}, // new
+	"getbtcpool":         {}, // new
+	"getl2pool":          {}, // new
+	"clearbtcl2pool":     {}, // new
 	"signrawtransaction": {},
-	
+
 	//	"clearmempool":          {},	this is admin command
 	"getrawtransaction":     {},
 	"gettxout":              {},
@@ -2270,6 +2270,14 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		collateral = blockHeader.Utxos.String()
 	}
 
+	insts := make([]btcjson.Instruction, len(blockHeader.Instructions))
+	for i, t := range blockHeader.Instructions {
+		insts[i] = btcjson.Instruction{
+			InstCode: uint32(t.InstCode),
+			InstData: string(t.InstData),
+		}
+	}
+
 	blockReply := btcjson.GetMinerBlockVerboseResult{
 		Hash:          c.Hash,
 		Version:       blockHeader.Version,
@@ -2287,6 +2295,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Best:          blockHeader.BestBlock.String(),
 		Collateral:    collateral,
 		Violations:    blockHeader.ViolationReport,
+		Instructions:  insts,
 	}
 
 	return blockReply, nil
