@@ -2148,8 +2148,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 					if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 						continue
 					}
-
-					if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
+					if txin.PreviousOutPoint.Index&wire.OP_PAYCROSSCHAIN != 0 {
 						continue
 					}
 					if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; ok {

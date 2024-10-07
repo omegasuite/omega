@@ -175,6 +175,9 @@ type pauseMsg struct {
 	unpause <-chan struct{}
 }
 
+type passiveMsg struct {
+}
+
 // headerNode is used as a node in a list of headers that are linked together
 // between checkpoints.
 type headerNode struct {
@@ -2041,6 +2044,7 @@ func (sm *SyncManager) blockHandler() {
 	defer ticker.Stop()
 
 	sm.lastBlockOp = ""
+	passiveMode := false
 
 out:
 	for {
@@ -2062,41 +2066,53 @@ out:
 				sm.handleNewPeerMsg(msg.peer)
 
 			case *txMsg:
-				sm.handleTxMsg(msg)
-				msg.reply <- struct{}{}
+				if !passiveMode {
+					sm.handleTxMsg(msg)
+					msg.reply <- struct{}{}
+				}
 
 			case *sigMsg:
-				if b, ok := sm.cachedBlocks[msg.hash]; ok {
-					b.MsgBlock().Transactions[0].SignatureScripts = msg.signatures
-					bm := blockMsg{
-						b,
-						msg.peer,
-						msg.reply,
+				if !passiveMode {
+					if b, ok := sm.cachedBlocks[msg.hash]; ok {
+						b.MsgBlock().Transactions[0].SignatureScripts = msg.signatures
+						bm := blockMsg{
+							b,
+							msg.peer,
+							msg.reply,
+						}
+						sm.handleBlockMsg(&bm)
 					}
-					sm.handleBlockMsg(&bm)
-				}
-				msg.reply <- struct{}{}
+					msg.reply <- struct{}{}
 
-				// we should broadcast this message here
-				b := wire.MsgSignatures{
-					msg.hash,
-					msg.signatures,
+					// we should broadcast this message here
+					b := wire.MsgSignatures{
+						msg.hash,
+						msg.signatures,
+					}
+					sm.broadcast(msg.peer, &b, nil, false)
 				}
-				sm.broadcast(msg.peer, &b, nil, false)
 
 			case *blockMsg:
-				sm.handleBlockMsg(msg)
-				msg.reply <- struct{}{}
+				if !passiveMode {
+					sm.handleBlockMsg(msg)
+					msg.reply <- struct{}{}
+				}
 
 			case *minerBlockMsg:
-				sm.handleMinerBlockMsg(msg)
-				msg.reply <- struct{}{}
+				if !passiveMode {
+					sm.handleMinerBlockMsg(msg)
+					msg.reply <- struct{}{}
+				}
 
 			case *invMsg:
-				sm.handleInvMsg(msg)
+				if !passiveMode {
+					sm.handleInvMsg(msg)
+				}
 
 			case *headersMsg:
-				sm.handleHeadersMsg(msg)
+				if !passiveMode {
+					sm.handleHeadersMsg(msg)
+				}
 
 			case *donePeerMsg:
 				sm.handleDonePeerMsg(msg.peer)
@@ -2110,46 +2126,52 @@ out:
 				msg.reply <- peerID
 
 			case processBlockMsg:
-				main, isOrphan, err, _, _ := sm.chain.ProcessBlock(msg.block, msg.flags)
-				if msg.reply != nil {
-					sm.lastBlockOp += " ... waiting reply from sm.chain.ProcessBlock "
-					if err != nil {
-						msg.reply <- processBlockResponse{
-							isMain:   main,
-							isOrphan: false,
-							err:      err,
-						}
-					} else {
-						msg.reply <- processBlockResponse{
-							isMain:   main,
-							isOrphan: isOrphan,
-							err:      nil,
+				if !passiveMode {
+					main, isOrphan, err, _, _ := sm.chain.ProcessBlock(msg.block, msg.flags)
+					if msg.reply != nil {
+						sm.lastBlockOp += " ... waiting reply from sm.chain.ProcessBlock "
+						if err != nil {
+							msg.reply <- processBlockResponse{
+								isMain:   main,
+								isOrphan: false,
+								err:      err,
+							}
+						} else {
+							msg.reply <- processBlockResponse{
+								isMain:   main,
+								isOrphan: isOrphan,
+								err:      nil,
+							}
 						}
 					}
 				}
 
 			case processConsusMsg:
-				consensus.ProcessBlock(msg.block, msg.flags)
+				if !passiveMode {
+					consensus.ProcessBlock(msg.block, msg.flags)
+				}
 
 			case processMinerBlockMsg:
-				if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet || sm.chainParams.Net == common.RegNet {
-					msg.flags |= blockchain.BFEasyBlocks
-				}
-				main, isOrphan, err, _ := sm.chain.Miners.ProcessBlock(
-					msg.block, msg.flags)
-				if msg.reply != nil {
-					sm.lastBlockOp += " ... waiting reply from sm.chain.Miners.ProcessBlock "
-					if err != nil {
-						msg.reply <- processBlockResponse{
-							isMain:   main,
-							isOrphan: false,
-							err:      err,
-						}
-					} else {
-						msg.reply <- processBlockResponse{
-							isMain:   main,
-							isOrphan: isOrphan,
-							err:      nil,
+				if !passiveMode {
+					if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet || sm.chainParams.Net == common.RegNet {
+						msg.flags |= blockchain.BFEasyBlocks
+					}
+					main, isOrphan, err, _ := sm.chain.Miners.ProcessBlock(
+						msg.block, msg.flags)
+					if msg.reply != nil {
+						sm.lastBlockOp += " ... waiting reply from sm.chain.Miners.ProcessBlock "
+						if err != nil {
+							msg.reply <- processBlockResponse{
+								isMain:   main,
+								isOrphan: false,
+								err:      err,
+							}
+						} else {
+							msg.reply <- processBlockResponse{
+								isMain:   main,
+								isOrphan: isOrphan,
+								err:      nil,
+							}
 						}
 					}
 				}
@@ -2166,6 +2188,9 @@ out:
 				if msg.reply != nil {
 					msg.reply <- struct{}{}
 				}
+
+			case passiveMsg:
+				passiveMode = true
 
 			case pauseMsg:
 				// Wait until the sender unpauses the manager.
@@ -2511,6 +2536,10 @@ func (sm *SyncManager) Pause() chan<- struct{} {
 	c := make(chan struct{})
 	sm.msgChan <- pauseMsg{c}
 	return c
+}
+
+func (sm *SyncManager) Passive() {
+	sm.msgChan <- passiveMsg{}
 }
 
 // New constructs a new SyncManager. Use Start to begin processing asynchronous

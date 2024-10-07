@@ -79,9 +79,7 @@ func prepareServer(tcfg *config, pdb database.DB) (*Protocol, bool) {
 
 		db.Update(func(dbTx database.Tx) error {
 			meta := dbTx.Metadata()
-			if _, err = meta.CreateBucket([]byte("ChainMap")); err != nil {
-				return err
-			}
+			meta.CreateBucket([]byte("ChainMap"))
 			return nil
 		})
 	}
@@ -196,14 +194,14 @@ func prepareServer(tcfg *config, pdb database.DB) (*Protocol, bool) {
 	}
 
 	// Create server and start it.
-	server, err := newServer(tcfg.Listeners, db, minerdb, prot, interrupt)
+	servergr, err := newServer(tcfg.Listeners, db, minerdb, prot, interrupt)
 	if err != nil {
 		btcdLog.Errorf("Unable to start server on %v: %v",
 			tcfg.Listeners, err)
 		return prot, true
 	}
 
-	prot.Server = server
+	prot.Server = servergr
 
 	defer func() {
 		if len(tcfg.privateKeys) == 0 && tcfg.Generate {
@@ -212,35 +210,35 @@ func prepareServer(tcfg *config, pdb database.DB) (*Protocol, bool) {
 			btcdLog.Infof("consensus Server shutdown complete")
 
 			btcdLog.Infof("Gracefully shutting down the server...")
-			server.Stop()
+			servergr.Stop()
 
 			btcdLog.Infof(" server Stopped")
-			server.WaitForShutdown()
+			servergr.WaitForShutdown()
 			btcdLog.Infof("Server shutdown complete")
 		}
 	}()
 
 	if tcfg.Settip != "" {
 		tips := strings.Split(tcfg.Settip, ":")
-		if !setTip(tips[0], tips[1], server.chain) {
+		if !setTip(tips[0], tips[1], servergr.chain) {
 			return nil, false
 		}
 	}
 
 	if tcfg.Accounts {
 		// print balances of all addresses
-		accounts := server.chain.GetAccounts()
+		accounts := servergr.chain.GetAccounts()
 		for addr, bal := range accounts {
 			var address btcutil.Address
 			switch addr[0] {
-			case server.chainParams.PubKeyHashAddrID:
-				address, _ = btcutil.NewAddressPubKeyHash(addr[1:], server.chainParams)
-			case server.chainParams.ContractAddrID:
-				address, _ = btcutil.NewAddressContract(addr[1:], server.chainParams)
-			case server.chainParams.ScriptHashAddrID:
-				address, _ = btcutil.NewAddressScriptHash(addr[1:], server.chainParams)
-			case server.chainParams.MultiSigAddrID:
-				address, _ = btcutil.NewAddressMultiSig(addr[1:], server.chainParams)
+			case servergr.chainParams.PubKeyHashAddrID:
+				address, _ = btcutil.NewAddressPubKeyHash(addr[1:], servergr.chainParams)
+			case servergr.chainParams.ContractAddrID:
+				address, _ = btcutil.NewAddressContract(addr[1:], servergr.chainParams)
+			case servergr.chainParams.ScriptHashAddrID:
+				address, _ = btcutil.NewAddressScriptHash(addr[1:], servergr.chainParams)
+			case servergr.chainParams.MultiSigAddrID:
+				address, _ = btcutil.NewAddressMultiSig(addr[1:], servergr.chainParams)
 			default:
 				continue
 			}
@@ -667,6 +665,8 @@ func main() {
 	}
 	chainmap.LoadChainMap(db, chaincfg.DefaultChainID == chainmap.ROOT)
 
+	protocols = make([]*Protocol, 0)
+
 	if _, ok := chainmap.ChainMap[chaincfg.DefaultParentChainID]; chaincfg.DefaultParentChainID != 0 && !ok {
 		// create a svp server for parent
 		pcfg, _, err := loadConfig("Parent Options", 0) // chain main options
@@ -674,24 +674,42 @@ func main() {
 			os.Exit(1)
 		}
 		pcfg.DbType = tcfg.DbType
-		pcfg.DataDir = tcfg.DataDir
+		//		pcfg.LogDir = tcfg.LogDir
+		//		pcfg.DataDir = tcfg.DataDir
 		pcfg.NetMagic = common.OmegaNet(chainmap.ParentChain.Magic)
+		pcfg.Generate = false
+		pcfg.GenerateMiner = false
 		p, quit := prepareServer(pcfg, db)
 		if quit || p == nil {
 			os.Exit(1)
 		}
+		p.cfg = pcfg
 		p.db = db
 		p.Server.db = db
-		p.Server.Randcast(wire.NewMsgGetChainMap(uint32(0)), nil)
+		p.running = true
+		p.Server.syncManager.Passive()
+		protocols = append(protocols, p)
+		go runserver(p)
+		time.Sleep(5 * time.Second)
+		for done, i := false, 0; !done && i < 5; i++ {
+			p.Server.Randcast(wire.NewMsgGetChainMap(uint32(0)), nil)
+			time.Sleep(2 * time.Second)
+			chainmap.LoadChainMap(db, chaincfg.DefaultChainID == chainmap.ROOT)
+			_, done = chainmap.ChainMap[chaincfg.DefaultParentChainID]
+			if done {
+				db.Close()
+				os.Exit(1)
+			}
+		}
 		time.Sleep(2 * time.Minute)
 		db.Close()
 		os.Exit(1)
 	}
 
-	protocols = make([]*Protocol, 0)
+	db.Close()
 
 	// Work around defer not working after os.Exit()
-	p, quit := prepareServer(tcfg, db)
+	p, quit := prepareServer(tcfg, nil)
 	if quit && p != nil {
 		cleanup(p)
 		os.Exit(1)
@@ -702,12 +720,6 @@ func main() {
 	p.IsSvp = false
 	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
-
-	wg.Add(1)
-	p.running = true
-
-	go runserver(p)
-	go checkfinal()
 
 	for _, c := range chainmap.ChainMap {
 		if c.ChainID != chaincfg.DefaultParentChainID && c.Parent != p.Server.chainParams.ChainID {
@@ -724,6 +736,9 @@ func main() {
 
 		err = p.db.Update(func(tx database.Tx) error {
 			configbucket := tx.Metadata().Bucket([]byte("SVP Configuration"))
+			if configbucket == nil {
+				configbucket, _ = tx.Metadata().CreateBucket([]byte("SVP Configuration"))
+			}
 
 			svpid := fmt.Sprintf("%x", uint32(dparams.Net))
 			vcfg, _, err = loadConfig(svpid, dparams.Net)
@@ -770,18 +785,26 @@ func main() {
 		p.Server.chain.MainChain = protocols[0].Server.chain
 
 		protocols = append(protocols, p)
+		if p.Server.chainParams.ChainID == chaincfg.DefaultParentChainID {
+			p.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
+		}
 	}
 
-	for i, p := range protocols[1:] {
+	for i, p := range protocols {
 		wg.Add(1)
 		p.running = true
 
 		go runserver(p)
 
-		go retrievedefs(protocols[0], protocols[i])
+		if i > 0 {
+			go retrievedefs(protocols[0], protocols[i])
+		} else {
+			go checkfinal()
+		}
 	}
 
 	wg.Wait()
+	return
 }
 
 func checkfinal() {

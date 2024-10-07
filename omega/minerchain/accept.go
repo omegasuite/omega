@@ -209,7 +209,10 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			if c == 0 {
 				c = 1
 			}
-			v, _ := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
+		v, err := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
+		if err != nil {
+			return err
+		}
 			h1 := int64(v / c)
 			if h1 < 1 {
 				h1 = 1

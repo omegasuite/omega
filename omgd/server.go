@@ -3213,6 +3213,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		Broadcasted: make(map[chainhash.Hash]int64),
 	}
 	s.prot = prot
+	s.chainParams.Net = prot.cfg.NetMagic
 
 	if prot.cfg.Generate && !prot.cfg.TxIndex { // must allow txindex when mining
 		return nil, errors.New("Must enable tx index (width full history) when mining.")

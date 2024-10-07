@@ -28,6 +28,14 @@ type ChainDescriptor struct {
 	GlobalParams   string
 }
 
+func (t *ChainDescriptor) Match(s *ChainDescriptor) bool {
+	return t.Magic == s.Magic && t.MRChain == s.MRChain &&
+		t.Genesis == s.Genesis && t.MrGenesis == s.MrGenesis &&
+		t.Dns == s.Dns && t.DefaultRPCPort == s.DefaultRPCPort &&
+		t.DefaultPort == s.DefaultPort && t.Parent == s.Parent &&
+		t.ChainID == s.ChainID && t.GlobalParams == s.GlobalParams
+}
+
 func (t *ChainDescriptor) Serialize() []byte {
 	var w bytes.Buffer
 	err := t.OmcEncode(&w)

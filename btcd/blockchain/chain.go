@@ -1693,28 +1693,15 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 				return
 			}
 
-			var meta addchaindata
-			err := json.Unmarshal(op.InstData, &meta)
+			cd := &chainmap.ChainDescriptor{}
+			err := json.Unmarshal(op.InstData, cd)
 			if err != nil {
 				continue
 			}
-			if _, ok := chainmap.ChainMap[meta.ChainId]; ok {
+			if _, ok := chainmap.ChainMap[cd.ChainID]; ok {
 				continue
 			}
-			cd := &chainmap.ChainDescriptor{}
-			cd.Genesis = meta.Gensishash
-			cd.MrGenesis = meta.Minergensishash
-			cd.MRChain = meta.Minergensishash != ""
-			cd.Dns = meta.Dns
-			cd.Parent = meta.Parent
-			cd.DefaultPort = meta.Port
-			cd.DefaultRPCPort = meta.Rpcport
-			h, err := hex.DecodeString(meta.Magic)
-			if err != nil || h == nil || len(h) != 4 {
-				continue
-			}
-			cd.Magic = common.BigEndian.Uint32(h)
-			cd.ChainID = meta.ChainId
+			cd.MRChain = cd.MrGenesis != ""
 			cd.Height = uint32(block.Height())
 
 			// if 100 MR block all having this inst, then add it
@@ -1730,12 +1717,12 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 				for _, op2 := range blk.MsgBlock().Instructions {
 					switch op2.InstCode {
 					case wire.AddChain:
-						var meta2 addchaindata
+						meta2 := &wire.ChainDescriptor{}
 						err = json.Unmarshal(op2.InstData, &meta2)
 						if err != nil {
 							continue
 						}
-						if meta2.Match(&meta) {
+						if meta2.Match((*wire.ChainDescriptor)(cd)) {
 							agreed++
 							break
 						}
@@ -1841,11 +1828,6 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		if block.MsgBlock().Header.ContractExec > cnl && b.ChainParams.Net == common.MainNet {
 			// contract execution must not exceed block limit
 			str := fmt.Sprintf("Contract execution steps exceeds block limit in %v", *block.Hash())
-			return false, ruleError(ErrExcessContractExec, str)
-		}
-		if block.MsgBlock().Header.ContractExec > 0 && b.IsSVP {
-			// SVP of base chain is xfer chain which has no contract exec
-			str := fmt.Sprintf("Contract execution not allowed in %v", *block.Hash())
 			return false, ruleError(ErrExcessContractExec, str)
 		}
 
