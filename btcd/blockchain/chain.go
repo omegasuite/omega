@@ -1679,7 +1679,7 @@ func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) {
 			if chainmap.ChainMap[meta.ChainId].Height != uint32(block.Height()) {
 				continue
 			}
-			chainmap.RemoveChain(b.db, meta.ChainId)
+			chainmap.RemoveChain(meta.ChainId)
 		}
 	}
 }
@@ -1731,7 +1731,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 			}
 			if agreed == 100 {
 				// add it to chainmap
-				chainmap.AddChain(b.db, cd)
+				chainmap.AddChain(cd)
 			}
 		}
 	}

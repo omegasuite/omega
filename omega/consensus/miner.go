@@ -474,8 +474,8 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 }
 
 func VerifySig(m Message) bool {
-	if miner.cfg == nil {
-		return true
+	if miner == nil || miner.cfg == nil {
+		return false
 	}
 
 	var err error

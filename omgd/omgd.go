@@ -8,7 +8,7 @@ package main
 import (
 	"bytes"
 	"container/list"
-	"encoding/hex"
+	//	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/decred/dcrd/dcrec/secp256k1"
@@ -58,7 +58,7 @@ type Protocol struct {
 
 var protocols []*Protocol
 
-func prepareServer(tcfg *config, pdb database.DB) (*Protocol, bool) {
+func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalParams, svp bool) (*Protocol, bool) {
 	// Get a channel that will be closed when a shutdown signal has been
 	// triggered either from an OS signal such as SIGINT (Ctrl+C) or from
 	// another subsystem such as the RPC server.
@@ -88,6 +88,7 @@ func prepareServer(tcfg *config, pdb database.DB) (*Protocol, bool) {
 		cfg:     tcfg,
 		db:      db,
 		running: false,
+		IsSvp:   svp,
 	}
 
 	// Load the block database.
@@ -126,6 +127,22 @@ func prepareServer(tcfg *config, pdb database.DB) (*Protocol, bool) {
 	}
 
 	prot.activeNetParams = activeNetParams
+	if globalParams != nil {
+		prot.activeNetParams.GlobalParams = *globalParams
+		//		prot.activeNetParams.PowLimit = blockchain.CompactToBig(globalParams.PowLimitBits)
+	}
+	if tcfg.TestNet {
+		prot.activeNetParams.GenesisHash = chaincfg.TestNet3GenesisHash[uint32(tcfg.NetMagic)]
+		prot.activeNetParams.GenesisBlock = chaincfg.TestNet3GenesisBlock[uint32(tcfg.NetMagic)]
+		prot.activeNetParams.GenesisMinerHash = chaincfg.TestNet3GenesisMinerHash[uint32(tcfg.NetMagic)]
+		prot.activeNetParams.GenesisMinerBlock = chaincfg.TestNet3GenesisMinerBlock[uint32(tcfg.NetMagic)]
+	} else {
+		prot.activeNetParams.GenesisHash = chaincfg.GenesisHash[uint32(tcfg.NetMagic)]
+		prot.activeNetParams.GenesisBlock = chaincfg.GenesisBlock[uint32(tcfg.NetMagic)]
+		prot.activeNetParams.GenesisMinerHash = chaincfg.GenesisMinerHash[uint32(tcfg.NetMagic)]
+		prot.activeNetParams.GenesisMinerBlock = chaincfg.GenesisMinerBlock[uint32(tcfg.NetMagic)]
+	}
+
 	prot.activeNetParams.MinRelayTxFee = int64(tcfg.minRelayTxFee)
 
 	if tcfg.Generate && len(tcfg.privateKeys) == 0 {
@@ -487,6 +504,37 @@ func warnMultipleDBs(cfg *config) {
 	}
 }
 
+func loadChainmapDB(tcfg *config) (database.DB, error) {
+	path := strings.Split(tcfg.DataDir, "/")
+	if len(path) == 1 {
+		path = strings.Split(tcfg.DataDir, "\\")
+	}
+	path[len(path)-1] = "chainmap"
+	dataDir := strings.Join(path, "/")
+
+	db, err := database.Open(tcfg.DbType, dataDir, tcfg.NetMagic)
+	if err != nil {
+		// Return the error if it's not because the database doesn't
+		// exist.
+		if dbErr, ok := err.(database.Error); !ok || dbErr.ErrorCode !=
+			database.ErrDbDoesNotExist {
+
+			return nil, err
+		}
+
+		// Create the db if it does not exist.
+		err = os.MkdirAll(tcfg.DataDir, 0700)
+		if err != nil {
+			return nil, err
+		}
+		db, err = database.Create(tcfg.DbType, dataDir, tcfg.NetMagic)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return db, nil
+}
+
 // loadBlockDB loads (or creates when needed) the block database taking into
 // account the selected database backend and returns a handle to it.  It also
 // contains additional logic such warning the user if there are multiple
@@ -654,16 +702,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	db, _ := loadBlockDB(tcfg)
-	if db == nil {
-		fmt.Fprintf(os.Stderr, "failed to open database: %s\n", tcfg.DataDir)
-		os.Exit(1)
+	activeNetParams.ChainCurrentStd = time.Hour * time.Duration(tcfg.ChainCurrentStd)
+	if tcfg.Concurrency <= 0 {
+		tcfg.Concurrency = 1
 	}
+	activeNetParams.SigVeriConcurrency = tcfg.Concurrency
+
 	if chaincfg.DefaultChainID == chainmap.ROOT {
 		s, _ := json.Marshal(activeNetParams.GlobalParams)
 		chainmap.RootMeta.GlobalParams = string(s)
 	}
-	chainmap.LoadChainMap(db, chaincfg.DefaultChainID == chainmap.ROOT)
+
+	cmdb, err := loadChainmapDB(tcfg)
+	chainmap.LoadChainMap(cmdb, chaincfg.DefaultChainID == chainmap.ROOT)
 
 	protocols = make([]*Protocol, 0)
 
@@ -679,13 +730,12 @@ func main() {
 		pcfg.NetMagic = common.OmegaNet(chainmap.ParentChain.Magic)
 		pcfg.Generate = false
 		pcfg.GenerateMiner = false
-		p, quit := prepareServer(pcfg, db)
+		// connect to parent chain but use main db
+		p, quit := prepareServer(pcfg, cmdb, nil, false)
 		if quit || p == nil {
 			os.Exit(1)
 		}
 		p.cfg = pcfg
-		p.db = db
-		p.Server.db = db
 		p.running = true
 		p.Server.syncManager.Passive()
 		protocols = append(protocols, p)
@@ -694,22 +744,20 @@ func main() {
 		for done, i := false, 0; !done && i < 5; i++ {
 			p.Server.Randcast(wire.NewMsgGetChainMap(uint32(0)), nil)
 			time.Sleep(2 * time.Second)
-			chainmap.LoadChainMap(db, chaincfg.DefaultChainID == chainmap.ROOT)
+			chainmap.LoadChainMap(cmdb, chaincfg.DefaultChainID == chainmap.ROOT)
 			_, done = chainmap.ChainMap[chaincfg.DefaultParentChainID]
 			if done {
-				db.Close()
+				cmdb.Close()
 				os.Exit(1)
 			}
 		}
 		time.Sleep(2 * time.Minute)
-		db.Close()
+		cmdb.Close()
 		os.Exit(1)
 	}
 
-	db.Close()
-
-	// Work around defer not working after os.Exit()
-	p, quit := prepareServer(tcfg, nil)
+	// main chain
+	p, quit := prepareServer(tcfg, nil, nil, false)
 	if quit && p != nil {
 		cleanup(p)
 		os.Exit(1)
@@ -717,7 +765,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	p.IsSvp = false
 	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
 
@@ -730,56 +777,33 @@ func main() {
 			os.Exit(1)
 		}
 
-		var magic [4]byte
-		common.LittleEndian.PutUint32(magic[:], uint32(dparams.Net))
-		vcfg := &config{}
+		svpid := fmt.Sprintf("%x", uint32(dparams.Net))
+		vcfg, _, _ := loadConfig(svpid, dparams.Net)
+		vcfg.NetMagic = dparams.Net
+		vcfg.GenerateMiner = false
+		vcfg.Generate = false
+		vcfg.privateKeys = nil
+		vcfg.PrivKeys = nil
+		vcfg.MiningAddrs = nil
+		vcfg.Collateral = nil
+		vcfg.AddrIndex = false
+		vcfg.BlocksOnly = false
+		vcfg.collateral = nil
+		vcfg.DisablePOWMining = true
+		vcfg.miningAddrs = nil
+		vcfg.TxIndex = false
+		vcfg.AddrIndex = false
+		//		vcfg.NoCFilters = true
+		vcfg.signAddress = nil
 
-		err = p.db.Update(func(tx database.Tx) error {
-			configbucket := tx.Metadata().Bucket([]byte("SVP Configuration"))
-			if configbucket == nil {
-				configbucket, _ = tx.Metadata().CreateBucket([]byte("SVP Configuration"))
-			}
-
-			svpid := fmt.Sprintf("%x", uint32(dparams.Net))
-			vcfg, _, err = loadConfig(svpid, dparams.Net)
-
-			if err != nil {
-				v := configbucket.Get(magic[:])
-
-				if v != nil {
-					if err = json.Unmarshal(v, vcfg); err != nil {
-						return err
-					}
-				} else {
-					*vcfg = *protocols[0].cfg
-					vcfg.LogDir += "/" + svpid
-					vcfg.DataDir += "/" + svpid
-				}
-			}
-			v, _ := json.Marshal(vcfg)
-			configbucket.Put(magic[:], v)
-			return nil
-		})
-		if err != nil {
-			os.Exit(1)
-		}
-
-		p, quit = prepareServer(vcfg, nil)
+		// svp chain
+		p, quit = prepareServer(vcfg, nil, dparams, true)
 		if quit || p == nil {
 			if p != nil {
 				cleanup(p)
 			}
 			os.Exit(1)
 		}
-
-		p.IsSvp = true
-		p.activeNetParams = &chaincfg.Params{GlobalParams: *dparams}
-
-		h, _ := hex.DecodeString(c.Genesis)
-		copy(p.activeNetParams.GenesisHash[:], h)
-		h, _ = hex.DecodeString(c.MrGenesis)
-		copy(p.activeNetParams.GenesisMinerHash[:], h)
-		p.activeNetParams.PowLimit = blockchain.CompactToBig(dparams.PowLimitBits)
 
 		p.activeNetParams.MainChainID = protocols[0].activeNetParams.ChainID
 		p.Server.chain.MainChain = protocols[0].Server.chain
@@ -804,6 +828,7 @@ func main() {
 	}
 
 	wg.Wait()
+	chainmap.Close()
 	return
 }
 

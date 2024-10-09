@@ -346,15 +346,15 @@ var MainNetParams = Params{
 		RpcPort:                 "8789",
 	},
 
-	GenesisHash:      &genesisHash,
-	GenesisMinerHash: &genesisMinerHash,
+	GenesisHash:      GenesisHash[0],
+	GenesisMinerHash: GenesisMinerHash[0],
 	PowLimit:         mainPowLimit,
 
 	ParentChainId: DefaultParentChainID,
 
 	// Chain parameters
-	GenesisBlock:      &genesisBlock,
-	GenesisMinerBlock: &genesisMinerBlock,
+	GenesisBlock:      GenesisBlock[0],
+	GenesisMinerBlock: GenesisMinerBlock[0],
 	ChainCurrentStd:   time.Hour * 24,
 	MinBorderFee:      100000,
 	//	ReduceMinDifficulty:      false,
@@ -433,6 +433,7 @@ var MainNetParams = Params{
 // RegressionNetParams defines the network parameters for the regression test
 // Bitcoin network.  Not to be confused with the test Bitcoin network (version
 // 3), this network is sometimes simply called "testnet".
+/*
 var RegressionNetParams = Params{
 	GlobalParams: GlobalParams{
 		Name:                     "regtest",
@@ -548,6 +549,7 @@ var RegressionNetParams = Params{
 	ContractExecFee:   1,
 	ContractReqExp:    false,
 }
+*/
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
 // (version 3).  Not to be confused with the regression test network, this
@@ -586,14 +588,14 @@ var TestNet3Params = Params{
 		RpcPort:                 "18840",
 	},
 
-	GenesisHash:      &testNet3GenesisHash,
-	GenesisMinerHash: &testNet3GenesisMinerHash,
+	GenesisHash:      TestNet3GenesisHash[0],
+	GenesisMinerHash: TestNet3GenesisMinerHash[0],
 	PowLimit:         testNet3PowLimit,
 
 	ParentChainId: DefaultParentChainID,
 	// Chain parameters
-	GenesisBlock:      &testNet3GenesisBlock,
-	GenesisMinerBlock: &testNet3GenesisMinerBlock,
+	GenesisBlock:      TestNet3GenesisBlock[0],
+	GenesisMinerBlock: TestNet3GenesisMinerBlock[0],
 	ChainCurrentStd:   time.Hour * 24000,
 	MinBorderFee:      100000,
 	//	ReduceMinDifficulty:      true,
@@ -677,6 +679,7 @@ var TestNet3Params = Params{
 // which are specifically specified are used to create the network rather than
 // following normal discovery rules.  This is important as otherwise it would
 // just turn into another public testnet.
+/*
 var SimNetParams = Params{
 	GlobalParams: GlobalParams{
 		Name:                     "simnet",
@@ -792,6 +795,7 @@ var SimNetParams = Params{
 	ContractExecFee:   1,
 	ContractReqExp:    false,
 }
+*/
 
 var (
 	// ErrDuplicateNet describes an error where the parameters for a Bitcoin
@@ -927,8 +931,8 @@ func init() {
 	// Register all default networks when the package is initialized.
 	mustRegister(&MainNetParams)
 	mustRegister(&TestNet3Params)
-	mustRegister(&RegressionNetParams)
-	mustRegister(&SimNetParams)
+	//	mustRegister(&RegressionNetParams)
+	//	mustRegister(&SimNetParams)
 }
 
 var ActiveNetParams *Params

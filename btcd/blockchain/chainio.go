@@ -1024,7 +1024,9 @@ func (b *BlockChain) initChainState() error {
 
 	b.db.Update(func(dbTx database.Tx) error {
 		dbTx.Metadata().CreateBucket(minerTPSBucketName)
-		//		dbTx.Metadata().CreateBucket([]byte(common.BTCSpendlog))
+		dbTx.Metadata().CreateBucket([]byte(common.INCOMINGPOOL))
+		dbTx.Metadata().CreateBucket([]byte(common.XCAssets))
+
 		return nil
 	})
 

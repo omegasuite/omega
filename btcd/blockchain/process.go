@@ -312,8 +312,13 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	b.ChainLock.Lock()
 	defer b.ChainLock.Unlock()
 
+	blockHash := block.Hash()
+
 	blockHeader := &block.MsgBlock().Header
 	prevHash := &blockHeader.PrevBlock
+	if prevHash.IsEqual(&zerohash) && !blockHash.IsEqual(b.ChainParams.GenesisHash) {
+		return true, false, nil, -1, nil
+	}
 	prevHashExists, err := b.blockExists(prevHash)
 	if err != nil {
 		return false, false, err, -1, nil
@@ -360,7 +365,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	//	fastAdd := flags&BFFastAdd == BFFastAdd
-	blockHash := block.Hash()
 
 	// The block must not already exist as valid in the main chain or side chains.
 	exists, err := b.blockExists(blockHash)

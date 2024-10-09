@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"github.com/omegasuite/famofchains/omega/minerchain"
 	"math/rand"
-	"net"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -581,16 +580,19 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 		// and fully validate them.  Finally, regression test mode does
 		// not support the headers-first approach so do normal block
 		// downloads when in regression test mode.GetBlocks
-		if sm.nextCheckpoint != nil &&
-			best.Height < sm.nextCheckpoint.Height &&
-			sm.chainParams != &chaincfg.RegressionNetParams {
+		/*
+			if sm.nextCheckpoint != nil &&
+				best.Height < sm.nextCheckpoint.Height &&
+				sm.chainParams != &chaincfg.RegressionNetParams {
 
-			bestPeer.PushGetHeadersMsg(locator, sm.nextCheckpoint.Hash)
-			sm.headersFirstMode = true
-			log.Tracef("Downloading headers for blocks %d to "+
-				"%d from peer %s", best.Height+1,
-				sm.nextCheckpoint.Height, bestPeer.Addr())
-		}
+				bestPeer.PushGetHeadersMsg(locator, sm.nextCheckpoint.Hash)
+				sm.headersFirstMode = true
+				log.Tracef("Downloading headers for blocks %d to "+
+					"%d from peer %s", best.Height+1,
+					sm.nextCheckpoint.Height, bestPeer.Addr())
+			}
+
+		*/
 		if deferexec == 0 {
 			//			log.Infof("startSync %d: PushGetBlocksMsg from %s", bestPeer.ID(), bestPeer.Addr())
 			bestPeer.PushGetBlocksMsg(locator, mlocator, &zeroHash, &zeroHash)
@@ -616,7 +618,7 @@ func (sm *SyncManager) isSyncCandidate(peer *peerpkg.Peer) bool {
 	// Typically a peer is not a candidate for sync if it's not a full node,
 	// however regression test is special in that the regression tool is
 	// not a full node and still needs to be considered a sync candidate.
-	if sm.chainParams == &chaincfg.RegressionNetParams {
+	/* if sm.chainParams == &chaincfg.RegressionNetParams {
 		// The peer is not a candidate if it's not coming from localhost
 		// or the hostname can't be determined for some reason.
 		host, _, err := net.SplitHostPort(peer.Addr())
@@ -627,15 +629,15 @@ func (sm *SyncManager) isSyncCandidate(peer *peerpkg.Peer) bool {
 		if host != "127.0.0.1" && host != "localhost" {
 			return false
 		}
-	} else {
-		// The peer is not a candidate for sync if it's not a full
-		// node. Additionally, if the segwit soft-fork package has
-		// activated, then the peer must also be upgraded.
-		nodeServices := peer.Services()
-		if nodeServices&common.SFNodeNetwork != common.SFNodeNetwork {
-			return false
-		}
+	} else {*/
+	// The peer is not a candidate for sync if it's not a full
+	// node. Additionally, if the segwit soft-fork package has
+	// activated, then the peer must also be upgraded.
+	nodeServices := peer.Services()
+	if nodeServices&common.SFNodeNetwork != common.SFNodeNetwork {
+		return false
 	}
+	//	}
 
 	// Candidate if all checks passed.
 	return true

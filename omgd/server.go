@@ -1425,7 +1425,7 @@ func (sp *serverPeer) OnChainMap(_ *peer.Peer, msg *wire.MsgChainMap) {
 
 	added := false
 	for _, p := range msg.Chains {
-		added = chainmap.AddChain(protocols[0].db, (*chainmap.ChainDescriptor)(&p)) || added
+		added = chainmap.AddChain((*chainmap.ChainDescriptor)(&p)) || added
 	}
 	// shutdown & reboot
 	if added {

@@ -6,67 +6,108 @@
 package chaincfg
 
 import (
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/famofchains/btcd/wire"
 	"github.com/omegasuite/famofchains/omega"
 )
 
 // genesisMerkleRoot is the hash of the first transaction in the genesis block
 // for the main network. ----
-var genesisMerkleRoot = omega.MainNetGenesisMerkleRoot
+var GenesisMerkleRoot = map[uint32]chainhash.Hash{
+	0x956ca476: omega.MainNetGenesisMerkleRoot,
+	0xA117FE3D: omega.MainNetGenesisMerkleRootA117FE3D,
+}
 
-// genesisBlock defines the genesis block of the block chain which serves as the
+// GenesisBlock defines the genesis block of the block chain which serves as the
 // public transaction ledger for the main network.
-var genesisBlock = omega.MainNetGenesisBlock
-var genesisMinerBlock = omega.MainNetGenesisMinerBlock
+var GenesisBlock = map[uint32]*wire.MsgBlock{
+	0x956ca476: &omega.MainNetGenesisBlock,
+	0xA117FE3D: &omega.MainNetGenesisBlockA117FE3D,
+}
 
-// genesisHash is the hash of the first block in the block chain for the main
+var GenesisMinerBlock = map[uint32]*wire.MingingRightBlock{
+	0x956ca476: &omega.MainNetGenesisMinerBlock,
+	0xA117FE3D: &omega.MainNetGenesisMinerBlockA117FE3D,
+}
+
+// GenesisHash is the hash of the first block in the block chain for the main
 // network (genesis block). ----
-var genesisHash = omega.MainNetGenesisHash[0]
-var genesisMinerHash = omega.MainNetGenesisHash[1]
+var GenesisHash = map[uint32]*chainhash.Hash{
+	0x956ca476: &omega.MainNetGenesisHash[0],
+	0xA117FE3D: &omega.MainNetGenesisHashA117FE3D[0],
+}
+var GenesisMinerHash = map[uint32]*chainhash.Hash{
+	0x956ca476: &omega.MainNetGenesisHash[1],
+	0xA117FE3D: &omega.MainNetGenesisHashA117FE3D[1],
+}
 
-// regTestGenesisHash is the hash of the first block in the block chain for the
+// RegTestGenesisHash is the hash of the first block in the block chain for the
 // regression test network (genesis block).
-var regTestGenesisHash = omega.RegNetGenesisHash[0]
-var regTestGenesisMinerHash = omega.RegNetGenesisHash[1]
+var RegTestGenesisHash = map[uint32]chainhash.Hash{
+	0x956ca476: chainhash.Hash{},
+	0xA117FE3D: chainhash.Hash{},
+}
+var RegTestGenesisMinerHash = map[uint32]chainhash.Hash{
+	0x956ca476: chainhash.Hash{},
+	0xA117FE3D: chainhash.Hash{},
+}
 
-// regTestGenesisMerkleRoot is the hash of the first transaction in the genesis
+// RegTestGenesisMerkleRoot is the hash of the first transaction in the genesis
 // block for the regression test network.  It is the same as the merkle root for
 // the main network.
-var regTestGenesisMerkleRoot = omega.RegNetGenesisMerkleRoot
+var RegTestGenesisMerkleRoot = map[uint32]chainhash.Hash{
+	0x956ca476: chainhash.Hash{},
+	0xA117FE3D: chainhash.Hash{},
+}
 
-// regTestGenesisBlock defines the genesis block of the block chain which serves
-// as the public transaction ledger for the regression test network.
-var regTestGenesisBlock = omega.RegNetGenesisBlock
-var regTestGenesisMinerBlock = omega.RegNetGenesisMinerBlock
-
-// testNet3GenesisHash is the hash of the first block in the block chain for the
+// TestNet3GenesisHash is the hash of the first block in the block chain for the
 // test network (version 3).
-var testNet3GenesisHash = omega.TestNetGenesisHash[0]
-var testNet3GenesisMinerHash = omega.TestNetGenesisHash[1]
+var TestNet3GenesisHash = map[uint32]*chainhash.Hash{
+	0x956ca476: &omega.TestNetGenesisHash[0],
+	0xA117FE3D: &omega.TestNetGenesisHashA117FE3D[0],
+}
+var TestNet3GenesisMinerHash = map[uint32]*chainhash.Hash{
+	0x956ca476: &omega.TestNetGenesisHash[1],
+	0xA117FE3D: &omega.TestNetGenesisHashA117FE3D[1],
+}
 
-// testNet3GenesisMerkleRoot is the hash of the first transaction in the genesis
+// TestNet3GenesisMerkleRoot is the hash of the first transaction in the genesis
 // block for the test network (version 3).  It is the same as the merkle root
 // for the main network.
-var testNet3GenesisMerkleRoot = omega.TestNetGenesisMerkleRoot
+var TestNet3GenesisMerkleRoot = map[uint32]chainhash.Hash{
+	0x956ca476: omega.TestNetGenesisMerkleRoot,
+	0xA117FE3D: omega.TestNetGenesisMerkleRootA117FE3D,
+}
 
-// testNet3GenesisBlock defines the genesis block of the block chain which
+// TestNet3GenesisBlock defines the genesis block of the block chain which
 // serves as the public transaction ledger for the test network (version 3).
-var testNet3GenesisBlock = omega.TestNetGenesisBlock
-var testNet3GenesisMinerBlock = omega.TestNetGenesisMinerBlock
+var TestNet3GenesisBlock = map[uint32]*wire.MsgBlock{
+	0x956ca476: &omega.TestNetGenesisBlock,
+	0xA117FE3D: &omega.TestNetGenesisBlockA117FE3D,
+}
+var TestNet3GenesisMinerBlock = map[uint32]*wire.MingingRightBlock{
+	0x956ca476: &omega.TestNetGenesisMinerBlock,
+	0xA117FE3D: &omega.TestNetGenesisMinerBlockA117FE3D,
+}
 
-// simNetGenesisHash is the hash of the first block in the block chain for the
+// SimNetGenesisHash is the hash of the first block in the block chain for the
 // simulation test network.
-var simNetGenesisHash = omega.SimNetGenesisHash[0]
-var simNetGenesisMinerHash = omega.SimNetGenesisHash[1]
+var SimNetGenesisHash = map[uint32]*chainhash.Hash{
+	0x956ca476: &chainhash.Hash{},
+	0xA117FE3D: &chainhash.Hash{},
+}
+var SimNetGenesisMinerHash = map[uint32]*chainhash.Hash{
+	0x956ca476: &chainhash.Hash{},
+	0xA117FE3D: &chainhash.Hash{},
+}
 
-// simNetGenesisMerkleRoot is the hash of the first transaction in the genesis
+// SimNetGenesisMerkleRoot is the hash of the first transaction in the genesis
 // block for the simulation test network.  It is the same as the merkle root for
 // the main network.
-var simNetGenesisMerkleRoot = omega.SimNetGenesisMerkleRoot
-
-// simNetGenesisBlock defines the genesis block of the block chain which serves
-// as the public transaction ledger for the simulation test network.
-var simNetGenesisBlock = omega.SimNetGenesisBlock
-var simNetGenesisMinerBlock = omega.SimNetGenesisMinerBlock
+var SimNetGenesisMerkleRoot = map[uint32]chainhash.Hash{
+	0x956ca476: chainhash.Hash{},
+	0xA117FE3D: chainhash.Hash{},
+}
 
 // SVP
 var svpgenesisBlock = omega.MainNetGenesisBlock

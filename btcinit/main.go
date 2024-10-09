@@ -285,25 +285,25 @@ func main() {
 		t1.SetIndex(0)
 		t2.SetIndex(1)
 
-		merkles := blockchain.BuildMerkleTreeStore([]*btcutil.Tx{t1, t2}, false, wire.CodeVersion)
+		merkles := blockchain.BuildMerkleTreeStore([]*btcutil.Tx{t1}, false, wire.Version5)
 
 		// genesisMerkleRoot is the hash of the first transaction in the genesis block
 		// for the main network.
 		var genesisMerkleRoot = merkles[len(merkles)-1]
 
-		witnessMerkleTree := blockchain.BuildMerkleTreeStore([]*btcutil.Tx{t1, t2}, true, wire.CodeVersion)
+		witnessMerkleTree := blockchain.BuildMerkleTreeStore([]*btcutil.Tx{t1}, true, wire.Version5)
 		witnessMerkleRoot := witnessMerkleTree[len(witnessMerkleTree)-1]
 
 		// genesisBlock defines the genesis block of the block chain which serves as the
 		// public transaction ledger for the main network.
 		var genesisBlock = wire.MsgBlock{
 			Header: wire.BlockHeader{
-				Version:    0x60000,
+				Version:    0x50000,
 				PrevBlock:  chainhash.Hash{},   // 0000000000000000000000000000000000000000000000000000000000000000
 				MerkleRoot: *genesisMerkleRoot, // 4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b
 				Nonce:      0,
 			},
-			Transactions: []*wire.MsgTx{&genesisCoinbaseTx, &genesisInitPolygonTx},
+			Transactions: []*wire.MsgTx{&genesisCoinbaseTx},
 		}
 
 		// because wire.DifficultyRatio is 2, so exp. portion of PowLimitBits is dec. by 2
@@ -336,17 +336,17 @@ func main() {
 
 		fmt.Printf("\n\nvar "+names[net]+"GenesisBlock = wire.MsgBlock{"+
 			"\n\tHeader: wire.BlockHeader{"+
-			"\n\t\tVersion:    0x10000,"+
+			"\n\t\tVersion:    0x50000,"+
 			"\n\t\tPrevBlock:  chainhash.Hash{},"+
 			"\n\t\tMerkleRoot: "+names[net]+"GenesisMerkleRoot,"+
 			"\n\t\tTimestamp:  time.Unix(0x%x, 0), "+
 			"\n\t\tNonce:      %d,"+
 			"\n\t},"+
-			"\n\tTransactions: []*wire.MsgTx{&"+params[net].Name+"coinbaseTx, &"+params[net].Name+"PolygonTx},"+
+			"\n\tTransactions: []*wire.MsgTx{&"+params[net].Name+"coinbaseTx},"+
 			"\n}", genesisBlock.Header.Timestamp.Unix(), genesisBlock.Header.Nonce)
 
 		var minerBlock = wire.MingingRightBlock{
-			Version:    0x60000,
+			Version:    0x50000,
 			PrevBlock:  chainhash.Hash{},
 			BestBlock:  genesisHash,
 			Timestamp:  genesisBlock.Header.Timestamp,
@@ -373,7 +373,7 @@ func main() {
 		fmt.Printf(",\n}")
 
 		fmt.Printf("\n\nvar "+names[net]+"GenesisMinerBlock = wire.MingingRightBlock{"+
-			"\n\tVersion: 0x10000,"+
+			"\n\tVersion: 0x50000,"+
 			"\n\tPrevBlock:  chainhash.Hash{},"+
 			"\n\tBestBlock: "+names[net]+"GenesisHash[0],"+
 			"\n\t\tTimestamp:  time.Unix(0x%x, 0), "+

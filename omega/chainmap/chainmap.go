@@ -79,7 +79,10 @@ var ParentChain = &ChainDescriptor{
 	MrGenesis:      "",
 }
 
+var dmdb database.DB
+
 func LoadChainMap(db database.DB, isroot bool) {
+	dmdb = db
 	ChainMap = make(map[uint32]*ChainDescriptor)
 
 	db.Update(func(tx database.Tx) error {
@@ -134,7 +137,7 @@ func LoadChainMap(db database.DB, isroot bool) {
 	})
 }
 
-func AddChain(db database.DB, c *ChainDescriptor) bool {
+func AddChain(c *ChainDescriptor) bool {
 	if _, ok := ChainMap[c.ChainID]; ok {
 		return true
 	}
@@ -159,7 +162,7 @@ func AddChain(db database.DB, c *ChainDescriptor) bool {
 		panic("bad GlobalParams data")
 	}
 
-	db.Update(func(tx database.Tx) error {
+	dmdb.Update(func(tx database.Tx) error {
 		bucketname := []byte("ChainMap")
 		bucket := tx.Metadata().Bucket(bucketname)
 
@@ -174,7 +177,7 @@ func AddChain(db database.DB, c *ChainDescriptor) bool {
 	return true
 }
 
-func RemoveChain(db database.DB, c uint32) {
+func RemoveChain(c uint32) {
 	if _, ok := ChainMap[c]; !ok {
 		return
 	}
@@ -183,7 +186,7 @@ func RemoveChain(db database.DB, c uint32) {
 		return
 	}
 
-	db.Update(func(tx database.Tx) error {
+	dmdb.Update(func(tx database.Tx) error {
 		bucketname := []byte("ChainMap")
 		bucket := tx.Metadata().Bucket(bucketname)
 
@@ -195,4 +198,8 @@ func RemoveChain(db database.DB, c uint32) {
 
 		return nil
 	})
+}
+
+func Close() {
+	dmdb.Close()
 }

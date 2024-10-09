@@ -881,11 +881,7 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 	}
 
 	mb, _ := b.Miners.BlockByHeight(rotate)
-	if mb == nil {
-		if (!b.IsSVP && header.Version != chaincfg.Version1) || (b.IsSVP && header.Version != chaincfg.SVPVersion1) {
-			return ruleError(ErrBlockVersionTooOld, "Incorrect block version")
-		}
-	} else if header.Version&^0xFFFF != mb.MsgBlock().Version&^0xFFFF {
+	if header.Version&^0xFFFF != mb.MsgBlock().Version&^0xFFFF {
 		return ruleError(ErrBlockVersionTooOld, "Incorrect block version")
 	}
 
@@ -986,15 +982,8 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 	// the wtxid's of the transactions within the block. In
 	// addition, various other checks against the
 	// coinbase's witness stack.
-	if !b.IsSVP {
-		if err := ValidateWitnessCommitment(block); err != nil {
-			return err
-		}
-	} else {
-		if len(block.MsgBlock().Transactions[0].SignatureScripts) != 0 {
-			str := fmt.Sprintf("Coinbase TX shall not have signature in SVP: %v", block.Hash())
-			return ruleError(ErrBadCoinbaseScriptLen, str)
-		}
+	if err := ValidateWitnessCommitment(block); err != nil {
+		return err
 	}
 
 	return nil

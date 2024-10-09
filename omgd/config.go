@@ -461,7 +461,6 @@ func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error)
 	// the final parse below.
 	preCfg := cfg
 	preParser := newConfigParser(&preCfg, &serviceOpts, flags.HelpFlag)
-
 	_, err := preParser.Parse()
 	if err != nil {
 		if e, ok := err.(*flags.Error); ok && e.Type == flags.ErrHelp {
@@ -556,9 +555,11 @@ func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error)
 
 	// Count number of network flags passed; assign active network params
 	// while we're at it
-	if cfg.TestNet {
+	activeNetParams = &chaincfg.Params{}
+	*activeNetParams = chaincfg.MainNetParams
 
-		activeNetParams = &chaincfg.TestNet3Params
+	if cfg.TestNet {
+		*activeNetParams = chaincfg.TestNet3Params
 	}
 
 	chaincfg.ActiveNetParams = activeNetParams
