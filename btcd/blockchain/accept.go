@@ -18,7 +18,7 @@ import (
 )
 
 func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
-	src := uint32(0)
+	src := b.ChainParams.ChainID
 	if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
 		src = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
 	}

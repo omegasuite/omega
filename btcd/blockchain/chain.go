@@ -912,14 +912,20 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
 		// a rotation block, needs to execute ops in 1 MR block
 		mrb, _ := b.Miners.BlockByHeight(-(wire.MINER_RORATE_FREQ + block.MsgBlock().Header.Nonce))
-		b.UnExecOps(mrb, uint32(block.Height()))
+		if mrb != nil {
+			b.UnExecOps(mrb, uint32(block.Height()))
+		}
 	} else if block.MsgBlock().Header.Nonce > 0 {
 		// a POW block, needs to execute ops in 2 MR blocks
 		rot := int32(b.BestSnapshot().LastRotation)
 		mrb, _ := b.Miners.BlockByHeight(rot)
 		b.UnExecOps(mrb, uint32(block.Height()))
-		mrb, _ = b.Miners.BlockByHeight(rot - 1)
-		b.UnExecOps(mrb, uint32(block.Height()))
+		if mrb != nil {
+			mrb, _ = b.Miners.BlockByHeight(rot - 1)
+		}
+		if mrb != nil {
+			b.UnExecOps(mrb, uint32(block.Height()))
+		}
 	}
 
 	for i := 0; i < m; i++ {
@@ -1729,7 +1735,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 					}
 				}
 			}
-			if agreed == 100 {
+			if agreed == common.NewChainConsensus {
 				// add it to chainmap
 				chainmap.AddChain(cd)
 			}

@@ -617,10 +617,6 @@ out:
 				}
 			}
 		} else {
-			if (m.cfg.DisablePOWMining && m.cfg.Generate) || !m.cfg.EnablePOWMining {
-				time.Sleep(time.Second * wire.TimeGap)
-				continue
-			}
 			nonce = 1
 		}
 
@@ -754,8 +750,6 @@ out:
 		}
 
 		m.g.Chain.IsPacking = false
-
-		lastblkgen = time.Now().Unix()
 		m.minedBlock = nil
 
 		mh := m.g.Chain.Miners.BestSnapshot().Height
@@ -765,7 +759,7 @@ out:
 			continue
 		}
 
-		if lastblkgen-lastblkrcv < 2*wire.TimeGap || (m.cfg.DisablePOWMining && m.cfg.Generate) || !m.cfg.EnablePOWMining || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
+		if time.Now().Unix()-lastblkrcv < 2*wire.TimeGap || (m.cfg.DisablePOWMining && m.cfg.Generate) || !m.cfg.EnablePOWMining || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
 			time.Sleep(time.Second * wire.TimeGap)
 			continue
 		}

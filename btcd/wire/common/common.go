@@ -29,6 +29,8 @@ const (
 	// list to use for binary serialization and deserialization.
 	BinaryFreeListMaxItems = 1024
 	FeeCoinTyp             = 0 // type of coin for tx fee
+	OmegaCoinTyp           = 0
+	NewChainConsensus      = 100
 )
 
 // InvType represents the allowed types of inventory vectors.  See InvVect.

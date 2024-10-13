@@ -1069,7 +1069,6 @@ func (b *BlockChain) initChainState() error {
 			return err
 		}
 	}
-
 	b.db.Update(func(dbTx database.Tx) error {
 		meta := dbTx.Metadata()
 		// Create the bucket for pool of incoming tx
@@ -1238,16 +1237,21 @@ func (b *BlockChain) initChainState() error {
 		}
 
 		b.BestChain.SetTip(tip)
-
-		// Load the raw block bytes for the best block.
-		blockBytes, err := dbTx.FetchBlock(&state.hash)
-		if err != nil {
-			return err
-		}
 		var block wire.MsgBlock
-		err = block.Deserialize(bytes.NewReader(blockBytes))
-		if err != nil {
-			return err
+		// Initialize the state related to the best block.
+		numTxns, blockSize := uint64(0), uint64(0)
+
+		if !b.IsSVP {
+			// Load the raw block bytes for the best block.
+			blockBytes, err := dbTx.FetchBlock(&state.hash)
+			if err != nil {
+				return err
+			}
+			err = block.Deserialize(bytes.NewReader(blockBytes))
+			if err != nil {
+				return err
+			}
+			blockSize = uint64(len(blockBytes))
 		}
 
 		// As a final consistency check, we'll run through all the
@@ -1269,9 +1273,9 @@ func (b *BlockChain) initChainState() error {
 			}
 		}
 
-		// Initialize the state related to the best block.
-		blockSize := uint64(len(blockBytes))
-		numTxns := uint64(len(block.Transactions))
+		if !b.IsSVP {
+			numTxns = uint64(len(block.Transactions))
+		}
 
 		b.stateSnapshot = newBestState(tip, blockSize,
 			numTxns, state.totalTxns, tip.CalcPastMedianTime(), // state.bits,
@@ -2002,7 +2006,13 @@ func (b *BlockChain) dbRestoreCrossChain(dbTx database.Tx, block *btcutil.Block)
 		}
 	} else {
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		if bucket == nil {
+			bucket, _ = dbTx.Metadata().CreateBucket([]byte(common.INCOMINGPOOL))
+		}
 		bucketrb := dbTx.Metadata().Bucket([]byte(common.ROLLBACKPOOL))
+		if bucket == nil {
+			bucketrb, _ = dbTx.Metadata().CreateBucket([]byte(common.ROLLBACKPOOL))
+		}
 
 		var h [4]byte
 		common.LittleEndian.PutUint32(h[:], uint32(block.Height()))

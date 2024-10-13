@@ -138,22 +138,21 @@ func LoadChainMap(db database.DB, isroot bool) {
 }
 
 func AddChain(c *ChainDescriptor) bool {
+	if c.ChainID != ROOT && c.Parent == 0 {
+		return false
+	}
+	if c.ChainID == ROOT && c.Parent != 0 {
+		return false
+	}
+
 	if _, ok := ChainMap[c.ChainID]; ok {
 		return true
 	}
 
 	for _, d := range ChainMap {
-		if d.Magic == c.Magic || d.Dns == c.Dns || d.Genesis == c.Genesis || (c.MRChain && d.MRChain && d.MrGenesis == c.MrGenesis) {
+		if d.Magic == c.Magic || (d.Dns == c.Dns && d.DefaultPort == c.DefaultRPCPort) || d.Genesis == c.Genesis || (c.MRChain && d.MRChain && d.MrGenesis == c.MrGenesis) {
 			return false
 		}
-	}
-
-	if c.ChainID != ROOT && c.Parent == 0 {
-		return false
-	}
-
-	if _, ok := ChainMap[c.Parent]; c.Parent != 0 && !ok {
-		return false
 	}
 
 	params := &chaincfg.GlobalParams{}

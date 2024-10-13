@@ -502,27 +502,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			return fmt.Errorf("Incorrect signature"), false
 		}
 
-		_, awd := block.MsgBlock().Transactions[0].TxOut[0].Value.Value()
-		awardto := make(map[[20]byte]struct{})
-		for _, txo := range block.MsgBlock().Transactions[0].TxOut {
-			if txo.IsSeparator() {
-				break
-			}
-			if txo.TokenType != common.FeeCoinTyp {
-				return fmt.Errorf("Coinbase output tokentype is not 0."), false
-			}
-			if txo.Value.(*token.NumToken).Val != awd {
-				return fmt.Errorf("Award is not evenly distributed among quanlified miners."), false
-			}
-			var tw [20]byte
-			copy(tw[:], txo.PkScript[1:21])
-			awardto[tw] = struct{}{}
-		}
-
-		if len(awardto) != wire.CommitteeSize && block.MsgBlock().Header.Version < chaincfg.Version2 {
-			return fmt.Errorf("Version error."), false
-		}
-
 		// examine signatures
 		hash := MakeMinerSigHash(block.Height(), *block.Hash())
 
@@ -542,18 +521,40 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			mbs[i-(rotate-wire.CommitteeSize+1)] = mb
 		}
 
+		awardto := make(map[[20]byte]struct{})
+		if !b.IsSVP {
+			_, awd := block.MsgBlock().Transactions[0].TxOut[0].Value.Value()
+			for _, txo := range block.MsgBlock().Transactions[0].TxOut {
+				if txo.IsSeparator() {
+					break
+				}
+				if txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.OmegaCoinTyp {
+					return fmt.Errorf("Coinbase output tokentype is not 0."), false
+				}
+				if txo.Value.(*token.NumToken).Val != awd {
+					return fmt.Errorf("Award is not evenly distributed among quanlified miners."), false
+				}
+				var tw [20]byte
+				copy(tw[:], txo.PkScript[1:21])
+				awardto[tw] = struct{}{}
+			}
+		}
+
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
 			mb := mbs[i-(rotate-wire.CommitteeSize+1)]
 			if mb == nil {
 				continue
 			}
-			if _, err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
-				if _, ok := awardto[mb.MsgBlock().Miner]; ok {
-					return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
-				}
-			} else if block.MsgBlock().Header.Version >= chaincfg.Version2 {
-				if _, ok := awardto[mb.MsgBlock().Miner]; !ok {
-					return nil, true
+
+			if !b.IsSVP {
+				if _, err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
+					if _, ok := awardto[mb.MsgBlock().Miner]; ok {
+						return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
+					}
+				} else {
+					if _, ok := awardto[mb.MsgBlock().Miner]; !ok {
+						return nil, true
+					}
 				}
 			}
 
@@ -570,7 +571,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 				}
 			}
 		}
-		if len(awardto) != 0 {
+		if !b.IsSVP && len(awardto) != 0 {
 			return nil, true
 		}
 
@@ -881,7 +882,7 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 	}
 
 	mb, _ := b.Miners.BlockByHeight(rotate)
-	if header.Version&^0xFFFF != mb.MsgBlock().Version&^0xFFFF {
+	if mb != nil && header.Version&^0xFFFF != mb.MsgBlock().Version&^0xFFFF {
 		return ruleError(ErrBlockVersionTooOld, "Incorrect block version")
 	}
 
@@ -1087,7 +1088,8 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 		lastHaoIn := totalIns[utxo.TokenType]
 		totalIns[utxo.TokenType] += originTxHao
 		if totalIns[utxo.TokenType] < lastHaoIn ||
-			(utxo.TokenType == common.FeeCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) {
+			(utxo.TokenType == common.OmegaCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) ||
+			(utxo.TokenType == common.FeeCoinTyp && totalIns[common.FeeCoinTyp] > btcutil.MaxHao) {
 			str := fmt.Sprintf("total value of all transaction "+
 				"inputs is %v which is higher than max "+
 				"allowed value of %v", totalIns[utxo.TokenType],
@@ -1591,10 +1593,25 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		if txOut.Value == nil {
 			continue
 		}
-		if _, ok := totalHaoOut[txOut.TokenType]; ok {
-			totalHaoOut[txOut.TokenType] += txOut.Value.(*token.NumToken).Val
+
+		rtype := txOut.TokenType
+		if uint32(rtype>>40) == chainParams.ChainID {
+			rtype = rtype & 0xFFFFFFFFFF
+		} else if uint32(rtype>>40) != 0 && txOut.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
+			var cid [4]byte
+			copy(cid[:], txOut.PkScript[22:25])
+			cid[3] = 0
+			if uint32(rtype>>40) != common.LittleEndian.Uint32(cid[:]) {
+				str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", rtype>>40,
+					common.LittleEndian.Uint32(cid[:]))
+				return 0, ruleError(ErrBadTxOutValue, str)
+			}
+		}
+
+		if _, ok := totalHaoOut[rtype]; ok {
+			totalHaoOut[rtype] += txOut.Value.(*token.NumToken).Val
 		} else {
-			totalHaoOut[txOut.TokenType] = txOut.Value.(*token.NumToken).Val
+			totalHaoOut[rtype] = txOut.Value.(*token.NumToken).Val
 		}
 	}
 
@@ -1989,7 +2006,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	var unmached string
 
 	for i, tx := range transactions[1:] {
-		if runScripts && (len(tx.MsgTx().TxIn) != 1 || tx.MsgTx().TxIn[0].SignatureIndex&wire.CrossChainFalg == 0) {
+		if runScripts && (len(tx.MsgTx().TxIn) != 1 || tx.MsgTx().TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0) {
 			err = ovm.VerifySigs(tx, b.ChainParams, 0, views)
 			if err != nil {
 				return err

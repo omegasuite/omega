@@ -321,7 +321,7 @@ var MainNetParams = Params{
 			{"omegasuite.org", false},
 		},
 		PowLimitBits:             0x1e003ff0,
-		CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+		CoinbaseMaturity:         100, // * wire.MINER_RORATE_FREQ,
 		SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
 		MinimalAward:             73242,
 		TargetTimespan:           time.Hour * 24 * 14, // 14 days

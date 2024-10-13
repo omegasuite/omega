@@ -97,7 +97,6 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 		btcdLog.Errorf("%v", err)
 		return prot, true
 	}
-
 	prot.minerdb = minerdb
 
 	// Return now if an interrupt signal was triggered.
@@ -714,6 +713,9 @@ func main() {
 	}
 
 	cmdb, err := loadChainmapDB(tcfg)
+	if cmdb == nil || err != nil {
+		os.Exit(1)
+	}
 	chainmap.LoadChainMap(cmdb, chaincfg.DefaultChainID == chainmap.ROOT)
 
 	protocols = make([]*Protocol, 0)
@@ -778,7 +780,10 @@ func main() {
 		}
 
 		svpid := fmt.Sprintf("%x", uint32(dparams.Net))
-		vcfg, _, _ := loadConfig(svpid, dparams.Net)
+		vcfg, _, err := loadConfig(svpid, dparams.Net)
+		if vcfg == nil || err != nil {
+			os.Exit(1)
+		}
 		vcfg.NetMagic = dparams.Net
 		vcfg.GenerateMiner = false
 		vcfg.Generate = false
@@ -833,7 +838,15 @@ func main() {
 }
 
 func checkfinal() {
+	interrupt := interruptListener()
+
 	for true {
+		select {
+		case <-interrupt:
+			return
+		default:
+		}
+
 		protocols[0].db.View(func(dbtx database.Tx) error {
 			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 			cursor := bucket.Cursor()
@@ -856,7 +869,15 @@ func checkfinal() {
 }
 
 func retrievedefs(p *Protocol, q *Protocol) {
+	interrupt := interruptListener()
+
 	for true {
+		select {
+		case <-interrupt:
+			return
+		default:
+		}
+
 		p.db.View(func(dbtx database.Tx) error {
 			bucket := dbtx.Metadata().Bucket([]byte("RECVTXPOOL"))
 			cursor := bucket.Cursor()
@@ -871,6 +892,6 @@ func retrievedefs(p *Protocol, q *Protocol) {
 			}
 			return nil
 		})
-		time.Sleep(5 * time.Second)
+		time.Sleep(15 * time.Second)
 	}
 }

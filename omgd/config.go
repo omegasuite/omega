@@ -533,6 +533,14 @@ func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error)
 		return nil, nil, err
 	}
 
+	if sec != "" {
+		for _, g := range parser.Groups() {
+			if len(g.Options()) == 0 {
+				return nil, nil, fmt.Errorf("Group %d does not exist or is empty", sec)
+			}
+		}
+	}
+
 	// Create the home directory if it doesn't already exist.
 	funcName := "loadConfig"
 	err = os.MkdirAll(defaultHomeDir, 0700)
