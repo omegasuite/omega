@@ -1272,12 +1272,13 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		// In the case the block is determined to be invalid due to a
 		// rule violation, mark it as invalid and mark all of its
 		// descendants as having an invalid ancestor.
-		err = b.checkConnectBlock(n, block, views, &stxos, Vm)
+
+		behaviorFlags := BFNone
+		err = b.checkConnectBlock(n, block, views, &stxos, Vm, behaviorFlags)
 
 		// check proof of work
 		var mkorphan bool
 		if check && err == nil {
-			behaviorFlags := BFNone
 			if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet || b.ChainParams.Net == common.RegNet {
 				behaviorFlags |= BFEasyBlocks
 			}
@@ -1659,7 +1660,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		views.Utxo.SetBestHash(parentHash)
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
 		if !fastAdd {
-			err := b.checkConnectBlock(node, block, views, &stxos, Vm)
+			err := b.checkConnectBlock(node, block, views, &stxos, Vm, flags)
 			if err == nil {
 				b.index.SetStatusFlags(node, chainutil.StatusValid)
 			} else if _, ok := err.(RuleError); ok {

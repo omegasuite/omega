@@ -830,8 +830,8 @@ func CheckBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 // which depend on its position within the block chain.
 //
 // The flags modify the behavior of this function as follows:
-//  - BFFastAdd: All checks except those involving comparing the header against
-//    the checkpoints are not performed.
+//   - BFFastAdd: All checks except those involving comparing the header against
+//     the checkpoints are not performed.
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode *chainutil.BlockNode, flags BehaviorFlags) error {
@@ -908,8 +908,8 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 // on its position within the block chain.
 //
 // The flags modify the behavior of this function as follows:
-//  - BFFastAdd: The transaction are not checked to see if they are finalized
-//    and the somewhat expensive BIP0034 validation is not performed.
+//   - BFFastAdd: The transaction are not checked to see if they are finalized
+//     and the somewhat expensive BIP0034 validation is not performed.
 //
 // The flags are also passed to checkBlockHeaderContext.  See its documentation
 // for how the flags modify its behavior.
@@ -1588,7 +1588,7 @@ func ContractNewStorage(tx *btcutil.Tx, vm *ovm.OVM, paidstoragefees map[[20]byt
 // with that node.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut, Vm *ovm.OVM) error {
+func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut, Vm *ovm.OVM, flags BehaviorFlags) error {
 	// If the side chain blocks end up in the database, a call to
 	// CheckBlockSanity should be done here in case a previous version
 	// allowed a block that is no longer valid.  However, since the
@@ -1655,6 +1655,11 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	runScripts := true
 	if checkpoint != nil && node.Height <= checkpoint.Height {
 		runScripts = false
+		if node.Height < checkpoint.Height {
+			flags |= BFFastAdd
+		} else if node.Height == checkpoint.Height && checkpoint.Hash.IsEqual(&node.Hash) {
+			flags |= BFFastAdd
+		}
 	}
 
 	// Perform several checks on the inputs for each transaction.  Also
@@ -1840,7 +1845,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 
 		// check locked collateral
-		if block.MsgBlock().Header.Version >= chaincfg.Version2 {
+		if block.MsgBlock().Header.Version >= chaincfg.Version2 && (flags&BFFastAdd) == 0 {
 			for _, txin := range tx.MsgTx().TxIn {
 				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
@@ -2047,5 +2052,5 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 
 	newNode := NewBlockNode(&header, tip)
 
-	return b.checkConnectBlock(newNode, block, views, nil, Vm)
+	return b.checkConnectBlock(newNode, block, views, nil, Vm, flags)
 }
