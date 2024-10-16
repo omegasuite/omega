@@ -210,6 +210,8 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 	}
 
 	// Create server and start it.
+
+	prot.activeNetParams.Net = prot.cfg.NetMagic
 	servergr, err := newServer(tcfg.Listeners, db, minerdb, prot, interrupt)
 	if err != nil {
 		btcdLog.Errorf("Unable to start server on %v: %v",
@@ -328,6 +330,7 @@ func cleanup(p *Protocol) {
 	btcdLog.Infof("minerdb Closed")
 
 	if p.running {
+		p.running = false
 		wg.Done()
 	}
 }
@@ -722,6 +725,7 @@ func main() {
 
 	if _, ok := chainmap.ChainMap[chaincfg.DefaultParentChainID]; chaincfg.DefaultParentChainID != 0 && !ok {
 		// create a svp server for parent
+		fmt.Printf("loading parent options")
 		pcfg, _, err := loadConfig("Parent Options", 0) // chain main options
 		if err != nil {
 			os.Exit(1)
@@ -730,6 +734,9 @@ func main() {
 		//		pcfg.LogDir = tcfg.LogDir
 		//		pcfg.DataDir = tcfg.DataDir
 		pcfg.NetMagic = common.OmegaNet(chainmap.ParentChain.Magic)
+
+		fmt.Printf("parent options loaded, magic = %d", pcfg.NetMagic)
+
 		pcfg.Generate = false
 		pcfg.GenerateMiner = false
 		// connect to parent chain but use main db
@@ -759,6 +766,7 @@ func main() {
 	}
 
 	// main chain
+	fmt.Printf("loading main options, magic = %d", tcfg.NetMagic)
 	p, quit := prepareServer(tcfg, nil, nil, false)
 	if quit && p != nil {
 		cleanup(p)
@@ -767,17 +775,44 @@ func main() {
 		os.Exit(1)
 	}
 
+	if tcfg.Clear != 0 {
+		p.db.Update(func(tx database.Tx) error {
+			meta := tx.Metadata()
+			if tcfg.Clear&1 != 0 { // clear
+				meta.DeleteBucket([]byte(common.INCOMINGPOOL))
+				meta.CreateBucket([]byte(common.INCOMINGPOOL))
+				meta.DeleteBucket([]byte(common.ROLLBACKPOOL))
+				meta.CreateBucket([]byte(common.ROLLBACKPOOL))
+			}
+			if tcfg.Clear&8 != 0 { // clear
+				meta.DeleteBucket([]byte(common.XCAssets))
+				meta.CreateBucket([]byte(common.XCAssets))
+			}
+
+			return nil
+		})
+
+		cleanup(p)
+		os.Exit(1)
+	}
+
+	Server := p.Server
 	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
 
 	for _, c := range chainmap.ChainMap {
-		if c.ChainID != chaincfg.DefaultParentChainID && c.Parent != p.Server.chainParams.ChainID {
+		if c.ChainID == Server.chainParams.ChainID {
 			continue
 		}
+		if c.ChainID != chaincfg.DefaultParentChainID && c.Parent != Server.chainParams.ChainID {
+			continue
+		}
+		time.Sleep(3 * time.Second)
 		dparams := &chaincfg.GlobalParams{}
 		if err := json.Unmarshal([]byte(c.GlobalParams), dparams); err != nil {
 			os.Exit(1)
 		}
+		fmt.Printf("loading SVP options, magic = %d", dparams.Net)
 
 		svpid := fmt.Sprintf("%x", uint32(dparams.Net))
 		vcfg, _, err := loadConfig(svpid, dparams.Net)
@@ -807,6 +842,9 @@ func main() {
 			if p != nil {
 				cleanup(p)
 			}
+			for _, q := range protocols {
+				cleanup(q)
+			}
 			os.Exit(1)
 		}
 
@@ -830,12 +868,15 @@ func main() {
 		} else {
 			go checkfinal()
 		}
+		time.Sleep(3 * time.Second)
 	}
 
 	wg.Wait()
 	chainmap.Close()
 	return
 }
+
+var btcHeight int32
 
 func checkfinal() {
 	interrupt := interruptListener()
@@ -857,7 +898,16 @@ func checkfinal() {
 				}
 				for _, p := range protocols[1:] {
 					chain := chainmap.ChainMap[p.Server.chainParams.ChainID]
-					if chain.PassThru(protocols[0].Server.chainParams.MainChainID, xdata.ChainID) {
+					if xdata.ChainID&0x400000 != 0 {
+						switch xdata.ChainID {
+						case common.BTCCHAINID:
+							if btcHeight >= xdata.Height+7 {
+								xdata.Finalized = 1
+								bucket.Put(cursor.Key(), xdata.Serialize())
+								break
+							}
+						}
+					} else if chain.PassThru(protocols[0].Server.chainParams.MainChainID, xdata.ChainID) {
 						p.Server.Randcast(wire.NewMsgFinalized(xdata.ChainID, xdata.Hash), nil)
 					}
 				}

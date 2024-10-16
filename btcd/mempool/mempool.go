@@ -977,12 +977,13 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		}
 	}
 
+	if tx.MsgTx().IsCrossChain() {
+		return nil, nil, fmt.Errorf("Input invalid")
+	}
+
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
-		}
-		if txIn.PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
-			return nil, nil, fmt.Errorf("Input invalid")
 		}
 		// Ensure the referenced input transaction is available.
 		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)

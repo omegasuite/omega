@@ -371,7 +371,7 @@ func (s *server) handleCommitteRotation(r int32) {
 			continue
 		}
 
-		if _, err := s.chain.CheckCollateral(mb, nil, blockchain.BFNone); err != nil {
+		if _, err := s.chain.CheckCollateral(mb, nil, blockchain.BFNone); !b.IsSVP && err != nil {
 			continue
 		}
 
@@ -562,8 +562,9 @@ func (s *server) NewConsusBlock(m *btcutil.Block) {
 	} else {
 		s.chain.SendNotification(blockchain.NTBlockRejected, m)
 		if err != nil {
-			consensusLog.Infof("consensus faield to process ProcessBlock!!! %s", err.Error())
+			consensusLog.Infof("consensus failed to process ProcessBlock!!! %s", err.Error())
 		}
+		s.chain.SendNotification(blockchain.NTBlockConnected, (*btcutil.Block)(nil))
 	}
 }
 

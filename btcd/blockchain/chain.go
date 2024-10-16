@@ -315,90 +315,89 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 	// inputs present in the mempool.
 	nextHeight := node.Height + 1
 
-	for txInIndex, txIn := range mTx.TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(mTx.TxOut) == 0 {
-			continue
-		}
-		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
-		if utxo == nil {
-			var wbuf bytes.Buffer
-			tx.MsgTx().SerializeFull(&wbuf)
+	if !mTx.IsCrossChain() {
+		for txInIndex, txIn := range mTx.TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
+			if utxo == nil {
+				var wbuf bytes.Buffer
+				tx.MsgTx().SerializeFull(&wbuf)
 
-			str := fmt.Sprintf("output %v referenced from "+
-				"transaction %s:%d either does not exist or "+
-				"has already been spent. tx = %s", txIn.PreviousOutPoint,
-				tx.Hash(), txInIndex, hex.EncodeToString(wbuf.Bytes()))
-			return sequenceLock, ruleError(ErrMissingTxOut, str)
-		}
-
-		// If the input height is set to the mempool height, then we
-		// assume the transaction makes it into the next block when
-		// evaluating its sequence blocks.
-		inputHeight := utxo.BlockHeight()
-		if inputHeight == 0x7fffffff {
-			inputHeight = nextHeight
-		}
-
-		// Given a sequence number, we apply the relative time lock
-		// mask in order to obtain the time lock delta required before
-		// this input can be spent.
-		sequenceNum := txIn.Sequence
-		relativeLock := int64(sequenceNum & wire.SequenceLockTimeMask)
-
-		switch {
-		// Relative time locks are disabled for this input, so we can
-		// skip any further calculation.
-		case sequenceNum&wire.SequenceLockTimeDisabled == wire.SequenceLockTimeDisabled:
-			continue
-		case sequenceNum&wire.SequenceLockTimeIsSeconds == wire.SequenceLockTimeIsSeconds:
-			// This input requires a relative time lock expressed
-			// in seconds before it can be spent.  Therefore, we
-			// need to query for the block prior to the one in
-			// which this input was included within so we can
-			// compute the past median time for the block prior to
-			// the one which included this referenced output.
-			prevInputHeight := inputHeight - 1
-			if prevInputHeight < 0 {
-				prevInputHeight = 0
+				str := fmt.Sprintf("output %v referenced from "+
+					"transaction %s:%d either does not exist or "+
+					"has already been spent. tx = %s", txIn.PreviousOutPoint,
+					tx.Hash(), txInIndex, hex.EncodeToString(wbuf.Bytes()))
+				return sequenceLock, ruleError(ErrMissingTxOut, str)
 			}
 
-			var medianTime time.Time
-			var blockNode *chainutil.BlockNode
+			// If the input height is set to the mempool height, then we
+			// assume the transaction makes it into the next block when
+			// evaluating its sequence blocks.
+			inputHeight := utxo.BlockHeight()
+			if inputHeight == 0x7fffffff {
+				inputHeight = nextHeight
+			}
 
-			if prevInputHeight > int32(b.index.Cutoff) {
-				blockNode = b.Ancestor(node, prevInputHeight)
-			} else {
-				for i := prevInputHeight - chainutil.MedianTimeBlocks + 1; i <= prevInputHeight; i++ {
-					t := blockNode
-					blockNode = b.NodeByHeight(i)
-					blockNode.Parent = t
+			// Given a sequence number, we apply the relative time lock
+			// mask in order to obtain the time lock delta required before
+			// this input can be spent.
+			sequenceNum := txIn.Sequence
+			relativeLock := int64(sequenceNum & wire.SequenceLockTimeMask)
+
+			switch {
+			// Relative time locks are disabled for this input, so we can
+			// skip any further calculation.
+			case sequenceNum&wire.SequenceLockTimeDisabled == wire.SequenceLockTimeDisabled:
+				continue
+			case sequenceNum&wire.SequenceLockTimeIsSeconds == wire.SequenceLockTimeIsSeconds:
+				// This input requires a relative time lock expressed
+				// in seconds before it can be spent.  Therefore, we
+				// need to query for the block prior to the one in
+				// which this input was included within so we can
+				// compute the past median time for the block prior to
+				// the one which included this referenced output.
+				prevInputHeight := inputHeight - 1
+				if prevInputHeight < 0 {
+					prevInputHeight = 0
 				}
-			}
-			medianTime = blockNode.CalcPastMedianTime()
 
-			// Time based relative time-locks as defined by BIP 68
-			// have a time granularity of RelativeLockSeconds, so
-			// we shift left by this amount to convert to the
-			// proper relative time-lock. We also subtract one from
-			// the relative lock to maintain the original lockTime
-			// semantics.
-			timeLockSeconds := (relativeLock << wire.SequenceLockTimeGranularity) - 1
-			timeLock := medianTime.Unix() + timeLockSeconds
-			if timeLock > sequenceLock.Seconds {
-				sequenceLock.Seconds = timeLock
-			}
-		default:
-			// The relative lock-time for this input is expressed
-			// in blocks so we calculate the relative offset from
-			// the input's height as its converted absolute
-			// lock-time. We subtract one from the relative lock in
-			// order to maintain the original lockTime semantics.
-			blockHeight := inputHeight + int32(relativeLock-1)
-			if blockHeight > sequenceLock.BlockHeight {
-				sequenceLock.BlockHeight = blockHeight
+				var medianTime time.Time
+				var blockNode *chainutil.BlockNode
+
+				if prevInputHeight > int32(b.index.Cutoff) {
+					blockNode = b.Ancestor(node, prevInputHeight)
+				} else {
+					for i := prevInputHeight - chainutil.MedianTimeBlocks + 1; i <= prevInputHeight; i++ {
+						t := blockNode
+						blockNode = b.NodeByHeight(i)
+						blockNode.Parent = t
+					}
+				}
+				medianTime = blockNode.CalcPastMedianTime()
+
+				// Time based relative time-locks as defined by BIP 68
+				// have a time granularity of RelativeLockSeconds, so
+				// we shift left by this amount to convert to the
+				// proper relative time-lock. We also subtract one from
+				// the relative lock to maintain the original lockTime
+				// semantics.
+				timeLockSeconds := (relativeLock << wire.SequenceLockTimeGranularity) - 1
+				timeLock := medianTime.Unix() + timeLockSeconds
+				if timeLock > sequenceLock.Seconds {
+					sequenceLock.Seconds = timeLock
+				}
+			default:
+				// The relative lock-time for this input is expressed
+				// in blocks so we calculate the relative offset from
+				// the input's height as its converted absolute
+				// lock-time. We subtract one from the relative lock in
+				// order to maintain the original lockTime semantics.
+				blockHeight := inputHeight + int32(relativeLock-1)
+				if blockHeight > sequenceLock.BlockHeight {
+					sequenceLock.BlockHeight = blockHeight
+				}
 			}
 		}
 	}
@@ -607,7 +606,7 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	// Start from the end of the main chain and work backwards until the
 	// common ancestor adding each block to the list of nodes to detach from
 	// the main chain.
-	for n := b.BestChain.Tip(); n != nil && n != forkNode; n = n.Parent {
+	for n := b.BestChain.Tip(); n != nil && n != forkNode && !forkNode.Hash.IsEqual(&n.Hash); n = n.Parent {
 		detachNodes.PushBack(n)
 	}
 
@@ -642,7 +641,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	}
 
 	// Sanity check the correct number of stxos are provided.
-	if len(stxos) != block.CountSpentOutputs() {
+	if !b.IsSVP && len(stxos) != block.CountSpentOutputs() {
 		return AssertError("connectBlock called with inconsistent " +
 			"spent transaction out information")
 	}
@@ -676,6 +675,10 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		log.Infof("Update LastRotation to %d", state.LastRotation)
 	}
 
+	if b.IsSVP {
+		stxos = nil
+	}
+
 	// Atomically insert info into the database.
 	err = b.db.Update(func(dbTx database.Tx) error {
 		// Update best block state.
@@ -701,14 +704,11 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 
 		// Update the transaction spend journal by adding a record for
 		// the block that contains all txos spent by it.
-		err = dbPutSpendJournalEntry(dbTx, block.Hash(), stxos)
-		if err != nil {
-			return err
-		}
-
-		err = b.dbPutCrossChain(dbTx, block)
-		if err != nil {
-			return err
+		if stxos != nil {
+			err = dbPutSpendJournalEntry(dbTx, block.Hash(), stxos)
+			if err != nil {
+				return err
+			}
 		}
 
 		// Allow the index manager to call each of the currently active
@@ -724,6 +724,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		return nil
 	})
 
+	err = b.dbPutCrossChain(block)
 	if err != nil {
 		return err
 	}
@@ -888,11 +889,6 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 			return err
 		}
 
-		err = b.dbRestoreCrossChain(dbTx, block)
-		if err != nil {
-			return err
-		}
-
 		// Allow the index manager to call each of the currently active
 		// optional indexes with the block being disconnected so they
 		// can update themselves accordingly.
@@ -905,6 +901,10 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	err = b.dbRestoreCrossChain(block)
 	if err != nil {
 		return err
 	}
@@ -1108,6 +1108,9 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	if attachNodes.Len() != 0 && detachNodes.Len() != 0 {
 		firstAttachNode := attachNodes.Front().Value.(*chainutil.BlockNode)
 		lastDetachNode := detachNodes.Back().Value.(*chainutil.BlockNode)
+		if firstAttachNode.Parent == nil || lastDetachNode.Parent == nil {
+			return 0, 0, nil
+		}
 		if firstAttachNode.Parent.Hash != lastDetachNode.Parent.Hash {
 			return 0, 0, AssertError(fmt.Sprintf("reorganize nodes do not have the "+
 				"same fork point -- first attach parent %v, last detach "+
@@ -1163,31 +1166,32 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 				n.Height, block.Hash()))
 		}
 
-		// Load all of the utxos referenced by the block that aren't
-		// already in the view.
-		err = views.FetchInputUtxos(block)
-		if err != nil {
-			return 0, 0, err
-		}
-
-		// Load all of the spent txos for the block from the spend
-		// journal.
-		var stxos []viewpoint.SpentTxOut
-		err = b.db.View(func(dbTx database.Tx) error {
-			stxos, err = dbFetchSpendJournalEntry(dbTx, block)
-			return err
-		})
-		if err != nil {
-			return 0, 0, err
-		}
-
 		// Store the loaded block and spend journal entry for later.
 		detachBlocks = append(detachBlocks, block)
-		detachSpentTxOuts = append(detachSpentTxOuts, stxos)
 
-		err = views.DisconnectTransactions(b.db, block, stxos)
-		if err != nil {
-			return 0, 0, err
+		// Load all of the utxos referenced by the block that aren't
+		// already in the view.
+		var stxos []viewpoint.SpentTxOut
+		if !b.IsSVP {
+			err = views.FetchInputUtxos(block)
+			if err != nil {
+				return 0, 0, err
+			}
+
+			// Load all of the spent txos for the block from the spend
+			// journal.
+			err = b.db.View(func(dbTx database.Tx) error {
+				stxos, err = dbFetchSpendJournalEntry(dbTx, block)
+				return err
+			})
+			if err != nil {
+				return 0, 0, err
+			}
+			detachSpentTxOuts = append(detachSpentTxOuts, stxos)
+			err = views.DisconnectTransactions(b.db, block, stxos)
+			if err != nil {
+				return 0, 0, err
+			}
 		}
 
 		if n.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
@@ -1223,8 +1227,10 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	miners := make([]*[20]byte, wire.CommitteeSize)
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		if blk, _ := b.Miners.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
-			if _, err := b.CheckCollateral(blk, &newBest.Hash, BFNone); err != nil {
-				continue
+			if !b.IsSVP {
+				if _, err := b.CheckCollateral(blk, &newBest.Hash, BFNone); err != nil {
+					continue
+				}
 			}
 			miners[i] = &blk.MsgBlock().Miner
 		}
@@ -1272,9 +1278,11 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 			for k := 0; k < shift; k++ {
 				rotate++
 				if blk, _ := b.Miners.BlockByHeight(int32(rotate)); blk != nil {
-					if _, err := b.CheckCollateral(blk, &newBest.Hash, BFNone); err != nil {
-						miners[j] = nil
-						continue
+					if !b.IsSVP {
+						if _, err := b.CheckCollateral(blk, &newBest.Hash, BFNone); err != nil {
+							miners[j] = nil
+							continue
+						}
 					}
 					miners[j] = &blk.MsgBlock().Miner
 				} else if shift == 1 {
@@ -1298,7 +1306,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		// rule violation, mark it as invalid and mark all of its
 		// descendants as having an invalid ancestor.
 		if b.IsSVP {
-			err = b.checkConnectSVPBlock(n, block, views, &stxos)
+			err = b.checkConnectSVPBlock(n, block, views)
 		} else {
 			err = b.checkConnectBlock(n, block, views, &stxos, Vm)
 		}
@@ -1330,9 +1338,12 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 			break
 		}
 
-		err = views.ConnectTransactions(block, &stxos)
-		if err != nil {
-			break
+		if !b.IsSVP {
+			err = views.ConnectTransactions(block, &stxos)
+
+			if err != nil {
+				break
+			}
 		}
 
 		// Store the loaded block for later.
@@ -1369,19 +1380,21 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err := views.FetchInputUtxos(block)
-		if err != nil {
-			return 0, 0, err
-		}
+		if !b.IsSVP {
+			err := views.FetchInputUtxos(block)
+			if err != nil {
+				return 0, 0, err
+			}
 
-		// Update the view to unspend all of the spent txos and remove
-		// the utxos created by the block.
-		if err = views.DisconnectTransactions(b.db, block, detachSpentTxOuts[i]); err != nil {
-			return 0, 0, err
+			// Update the view to unspend all of the spent txos and remove
+			// the utxos created by the block.
+			if err = views.DisconnectTransactions(b.db, block, detachSpentTxOuts[i]); err != nil {
+				return 0, 0, err
+			}
 		}
 
 		// Update the database and chain state.
-		if err = b.disconnectBlock(n, block, views); err != nil {
+		if err := b.disconnectBlock(n, block, views); err != nil {
 			return 0, 0, err
 		}
 
@@ -1393,7 +1406,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		}
 		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
 
-		if err = Vm.Rollback(); err != nil { // roll back contract state in DB
+		if err := Vm.Rollback(); err != nil { // roll back contract state in DB
 			return 0, 0, err
 		}
 
@@ -1416,67 +1429,69 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 
 		// Load all of the utxos referenced by the block that aren't
 		// already in the view.
-		err := views.FetchInputUtxos(block)
-		if err != nil {
-			log.Infof("FetchInputUtxos error: " + err.Error())
-			return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
-		}
-
 		coinBase := block.Transactions()[0]
-		coinBase.MsgTx().Strip()
-
-		//		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
-		//		coinBase.SetIndex(block.Transactions()[0].Index())
-		coinBaseHash := coinBase.Hash()
-		Vm.SetCoinBaseOp(
-			func(txo wire.TxOut) wire.OutPoint {
-				if !coinBase.HasOuts {
-					// this servers as a separater. only TokenType is serialized
-					to := wire.TxOut{}
-					to.Token = token.Token{TokenType: token.DefTypeSeparator}
-					coinBase.MsgTx().AddTxOut(&to)
-					coinBase.HasOuts = true
-				}
-				coinBase.MsgTx().AddTxOut(&txo)
-				op := wire.OutPoint{*coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
-				return op
-			})
-		Vm.BlockNumber = func() uint64 {
-			return uint64(block.Height())
-		}
-		Vm.BlockTime = func() uint32 {
-			return uint32(block.MsgBlock().Header.Timestamp.Unix())
-		}
-		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
-
-		Vm.StepLimit = block.MsgBlock().Header.ContractExec
-		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
-
-		for i, tx := range block.Transactions() {
-			if i == 0 {
-				continue
-			}
-			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
-			newtx.SetIndex(tx.Index())
-			_, err = Vm.ExecContract(tx, block.Height())
+		if !b.IsSVP {
+			err := views.FetchInputUtxos(block)
 			if err != nil {
-				//				Vm.AbortRollback()
-				log.Infof("ExecContract error: " + err.Error())
-				return detachable, attachable, err
+				log.Infof("FetchInputUtxos error: " + err.Error())
+				return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
 			}
 
-			if !tx.Match(newtx) {
-				log.Infof("Mismatch contract execution result")
-				return detachable, attachable, fmt.Errorf("Mismatch contract execution result")
+			coinBase.MsgTx().Strip()
+
+			//		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
+			//		coinBase.SetIndex(block.Transactions()[0].Index())
+			coinBaseHash := coinBase.Hash()
+			Vm.SetCoinBaseOp(
+				func(txo wire.TxOut) wire.OutPoint {
+					if !coinBase.HasOuts {
+						// this servers as a separater. only TokenType is serialized
+						to := wire.TxOut{}
+						to.Token = token.Token{TokenType: token.DefTypeSeparator}
+						coinBase.MsgTx().AddTxOut(&to)
+						coinBase.HasOuts = true
+					}
+					coinBase.MsgTx().AddTxOut(&txo)
+					op := wire.OutPoint{*coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
+					return op
+				})
+			Vm.BlockNumber = func() uint64 {
+				return uint64(block.Height())
 			}
-		}
-		if !block.Transactions()[0].Match(coinBase) {
-			log.Infof("Mismatch coinbase contract execution result")
-			return detachable, attachable, fmt.Errorf("Mismatch coinbase contract execution result")
-		}
-		if Vm.StepLimit != 0 {
-			log.Infof("Incorrect contract execution cost.")
-			return detachable, attachable, fmt.Errorf("Incorrect contract execution cost.")
+			Vm.BlockTime = func() uint32 {
+				return uint32(block.MsgBlock().Header.Timestamp.Unix())
+			}
+			Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
+
+			Vm.StepLimit = block.MsgBlock().Header.ContractExec
+			Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
+
+			for i, tx := range block.Transactions() {
+				if i == 0 {
+					continue
+				}
+				newtx := btcutil.NewTx(tx.MsgTx().Stripped())
+				newtx.SetIndex(tx.Index())
+				_, err := Vm.ExecContract(newtx, block.Height())
+				if err != nil {
+					//				Vm.AbortRollback()
+					log.Infof("ExecContract error: " + err.Error())
+					return detachable, attachable, err
+				}
+
+				if !tx.Match(newtx) {
+					log.Infof("Mismatch contract execution result")
+					return detachable, attachable, fmt.Errorf("Mismatch contract execution result")
+				}
+			}
+			if !block.Transactions()[0].Match(coinBase) {
+				log.Infof("Mismatch coinbase contract execution result")
+				return detachable, attachable, fmt.Errorf("Mismatch coinbase contract execution result")
+			}
+			if Vm.StepLimit != 0 {
+				log.Infof("Incorrect contract execution cost.")
+				return detachable, attachable, fmt.Errorf("Incorrect contract execution cost.")
+			}
 		}
 
 		// Update the view to mark all utxos referenced by the block
@@ -1484,14 +1499,16 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		// to it.  Also, provide an stxo slice so the spent txout
 		// details are generated.
 		stxos := make([]viewpoint.SpentTxOut, 0, block.CountSpentOutputs())
-		err = views.ConnectTransactions(block, &stxos)
-		if err != nil {
-			log.Infof("ConnectTransactions error: " + err.Error())
-			return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
+		if !b.IsSVP {
+			err := views.ConnectTransactions(block, &stxos)
+			if err != nil {
+				log.Infof("ConnectTransactions error: " + err.Error())
+				return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
+			}
 		}
 
 		// Update the database and chain state.
-		err = b.connectBlock(n, block, views, stxos, Vm)
+		err := b.connectBlock(n, block, views, stxos, Vm)
 		if err != nil {
 			log.Infof("connectBlock error: " + err.Error())
 			return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
@@ -1566,11 +1583,11 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest *chainhash.H
 			blk, _ := b.BlockByHash(&p.Hash)
 			var seq = 0
 			for _, tx := range blk.MsgBlock().Transactions[1:] {
+				if tx.IsCrossChain() {
+					continue
+				}
 				for _, txin := range tx.TxIn {
 					if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-						continue
-					}
-					if txin.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
 						continue
 					}
 					if txin.PreviousOutPoint == *block.MsgBlock().Utxos {
@@ -1768,11 +1785,7 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
 					copy(t[:], txo.Txo.PkScript[22:25])
 					t[3] = 0
 					if common.LittleEndian.Uint32(t[:]) == b.ChainParams.ChainID {
-						copy(txo.Txo.PkScript[21:], txo.Txo.PkScript[25:])
-						txo.Txo.PkScript = txo.Txo.PkScript[:len(txo.Txo.PkScript)-4]
-						if ((txo.Txo.TokenType & 0x7FFFFF) >> 40) == uint64(b.ChainParams.ChainID) {
-							txo.Txo.TokenType = txo.Txo.TokenType &^ 0x7FFFFF
-						}
+						b.normalizeTxo(&txo.Txo)
 					}
 				}
 
@@ -1847,7 +1860,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		if !fastAdd {
 			var err error
 			if b.IsSVP {
-				err = b.checkConnectSVPBlock(node, block, views, &stxos)
+				err = b.checkConnectSVPBlock(node, block, views)
 			} else {
 				err = b.checkConnectBlock(node, block, views, &stxos, Vm)
 			}
@@ -2010,7 +2023,7 @@ func (b *BlockChain) FindFork(node *chainutil.BlockNode) *chainutil.BlockNode {
 	for node != nil {
 		p = b.NodeByHeight(node.Height)
 
-		if p == node {
+		if p == node || p.Hash.IsEqual(&node.Hash) {
 			break
 		}
 

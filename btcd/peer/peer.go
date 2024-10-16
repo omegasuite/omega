@@ -2401,7 +2401,7 @@ func (p *Peer) start() error {
 	select {
 	case err := <-negotiateErr:
 		if err != nil {
-			p.Disconnect("start @ negotiateErr")
+			p.Disconnect("start @ negotiateErr " + err.Error())
 			return err
 		}
 	case <-time.After(negotiateTimeout):

@@ -2602,7 +2602,14 @@ func (s *server) peerHandler() {
 		if msg.Type == blockchain.NTBlockConnected {
 			s.connManager.Alive = time.Now()
 
+			if msg.Data == nil {
+				return
+			}
+
 			block := msg.Data.(*btcutil.Block)
+			if block == nil {
+				return
+			}
 			nonce := block.MsgBlock().Header.Nonce
 			if nonce <= -wire.MINER_RORATE_FREQ || nonce > 0 {
 				newBlock <- int32(s.chain.BestSnapshot().LastRotation)

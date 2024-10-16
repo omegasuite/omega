@@ -56,6 +56,7 @@ const (
 	ROLLBACKPOOL string = "ROLLBACKPOOL" // key in INCOMINGPOOL bucket for the current SVP chain height
 
 	XCAssets string = "XCAssets" // bucket for cross chain assets
+	BTCCHAINID	= 0x400002			  // BTC L2 chain id = 2,  0x400000 to indicate a base chain of L2
 )
 
 // MaxMessagePayload is the maximum bytes a message can be regardless of other

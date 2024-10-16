@@ -84,10 +84,10 @@ func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 	if err := b.CheckCrossChainTx(tx); err != nil {
 		return err
 	}
-	if !b.IsSVP && len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
+
+	if !b.IsSVP && tx.IsCrossChain() {
 		return b.db.View(func(dbtx database.Tx) error {
 			// bucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
-			var key [32]byte
 			rawc := tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
 			/*
 				h := tx.TxIn[0].SignatureIndex
@@ -106,8 +106,8 @@ func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 
 			// ensure the txo are in the pool
 			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-			copy(key[:], tx.TxIn[0].PreviousOutPoint.Hash[:])
-			common.LittleEndian.PutUint32(key[32:], tx.TxIn[0].PreviousOutPoint.Index)
+
+			key := tx.TxIn[0].PreviousOutPoint.ToBytes()
 			v := bucket.Get(key[:])
 			if v == nil {
 				return fmt.Errorf("tx not in INCOMINGPOOL")
@@ -135,6 +135,12 @@ func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 			for _, txo := range tx.TxOut {
 				match := false
 				for i, xto := range xdata.Txs {
+					var h [4]byte
+					copy(h[:], xto.Txo.PkScript[22:25])
+					h[3] = 0
+					if common.LittleEndian.Uint32(h[:]) == b.ChainParams.ChainID {
+						b.normalizeTxo(&xto.Txo)
+					}
 					if txo.Match(&xto.Txo) {
 						match = true
 						xdata.Txs = append(xdata.Txs[:i], xdata.Txs[i+1:]...)
@@ -208,7 +214,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 
 	// check cross chain txs
 	coinbase := block.MsgBlock().Transactions[0]
-	if (coinbase.TxIn[0].PreviousOutPoint.Index & wire.CrossChainFalg) != 0 {
+	if coinbase.IsCrossChain() {
 		return false, fmt.Errorf("Coinbase tx can not be a cross chain transaction"), -1
 	}
 	for _, txo := range coinbase.TxOut {
@@ -225,13 +231,13 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		b.db.View(func(dbtx database.Tx) error {
 			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 			for _, tx := range block.MsgBlock().Transactions[1:] {
-				if len(tx.TxIn) != 1 || (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) == 0 {
+				if !tx.IsCrossChain() {
 					continue
 				}
 				if _, ok := initems[tx.TxIn[0].PreviousOutPoint.Hash]; ok {
 					return fmt.Errorf("Duplicated Cross chain item.")
 				}
-				t := bucket.Get(tx.TxIn[0].PreviousOutPoint.Hash[:])
+				t := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
 				if t == nil {
 					return fmt.Errorf("Cross chain item does not exist. SVP chain not ready?")
 				}
@@ -246,7 +252,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		}
 
 		for _, tx := range block.MsgBlock().Transactions[1:] {
-			if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
+			if tx.IsCrossChain() {
 				srcchain := tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainSrcMask
 
 				for _, txo := range tx.TxOut {

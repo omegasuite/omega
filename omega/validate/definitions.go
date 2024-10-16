@@ -284,48 +284,47 @@ func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error
 	inloops := make(MatchLoop, 0)  // loops in a ccw loop
 	unxloops := make(MatchLoop, 0) // loops not intersect each other
 
-	for _, d := range tx.MsgTx().TxIn {
-		if d.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if d.PreviousOutPoint.Index & wire.CrossChainFalg !=0 {
-			continue
-		}
-		utxo := views.Utxo.LookupEntry(d.PreviousOutPoint)
-		if utxo == nil {
-			return fmt.Errorf("PreviousOutPoint does not exist: %s", d.PreviousOutPoint.String())
-		}
-		if utxo.TokenType != 3 {
-			continue
-		}
-		plg, err := views.FetchPolygonEntry(&utxo.Amount.(*token.HashToken).Hash)
-		if err != nil {
-			return err
-		}
-		ccws := make([]string, 0, 1)
-		cs := plg.Loops[0].CheckSum()
-		ccws = append(ccws, cs)
-		ccwloops.Add(cs, &plg.Loops[0])
-		for len(plg.Loops[0]) == 1 {
-			plg2, err := views.FetchPolygonEntry(&plg.Loops[0][0])
+	if !tx.MsgTx().IsCrossChain() {
+		for _, d := range tx.MsgTx().TxIn {
+			if d.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			utxo := views.Utxo.LookupEntry(d.PreviousOutPoint)
+			if utxo == nil {
+				return fmt.Errorf("PreviousOutPoint does not exist: %s", d.PreviousOutPoint.String())
+			}
+			if utxo.TokenType != 3 {
+				continue
+			}
+			plg, err := views.FetchPolygonEntry(&utxo.Amount.(*token.HashToken).Hash)
 			if err != nil {
 				return err
 			}
-			cs := plg2.Loops[0].CheckSum()
+			ccws := make([]string, 0, 1)
+			cs := plg.Loops[0].CheckSum()
 			ccws = append(ccws, cs)
-			ccwloops.Add(cs, &plg2.Loops[0])
-		}
-		cwws := make([]string, len(plg.Loops)-1)
-		for i := 1; i < len(plg.Loops); i++ {
-			is := plg.Loops[i].CheckSum()
-			cwws[i-1] = is
-			cwloops.Add(is, &plg.Loops[i])
-			for _, m := range ccws {
-				inloops.Add(m, is, &plg.Loops[i])
+			ccwloops.Add(cs, &plg.Loops[0])
+			for len(plg.Loops[0]) == 1 {
+				plg2, err := views.FetchPolygonEntry(&plg.Loops[0][0])
+				if err != nil {
+					return err
+				}
+				cs := plg2.Loops[0].CheckSum()
+				ccws = append(ccws, cs)
+				ccwloops.Add(cs, &plg2.Loops[0])
 			}
-			for j := 1; j < i; j++ {
-				unxloops.Add(is, cwws[j-1], &plg.Loops[j])
-				unxloops.Add(cwws[j-1], is, &plg.Loops[i])
+			cwws := make([]string, len(plg.Loops)-1)
+			for i := 1; i < len(plg.Loops); i++ {
+				is := plg.Loops[i].CheckSum()
+				cwws[i-1] = is
+				cwloops.Add(is, &plg.Loops[i])
+				for _, m := range ccws {
+					inloops.Add(m, is, &plg.Loops[i])
+				}
+				for j := 1; j < i; j++ {
+					unxloops.Add(is, cwws[j-1], &plg.Loops[j])
+					unxloops.Add(cwws[j-1], is, &plg.Loops[i])
+				}
 			}
 		}
 	}

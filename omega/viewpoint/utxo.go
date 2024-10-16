@@ -332,7 +332,6 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 			// if it is cross chain txout, don't add it to utxo view, so it does not appear in this chain
 			continue
 		}
-
 		// Update existing entries.  All fields are updated because it's
 		// possible (although extremely unlikely) that the existing
 		// entry is being replaced by a different transaction with the
@@ -371,45 +370,45 @@ func (view *ViewPointSet) ConnectTransaction(tx *btcutil.Tx, blockHeight int32, 
 	// Spend the referenced utxos by marking them spent in the view and,
 	// if a slice was provided for the spent txout details, append an entry
 	// to it.
-	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
-			continue
-		}
-		// Ensure the referenced utxo exists in the view.  This should
-		// never happen unless there is a bug is introduced in the code.
-		entry := view.Utxo.entries[txIn.PreviousOutPoint]
-		if entry == nil {
-			return AssertError(fmt.Sprintf("view missing input %v",
-				txIn.PreviousOutPoint))
-		}
-
-		// Only create the stxo details if requested.
-		if stxos != nil {
-			// Populate the stxo details using the utxo entry.
-			var nr *chainhash.Hash
-			if entry.Rights != nil {
-				nr, _ = chainhash.NewHash((*entry.Rights)[:])
-			} else {
-				nr = nil
+	if !tx.MsgTx().IsCrossChain() {
+		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
 			}
-			var stxo = SpentTxOut{
-				TokenType:  entry.TokenType,
-				Rights:     nr,
-				Amount:     entry.Amount,
-				PkScript:   entry.PkScript(),
-				Height:     entry.BlockHeight(),
-				IsCoinBase: entry.IsCoinBase(),
-			}
-			*stxos = append(*stxos, stxo)
-		}
 
-		// Mark the entry as spent.  This is not done until after the
-		// relevant details have been accessed since spending it might
-		// clear the fields from memory in the future.
-		entry.Spend()
+			// Ensure the referenced utxo exists in the view.  This should
+			// never happen unless there is a bug is introduced in the code.
+			entry := view.Utxo.entries[txIn.PreviousOutPoint]
+			if entry == nil {
+				return AssertError(fmt.Sprintf("view missing input %v",
+					txIn.PreviousOutPoint))
+			}
+
+			// Only create the stxo details if requested.
+			if stxos != nil {
+				// Populate the stxo details using the utxo entry.
+				var nr *chainhash.Hash
+				if entry.Rights != nil {
+					nr, _ = chainhash.NewHash((*entry.Rights)[:])
+				} else {
+					nr = nil
+				}
+				var stxo = SpentTxOut{
+					TokenType:  entry.TokenType,
+					Rights:     nr,
+					Amount:     entry.Amount,
+					PkScript:   entry.PkScript(),
+					Height:     entry.BlockHeight(),
+					IsCoinBase: entry.IsCoinBase(),
+				}
+				*stxos = append(*stxos, stxo)
+			}
+
+			// Mark the entry as spent.  This is not done until after the
+			// relevant details have been accessed since spending it might
+			// clear the fields from memory in the future.
+			entry.Spend()
+		}
 	}
 
 	// Add the transaction's outputs as available utxos.
@@ -961,7 +960,7 @@ func (view *ViewPointSet) FetchInputUtxos(block *btcutil.Block) error {
 	// what is already known (in-flight).
 	neededSet := make(map[wire.OutPoint]struct{})
 	for i, tx := range transactions[1:] {
-		if len(tx.MsgTx().TxIn) == 1 && tx.MsgTx().TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
+		if tx.MsgTx().IsCrossChain() {
 			continue
 		}
 		for _, txIn := range tx.MsgTx().TxIn {

@@ -179,6 +179,7 @@ type config struct {
 	Accounts        bool   `long:"accounts" description:"list omega accounts & balance"`
 	NetMagic        common.OmegaNet
 	AddChain        string `long:"addchain" description:"Add a blockchain to FOC"`
+	Clear           int    `long:"clear" description:"Clear DBs"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -446,6 +447,7 @@ func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error)
 		Accounts:             false,
 		NetMagic:             common.MainNet,
 		AddChain:             "",
+		Clear:                0,
 	}
 
 	if uint32(omegaNet) != 0 {

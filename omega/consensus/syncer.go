@@ -528,6 +528,9 @@ func (self *Syncer) process(cmd interface{}) bool {
 			if _, ok := self.forest[k.F]; !ok || self.forest[k.F].block == nil {
 				//				self.pull(k.M, self.Members[k.F])
 				self.asked[self.Members[k.F]] = k
+				if ok {
+					self.pull(self.forest[k.F].hash, frm)
+				}
 			} else {
 				self.Candidate(k)
 			}
@@ -1522,7 +1525,6 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	}
 }
 
-/*
 func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 	self.handeling = "pull"
 	if _, ok := self.pulling[from]; !ok || self.pulling[from] == 0 {
@@ -1541,7 +1543,6 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 		//		log.Infof("Have pulled for %d at height %d", from, self.Height)
 	}
 }
-*/
 
 func (self *Syncer) Quit() {
 	self.Done = true

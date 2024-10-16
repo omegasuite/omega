@@ -15,7 +15,6 @@ const maxRcdPerMiner = 10  // max records we keep for each miner
 const CONTRACTTXRATIO = 30 // when calculating TPS, every 30 contract exec steps = 1 sig
 
 // TPHRecord houses information about miners's TPS record.
-//
 type TphPocket struct {
 	StartTime  time.Time
 	EndTime    time.Time
@@ -130,6 +129,10 @@ func (b *BlockChain) TphNotice(t *Notification) {
 		return
 	}
 
+	if t.Data == nil {
+		return
+	}
+
 	if !b.IsCurrent() {
 		// if not current, we are syncing chain, it does not reflect real TPS
 		return
@@ -138,6 +141,9 @@ func (b *BlockChain) TphNotice(t *Notification) {
 	switch t.Data.(type) {
 	case *btcutil.Block:
 		block := t.Data.(*btcutil.Block)
+		if block == nil {
+			return
+		}
 
 		h := uint32(block.Height())
 		rot := b.Rotation(block.MsgBlock().Header.PrevBlock)

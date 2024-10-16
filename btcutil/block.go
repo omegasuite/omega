@@ -58,12 +58,12 @@ func (block *Block) CountSpentOutputs() int {
 		if tx.MsgTx().IsBtcL2() {
 			continue
 		}
+		if tx.msgTx.IsCrossChain() {
+			continue
+		}
 		numSpent += len(tx.MsgTx().TxIn)
 		for _, ti := range tx.MsgTx().TxIn {
 			if ti.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				numSpent--
-			}
-			if ti.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				numSpent--
 			}
 		}

@@ -159,15 +159,14 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 	// for all transaction inputs is maxed out.
 
 	// miner packed cross chain
-	for _, txIn := range msgTx.TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if len(msgTx.TxIn) != 1 || (msgTx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
-			continue
-		}
-		if txIn.Sequence != math.MaxUint32 {
-			return false
+	if !msgTx.IsCrossChain() {
+		for _, txIn := range msgTx.TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			if txIn.Sequence != math.MaxUint32 {
+				return false
+			}
 		}
 	}
 
@@ -1003,7 +1002,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 // CheckTransactionSanity function prior to calling this function.
 func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// Coinbase transactions have no inputs.
-	if IsCoinBase(tx) {
+	if IsCoinBase(tx) || tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
 		return nil
 	}
 
@@ -1022,9 +1021,6 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 			break
 		}
 		if txIn.IsSepadding() {
-			continue
-		}
-		if txIn.SignatureIndex&wire.CrossChainFalg != 0 {
 			continue
 		}
 
@@ -1436,7 +1432,7 @@ func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views *viewpoint
 }
 
 func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, version uint32) error {
-	if IsCoinBase(tx) || tx.MsgTx().IsBtcL2() {
+	if IsCoinBase(tx) || tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
 		return nil
 	}
 
@@ -1448,9 +1444,6 @@ func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ve
 	inputs := make([]token.Token, 0)
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		out := txIn.PreviousOutPoint
@@ -1531,7 +1524,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ve
 }
 
 func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, error) {
-	if tx.MsgTx().IsBtcL2() {
+	if tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
 		return 0, nil
 	}
 	// Coinbase transactions have no inputs.
@@ -1542,9 +1535,6 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		// Ensure the referenced input transaction is available.
@@ -1709,6 +1699,14 @@ func ContractNewStorage(tx *btcutil.Tx, vm *ovm.OVM, paidstoragefees map[[20]byt
 	return storage
 }
 
+func (b *BlockChain) normalizeTxo(txo *wire.TxOut) {
+	copy(txo.PkScript[21:], txo.PkScript[:25])
+	txo.PkScript = txo.PkScript[:len(txo.PkScript)-4]
+	if (txo.TokenType >> 40) == uint64(b.ChainParams.ChainID) {
+		txo.TokenType &= 0xFFFFFFFFFF
+	}
+}
+
 func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 	chain := chainmap.ChainMap[b.ChainParams.ChainID]
 	for _, tx := range block.MsgBlock().Transactions[1:] {
@@ -1733,7 +1731,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 	return b.db.View(func(dbTx database.Tx) error {
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 		for _, tx := range block.MsgBlock().Transactions[1:] {
-			if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
+			if !tx.IsCrossChain() {
 				continue
 			}
 			d := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
@@ -1759,11 +1757,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 					copy(t[:], txo.Txo.PkScript[22:25])
 					t[3] = 0
 					if common.LittleEndian.Uint32(t[:]) == b.ChainParams.ChainID {
-						copy(txo.Txo.PkScript[21:], txo.Txo.PkScript[25:])
-						txo.Txo.PkScript = txo.Txo.PkScript[:len(txo.Txo.PkScript)-4]
-						if ((txo.Txo.TokenType & 0x7FFFFF) >> 40) == uint64(b.ChainParams.ChainID) {
-							txo.Txo.TokenType = txo.Txo.TokenType &^ 0x7FFFFF
-						}
+						b.normalizeTxo(&txo.Txo)
 					}
 				}
 
@@ -1779,13 +1773,12 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 		}
 
 		xcbucket := dbTx.Metadata().Bucket([]byte(common.XCAssets))
+		assets := make(map[[76]byte]int64)
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			svp := uint32(0)
-			if len(tx.TxIn) == 1 && tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
+			if tx.IsCrossChain() {
 				svp = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
 			}
-
-			assets := make(map[[76]byte]int64)
 
 			for _, txo := range tx.TxOut {
 				if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
@@ -1796,24 +1789,9 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 					dest = b.ChainParams.MainChainID
 				}
 
-				assetKey := make([]byte, 12, 76)
+				assetKey, dest, srckey, tokensrc := b.makeAssetKey(txo)
 
-				var tokentype uint64
-				var tokensrc uint32
-				common.LittleEndian.PutUint32(assetKey[:], dest)
-				if uint32(txo.TokenType>>40) == 0 {
-					tokensrc = b.ChainParams.ChainID
-					tokentype = (txo.TokenType & 0xFFFFFFFFFF) | (uint64(b.ChainParams.ChainID) << 40)
-				} else {
-					tokentype = txo.TokenType
-					tokensrc = uint32(txo.TokenType >> 40)
-				}
-
-				if dest != tokensrc {
-					continue
-				}
-
-				common.LittleEndian.PutUint64(assetKey[4:], tokentype)
+				out := dest != tokensrc
 
 				d := int64(0)
 				switch txo.TokenType & 3 {
@@ -1829,28 +1807,36 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 					}
 				}
 
-				if (tokentype & 1) == 1 {
-					assetKey = append(assetKey, txo.Value.(*token.HashToken).Hash[:]...)
-				}
-				if (tokentype & 2) == 2 {
-					if txo.Rights != nil {
-						assetKey = append(assetKey, txo.Rights[:]...)
-					}
-				}
-
 				var vk [76]byte
 				copy(vk[:], assetKey)
 
-				if _, ok := assets[vk]; !ok {
-					val := xcbucket.Get(assetKey)
-					if val != nil {
-						assets[vk] = int64(common.LittleEndian.Uint64(val))
-					} else {
-						assets[vk] = 0
-					}
+				val := xcbucket.Get(assetKey)
+				if val != nil {
+					assets[vk] = int64(common.LittleEndian.Uint64(val))
+				} else {
+					assets[vk] = 0
 				}
 
-				if assets[vk] >= d {
+				if out {
+					assets[vk] += d
+				} else if assets[vk] >= d {
+					assets[vk] -= d
+				} else {
+					return fmt.Errorf("back value excees out value")
+				}
+
+				copy(vk[:], srckey)
+
+				val = xcbucket.Get(srckey)
+				if val != nil {
+					assets[vk] = int64(common.LittleEndian.Uint64(val))
+				} else {
+					assets[vk] = 0
+				}
+
+				if out {
+					assets[vk] += d
+				} else if assets[vk] >= d {
 					assets[vk] -= d
 				} else {
 					return fmt.Errorf("back value excees out value")
@@ -2006,7 +1992,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	var unmached string
 
 	for i, tx := range transactions[1:] {
-		if runScripts && (len(tx.MsgTx().TxIn) != 1 || tx.MsgTx().TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0) {
+		if runScripts && !tx.MsgTx().IsBtcL2() && !tx.MsgTx().IsCrossChain() {
 			err = ovm.VerifySigs(tx, b.ChainParams, 0, views)
 			if err != nil {
 				return err
@@ -2106,11 +2092,10 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		if err != nil {
 			return err
 		}
-	}
-
-	err = views.ConnectTransaction(transactions[0], node.Height, stxos)
-	if err != nil {
-		return err
+		err = views.ConnectTransaction(transactions[0], node.Height, stxos)
+		if err != nil {
+			return err
+		}
 	}
 
 	ck := b.LatestCheckpoint()
@@ -2259,6 +2244,9 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// lock-times within the inputs of all transactions in this
 	// candidate block.
 	for _, tx := range block.Transactions() {
+		if tx.MsgTx().IsCrossChain() {
+			continue
+		}
 		// A transaction can only be included within a block
 		// once the sequence locks of *all* its inputs are
 		// active.
@@ -2283,7 +2271,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	return nil
 }
 
-func (b *BlockChain) checkConnectSVPBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet, stxos *[]viewpoint.SpentTxOut) error {
+func (b *BlockChain) checkConnectSVPBlock(node *chainutil.BlockNode, block *btcutil.Block, views *viewpoint.ViewPointSet) error {
 	// If the side chain blocks end up in the database, a call to
 	// CheckBlockSanity should be done here in case a previous version
 	// allowed a block that is no longer valid.  However, since the

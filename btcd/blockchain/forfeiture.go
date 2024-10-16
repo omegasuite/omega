@@ -440,18 +440,20 @@ func (g *BlockChain) processForfeitBlock(b *btcutil.Block,
 		// calculate tx fees paid
 		out, in := int64(0), int64(0)
 		// calculate input sum
-		for _, txin := range tx.MsgTx().TxIn {
-			if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
-			}
-			if u, ok := usable[txin.PreviousOutPoint]; ok {
-				in += u
-			} else {
-				tk := g.MainChainTx(txin.PreviousOutPoint.Hash)
-				if tk == nil || txin.PreviousOutPoint.Index >= uint32(len(tk.TxOut)) || tk.TxOut[txin.PreviousOutPoint.Index].TokenType != 0 {
+		if !tx.MsgTx().IsCrossChain() {
+			for _, txin := range tx.MsgTx().TxIn {
+				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
-				in += tk.TxOut[txin.PreviousOutPoint.Index].Token.Value.(*token.NumToken).Val
+				if u, ok := usable[txin.PreviousOutPoint]; ok {
+					in += u
+				} else {
+					tk := g.MainChainTx(txin.PreviousOutPoint.Hash)
+					if tk == nil || txin.PreviousOutPoint.Index >= uint32(len(tk.TxOut)) || tk.TxOut[txin.PreviousOutPoint.Index].TokenType != 0 {
+						continue
+					}
+					in += tk.TxOut[txin.PreviousOutPoint.Index].Token.Value.(*token.NumToken).Val
+				}
 			}
 		}
 		if in == 0 {

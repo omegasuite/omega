@@ -386,6 +386,12 @@ func (m *CPUMiner) Notice(notification *blockchain.Notification) {
 	if !m.started || !m.cfg.Generate {
 		return
 	}
+
+	if notification.Data == nil {
+		m.connch <- 0 // this will only affect POW mining
+		return
+	}
+
 	switch notification.Type {
 	case blockchain.NTBlockConnected: // , blockchain.NTBlockRejected:
 		if len(m.connch) > 50 {
@@ -394,6 +400,10 @@ func (m *CPUMiner) Notice(notification *blockchain.Notification) {
 
 		switch notification.Data.(type) {
 		case *btcutil.Block:
+			if notification.Data.(*btcutil.Block) == nil {
+				m.connch <- 0 // this will only affect POW mining
+				return
+			}
 			m.connch <- notification.Data.(*btcutil.Block).Height() // (*wire.MinerBlock).
 			log.Infof("cpuminer notice: sending %d", notification.Data.(*btcutil.Block).Height())
 

@@ -434,7 +434,7 @@ func ReadMessageWithEncodingN(r io.Reader, pver uint32, btcnet common.OmegaNet,
 	// Check for messages from the wrong bitcoin network.
 	if hdr.magic != btcnet {
 		discardInput(r, hdr.length)
-		str := fmt.Sprintf("message from other network [%v]", hdr.magic)
+		str := fmt.Sprintf("message from other network [%v] expect [%v]", hdr.magic, btcnet)
 		return totalBytes, nil, nil, messageError("ReadMessage", str)
 	}
 

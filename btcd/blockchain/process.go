@@ -263,21 +263,13 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 				return fmt.Errorf("error")
 			}
 
-			if tx.TxIn[0].PreviousOutPoint.Index != uint32(xtx.Height) {
-				return fmt.Errorf("error")
-			}
-
 			for i, txo := range xtx.Txs {
 				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
 					var t [4]byte
 					copy(t[:], txo.Txo.PkScript[22:25])
 					t[3] = 0
 					if common.LittleEndian.Uint32(t[:]) == b.ChainParams.ChainID {
-						copy(txo.Txo.PkScript[21:], txo.Txo.PkScript[25:])
-						txo.Txo.PkScript = txo.Txo.PkScript[:len(txo.Txo.PkScript)-4]
-						if ((txo.Txo.TokenType & 0x7FFFFF) >> 40) == uint64(b.ChainParams.ChainID) {
-							txo.Txo.TokenType = txo.Txo.TokenType &^ 0x7FFFFF
-						}
+						b.normalizeTxo(&txo.Txo)
 					}
 				}
 				if !txo.Txo.Match(tx.TxOut[i]) {
@@ -316,7 +308,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	blockHeader := &block.MsgBlock().Header
 	prevHash := &blockHeader.PrevBlock
-	if prevHash.IsEqual(&zerohash) && !blockHash.IsEqual(b.ChainParams.GenesisHash) {
+	if prevHash.IsEqual(&zerohash) { // && !blockHash.IsEqual(b.ChainParams.GenesisHash) {
 		return true, false, nil, -1, nil
 	}
 	prevHashExists, err := b.blockExists(prevHash)
@@ -373,13 +365,18 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	if exists {
+		if blockHash.IsEqual(&b.BestChain.Tip().Hash) {
+			return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
+		}
 		node := b.NodeByHash(blockHash)
 		if !b.index.NodeStatus(node).KnownInvalid() && node.Height == block.Height() {
 			if block.Height() > b.BestChain.Height() {
 				// do we need to reorg?
 				detachNodes, attachNodes := b.getReorganizeNodes(node)
 
-				if attachNodes.Len() != 0 {
+				if detachNodes.Len() == 0 && attachNodes.Len() == 1 {
+					exists = false
+				} else if attachNodes.Len() != 0 {
 					// Reorganize the chain.
 					if err = b.ReorganizeChain(detachNodes, attachNodes); err != nil {
 						return false, true, err, -1, nil
@@ -389,7 +386,9 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 					}
 				}
 			}
-			return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
+			if exists {
+				return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
+			}
 		} // re-examine it otherwise
 	}
 
@@ -449,11 +448,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		}
 	}
 
-	if !b.IsSVP && !b.MatchInpool(block) {
-		str := fmt.Sprintf("Tx in block does not match in pool %v", blockHash)
-		return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1, nil
-	}
-
 	for _, tx := range block.MsgBlock().Transactions[1:] {
 		for _, txo := range tx.TxOut {
 			if !txo.IsSeparator() && txo.IsCrossChain() {
@@ -472,6 +466,11 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		// this mark an pre-consus block
 		//		b.AddOrphanBlock(block)
 		return isMainChain, false, nil, -1, nil
+	}
+
+	if !b.IsSVP && !b.MatchInpool(block) {
+		str := fmt.Sprintf("Tx in block does not match in pool %v", blockHash)
+		return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1, nil
 	}
 
 	if prevNode == b.BestChain.Tip() {

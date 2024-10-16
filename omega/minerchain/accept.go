@@ -209,6 +209,7 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			if c == 0 {
 				c = 1
 			}
+		if !m.IsSVP {
 		v, err := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
 		if err != nil {
 			return err
@@ -279,6 +280,7 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			str := fmt.Sprintf("block hash of %064x is higher than "+
 				"expected max of %064x", hashNum, target)
 			return ruleError(ErrHighHash, str)
+			}
 		}
 	}
 

@@ -168,6 +168,9 @@ func handleConnNotice(c interface{}) {
 
 	case *btcutil.Block:
 		b := c.(*btcutil.Block)
+		if b == nil {
+			return
+		}
 
 		h := b.Height()
 

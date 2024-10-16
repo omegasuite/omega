@@ -325,6 +325,8 @@ func (t *TxOut) Serialize() []byte {
 func (t *TxOut) DeSerialize(r []byte) int {
 	reader := bytes.NewBuffer(r)
 
+	n := reader.Len()
+
 	common.ReadElement(reader, &t.TokenType)
 
 	switch t.TokenType & 1 {
@@ -344,7 +346,7 @@ func (t *TxOut) DeSerialize(r []byte) int {
 	ln, _ := common.ReadVarInt(reader, 0)
 	t.PkScript = reader.Next(int(ln))
 
-	return reader.Len()
+	return n - reader.Len()
 }
 
 const OP_PAY2NONE = 0x45      // from ovm.contracts. redeclare here to avoid circular importation
@@ -420,6 +422,10 @@ type MsgTx struct {
 
 func (s *MsgTx) IsForfeit() bool {
 	return s.Version&TxTypeMask == ForfeitTxVersion
+}
+
+func (s *MsgTx) IsCrossChain() bool {
+	return len(s.TxIn) == 1 && s.TxIn[0].PreviousOutPoint.Index&CrossChainFalg != 0
 }
 
 func (s *MsgTx) Match(t *MsgTx) bool {

@@ -3743,7 +3743,6 @@ func handleGetTreasury(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 			}
 			fmt.Printf("\n")
 			t := btcjson.TreasuryAsset{
-				Typeid:   plg.Typeid,
 				Amount:   plg.Amount,
 				Outpoint: plg.Outpoint.String(),
 				Owners:   []string{},
@@ -7065,6 +7064,10 @@ func newRPCServer(config *rpcserverConfig) (*rpcServer, error) {
 // Callback for notifications from blockchain.  It notifies clients that are
 // long polling for changes or subscribed to websockets notifications.
 func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notification) {
+	if notification.Data == nil {
+		return
+	}
+
 	switch notification.Type {
 	case blockchain.NTBlockAccepted:
 		block, ok := notification.Data.(*btcutil.Block)
@@ -7083,6 +7086,9 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 		case *btcutil.Block:
 			// Notify registered websocket clients of incoming block.
 			blk := notification.Data.(*btcutil.Block)
+			if blk == nil {
+				return
+			}
 			s.ntfnMgr.NotifyBlockConnected(blk)
 			s.statusLock.Lock()
 			for _, tx := range blk.Transactions() {

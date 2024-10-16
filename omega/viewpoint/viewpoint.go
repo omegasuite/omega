@@ -10,7 +10,6 @@ package viewpoint
 
 import (
 	"encoding/binary"
-	"github.com/omegasuite/famofchains/btcd/wire"
 
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -175,14 +174,12 @@ func (view *ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Spe
 			return fmt.Errorf("Attempt to add illegal polygon.")
 		}
 
-		if !tx.IsCoinBase() {
+		if !tx.IsCoinBase() && !tx.MsgTx().IsCrossChain() {
 			for _, in := range tx.MsgTx().TxIn {
 				if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
-				if (in.PreviousOutPoint.Index & wire.CrossChainFalg) != 0 {
-					continue
-				}
+
 				entry := view.Utxo.LookupEntry(in.PreviousOutPoint)
 				if entry == nil {
 					return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))

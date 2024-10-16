@@ -287,7 +287,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	miners := make([]*[20]byte, wire.CommitteeSize)
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		if blk, _ := b.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
-			if _, err := b.blockChain.CheckCollateral(blk, &blk.MsgBlock().BestBlock, blockchain.BFNone); err == nil {
+			if _, err := b.blockChain.CheckCollateral(blk, &blk.MsgBlock().BestBlock, blockchain.BFNone); b.IsSVP || err == nil {
 				miners[i] = &blk.MsgBlock().Miner
 			}
 		}
@@ -304,7 +304,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	for x != nil && rotate >= p.Height {
 		if p.Height > rotate-wire.CommitteeSize {
 			hdr := NodetoHeader(p)
-			if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); err == nil {
+			if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); b.IsSVP || err == nil {
 				miners[p.Height-(rotate-wire.CommitteeSize+1)] = &hdr.Miner
 			} else {
 				miners[p.Height-(rotate-wire.CommitteeSize+1)] = nil
@@ -353,7 +353,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 				rotate++
 
 				hdr := NodetoHeader(n)
-				if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); err == nil {
+				if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); b.IsSVP || err == nil {
 					miners[j] = &hdr.Miner
 				} else {
 					miners[j] = nil

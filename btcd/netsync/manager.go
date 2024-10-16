@@ -2011,7 +2011,7 @@ func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string, ra
 
 	now := time.Now().Unix()
 
-	n, i, f := rand.Int()%len(sm.peerStates), 0, false
+	n, i, f := rand.Intn(len(sm.peerStates)), 0, false
 
 	if _, ok := sm.castedMsg[h]; !ok {
 		sm.castedMsg[h] = now
@@ -2222,6 +2222,10 @@ out:
 // things such as request orphan block parents and relay accepted blocks to
 // connected peers.
 func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Notification) {
+	if notification.Data == nil {
+		return
+	}
+
 	switch notification.Type {
 	// A block has been accepted into the block chain.  Relay it to other
 	// peers.
@@ -2243,6 +2247,9 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 				return
 			}
 			block := notification.Data.(*wire.MinerBlock)
+			if block == nil {
+				return
+			}
 			iv := wire.NewInvVect(common.InvTypeMinerBlock, block.Hash())
 			sm.peerNotifier.RelayInventory(iv, block.MsgBlock())
 
@@ -2275,6 +2282,10 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 		}
 
 		block, ok := notification.Data.(*btcutil.Block)
+		if block == nil {
+			return
+		}
+
 		if ok {
 			// notify peers of new height if our height is greater than we know the peer has
 			for peer, _ := range sm.peerStates {

@@ -41,18 +41,26 @@ func (t *ChainDescriptor) Decendant(cid uint32) bool {
 }
 
 func (t *ChainDescriptor) PassThru(src, dest uint32) bool {
+	if t.ChainID == src || t.ChainID == dest {
+		return true
+	}
 	sd := t.Decendant(src)
 	dd := t.Decendant(dest)
 	if sd != dd {
 		return true
 	}
-	if ChainMap[src].Decendant(dest) {
+	if !sd {
 		return false
 	}
-	if ChainMap[dest].Decendant(src) {
-		return false
+	p := src
+	for ChainMap[p].Parent != t.ChainID {
+		p = ChainMap[p].Parent
 	}
-	return sd
+	q := dest
+	for ChainMap[q].Parent != t.ChainID {
+		q = ChainMap[q].Parent
+	}
+	return p != q
 }
 
 var RootMeta = &ChainDescriptor{
