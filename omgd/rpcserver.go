@@ -350,7 +350,7 @@ var rpcLimited = map[string]struct{}{
 	"getnetworkhashps":   {},
 	"getrawmempool":      {},
 	"getissuedtokens":    {},
-	"createxferl2txo":    {},
+	//	"createxferl2txo":    {},
 	"gettreasury":        {}, // new
 	"getsigners":         {}, // new
 	"getbtcpool":         {}, // new
@@ -573,7 +573,14 @@ func handleGetBtcL2Script(s *rpcServer, cmd interface{}, closeChan <-chan struct
 	}
 	copy(hash[:], from.ScriptAddress())
 
-	script, signers := treasury.Get75pctMSScript(hash)
+	addr, _, signers := treasury.Get75pctMSScript(hash)
+
+	addr2, err := btcbtcutil.DecodeAddress(addr, treasury.BTCParams)
+	if err != nil {
+		return nil, err
+	}
+	pkScript := []byte{0, btctxscript.OP_DATA_32}
+	pkScript = append(pkScript, addr2.ScriptAddress()...)
 
 	snrs := make([]string, 0, len(signers))
 	for _, ss := range signers {
@@ -583,12 +590,11 @@ func handleGetBtcL2Script(s *rpcServer, cmd interface{}, closeChan <-chan struct
 
 	reply := &btcjson.BtcL2Script{
 		Addresses: snrs,
-		Script:    hex.EncodeToString(script),
+		Script:    hex.EncodeToString(pkScript),
 	}
 
 	return reply, nil
 }
-
 */
 
 // handleAddNode handles addnode commands.
@@ -3734,7 +3740,7 @@ func handleGetTreasury(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 				return err
 			}
 
-			fmt.Printf("Asset: %s => typeid: %x, amount: %d, outpoint: %s, pkscript: %x, owners: %d,", outp.String(), plg.Typeid, plg.Amount, plg.Outpoint.String(), plg.Pkscript, len(plg.Owners))
+			fmt.Printf("Asset: %s => amount: %d, outpoint: %s, pkscript: %x, owners: %d,", outp.String(), plg.Amount, plg.Outpoint.String(), plg.Pkscript, len(plg.Owners))
 			if len(plg.Owners) > 0 {
 				fmt.Printf(" owners: ")
 				for _, p := range plg.Owners {
@@ -3927,11 +3933,17 @@ func handleGetL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 func handleCreatexferl2txo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.Createxferl2txoCmd)
 	if c.AssetType == nil || *c.AssetType == 0 {
-		pks, _ := treasury.Get75pctMSScript(c.Address)
+		witnessadress, _, _ := treasury.Get75pctMSScript(c.Address)
+		addr, err := btcbtcutil.DecodeAddress(witnessadress, treasury.BTCParams)
+		if err != nil {
+			return nil, err
+		}
+		pkScript := []byte{0, btctxscript.OP_DATA_32}
+		pkScript = append(pkScript, addr.ScriptAddress()...)
 
 		result := btcwire.TxOut{
 			Value:    int64(c.Amount),
-			PkScript: pks,
+			PkScript: pkScript,
 		}
 		return &result, nil
 	}
@@ -6348,8 +6360,6 @@ type rpcServer struct {
 	sendcmdconfirmation    map[chainhash.Hash]confirmMsg
 	quit                   chan int
 
-	Rpcactivity chan struct{}
-	//	alertresp			   chan *AlertCommand
 	rsapubkey *rsa.PublicKey
 }
 
@@ -6771,9 +6781,6 @@ func (s *rpcServer) Start() {
 		ReadTimeout: time.Second * rpcAuthTimeoutSeconds,
 	}
 	rpcServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if s.Rpcactivity != nil {
-			s.Rpcactivity <- struct{}{}
-		}
 		if r.Method == "OPTIONS" {
 			w.Header().Set("Connection", "keep-alive")
 			w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, Access-Control-Allow-Origin")
@@ -6813,9 +6820,6 @@ func (s *rpcServer) Start() {
 
 	// Websocket endpoint.
 	rpcServeMux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		if s.Rpcactivity != nil {
-			s.Rpcactivity <- struct{}{}
-		}
 		authenticated, isAdmin, err := s.checkAuth(r, false)
 		if err != nil {
 			jsonAuthFail(w)

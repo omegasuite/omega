@@ -376,9 +376,6 @@ type server struct {
 	privKeys           []*btcec.PrivateKey
 	peerState          *peerState
 
-	//	Violations          map[[20]byte]struct{}
-	//	PendingBlackList   map[[20]byte]uint32
-
 	// broadcasted is the inventory of message we have broadcasted,
 	// the purpose is to prevent rebroadcast
 	Broadcasted map[chainhash.Hash]int64

@@ -1885,31 +1885,40 @@ func (b *BlockChain) makeAssetKey(txo *wire.TxOut) ([]byte, uint32, []byte, uint
 }
 
 func (b *BlockChain) validCrossChainScript(script []byte) bool {
-	if len(script) != 29 {
+	if len(script) < 22 {
 		return false
 	}
-	if script[21] != ovm.OP_PAYCROSSCHAIN {
-		return false
+	if script[21] == ovm.OP_PAY2PKH || script[21] != ovm.OP_PAY2SCRIPTH || script[21] != ovm.OP_PAYMULTISIG {
+		if script[0] != b.ChainParams.PubKeyHashAddrID && script[0] != b.ChainParams.ScriptHashAddrID && script[0] != b.ChainParams.MultiSigAddrID {
+			return false
+		}
+	} else {
+		if len(script) < 29 || script[21] != ovm.OP_PAYCROSSCHAIN {
+			return false
+		}
+		switch script[0] {
+		case b.ChainParams.PubKeyHashAddrID:
+			if script[25] != ovm.OP_PAY2PKH {
+				return false
+			}
+		case b.ChainParams.ScriptHashAddrID:
+			if script[25] != ovm.OP_PAY2SCRIPTH {
+				return false
+			}
+		case b.ChainParams.MultiSigAddrID:
+			if script[25] != ovm.OP_PAYMULTISIG {
+				return false
+			}
+		default:
+			return false
+		}
 	}
-	switch script[0] {
-	case b.ChainParams.PubKeyHashAddrID:
-		if script[25] != ovm.OP_PAY2PKH {
-			return false
-		}
-	case b.ChainParams.ScriptHashAddrID:
-		if script[25] != ovm.OP_PAY2SCRIPTH {
-			return false
-		}
-	case b.ChainParams.MultiSigAddrID:
-		if script[25] != ovm.OP_PAYMULTISIG {
-			return false
-		}
-	default:
-		return false
+	if script[21] == ovm.OP_PAYCROSSCHAIN {
+		chain := common.LittleEndian.Uint32(script[21:]) >> 8
+		_, ok := chainmap.ChainMap[chain]
+		return ok
 	}
-	chain := common.LittleEndian.Uint32(script[21:]) >> 8
-	_, ok := chainmap.ChainMap[chain]
-	return ok
+	return true
 }
 
 func (b *BlockChain) dbPutCrossChain(block *btcutil.Block) error {

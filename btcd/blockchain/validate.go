@@ -1585,15 +1585,20 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		}
 
 		rtype := txOut.TokenType
-		if uint32(rtype>>40) == chainParams.ChainID {
-			rtype = rtype & 0xFFFFFFFFFF
-		} else if uint32(rtype>>40) != 0 && txOut.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
-			var cid [4]byte
-			copy(cid[:], txOut.PkScript[22:25])
-			cid[3] = 0
-			if uint32(rtype>>40) != common.LittleEndian.Uint32(cid[:]) {
-				str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", rtype>>40,
-					common.LittleEndian.Uint32(cid[:]))
+		if txOut.IsCrossChain() {
+			if uint32(rtype>>40) == chainParams.ChainID {
+				rtype = rtype & 0xFFFFFFFFFF
+			} else if uint32(rtype>>40) != 0 {
+				var cid [4]byte
+				copy(cid[:], txOut.PkScript[22:25])
+				cid[3] = 0
+				if uint32(rtype>>40) != common.LittleEndian.Uint32(cid[:]) {
+					str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", rtype>>40,
+						common.LittleEndian.Uint32(cid[:]))
+					return 0, ruleError(ErrBadTxOutValue, str)
+				}
+			} else {
+				str := fmt.Sprintf("Tokentype in a cross chain tx must include chainid")
 				return 0, ruleError(ErrBadTxOutValue, str)
 			}
 		}
@@ -1700,7 +1705,7 @@ func ContractNewStorage(tx *btcutil.Tx, vm *ovm.OVM, paidstoragefees map[[20]byt
 }
 
 func (b *BlockChain) normalizeTxo(txo *wire.TxOut) {
-	copy(txo.PkScript[21:], txo.PkScript[:25])
+	copy(txo.PkScript[21:], txo.PkScript[25:])
 	txo.PkScript = txo.PkScript[:len(txo.PkScript)-4]
 	if (txo.TokenType >> 40) == uint64(b.ChainParams.ChainID) {
 		txo.TokenType &= 0xFFFFFFFFFF

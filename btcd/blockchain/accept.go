@@ -31,7 +31,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 			return fmt.Errorf("cross chain tx with contract call")
 		}
 
-		tdest := uint32((txo.TokenType >> 40) &^ wire.CrossChainFalg)
+		tdest := uint32(txo.TokenType >> 40)
 		if _, ok := chainmap.ChainMap[tdest]; tdest != 0 && !ok {
 			b.SrvReq <- ReqChain(tdest)
 			return fmt.Errorf("Cross chain TokenType not found")
@@ -285,39 +285,18 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	}
 
 	newNode := b.MainChainNodeByHash(block.Hash())
-	storeBlock := true
-
-	if b.IsSVP {
-		// only insert block data if it contains a cross chain TX
-		// we include xfers to other chains to make the code simple
-		storeBlock = false
-	out:
-		for _, tx := range block.MsgBlock().Transactions[1:] {
-			for _, txo := range tx.TxOut {
-				var cid [4]byte
-				copy(cid[:], txo.PkScript[22:25])
-				cid[3] = 0
-				if txo.IsCrossChain() {
-					storeBlock = true
-					break out
-				}
-			}
-		}
-	}
 
 	// Insert the block into the database if it's not already there.
 	// This is necessary since it allows block download to be decoupled
 	// from the much more expensive connection logic.  It is also
 	// necessary to blocks that never become part of the main chain or
 	// blocks that fail to connect available for forfeture and compensation.
-	if storeBlock {
-		err = b.db.Update(func(dbTx database.Tx) error {
-			return dbStoreBlock(dbTx, block)
-		})
+	err = b.db.Update(func(dbTx database.Tx) error {
+		return dbStoreBlock(dbTx, block)
+	})
 
-		if err != nil {
-			return false, err, -1
-		}
+	if err != nil {
+		return false, err, -1
 	}
 
 	if newNode == nil {

@@ -451,7 +451,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	for _, tx := range block.MsgBlock().Transactions[1:] {
 		for _, txo := range tx.TxOut {
 			if !txo.IsSeparator() && txo.IsCrossChain() {
-				if len(txo.PkScript) < 26 {
+				if len(txo.PkScript) < 26 || !b.validCrossChainScript(txo.PkScript) {
 					return false, false, fmt.Errorf("Cross chain PkScript length is less than 25b in %s", tx.TxHash().String()), -1, nil
 				}
 			}
