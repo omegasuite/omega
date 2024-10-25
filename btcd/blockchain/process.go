@@ -53,6 +53,8 @@ const (
 
 	BFEasyBlocks
 
+	BFNoOrphan
+
 	// BFNone is a convenience value to specifically indicate no flags.
 	BFNone BehaviorFlags = 0
 )
@@ -134,7 +136,7 @@ func (b *BlockChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) error {
-	behaviorFlags := BFNone
+	behaviorFlags := BFNone | BFNoOrphan
 	if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet || b.ChainParams.Net == common.RegNet {
 		behaviorFlags |= BFEasyBlocks
 	}
@@ -143,6 +145,10 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 		block := (*btcutil.Block)(blk.(*orphanBlock))
 		if prevNode := b.NodeByHash(&block.MsgBlock().Header.PrevBlock); prevNode != nil {
 			block.SetHeight(prevNode.Height + 1)
+			if !b.IsSVP && !b.MatchInpool(block) {
+				return false, nil
+			}
+
 			// Potentially accept the block into the block chain.
 			if prevNode == b.BestChain.Tip() {
 				err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags|behaviorFlags)
@@ -294,12 +300,6 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error, int32, *chainhash.Hash) {
-	//	if block.MsgBlock().Header.Nonce > 0 {
-	// if it is a POW block, wait 10 seconds. Thus if the committee if functioning
-	// they will generate signed blocks during this period and supersedes this block
-	//		time.Sleep(10 * time.Second)
-	//	}
-
 	//	log.Infof("ProcessBlock: ChainLock.RLock")
 	b.ChainLock.Lock()
 	defer b.ChainLock.Unlock()
@@ -325,7 +325,9 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 				return false, false, err, -1, nil
 			} else {
 				log.Infof("Adding orphan block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
-				orp = b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+				if flags&BFNoOrphan == 0 {
+					orp = b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+				}
 			}
 		}
 		return false, true, nil, -1, orp
@@ -399,7 +401,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
-	err = checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
+	err = b.checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return false, false, err, -1, nil
 	}
@@ -469,8 +471,11 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	if !b.IsSVP && !b.MatchInpool(block) {
-		str := fmt.Sprintf("Tx in block does not match in pool %v", blockHash)
-		return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1, nil
+		if flags&BFNoOrphan != 0 {
+			return false, true, nil, -1, nil
+		}
+		orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+		return false, true, nil, -1, orp
 	}
 
 	if prevNode == b.BestChain.Tip() {
@@ -486,8 +491,11 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		}
 		if mkorphan {
 			log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
-			orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-			return isMainChain, true, nil, -1, orp
+			if flags&BFNoOrphan == 0 {
+				orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+				return isMainChain, true, nil, -1, orp
+			}
+			return false, true, nil, -1, nil
 		}
 	} else {
 		switch {

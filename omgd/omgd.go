@@ -303,36 +303,41 @@ func runserver(p *Protocol) {
 }
 
 func cleanup(p *Protocol) {
-	if p.Server != nil {
-		if len(p.cfg.privateKeys) != 0 && p.cfg.Generate && !p.IsSvp {
-			btcdLog.Infof("Gracefully shutting down consensus server...")
-			consensus.Shutdown()
-			btcdLog.Infof("consensus Server shutdown complete")
-		}
-
-		btcdLog.Infof("Gracefully shutting down the server...")
-		p.Server.Stop()
-
-		btcdLog.Infof(" server Stopped")
-		p.Server.WaitForShutdown()
+	if p.Server == nil {
+		return
 	}
-	btcdLog.Infof("Server shutdown complete")
+	if len(p.cfg.privateKeys) != 0 && p.cfg.Generate && !p.IsSvp {
+		btcdLog.Infof("%x Gracefully shutting down consensus server...", uint32(p.Server.chainParams.Net))
+		go consensus.Shutdown()
+		//			btcdLog.Infof("%x consensus Server shutdown complete", uint32(p.Server.chainParams.Net))
+	}
+
+	btcdLog.Infof("%x Gracefully shutting down the server...", uint32(p.Server.chainParams.Net))
+	p.Server.Stop()
+
+	btcdLog.Infof("%x WaitForShutdown", uint32(p.Server.chainParams.Net))
+
+	p.Server.WaitForShutdown()
+	btcdLog.Infof("%x server Stopped", uint32(p.Server.chainParams.Net))
+
+	btcdLog.Infof("%x Server shutdown complete", uint32(p.Server.chainParams.Net))
 
 	// Ensure the database is sync'd and closed on shutdown.
-	btcdLog.Infof("Gracefully shutting down the database...")
+	btcdLog.Infof("%x Gracefully shutting down the database...", uint32(p.Server.chainParams.Net))
 	if p.db != nil {
 		p.db.Close()
 	}
-	btcdLog.Infof("db Closed")
+	btcdLog.Infof("%x db Closed", uint32(p.Server.chainParams.Net))
 	if p.minerdb != nil {
 		p.minerdb.Close()
 	}
-	btcdLog.Infof("minerdb Closed")
+	btcdLog.Infof("%x minerdb Closed", uint32(p.Server.chainParams.Net))
 
 	if p.running {
 		p.running = false
 		wg.Done()
 	}
+	btcdLog.Infof("%x done cleanup", uint32(p.Server.chainParams.Net))
 }
 
 func setTip(tx, miner string, chain *blockchain.BlockChain) bool {

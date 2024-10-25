@@ -162,7 +162,7 @@ func (self *Syncer) repeater() {
 	if self.agreed != -1 && len(self.signed) >= wire.CommitteeSigs && !self.Done {
 		self.forestLock.Unlock()
 		self.Done = true
-		close(self.quit)
+		//		close(self.quit)
 		return
 	}
 

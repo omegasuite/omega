@@ -414,6 +414,10 @@ func (m *CPUMiner) Notice(notification *blockchain.Notification) {
 }
 
 func (m *CPUMiner) CurrentBlock(h *chainhash.Hash) *btcutil.Block {
+	if m == nil {
+		return nil
+	}
+
 	if m.minedBlock != nil {
 		bh := m.minedBlock.Hash()
 		if bh.IsEqual(h) {

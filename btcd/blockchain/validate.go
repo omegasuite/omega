@@ -107,6 +107,25 @@ func IsCoinBase(tx *btcutil.Tx) bool {
 	return tx.IsCoinBase()
 }
 
+func (b *BlockChain) isCoinBase(tx *btcutil.Tx) bool {
+	if b.IsSVP {
+		// A coin base must only have one transaction input.
+		msgTx := tx.MsgTx()
+		if len(msgTx.TxIn) != 1 {
+			return false
+		}
+
+		// The previous output of a coin base must have a zero hash. index is height of the block.
+		prevOut := &msgTx.TxIn[0].PreviousOutPoint
+		if !prevOut.Hash.IsEqual(&chainhash.Hash{}) { // prevOut.Index != math.MaxUint32 ||
+			return false
+		}
+
+		return true
+	}
+	return IsCoinBase(tx)
+}
+
 // SequenceLockActive determines if a transaction's sequence locks have been
 // met, meaning that all the inputs of a given transaction have reached a
 // height or time sufficient for their relative lock-time maturity.
@@ -307,7 +326,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 	}
 
 	// Coinbase script length must be between min and max length.
-	if !IsCoinBase(tx) {
+	if !tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) { // !coinbase
 		// Previous transaction outputs referenced by the inputs to this
 		// transaction must not be null.
 		for _, txIn := range msgTx.TxIn {
@@ -718,7 +737,7 @@ func checkBlockHeaderSanity(header *wire.BlockHeader, powLimit *big.Int, timeSou
 //
 // The flags do not modify the behavior of this function directly, however they
 // are needed to pass along to checkBlockHeaderSanity.
-func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainutil.MedianTimeSource, flags BehaviorFlags) error {
+func (b *BlockChain) checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainutil.MedianTimeSource, flags BehaviorFlags) error {
 	msgBlock := block.MsgBlock()
 	header := &msgBlock.Header
 	err := checkBlockHeaderSanity(header, powLimit, timeSource, flags)
@@ -735,7 +754,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 
 	// The first transaction in a block must be a coinbase.
 	transactions := block.Transactions()
-	if !IsCoinBase(transactions[0]) {
+	if !b.isCoinBase(transactions[0]) {
 		return ruleError(ErrFirstTxNotCoinbase, "first transaction in "+
 			"block is not a coinbase")
 	}
@@ -743,7 +762,7 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 	// All forfeiture txs must be immediately after coinbase
 	minrtx := 0
 	for i, tx := range transactions[1:] {
-		if IsCoinBase(tx) {
+		if b.isCoinBase(tx) {
 			str := fmt.Sprintf("block contains second coinbase at "+
 				"index %d", i+1)
 			return ruleError(ErrMultipleCoinbases, str)
@@ -837,9 +856,9 @@ func checkBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainu
 
 // CheckBlockSanity performs some preliminary checks on a block to ensure it is
 // sane before continuing with block processing.  These checks are context free.
-func CheckBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainutil.MedianTimeSource) error {
-	return checkBlockSanity(block, powLimit, timeSource, BFNone)
-}
+//func CheckBlockSanity(block *btcutil.Block, powLimit *big.Int, timeSource chainutil.MedianTimeSource) error {
+//	return checkBlockSanity(block, powLimit, timeSource, BFNone)
+//}
 
 // checkBlockHeaderContext performs several validation checks on the block header
 // which depend on its position within the block chain.
@@ -1002,7 +1021,10 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 // CheckTransactionSanity function prior to calling this function.
 func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// Coinbase transactions have no inputs.
-	if IsCoinBase(tx) || tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
+	if tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
+		return nil
+	}
+	if tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) { // coinbase
 		return nil
 	}
 
@@ -1099,7 +1121,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 
 func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// Coinbase transactions have no inputs.
-	if IsCoinBase(tx) {
+	if tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) {
 		return nil
 	}
 
@@ -1432,7 +1454,10 @@ func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views *viewpoint
 }
 
 func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, version uint32) error {
-	if IsCoinBase(tx) || tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
+	if tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
+		return nil
+	}
+	if tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) { // coinbase
 		return nil
 	}
 
@@ -1553,11 +1578,16 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 
 		originTxHao := utxo.Token.Value.(*token.NumToken).Val
 
+		rtype := utxo.TokenType
+		if uint32(rtype>>40) == chainParams.ChainID {
+			rtype = rtype & 0xFFFFFFFFFF
+		}
+
 		// The total of all outputs must not be more than the max
 		// allowed per transaction.  Also, we could potentially overflow
 		// the accumulator so check for overflow.
 		//		lastHaoIn := totalIns[utxo.TokenType]
-		totalIns[utxo.TokenType] += originTxHao
+		totalIns[rtype] += originTxHao
 		/*		already checked elsewhere
 				if totalIns[utxo.TokenType] < lastHaoIn ||
 					totalIns[utxo.TokenType] > btcutil.MaxHao {
@@ -1580,15 +1610,17 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 			continue
 		}
 
-		if txOut.Value == nil {
+		if txOut.Value == nil || txOut.IsCrossChain() {
 			continue
 		}
 
 		rtype := txOut.TokenType
+		if uint32(rtype>>40) == chainParams.ChainID {
+			rtype = rtype & 0xFFFFFFFFFF
+		}
+
 		if txOut.IsCrossChain() {
-			if uint32(rtype>>40) == chainParams.ChainID {
-				rtype = rtype & 0xFFFFFFFFFF
-			} else if uint32(rtype>>40) != 0 {
+			if uint32(rtype>>40) != 0 {
 				var cid [4]byte
 				copy(cid[:], txOut.PkScript[22:25])
 				cid[3] = 0
@@ -2167,9 +2199,11 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		// provably unspendable as available utxos.  Also, the passed
 		// spent txos slice is updated to contain an entry for each
 		// spent txout in the order each transaction spends them.
-		err = views.ConnectTransaction(tx, node.Height, stxos)
-		if err != nil {
-			return err
+		if !b.IsSVP {
+			err = views.ConnectTransaction(tx, node.Height, stxos)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -2335,7 +2369,7 @@ func (b *BlockChain) CheckConnectBlockTemplate(block *btcutil.Block) error {
 		return ruleError(ErrPrevBlockNotBest, str)
 	}
 
-	err := checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
+	err := b.checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return err
 	}

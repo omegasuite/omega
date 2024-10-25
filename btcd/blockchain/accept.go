@@ -267,10 +267,6 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 						if !m.PassThru(srcchain, destchain) {
 							return false, fmt.Errorf("Mix of cross chain and regular txout"), -1
 						}
-					} else {
-						if (txo.TokenType & (0xFFFFFF << 40)) == 0 {
-							return false, fmt.Errorf("Local Tokentype is a cross chain tx"), -1
-						}
 					}
 				}
 

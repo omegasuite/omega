@@ -71,6 +71,7 @@ type Config struct {
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
 	MiningAddrs []btcutil.Address
+	Privkeys    []*btcec.PrivateKey
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -242,7 +243,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 	quit chan struct{}, numWorkers uint32) bool {
 
 	// Create some convenience variables.
-	targetDifficulty := blockchain.CompactToBig(header.Bits)
+	targetDifficulty := CompactToBig(header.Bits)
 	header.Block.(*wire.MingingRightBlock).Bits = header.Bits
 
 	block := header.Block.(*wire.MingingRightBlock)
@@ -415,7 +416,7 @@ func (m *CPUMiner) ChangeMiningKey(miningAddr btcutil.Address) {
 func (m *CPUMiner) generateBlocks(quit chan struct{}, numWorkers uint32) {
 	// Start a ticker which is used to signal checks for stale work and
 	// updates to the speed monitor.
-	m.workerWg.Add(1)
+	//	m.workerWg.Add(1)
 
 	pendingMiner := make(map[[20]byte]struct{})
 	// shall load those between current rotation and MR chain top
@@ -669,7 +670,7 @@ out:
 		}
 	}
 
-	m.workerWg.Done()
+	//	m.workerWg.Done()
 }
 
 // miningWorkerController launches the worker goroutines that are used to
@@ -705,7 +706,7 @@ out:
 
 			close(quit)
 
-			m.workerWg.Wait()
+			//			m.workerWg.Wait()
 			quit = make(chan struct{})
 
 			launchWorkers(m.numWorkers)
@@ -719,7 +720,7 @@ out:
 
 	// Wait until all workers shut down to stop the speed monitor since
 	// they rely on being able to send updates to it.
-	m.workerWg.Wait()
+	//	m.workerWg.Wait()
 	close(m.speedMonitorQuit)
 	m.wg.Done()
 }

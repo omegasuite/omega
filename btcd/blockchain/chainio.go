@@ -942,6 +942,9 @@ func (b *BlockChain) ShowL2DB(clearAssets int) {
 
 		fmt.Printf("INCOMINGPOOL\n")
 		for ok := cursor.First(); ok; ok = cursor.Next() {
+			if bytes.Compare(cursor.Key(), []byte("BTCHeight")) == 0 {
+				continue
+			}
 		}
 
 		return nil
@@ -1795,7 +1798,7 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 		prevOut.Index = uint32(txOutIdx)
 		neededSet[prevOut] = struct{}{}
 	}
-	if !IsCoinBase(tx) {
+	if !b.isCoinBase(tx) {
 		for _, txIn := range tx.MsgTx().TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue

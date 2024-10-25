@@ -209,77 +209,77 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			if c == 0 {
 				c = 1
 			}
-		if !m.IsSVP {
-		v, err := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
-		if err != nil {
-			return err
-		}
-			h1 := int64(v / c)
-			if h1 < 1 {
-				h1 = 1
-			}
+			if !m.IsSVP {
+				v, err := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
+				if err != nil {
+					return err
+				}
+				h1 := int64(v / c)
+				if h1 < 1 {
+					h1 = 1
+				}
 
-			prev, _ := m.DBBlockByHash(&header.PrevBlock)
-			minscore := prev.MsgBlock().MeanTPH >> 3
-			if minscore == 0 {
-				minscore = 1
-			}
+				prev, _ := m.DBBlockByHash(&header.PrevBlock)
+				minscore := prev.MsgBlock().MeanTPH >> 3
+				if minscore == 0 {
+					minscore = 1
+				}
 
-			r := m.TPSreportFromDB(header.Miner, h) // max most recent 100 records
-			for i := len(r); i < 100; i++ {
-				r = append(r, blockchain.TPSrv{Val: minscore})
-			}
-			sort.Slice(r, func(i, j int) bool {
-				return r[i].Val < r[j].Val
-			})
+				r := m.TPSreportFromDB(header.Miner, h) // max most recent 100 records
+				for i := len(r); i < 100; i++ {
+					r = append(r, blockchain.TPSrv{Val: minscore})
+				}
+				sort.Slice(r, func(i, j int) bool {
+					return r[i].Val < r[j].Val
+				})
 
-			sum := uint32(0)
-			for k := 25; k < 75; k++ {
-				sum += r[k].Val
-			}
-			sum /= 50
+				sum := uint32(0)
+				for k := 25; k < 75; k++ {
+					sum += r[k].Val
+				}
+				sum /= 50
 
-			h2 := int64(1)
-			if sum <= minscore {
-				h2 = 1
-			} else {
-				h2 = int64(sum / minscore)
-			}
-			if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
-				h2 *= 16
-			}
-
-			if factor > 0 {
-				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-				target = target.Mul(target, big.NewInt(h1+h2))
-			} else {
+				h2 := int64(1)
+				if sum <= minscore {
+					h2 = 1
+				} else {
+					h2 = int64(sum / minscore)
+				}
 				if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
-					factor *= 16
+					h2 *= 16
 				}
-				target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
-			}
 
-			if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
-				if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
-					target = powLimit.Mul(powLimit, big.NewInt(16))
+				if factor > 0 {
+					hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+					target = target.Mul(target, big.NewInt(h1+h2))
+				} else {
+					if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
+						factor *= 16
+					}
+					target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
+				}
+
+				if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
+					if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
+						target = powLimit.Mul(powLimit, big.NewInt(16))
+					}
+				} else {
+					if target.Cmp(powLimit) > 0 {
+						target = powLimit
+					}
 				}
 			} else {
-				if target.Cmp(powLimit) > 0 {
-					target = powLimit
+				if factor > 0 {
+					hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+				} else {
+					target = target.Mul(target, big.NewInt(-factor))
 				}
 			}
-		} else {
-			if factor > 0 {
-				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-			} else {
-				target = target.Mul(target, big.NewInt(-factor))
-			}
-		}
 
-		if hashNum.Cmp(target) > 0 {
-			str := fmt.Sprintf("block hash of %064x is higher than "+
-				"expected max of %064x", hashNum, target)
-			return ruleError(ErrHighHash, str)
+			if !m.IsSVP && hashNum.Cmp(target) > 0 {
+				str := fmt.Sprintf("block hash of %064x is higher than "+
+					"expected max of %064x", hashNum, target)
+				return ruleError(ErrHighHash, str)
 			}
 		}
 	}
@@ -436,77 +436,79 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	// validity of Violations
 	uniq := make(map[chainhash.Hash]map[chainhash.Hash]struct{})
 	mh, _ := b.blockChain.BlockHeightByHash(&block.MsgBlock().BestBlock)
-	for _, p := range block.MsgBlock().ViolationReport {
-		if p.Height <= 0 {
-			return ruleError(ErrBlackList, fmt.Errorf("Invalid height: %d", p.Height).Error())
-		}
-		if p.Height > mh {
-			// If side chain is higher, that means we should choose it as best chain
-			return ruleError(ErrBlackList, fmt.Errorf("Invalid height: %d", p.Height).Error())
-		}
-		if len(p.Blocks) < 2 {
-			return ruleError(ErrBlackList, fmt.Errorf("Invalid evidence: %d blocks", len(p.Blocks)).Error())
-		}
-		if !b.BestChain.Contains(b.NodeByHash(&p.MRBlock)) {
-			return ruleError(ErrBlackList, fmt.Errorf("Invalid evidence: block %s not in MR chain", p.MRBlock.String()).Error())
-		}
-		mb, _ := b.BlockByHash(&p.MRBlock)
-		if mb.Height() < block.Height()-99 {
-			return ruleError(ErrBlackList, fmt.Errorf("Report of violation more than 99 blocks older not allowed. %d", mb.Height()).Error())
-		}
-		miner := mb.MsgBlock().Miner
+	if !b.IsSVP {
+		for _, p := range block.MsgBlock().ViolationReport {
+			if p.Height <= 0 {
+				return ruleError(ErrBlackList, fmt.Errorf("Invalid height: %d", p.Height).Error())
+			}
+			if p.Height > mh {
+				// If side chain is higher, that means we should choose it as best chain
+				return ruleError(ErrBlackList, fmt.Errorf("Invalid height: %d", p.Height).Error())
+			}
+			if len(p.Blocks) < 2 {
+				return ruleError(ErrBlackList, fmt.Errorf("Invalid evidence: %d blocks", len(p.Blocks)).Error())
+			}
+			if !b.BestChain.Contains(b.NodeByHash(&p.MRBlock)) {
+				return ruleError(ErrBlackList, fmt.Errorf("Invalid evidence: block %s not in MR chain", p.MRBlock.String()).Error())
+			}
+			mb, _ := b.BlockByHash(&p.MRBlock)
+			if mb.Height() < block.Height()-99 {
+				return ruleError(ErrBlackList, fmt.Errorf("Report of violation more than 99 blocks older not allowed. %d", mb.Height()).Error())
+			}
+			miner := mb.MsgBlock().Miner
 
-		if _, ok := uniq[p.MRBlock]; !ok {
-			uniq[p.MRBlock] = make(map[chainhash.Hash]struct{})
-		}
+			if _, ok := uniq[p.MRBlock]; !ok {
+				uniq[p.MRBlock] = make(map[chainhash.Hash]struct{})
+			}
 
-		// prep for check for duplicated reports
-		for q, _ := b.BlockByHash(&block.MsgBlock().PrevBlock); q.Height() > mb.Height(); q, _ = b.BlockByHash(&q.MsgBlock().PrevBlock) {
-			for _, s := range q.MsgBlock().ViolationReport {
-				if !s.MRBlock.IsEqual(&p.MRBlock) {
-					continue
-				}
-				if _, ok := uniq[s.MRBlock]; !ok {
-					uniq[s.MRBlock] = make(map[chainhash.Hash]struct{})
-				}
-				for _, tx := range s.Blocks {
-					if _, err := b.blockChain.BlockHeightByHash(&tx); err != nil {
-						uniq[s.MRBlock][tx] = struct{}{}
+			// prep for check for duplicated reports
+			for q, _ := b.BlockByHash(&block.MsgBlock().PrevBlock); q.Height() > mb.Height(); q, _ = b.BlockByHash(&q.MsgBlock().PrevBlock) {
+				for _, s := range q.MsgBlock().ViolationReport {
+					if !s.MRBlock.IsEqual(&p.MRBlock) {
+						continue
+					}
+					if _, ok := uniq[s.MRBlock]; !ok {
+						uniq[s.MRBlock] = make(map[chainhash.Hash]struct{})
+					}
+					for _, tx := range s.Blocks {
+						if _, err := b.blockChain.BlockHeightByHash(&tx); err != nil {
+							uniq[s.MRBlock][tx] = struct{}{}
+						}
 					}
 				}
 			}
-		}
 
-		main := false
-		for _, tx := range p.Blocks {
-			if _, err := b.blockChain.BlockHeightByHash(&tx); err != nil {
-				if _, ok := uniq[p.MRBlock][tx]; ok {
-					return ruleError(ErrBlackList, fmt.Errorf("Violating block already reported before: %s", tx.String()).Error())
+			main := false
+			for _, tx := range p.Blocks {
+				if _, err := b.blockChain.BlockHeightByHash(&tx); err != nil {
+					if _, ok := uniq[p.MRBlock][tx]; ok {
+						return ruleError(ErrBlackList, fmt.Errorf("Violating block already reported before: %s", tx.String()).Error())
+					}
+					uniq[p.MRBlock][tx] = struct{}{}
+				} else if main {
+					return ruleError(ErrBlackList, fmt.Errorf("Duplicated block in blacklist: %s", tx.String()).Error())
+				} else {
+					main = true
 				}
-				uniq[p.MRBlock][tx] = struct{}{}
-			} else if main {
-				return ruleError(ErrBlackList, fmt.Errorf("Duplicated block in blacklist: %s", tx.String()).Error())
-			} else {
-				main = true
-			}
-			tb, _ := b.blockChain.HashToBlock(&tx) // already checked that it exists
-			if tb == nil || tb.Height() != p.Height {
-				return ruleError(ErrBlackList, fmt.Errorf("Invalid height of violating block: %s", tx.String()).Error())
-			}
+				tb, _ := b.blockChain.HashToBlock(&tx) // already checked that it exists
+				if tb == nil || tb.Height() != p.Height {
+					return ruleError(ErrBlackList, fmt.Errorf("Invalid height of violating block: %s", tx.String()).Error())
+				}
 
-			mtch := false
-			for _, sig := range tb.MsgBlock().Transactions[0].SignatureScripts[1:] {
-				// although tb is in side chain, the fact that it is the database means
-				// that all block signatures has been verified. thus we don't need to
-				// verify signature again. we only need to extract address from pub key
-				h := btcutil.Hash160(sig[:btcec.PubKeyBytesLenCompressed])
-				if bytes.Compare(h, miner[:]) == 0 {
-					mtch = true
-					break
+				mtch := false
+				for _, sig := range tb.MsgBlock().Transactions[0].SignatureScripts[1:] {
+					// although tb is in side chain, the fact that it is the database means
+					// that all block signatures has been verified. thus we don't need to
+					// verify signature again. we only need to extract address from pub key
+					h := btcutil.Hash160(sig[:btcec.PubKeyBytesLenCompressed])
+					if bytes.Compare(h, miner[:]) == 0 {
+						mtch = true
+						break
+					}
 				}
-			}
-			if !mtch {
-				return ruleError(ErrBlackList, fmt.Errorf("Invalid report: %s", tx.String()).Error())
+				if !mtch {
+					return ruleError(ErrBlackList, fmt.Errorf("Invalid report: %s", tx.String()).Error())
+				}
 			}
 		}
 	}

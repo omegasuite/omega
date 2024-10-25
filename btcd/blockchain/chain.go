@@ -230,6 +230,11 @@ func (b *BlockChain) InitCollateral() {
 	//	b.collaterals = make([]wire.OutPoint, wire.ViolationReportDeadline)
 	//	b.LockedCollaterals = make(map[wire.OutPoint]struct{})
 
+
+	if b.Miners == nil {
+		return
+	}
+
 	rot := b.BestSnapshot().LastRotation
 	for i := 0; i < int(b.ChainParams.ViolationReportDeadline); i++ {
 		mb, _ := b.Miners.BlockByHeight(int32(rot) - int32(i))
@@ -307,7 +312,7 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 	mTx := tx.MsgTx()
 
 	// comp tx is not subject to seq lock rule
-	if mTx.Version&wire.TxTypeMask == wire.ForfeitTxVersion || IsCoinBase(tx) || tx.MsgTx().IsBtcL2() {
+	if mTx.Version&wire.TxTypeMask == wire.ForfeitTxVersion || b.isCoinBase(tx) || tx.MsgTx().IsBtcL2() {
 		return sequenceLock, nil
 	}
 
@@ -877,25 +882,27 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 
 		// Before we delete the spend journal entry for this back,
 		// we'll fetch it as is so the indexers can utilize if needed.
-		stxos, err := dbFetchSpendJournalEntry(dbTx, block)
-		if err != nil {
-			return err
-		}
-
-		// Update the transaction spend journal by removing the record
-		// that contains all txos spent by the block.
-		err = dbRemoveSpendJournalEntry(dbTx, block.Hash())
-		if err != nil {
-			return err
-		}
-
-		// Allow the index manager to call each of the currently active
-		// optional indexes with the block being disconnected so they
-		// can update themselves accordingly.
-		if b.indexManager != nil {
-			err := b.indexManager.DisconnectBlock(dbTx, block, stxos)
+		var stxos []viewpoint.SpentTxOut
+		if !b.IsSVP {
+			stxos, err = dbFetchSpendJournalEntry(dbTx, block)
 			if err != nil {
 				return err
+			}
+			// Update the transaction spend journal by removing the record
+			// that contains all txos spent by the block.
+			err = dbRemoveSpendJournalEntry(dbTx, block.Hash())
+			if err != nil {
+				return err
+			}
+
+			// Allow the index manager to call each of the currently active
+			// optional indexes with the block being disconnected so they
+			// can update themselves accordingly.
+			if b.indexManager != nil {
+				err := b.indexManager.DisconnectBlock(dbTx, block, stxos)
+				if err != nil {
+					return err
+				}
 			}
 		}
 
@@ -1241,6 +1248,8 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	var attachable = 0
 	var detachable = detachNodes.Len()
 
+	views.SetBestHash(&newBest.Hash)
+
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 
@@ -1331,9 +1340,9 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 			if err != nil {
 				log.Infof("checkConnectBlock || checkProofOfWork error for block %d: "+err.Error(), block.Height())
 			}
-			if mkorphan {
-				b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-			}
+			//			if mkorphan {
+			//				b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+			//			}
 			log.Infof("stop adding new blocks %v || %v", err, mkorphan)
 			break
 		}
@@ -1787,6 +1796,10 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
 					if common.LittleEndian.Uint32(t[:]) == b.ChainParams.ChainID {
 						b.normalizeTxo(&txo.Txo)
 					}
+				}
+
+				if uint32(txo.Txo.TokenType>>40) == b.ChainParams.ChainID && !txo.Txo.IsCrossChain() {
+					txo.Txo.TokenType &= 0xFFFFFFFFFF
 				}
 
 				mtx.AddTxOut(&txo.Txo)

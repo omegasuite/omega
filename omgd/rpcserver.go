@@ -342,14 +342,14 @@ var rpcLimited = map[string]struct{}{
 	"getmbkh":               {},
 	//	"getcfilter":            {},
 	//	"getcfilterheader":      {},
-	"getcurrentnet":      {},
-	"getdifficulty":      {},
-	"getheaders":         {},
-	"getinfo":            {},
-	"getnettotals":       {},
-	"getnetworkhashps":   {},
-	"getrawmempool":      {},
-	"getissuedtokens":    {},
+	"getcurrentnet":    {},
+	"getdifficulty":    {},
+	"getheaders":       {},
+	"getinfo":          {},
+	"getnettotals":     {},
+	"getnetworkhashps": {},
+	"getrawmempool":    {},
+	"getissuedtokens":  {},
 	//	"createxferl2txo":    {},
 	"gettreasury":        {}, // new
 	"getsigners":         {}, // new
@@ -5075,7 +5075,8 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 				mtx := new(wire.MsgTx)
 				err := mtx.Deserialize(bytes.NewReader(serializedTx))
 				if err != nil {
-					return err
+					fmt.Printf("error: bad data in addr index at %d -- %s", heights[i], err.Error())
+					continue
 				}
 				mtx.SignatureScripts = make([][]byte, 0)
 

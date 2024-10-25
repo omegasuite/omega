@@ -2901,7 +2901,9 @@ func (s *server) Start() {
 	// Start the CPU miner if generation is enabled.
 	//	if cfg.Generate {
 	btcdLog.Infof("Start minging blocks.")
-	s.cpuMiner.Start()
+	if s.cpuMiner != nil && s.rpcServer.cfg.Cfg.Generate {
+		s.cpuMiner.Start()
+	}
 	//	}
 	if s.rpcServer.cfg.Cfg.GenerateMiner {
 		btcdLog.Infof("Start minging miner blocks with %d collaterals.", len(s.rpcServer.cfg.Cfg.collateral))
@@ -3384,56 +3386,65 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		s.chainParams, s.txMemPool, s.chain, s.timeSource, prot.activeNetParams)
 	//		s.sigCache, s.hashCache)
 	// This is the miner for Tx chain
-	s.cpuMiner = cpuminer.New(&cpuminer.Config{
-		ChainParams:            prot.activeNetParams,
-		BlockTemplateGenerator: blockTemplateGenerator,
-		MiningAddrs:            prot.cfg.miningAddrs,
-		SignAddress:            prot.cfg.signAddress,
-		PrivKeys:               prot.cfg.privateKeys,
-		DisablePOWMining:       prot.cfg.DisablePOWMining,
-		EnablePOWMining:        prot.cfg.EnablePOWMining,
-		ProcessBlock:           s.syncManager.ProcessBlock,
-		ConnectedCount:         s.ConnectedCount,
-		IsCurrent:              s.syncManager.IsCurrent,
-		AppendPrivKey: func(key *btcec.PrivateKey) bool {
-			fp, err := os.OpenFile(prot.cfg.ConfigFile, os.O_APPEND|os.O_WRONLY, 0666)
 
-			if err != nil {
-				return false
-			}
-			w, err := btcutil.NewWIF(key, prot.activeNetParams, true)
-			if err != nil {
-				return false
-			}
-
-			_, err = fp.WriteString("\nprivkeys=" + w.String() + "\n")
-			if err != nil {
-				return false
-			}
-			fp.Close()
-			return true
-		},
-		Generate: prot.cfg.Generate,
-	})
-
-	if prot.cfg.GenerateMiner {
-		mcfg := &minerchain.Config{
+	s.minerMiner = nil
+	s.cpuMiner = nil
+	if prot.IsSvp {
+		prot.cfg.GenerateMiner = false
+		prot.cfg.Generate = false
+	} else {
+		s.cpuMiner = cpuminer.New(&cpuminer.Config{
 			ChainParams:            prot.activeNetParams,
 			BlockTemplateGenerator: blockTemplateGenerator,
-			ProcessBlock:           s.syncManager.ProcessMinerBlock,
+			MiningAddrs:            prot.cfg.miningAddrs,
+			SignAddress:            prot.cfg.signAddress,
+			PrivKeys:               prot.cfg.privateKeys,
+			DisablePOWMining:       prot.cfg.DisablePOWMining,
+			EnablePOWMining:        prot.cfg.EnablePOWMining,
+			ProcessBlock:           s.syncManager.ProcessBlock,
 			ConnectedCount:         s.ConnectedCount,
 			IsCurrent:              s.syncManager.IsCurrent,
-			ExternalIPs:            prot.cfg.ExternalIPs,
-		}
-		if len(prot.cfg.signAddress) > 0 {
-			mcfg.MiningAddrs = prot.cfg.signAddress
+			AppendPrivKey: func(key *btcec.PrivateKey) bool {
+				fp, err := os.OpenFile(prot.cfg.ConfigFile, os.O_APPEND|os.O_WRONLY, 0666)
+
+				if err != nil {
+					return false
+				}
+				w, err := btcutil.NewWIF(key, prot.activeNetParams, true)
+				if err != nil {
+					return false
+				}
+
+				_, err = fp.WriteString("\nprivkeys=" + w.String() + "\n")
+				if err != nil {
+					return false
+				}
+				fp.Close()
+				return true
+			},
+			Generate: prot.cfg.Generate,
+		})
+
+		if prot.cfg.GenerateMiner {
+			mcfg := &minerchain.Config{
+				ChainParams:            prot.activeNetParams,
+				BlockTemplateGenerator: blockTemplateGenerator,
+				ProcessBlock:           s.syncManager.ProcessMinerBlock,
+				ConnectedCount:         s.ConnectedCount,
+				IsCurrent:              s.syncManager.IsCurrent,
+				ExternalIPs:            prot.cfg.ExternalIPs,
+			}
+			if len(prot.cfg.signAddress) > 0 {
+				mcfg.MiningAddrs = prot.cfg.signAddress
+			} else {
+				mcfg.MiningAddrs = prot.cfg.miningAddrs
+			}
+			mcfg.Privkeys = prot.cfg.privateKeys
+			s.minerMiner = minerchain.NewMiner(mcfg)
 		} else {
-			mcfg.MiningAddrs = prot.cfg.miningAddrs
+			s.minerMiner = nil
+			prot.cfg.GenerateMiner = false
 		}
-		s.minerMiner = minerchain.NewMiner(mcfg)
-	} else {
-		s.minerMiner = nil
-		prot.cfg.GenerateMiner = false
 	}
 
 	// Only setup a function to return new addresses to connect to when

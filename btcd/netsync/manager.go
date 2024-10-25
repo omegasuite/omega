@@ -280,9 +280,11 @@ func (sm *SyncManager) resetConnections(all bool) {
 
 	log.Infof("ResetConnections peers = %d", len(sm.peerStates))
 
+	sm.smtx.Lock()
 	for p, _ := range sm.peerStates {
 		p.Disconnect("Reset")
 	}
+	sm.smtx.Unlock()
 	sm.clearSync()
 }
 
@@ -334,11 +336,6 @@ func (sm *SyncManager) AddSyncJob(peer *peerpkg.Peer, locator, mlocator chainhas
 	}
 	hash := chainhash.DoubleHashH(h[:])
 
-	sm.smtx.Lock()
-	defer func() {
-		sm.smtx.Unlock()
-	}()
-
 	for i := 0; i < len(sm.syncjobs); i++ {
 		if hash == sm.syncjobs[i].hash {
 			return
@@ -369,8 +366,12 @@ func (sm *SyncManager) updateSyncPeer() {
 	}
 
 	p := sm.syncPeer
+
 	if p != nil {
+		sm.smtx.Lock()
 		state, ok := sm.peerStates[p]
+		sm.smtx.Unlock()
+
 		if ok && len(state.requestedBlocks) > 0 {
 			tm := int(time.Now().Unix())
 			for _, t := range state.requestedBlocks {
@@ -380,11 +381,6 @@ func (sm *SyncManager) updateSyncPeer() {
 			}
 		}
 	}
-
-	sm.smtx.Lock()
-	defer func() {
-		sm.smtx.Unlock()
-	}()
 
 	n := len(sm.syncjobs)
 
@@ -475,6 +471,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 	tm := int64(0x7FFFFFFFFFFFFFFF)
 	ss := ""
 
+	sm.smtx.Lock()
 	for peer, state := range sm.peerStates {
 		ss = ss + fmt.Sprintf("peer ID = %d conn = %v candidate = %v addr = %s\n",
 			peer.ID(), peer.Connected(), state.syncCandidate, peer.Addr())
@@ -510,6 +507,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 
 	if bestPeer == nil {
 		//		log.Infof("No sync peer available out of %d peers", len(sm.peerStates))
+		sm.smtx.Unlock()
 		return false
 	}
 
@@ -518,6 +516,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 	}
 
 	sm.peerStates[bestPeer].syncTime = time.Now().Unix()
+	sm.smtx.Unlock()
 
 	// Start syncing from the best peer if one was selected.
 	if bestPeer != nil {
@@ -530,7 +529,9 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 		sm.requestedBlocks = make(map[chainhash.Hash]int)
 		sm.requestedOrphans = make(map[chainhash.Hash]int)
 
+		sm.smtx.Lock()
 		sm.peerStates[bestPeer].requestedBlocks = make(map[chainhash.Hash]int)
+		sm.smtx.Unlock()
 
 		sm.syncPeer = bestPeer
 
@@ -656,12 +657,14 @@ func (sm *SyncManager) handleNewPeerMsg(peer *peerpkg.Peer) {
 
 	// Initialize the peer state
 	isSyncCandidate := sm.isSyncCandidate(peer)
+	sm.smtx.Lock()
 	sm.peerStates[peer] = &peerSyncState{
 		syncCandidate:   isSyncCandidate,
 		requestedTxns:   make(map[chainhash.Hash]struct{}),
 		requestedBlocks: make(map[chainhash.Hash]int),
 		requestQueue:    make([]*wire.InvVect, 0, 1000),
 	}
+	sm.smtx.Unlock()
 
 	// Start syncing by choosing the best candidate if needed.
 	if isSyncCandidate && sm.syncPeer == nil {
@@ -674,14 +677,18 @@ func (sm *SyncManager) handleNewPeerMsg(peer *peerpkg.Peer) {
 // the current sync peer, attempts to select a new best peer to sync from.  It
 // is invoked from the syncHandler goroutine.
 func (sm *SyncManager) handleDonePeerMsg(peer *peerpkg.Peer) {
+	sm.smtx.Lock()
 	state, exists := sm.peerStates[peer]
+	sm.smtx.Unlock()
 	if !exists {
 		log.Warnf("Received done peer message for unknown peer %s", peer)
 		return
 	}
 
 	// Remove the peer from the list of candidate peers.
+	sm.smtx.Lock()
 	delete(sm.peerStates, peer)
+	sm.smtx.Unlock()
 
 	log.Infof("Lost peer %s", peer)
 
@@ -718,7 +725,9 @@ func (sm *SyncManager) handleDonePeerMsg(peer *peerpkg.Peer) {
 // handleTxMsg handles transaction messages from all peers.
 func (sm *SyncManager) handleTxMsg(tmsg *txMsg) {
 	peer := tmsg.peer
+	sm.smtx.Lock()
 	state, exists := sm.peerStates[peer]
+	sm.smtx.Unlock()
 	if !exists {
 		log.Warnf("Received tx message from unknown peer %s", peer)
 		return
@@ -814,7 +823,9 @@ func (sm *SyncManager) current(t int) bool {
 // handleBlockMsg handles block messages from all peers.
 func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	peer := bmsg.peer
+	sm.smtx.Lock()
 	state, exists := sm.peerStates[peer]
+	sm.smtx.Unlock()
 	if !exists {
 		log.Warnf("Received block message from unknown peer %s", peer)
 		return
@@ -975,7 +986,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	}
 
 	ht := bmsg.block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index
-	if behaviorFlags&blockchain.BFNoConnect == blockchain.BFNoConnect {
+	if behaviorFlags&blockchain.BFNoConnect == blockchain.BFNoConnect && !sm.chain.IsSVP {
 		// passing it to consensus maker
 		consensus.ProcessBlock(bmsg.block, behaviorFlags)
 		if bmsg.block.Height() > b1.Height {
@@ -1125,7 +1136,9 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	peer := bmsg.peer
+	sm.smtx.Lock()
 	state, exists := sm.peerStates[peer]
+	sm.smtx.Unlock()
 	if !exists {
 		log.Warnf("Received block message from unknown peer %s", peer)
 		return
@@ -1312,7 +1325,9 @@ func (sm *SyncManager) fetchHeaderBlocks() {
 				"fetch: %v", err)
 		}
 		if !haveInv {
+			sm.smtx.Lock()
 			syncPeerState := sm.peerStates[sm.syncPeer]
+			sm.smtx.Unlock()
 
 			sm.requestedBlocks[*node.hash] = 1
 			syncPeerState.requestedBlocks[*node.hash] = 1
@@ -1341,7 +1356,9 @@ func (sm *SyncManager) fetchHeaderBlocks() {
 // requested when performing a headers-first sync.
 func (sm *SyncManager) handleHeadersMsg(hmsg *headersMsg) {
 	peer := hmsg.peer
+	sm.smtx.Lock()
 	_, exists := sm.peerStates[peer]
+	sm.smtx.Unlock()
 	if !exists {
 		log.Warnf("Received headers message from unknown peer %s", peer)
 		return
@@ -2004,15 +2021,15 @@ func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string, ra
 	m.OmcEncode(&w, 0, wire.FullEncoding)
 	copy(h[:], chainhash.HashB(w.Bytes()))
 
-	sm.smtx.Lock()
-	defer func() {
-		sm.smtx.Unlock()
-	}()
-
 	now := time.Now().Unix()
+
+	if sm == nil || sm.peerStates == nil || len(sm.peerStates) == 0 {
+		return
+	}
 
 	n, i, f := rand.Intn(len(sm.peerStates)), 0, false
 
+	sm.smtx.Lock()
 	if _, ok := sm.castedMsg[h]; !ok {
 		sm.castedMsg[h] = now
 		for peer, _ := range sm.peerStates {
@@ -2033,6 +2050,7 @@ func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string, ra
 			delete(sm.castedMsg, h)
 		}
 	}
+	sm.smtx.Unlock()
 }
 
 // blockHandler is the main handler for the sync manager.  It must be run as a
@@ -2149,7 +2167,7 @@ out:
 				}
 
 			case processConsusMsg:
-				if !passiveMode {
+				if !passiveMode && !sm.chain.IsSVP {
 					consensus.ProcessBlock(msg.block, msg.flags)
 				}
 
@@ -2263,6 +2281,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 			if !sm.current(1) {
 				return
 			}
+			sm.smtx.Lock()
 			for peer, _ := range sm.peerStates {
 				if peer.LastMinerBlock() < block.Height() && block.Height() < peer.LastMinerBlock()+50 {
 					// should send an inv msg
@@ -2273,6 +2292,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 					peer.QueueInventory(invVect)
 				}
 			}
+			sm.smtx.Unlock()
 			//			log.Warnf("Chain NTBlockConnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
 			break
 		}
@@ -2288,6 +2308,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 
 		if ok {
 			// notify peers of new height if our height is greater than we know the peer has
+			sm.smtx.Lock()
 			for peer, _ := range sm.peerStates {
 				if peer.LastBlock() < block.Height() && block.Height() < peer.LastBlock()+500 {
 					invVect := &wire.InvVect{
@@ -2297,6 +2318,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 					peer.QueueInventory(invVect)
 				}
 			}
+			sm.smtx.Unlock()
 
 			// Remove all of the transactions (except the coinbase) in the
 			// connected block from the transaction pool.  Secondly, remove any

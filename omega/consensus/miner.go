@@ -310,7 +310,14 @@ out:
 
 			if POWStopper != nil {
 				if len(POWStopper) < wire.CommitteeSize {
-					POWStopper <- struct{}{}
+					select {
+					case _, ok = <-POWStopper:
+						if ok {
+							POWStopper <- struct{}{}
+						}
+					default:
+						POWStopper <- struct{}{}
+					}
 				} else {
 					log.Infof("len(POWStopper) = %d", len(POWStopper))
 				}
@@ -589,6 +596,10 @@ func Shutdown() {
 
 	miner.shutdown = true
 
+	if POWStopper != nil {
+		close(POWStopper)
+	}
+
 	log.Infof("Syners:")
 	for h, s := range miner.Sync {
 		log.Infof("%d Runnable = %v", h, s.Runnable)
@@ -603,10 +614,6 @@ func Shutdown() {
 		close(Quit)
 	}
 	miner.wg.Wait()
-
-	if POWStopper != nil {
-		close(POWStopper)
-	}
 
 	log.Infof("Consensus Shutdown completed")
 }

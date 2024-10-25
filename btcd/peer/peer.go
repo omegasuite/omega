@@ -1729,6 +1729,9 @@ out:
 			}
 
 		case consensus.Message:
+			if p.cfg.ChainParams.Net != common.MainNet {
+				continue
+			}
 			if consensus.VerifySig(msg) {
 				var ea [20]byte
 				if p.Inbound() && bytes.Compare(p.Miner[:], ea[:]) == 0 {
