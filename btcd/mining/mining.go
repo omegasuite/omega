@@ -615,10 +615,7 @@ mempoolLoop:
 				continue
 			}
 			if len(txo.PkScript) > 21 && txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
-				var h [4]byte
-				copy(h[:], txo.PkScript[22:25])
-				h[3] = 0
-				if common.LittleEndian.Uint32(h[:]) == g.chainParams.ChainID {
+				if (common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8) == g.chainParams.ChainID {
 					ok = false
 					break
 				}

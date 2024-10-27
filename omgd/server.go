@@ -1335,14 +1335,14 @@ func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
 	}
 	state := sp.server.chain.BestSnapshot()
 
-	if state.Height-600 > block.Height() {
+	if state.Height-60 > block.Height() {
 		if sp.server.chain.InBestChain(&msg.Block) {
 			reply.ETA = 0
 		} else {
 			reply.ETA = -1
 		}
 	} else {
-		reply.ETA = (block.Height() + 600 - state.Height) * 4
+		reply.ETA = (block.Height() + 60 - state.Height) * 4
 	}
 
 	// Push the result.
@@ -1363,12 +1363,15 @@ func (sp *serverPeer) OnFinal(_ *peer.Peer, msg *wire.MsgReFinal) {
 		xdata := wire.XchainData{}
 
 		d := bucket.Get(k[:])
-		if d == nil {
+		if d == nil || len(d) == 0 {
 			return nil
 		}
 
-		if err := xdata.DeSerialize(d); err != nil {
+		if err := xdata.DeSerialize(d); err != nil || xdata.Finalized == 1 {
 			return nil
+		}
+		if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
+			fmt.Printf("bad XchainData")
 		}
 
 		if msg.ETA == 0 {
@@ -3234,6 +3237,9 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 	var indexes []indexers.Indexer
 
 	prot.cfg.TxIndex, prot.cfg.AddrIndex = true, true // it's now mandatory
+	if prot.IsSvp {
+		prot.cfg.TxIndex, prot.cfg.AddrIndex = false, false // it's now mandatory
+	}
 
 	if prot.cfg.TxIndex || prot.cfg.AddrIndex {
 		// Enable transaction index if address index is enabled since it
@@ -3255,12 +3261,14 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		indexes = append(indexes, s.addrIndex)
 	}
 
-	s.addrUseIndex = indexers.NewAddrUseIndex(db, prot.activeNetParams)
-	indexes = append(indexes, s.addrUseIndex)
+	if !prot.IsSvp {
+		s.addrUseIndex = indexers.NewAddrUseIndex(db, prot.activeNetParams)
+		indexes = append(indexes, s.addrUseIndex)
+	}
 
 	// Create an index manager if any of the optional indexes are enabled.
 	var indexManager blockchain.IndexManager
-	if len(indexes) > 0 {
+	if len(indexes) > 0 && !prot.IsSvp {
 		indexManager = indexers.NewManager(db, indexes)
 	}
 

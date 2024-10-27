@@ -1955,10 +1955,7 @@ func (b *BlockChain) dbPutCrossChain(block *btcutil.Block) error {
 					if !b.validCrossChainScript(txo.PkScript) {
 						return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
 					}
-					var cid [4]byte
-					copy(cid[:], txo.PkScript[22:25])
-					cid[3] = 0
-					dest := common.LittleEndian.Uint32(cid[:]) // destination of this tx
+					dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8 // destination of this tx
 
 					if !mainchain.PassThru(xchain.ChainID, dest) {
 						// if it will pass through the main chain, ignore it, otherwise add the tx to main chain
@@ -1980,7 +1977,12 @@ func (b *BlockChain) dbPutCrossChain(block *btcutil.Block) error {
 						Hash:  xchain.Hash,
 						Index: xchain.ChainID | wire.CrossChainFalg,
 					}
-					bucket.Put(key.ToBytes(), xchain.Serialize())
+					k := key.ToBytes()
+					d := bucket.Get(k)
+					if d != nil && len(d) > 0 {
+						return fmt.Errorf("Duplicated cross chain tx")
+					}
+					bucket.Put(k, xchain.Serialize())
 				}
 			}
 			return nil
@@ -2000,6 +2002,10 @@ func (b *BlockChain) dbPutCrossChain(block *btcutil.Block) error {
 				}
 				var h [4]byte
 				d := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
+				if d == nil || len(d) == 0 {
+					fmt.Printf("crodd chain tx does not exist in db")
+					continue
+				}
 				common.LittleEndian.PutUint32(h[:], uint32(len(d)))
 				rbd = append(rbd, h[:]...)
 				rbd = append(rbd, d...)
@@ -2110,13 +2116,7 @@ func (b *BlockChain) dbRestoreCrossChain(block *btcutil.Block) error {
 	} else {
 		return b.db.Update(func(dbTx database.Tx) error {
 			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-			if bucket == nil {
-				bucket, _ = dbTx.Metadata().CreateBucket([]byte(common.INCOMINGPOOL))
-			}
 			bucketrb := dbTx.Metadata().Bucket([]byte(common.ROLLBACKPOOL))
-			if bucket == nil {
-				bucketrb, _ = dbTx.Metadata().CreateBucket([]byte(common.ROLLBACKPOOL))
-			}
 
 			var h [4]byte
 			common.LittleEndian.PutUint32(h[:], uint32(block.Height()))
@@ -2130,7 +2130,12 @@ func (b *BlockChain) dbRestoreCrossChain(block *btcutil.Block) error {
 					data := rbd[m : m+l]
 					m += l
 					xchain := &wire.XchainData{}
-					xchain.DeSerialize(data)
+					if xchain.DeSerialize(data) != nil {
+						return fmt.Errorf("bad XchainData")
+					}
+					if xchain.Txs[0].Txo.PkScript[21] != 0x66 {
+						fmt.Printf("bad XchainData")
+					}
 
 					var key [36]byte
 					copy(key[:], xchain.Hash[:])

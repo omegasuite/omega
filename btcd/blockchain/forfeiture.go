@@ -126,7 +126,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 		ctx := &wire.MsgTx{}
 		ctx.Version = wire.ForfeitTxVersion | wire.TxNoLock | wire.TxNoDefine
 		cto := &wire.TxOut{}
-		cto.TokenType = 0
+		cto.TokenType = common.OmegaCoinTyp
 
 		cto.Value = &token.NumToken{0}
 		cto.PkScript = make([]byte, 25)
@@ -166,7 +166,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 			if sum < bal {
 				leftover := &wire.TxOut{}
 				leftover.Value = &token.NumToken{bal - sum}
-				leftover.TokenType = 0
+				leftover.TokenType = common.OmegaCoinTyp
 				leftover.PkScript = []byte{g.ChainParams.PubKeyHashAddrID, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ovm.OP_PAY2NONE}
 				ctx.AddTxOut(leftover)
 			}
@@ -323,6 +323,9 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 				continue
 			}
 			op := mrb.MsgBlock().Utxos
+			if op == nil {
+				continue
+			}
 
 			e := views.Utxo.LookupEntry(*op)
 			/*			if e == nil {
@@ -380,7 +383,7 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 	// 2. if a victim does claim award in certain time, the award is considered abandoned and
 	// the fund will be divert to someone claim it. thus a claim step by victim is needed.
 	rpo := &wire.TxOut{}
-	rpo.TokenType = 0
+	rpo.TokenType = common.OmegaCoinTyp
 	rpo.Value = &token.NumToken{forcontract}
 	rpo.PkScript = make([]byte, 21, 25)
 	copy(rpo.PkScript, g.ChainParams.Forfeit.Contract[:])
@@ -397,7 +400,7 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 			continue
 		}
 		rpo := &wire.TxOut{}
-		rpo.TokenType = 0
+		rpo.TokenType = common.OmegaCoinTyp
 		rpo.Value = &token.NumToken{r125 * int64(s) / int64(totalblks)}
 		rpo.PkScript = make([]byte, 22)
 		rpo.PkScript[0] = g.ChainParams.PubKeyHashAddrID
@@ -661,6 +664,9 @@ func (b *BlockChain) PrepForfeit(prevNode *chainutil.BlockNode) ([]reportedblk, 
 }
 
 func (b *BlockChain) CheckForfeit(block *btcutil.Block, prevNode *chainutil.BlockNode, views *viewpoint.ViewPointSet) error {
+	if b.IsSVP {
+		return nil
+	}
 	nonce := prevNode.Data.GetNonce()
 	if nonce < 0 && nonce > -wire.MINER_RORATE_FREQ {
 		// this is not a block after rotation, make sure there is no Forfeit tx

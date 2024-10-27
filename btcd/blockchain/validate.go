@@ -1558,6 +1558,9 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 	txHash := tx.Hash()
 	totalIns := make(map[uint64]int64)
 
+	if tx.MsgTx().IsCrossChain() {
+		return 0, nil
+	}
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
@@ -1610,7 +1613,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 			continue
 		}
 
-		if txOut.Value == nil || txOut.IsCrossChain() {
+		if txOut.Value == nil {
 			continue
 		}
 
@@ -1618,15 +1621,11 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		if uint32(rtype>>40) == chainParams.ChainID {
 			rtype = rtype & 0xFFFFFFFFFF
 		}
-
 		if txOut.IsCrossChain() {
-			if uint32(rtype>>40) != 0 {
-				var cid [4]byte
-				copy(cid[:], txOut.PkScript[22:25])
-				cid[3] = 0
-				if uint32(rtype>>40) != common.LittleEndian.Uint32(cid[:]) {
+			if uint32(txOut.TokenType>>40) != 0 {
+				if (rtype>>40) != 0 && uint32(rtype>>40) != (common.LittleEndian.Uint32(txOut.PkScript[21:])>>8) {
 					str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", rtype>>40,
-						common.LittleEndian.Uint32(cid[:]))
+						common.LittleEndian.Uint32(txOut.PkScript[21:])>>8)
 					return 0, ruleError(ErrBadTxOutValue, str)
 				}
 			} else {
@@ -1780,6 +1779,9 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 			if err != nil {
 				return err
 			}
+			if xtx.Txs[0].Txo.PkScript[21] != 0x66 {
+				fmt.Printf("bad XchainData")
+			}
 			if xtx.Finalized == 0 {
 				return fmt.Errorf("Cross chain source is not finalized")
 			}
@@ -1790,10 +1792,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 			mtx.AddTxIn(txin)
 			for _, txo := range xtx.Txs {
 				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
-					var t [4]byte
-					copy(t[:], txo.Txo.PkScript[22:25])
-					t[3] = 0
-					if common.LittleEndian.Uint32(t[:]) == b.ChainParams.ChainID {
+					if (common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
 						b.normalizeTxo(&txo.Txo)
 					}
 				}
@@ -1801,7 +1800,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 				mtx.AddTxOut(&txo.Txo)
 			}
 			if !mtx.Match(tx) {
-				return fmt.Errorf("tx does not match cross chain source")
+				return fmt.Errorf("tx does not match cross chain source %x v. %x", mtx.TxOut[0].PkScript, tx.TxOut[0].PkScript)
 			}
 		}
 

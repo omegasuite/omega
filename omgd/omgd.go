@@ -847,6 +847,7 @@ func main() {
 			if p != nil {
 				cleanup(p)
 			}
+			chainmap.Close()
 			for _, q := range protocols {
 				cleanup(q)
 			}
@@ -893,13 +894,16 @@ func checkfinal() {
 		default:
 		}
 
-		protocols[0].db.View(func(dbtx database.Tx) error {
+		protocols[0].db.Update(func(dbtx database.Tx) error {
 			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 			cursor := bucket.Cursor()
 			for ok := cursor.First(); ok; ok = cursor.Next() {
 				xdata := wire.XchainData{}
 				if err := xdata.DeSerialize(cursor.Value()); err != nil || xdata.Finalized == 1 {
 					continue
+				}
+				if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
+					fmt.Printf("bad XchainData")
 				}
 				for _, p := range protocols[1:] {
 					chain := chainmap.ChainMap[p.Server.chainParams.ChainID]

@@ -262,19 +262,19 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 			}
 			xtx := &wire.XchainData{}
 			tntx := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
-			if tntx == nil {
+			if tntx == nil || len(tntx) == 0 {
 				return fmt.Errorf("error")
 			}
 			if err := xtx.DeSerialize(tntx); err != nil || xtx.Finalized == 0 {
 				return fmt.Errorf("error")
 			}
+			if xtx.Txs[0].Txo.PkScript[21] != 0x66 {
+				fmt.Printf("bad XchainData")
+			}
 
 			for i, txo := range xtx.Txs {
 				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
-					var t [4]byte
-					copy(t[:], txo.Txo.PkScript[22:25])
-					t[3] = 0
-					if common.LittleEndian.Uint32(t[:]) == b.ChainParams.ChainID {
+					if (common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
 						b.normalizeTxo(&txo.Txo)
 					}
 				}
@@ -471,11 +471,12 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	if !b.IsSVP && !b.MatchInpool(block) {
-		if flags&BFNoOrphan != 0 {
-			return false, true, nil, -1, nil
-		}
-		orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-		return false, true, nil, -1, orp
+		return false, true, nil, -1, nil
+		//		if flags&BFNoOrphan != 0 {
+		//			return false, true, nil, -1, nil
+		//		}
+		//		orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+		//		return false, true, nil, -1, orp
 	}
 
 	if prevNode == b.BestChain.Tip() {

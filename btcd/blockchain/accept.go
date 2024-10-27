@@ -45,10 +45,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 			return fmt.Errorf("Local Tokentype in a cross chain tx")
 		}
 
-		var h [4]byte
-		copy(h[:], txo.PkScript[22:25])
-		h[3] = 0
-		dest := common.LittleEndian.Uint32(h[:])
+		dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
 		if tdest != b.ChainParams.ChainID && tdest != dest {
 			return fmt.Errorf("Incorrect cross chain destination")
 		}
@@ -61,10 +58,16 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		if ((txo.TokenType >> 40) & 0xFFFFFF) == 0 {
 			return fmt.Errorf("Local tokentype in cross chain tx")
 		}
-		var chain [4]byte
-		copy(chain[:], txo.PkScript[22:25])
-		chain[3] = 0
-		cid := common.LittleEndian.Uint32(chain[:])
+		/*
+			var chain [4]byte
+			copy(chain[:], txo.PkScript[22:25])
+			chain[3] = 0
+			cid := common.LittleEndian.Uint32(chain[:])
+
+		*/
+
+		cid := dest
+
 		if cid == b.ChainParams.ChainID {
 			return fmt.Errorf("cross chain transferring to local chain")
 		}
@@ -109,12 +112,15 @@ func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 
 			key := tx.TxIn[0].PreviousOutPoint.ToBytes()
 			v := bucket.Get(key[:])
-			if v == nil {
+			if v == nil || len(v) == 0 {
 				return fmt.Errorf("tx not in INCOMINGPOOL")
 			}
 			xdata := wire.XchainData{}
 			if err := xdata.DeSerialize(v); err != nil {
 				return err
+			}
+			if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
+				fmt.Printf("bad XchainData")
 			}
 			if xdata.Finalized == 0 {
 				return fmt.Errorf("tx not finalized")
@@ -135,10 +141,7 @@ func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 			for _, txo := range tx.TxOut {
 				match := false
 				for i, xto := range xdata.Txs {
-					var h [4]byte
-					copy(h[:], xto.Txo.PkScript[22:25])
-					h[3] = 0
-					if common.LittleEndian.Uint32(h[:]) == b.ChainParams.ChainID {
+					if (common.LittleEndian.Uint32(xto.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
 						b.normalizeTxo(&xto.Txo)
 					}
 					if txo.Match(&xto.Txo) {
@@ -238,11 +241,16 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 					return fmt.Errorf("Duplicated Cross chain item.")
 				}
 				t := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
-				if t == nil {
+				if t == nil || len(t) == 0 {
 					return fmt.Errorf("Cross chain item does not exist. SVP chain not ready?")
 				}
 				x := &wire.XchainData{}
-				x.DeSerialize(t)
+				if x.DeSerialize(t) != nil {
+					return fmt.Errorf("bad XchainData")
+				}
+				if x.Txs[0].Txo.PkScript[21] != 0x66 {
+					fmt.Printf("bad XchainData")
+				}
 				initems[tx.TxIn[0].PreviousOutPoint.Hash] = x
 			}
 			return nil
@@ -257,10 +265,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 
 				for _, txo := range tx.TxOut {
 					if txo.IsCrossChain() {
-						var cid [4]byte
-						copy(cid[:], txo.PkScript[22:25])
-						cid[3] = 0
-						destchain := common.LittleEndian.Uint32(cid[:])
+						destchain := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
 						if destchain == 0 {
 							destchain = b.ChainParams.ChainID
 						}

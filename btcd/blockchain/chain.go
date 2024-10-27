@@ -230,7 +230,6 @@ func (b *BlockChain) InitCollateral() {
 	//	b.collaterals = make([]wire.OutPoint, wire.ViolationReportDeadline)
 	//	b.LockedCollaterals = make(map[wire.OutPoint]struct{})
 
-
 	if b.Miners == nil {
 		return
 	}
@@ -709,20 +708,20 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 
 		// Update the transaction spend journal by adding a record for
 		// the block that contains all txos spent by it.
-		if stxos != nil {
+		if !b.IsSVP {
 			err = dbPutSpendJournalEntry(dbTx, block.Hash(), stxos)
 			if err != nil {
 				return err
 			}
-		}
 
-		// Allow the index manager to call each of the currently active
-		// optional indexes with the block being connected so they can
-		// update themselves accordingly.
-		if b.indexManager != nil {
-			err := b.indexManager.ConnectBlock(dbTx, block, stxos)
-			if err != nil {
-				return err
+			// Allow the index manager to call each of the currently active
+			// optional indexes with the block being connected so they can
+			// update themselves accordingly.
+			if b.indexManager != nil {
+				err := b.indexManager.ConnectBlock(dbTx, block, stxos)
+				if err != nil {
+					return err
+				}
 			}
 		}
 
@@ -926,8 +925,8 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		// a POW block, needs to execute ops in 2 MR blocks
 		rot := int32(b.BestSnapshot().LastRotation)
 		mrb, _ := b.Miners.BlockByHeight(rot)
-		b.UnExecOps(mrb, uint32(block.Height()))
 		if mrb != nil {
+			b.UnExecOps(mrb, uint32(block.Height()))
 			mrb, _ = b.Miners.BlockByHeight(rot - 1)
 		}
 		if mrb != nil {
@@ -1771,7 +1770,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 
 func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
 	r := make([]*btcutil.Tx, 0)
-	b.db.View(func(dbtx database.Tx) error {
+	b.db.Update(func(dbtx database.Tx) error {
 		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 		//		heightbucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
 		//		hts := make(map[uint32]uint32)
@@ -1780,8 +1779,27 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			xtx := &wire.XchainData{}
 			err := xtx.DeSerialize(cursor.Value())
+
+			fmt.Printf("INCOMINGPOOL xtx.ChainID=%x xtx.Txs=%d", xtx.ChainID, len(xtx.Txs))
+			if len(xtx.Txs) > 0 {
+				dst := common.LittleEndian.Uint32(xtx.Txs[0].Txo.PkScript[21:])
+				dst = dst >> 8
+
+				if !xtx.Txs[0].Txo.IsCrossChain() {
+					dst = 0
+				}
+
+				fmt.Printf(" TokenType=%x Val=%d To: %d\n", xtx.Txs[0].Txo.TokenType, xtx.Txs[0].Txo.Value.(*token.NumToken).Val, dst)
+			}
+			if xtx.ChainID == 0 {
+				bucket.Delete(cursor.Key())
+				continue
+			}
 			if err != nil || xtx.Finalized == 0 {
 				continue
+			}
+			if xtx.Txs[0].Txo.PkScript[21] != 0x66 {
+				fmt.Printf("bad XchainData")
 			}
 
 			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
@@ -1790,15 +1808,10 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
 			mtx.AddTxIn(txin)
 			for _, txo := range xtx.Txs {
 				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
-					var t [4]byte
-					copy(t[:], txo.Txo.PkScript[22:25])
-					t[3] = 0
-					if common.LittleEndian.Uint32(t[:]) == b.ChainParams.ChainID {
+					if (common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
 						b.normalizeTxo(&txo.Txo)
 					}
-				}
-
-				if uint32(txo.Txo.TokenType>>40) == b.ChainParams.ChainID && !txo.Txo.IsCrossChain() {
+				} else if uint32(txo.Txo.TokenType>>40) == b.ChainParams.ChainID {
 					txo.Txo.TokenType &= 0xFFFFFFFFFF
 				}
 

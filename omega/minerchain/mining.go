@@ -624,6 +624,7 @@ out:
 			}
 			v, err := m.g.Chain.CheckCollateral(block, nil, 0)
 			if err != nil {
+			log.Infof(err.Error())
 				time.Sleep(time.Second * 5)
 				continue
 			}
