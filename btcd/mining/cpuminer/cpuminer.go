@@ -637,9 +637,14 @@ out:
 		m.g.Chain.IsPacking = !powMode
 
 		template, err := m.g.NewBlockTemplate(payToAddress, nonce)
+		if template == nil {
+			time.Sleep(5 * time.Second)
+			continue
+		}
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to create new block template: %s", err.Error())
 			log.Infof(errStr)
+			time.Sleep(5 * time.Second)
 			continue
 		}
 		log.Infof("new block template created at %d", template.Height)

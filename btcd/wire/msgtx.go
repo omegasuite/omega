@@ -344,7 +344,8 @@ func (t *TxOut) DeSerialize(r []byte) int {
 	}
 
 	ln, _ := common.ReadVarInt(reader, 0)
-	t.PkScript = reader.Next(int(ln))
+	t.PkScript = make([]byte, ln)
+	copy(t.PkScript, reader.Next(int(ln)))
 
 	return n - reader.Len()
 }

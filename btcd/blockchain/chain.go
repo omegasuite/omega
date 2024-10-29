@@ -1781,6 +1781,34 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
 			err := xtx.DeSerialize(cursor.Value())
 
 			fmt.Printf("INCOMINGPOOL xtx.ChainID=%x xtx.Txs=%d", xtx.ChainID, len(xtx.Txs))
+
+			if err != nil || xtx.Finalized == 0 {
+				continue
+			}
+			if xtx.Finalized+int32(time.Now().Unix()) < 0 {
+				continue
+			}
+
+			if xtx.ChainID == 0 {
+				bucket.Delete(cursor.Key())
+				continue
+			}
+
+			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
+			mtx.LockTime = nextBlockHeight + 1
+			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: wire.CrossChainFalg | xtx.ChainID}, uint32(xtx.Height))
+			mtx.AddTxIn(txin)
+
+			if xtx.ChainID == common.BTCCHAINID {
+				for _, txo := range xtx.Txs {
+					mtx.AddTxOut(&txo.Txo)
+				}
+
+				btx := btcutil.NewTx(mtx)
+				r = append(r, btx)
+				continue
+			}
+
 			if len(xtx.Txs) > 0 {
 				dst := common.LittleEndian.Uint32(xtx.Txs[0].Txo.PkScript[21:])
 				dst = dst >> 8
@@ -1791,21 +1819,11 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
 
 				fmt.Printf(" TokenType=%x Val=%d To: %d\n", xtx.Txs[0].Txo.TokenType, xtx.Txs[0].Txo.Value.(*token.NumToken).Val, dst)
 			}
-			if xtx.ChainID == 0 {
-				bucket.Delete(cursor.Key())
-				continue
-			}
-			if err != nil || xtx.Finalized == 0 {
-				continue
-			}
+
 			if xtx.Txs[0].Txo.PkScript[21] != 0x66 {
 				fmt.Printf("bad XchainData")
 			}
 
-			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
-			mtx.LockTime = nextBlockHeight + 1
-			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: wire.CrossChainFalg | xtx.ChainID}, uint32(xtx.Height))
-			mtx.AddTxIn(txin)
 			for _, txo := range xtx.Txs {
 				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
 					if (common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {

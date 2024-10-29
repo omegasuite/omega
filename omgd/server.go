@@ -1367,7 +1367,7 @@ func (sp *serverPeer) OnFinal(_ *peer.Peer, msg *wire.MsgReFinal) {
 			return nil
 		}
 
-		if err := xdata.DeSerialize(d); err != nil || xdata.Finalized == 1 {
+		if err := xdata.DeSerialize(d); err != nil || xdata.Finalized != 0 {
 			return nil
 		}
 		if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
@@ -1375,7 +1375,7 @@ func (sp *serverPeer) OnFinal(_ *peer.Peer, msg *wire.MsgReFinal) {
 		}
 
 		if msg.ETA == 0 {
-			xdata.Finalized = 1
+			xdata.Finalized = -int32(time.Now().Unix() + 120)
 			bucket.Put(k[:], xdata.Serialize())
 		} else {
 			bucket.Delete(k[:])
@@ -2688,9 +2688,17 @@ out:
 		}
 	}
 
+	btcdLog.Infof("Stopping connManager")
 	s.connManager.Stop()
+	btcdLog.Infof("connManager stopped")
+
+	btcdLog.Infof("Stopping syncManager")
 	s.syncManager.Stop()
+	btcdLog.Infof("syncManager stopped")
+
+	btcdLog.Infof("Stopping addrManager")
 	s.addrManager.Stop()
+	btcdLog.Infof("addrManager stopped")
 
 	btcdLog.Tracef("All Peer handler go routines shut down")
 

@@ -32,11 +32,11 @@ func (t *MsgXrossL2) DeSerialize(d []byte) (int, error) {
 }
 
 type XchainData struct {
-	ChainID uint32
-	Hash    chainhash.Hash			// block
-	Height  int32					// height
-	Txs     []*MsgXrossL2
-	Finalized	byte				// whether the block is finalized
+	ChainID   uint32
+	Hash      chainhash.Hash // block
+	Height    int32          // height
+	Txs       []*MsgXrossL2
+	Finalized int32 // whether the block is finalized
 }
 
 func (t *XchainData) Serialize() []byte {
@@ -57,7 +57,8 @@ func (t *XchainData) Serialize() []byte {
 		w.Write(txo.Serialize())
 	}
 
-	w.Write([]byte{t.Finalized})
+	common.WriteElement(&w, t.Finalized)
+
 	return w.Bytes()
 }
 
@@ -101,7 +102,11 @@ func (t *XchainData) DeSerialize(buf []byte) error {
 		return fmt.Errorf("Insufficient data")
 	}
 
-	t.Finalized = buf[n]
+	if len(buf)-n >= 4 {
+		t.Finalized = int32(common.LittleEndian.Uint32(buf[n:]))
+	} else {
+		t.Finalized = int32(buf[n])
+	}
 
 	return nil
 }

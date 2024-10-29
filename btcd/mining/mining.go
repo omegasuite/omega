@@ -550,6 +550,9 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 
 	// Check transactions in INCOMINGPOOL, include mature transactions here
 	inp := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight))
+	if nonce > 0 && len(inp) > 0 {
+		return nil, nil
+	}
 	blockTxns = append(blockTxns, inp...)
 
 	blockUtxos := views.Utxo // blockchain.NewUtxoViewpoint()

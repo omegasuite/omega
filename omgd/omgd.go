@@ -805,6 +805,8 @@ func main() {
 	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
 
+	time.Sleep(3 * time.Second)
+
 	for _, c := range chainmap.ChainMap {
 		if c.ChainID == Server.chainParams.ChainID {
 			continue
@@ -817,7 +819,7 @@ func main() {
 		if err := json.Unmarshal([]byte(c.GlobalParams), dparams); err != nil {
 			os.Exit(1)
 		}
-		fmt.Printf("loading SVP options, magic = %d", dparams.Net)
+		fmt.Printf("loading SVP options, ChainID = %d magic = %d", c.ChainID, dparams.Net)
 
 		svpid := fmt.Sprintf("%x", uint32(dparams.Net))
 		vcfg, _, err := loadConfig(svpid, dparams.Net)
@@ -841,25 +843,27 @@ func main() {
 		//		vcfg.NoCFilters = true
 		vcfg.signAddress = nil
 
+		fmt.Printf("datadir = %s\n", vcfg.DataDir)
+
 		// svp chain
-		p, quit = prepareServer(vcfg, nil, dparams, true)
-		if quit || p == nil {
-			if p != nil {
-				cleanup(p)
+		q, quit := prepareServer(vcfg, nil, dparams, true)
+		if quit || q == nil {
+			if q != nil {
+				cleanup(q)
 			}
 			chainmap.Close()
-			for _, q := range protocols {
-				cleanup(q)
+			for _, r := range protocols {
+				cleanup(r)
 			}
 			os.Exit(1)
 		}
 
-		p.activeNetParams.MainChainID = protocols[0].activeNetParams.ChainID
-		p.Server.chain.MainChain = protocols[0].Server.chain
+		q.activeNetParams.MainChainID = protocols[0].activeNetParams.ChainID
+		q.Server.chain.MainChain = protocols[0].Server.chain
 
-		protocols = append(protocols, p)
-		if p.Server.chainParams.ChainID == chaincfg.DefaultParentChainID {
-			p.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
+		protocols = append(protocols, q)
+		if q.Server.chainParams.ChainID == chaincfg.DefaultParentChainID {
+			q.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
 		}
 	}
 
@@ -899,7 +903,7 @@ func checkfinal() {
 			cursor := bucket.Cursor()
 			for ok := cursor.First(); ok; ok = cursor.Next() {
 				xdata := wire.XchainData{}
-				if err := xdata.DeSerialize(cursor.Value()); err != nil || xdata.Finalized == 1 {
+				if err := xdata.DeSerialize(cursor.Value()); err != nil || xdata.Finalized != 0 {
 					continue
 				}
 				if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
@@ -911,7 +915,7 @@ func checkfinal() {
 						switch xdata.ChainID {
 						case common.BTCCHAINID:
 							if btcHeight >= xdata.Height+7 {
-								xdata.Finalized = 1
+								xdata.Finalized = -int32(time.Now().Unix() + 120)
 								bucket.Put(cursor.Key(), xdata.Serialize())
 								break
 							}

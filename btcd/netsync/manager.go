@@ -445,9 +445,7 @@ func (sm *SyncManager) updateSyncPeer() {
 
 func (sm *SyncManager) clearSync() {
 	sm.syncPeer = nil
-	sm.smtx.Lock()
 	sm.syncjobs = sm.syncjobs[:0]
-	sm.smtx.Unlock()
 }
 
 // startSync will choose the best peer among the available candidate peers to
@@ -2224,9 +2222,7 @@ out:
 			log.Debugf("blockHandler finished with message: ", reflect.TypeOf(m).String())
 
 		case <-sm.quit:
-			sm.smtx.Lock()
 			sm.syncjobs = sm.syncjobs[:0]
-			sm.smtx.Unlock()
 			break out
 		}
 		sm.lastBlockOp += " ... Done."
