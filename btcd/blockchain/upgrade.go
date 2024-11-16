@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	// blockHdrOffset defines the offsets into a v1 block index row for the
+	// blockHdrOffset defines the offsets into a v1 block Index row for the
 	// block header.
 	//
-	// The serialized block index row format is:
+	// The serialized block Index row format is:
 	//   <blocklocation><blockheader>
 	blockHdrOffset = 12
 )
@@ -41,7 +41,7 @@ func interruptRequested(interrupted <-chan struct{}) bool {
 }
 
 // blockChainContext represents a particular block's placement in the block
-// chain. This is used by the block index migration to track block metadata that
+// chain. This is used by the block Index migration to track block metadata that
 // will be written to disk.
 type blockChainContext struct {
 	parent    *chainhash.Hash
@@ -50,7 +50,7 @@ type blockChainContext struct {
 	mainChain bool
 }
 
-// readBlockTree reads the old block index bucket and constructs a mapping of
+// readBlockTree reads the old block Index bucket and constructs a mapping of
 // each block to its parent block and all child blocks. This mapping represents
 // the full tree of blocks. This function does not populate the height or
 // mainChain fields of the returned blockChainContext values.

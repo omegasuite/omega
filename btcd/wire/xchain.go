@@ -27,8 +27,15 @@ func (t *MsgXrossL2) Serialize() []byte {
 
 func (t *MsgXrossL2) DeSerialize(d []byte) (int, error) {
 	copy(t.Utxo.Hash[:], d)
+	if len(d) < 36 {
+		return 0, fmt.Errorf("Not enough data")
+	}
 	t.Utxo.Index = common.LittleEndian.Uint32(d[32:])
-	return t.Txo.DeSerialize(d[36:]) + 36, nil
+	n := t.Txo.DeSerialize(d[36:])
+	if n < 0 {
+		return 0, fmt.Errorf("Bad data")
+	}
+	return n + 36, nil
 }
 
 type XchainData struct {

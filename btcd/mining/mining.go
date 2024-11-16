@@ -80,6 +80,8 @@ type TxSource interface {
 	// HaveTransaction returns whether or not the passed transaction hash
 	// exists in the source pool.
 	HaveTransaction(hash *chainhash.Hash) bool
+
+	ResetTryCount(tx *btcutil.Tx)
 }
 
 // txPrioItem houses a transaction along with extra information that allows the
@@ -549,11 +551,78 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	}
 
 	// Check transactions in INCOMINGPOOL, include mature transactions here
-	inp := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight))
-	if nonce > 0 && len(inp) > 0 {
-		return nil, nil
+	if nonce < 0 {
+		inp := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight))
+		blockTxns = append(blockTxns, inp...)
 	}
-	blockTxns = append(blockTxns, inp...)
+
+	// Check transactions in BTCL2Pool, include mature transactions here
+	/*
+		views.Db.View(func(dbtx database.Tx) error {
+			bucket := dbtx.Metadata().Bucket([]byte(common.BTCL2POOL))
+
+			ht := uint32(0)
+			head := bucket.Get([]byte("BTCHeight"))
+			if head != nil {
+				ht = common.LittleEndian.Uint32(head)
+			}
+
+			cursor := bucket.Cursor()
+			minh := uint32(0x7FFFFFFF)
+			xtx := (*common.BTCL2Data)(nil)
+
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				if len(cursor.Key()) > 4 { // this is "BTCHeight"
+					continue
+				}
+				h := common.LittleEndian.Uint32(cursor.Key())
+				if h+7 > ht { // not mature yet
+					continue
+				}
+				if h > minh {
+					continue
+				}
+
+				minh = h
+
+				xtx = &common.BTCL2Data{}
+				err := xtx.Unserialize(cursor.Value())
+				if err != nil {
+					return err
+				}
+			}
+
+			if xtx == nil {
+				return nil
+			}
+
+			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
+			mtx.LockTime = uint32(nextBlockHeight)
+			txin := wire.NewTxIn(&wire.OutPoint{Hash: *treasuary.Bhash2l2hash(xtx.Hash), Index: 0xFFFFFF}, minh)
+			mtx.AddTxIn(txin)
+			for _, txo := range xtx.Txs {
+				v := token.NumToken{
+					Val: txsparser.FindValue(txo.Value, txo.PkScript),
+				}
+				h := txsparser.FindRight(txo.PkScript)
+				right := (*chainhash.Hash)(nil)
+				if h != nil {
+					var h2 chainhash.Hash
+					copy(h2[:], h[:])
+					right = &h2
+				}
+				tokentype := txsparser.FindTokentype(txo.PkScript)
+				pkscript := treasuary.ScriptConvert(txo.PkScript)
+				txout := wire.NewTxOut(uint64(tokentype), &v, right, pkscript)
+				mtx.AddTxOut(txout)
+			}
+
+			btx := btcutil.NewTx(mtx)
+			blockTxns = append(blockTxns, btx)
+
+			return nil
+		})
+	*/
 
 	blockUtxos := views.Utxo // blockchain.NewUtxoViewpoint()
 
@@ -837,6 +906,7 @@ mempoolLoop:
 
 	paidstoragefees := make(map[[20]byte]int64)
 	blksz := wire.MaxBlockHeaderPayload
+	totalbtcfees := int64(0)
 
 	// Choose which transactions make it into the block.
 skiprest:
@@ -1023,7 +1093,7 @@ skiprest:
 			continue
 		}
 
-		fees, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, storage, views, g.chainParams)
+		fees, btcfees, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, storage, views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
@@ -1070,6 +1140,7 @@ skiprest:
 		blockWeight++ // += txWeight
 		blockSigOpCost += int64(sigOpCost)
 		totalFees += prioItem.fee
+		totalbtcfees += btcfees
 		txFees = append(txFees, prioItem.fee)
 		txSigOpCosts = append(txSigOpCosts, int64(sigOpCost))
 
@@ -1087,6 +1158,7 @@ skiprest:
 				heap.Push(priorityQueue, item)
 			}
 		}
+		g.txSource.ResetTryCount(tx)
 	}
 
 	contractExec := stepLimit - Vm.StepLimit
@@ -1105,6 +1177,19 @@ skiprest:
 			break
 		}
 		txo.Value.(*token.NumToken).Val += df
+	}
+
+	btcout := []*wire.TxOut{}
+	if totalbtcfees != 0 {
+		df = totalbtcfees / m
+		for _, txo := range coinbaseTx.MsgTx().TxOut {
+			t := &wire.TxOut{PkScript: txo.PkScript}
+			t.Token.Copy(&txo.Token)
+			t.Token.TokenType = common.BTCCHAINID << 40
+			t.Token.Value = &token.NumToken{Val: df}
+			btcout = append(btcout, t)
+		}
+		coinbaseTx.MsgTx().TxOut = append(btcout, coinbaseTx.MsgTx().TxOut...)
 	}
 	coinbaseTx.Executed = true
 

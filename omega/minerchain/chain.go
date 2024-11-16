@@ -1632,9 +1632,33 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	if ok {
 		for _, v := range os.Args {
 			if v == "--chainback" {
-				detachNodes.PushBack(s.BestChain.Tip())
-				ok = false
-				break
+				hash := s.BestChain.Tip().Hash
+				h := s.BestChain.Height()
+				t := s.BestChain.Tip()
+
+				detachNodes.PushBack(t)
+				s.ChainLock.Lock()
+				s.ReorganizeChain(detachNodes, list.New())
+				s.ChainLock.Unlock()
+
+				s.Index.SetStatusFlags(t, chainutil.StatusValid)
+
+				config.DB.Update(func(tx database.Tx) error {
+					bucket := tx.Metadata().Bucket(hashIndexBucketName)
+					bucket.Delete(hash[:])
+
+					blockIndexBucket := tx.Metadata().Bucket(blockIndexBucketName)
+					key := blockchain.BlockIndexKey(&hash, uint32(0xFFFFFFFF))
+					blockIndexBucket.Delete(key) // remove invalid data that might be there
+
+					key = blockchain.BlockIndexKey(&hash, uint32(h))
+					blockIndexBucket.Delete(key) // remove invalid data that might be there
+
+					return nil
+				})
+				config.DB.Close()
+				config.MinerDB.Close()
+				return nil, fmt.Errorf("databased changed. please restart")
 			}
 		}
 	}

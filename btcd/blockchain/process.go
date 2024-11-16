@@ -64,15 +64,15 @@ const (
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) blockExists(hash *chainhash.Hash) (bool, error) {
-	// Check block index first (could be main chain or side chain blocks).
-	if b.index.HaveBlock(hash) { // index includes only the most recent blocks
+	// Check block Index first (could be main chain or side chain blocks).
+	if b.Index.HaveBlock(hash) { // Index includes only the most recent blocks
 		return true, nil
 	}
 
 	// Check in the database.
 	var exists bool
 	err := b.db.View(func(dbTx database.Tx) error {
-		// if not in index, it might still be a valid block
+		// if not in Index, it might still be a valid block
 		bucket := dbTx.Metadata().Bucket(hashIndexBucketName)
 		if bucket.Get((*hash)[:]) != nil {
 			exists = true
@@ -88,11 +88,11 @@ func (b *BlockChain) blockExists(hash *chainhash.Hash) (bool, error) {
 
 		// Ignore side chain blocks in the database.  This is necessary
 		// because there is not currently any record of the associated
-		// block index data such as its block height, so it's not yet
+		// block Index data such as its block height, so it's not yet
 		// possible to efficiently load the block and do anything useful
 		// with it.
 		//
-		// Ultimately the entire block index should be serialized
+		// Ultimately the entire block Index should be serialized
 		// instead of only the current main chain so it can be consulted
 		// directly.
 		/*
@@ -176,7 +176,7 @@ func (b *BlockChain) OnNewMinerNode() {
 		}
 		return added
 	}) {
-		high := b.index.Highest()
+		high := b.Index.Highest()
 		b.CheckSideChain(&high.Hash)
 	}
 }
@@ -203,7 +203,7 @@ func (b *BlockChain) CheckSideChain(hash *chainhash.Hash) {
 	b.ReorganizeChain(detachNodes, attachNodes)
 	log.Infof("CheckSideChain: tx REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches. New chain height = %d", node.Hash, detachNodes.Len(), attachNodes.Len(), b.BestSnapshot().Height)
 
-	b.index.FlushToDB(dbStoreBlockNode)
+	b.Index.FlushToDB(dbStoreBlockNode)
 }
 
 type orphanBlock btcutil.Block
@@ -338,14 +338,14 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	if prevNode == nil {
 		str := fmt.Sprintf("previous block %s is unknown", prevHash)
 		return false, false, ruleError(ErrPreviousBlockUnknown, str), -1, nil
-	} else if b.index.NodeStatus(prevNode).KnownInvalid() {
+	} else if b.Index.NodeStatus(prevNode).KnownInvalid() {
 		str := fmt.Sprintf("previous block %s is known to be invalid", prevHash)
 		return false, false, ruleError(ErrInvalidAncestorBlock, str), -1, prevHash
 	}
 
 	blockHeight := prevNode.Height + 1
 
-	if blockHeight <= int32(b.index.Cutoff) {
+	if blockHeight <= int32(b.Index.Cutoff) {
 		if prevNode.Height <= 0 {
 			return false, false, ruleError(ErrInvalidAncestorBlock, "Block height is in locked area"), -1, prevHash
 		}
@@ -371,7 +371,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 			return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
 		}
 		node := b.NodeByHash(blockHash)
-		if !b.index.NodeStatus(node).KnownInvalid() && node.Height == block.Height() {
+		if !b.Index.NodeStatus(node).KnownInvalid() && node.Height == block.Height() {
 			if block.Height() > b.BestChain.Height() {
 				// do we need to reorg?
 				detachNodes, attachNodes := b.getReorganizeNodes(node)
@@ -383,12 +383,12 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 					if err = b.ReorganizeChain(detachNodes, attachNodes); err != nil {
 						return false, true, err, -1, nil
 					}
-					if writeErr := b.index.FlushToDB(dbStoreBlockNode); writeErr != nil {
-						log.Warnf("Error flushing block index changes to disk: %v", writeErr)
+					if writeErr := b.Index.FlushToDB(dbStoreBlockNode); writeErr != nil {
+						log.Warnf("Error flushing block Index changes to disk: %v", writeErr)
 					}
 				}
 			}
-			if exists {
+			if !b.IsSVP && exists {
 				return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
 			}
 		} // re-examine it otherwise
@@ -647,7 +647,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent *chainutil.BlockNod
 		snr := *(ppk.Hash160())
 		// is the signer in committee?
 		if _, ok := miners[snr]; !ok {
-			//			b.index.RemoveNode(b.index.LookupNode(block.Hash()))
+			//			b.Index.RemoveNode(b.Index.LookupNode(block.Hash()))
 			return false
 		}
 	}

@@ -94,7 +94,7 @@ func DebugSetup(enable bool, comm chan []byte) {
 // NewInterpreter returns a new instance of the Interpreter.
 func NewInterpreter(evm *OVM) *Interpreter {
 	a := &Interpreter{
-		evm:      evm,
+		evm:       evm,
 		JumpTable: omegaInstructionSet,
 	}
 
@@ -123,7 +123,7 @@ func setdbgcontract(contract *Contract, addr Address, stack *Stack) {
 
 	readysent = false
 
-	<- attaching
+	<-attaching
 }
 
 func intrepdebug() {
@@ -422,6 +422,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 		}
 
 		// execute the operation
+
 		if printInst {
 			s := ""
 			for i := int32(0); i < stack.callTop; i++ {

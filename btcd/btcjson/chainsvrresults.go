@@ -7,6 +7,7 @@ package btcjson
 
 import (
 	"encoding/json"
+	"github.com/btcsuite/btcd/btc2omg/btcd/treasury"
 	"github.com/omegasuite/famofchains/btcd/wire"
 )
 
@@ -313,6 +314,16 @@ type ScriptPubKeyResult struct {
 	Hex       string   `json:"hex,omitempty"`
 	Type      string   `json:"type"`
 	Addresses []string `json:"addresses,omitempty"`
+}
+
+type GetCrossChainDBResult struct {
+	IncomingPool  []*wire.XchainData  `json:"incomingpool"`
+	Btc2L2Pool    []*wire.XchainData  `json:"btc2l2pool"`
+	L2BtcPool     []*wire.XchainData  `json:"l2btcpool"`
+	BridgeSigners []*treasury.Signers `json:"bridgesigners"`
+	XBTCAssets    []*treasury.Asset   `json:"xbtcassets"`
+	XCAssets      []*wire.XchainData  `json:"xcassets"`
+	RedeemDB      map[string]string   `json:"redeemdb"`
 }
 
 // GetTxOutResult models the data from the gettxout command.

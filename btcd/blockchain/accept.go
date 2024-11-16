@@ -32,6 +32,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		}
 
 		tdest := uint32(txo.TokenType >> 40)
+		tdest &= 0x3FFFFF
 		if _, ok := chainmap.ChainMap[tdest]; tdest != 0 && !ok {
 			b.SrvReq <- ReqChain(tdest)
 			return fmt.Errorf("Cross chain TokenType not found")
@@ -71,7 +72,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		if cid == b.ChainParams.ChainID {
 			return fmt.Errorf("cross chain transferring to local chain")
 		}
-		if _, ok := chainmap.ChainMap[cid]; !ok {
+		if _, ok := chainmap.ChainMap[cid&0x3FFFFF]; !ok {
 			b.SrvReq <- ReqChain(cid)
 			return fmt.Errorf("unknown cross chain destination")
 		}
@@ -210,7 +211,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		}
 	}
 
-	// Create a new block node for the block and add it to the node index. Even
+	// Create a new block node for the block and add it to the node Index. Even
 	// if the block ultimately gets connected to the main chain, it starts out
 	// on a side chain.
 	blockHeader := &block.MsgBlock().Header
@@ -229,7 +230,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		}
 	}
 	if !b.IsSVP {
-		m := chainmap.ChainMap[b.ChainParams.ChainID]
+		m := chainmap.ChainMap[b.ChainParams.ChainID&0x3FFFFF]
 		initems := make(map[chainhash.Hash]*wire.XchainData)
 		b.db.View(func(dbtx database.Tx) error {
 			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
@@ -303,20 +304,20 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	if newNode == nil {
 		newNode = NewBlockNode(blockHeader, prevNode)
 		newNode.Status = chainutil.StatusDataStored
-		b.index.AddNode(newNode)
+		b.Index.AddNode(newNode)
 	} else {
 		newNode.Height = block.Height()
 		if newNode.Height <= 0 {
 			return false, err, -1
 		}
-		b.index.UnsetStatusFlags(newNode, chainutil.BlockStatus(0xFF))
-		b.index.SetStatusFlags(newNode, chainutil.StatusDataStored)
+		b.Index.UnsetStatusFlags(newNode, chainutil.BlockStatus(0xFF))
+		b.Index.SetStatusFlags(newNode, chainutil.StatusDataStored)
 		newNode.Parent = prevNode
-		b.index.AddNodeDirect(newNode)
+		b.Index.AddNodeDirect(newNode)
 
 		flags |= BFAlreadyInChain
 	}
-	err = b.index.FlushToDB(dbStoreBlockNode)
+	err = b.Index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
 		return false, err, -1
 	}

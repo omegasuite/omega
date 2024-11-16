@@ -685,11 +685,9 @@ func (m *wsNotificationManager) subscribedClients(tx *btcutil.Tx,
 	subscribed := make(map[chan struct{}]struct{})
 
 	msgTx := tx.MsgTx()
+	if !msgTx.IsCrossChain() {
 	for _, input := range msgTx.TxIn {
 		if input.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if input.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		for quitChan, wsc := range clients {
@@ -705,6 +703,7 @@ func (m *wsNotificationManager) subscribedClients(tx *btcutil.Tx,
 			}
 			filter.mu.Unlock()
 		}
+	}
 	}
 
 	for i, output := range msgTx.TxOut {
@@ -1187,11 +1186,9 @@ func (m *wsNotificationManager) notifyForTxIns(ops map[wire.OutPoint]map[chan st
 
 	txHex := ""
 	wscNotified := make(map[chan struct{}]struct{})
+	if !tx.IsCrossChain() {
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		prevOut := &txIn.PreviousOutPoint
@@ -1215,6 +1212,7 @@ func (m *wsNotificationManager) notifyForTxIns(ops map[wire.OutPoint]map[chan st
 				}
 			}
 		}
+	}
 	}
 }
 
@@ -2125,12 +2123,11 @@ func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
 		// created and sent.
 		spentNotified := false
 		recvNotified := false
+		
+		if !tx.IsCrossChain() {
 
 		for _, txin := range tx.MsgTx().TxIn {
 			if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
-			}
-			if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				continue
 			}
 			if _, ok := lookups.unspent[txin.PreviousOutPoint]; ok {
@@ -2157,6 +2154,7 @@ func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
 				}
 				spentNotified = true
 			}
+		}
 		}
 
 		for txOutIdx, txout := range tx.MsgTx().TxOut {
@@ -2271,13 +2269,10 @@ func rescanBlockFilter(filter *wsClientFilter, block *btcutil.Block, params *cha
 		added := false
 
 		// Scan inputs if not a coinbase transaction.
-		if !blockchain.IsCoinBaseTx(msgTx) {
+		if !blockchain.IsCoinBaseTx(msgTx) && !msgTx.IsCrossChain() {
 			for _, input := range msgTx.TxIn {
 				if input.PreviousOutPoint.Hash.IsEqual(&zerohash) ||
 					!filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
-					continue
-				}
-				if input.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 					continue
 				}
 				if !added {

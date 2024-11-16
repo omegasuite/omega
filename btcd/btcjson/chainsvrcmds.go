@@ -749,6 +749,10 @@ type GetIssuedTokensCmd struct {
 	Count *uint32 `jsonrpcdefault:"100"`
 }
 
+type GetCrossChainDBCmd struct {
+	Clear uint32
+}
+
 // Createxferl2txoCmd defines the ceatexferl2txo JSON-RPC command.
 type Createxferl2txoCmd struct {
 	Amount    uint64
@@ -1287,6 +1291,9 @@ func init() {
 	MustRegisterCmd("getinfo", (*GetInfoCmd)(nil), flags)
 	MustRegisterCmd("getmempoolentry", (*GetMempoolEntryCmd)(nil), flags)
 	MustRegisterCmd("getissuedtokens", (*GetIssuedTokensCmd)(nil), flags)
+
+	MustRegisterCmd("getcrosschaindb", (*GetCrossChainDBCmd)(nil), flags)
+
 	MustRegisterCmd("getmempoolinfo", (*GetMempoolInfoCmd)(nil), flags)
 	MustRegisterCmd("createxferl2txo", (*Createxferl2txoCmd)(nil), flags)
 	MustRegisterCmd("gettreasury", (*GetTreasuryCmd)(nil), flags)

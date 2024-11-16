@@ -471,6 +471,15 @@ func (mp *TxPool) HaveTransaction(hash *chainhash.Hash) bool {
 	return haveTx
 }
 
+func (mp *TxPool) ResetTryCount(tx *btcutil.Tx) {
+	txHash := tx.Hash()
+
+	// Remove the transaction if needed.
+	if txDesc, exists := mp.pool[*txHash]; exists {
+		txDesc.Tried = 0
+	}
+}
+
 // removeTransaction is the internal function which implements the public
 // RemoveTransaction.  See the comment for RemoveTransaction for more details.
 //
@@ -864,7 +873,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 
 	txFee := int64(0)
 	if !contract {
-		txFee, err = blockchain.CheckTransactionFees(tx, chaincfg.Version2, 0, views, mp.cfg.ChainParams)
+		txFee, _, err = blockchain.CheckTransactionFees(tx, chaincfg.Version2, 0, views, mp.cfg.ChainParams)
 		if err != nil {
 			if cerr, ok := err.(blockchain.RuleError); ok {
 				return nil, nil, chainRuleError(cerr)

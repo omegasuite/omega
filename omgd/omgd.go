@@ -819,9 +819,11 @@ func main() {
 		if err := json.Unmarshal([]byte(c.GlobalParams), dparams); err != nil {
 			os.Exit(1)
 		}
-		fmt.Printf("loading SVP options, ChainID = %d magic = %d", c.ChainID, dparams.Net)
 
 		svpid := fmt.Sprintf("%x", uint32(dparams.Net))
+
+		fmt.Printf("loading SVP options, ChainID = %d magic = %x", c.ChainID, uint32(dparams.Net))
+
 		vcfg, _, err := loadConfig(svpid, dparams.Net)
 		if vcfg == nil || err != nil {
 			os.Exit(1)

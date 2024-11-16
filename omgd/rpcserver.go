@@ -14,6 +14,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/binary"
+	"github.com/btcsuite/btcd/btc2omg/btcd/treasury"
 
 	"encoding/base64"
 
@@ -171,7 +172,8 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	//	"getsigners":      handleGetSigners,     // new
 	//  "getbtcpool":     handleGetBtcPool,     // new
 	// "getl2pool":      handleGetL2Pool,      // new
-	"clearbtcl2pool": handleClearBtcL2Pool, // new
+	"clearbtcl2pool":  handleClearBtcL2Pool,  // new
+	"getcrosschaindb": handleGetCrossChainDB, // new
 
 	"getminerblock":       handleGetMinerBlock,       // New
 	"getmbk":              handleGetMinerBlock,       // New
@@ -357,6 +359,8 @@ var rpcLimited = map[string]struct{}{
 	"getl2pool":          {}, // new
 	"clearbtcl2pool":     {}, // new
 	"signrawtransaction": {},
+
+	"getcrosschaindb": {},
 
 	//	"clearmempool":          {},	this is admin command
 	"getrawtransaction":     {},
@@ -1427,16 +1431,13 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 	}
 
 	j := 0
-
+if !tx.IsCrossChain() {
 	for _, txIn := range mtx.TxIn {
 		// The disassembled string will contain [error] inline
 		// if the script doesn't fully parse, so ignore the
 		// error here.
 		//		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(mtx.TxOut) == 0 {
 			continue
 		}
 		var disbuf string
@@ -1456,6 +1457,7 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 		}
 
 		vinEntry.SignatureIndex = txIn.SignatureIndex
+	}
 	}
 
 	vinList = vinList[:j]
@@ -2923,16 +2925,14 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		// before creating the final array to prevent duplicate entries
 		// when multiple inputs reference the same transaction.
 		dependsMap := make(map[int64]struct{})
+		if !tx.IsCrossChain() {
 		for _, txIn := range tx.TxIn {
-			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
+			if !txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
+					dependsMap[idx] = struct{}{}
+				}
 			}
-			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
-				continue
-			}
-			if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
-				dependsMap[idx] = struct{}{}
-			}
+		}
 		}
 		depends := make([]int64, 0, len(dependsMap))
 		for idx := range dependsMap {
@@ -3817,8 +3817,109 @@ func handleGetSigners(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 	})
 	return signers, nil
 }
-
 */
+
+func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetCrossChainDBCmd)
+
+	res := &btcjson.GetCrossChainDBResult{
+		IncomingPool:  make([]*wire.XchainData, 0),
+		Btc2L2Pool:    make([]*wire.XchainData, 0),
+		L2BtcPool:     make([]*wire.XchainData, 0),
+		BridgeSigners: make([]*treasury.Signers, 0),
+		XBTCAssets:    make([]*treasury.Asset, 0),
+		XCAssets:      make([]*wire.XchainData, 0),
+		RedeemDB:      make(map[string]string),
+	}
+
+	s.cfg.DB.View(func(tx database.Tx) error {
+		meta := tx.Metadata()
+		if c.Clear&1 != 0 { // INCOMINGPOOL
+			bucket := meta.Bucket([]byte(common.INCOMINGPOOL))
+			xchain := &wire.XchainData{}
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				xchain.DeSerialize(cursor.Value())
+				res.IncomingPool = append(res.IncomingPool, xchain)
+			}
+		}
+		/*
+			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
+				fmt.Printf("BTCL2POOL\n")
+				bucket := meta.Bucket([]byte(common.BTCL2POOL))
+				xchain := &wire.XchainData{}
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					xchain.DeSerialize(cursor.Value())
+					res.Btc2L2Pool = append(res.Btc2L2Pool, xchain)
+				}
+
+				bucket = meta.Bucket([]byte(common.L2BTCPOOL))
+				cursor = bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					xchain.DeSerialize(cursor.Value())
+					res.L2BtcPool = append(res.L2BtcPool, xchain)
+				}
+			}
+			if c.Clear&4 != 0 { // BRIDGESIGNERS
+				fmt.Printf("BRIDGESIGNERS\n")
+				bucket := meta.Bucket([]byte(common.BRIDGESIGNERS))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					var addr [20]byte
+					copy(addr[:], cursor.Key())
+
+					t := &treasury.Signers{}
+					copy(t.Address[:], addr[:])
+					t.Pledged = make([]*treasury.PlgAsset, 0)
+
+					_, err := t.Deserialize(cursor.Value())
+					if err != nil {
+						continue
+					}
+					res.BridgeSigners = append(res.BridgeSigners, t)
+				}
+			}
+
+			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+				fmt.Printf("XBTCAssets\n")
+				bucket := meta.Bucket([]byte(common.XBTCAssets))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					var outp wire.OutPoint
+					key := cursor.Key()
+					outp.Hash.SetBytes(key[:32])
+					outp.Index = common.LittleEndian.Uint32(key[32:])
+					plg := &treasury.Asset{}
+					_, err := plg.Deserialize(cursor.Value())
+					if err != nil {
+						return err
+					}
+					res.XBTCAssets = append(res.XBTCAssets, plg)
+				}
+				/*
+					bucket = meta.Bucket([]byte(common.XCAssets))
+					cursor = bucket.Cursor()
+					n := 0
+					for ok := cursor.First(); ok; ok = cursor.Next() {
+						n++
+					}
+					fmt.Printf("XCAssets has %d items\n", n)
+				* /
+			}
+			if c.Clear&16 != 0 { // REEDEEM
+				bucket := meta.Bucket([]byte(common.REDEEMDB))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					res.RedeemDB[string(cursor.Key())] = hex.EncodeToString(cursor.Value())
+				}
+			}
+
+		*/
+		return nil
+	})
+	return res, nil
+}
 
 func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	s.cfg.DB.Update(func(dbTx database.Tx) error {
@@ -4336,9 +4437,8 @@ func handleGetTxOut(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	}
 
 	if !(*(c.IncludeLocked)) {
-		p := &wire.OutPoint{Hash: *txHash, Index: c.Vout}
-
-		if _, ok := s.cfg.Chain.LockedCollaterals[*p]; ok {
+		p := wire.OutPoint{Hash: *txHash, Index: c.Vout}
+		if _, ok := s.cfg.Chain.LockedCollaterals[p]; ok {
 			return nil, &btcjson.RPCError{
 				Code:    btcjson.ErrRPCInvalidTxVout,
 				Message: "Locked collateral.",
@@ -4678,11 +4778,9 @@ type retrievedTx struct {
 func fetchInputTxos(s *rpcServer, tx *wire.MsgTx) (map[wire.OutPoint]wire.TxOut, error) {
 	mp := s.cfg.TxMemPool
 	originOutputs := make(map[wire.OutPoint]wire.TxOut)
+	if !tx.IsCrossChain() {
 	for txInIndex, txIn := range tx.TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
 			continue
 		}
 
@@ -4741,6 +4839,7 @@ func fetchInputTxos(s *rpcServer, tx *wire.MsgTx) (map[wire.OutPoint]wire.TxOut,
 		}
 		originOutputs[*origin] = *msgTx.TxOut[origin.Index]
 	}
+	}
 
 	return originOutputs, nil
 }
@@ -4779,6 +4878,8 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 	}
 
 	contracts := false
+	
+	if !mtx.IsCrossChain() {
 
 	for _, txIn := range mtx.TxIn {
 		if txIn.IsSeparator() {
@@ -4786,9 +4887,6 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 			continue
 		}
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(mtx.TxOut) == 0 {
 			continue
 		}
 		// The disassembled string will contain [error] inline
@@ -4875,6 +4973,7 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 				}
 			}
 		*/
+	}
 	}
 
 	return vinList, nil
@@ -6361,6 +6460,8 @@ type rpcServer struct {
 	sendcmdconfirmation    map[chainhash.Hash]confirmMsg
 	quit                   chan int
 
+	Rpcactivity chan struct{}
+	//	alertresp			   chan *AlertCommand
 	rsapubkey *rsa.PublicKey
 }
 
@@ -6782,6 +6883,9 @@ func (s *rpcServer) Start() {
 		ReadTimeout: time.Second * rpcAuthTimeoutSeconds,
 	}
 	rpcServeMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if s.Rpcactivity != nil {
+			s.Rpcactivity <- struct{}{}
+		}
 		if r.Method == "OPTIONS" {
 			w.Header().Set("Connection", "keep-alive")
 			w.Header().Set("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, Access-Control-Allow-Origin")
@@ -6821,6 +6925,9 @@ func (s *rpcServer) Start() {
 
 	// Websocket endpoint.
 	rpcServeMux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		if s.Rpcactivity != nil {
+			s.Rpcactivity <- struct{}{}
+		}
 		authenticated, isAdmin, err := s.checkAuth(r, false)
 		if err != nil {
 			jsonAuthFail(w)

@@ -40,6 +40,7 @@ type Block struct {
 	blockHeight              int32           // Height in the main block chain
 	transactions             []*Tx           // Height
 	txnsGenerated            bool            // ALL wrapped transactions generated
+	Btctxfees                int64           // total btc tx fees in this block, we need it here because it does not appear in coinbase tx
 }
 
 // MsgBlock returns the underlying wire.MsgBlock for the Block.
@@ -257,6 +258,7 @@ func NewBlock(msgBlock *wire.MsgBlock) *Block {
 	return &Block{
 		msgBlock:    msgBlock,
 		blockHeight: BlockHeightUnknown,
+		Btctxfees:   -1,
 	}
 }
 
@@ -295,6 +297,7 @@ func NewBlockFromReader(r io.Reader) (*Block, error) {
 	b := Block{
 		msgBlock:    &msgBlock,
 		blockHeight: BlockHeightUnknown,
+		Btctxfees:   -1,
 	}
 	return &b, nil
 }
@@ -319,5 +322,6 @@ func NewBlockFromBlockAndBytes(msgBlock *wire.MsgBlock, serializedBlock []byte) 
 		msgBlock:        msgBlock,
 		serializedBlock: serializedBlock,
 		blockHeight:     BlockHeightUnknown,
+		Btctxfees:       -1,
 	}
 }

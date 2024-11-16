@@ -243,7 +243,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 	quit chan struct{}, numWorkers uint32) bool {
 
 	// Create some convenience variables.
-	targetDifficulty := CompactToBig(header.Bits)
+	targetDifficulty := blockchain.CompactToBig(header.Bits)
 	header.Block.(*wire.MingingRightBlock).Bits = header.Bits
 
 	block := header.Block.(*wire.MingingRightBlock)
@@ -455,7 +455,7 @@ out:
 			continue
 		}
 
-		if len(m.cfg.MiningAddrs) == 0 { // || m.g.Chain.IsPacking {
+		if len(m.cfg.MiningAddrs) == 0 || m.g.Chain.IsPacking {
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -597,7 +597,7 @@ out:
 			})
 			block.MsgBlock().ViolationReport = t
 			if len(t) > 0 {
-				log.Infof("violation report -- %d", len(t))
+				log.Infof("violation report -- %d items at height %d", len(t), block.Height())
 			}
 		}
 
@@ -628,9 +628,7 @@ out:
 				time.Sleep(time.Second * 5)
 				continue
 			}
-			//			block.MsgBlock().Instructions = make([]*wire.Instruction, 0)
-
-			h1 = int64(v)
+			h1 = int64(v / c)
 			if h1 < 1 {
 				h1 = 1
 			}
