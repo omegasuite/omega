@@ -53,11 +53,9 @@ func DisasmString(buf []byte) (string, error) {
 // from  O(N^2) to O(N).
 func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
+	if !tx.IscrossChain() {
 	for _, in := range tx.TxIn {
 		if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if in.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
 			continue
 		}
 		// First write out the 32-byte transaction ID one of whose
@@ -69,6 +67,7 @@ func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], in.PreviousOutPoint.Index)
 		b.Write(buf[:])
+	}
 	}
 
 	return chainhash.DoubleHashH(b.Bytes())
@@ -82,16 +81,15 @@ func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 // from O(N^2) to O(N).
 func calcHashSequence(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
+	if !tx.IscrossChain() {
 	for _, in := range tx.TxIn {
 		if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if in.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
 			continue
 		}
 		var buf [4]byte
 		binary.LittleEndian.PutUint32(buf[:], in.Sequence)
 		b.Write(buf[:])
+	}
 	}
 
 	return chainhash.DoubleHashH(b.Bytes())

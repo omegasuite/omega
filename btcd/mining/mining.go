@@ -323,17 +323,16 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 // transaction as spent.  It also adds all outputs in the passed transaction
 // which are not provably unspendable as available unspent transaction outputs.
 func spendTransaction(utxoView *viewpoint.ViewPointSet, tx *btcutil.Tx, height int32) error {
+	if !tx.MsgTx().IsCrossChain() {
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		entry := utxoView.Utxo.LookupEntry(txIn.PreviousOutPoint)
 		if entry != nil {
 			entry.Spend()
 		}
+	}
 	}
 
 	utxoView.AddTxOuts(tx, height)
@@ -748,11 +747,9 @@ mempoolLoop:
 		if s.MsgBlock().Version >= chaincfg.Version2 {
 			var locked = false
 			locks := ""
+			if !tx.MsgTx().IsCrossChain() {
 			for _, txin := range tx.MsgTx().TxIn {
 				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-					continue
-				}
-				if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 					continue
 				}
 				if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
@@ -760,6 +757,7 @@ mempoolLoop:
 					locks = txin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", txin.PreviousOutPoint.Index)
 					break
 				}
+			}
 			}
 			if locked {
 				g.txSource.RemoveTransaction(tx, true)
@@ -794,12 +792,10 @@ mempoolLoop:
 		// other transactions in the mempool so they can be properly
 		// ordered below.
 		prioItem := &txPrioItem{tx: tx}
+		if !tx.MsgTx().IsCrossChain() {
 		for _, txIn := range tx.MsgTx().TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				// never here
-				continue
-			}
-			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				continue
 			}
 			originHash := &txIn.PreviousOutPoint.Hash
@@ -835,6 +831,7 @@ mempoolLoop:
 				// referenced transaction is available.
 				continue
 			}
+		}
 		}
 
 		// Calculate the final transaction priority using the input
@@ -909,7 +906,8 @@ mempoolLoop:
 	totalbtcfees := int64(0)
 
 	// Choose which transactions make it into the block.
-skiprest:
+	var skiprest = false // whether to skip rest contracts
+
 	for priorityQueue.Len() > 0 {
 		nt := time.Now()
 		if nt.UnixNano()-startTime > 40000*1e6 {
@@ -1030,6 +1028,10 @@ skiprest:
 			continue
 		}
 
+		if skiprest && tx.ContainContract() {
+			continue
+		}
+
 		// excute contracts if necessary. note, if the execution causes any change in
 		// in transaction, a new copy of tx will be returned.
 		savedCoinBase := *coinbaseTx.MsgTx().Copy()
@@ -1048,6 +1050,7 @@ skiprest:
 			logSkippedDeps(tx, deps)
 			continue
 		}
+		/*
 		for ip := 0; ip < len(tx.MsgTx().TxOut); ip++ {
 			if tx.MsgTx().TxOut[ip].IsSeparator() {
 				continue
@@ -1056,6 +1059,7 @@ skiprest:
 				break
 			}
 		}
+		 */
 		storage := blockchain.ContractNewStorage(tx, Vm, paidstoragefees)
 
 		tx.Executed = true
@@ -1070,7 +1074,8 @@ skiprest:
 			if executed {
 				coinbaseTx.HasOuts = newcoins
 				*coinbaseTx.MsgTx() = savedCoinBase
-				break skiprest // skip rest so we don't waste time on on more contracts
+				skiprest = true // skip rest so we don't waste time on more contracts
+				continue
 			}
 
 			log.Infof("Skipping tx %s due to error in CheckTransactionInputs: %v", tx.Hash(), err)
@@ -1086,7 +1091,8 @@ skiprest:
 			if executed {
 				coinbaseTx.HasOuts = newcoins
 				*coinbaseTx.MsgTx() = savedCoinBase
-				break skiprest // skip rest so we don't waste time on on more contracts
+				skiprest = true // skip rest so we don't waste time on more contracts
+				continue
 			}
 
 			log.Infof("Skipping tx %s due to error in CheckTransactionIntegrity: %v", tx.Hash(), err)
@@ -1102,7 +1108,8 @@ skiprest:
 			if executed {
 				coinbaseTx.HasOuts = newcoins
 				*coinbaseTx.MsgTx() = savedCoinBase
-				break skiprest // skip rest so we don't waste time on on more contracts
+				skiprest = true // skip rest so we don't waste time on more contracts
+				continue
 			}
 
 			log.Infof("Skipping tx %s due to error in CheckTransactionFeess: %v", tx.Hash(), err)
@@ -1117,7 +1124,8 @@ skiprest:
 			if executed {
 				coinbaseTx.HasOuts = newcoins
 				*coinbaseTx.MsgTx() = savedCoinBase
-				break skiprest // skip rest so we don't waste time on on more contracts
+				skiprest = true // skip rest so we don't waste time on more contracts
+				continue
 			}
 
 			continue

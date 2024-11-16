@@ -443,13 +443,12 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 	// Calculate the total number of stxos.
 	var numStxos int
 	for _, tx := range txns {
-		numStxos += len(tx.TxIn)
-		for _, in := range tx.TxIn {
-			if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				numStxos--
-			}
-			if in.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
-				numStxos--
+		if !tx.IsCrossChain() {
+			numStxos += len(tx.TxIn)
+			for _, in := range tx.TxIn {
+				if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					numStxos--
+				}
 			}
 		}
 	}
@@ -475,6 +474,9 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 	stxos := make([]viewpoint.SpentTxOut, numStxos)
 	for txIdx := len(txns) - 1; txIdx > -1; txIdx-- {
 		tx := txns[txIdx]
+		if tx.IsCrossChain() {
+			continue
+		}
 
 		// Loop backwards through all of the transaction inputs and read
 		// the associated stxo.
@@ -483,9 +485,7 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
-			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
-				continue
-			}
+
 			stxo := &stxos[stxoIdx]
 			stxoIdx--
 
@@ -1812,12 +1812,9 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 		prevOut.Index = uint32(txOutIdx)
 		neededSet[prevOut] = struct{}{}
 	}
-	if !b.isCoinBase(tx) {
+	if !b.isCoinBase(tx) && !tx.IsCrossChain() {
 		for _, txIn := range tx.MsgTx().TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
-			}
-			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				continue
 			}
 			neededSet[txIn.PreviousOutPoint] = struct{}{}

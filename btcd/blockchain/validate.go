@@ -308,11 +308,9 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 	var zerohash chainhash.Hash
 	// Check for duplicate transaction inputs.
 	existingTxOut := make(map[wire.OutPoint]struct{})
+	if !msgTx.IsCrossChain() {
 	for _, txIn := range msgTx.TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		if _, exists := existingTxOut[txIn.PreviousOutPoint]; exists {
@@ -324,6 +322,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 		}
 		existingTxOut[txIn.PreviousOutPoint] = struct{}{}
 	}
+	
 
 	// Coinbase script length must be between min and max length.
 	if len(tx.MsgTx().TxIn) > 0 && !tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) { // !coinbase
@@ -333,15 +332,13 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
-			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
-				continue
-			}
 			if isNullOutpoint(&txIn.PreviousOutPoint) {
 				return ruleError(ErrBadTxInput, "transaction "+
 					"input refers to previous output that "+
 					"is null")
 			}
 		}
+	}
 	}
 
 	return nil
@@ -1146,15 +1143,13 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views *vie
 
 	totalIns := make(map[uint64]int64)
 	additional := false
+	if !tx.MsgTx().IsCrossChain() {
 	for txInIndex, txIn := range tx.MsgTx().TxIn {
 		if txIn.IsSeparator() {
 			additional = true
 			continue
 		}
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		if !additional {
@@ -1207,6 +1202,7 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views *vie
 				btcutil.MaxHao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
+	}
 	}
 
 	return nil

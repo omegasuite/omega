@@ -584,7 +584,7 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, omega.Err) {
 	//	}
 
 	if len(tx.MsgTx().TxIn) < 1 {
-		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation must have exactly one input.")
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation must have one input.")
 	}
 	// the only input must come from a pkh address so we can identify the creator
 	ovm.views.Utxo.FetchUtxosMain(ovm.DB, map[wire.OutPoint]struct{}{tx.MsgTx().TxIn[0].PreviousOutPoint: struct{}{}})

@@ -518,11 +518,9 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 		if isCoinBase {
 			continue
 		}
+		if !tx.IsCrossChain() {
 		for txInIdx := len(tx.MsgTx().TxIn) - 1; txInIdx > -1; txInIdx-- {
 			if tx.MsgTx().TxIn[txInIdx].PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
-			}
-			if tx.MsgTx().TxIn[txInIdx].SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				continue
 			}
 			// Ensure the spent txout index is decremented to stay
@@ -608,6 +606,7 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 					copy(entry.monitor[20:], entry.Amount.(*token.HashToken).Hash[:])
 				}
 			}
+		}
 		}
 	}
 

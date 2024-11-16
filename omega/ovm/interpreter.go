@@ -422,7 +422,6 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 		}
 
 		// execute the operation
-
 		if printInst {
 			s := ""
 			for i := int32(0); i < stack.callTop; i++ {

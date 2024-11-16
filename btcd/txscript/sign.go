@@ -323,6 +323,10 @@ func signMultiSig(tx *wire.MsgTx, idx int, subScript []byte,
 		}
 	}
 
+	if signed == 0 {
+		return nil, nRequired, false
+	}
+
 	script := builder.Script()
 	return script, nRequired, signed >= nRequired
 }
@@ -352,7 +356,7 @@ func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 
 	case txsparser.ScriptHashTy:
 		script, err := sdb.GetScript(addresses[0])
-		if err != nil {
+		if err != nil || script == nil {
 			return nil, class, nil, 0, err
 		}
 
@@ -365,7 +369,7 @@ func sign(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 			return script, class, addresses, nrequired, nil
 		} else {
 			script, err := sdb.GetScript(addresses[0])
-			if err != nil {
+			if err != nil || script == nil {
 				return nil, class, nil, 0, err
 			}
 
@@ -438,10 +442,12 @@ func SignTxOutput(chainParams *chaincfg.Params, tx *wire.MsgTx, idx int,
 			return nil, err
 		}
 
-		// Append the p2sh script as the last push in the script.
-		builder := ovm.NewScriptBuilder().AddOp(ovm.PUSH, []byte{0}).AddBytes(realSigScript)
+		if realSigScript != nil {
+			// Append the p2sh script as the last push in the script.
+			builder := ovm.NewScriptBuilder().AddOp(ovm.PUSH, []byte{0}).AddBytes(realSigScript)
 
-		sigScript = builder.Script()
+			sigScript = builder.Script()
+		}
 		// TODO keep a copy of the script for merging.
 	}
 

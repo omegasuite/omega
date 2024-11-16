@@ -52,11 +52,9 @@ func minInt(a, b int) int {
 // contribute no additional input age to the transaction.
 func calcInputValueAge(tx *wire.MsgTx, utxoView *viewpoint.UtxoViewpoint, nextBlockHeight int32) float64 {
 	var totalInputAge float64
+	if !tx.IsCrossChain() {
 	for _, txIn := range tx.TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.TxOut) == 0 {
 			continue
 		}
 		// Don't attempt to accumulate the total input age if the
@@ -82,6 +80,7 @@ func calcInputValueAge(tx *wire.MsgTx, utxoView *viewpoint.UtxoViewpoint, nextBl
 			}
 			totalInputAge += float64(inputValue * int64(inputAge))
 		}
+	}
 	}
 
 	return totalInputAge

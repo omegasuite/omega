@@ -131,6 +131,7 @@ func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoi
 	}
 
 	nsigs := uint32(len(tx.MsgTx().SignatureScripts))
+	if !tx.IsCrossChain() {
 	for _, tin := range tx.MsgTx().TxIn[skip:] {
 		if tin.IsSeparator() {
 			break
@@ -138,13 +139,11 @@ func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoi
 		if tin.IsSepadding() {
 			continue
 		}
-		if tin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
-			continue
-		}
 
 		if tin.SignatureIndex >= nsigs || tx.MsgTx().SignatureScripts[tin.SignatureIndex] == nil { // no signature
 			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
 		}
+	}
 	}
 
 	if nsigs == 0 {
@@ -235,14 +234,12 @@ func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoi
 	sharedSigs := make(map[uint32]*shared)
 
 	// prepare and shoot the real work
+	if !tx.IsCrossChain() {
 	for txinidx, txin := range tx.MsgTx().TxIn[skip:] {
 		if txin.IsSeparator() { // never
 			break
 		}
 		if txin.IsSepadding() {
-			continue
-		}
-		if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 
@@ -359,6 +356,7 @@ func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoi
 					}
 				}
 			}
+		}
 		}
 
 		pkslen := len(utxo.PkScript())

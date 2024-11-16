@@ -335,16 +335,15 @@ func (bf *Filter) matchTxAndUpdate(tx *btcutil.Tx) bool {
 
 	// Check if the filter matches any outpoints this transaction spends or
 	// any any data elements in the signature scripts of any of the inputs.
+	if !tx.IsCrossChain() {
 	for _, txin := range tx.MsgTx().TxIn {
 		if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 		if bf.matchesOutPoint(&txin.PreviousOutPoint) {
 			return true
 		}
+	}
 	}
 
 	if !tx.IsCoinBase() {
