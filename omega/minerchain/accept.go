@@ -239,42 +239,42 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 				}
 				sum /= 50
 
-				h2 := int64(1)
-				if sum <= minscore {
-					h2 = 1
-				} else {
-					h2 = int64(sum / minscore)
-				}
-				if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
-					h2 *= 16
-				}
+			h2 := int64(1)
+			if sum <= minscore {
+				h2 = 1
+			} else {
+				h2 = int64(sum / minscore)
+			}
+			if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
+				h2 *= 16
+			}
 
-				if factor > 0 {
-					hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-					target = target.Mul(target, big.NewInt(h1+h2))
-				} else {
-					if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
-						factor *= 16
-					}
-					target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
+			if factor > 0 {
+				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+				target = target.Mul(target, big.NewInt(h1+h2))
+			} else {
+				if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
+					factor *= 16
 				}
+				target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
+			}
 
-				if !m.IsSVP && (header.Version&0x7FFF0000) <= chaincfg.Version5 {
-					if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
-						target = powLimit.Mul(powLimit, big.NewInt(16))
-					}
-				} else {
-					if target.Cmp(powLimit) > 0 {
-						target = powLimit
-					}
+			if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
+				if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
+					target = powLimit.Mul(powLimit, big.NewInt(16))
 				}
 			} else {
-				if factor > 0 {
-					hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-				} else {
-					target = target.Mul(target, big.NewInt(-factor))
+				if target.Cmp(powLimit) > 0 {
+					target = powLimit
 				}
 			}
+		} else {
+			if factor > 0 {
+				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+			} else {
+				target = target.Mul(target, big.NewInt(-factor))
+			}
+		}
 
 			if !m.IsSVP && hashNum.Cmp(target) > 0 {
 				str := fmt.Sprintf("block hash of %064x is higher than "+
