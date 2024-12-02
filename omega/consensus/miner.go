@@ -550,7 +550,10 @@ func pull(hash chainhash.Hash, h int32, p ReqQueue) {
 		}
 	}
 
+	miner.syncMutex.Lock()
 	if _, ok := miner.pulling[hash]; !ok || miner.pulling[hash]+5 < t {
+		miner.syncMutex.Unlock()
+
 		// pull block
 		msg := wire.MsgPull{}
 		msg.Height = h
@@ -559,7 +562,11 @@ func pull(hash chainhash.Hash, h int32, p ReqQueue) {
 
 		log.Infof("pull %s at %d from %s", hash.String(), h, p.Addr())
 
+		miner.syncMutex.Lock()
 		miner.pulling[hash] = t
+		miner.syncMutex.Unlock()
+	} else {
+		miner.syncMutex.Unlock()
 	}
 }
 

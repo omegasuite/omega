@@ -1431,33 +1431,33 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 	}
 
 	j := 0
-if !tx.IsCrossChain() {
-	for _, txIn := range mtx.TxIn {
-		// The disassembled string will contain [error] inline
-		// if the script doesn't fully parse, so ignore the
-		// error here.
-		//		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		var disbuf string
-		var hexs string
-		if mtx.SignatureScripts != nil && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && mtx.SignatureScripts[txIn.SignatureIndex] != nil {
-			disbuf = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
-			hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
-		}
-		vinEntry := &vinList[j]
-		j++
-		vinEntry.Txid = txIn.PreviousOutPoint.Hash.String()
-		vinEntry.Vout = txIn.PreviousOutPoint.Index
-		vinEntry.Sequence = txIn.Sequence
-		vinEntry.ScriptSig = &btcjson.ScriptSig{
-			Asm: disbuf,
-			Hex: hexs,
-		}
+	if !mtx.IsCrossChain() {
+		for _, txIn := range mtx.TxIn {
+			// The disassembled string will contain [error] inline
+			// if the script doesn't fully parse, so ignore the
+			// error here.
+			//		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			var disbuf string
+			var hexs string
+			if mtx.SignatureScripts != nil && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && mtx.SignatureScripts[txIn.SignatureIndex] != nil {
+				disbuf = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+				hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+			}
+			vinEntry := &vinList[j]
+			j++
+			vinEntry.Txid = txIn.PreviousOutPoint.Hash.String()
+			vinEntry.Vout = txIn.PreviousOutPoint.Index
+			vinEntry.Sequence = txIn.Sequence
+			vinEntry.ScriptSig = &btcjson.ScriptSig{
+				Asm: disbuf,
+				Hex: hexs,
+			}
 
-		vinEntry.SignatureIndex = txIn.SignatureIndex
-	}
+			vinEntry.SignatureIndex = txIn.SignatureIndex
+		}
 	}
 
 	vinList = vinList[:j]
@@ -2926,13 +2926,13 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		// when multiple inputs reference the same transaction.
 		dependsMap := make(map[int64]struct{})
 		if !tx.IsCrossChain() {
-		for _, txIn := range tx.TxIn {
-			if !txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
-					dependsMap[idx] = struct{}{}
+			for _, txIn := range tx.TxIn {
+				if !txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
+						dependsMap[idx] = struct{}{}
+					}
 				}
 			}
-		}
 		}
 		depends := make([]int64, 0, len(dependsMap))
 		for idx := range dependsMap {
@@ -3922,22 +3922,53 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 }
 
 func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	s.cfg.DB.Update(func(dbTx database.Tx) error {
-		bucketName := []byte(common.INCOMINGPOOL)
-		dbTx.Metadata().DeleteBucket(bucketName)
-		dbTx.Metadata().CreateBucket(bucketName)
-		/*
-			bucketName = []byte(common.L2BTCPOOL)
-			dbTx.Metadata().DeleteBucket(bucketName)
-			dbTx.Metadata().CreateBucket(bucketName)
+	c := cmd.(*btcjson.GetCrossChainDBCmd)
 
-			bucketName = []byte(common.XCAssets)
-			dbTx.Metadata().DeleteBucket(bucketName)
-			dbTx.Metadata().CreateBucket(bucketName)
+	s.cfg.DB.Update(func(tx database.Tx) error {
+		meta := tx.Metadata()
+		if c.Clear&1 != 0 { // INCOMINGPOOL
+			bucketName := []byte(common.INCOMINGPOOL)
+			meta.DeleteBucket(bucketName)
+			meta.CreateBucket(bucketName)
+			/*
+				bucket := meta.Bucket(bucketName)
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					bucket.Delete(cursor.Key())
+				}
+			*/
+		}
+		/*
+			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
+				bucketName := []byte(common.L2BTCPOOL)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+				bucketName = []byte(common.L2BTCPOOL)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+
+			if c.Clear&4 != 0 { // BRIDGESIGNERS
+				bucketName := []byte(common.BRIDGESIGNERS)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+
+			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+				bucketName := []byte(common.XBTCAssets)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+			if c.Clear&16 != 0 { // REEDEEM
+				bucketName := []byte(common.REDEEMDB)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
 		*/
 		return nil
 	})
-	return nil, nil
+
+	return "Done.", nil
 }
 
 /*
@@ -4779,66 +4810,66 @@ func fetchInputTxos(s *rpcServer, tx *wire.MsgTx) (map[wire.OutPoint]wire.TxOut,
 	mp := s.cfg.TxMemPool
 	originOutputs := make(map[wire.OutPoint]wire.TxOut)
 	if !tx.IsCrossChain() {
-	for txInIndex, txIn := range tx.TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-
-		// Attempt to fetch and use the referenced transaction from the
-		// memory pool.
-		origin := &txIn.PreviousOutPoint
-		originTx, err := mp.FetchTransaction(&origin.Hash)
-		if err == nil {
-			txOuts := originTx.MsgTx().TxOut
-			if origin.Index >= uint32(len(txOuts)) {
-				errStr := fmt.Sprintf("unable to find output "+
-					"%v referenced from transaction %s:%d",
-					origin, tx.TxHash(), txInIndex)
-				return nil, internalRPCError(errStr, "")
+		for txInIndex, txIn := range tx.TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
 			}
 
-			originOutputs[*origin] = *txOuts[origin.Index]
-			continue
-		}
+			// Attempt to fetch and use the referenced transaction from the
+			// memory pool.
+			origin := &txIn.PreviousOutPoint
+			originTx, err := mp.FetchTransaction(&origin.Hash)
+			if err == nil {
+				txOuts := originTx.MsgTx().TxOut
+				if origin.Index >= uint32(len(txOuts)) {
+					errStr := fmt.Sprintf("unable to find output "+
+						"%v referenced from transaction %s:%d",
+						origin, tx.TxHash(), txInIndex)
+					return nil, internalRPCError(errStr, "")
+				}
 
-		// Look up the location of the transaction.
-		blockRegion, err := s.cfg.TxIndex.TxBlockRegion(&origin.Hash)
-		if err != nil {
-			context := "Failed to retrieve transaction location"
-			return nil, internalRPCError(err.Error(), context)
-		}
-		if blockRegion == nil {
-			return nil, rpcNoTxInfoError(&origin.Hash)
-		}
+				originOutputs[*origin] = *txOuts[origin.Index]
+				continue
+			}
 
-		// Load the raw transaction bytes from the database.
-		var txBytes []byte
-		err = s.cfg.DB.View(func(dbTx database.Tx) error {
-			var err error
-			txBytes, err = dbTx.FetchBlockRegion(blockRegion)
-			return err
-		})
-		if err != nil {
-			return nil, rpcNoTxInfoError(&origin.Hash)
-		}
+			// Look up the location of the transaction.
+			blockRegion, err := s.cfg.TxIndex.TxBlockRegion(&origin.Hash)
+			if err != nil {
+				context := "Failed to retrieve transaction location"
+				return nil, internalRPCError(err.Error(), context)
+			}
+			if blockRegion == nil {
+				return nil, rpcNoTxInfoError(&origin.Hash)
+			}
 
-		// Deserialize the transaction
-		var msgTx wire.MsgTx
-		err = msgTx.Deserialize(bytes.NewReader(txBytes))
-		if err != nil {
-			context := "Failed to deserialize transaction"
-			return nil, internalRPCError(err.Error(), context)
-		}
+			// Load the raw transaction bytes from the database.
+			var txBytes []byte
+			err = s.cfg.DB.View(func(dbTx database.Tx) error {
+				var err error
+				txBytes, err = dbTx.FetchBlockRegion(blockRegion)
+				return err
+			})
+			if err != nil {
+				return nil, rpcNoTxInfoError(&origin.Hash)
+			}
 
-		// Add the referenced output to the map.
-		if origin.Index >= uint32(len(msgTx.TxOut)) {
-			errStr := fmt.Sprintf("unable to find output %v "+
-				"referenced from transaction %s:%d", origin,
-				tx.TxHash(), txInIndex)
-			return nil, internalRPCError(errStr, "")
+			// Deserialize the transaction
+			var msgTx wire.MsgTx
+			err = msgTx.Deserialize(bytes.NewReader(txBytes))
+			if err != nil {
+				context := "Failed to deserialize transaction"
+				return nil, internalRPCError(err.Error(), context)
+			}
+
+			// Add the referenced output to the map.
+			if origin.Index >= uint32(len(msgTx.TxOut)) {
+				errStr := fmt.Sprintf("unable to find output %v "+
+					"referenced from transaction %s:%d", origin,
+					tx.TxHash(), txInIndex)
+				return nil, internalRPCError(errStr, "")
+			}
+			originOutputs[*origin] = *msgTx.TxOut[origin.Index]
 		}
-		originOutputs[*origin] = *msgTx.TxOut[origin.Index]
-	}
 	}
 
 	return originOutputs, nil
@@ -4878,102 +4909,102 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 	}
 
 	contracts := false
-	
+
 	if !mtx.IsCrossChain() {
 
-	for _, txIn := range mtx.TxIn {
-		if txIn.IsSeparator() {
-			contracts = true
-			continue
-		}
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		// The disassembled string will contain [error] inline
-		// if the script doesn't fully parse, so ignore the
-		// error here.
-		hexs := "by contract"
-		if !contracts && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && txIn.SignatureIndex > 0 {
-			hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
-		}
-
-		// Create the basic input entry without the additional optional
-		// previous output details which will be added later if
-		// requested and available.
-		prevOut := &txIn.PreviousOutPoint
-		vinEntry := btcjson.VinPrevOut{
-			Txid:     prevOut.Hash.String(),
-			Vout:     prevOut.Index,
-			Sequence: txIn.Sequence,
-			ScriptSig: &btcjson.ScriptSig{
-				Asm: "",
-				Hex: hexs,
-			},
-		}
-
-		vinEntry.SignatureIndex = txIn.SignatureIndex
-
-		// Add the entry to the list now if it already passed the filter
-		// since the previous output might not be available.
-		passesFilter := len(filterAddrMap) == 0
-		if passesFilter {
-			vinList = append(vinList, vinEntry)
-		}
-
-		// Only populate previous output information if requested and
-		// available.
-		if len(originOutputs) == 0 {
-			continue
-		}
-		originTxOut, ok := originOutputs[*prevOut]
-		if !ok {
-			continue
-		}
-
-		// Ignore the error here since an error means the script
-		// couldn't parse and there is no additional information about
-		// it anyways.
-		addrs, _, _ := indexers.ExtractPkScriptAddrs(originTxOut.PkScript, chainParams)
-
-		// Encode the addresses while checking if the address passes the
-		// filter when needed.
-		encodedAddrs := make([]string, len(addrs))
-		for j, addr := range addrs {
-			encodedAddr := addr.EncodeAddress()
-			encodedAddrs[j] = encodedAddr
-
-			// No need to check the map again if the filter already
-			// passes.
-			if passesFilter {
+		for _, txIn := range mtx.TxIn {
+			if txIn.IsSeparator() {
+				contracts = true
 				continue
 			}
-			if _, exists := filterAddrMap[encodedAddr]; exists {
-				passesFilter = true
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
 			}
-		}
+			// The disassembled string will contain [error] inline
+			// if the script doesn't fully parse, so ignore the
+			// error here.
+			hexs := "by contract"
+			if !contracts && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && txIn.SignatureIndex > 0 {
+				hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+			}
 
-		// Ignore the entry if it doesn't pass the filter.
-		if !passesFilter {
-			continue
-		}
+			// Create the basic input entry without the additional optional
+			// previous output details which will be added later if
+			// requested and available.
+			prevOut := &txIn.PreviousOutPoint
+			vinEntry := btcjson.VinPrevOut{
+				Txid:     prevOut.Hash.String(),
+				Vout:     prevOut.Index,
+				Sequence: txIn.Sequence,
+				ScriptSig: &btcjson.ScriptSig{
+					Asm: "",
+					Hex: hexs,
+				},
+			}
 
-		// Add entry to the list if it wasn't already done above.
-		if len(filterAddrMap) != 0 {
-			vinList = append(vinList, vinEntry)
-		}
+			vinEntry.SignatureIndex = txIn.SignatureIndex
 
-		// Update the entry with previous output information if
-		// requested.
-		/*
-			if vinExtra {
-				vinListEntry := &vinList[len(vinList)-1]
-				vinListEntry.PrevOut = &btcjson.PrevOut{
-					Addresses: encodedAddrs,
-					Value:     btcutil.Amount(originTxOut.Value.(*token.NumToken).Val).ToOMC(),
+			// Add the entry to the list now if it already passed the filter
+			// since the previous output might not be available.
+			passesFilter := len(filterAddrMap) == 0
+			if passesFilter {
+				vinList = append(vinList, vinEntry)
+			}
+
+			// Only populate previous output information if requested and
+			// available.
+			if len(originOutputs) == 0 {
+				continue
+			}
+			originTxOut, ok := originOutputs[*prevOut]
+			if !ok {
+				continue
+			}
+
+			// Ignore the error here since an error means the script
+			// couldn't parse and there is no additional information about
+			// it anyways.
+			addrs, _, _ := indexers.ExtractPkScriptAddrs(originTxOut.PkScript, chainParams)
+
+			// Encode the addresses while checking if the address passes the
+			// filter when needed.
+			encodedAddrs := make([]string, len(addrs))
+			for j, addr := range addrs {
+				encodedAddr := addr.EncodeAddress()
+				encodedAddrs[j] = encodedAddr
+
+				// No need to check the map again if the filter already
+				// passes.
+				if passesFilter {
+					continue
+				}
+				if _, exists := filterAddrMap[encodedAddr]; exists {
+					passesFilter = true
 				}
 			}
-		*/
-	}
+
+			// Ignore the entry if it doesn't pass the filter.
+			if !passesFilter {
+				continue
+			}
+
+			// Add entry to the list if it wasn't already done above.
+			if len(filterAddrMap) != 0 {
+				vinList = append(vinList, vinEntry)
+			}
+
+			// Update the entry with previous output information if
+			// requested.
+			/*
+				if vinExtra {
+					vinListEntry := &vinList[len(vinList)-1]
+					vinListEntry.PrevOut = &btcjson.PrevOut{
+						Addresses: encodedAddrs,
+						Value:     btcutil.Amount(originTxOut.Value.(*token.NumToken).Val).ToOMC(),
+					}
+				}
+			*/
+		}
 	}
 
 	return vinList, nil

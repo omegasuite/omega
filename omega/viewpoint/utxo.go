@@ -518,95 +518,95 @@ func (view *ViewPointSet) disconnectTransactions(db database.DB, block *btcutil.
 		if isCoinBase {
 			continue
 		}
-		if !tx.IsCrossChain() {
-		for txInIdx := len(tx.MsgTx().TxIn) - 1; txInIdx > -1; txInIdx-- {
-			if tx.MsgTx().TxIn[txInIdx].PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
-			}
-			// Ensure the spent txout index is decremented to stay
-			// in sync with the transaction input.
-			stxo := &stxos[stxoIdx]
-			stxoIdx--
-
-			// When there is not already an entry for the referenced
-			// output in the view, it means it was previously spent,
-			// so create a new utxo entry in order to resurrect it.
-			originOut := &tx.MsgTx().TxIn[txInIdx].PreviousOutPoint
-			entry := view.Utxo.entries[*originOut]
-			if entry == nil {
-				entry = new(UtxoEntry)
-				view.Utxo.entries[*originOut] = entry
-			}
-
-			// The legacy v1 spend journal format only stored the
-			// coinbase flag and height when the output was the last
-			// unspent output of the transaction.  As a result, when
-			// the information is missing, search for it by scanning
-			// all possible outputs of the transaction since it must
-			// be in one of them.
-			//
-			// It should be noted that this is quite inefficient,
-			// but it realistically will almost never run since all
-			// new entries include the information for all outputs
-			// and thus the only way this will be hit is if a long
-			// enough reorg happens such that a block with the old
-			// spend data is being disconnected.  The probability of
-			// that in practice is extremely low to begin with and
-			// becomes vanishingly small the more new blocks are
-			// connected.  In the case of a fresh database that has
-			// only ever run with the new v2 format, this code path
-			// will never run.
-			if stxo.Height == 0 {
-				utxo, err := view.Utxo.fetchEntryByHash(db, txHash)
-				if err != nil {
-					return err
+		if !tx.MsgTx().IsCrossChain() {
+			for txInIdx := len(tx.MsgTx().TxIn) - 1; txInIdx > -1; txInIdx-- {
+				if tx.MsgTx().TxIn[txInIdx].PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					continue
 				}
-				if utxo == nil {
-					return AssertError(fmt.Sprintf("unable "+
-						"to resurrect legacy stxo %v",
-						*originOut))
+				// Ensure the spent txout index is decremented to stay
+				// in sync with the transaction input.
+				stxo := &stxos[stxoIdx]
+				stxoIdx--
+
+				// When there is not already an entry for the referenced
+				// output in the view, it means it was previously spent,
+				// so create a new utxo entry in order to resurrect it.
+				originOut := &tx.MsgTx().TxIn[txInIdx].PreviousOutPoint
+				entry := view.Utxo.entries[*originOut]
+				if entry == nil {
+					entry = new(UtxoEntry)
+					view.Utxo.entries[*originOut] = entry
 				}
 
-				stxo.Height = utxo.BlockHeight()
-				stxo.IsCoinBase = utxo.IsCoinBase()
-			}
+				// The legacy v1 spend journal format only stored the
+				// coinbase flag and height when the output was the last
+				// unspent output of the transaction.  As a result, when
+				// the information is missing, search for it by scanning
+				// all possible outputs of the transaction since it must
+				// be in one of them.
+				//
+				// It should be noted that this is quite inefficient,
+				// but it realistically will almost never run since all
+				// new entries include the information for all outputs
+				// and thus the only way this will be hit is if a long
+				// enough reorg happens such that a block with the old
+				// spend data is being disconnected.  The probability of
+				// that in practice is extremely low to begin with and
+				// becomes vanishingly small the more new blocks are
+				// connected.  In the case of a fresh database that has
+				// only ever run with the new v2 format, this code path
+				// will never run.
+				if stxo.Height == 0 {
+					utxo, err := view.Utxo.fetchEntryByHash(db, txHash)
+					if err != nil {
+						return err
+					}
+					if utxo == nil {
+						return AssertError(fmt.Sprintf("unable "+
+							"to resurrect legacy stxo %v",
+							*originOut))
+					}
 
-			// Restore the utxo using the stxo data from the spend
-			// journal and mark it as modified.
-			entry.TokenType = stxo.TokenType
-			entry.Amount = stxo.Amount
-			entry.Rights = stxo.Rights
-			entry.pkScript = stxo.PkScript
-			entry.blockHeight = stxo.Height
-			entry.packedFlags = TfModified
-			if stxo.IsCoinBase {
-				entry.packedFlags |= TfCoinBase
-			}
+					stxo.Height = utxo.BlockHeight()
+					stxo.IsCoinBase = utxo.IsCoinBase()
+				}
 
-			if entry.TokenType == 3 {
-				t := view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
-				if t == nil {
-					view.FetchPolygonEntry(&entry.Amount.(*token.HashToken).Hash)
-					t = view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
+				// Restore the utxo using the stxo data from the spend
+				// journal and mark it as modified.
+				entry.TokenType = stxo.TokenType
+				entry.Amount = stxo.Amount
+				entry.Rights = stxo.Rights
+				entry.pkScript = stxo.PkScript
+				entry.blockHeight = stxo.Height
+				entry.packedFlags = TfModified
+				if stxo.IsCoinBase {
+					entry.packedFlags |= TfCoinBase
 				}
-				if t == nil {
-					return fmt.Errorf("Missing polygon definition %s", entry.Amount.(*token.HashToken).Hash.String())
-				}
-				t.reference(view)
-			}
 
-			// if it has a monitor right, add a monitor index
-			y := view.TokenRights(entry)
-			for _, r := range y {
-				re, _ := view.FetchRightEntry(&r)
-				if re.(*RightEntry).Attrib&token.Monitor != 0 {
-					entry.packedFlags |= TfMonitoring
-					entry.monitor = make([]byte, 52)
-					copy(entry.monitor, re.(*RightEntry).Desc[1:21])
-					copy(entry.monitor[20:], entry.Amount.(*token.HashToken).Hash[:])
+				if entry.TokenType == 3 {
+					t := view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
+					if t == nil {
+						view.FetchPolygonEntry(&entry.Amount.(*token.HashToken).Hash)
+						t = view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
+					}
+					if t == nil {
+						return fmt.Errorf("Missing polygon definition %s", entry.Amount.(*token.HashToken).Hash.String())
+					}
+					t.reference(view)
+				}
+
+				// if it has a monitor right, add a monitor index
+				y := view.TokenRights(entry)
+				for _, r := range y {
+					re, _ := view.FetchRightEntry(&r)
+					if re.(*RightEntry).Attrib&token.Monitor != 0 {
+						entry.packedFlags |= TfMonitoring
+						entry.monitor = make([]byte, 52)
+						copy(entry.monitor, re.(*RightEntry).Desc[1:21])
+						copy(entry.monitor[20:], entry.Amount.(*token.HashToken).Hash[:])
+					}
 				}
 			}
-		}
 		}
 	}
 

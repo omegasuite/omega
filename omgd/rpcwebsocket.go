@@ -686,24 +686,24 @@ func (m *wsNotificationManager) subscribedClients(tx *btcutil.Tx,
 
 	msgTx := tx.MsgTx()
 	if !msgTx.IsCrossChain() {
-	for _, input := range msgTx.TxIn {
-		if input.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		for quitChan, wsc := range clients {
-			wsc.Lock()
-			filter := wsc.filterData
-			wsc.Unlock()
-			if filter == nil {
+		for _, input := range msgTx.TxIn {
+			if input.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
-			filter.mu.Lock()
-			if filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
-				subscribed[quitChan] = struct{}{}
+			for quitChan, wsc := range clients {
+				wsc.Lock()
+				filter := wsc.filterData
+				wsc.Unlock()
+				if filter == nil {
+					continue
+				}
+				filter.mu.Lock()
+				if filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
+					subscribed[quitChan] = struct{}{}
+				}
+				filter.mu.Unlock()
 			}
-			filter.mu.Unlock()
 		}
-	}
 	}
 
 	for i, output := range msgTx.TxOut {
@@ -1186,33 +1186,33 @@ func (m *wsNotificationManager) notifyForTxIns(ops map[wire.OutPoint]map[chan st
 
 	txHex := ""
 	wscNotified := make(map[chan struct{}]struct{})
-	if !tx.IsCrossChain() {
-	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		prevOut := &txIn.PreviousOutPoint
-		if cmap, ok := ops[*prevOut]; ok {
-			if txHex == "" {
-				txHex = txHexString(tx.MsgTx())
-			}
-			marshalledJSON, err := newRedeemingTxNotification(txHex, tx.Index(), block)
-			if err != nil {
-				rpcsLog.Warnf("Failed to marshal redeemingtx notification: %v", err)
+	if !tx.MsgTx().IsCrossChain() {
+		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
-			for wscQuit, wsc := range cmap {
-				if block != nil {
-					m.removeSpentRequest(ops, wsc, prevOut)
+			prevOut := &txIn.PreviousOutPoint
+			if cmap, ok := ops[*prevOut]; ok {
+				if txHex == "" {
+					txHex = txHexString(tx.MsgTx())
 				}
+				marshalledJSON, err := newRedeemingTxNotification(txHex, tx.Index(), block)
+				if err != nil {
+					rpcsLog.Warnf("Failed to marshal redeemingtx notification: %v", err)
+					continue
+				}
+				for wscQuit, wsc := range cmap {
+					if block != nil {
+						m.removeSpentRequest(ops, wsc, prevOut)
+					}
 
-				if _, ok := wscNotified[wscQuit]; !ok {
-					wscNotified[wscQuit] = struct{}{}
-					wsc.QueueNotification(marshalledJSON)
+					if _, ok := wscNotified[wscQuit]; !ok {
+						wscNotified[wscQuit] = struct{}{}
+						wsc.QueueNotification(marshalledJSON)
+					}
 				}
 			}
 		}
-	}
 	}
 }
 
@@ -2123,38 +2123,38 @@ func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
 		// created and sent.
 		spentNotified := false
 		recvNotified := false
-		
-		if !tx.IsCrossChain() {
 
-		for _, txin := range tx.MsgTx().TxIn {
-			if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
-			}
-			if _, ok := lookups.unspent[txin.PreviousOutPoint]; ok {
-				delete(lookups.unspent, txin.PreviousOutPoint)
+		if !tx.MsgTx().IsCrossChain() {
 
-				if spentNotified {
+			for _, txin := range tx.MsgTx().TxIn {
+				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
+				if _, ok := lookups.unspent[txin.PreviousOutPoint]; ok {
+					delete(lookups.unspent, txin.PreviousOutPoint)
 
-				if txHex == "" {
-					txHex = txHexString(tx.MsgTx())
-				}
-				marshalledJSON, err := newRedeemingTxNotification(txHex, tx.Index(), blk)
-				if err != nil {
-					rpcsLog.Errorf("Failed to marshal redeemingtx notification: %v", err)
-					continue
-				}
+					if spentNotified {
+						continue
+					}
 
-				err = wsc.QueueNotification(marshalledJSON)
-				// Stop the rescan early if the websocket client
-				// disconnected.
-				if err == ErrClientQuit {
-					return
+					if txHex == "" {
+						txHex = txHexString(tx.MsgTx())
+					}
+					marshalledJSON, err := newRedeemingTxNotification(txHex, tx.Index(), blk)
+					if err != nil {
+						rpcsLog.Errorf("Failed to marshal redeemingtx notification: %v", err)
+						continue
+					}
+
+					err = wsc.QueueNotification(marshalledJSON)
+					// Stop the rescan early if the websocket client
+					// disconnected.
+					if err == ErrClientQuit {
+						return
+					}
+					spentNotified = true
 				}
-				spentNotified = true
 			}
-		}
 		}
 
 		for txOutIdx, txout := range tx.MsgTx().TxOut {

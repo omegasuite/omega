@@ -722,6 +722,7 @@ func main() {
 
 	cmdb, err := loadChainmapDB(tcfg)
 	if cmdb == nil || err != nil {
+		fmt.Printf("loadChainmapDB failed")
 		os.Exit(1)
 	}
 	chainmap.LoadChainMap(cmdb, chaincfg.DefaultChainID == chainmap.ROOT)

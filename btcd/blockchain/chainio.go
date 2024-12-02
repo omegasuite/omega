@@ -1812,7 +1812,7 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 		prevOut.Index = uint32(txOutIdx)
 		neededSet[prevOut] = struct{}{}
 	}
-	if !b.isCoinBase(tx) && !tx.IsCrossChain() {
+	if !b.isCoinBase(tx) && !tx.MsgTx().IsCrossChain() {
 		for _, txIn := range tx.MsgTx().TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue

@@ -6,14 +6,7 @@
 package mempool
 
 import (
-	"fmt"
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"time"
-
-	"github.com/omegasuite/famofchains/btcd/blockchain"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega/viewpoint"
 )
 
 const (
@@ -90,6 +83,7 @@ func CalcMinRequiredTxRelayFee(serializedSize int64, minRelayTxFee btcutil.Amoun
 // not perform those checks because the script engine already does this more
 // accurately and concisely via the txscript.ScriptVerifyCleanStack and
 // txscript.ScriptVerifySigPushOnly flags.
+/*
 func checkInputsStandard(tx *btcutil.Tx, utxoView *viewpoint.UtxoViewpoint) error {
 	// nothing to do here since we use different (system call) script system
 	return nil
@@ -124,14 +118,16 @@ func checkInputsStandard(tx *btcutil.Tx, utxoView *viewpoint.UtxoViewpoint) erro
 		}
 
 		return nil
-	*/
+	* /
 }
+*/
 
 // checkPkScriptStandard performs a series of checks on a transaction output
 // script (public key script) to ensure it is a "standard" public key script.
 // A standard public key script is one that is a recognized form, and for
 // multi-signature scripts, only contains from 1 to maxStandardMultiSigKeys
 // public keys.
+/*
 func checkPkScriptStandard(pkScript []byte) error { // , scriptClass txscript.ScriptClass
 	// nothing to do here since we use different (system call) script system
 	return nil
@@ -178,8 +174,9 @@ func checkPkScriptStandard(pkScript []byte) error { // , scriptClass txscript.Sc
 		}
 
 		return nil
-	*/
+	* /
 }
+*/
 
 // checkTransactionStandard performs a series of checks on a transaction to
 // ensure it is a "standard" transaction.  A standard transaction is one that
@@ -187,6 +184,7 @@ func checkPkScriptStandard(pkScript []byte) error { // , scriptClass txscript.Sc
 // "sane" transaction such as having a version in the supported range, being
 // finalized, conforming to more stringent size constraints, having scripts
 // of recognized forms.
+/*
 func checkTransactionStandard(tx *btcutil.Tx, height int32,
 	medianTimePast time.Time, minRelayTxFee btcutil.Amount,
 	maxTxVersion int32) error {
@@ -220,3 +218,4 @@ func checkTransactionStandard(tx *btcutil.Tx, height int32,
 
 	return nil
 }
+*/

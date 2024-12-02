@@ -53,21 +53,21 @@ func DisasmString(buf []byte) (string, error) {
 // from  O(N^2) to O(N).
 func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
-	if !tx.IscrossChain() {
-	for _, in := range tx.TxIn {
-		if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		// First write out the 32-byte transaction ID one of whose
-		// outputs are being referenced by this input.
-		b.Write(in.PreviousOutPoint.Hash[:])
+	if !tx.IsCrossChain() {
+		for _, in := range tx.TxIn {
+			if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			// First write out the 32-byte transaction ID one of whose
+			// outputs are being referenced by this input.
+			b.Write(in.PreviousOutPoint.Hash[:])
 
-		// Next, we'll encode the index of the referenced output as a
-		// little endian integer.
-		var buf [4]byte
-		binary.LittleEndian.PutUint32(buf[:], in.PreviousOutPoint.Index)
-		b.Write(buf[:])
-	}
+			// Next, we'll encode the index of the referenced output as a
+			// little endian integer.
+			var buf [4]byte
+			binary.LittleEndian.PutUint32(buf[:], in.PreviousOutPoint.Index)
+			b.Write(buf[:])
+		}
 	}
 
 	return chainhash.DoubleHashH(b.Bytes())
@@ -81,15 +81,15 @@ func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 // from O(N^2) to O(N).
 func calcHashSequence(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
-	if !tx.IscrossChain() {
-	for _, in := range tx.TxIn {
-		if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
+	if !tx.IsCrossChain() {
+		for _, in := range tx.TxIn {
+			if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			var buf [4]byte
+			binary.LittleEndian.PutUint32(buf[:], in.Sequence)
+			b.Write(buf[:])
 		}
-		var buf [4]byte
-		binary.LittleEndian.PutUint32(buf[:], in.Sequence)
-		b.Write(buf[:])
-	}
 	}
 
 	return chainhash.DoubleHashH(b.Bytes())

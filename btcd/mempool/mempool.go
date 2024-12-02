@@ -605,18 +605,32 @@ func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.
 // main chain.
 //
 // This function MUST be called with the mempool lock held (for reads).
-func (mp *TxPool) checkPoolDoubleSpend(tx *btcutil.Tx) error {
+func (mp *TxPool) checkPoolDoubleSpend(tx *btcutil.Tx, fulllValidate bool) error {
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
 		if txR, exists := mp.outpoints[txIn.PreviousOutPoint]; exists {
-			str := fmt.Sprintf("output %v already spent by "+
-				"transaction %v in the memory pool",
-				txIn.PreviousOutPoint, txR.Hash())
-			return txRuleError(common.RejectDuplicate, str)
+			if fulllValidate {
+				// allow signed new tx to replace old one
+				mp.RemoveTransaction(txR, true)
+			} else {
+				str := fmt.Sprintf("output %v already spent by "+
+					"transaction %v in the memory pool",
+					txIn.PreviousOutPoint, txR.Hash())
+				return txRuleError(common.RejectDuplicate, str)
+			}
 		}
 	}
+	/*
+			if txR, exists := mp.outpoints[txIn.PreviousOutPoint]; exists {
+				str := fmt.Sprintf("output %v already spent by "+
+					"transaction %v in the memory pool",
+					txIn.PreviousOutPoint, txR.Hash())
+				return txRuleError(common.RejectDuplicate, str)
+			}
+		}
+	*/
 
 	return nil
 }
@@ -735,36 +749,25 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 
 	// Don't allow non-standard transactions if the network parameters
 	// forbid their acceptance.
-	if !mp.cfg.Policy.AcceptNonStd {
-		err = checkTransactionStandard(tx, nextBlockHeight,
-			medianTimePast, mp.cfg.Policy.MinRelayTxFee,
-			mp.cfg.Policy.MaxTxVersion)
-		if err != nil {
-			// Attempt to extract a reject code from the error so
-			// it can be retained.  When not possible, fall back to
-			// a non standard error.
-			rejectCode, found := extractRejectCode(err)
-			if !found {
-				rejectCode = common.RejectNonstandard
+	/*
+		if !mp.cfg.Policy.AcceptNonStd {
+			err = checkTransactionStandard(tx, nextBlockHeight,
+				medianTimePast, mp.cfg.Policy.MinRelayTxFee,
+				mp.cfg.Policy.MaxTxVersion)
+			if err != nil {
+				// Attempt to extract a reject code from the error so
+				// it can be retained.  When not possible, fall back to
+				// a non standard error.
+				rejectCode, found := extractRejectCode(err)
+				if !found {
+					rejectCode = common.RejectNonstandard
+				}
+				str := fmt.Sprintf("transaction %v is not standard: %v",
+					txHash, err)
+				return nil, nil, txRuleError(rejectCode, str)
 			}
-			str := fmt.Sprintf("transaction %v is not standard: %v",
-				txHash, err)
-			return nil, nil, txRuleError(rejectCode, str)
 		}
-	}
-
-	// The transaction may not use any of the same outputs as other
-	// transactions already in the pool as that would ultimately result in a
-	// double spend.  This check is intended to be quick and therefore only
-	// detects double spends within the transaction pool itself.  The
-	// transaction could still be double spending coins from the main chain
-	// at this point.  There is a more in-depth check that happens later
-	// after fetching the referenced transaction inputs from the main chain
-	// which examines the actual spend data and prevents double spends.
-	err = mp.checkPoolDoubleSpend(tx)
-	if err != nil {
-		return nil, nil, err
-	}
+	*/
 
 	// Fetch all of the unspent transaction outputs referenced by the inputs
 	// to this transaction.  This function also attempts to fetch the
@@ -884,21 +887,23 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 
 	// Don't allow transactions with non-standard inputs if the network
 	// parameters forbid their acceptance.
-	if !mp.cfg.Policy.AcceptNonStd {
-		err := checkInputsStandard(tx, utxoView)
-		if err != nil {
-			// Attempt to extract a reject code from the error so
-			// it can be retained.  When not possible, fall back to
-			// a non standard error.
-			rejectCode, found := extractRejectCode(err)
-			if !found {
-				rejectCode = common.RejectNonstandard
+	/*
+		if !mp.cfg.Policy.AcceptNonStd {
+			err := checkInputsStandard(tx, utxoView)
+			if err != nil {
+				// Attempt to extract a reject code from the error so
+				// it can be retained.  When not possible, fall back to
+				// a non standard error.
+				rejectCode, found := extractRejectCode(err)
+				if !found {
+					rejectCode = common.RejectNonstandard
+				}
+				str := fmt.Sprintf("transaction %v has a non-standard "+
+					"input: %v", txHash, err)
+				return nil, nil, txRuleError(rejectCode, str)
 			}
-			str := fmt.Sprintf("transaction %v has a non-standard "+
-				"input: %v", txHash, err)
-			return nil, nil, txRuleError(rejectCode, str)
 		}
-	}
+	*/
 
 	// NOTE: if you modify this code to accept non-standard transactions,
 	// you should add code here to check that the transaction does a
@@ -1028,6 +1033,19 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		if err != nil {
 			return nil, nil, err
 		}
+	}
+
+	// The transaction may not use any of the same outputs as other
+	// transactions already in the pool as that would ultimately result in a
+	// double spend.  This check is intended to be quick and therefore only
+	// detects double spends within the transaction pool itself.  The
+	// transaction could still be double spending coins from the main chain
+	// at this point.  There is a more in-depth check that happens later
+	// after fetching the referenced transaction inputs from the main chain
+	// which examines the actual spend data and prevents double spends.
+	err = mp.checkPoolDoubleSpend(tx, fulllValidate)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	// Add to transaction pool.

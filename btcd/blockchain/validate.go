@@ -271,7 +271,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 				"value of %v", hao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if txOut.TokenType == common.FeeCoinTyp && hao > btcutil.MaxHao {
+		if (txOut.TokenType == 0 || txOut.TokenType == 0x10) && hao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v", hao,
 				btcutil.MaxHao)
@@ -291,7 +291,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 			str := fmt.Sprintf("transaction output is negative")
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if txOut.TokenType == common.FeeCoinTyp && totals[txOut.TokenType] > btcutil.MaxHao {
+		if (txOut.TokenType == 0 || txOut.TokenType == 0x10) && totals[txOut.TokenType] > btcutil.MaxHao {
 			str := fmt.Sprintf("total value of all transaction "+
 				"outputs is %v which is higher than max "+
 				"allowed value of %v", totals[txOut.TokenType],
@@ -309,36 +309,35 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 	// Check for duplicate transaction inputs.
 	existingTxOut := make(map[wire.OutPoint]struct{})
 	if !msgTx.IsCrossChain() {
-	for _, txIn := range msgTx.TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if _, exists := existingTxOut[txIn.PreviousOutPoint]; exists {
-			return ruleError(ErrDuplicateTxInputs, "transaction "+
-				"contains duplicate inputs")
-		}
-		if contract && txIn.Sequence != 0xFFFFFFFF {
-			return ruleError(ErrBadTxInput, "transaction with contract call and unfinalized input")
-		}
-		existingTxOut[txIn.PreviousOutPoint] = struct{}{}
-	}
-	
-
-	// Coinbase script length must be between min and max length.
-	if len(tx.MsgTx().TxIn) > 0 && !tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) { // !coinbase
-		// Previous transaction outputs referenced by the inputs to this
-		// transaction must not be null.
 		for _, txIn := range msgTx.TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
-			if isNullOutpoint(&txIn.PreviousOutPoint) {
-				return ruleError(ErrBadTxInput, "transaction "+
-					"input refers to previous output that "+
-					"is null")
+			if _, exists := existingTxOut[txIn.PreviousOutPoint]; exists {
+				return ruleError(ErrDuplicateTxInputs, "transaction "+
+					"contains duplicate inputs")
+			}
+			if contract && txIn.Sequence != 0xFFFFFFFF {
+				return ruleError(ErrBadTxInput, "transaction with contract call and unfinalized input")
+			}
+			existingTxOut[txIn.PreviousOutPoint] = struct{}{}
+		}
+
+		// Coinbase script length must be between min and max length.
+		if len(tx.MsgTx().TxIn) > 0 && !tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) { // !coinbase
+			// Previous transaction outputs referenced by the inputs to this
+			// transaction must not be null.
+			for _, txIn := range msgTx.TxIn {
+				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					continue
+				}
+				if isNullOutpoint(&txIn.PreviousOutPoint) {
+					return ruleError(ErrBadTxInput, "transaction "+
+						"input refers to previous output that "+
+						"is null")
+				}
 			}
 		}
-	}
 	}
 
 	return nil
@@ -1101,7 +1100,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 				"value of %v", btcutil.Amount(originTxHao))
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if utxo.TokenType == common.FeeCoinTyp && originTxHao > btcutil.MaxHao {
+		if (utxo.TokenType == 0 || utxo.TokenType == 0x10) && originTxHao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v",
 				btcutil.Amount(originTxHao),
@@ -1144,65 +1143,65 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views *vie
 	totalIns := make(map[uint64]int64)
 	additional := false
 	if !tx.MsgTx().IsCrossChain() {
-	for txInIndex, txIn := range tx.MsgTx().TxIn {
-		if txIn.IsSeparator() {
-			additional = true
-			continue
-		}
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if !additional {
-			continue
-		}
-		// Ensure the referenced input transaction is available.
-		utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
-		if utxo == nil || utxo.IsSpent() {
-			str := fmt.Sprintf("output %v referenced from "+
-				"transaction %s:%d either does not exist or "+
-				"has already been spent", txIn.PreviousOutPoint,
-				tx.Hash(), txInIndex)
-			return ruleError(ErrMissingTxOut, str)
-		}
+		for txInIndex, txIn := range tx.MsgTx().TxIn {
+			if txIn.IsSeparator() {
+				additional = true
+				continue
+			}
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			if !additional {
+				continue
+			}
+			// Ensure the referenced input transaction is available.
+			utxo := utxoView.LookupEntry(txIn.PreviousOutPoint)
+			if utxo == nil || utxo.IsSpent() {
+				str := fmt.Sprintf("output %v referenced from "+
+					"transaction %s:%d either does not exist or "+
+					"has already been spent", txIn.PreviousOutPoint,
+					tx.Hash(), txInIndex)
+				return ruleError(ErrMissingTxOut, str)
+			}
 
-		// Ensure the transaction amounts are in range.  Each of the
-		// output values of the input transactions must not be negative
-		// or more than the max allowed per transaction.  All amounts in
-		// a transaction are in a unit value known as a hao.  One
-		// bitcoin is a quantity of hao as defined by the
-		// HaoPerBitcoin constant.
-		if utxo.TokenType&1 != 0 {
-			continue
-		}
+			// Ensure the transaction amounts are in range.  Each of the
+			// output values of the input transactions must not be negative
+			// or more than the max allowed per transaction.  All amounts in
+			// a transaction are in a unit value known as a hao.  One
+			// bitcoin is a quantity of hao as defined by the
+			// HaoPerBitcoin constant.
+			if utxo.TokenType&1 != 0 {
+				continue
+			}
 
-		originTxHao := utxo.Amount.(*token.NumToken).Val
-		if originTxHao < 0 {
-			str := fmt.Sprintf("transaction output has negative "+
-				"value of %v", btcutil.Amount(originTxHao))
-			return ruleError(ErrBadTxOutValue, str)
-		}
-		if originTxHao > btcutil.MaxHao {
-			str := fmt.Sprintf("transaction output value of %v is "+
-				"higher than max allowed value of %v",
-				btcutil.Amount(originTxHao),
-				btcutil.MaxHao)
-			return ruleError(ErrBadTxOutValue, str)
-		}
+			originTxHao := utxo.Amount.(*token.NumToken).Val
+			if originTxHao < 0 {
+				str := fmt.Sprintf("transaction output has negative "+
+					"value of %v", btcutil.Amount(originTxHao))
+				return ruleError(ErrBadTxOutValue, str)
+			}
+			if (utxo.TokenType == 0 || utxo.TokenType == 0x10) && originTxHao > btcutil.MaxHao {
+				str := fmt.Sprintf("transaction output value of %v is "+
+					"higher than max allowed value of %v",
+					btcutil.Amount(originTxHao),
+					btcutil.MaxHao)
+				return ruleError(ErrBadTxOutValue, str)
+			}
 
-		// The total of all outputs must not be more than the max
-		// allowed per transaction.  Also, we could potentially overflow
-		// the accumulator so check for overflow.
-		lastHaoIn := totalIns[utxo.TokenType]
-		totalIns[utxo.TokenType] += originTxHao
-		if totalIns[utxo.TokenType] < lastHaoIn ||
-			(totalIns[utxo.TokenType] > btcutil.MaxHao) {
-			str := fmt.Sprintf("total value of all transaction "+
-				"inputs is %v which is higher than max "+
-				"allowed value of %v", totalIns[utxo.TokenType],
-				btcutil.MaxHao)
-			return ruleError(ErrBadTxOutValue, str)
+			// The total of all outputs must not be more than the max
+			// allowed per transaction.  Also, we could potentially overflow
+			// the accumulator so check for overflow.
+			lastHaoIn := totalIns[utxo.TokenType]
+			totalIns[utxo.TokenType] += originTxHao
+			if totalIns[utxo.TokenType] < lastHaoIn ||
+				((utxo.TokenType == 0 || utxo.TokenType == 0x10) && totalIns[utxo.TokenType] > btcutil.MaxHao) {
+				str := fmt.Sprintf("total value of all transaction "+
+					"inputs is %v which is higher than max "+
+					"allowed value of %v", totalIns[utxo.TokenType],
+					btcutil.MaxHao)
+				return ruleError(ErrBadTxOutValue, str)
+			}
 		}
-	}
 	}
 
 	return nil

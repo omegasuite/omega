@@ -205,9 +205,6 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	}
 
 	coll := lastNode.Data.(*blockchainNodeData).block.Collateral
-	if coll == 0 {
-		coll = 1
-	}
 
 	v2 := b.IsSVP || lastNode.Data.GetVersion() >= chaincfg.Version2
 	v3 := b.IsSVP || lastNode.Data.GetVersion() >= chaincfg.Version3
