@@ -31,6 +31,7 @@ import (
 	"github.com/omegasuite/btcd/mempool"
 	"github.com/omegasuite/btcd/peer"
 	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/go-socks/socks"
 )
@@ -144,8 +145,6 @@ type config struct {
 	MinBlockWeight     uint32   `long:"minblockweight" description:"Minimal desired transactions in a block"`
 	UserAgentComments  []string `long:"uacomment" description:"Comment to add to the user agent -- See BIP 14 for more information."`
 	NoPeerBloomFilters bool     `long:"nopeerbloomfilters" description:"Disable bloom filtering support"`
-	NoCFilters         bool     `long:"nocfilters" description:"Disable committed filtering (CF) support"`
-	DropCfIndex        bool     `long:"dropcfindex" description:"Deletes the index used for committed filtering (CF) support from the database on start up and then exits."`
 	SigCacheMaxSize    uint     `long:"sigcachemaxsize" description:"The maximum number of entries in the signature verification cache"`
 	BlocksOnly         bool     `long:"blocksonly" description:"Do not accept transactions from remote peers."`
 	TxIndex            bool     `long:"txindex" description:"Maintain a full hash-based transaction index which makes all transactions available via the getrawtransaction RPC"`
@@ -154,7 +153,6 @@ type config struct {
 	DropAddrIndex      bool     `long:"dropaddrindex" description:"Deletes the address-based transaction index from the database on start up and then exits."`
 	RelayNonStd        bool     `long:"relaynonstd" description:"Relay non-standard transactions regardless of the default settings for the active network."`
 	RejectNonStd       bool     `long:"rejectnonstd" description:"Reject non-standard transactions regardless of the default settings for the active network."`
-	ShareMining        bool     `long:"sharemining" description:"Enable Shared Mining."`
 	lookup             func(string) ([]net.IP, error)
 	oniondial          func(string, string, time.Duration) (net.Conn, error)
 	dial               func(string, string, time.Duration) (net.Conn, error)
@@ -180,6 +178,9 @@ type config struct {
 	Concurrency     int    `long:"concurrency" description:"Concurrency"`
 	LogBlockTime    bool   `long:"logblocktime" description:"Log the time that blocks are received"`
 	Accounts        bool   `long:"accounts" description:"list omega accounts & balance"`
+	NetMagic        common.OmegaNet
+	AddChain        string `long:"addchain" description:"Add a blockchain to FOC"`
+	Clear           int    `long:"clear" description:"Clear DBs"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -395,6 +396,7 @@ func newConfigParser(cfg *config, so *serviceOptions, options flags.Options) *fl
 	if runtime.GOOS == "windows" {
 		parser.AddGroup("Service Options", "Service Options", so)
 	}
+
 	return parser
 }
 
@@ -402,15 +404,15 @@ func newConfigParser(cfg *config, so *serviceOptions, options flags.Options) *fl
 // line options.
 //
 // The configuration proceeds as follows:
-// 	1) Start with a default config with sane settings
-// 	2) Pre-parse the command line to check for an alternative config file
-// 	3) Load configuration file overwriting defaults with any specified options
-// 	4) Parse CLI options and overwrite/add any specified options
+//  1. Start with a default config with sane settings
+//  2. Pre-parse the command line to check for an alternative config file
+//  3. Load configuration file overwriting defaults with any specified options
+//  4. Parse CLI options and overwrite/add any specified options
 //
 // The above results in btcd functioning properly without any config settings
 // while still allowing the user to override settings with config files and
 // command line options.  Command line options always take precedence.
-func loadConfig() (*config, []string, error) {
+func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error) {
 	// Default config.
 	cfg := config{
 		ConfigFile:           defaultConfigFile,
@@ -444,6 +446,13 @@ func loadConfig() (*config, []string, error) {
 		Concurrency:          1,
 		LogBlockTime:         false,
 		Accounts:             false,
+		NetMagic:             common.MainNet,
+		AddChain:             "",
+		Clear:                0,
+	}
+
+	if uint32(omegaNet) != 0 {
+		cfg.NetMagic = omegaNet
 	}
 
 	// Service options which are only added on Windows.
@@ -486,6 +495,10 @@ func loadConfig() (*config, []string, error) {
 	// Load additional config from file.
 	var configFileError error
 	parser := newConfigParser(&cfg, &serviceOpts, flags.Default)
+	if sec != "" {
+		parser.AddGroup(sec, sec, &cfg)
+	}
+
 	if !(preCfg.RegressionTest || preCfg.SimNet) || preCfg.ConfigFile !=
 		defaultConfigFile {
 
@@ -523,6 +536,14 @@ func loadConfig() (*config, []string, error) {
 		return nil, nil, err
 	}
 
+	if sec != "" {
+		for _, g := range parser.Groups() {
+			if len(g.Options()) == 0 {
+				return nil, nil, fmt.Errorf("Group %d does not exist or is empty", sec)
+			}
+		}
+	}
+
 	// Create the home directory if it doesn't already exist.
 	funcName := "loadConfig"
 	err = os.MkdirAll(defaultHomeDir, 0700)
@@ -543,56 +564,30 @@ func loadConfig() (*config, []string, error) {
 		return nil, nil, err
 	}
 
-	// Multiple networks can't be selected simultaneously.
-	numNets := 0
 	// Count number of network flags passed; assign active network params
 	// while we're at it
+	activeNetParams = &chaincfg.Params{}
+	*activeNetParams = chaincfg.MainNetParams
+
 	if cfg.TestNet {
-		numNets++
-		activeNetParams = &testNet3Params
-	}
-	if cfg.RegressionTest {
-		numNets++
-		activeNetParams = &regressionNetParams
-	}
-	if cfg.SimNet {
-		numNets++
-		// Also disable dns seeding on the simulation test network.
-		activeNetParams = &simNetParams
-		cfg.DisableDNSSeed = true
+		*activeNetParams = chaincfg.TestNet3Params
 	}
 
-	chaincfg.ActiveNetParams = activeNetParams.Params
+	chaincfg.ActiveNetParams = activeNetParams
 
-	if numNets > 1 {
-		str := "%s: The testnet, regtest, segnet, and simnet params " +
-			"can't be used together -- choose one of the four"
-		err := fmt.Errorf(str, funcName)
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+	err = applyConfig(&cfg)
+
+	// Warn about missing config file only after all other configuration is
+	// done.  This prevents the warning on help messages and invalid
+	// options.  Note this should go directly before the return.
+	if configFileError != nil {
+		btcdLog.Warnf("%v", configFileError)
 	}
 
-	// Set the default policy for relaying non-standard transactions
-	// according to the default of the active network. The set
-	// configuration value takes precedence over the default value for the
-	// selected network.
-	relayNonStd := activeNetParams.RelayNonStdTxs
-	switch {
-	case cfg.RelayNonStd && cfg.RejectNonStd:
-		str := "%s: rejectnonstd and relaynonstd cannot be used " +
-			"together -- choose only one"
-		err := fmt.Errorf(str, funcName)
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
-	case cfg.RejectNonStd:
-		relayNonStd = false
-	case cfg.RelayNonStd:
-		relayNonStd = true
-	}
-	cfg.RelayNonStd = relayNonStd
+	return &cfg, remainingArgs, err
+}
 
+func applyConfig(cfg *config) error {
 	// Append the network type to the data directory so it is "namespaced"
 	// per network.  In addition to the block database, there are other
 	// pieces of data that are saved to disk such as address manager state.
@@ -601,6 +596,11 @@ func loadConfig() (*config, []string, error) {
 	// worry about changing names per network and such.
 	cfg.DataDir = cleanAndExpandPath(cfg.DataDir)
 	cfg.DataDir = filepath.Join(cfg.DataDir, netName(activeNetParams))
+
+	funcName := "loadConfig"
+	appName := filepath.Base(os.Args[0])
+	appName = strings.TrimSuffix(appName, filepath.Ext(appName))
+	usageMessage := fmt.Sprintf("Use %s -h to show usage", appName)
 
 	// Append the network type to the log directory so it is "namespaced"
 	// per network in the same fashion as the data directory.
@@ -622,7 +622,7 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf("%s: %v", funcName, err.Error())
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Validate database type.
@@ -632,7 +632,7 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf(str, funcName, cfg.DbType, knownDbTypes)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Validate profile port number
@@ -643,7 +643,7 @@ func loadConfig() (*config, []string, error) {
 			err := fmt.Errorf(str, funcName)
 			fmt.Fprintln(os.Stderr, err)
 			fmt.Fprintln(os.Stderr, usageMessage)
-			return nil, nil, err
+			return err
 		}
 	}
 
@@ -653,7 +653,7 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf(str, funcName, cfg.BanDuration)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Validate any given whitelisted IP addresses and networks.
@@ -670,7 +670,7 @@ func loadConfig() (*config, []string, error) {
 					err = fmt.Errorf(str, funcName, addr)
 					fmt.Fprintln(os.Stderr, err)
 					fmt.Fprintln(os.Stderr, usageMessage)
-					return nil, nil, err
+					return err
 				}
 				var bits int
 				if ip.To4() == nil {
@@ -687,15 +687,6 @@ func loadConfig() (*config, []string, error) {
 			cfg.whitelists = append(cfg.whitelists, ipnet)
 		}
 	}
-	/*
-		if cfg.GenerateMiner && cfg.ShareMining && len(cfg.PrivKeys) == 0 {
-			if len(cfg.ExternalIPs) == 0 {
-				return nil, nil, fmt.Errorf("ExternalIP is required")
-			}
-			cfg.ConnectPeers = make([]string, 1)
-			cfg.ConnectPeers[0] = cfg.ExternalIPs[0]
-		}
-	*/
 
 	// --addPeer and --connect do not mix.
 	if len(cfg.AddPeers) > 0 && len(cfg.ConnectPeers) > 0 {
@@ -704,7 +695,7 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf(str, funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// --proxy or --connect without --listen disables listening.
@@ -734,7 +725,7 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf(str, funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Check to make sure limited and admin users don't have the same password
@@ -744,7 +735,7 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf(str, funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// The RPC server is disabled if no username or password is provided.
@@ -761,13 +752,19 @@ func loadConfig() (*config, []string, error) {
 	if !cfg.DisableRPC && len(cfg.RPCListeners) == 0 {
 		addrs, err := net.LookupHost("localhost")
 		if err != nil {
-			return nil, nil, err
+			return err
 		}
 		cfg.RPCListeners = make([]string, 0, len(addrs))
 		for _, addr := range addrs {
-			addr = net.JoinHostPort(addr, activeNetParams.rpcPort)
+			addr = net.JoinHostPort(addr, activeNetParams.RpcPort)
 			cfg.RPCListeners = append(cfg.RPCListeners, addr)
 		}
+	}
+
+	if cfg.DisableRPC {
+		activeNetParams.RpcPort = ""
+	} else if len(cfg.RPCListeners) != 0 {
+		activeNetParams.RpcPort = strings.Split(cfg.RPCListeners[0], ":")[1]
 	}
 
 	if cfg.RPCMaxConcurrentReqs < 0 {
@@ -776,11 +773,12 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf(str, funcName, cfg.RPCMaxConcurrentReqs)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Validate the the minrelaytxfee.
-	cfg.minRelayTxFee, err = btcutil.NewAmount(cfg.MinRelayTxFee, 0)
+	x, err := btcutil.NewAmount(cfg.MinRelayTxFee, 0)
+	cfg.minRelayTxFee = x
 	//	cfg.MinBorderFee = cfg.MinBorderFee
 
 	if err != nil {
@@ -788,7 +786,7 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf(str, funcName, err)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Limit the max orphan count to a sane vlue.
@@ -798,7 +796,7 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf(str, funcName, cfg.MaxOrphanTxs)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Look for illegal characters in the user agent comments.
@@ -809,7 +807,7 @@ func loadConfig() (*config, []string, error) {
 				funcName)
 			fmt.Fprintln(os.Stderr, err)
 			fmt.Fprintln(os.Stderr, usageMessage)
-			return nil, nil, err
+			return err
 		}
 	}
 
@@ -820,7 +818,7 @@ func loadConfig() (*config, []string, error) {
 			funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// --addrindex and --dropaddrindex do not mix.
@@ -830,7 +828,7 @@ func loadConfig() (*config, []string, error) {
 			funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// --addrindex and --droptxindex do not mix.
@@ -842,26 +840,26 @@ func loadConfig() (*config, []string, error) {
 			funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Check mining addresses are valid and saved parsed versions.
 	cfg.miningAddrs = make([]btcutil.Address, 0, len(cfg.MiningAddrs)+len(cfg.PrivKeys))
 	for _, strAddr := range cfg.MiningAddrs {
-		addr, err := btcutil.DecodeAddress(strAddr, activeNetParams.Params)
+		addr, err := btcutil.DecodeAddress(strAddr, activeNetParams)
 		if err != nil {
 			str := "%s: mining address '%s' failed to decode: %v"
 			err := fmt.Errorf(str, funcName, strAddr, err)
 			fmt.Fprintln(os.Stderr, err)
 			fmt.Fprintln(os.Stderr, usageMessage)
-			return nil, nil, err
+			return err
 		}
-		if !addr.IsForNet(activeNetParams.Params) {
+		if !addr.IsForNet(activeNetParams) {
 			str := "%s: mining address '%s' is on the wrong network"
 			err := fmt.Errorf(str, funcName, strAddr)
 			fmt.Fprintln(os.Stderr, err)
 			fmt.Fprintln(os.Stderr, usageMessage)
-			return nil, nil, err
+			return err
 		}
 		cfg.miningAddrs = append(cfg.miningAddrs, addr)
 	}
@@ -875,36 +873,29 @@ func loadConfig() (*config, []string, error) {
 			if err == nil {
 				privKey := dwif.PrivKey
 				//			pkaddr, err := btcutil.NewAddressPubKeyPubKey(*privKey.PubKey(), activeNetParams.Params)
-				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams.Params)
+				pkaddr, err := btcutil.NewAddressPubKey(dwif.SerializePubKey(), activeNetParams)
 
 				if err != nil {
 					str := "%s: mining address '%s' failed to decode: %v"
 					err := fmt.Errorf(str, funcName, cfg.PrivKeys, err)
 					fmt.Fprintln(os.Stderr, err)
 					fmt.Fprintln(os.Stderr, usageMessage)
-					return nil, nil, err
+					return err
 				}
 
 				addr := pkaddr.AddressPubKeyHash()
-				if !addr.IsForNet(activeNetParams.Params) {
+				if !addr.IsForNet(activeNetParams) {
 					str := "%s: mining address '%s' is on the wrong network"
 					err := fmt.Errorf(str, funcName, cfg.PrivKeys)
 					fmt.Fprintln(os.Stderr, err)
 					fmt.Fprintln(os.Stderr, usageMessage)
-					return nil, nil, err
+					return err
 				}
 				cfg.miningAddrs = append(cfg.miningAddrs, addr)
 				cfg.signAddress = append(cfg.signAddress, addr)
 				cfg.privateKeys = append(cfg.privateKeys, privKey)
 			}
 		}
-	}
-
-	if cfg.ShareMining && !cfg.Generate { // This is a PC miner, force it to connect its server only
-		cfg.signAddress = cfg.signAddress[:0]
-		cfg.ConnectPeers = []string{cfg.ExternalIPs[0]}
-		cfg.AddPeers = cfg.AddPeers[:0]
-		cfg.privateKeys = cfg.privateKeys[:0]
 	}
 
 	cfg.collateral = make([]*wire.OutPoint, 0, len(cfg.Collateral))
@@ -927,13 +918,13 @@ func loadConfig() (*config, []string, error) {
 	// Ensure there is at least one mining address when the generate flag is
 	// set.
 
-	if cfg.GenerateMiner && !cfg.ShareMining && len(cfg.miningAddrs) == 0 {
+	if cfg.GenerateMiner && len(cfg.miningAddrs) == 0 {
 		str := "%s: the generate flag is set, but there are no mining " +
 			"addresses specified "
 		err := fmt.Errorf(str, funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Add default port to all listener addresses if needed and remove
@@ -942,7 +933,7 @@ func loadConfig() (*config, []string, error) {
 
 	// Add default port to all rpc listener addresses if needed and remove
 	// duplicate addresses.
-	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.rpcPort)
+	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.RpcPort)
 	/*
 		// Only allow TLS to be disabled if the RPC is bound to localhost
 		// addresses.
@@ -986,7 +977,7 @@ func loadConfig() (*config, []string, error) {
 			"not be activated at the same time", funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Check the checkpoints for syntax errors.
@@ -996,7 +987,7 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf(str, funcName, err)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Tor stream isolation requires either proxy or onion proxy to be set.
@@ -1006,7 +997,7 @@ func loadConfig() (*config, []string, error) {
 		err := fmt.Errorf(str, funcName)
 		fmt.Fprintln(os.Stderr, err)
 		fmt.Fprintln(os.Stderr, usageMessage)
-		return nil, nil, err
+		return err
 	}
 
 	// Setup dial and DNS resolution (lookup) functions depending on the
@@ -1024,7 +1015,7 @@ func loadConfig() (*config, []string, error) {
 			err := fmt.Errorf(str, funcName, cfg.Proxy, err)
 			fmt.Fprintln(os.Stderr, err)
 			fmt.Fprintln(os.Stderr, usageMessage)
-			return nil, nil, err
+			return err
 		}
 
 		// Tor isolation flag means proxy credentials will be overridden
@@ -1070,7 +1061,7 @@ func loadConfig() (*config, []string, error) {
 			err := fmt.Errorf(str, funcName, cfg.OnionProxy, err)
 			fmt.Fprintln(os.Stderr, err)
 			fmt.Fprintln(os.Stderr, usageMessage)
-			return nil, nil, err
+			return err
 		}
 
 		// Tor isolation flag means onion proxy credentials will be
@@ -1113,14 +1104,7 @@ func loadConfig() (*config, []string, error) {
 		}
 	}
 
-	// Warn about missing config file only after all other configuration is
-	// done.  This prevents the warning on help messages and invalid
-	// options.  Note this should go directly before the return.
-	if configFileError != nil {
-		btcdLog.Warnf("%v", configFileError)
-	}
-
-	return &cfg, remainingArgs, nil
+	return nil
 }
 
 // createDefaultConfig copies the file sample-btcd.conf to the given destination path,
@@ -1195,7 +1179,7 @@ func createDefaultConfigFile(destinationPath string) error {
 // example, .onion addresses will be dialed using the onion specific proxy if
 // one was specified, but will otherwise use the normal dial function (which
 // could itself use a proxy or not).
-func btcdDial(addr net.Addr) (net.Conn, error) {
+func btcdDial(addr net.Addr, cfg *config) (net.Conn, error) {
 	if strings.Contains(addr.String(), ".onion:") {
 		return cfg.oniondial(addr.Network(), addr.String(),
 			defaultConnectTimeout)
@@ -1210,7 +1194,7 @@ func btcdDial(addr net.Addr) (net.Conn, error) {
 //
 // Any attempt to resolve a tor address (.onion) will return an error since they
 // are not intended to be resolved outside of the tor proxy.
-func btcdLookup(host string) ([]net.IP, error) {
+func btcdLookup(host string, cfg *config) ([]net.IP, error) {
 	if strings.HasSuffix(host, ".onion") {
 		return nil, fmt.Errorf("attempt to resolve tor address %s", host)
 	}

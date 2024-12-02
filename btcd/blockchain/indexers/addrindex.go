@@ -764,13 +764,17 @@ func (idx *AddrIndex) indexPkScript(data writeIndexData, pkScript []byte, txIdx 
 func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 	stxos []viewpoint.SpentTxOut) {
 
+	if stxos == nil {
+		return
+	}
+
 	stxoIndex := 0
 	for txIdx, tx := range block.Transactions() {
 		// Coinbases do not reference any inputs.  Since the block is
 		// required to have already gone through full validation, it has
 		// already been proven on the first transaction in the block is
 		// a coinbase.
-		if txIdx != 0 {
+		if txIdx != 0 && !tx.MsgTx().IsCrossChain() {
 			for _, txIn := range tx.MsgTx().TxIn {
 				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
@@ -788,7 +792,7 @@ func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 		}
 
 		for _, txOut := range tx.MsgTx().TxOut {
-			if txOut.IsSeparator() {
+			if txOut.IsSeparator() || txOut.IsCrossChain() {
 				continue
 			}
 			idx.indexPkScript(data, txOut.PkScript, txIdx)
@@ -948,18 +952,20 @@ func (idx *AddrIndex) AddUnconfirmedTx(tx *btcutil.Tx, utxoView *viewpoint.UtxoV
 	// The existence checks are elided since this is only called after the
 	// transaction has already been validated and thus all inputs are
 	// already known to exist.
-	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
+	if !tx.MsgTx().IsCrossChain() {
+		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			entry := utxoView.LookupEntry(txIn.PreviousOutPoint)
+			if entry == nil {
+				// Ignore missing entries.  This should never happen
+				// in practice since the function comments specifically
+				// call out all inputs must be available.
+				continue
+			}
+			idx.indexUnconfirmedAddresses(entry.PkScript(), tx)
 		}
-		entry := utxoView.LookupEntry(txIn.PreviousOutPoint)
-		if entry == nil {
-			// Ignore missing entries.  This should never happen
-			// in practice since the function comments specifically
-			// call out all inputs must be available.
-			continue
-		}
-		idx.indexUnconfirmedAddresses(entry.PkScript(), tx)
 	}
 
 	// Index addresses of all created outputs.

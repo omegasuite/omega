@@ -48,7 +48,7 @@ type AddrManager struct {
 	nNew           int
 	lamtx          sync.Mutex
 	localAddresses map[string]*localAddress
-	externalips	   map[string]struct{}
+	externalips    map[string]struct{}
 }
 
 type serializedKnownAddress struct {
@@ -70,8 +70,8 @@ type serializedAddrManager struct {
 }
 
 type localAddress struct {
-	na    *wire.NetAddress
-	score AddressPriority
+	na     *wire.NetAddress
+	score  AddressPriority
 	origin AddressPriority
 }
 
@@ -175,7 +175,7 @@ func (a *AddrManager) updateAddress(netAddr, srcAddr *wire.NetAddress) {
 	}
 
 	addr := NetAddressKey(netAddr)
-	if _,ok := a.externalips[addr]; ok {
+	if _, ok := a.externalips[addr]; ok {
 		return
 	}
 
@@ -752,7 +752,7 @@ func (a *AddrManager) isMyself(na *wire.NetAddress) bool {
 		}
 	}
 	s := NetAddressKey(na)
-	_,ok := a.externalips[s]
+	_, ok := a.externalips[s]
 	return ok
 }
 
@@ -1010,8 +1010,8 @@ func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPrior
 			}
 		} else {
 			a.localAddresses[key] = &localAddress{
-				na:    na,
-				score: priority,
+				na:     na,
+				score:  priority,
 				origin: priority,
 			}
 		}
@@ -1023,20 +1023,20 @@ func (a *AddrManager) AddLocalAddress(na *wire.NetAddress, priority AddressPrior
 }
 
 func (a *AddrManager) PhaseoutCommittee(na *wire.NetAddress) {
-/*
-	a.lamtx.Lock()
-	defer a.lamtx.Unlock()
+	/*
+		a.lamtx.Lock()
+		defer a.lamtx.Unlock()
 
-	key := NetAddressKey(na)
-	la, ok := a.localAddresses[key]
-	if ok && la.origin == CommitteePrio {
-		if la.score == CommitteePrio {
-			ls.origin = BoundPrio
-		} else {
-			la.score--
+		key := NetAddressKey(na)
+		la, ok := a.localAddresses[key]
+		if ok && la.origin == CommitteePrio {
+			if la.score == CommitteePrio {
+				ls.origin = BoundPrio
+			} else {
+				la.score--
+			}
 		}
-	}
- */
+	*/
 }
 
 // getReachabilityFrom returns the relative reachability of the provided local
@@ -1168,7 +1168,7 @@ func New(dataDir string, lookupFunc func(string) ([]net.IP, error), extip []stri
 		localAddresses: make(map[string]*localAddress),
 		externalips:    make(map[string]struct{}),
 	}
-	for _,s := range extip {
+	for _, s := range extip {
 		n, err := am.DeserializeNetAddress(s)
 		if err != nil {
 			continue

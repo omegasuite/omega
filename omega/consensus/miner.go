@@ -168,6 +168,9 @@ func handleConnNotice(c interface{}) {
 
 	case *btcutil.Block:
 		b := c.(*btcutil.Block)
+		if b == nil {
+			return
+		}
 
 		h := b.Height()
 
@@ -307,7 +310,14 @@ out:
 
 			if POWStopper != nil {
 				if len(POWStopper) < wire.CommitteeSize {
-					POWStopper <- struct{}{}
+					select {
+					case _, ok = <-POWStopper:
+						if ok {
+							POWStopper <- struct{}{}
+						}
+					default:
+						POWStopper <- struct{}{}
+					}
 				} else {
 					log.Infof("len(POWStopper) = %d", len(POWStopper))
 				}
@@ -474,8 +484,8 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 }
 
 func VerifySig(m Message) bool {
-	if miner.cfg == nil {
-		return true
+	if miner == nil || miner.cfg == nil {
+		return false
 	}
 
 	var err error
@@ -580,7 +590,15 @@ func cleaner(top int32) {
 }
 
 func Shutdown() {
+	if miner == nil {
+		return
+	}
+
 	miner.shutdown = true
+
+	if POWStopper != nil {
+		close(POWStopper)
+	}
 
 	log.Infof("Syners:")
 	for h, s := range miner.Sync {
@@ -596,10 +614,6 @@ func Shutdown() {
 		close(Quit)
 	}
 	miner.wg.Wait()
-
-	if POWStopper != nil {
-		close(POWStopper)
-	}
 
 	log.Infof("Consensus Shutdown completed")
 }

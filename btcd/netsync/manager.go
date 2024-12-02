@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"github.com/omegasuite/omega/minerchain"
 	"math/rand"
-	"net"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -175,6 +174,9 @@ type pauseMsg struct {
 	unpause <-chan struct{}
 }
 
+type passiveMsg struct {
+}
+
 // headerNode is used as a node in a list of headers that are linked together
 // between checkpoints.
 type headerNode struct {
@@ -245,7 +247,7 @@ type SyncManager struct {
 	syncjobs    []*pendginGetBlocks
 	lastBlockOp string // for debug
 	bshutdown   bool
-	mgrmx       sync.Mutex
+	smtx        sync.Mutex
 
 	tmpblksrc map[chainhash.Hash]*peerpkg.Peer
 }
@@ -272,17 +274,17 @@ func (sm *SyncManager) ResetConnections(all bool) {
 }
 
 func (sm *SyncManager) resetConnections(all bool) {
-	sm.mgrmx.Lock()
-	defer sm.mgrmx.Unlock()
 	if !all && len(sm.peerStates) < 100 {
 		return
 	}
 
 	log.Infof("ResetConnections peers = %d", len(sm.peerStates))
 
+	sm.smtx.Lock()
 	for p, _ := range sm.peerStates {
 		p.Disconnect("Reset")
 	}
+	sm.smtx.Unlock()
 	sm.clearSync()
 }
 
@@ -333,6 +335,7 @@ func (sm *SyncManager) AddSyncJob(peer *peerpkg.Peer, locator, mlocator chainhas
 		copy(h[p+chainhash.HashSize:], mstopHash[:])
 	}
 	hash := chainhash.DoubleHashH(h[:])
+
 	for i := 0; i < len(sm.syncjobs); i++ {
 		if hash == sm.syncjobs[i].hash {
 			return
@@ -363,19 +366,20 @@ func (sm *SyncManager) updateSyncPeer() {
 	}
 
 	p := sm.syncPeer
+
 	if p != nil {
-		sm.mgrmx.Lock()
+		sm.smtx.Lock()
 		state, ok := sm.peerStates[p]
+		sm.smtx.Unlock()
+
 		if ok && len(state.requestedBlocks) > 0 {
 			tm := int(time.Now().Unix())
 			for _, t := range state.requestedBlocks {
 				if t > tm-30 {
-					sm.mgrmx.Unlock()
 					return
 				}
 			}
 		}
-		sm.mgrmx.Unlock()
 	}
 
 	n := len(sm.syncjobs)
@@ -465,8 +469,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 	tm := int64(0x7FFFFFFFFFFFFFFF)
 	ss := ""
 
-	sm.mgrmx.Lock()
-	defer sm.mgrmx.Unlock()
+	sm.smtx.Lock()
 	for peer, state := range sm.peerStates {
 		ss = ss + fmt.Sprintf("peer ID = %d conn = %v candidate = %v addr = %s\n",
 			peer.ID(), peer.Connected(), state.syncCandidate, peer.Addr())
@@ -502,6 +505,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 
 	if bestPeer == nil {
 		//		log.Infof("No sync peer available out of %d peers", len(sm.peerStates))
+		sm.smtx.Unlock()
 		return false
 	}
 
@@ -510,6 +514,7 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 	}
 
 	sm.peerStates[bestPeer].syncTime = time.Now().Unix()
+	sm.smtx.Unlock()
 
 	// Start syncing from the best peer if one was selected.
 	if bestPeer != nil {
@@ -522,7 +527,9 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 		sm.requestedBlocks = make(map[chainhash.Hash]int)
 		sm.requestedOrphans = make(map[chainhash.Hash]int)
 
+		sm.smtx.Lock()
 		sm.peerStates[bestPeer].requestedBlocks = make(map[chainhash.Hash]int)
+		sm.smtx.Unlock()
 
 		sm.syncPeer = bestPeer
 
@@ -573,8 +580,8 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 		// not support the headers-first approach so do normal block
 		// downloads when in regression test mode.GetBlocks
 		if sm.nextCheckpoint != nil &&
-			best.Height < sm.nextCheckpoint.Height &&
-			sm.chainParams != &chaincfg.RegressionNetParams {
+			best.Height < sm.nextCheckpoint.Height { // &&
+			// sm.chainParams != &chaincfg.RegressionNetParams {
 
 			bestPeer.PushGetHeadersMsg(locator, sm.nextCheckpoint.Hash)
 			sm.headersFirstMode = true
@@ -607,26 +614,29 @@ func (sm *SyncManager) isSyncCandidate(peer *peerpkg.Peer) bool {
 	// Typically a peer is not a candidate for sync if it's not a full node,
 	// however regression test is special in that the regression tool is
 	// not a full node and still needs to be considered a sync candidate.
-	if sm.chainParams == &chaincfg.RegressionNetParams {
-		// The peer is not a candidate if it's not coming from localhost
-		// or the hostname can't be determined for some reason.
-		host, _, err := net.SplitHostPort(peer.Addr())
-		if err != nil {
-			return false
-		}
+	/*
+		if sm.chainParams == &chaincfg.RegressionNetParams {
+			// The peer is not a candidate if it's not coming from localhost
+			// or the hostname can't be determined for some reason.
+			host, _, err := net.SplitHostPort(peer.Addr())
+			if err != nil {
+				return false
+			}
 
-		if host != "127.0.0.1" && host != "localhost" {
-			return false
-		}
-	} else {
-		// The peer is not a candidate for sync if it's not a full
-		// node. Additionally, if the segwit soft-fork package has
-		// activated, then the peer must also be upgraded.
-		nodeServices := peer.Services()
-		if nodeServices&common.SFNodeNetwork != common.SFNodeNetwork {
-			return false
-		}
+			if host != "127.0.0.1" && host != "localhost" {
+				return false
+			}
+		} else {
+
+	*/
+	// The peer is not a candidate for sync if it's not a full
+	// node. Additionally, if the segwit soft-fork package has
+	// activated, then the peer must also be upgraded.
+	nodeServices := peer.Services()
+	if nodeServices&common.SFNodeNetwork != common.SFNodeNetwork {
+		return false
 	}
+	// }
 
 	// Candidate if all checks passed.
 	return true
@@ -645,14 +655,14 @@ func (sm *SyncManager) handleNewPeerMsg(peer *peerpkg.Peer) {
 
 	// Initialize the peer state
 	isSyncCandidate := sm.isSyncCandidate(peer)
-	sm.mgrmx.Lock()
+	sm.smtx.Lock()
 	sm.peerStates[peer] = &peerSyncState{
 		syncCandidate:   isSyncCandidate,
 		requestedTxns:   make(map[chainhash.Hash]struct{}),
 		requestedBlocks: make(map[chainhash.Hash]int),
 		requestQueue:    make([]*wire.InvVect, 0, 1000),
 	}
-	sm.mgrmx.Unlock()
+	sm.smtx.Unlock()
 
 	// Start syncing by choosing the best candidate if needed.
 	if isSyncCandidate && sm.syncPeer == nil {
@@ -665,17 +675,18 @@ func (sm *SyncManager) handleNewPeerMsg(peer *peerpkg.Peer) {
 // the current sync peer, attempts to select a new best peer to sync from.  It
 // is invoked from the syncHandler goroutine.
 func (sm *SyncManager) handleDonePeerMsg(peer *peerpkg.Peer) {
-	sm.mgrmx.Lock()
+	sm.smtx.Lock()
 	state, exists := sm.peerStates[peer]
+	sm.smtx.Unlock()
 	if !exists {
-		sm.mgrmx.Unlock()
 		log.Warnf("Received done peer message for unknown peer %s", peer)
 		return
 	}
 
 	// Remove the peer from the list of candidate peers.
+	sm.smtx.Lock()
 	delete(sm.peerStates, peer)
-	sm.mgrmx.Unlock()
+	sm.smtx.Unlock()
 
 	log.Infof("Lost peer %s", peer)
 
@@ -712,9 +723,9 @@ func (sm *SyncManager) handleDonePeerMsg(peer *peerpkg.Peer) {
 // handleTxMsg handles transaction messages from all peers.
 func (sm *SyncManager) handleTxMsg(tmsg *txMsg) {
 	peer := tmsg.peer
-	sm.mgrmx.Lock()
+	sm.smtx.Lock()
 	state, exists := sm.peerStates[peer]
-	defer sm.mgrmx.Unlock()
+	sm.smtx.Unlock()
 	if !exists {
 		log.Warnf("Received tx message from unknown peer %s", peer)
 		return
@@ -810,10 +821,9 @@ func (sm *SyncManager) current(t int) bool {
 // handleBlockMsg handles block messages from all peers.
 func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	peer := bmsg.peer
-	sm.mgrmx.Lock()
+	sm.smtx.Lock()
 	state, exists := sm.peerStates[peer]
-	sm.mgrmx.Unlock()
-
+	sm.smtx.Unlock()
 	if !exists {
 		log.Warnf("Received block message from unknown peer %s", peer)
 		return
@@ -974,7 +984,7 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	}
 
 	ht := bmsg.block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index
-	if behaviorFlags&blockchain.BFNoConnect == blockchain.BFNoConnect {
+	if behaviorFlags&blockchain.BFNoConnect == blockchain.BFNoConnect && !sm.chain.IsSVP {
 		// passing it to consensus maker
 		consensus.ProcessBlock(bmsg.block, behaviorFlags)
 		if bmsg.block.Height() > b1.Height {
@@ -1124,10 +1134,9 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	peer := bmsg.peer
-	sm.mgrmx.Lock()
+	sm.smtx.Lock()
 	state, exists := sm.peerStates[peer]
-	sm.mgrmx.Unlock()
-
+	sm.smtx.Unlock()
 	if !exists {
 		log.Warnf("Received block message from unknown peer %s", peer)
 		return
@@ -1314,9 +1323,9 @@ func (sm *SyncManager) fetchHeaderBlocks() {
 				"fetch: %v", err)
 		}
 		if !haveInv {
-			sm.mgrmx.Lock()
+			sm.smtx.Lock()
 			syncPeerState := sm.peerStates[sm.syncPeer]
-			sm.mgrmx.Unlock()
+			sm.smtx.Unlock()
 
 			sm.requestedBlocks[*node.hash] = 1
 			syncPeerState.requestedBlocks[*node.hash] = 1
@@ -1345,10 +1354,9 @@ func (sm *SyncManager) fetchHeaderBlocks() {
 // requested when performing a headers-first sync.
 func (sm *SyncManager) handleHeadersMsg(hmsg *headersMsg) {
 	peer := hmsg.peer
-	sm.mgrmx.Lock()
+	sm.smtx.Lock()
 	_, exists := sm.peerStates[peer]
-	sm.mgrmx.Unlock()
-
+	sm.smtx.Unlock()
 	if !exists {
 		log.Warnf("Received headers message from unknown peer %s", peer)
 		return
@@ -1519,10 +1527,7 @@ func (sm *SyncManager) TmpBlkSrc(hash chainhash.Hash) *peerpkg.Peer {
 // We examine the inventory advertised by the remote peer and act accordingly.
 func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	peer := imsg.peer
-	sm.mgrmx.Lock()
 	state, exists := sm.peerStates[peer]
-	sm.mgrmx.Unlock()
-
 	if !exists {
 		log.Warnf("Received inv message from unknown peer %s", peer)
 		sm.updateSyncPeer()
@@ -1995,29 +2000,45 @@ func (sm *SyncManager) CachedBlock(h chainhash.Hash) *btcutil.Block {
 }
 
 func (sm *SyncManager) Broadcast(m wire.Message, ps *string) {
-	sm.broadcast(nil, m, ps)
+	sm.broadcast(nil, m, ps, false)
 }
 
-func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string) {
+func (sm *SyncManager) Randcast(m wire.Message, ps *string) {
+	sm.broadcast(nil, m, ps, true)
+}
+
+func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string, random bool) {
 	var h chainhash.Hash
 	var w bytes.Buffer
+
+	if len(sm.peerStates) == 0 {
+		return
+	}
 
 	w.Write([]byte(m.Command()))
 	m.OmcEncode(&w, 0, wire.FullEncoding)
 	copy(h[:], chainhash.HashB(w.Bytes()))
 
-	sm.mgrmx.Lock()
-	defer func() {
-		sm.mgrmx.Unlock()
-	}()
-
 	now := time.Now().Unix()
 
+	if sm == nil || sm.peerStates == nil || len(sm.peerStates) == 0 {
+		return
+	}
+
+	n, i, f := rand.Intn(len(sm.peerStates)), 0, false
+
+	sm.smtx.Lock()
 	if _, ok := sm.castedMsg[h]; !ok {
 		sm.castedMsg[h] = now
 		for peer, _ := range sm.peerStates {
+			if random && i != n && !f {
+				continue
+			}
+			i++
+			f = true
 			if p == nil || (peer.ID() != p.ID() && (ps == nil || peer.Addr() != *ps)) {
 				peer.QueueMessageWithEncoding(m, nil, wire.FullEncoding)
+				f = false
 			}
 		}
 	}
@@ -2027,6 +2048,7 @@ func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string) {
 			delete(sm.castedMsg, h)
 		}
 	}
+	sm.smtx.Unlock()
 }
 
 // blockHandler is the main handler for the sync manager.  It must be run as a
@@ -2040,6 +2062,7 @@ func (sm *SyncManager) blockHandler() {
 	defer ticker.Stop()
 
 	sm.lastBlockOp = ""
+	passiveMode := false
 
 out:
 	for {
@@ -2061,41 +2084,53 @@ out:
 				sm.handleNewPeerMsg(msg.peer)
 
 			case *txMsg:
-				sm.handleTxMsg(msg)
-				msg.reply <- struct{}{}
+				if !passiveMode {
+					sm.handleTxMsg(msg)
+					msg.reply <- struct{}{}
+				}
 
 			case *sigMsg:
-				if b, ok := sm.cachedBlocks[msg.hash]; ok {
-					b.MsgBlock().Transactions[0].SignatureScripts = msg.signatures
-					bm := blockMsg{
-						b,
-						msg.peer,
-						msg.reply,
+				if !passiveMode {
+					if b, ok := sm.cachedBlocks[msg.hash]; ok {
+						b.MsgBlock().Transactions[0].SignatureScripts = msg.signatures
+						bm := blockMsg{
+							b,
+							msg.peer,
+							msg.reply,
+						}
+						sm.handleBlockMsg(&bm)
 					}
-					sm.handleBlockMsg(&bm)
-				}
-				msg.reply <- struct{}{}
+					msg.reply <- struct{}{}
 
-				// we should broadcast this message here
-				b := wire.MsgSignatures{
-					msg.hash,
-					msg.signatures,
+					// we should broadcast this message here
+					b := wire.MsgSignatures{
+						msg.hash,
+						msg.signatures,
+					}
+					sm.broadcast(msg.peer, &b, nil, false)
 				}
-				sm.broadcast(msg.peer, &b, nil)
 
 			case *blockMsg:
-				sm.handleBlockMsg(msg)
-				msg.reply <- struct{}{}
+				if !passiveMode {
+					sm.handleBlockMsg(msg)
+					msg.reply <- struct{}{}
+				}
 
 			case *minerBlockMsg:
-				sm.handleMinerBlockMsg(msg)
-				msg.reply <- struct{}{}
+				if !passiveMode {
+					sm.handleMinerBlockMsg(msg)
+					msg.reply <- struct{}{}
+				}
 
 			case *invMsg:
-				sm.handleInvMsg(msg)
+				if !passiveMode {
+					sm.handleInvMsg(msg)
+				}
 
 			case *headersMsg:
-				sm.handleHeadersMsg(msg)
+				if !passiveMode {
+					sm.handleHeadersMsg(msg)
+				}
 
 			case *donePeerMsg:
 				sm.handleDonePeerMsg(msg.peer)
@@ -2109,46 +2144,52 @@ out:
 				msg.reply <- peerID
 
 			case processBlockMsg:
-				main, isOrphan, err, _, _ := sm.chain.ProcessBlock(msg.block, msg.flags)
-				if msg.reply != nil {
-					sm.lastBlockOp += " ... waiting reply from sm.chain.ProcessBlock "
-					if err != nil {
-						msg.reply <- processBlockResponse{
-							isMain:   main,
-							isOrphan: false,
-							err:      err,
-						}
-					} else {
-						msg.reply <- processBlockResponse{
-							isMain:   main,
-							isOrphan: isOrphan,
-							err:      nil,
+				if !passiveMode {
+					main, isOrphan, err, _, _ := sm.chain.ProcessBlock(msg.block, msg.flags)
+					if msg.reply != nil {
+						sm.lastBlockOp += " ... waiting reply from sm.chain.ProcessBlock "
+						if err != nil {
+							msg.reply <- processBlockResponse{
+								isMain:   main,
+								isOrphan: false,
+								err:      err,
+							}
+						} else {
+							msg.reply <- processBlockResponse{
+								isMain:   main,
+								isOrphan: isOrphan,
+								err:      nil,
+							}
 						}
 					}
 				}
 
 			case processConsusMsg:
-				consensus.ProcessBlock(msg.block, msg.flags)
+				if !passiveMode && !sm.chain.IsSVP {
+					consensus.ProcessBlock(msg.block, msg.flags)
+				}
 
 			case processMinerBlockMsg:
-				if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet || sm.chainParams.Net == common.RegNet {
-					msg.flags |= blockchain.BFEasyBlocks
-				}
-				main, isOrphan, err, _ := sm.chain.Miners.ProcessBlock(
-					msg.block, msg.flags)
-				if msg.reply != nil {
-					sm.lastBlockOp += " ... waiting reply from sm.chain.Miners.ProcessBlock "
-					if err != nil {
-						msg.reply <- processBlockResponse{
-							isMain:   main,
-							isOrphan: false,
-							err:      err,
-						}
-					} else {
-						msg.reply <- processBlockResponse{
-							isMain:   main,
-							isOrphan: isOrphan,
-							err:      nil,
+				if !passiveMode {
+					if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet || sm.chainParams.Net == common.RegNet {
+						msg.flags |= blockchain.BFEasyBlocks
+					}
+					main, isOrphan, err, _ := sm.chain.Miners.ProcessBlock(
+						msg.block, msg.flags)
+					if msg.reply != nil {
+						sm.lastBlockOp += " ... waiting reply from sm.chain.Miners.ProcessBlock "
+						if err != nil {
+							msg.reply <- processBlockResponse{
+								isMain:   main,
+								isOrphan: false,
+								err:      err,
+							}
+						} else {
+							msg.reply <- processBlockResponse{
+								isMain:   main,
+								isOrphan: isOrphan,
+								err:      nil,
+							}
 						}
 					}
 				}
@@ -2192,6 +2233,10 @@ out:
 // things such as request orphan block parents and relay accepted blocks to
 // connected peers.
 func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Notification) {
+	if notification.Data == nil {
+		return
+	}
+
 	switch notification.Type {
 	// A block has been accepted into the block chain.  Relay it to other
 	// peers.
@@ -2213,6 +2258,9 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 				return
 			}
 			block := notification.Data.(*wire.MinerBlock)
+			if block == nil {
+				return
+			}
 			iv := wire.NewInvVect(common.InvTypeMinerBlock, block.Hash())
 			sm.peerNotifier.RelayInventory(iv, block.MsgBlock())
 
@@ -2226,7 +2274,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 			if !sm.current(1) {
 				return
 			}
-			sm.mgrmx.Lock()
+			sm.smtx.Lock()
 			for peer, _ := range sm.peerStates {
 				if peer.LastMinerBlock() < block.Height() && block.Height() < peer.LastMinerBlock()+50 {
 					// should send an inv msg
@@ -2237,7 +2285,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 					peer.QueueInventory(invVect)
 				}
 			}
-			sm.mgrmx.Unlock()
+			sm.smtx.Unlock()
 			//			log.Warnf("Chain NTBlockConnected notification is not a block, it is %s", reflect.TypeOf(notification.Data).String())
 			break
 		}
@@ -2247,9 +2295,13 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 		}
 
 		block, ok := notification.Data.(*btcutil.Block)
+		if block == nil {
+			return
+		}
+
 		if ok {
 			// notify peers of new height if our height is greater than we know the peer has
-			sm.mgrmx.Lock()
+			sm.smtx.Lock()
 			for peer, _ := range sm.peerStates {
 				if peer.LastBlock() < block.Height() && block.Height() < peer.LastBlock()+500 {
 					invVect := &wire.InvVect{
@@ -2259,7 +2311,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 					peer.QueueInventory(invVect)
 				}
 			}
-			sm.mgrmx.Unlock()
+			sm.smtx.Unlock()
 
 			// Remove all of the transactions (except the coinbase) in the
 			// connected block from the transaction pool.  Secondly, remove any
@@ -2512,6 +2564,10 @@ func (sm *SyncManager) Pause() chan<- struct{} {
 	c := make(chan struct{})
 	sm.msgChan <- pauseMsg{c}
 	return c
+}
+
+func (sm *SyncManager) Passive() {
+	sm.msgChan <- passiveMsg{}
 }
 
 // New constructs a new SyncManager. Use Start to begin processing asynchronous

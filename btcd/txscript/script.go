@@ -21,24 +21,6 @@ import (
 // This timestamp corresponds to Sun Apr 1 00:00:00 UTC 2012.
 var Bip16Activation = time.Unix(1333238400, 0)
 
-// SigHashType represents hash type bits at the end of a signature.
-type SigHashType uint32
-
-// Hash type bits from the end of a signature.
-const (
-	SigHashAll          SigHashType = 0x1
-	SigHashNone         SigHashType = 0x2
-	SigHashSingle       SigHashType = 0x3
-	SigHashDouble       SigHashType = 0x4
-	SigHashTriple       SigHashType = 0x5
-	SigHashQuardruple   SigHashType = 0x6
-	SigHashAnyOneCanPay SigHashType = 0x80
-
-	// sigHashMask defines the number of bits of the hash type which is used
-	// to identify which outputs are signed.
-	SigHashMask = 0x1f
-)
-
 // These are the constants specified for maximums in individual scripts.
 const (
 	MaxOpsPerScript       = 201 // Max number of non-push operations.
@@ -71,19 +53,21 @@ func DisasmString(buf []byte) (string, error) {
 // from  O(N^2) to O(N).
 func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
-	for _, in := range tx.TxIn {
-		if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		// First write out the 32-byte transaction ID one of whose
-		// outputs are being referenced by this input.
-		b.Write(in.PreviousOutPoint.Hash[:])
+	if !tx.IsCrossChain() {
+		for _, in := range tx.TxIn {
+			if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			// First write out the 32-byte transaction ID one of whose
+			// outputs are being referenced by this input.
+			b.Write(in.PreviousOutPoint.Hash[:])
 
-		// Next, we'll encode the index of the referenced output as a
-		// little endian integer.
-		var buf [4]byte
-		binary.LittleEndian.PutUint32(buf[:], in.PreviousOutPoint.Index)
-		b.Write(buf[:])
+			// Next, we'll encode the index of the referenced output as a
+			// little endian integer.
+			var buf [4]byte
+			binary.LittleEndian.PutUint32(buf[:], in.PreviousOutPoint.Index)
+			b.Write(buf[:])
+		}
 	}
 
 	return chainhash.DoubleHashH(b.Bytes())
@@ -97,13 +81,15 @@ func calcHashPrevOuts(tx *wire.MsgTx) chainhash.Hash {
 // from O(N^2) to O(N).
 func calcHashSequence(tx *wire.MsgTx) chainhash.Hash {
 	var b bytes.Buffer
-	for _, in := range tx.TxIn {
-		if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
+	if !tx.IsCrossChain() {
+		for _, in := range tx.TxIn {
+			if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			var buf [4]byte
+			binary.LittleEndian.PutUint32(buf[:], in.Sequence)
+			b.Write(buf[:])
 		}
-		var buf [4]byte
-		binary.LittleEndian.PutUint32(buf[:], in.Sequence)
-		b.Write(buf[:])
 	}
 
 	return chainhash.DoubleHashH(b.Bytes())
@@ -160,5 +146,5 @@ func shallowCopyTx(tx *wire.MsgTx) wire.MsgTx {
 // guaranteed to fail at execution.  This allows inputs to be pruned instantly
 // when entering the UTXO set.
 func IsUnspendable(pkScript []byte) bool {
-	return len(pkScript) > 24 && bytes.Compare(pkScript[21:25], []byte{ovm.OP_PAY2NONE,0,0,0}) == 0
+	return len(pkScript) > 24 && bytes.Compare(pkScript[21:25], []byte{ovm.OP_PAY2NONE, 0, 0, 0}) == 0
 }

@@ -8,11 +8,159 @@ package blockchain
 import (
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
+	"github.com/omegasuite/omega/chainmap"
 	"time"
 )
+
+func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
+	src := b.ChainParams.ChainID
+	if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
+		src = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+	}
+
+	for _, txo := range tx.TxOut {
+		if txo.IsSeparator() || !txo.IsCrossChain() {
+			continue
+		}
+		if txo.IsContractCall() {
+			return fmt.Errorf("cross chain tx with contract call")
+		}
+
+		tdest := uint32(txo.TokenType >> 40)
+		tdest &= 0x3FFFFF
+		if _, ok := chainmap.ChainMap[tdest]; tdest != 0 && !ok {
+			b.SrvReq <- ReqChain(tdest)
+			return fmt.Errorf("Cross chain TokenType not found")
+		}
+
+		if tdest != 0 && tdest != src && tdest != txo.DestChain() {
+			return fmt.Errorf("Invalid cross chain tokentype")
+		}
+
+		if src != 0 && tdest == 0 {
+			return fmt.Errorf("Local Tokentype in a cross chain tx")
+		}
+
+		dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
+		if tdest != b.ChainParams.ChainID && tdest != dest {
+			return fmt.Errorf("Incorrect cross chain destination")
+		}
+		if uint32(txo.TokenType>>40) == b.ChainParams.ChainID && tdest == dest {
+			return fmt.Errorf("Incorrect cross chain destination")
+		}
+		if len(txo.PkScript) != 26 && len(txo.PkScript) != 29 {
+			return fmt.Errorf("incorrect cross chain pkscript length")
+		}
+		if ((txo.TokenType >> 40) & 0xFFFFFF) == 0 {
+			return fmt.Errorf("Local tokentype in cross chain tx")
+		}
+		/*
+			var chain [4]byte
+			copy(chain[:], txo.PkScript[22:25])
+			chain[3] = 0
+			cid := common.LittleEndian.Uint32(chain[:])
+
+		*/
+
+		cid := dest
+
+		if cid == b.ChainParams.ChainID {
+			return fmt.Errorf("cross chain transferring to local chain")
+		}
+		if _, ok := chainmap.ChainMap[cid&0x3FFFFF]; !ok {
+			b.SrvReq <- ReqChain(cid)
+			return fmt.Errorf("unknown cross chain destination")
+		}
+		if src != 0 && src != tdest && tdest != cid {
+			return fmt.Errorf("Incorrect cross chain destination")
+		}
+	}
+
+	return nil
+}
+
+func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
+	if err := b.CheckCrossChainTx(tx); err != nil {
+		return err
+	}
+
+	if !b.IsSVP && tx.IsCrossChain() {
+		return b.db.View(func(dbtx database.Tx) error {
+			// bucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
+			rawc := tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+			/*
+				h := tx.TxIn[0].SignatureIndex
+				if (rawc & (wire.CrossChainFalg) >> 1) != 0 {
+					rawc = 0xFFFFFF - rawc
+				} else {
+					rawc = rawc &^ wire.CrossChainFalg
+				}
+				common.LittleEndian.PutUint32(key[:], rawc)
+				bh := bucket.Get(key[:4])
+				svph := common.LittleEndian.Uint32(bh)
+				if svph < h+chainmap.ChainMap[rawc].Mature {
+					return fmt.Errorf("cross chain tx is not validateCrossChain yet")
+				}
+			*/
+
+			// ensure the txo are in the pool
+			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+
+			key := tx.TxIn[0].PreviousOutPoint.ToBytes()
+			v := bucket.Get(key[:])
+			if v == nil || len(v) == 0 {
+				return fmt.Errorf("tx not in INCOMINGPOOL")
+			}
+			xdata := wire.XchainData{}
+			if err := xdata.DeSerialize(v); err != nil {
+				return err
+			}
+			if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
+				fmt.Printf("bad XchainData")
+			}
+			if xdata.Finalized == 0 {
+				return fmt.Errorf("tx not finalized")
+			}
+			if xdata.ChainID != rawc {
+				return fmt.Errorf("chain ID incorrect")
+			}
+			if len(tx.TxOut) != len(xdata.Txs) {
+				return fmt.Errorf("txout size incorrect")
+			}
+			if !xdata.Hash.IsEqual(&tx.TxIn[0].PreviousOutPoint.Hash) {
+				return fmt.Errorf("block hash incorrect")
+			}
+			//			if uint32(xdata.Height) != h {
+			//				return fmt.Errorf("height incorrect")
+			//			}
+
+			for _, txo := range tx.TxOut {
+				match := false
+				for i, xto := range xdata.Txs {
+					if (common.LittleEndian.Uint32(xto.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
+						b.normalizeTxo(&xto.Txo)
+					}
+					if txo.Match(&xto.Txo) {
+						match = true
+						xdata.Txs = append(xdata.Txs[:i], xdata.Txs[i+1:]...)
+						break
+					}
+				}
+				if !match {
+					return fmt.Errorf("txo mismatch")
+				}
+			}
+
+			return nil
+		})
+	}
+	return nil
+}
 
 // maybeAcceptBlock potentially accepts a block into the block chain and, if
 // accepted, returns whether or not it is on the main chain.  It performs
@@ -45,8 +193,12 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
 		return false, fmt.Errorf("insifficient signatures"), -1
 	}
-	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts[1]) < 33 {
-		return false, fmt.Errorf("incorrect signatures"), -1
+	if block.MsgBlock().Header.Nonce < 0 {
+		for _, sig := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+			if len(sig) < 33 {
+				return false, fmt.Errorf("incorrect signatures"), -1
+			}
+		}
 	}
 
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
@@ -59,10 +211,80 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		}
 	}
 
-	// Create a new block node for the block and add it to the node index. Even
+	// Create a new block node for the block and add it to the node Index. Even
 	// if the block ultimately gets connected to the main chain, it starts out
 	// on a side chain.
 	blockHeader := &block.MsgBlock().Header
+
+	// check cross chain txs
+	coinbase := block.MsgBlock().Transactions[0]
+	if coinbase.IsCrossChain() {
+		return false, fmt.Errorf("Coinbase tx can not be a cross chain transaction"), -1
+	}
+	for _, txo := range coinbase.TxOut {
+		if txo.IsSeparator() {
+			continue
+		}
+		if txo.IsCrossChain() {
+			return false, fmt.Errorf("Coinbase tx can not be a cross chain transaction"), -1
+		}
+	}
+	if !b.IsSVP {
+		m := chainmap.ChainMap[b.ChainParams.ChainID&0x3FFFFF]
+		initems := make(map[chainhash.Hash]*wire.XchainData)
+		b.db.View(func(dbtx database.Tx) error {
+			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			for _, tx := range block.MsgBlock().Transactions[1:] {
+				if !tx.IsCrossChain() {
+					continue
+				}
+				if _, ok := initems[tx.TxIn[0].PreviousOutPoint.Hash]; ok {
+					return fmt.Errorf("Duplicated Cross chain item.")
+				}
+				t := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
+				if t == nil || len(t) == 0 {
+					return fmt.Errorf("Cross chain item does not exist. SVP chain not ready?")
+				}
+				x := &wire.XchainData{}
+				if x.DeSerialize(t) != nil {
+					return fmt.Errorf("bad XchainData")
+				}
+				if x.Txs[0].Txo.PkScript[21] != 0x66 {
+					fmt.Printf("bad XchainData")
+				}
+				initems[tx.TxIn[0].PreviousOutPoint.Hash] = x
+			}
+			return nil
+		})
+		if err != nil {
+			return false, err, -1
+		}
+
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			if tx.IsCrossChain() {
+				srcchain := tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainSrcMask
+
+				for _, txo := range tx.TxOut {
+					if txo.IsCrossChain() {
+						destchain := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
+						if destchain == 0 {
+							destchain = b.ChainParams.ChainID
+						}
+						if !m.PassThru(srcchain, destchain) {
+							return false, fmt.Errorf("Mix of cross chain and regular txout"), -1
+						}
+					}
+				}
+
+				if err != nil {
+					return false, err, -1
+				}
+			}
+			if err := b.validateCrossChain(tx); err != nil {
+				return false, err, -1
+			}
+		}
+	}
 
 	newNode := b.MainChainNodeByHash(block.Hash())
 
@@ -82,25 +304,25 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	if newNode == nil {
 		newNode = NewBlockNode(blockHeader, prevNode)
 		newNode.Status = chainutil.StatusDataStored
-		b.index.AddNode(newNode)
+		b.Index.AddNode(newNode)
 	} else {
 		newNode.Height = block.Height()
 		if newNode.Height <= 0 {
 			return false, err, -1
 		}
-		b.index.UnsetStatusFlags(newNode, chainutil.BlockStatus(0xFF))
-		b.index.SetStatusFlags(newNode, chainutil.StatusDataStored)
+		b.Index.UnsetStatusFlags(newNode, chainutil.BlockStatus(0xFF))
+		b.Index.SetStatusFlags(newNode, chainutil.StatusDataStored)
 		newNode.Parent = prevNode
-		b.index.AddNodeDirect(newNode)
+		b.Index.AddNodeDirect(newNode)
 
 		flags |= BFAlreadyInChain
 	}
-	err = b.index.FlushToDB(dbStoreBlockNode)
+	err = b.Index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
 		return false, err, -1
 	}
 
-	if flags & BFAlreadyInChain == BFAlreadyInChain {
+	if flags&BFAlreadyInChain == BFAlreadyInChain {
 		return false, nil, -1
 	}
 

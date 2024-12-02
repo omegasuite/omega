@@ -273,7 +273,7 @@ func (msg *MsgCandidateResp) OmcEncode(w io.Writer, pver uint32, enc MessageEnco
 		return err
 	}
 
-	if err = writeElement(w, msg.From);	err != nil {
+	if err = writeElement(w, msg.From); err != nil {
 		return err
 	}
 

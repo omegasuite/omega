@@ -159,6 +159,12 @@ type MinerChain struct {
 	violations []*wire.Violations
 
 	TxIndex blockchain.IndexManager
+
+	// temp data for adjustment
+
+	collaterals      [2016]int
+	nextAdjustHeight int32
+	IsSVP            bool
 }
 
 func (b *MinerChain) DSReport(p *wire.Violations) {
@@ -281,7 +287,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	miners := make([]*[20]byte, wire.CommitteeSize)
 	for i := int32(0); i < wire.CommitteeSize; i++ {
 		if blk, _ := b.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
-			if _, err := b.blockChain.CheckCollateral(blk, &blk.MsgBlock().BestBlock, blockchain.BFNone); err == nil {
+			if _, err := b.blockChain.CheckCollateral(blk, &blk.MsgBlock().BestBlock, blockchain.BFNone); b.IsSVP || err == nil {
 				miners[i] = &blk.MsgBlock().Miner
 			}
 		}
@@ -298,7 +304,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	for x != nil && rotate >= p.Height {
 		if p.Height > rotate-wire.CommitteeSize {
 			hdr := NodetoHeader(p)
-			if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); err == nil {
+			if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); b.IsSVP || err == nil {
 				miners[p.Height-(rotate-wire.CommitteeSize+1)] = &hdr.Miner
 			} else {
 				miners[p.Height-(rotate-wire.CommitteeSize+1)] = nil
@@ -347,7 +353,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 				rotate++
 
 				hdr := NodetoHeader(n)
-				if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); err == nil {
+				if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); b.IsSVP || err == nil {
 					miners[j] = &hdr.Miner
 				} else {
 					miners[j] = nil
@@ -700,7 +706,7 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
-		if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
+		if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 			if r, err, _ := b.checkV2(block, newBest, blockchain.BFNone); !r {
 				if err != nil {
 					log.Infof("checkV2 failed for attaching block: %s", err.Error())
@@ -1483,6 +1489,8 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		deploymentCaches:    NewThresholdCaches(chaincfg.DefinedDeployments),
 		violations:          make([]*wire.Violations, 0),
 		TxIndex:             config.IndexManager,
+		nextAdjustHeight:    -1,
+		IsSVP:               config.IsSVP,
 	}
 
 	// Initialize the chain state from the passed database.  When the db
@@ -1624,9 +1632,33 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 	if ok {
 		for _, v := range os.Args {
 			if v == "--chainback" {
-				detachNodes.PushBack(s.BestChain.Tip())
-				ok = false
-				break
+				hash := s.BestChain.Tip().Hash
+				h := s.BestChain.Height()
+				t := s.BestChain.Tip()
+
+				detachNodes.PushBack(t)
+				s.ChainLock.Lock()
+				s.ReorganizeChain(detachNodes, list.New())
+				s.ChainLock.Unlock()
+
+				s.Index.SetStatusFlags(t, chainutil.StatusValid)
+
+				config.DB.Update(func(tx database.Tx) error {
+					bucket := tx.Metadata().Bucket(hashIndexBucketName)
+					bucket.Delete(hash[:])
+
+					blockIndexBucket := tx.Metadata().Bucket(blockIndexBucketName)
+					key := blockchain.BlockIndexKey(&hash, uint32(0xFFFFFFFF))
+					blockIndexBucket.Delete(key) // remove invalid data that might be there
+
+					key = blockchain.BlockIndexKey(&hash, uint32(h))
+					blockIndexBucket.Delete(key) // remove invalid data that might be there
+
+					return nil
+				})
+				config.DB.Close()
+				config.MinerDB.Close()
+				return nil, fmt.Errorf("databased changed. please restart")
 			}
 		}
 	}

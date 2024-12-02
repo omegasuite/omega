@@ -29,7 +29,7 @@ const (
 // as specified by the Type field, that a peer wants, has, or does not have to
 // another peer.
 type InvVect struct {
-	Type common.InvType        // Type of data
+	Type common.InvType // Type of data
 	Hash chainhash.Hash // Hash of the data
 }
 

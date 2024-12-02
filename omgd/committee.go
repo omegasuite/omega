@@ -115,7 +115,7 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 						case wire.OmegaMessage:
 							msg.msg.(wire.OmegaMessage).SetSeq(rand.Int31())
 						}
-						Server.Broadcast(msg.msg, nil)
+						protocols[0].Server.Broadcast(msg.msg, nil)
 						if msg.done != nil {
 							msg.done <- true
 						}
@@ -372,7 +372,7 @@ func (s *server) handleCommitteRotation(r int32) {
 			continue
 		}
 
-		if _, err := s.chain.CheckCollateral(mb, nil, blockchain.BFNone); err != nil {
+		if _, err := s.chain.CheckCollateral(mb, nil, blockchain.BFNone); !b.IsSVP && err != nil {
 			continue
 		}
 
@@ -541,15 +541,16 @@ func (s *server) NewConsusBlock(m *btcutil.Block) {
 	} else {
 		s.chain.SendNotification(blockchain.NTBlockRejected, m)
 		if err != nil {
-			consensusLog.Infof("consensus faield to process ProcessBlock!!! %s", err.Error())
+			consensusLog.Infof("consensus failed to process ProcessBlock!!! %s", err.Error())
 		}
+		s.chain.SendNotification(blockchain.NTBlockConnected, (*btcutil.Block)(nil))
 	}
 }
 
 func (s *server) GetPrivKey(who [20]byte) *btcec.PrivateKey {
 	for i, k := range s.signAddress {
 		if bytes.Compare(who[:], k.ScriptAddress()) == 0 {
-			return cfg.privateKeys[i]
+			return protocols[0].cfg.privateKeys[i]
 		}
 	}
 	return nil

@@ -96,11 +96,11 @@ func CalcScriptInfo(sigScript, pkScript []byte) (*ScriptInfo, error) {
 		switch c {
 		case ovm.PUSH:
 			i += 2 + int(sigScript[i + 1])
-			
+
 		case ovm.SIGNTEXT:
 			si.SigOps++
 			i += 2
-			
+
 		default:
 			return nil, txsparser.ScriptError(txsparser.ErrNotPushOnly,
 				"sigscript is not valid")
@@ -109,7 +109,7 @@ func CalcScriptInfo(sigScript, pkScript []byte) (*ScriptInfo, error) {
 
 	return si, nil
 }
- */
+*/
 
 /*
 func ExtractSigHead(sigScript []byte) (int, []byte, error) {
@@ -136,7 +136,7 @@ func ExtractSigHead(sigScript []byte) (int, []byte, error) {
 
 	return len(sigScript), nil, nil
 }
- */
+*/
 
 // payToPubKeyHashScript creates a new script to pay a transaction
 // output to a 20-byte pubkey hash. It is expected that the input is a valid
@@ -204,7 +204,7 @@ func MultiSigScript(pubkeys []*btcutil.AddressPubKeyHash, nrequired int) ([]byte
 		return nil, txsparser.ScriptError(txsparser.ErrTooManyRequiredSigs, str)
 	}
 
-	builder := make([]byte, 21 * len(pubkeys) + 8 + 4)
+	builder := make([]byte, 21*len(pubkeys)+8+4)
 	copy(builder, pubkeys[0].ScriptNetAddress())
 	copy(builder[21:], []byte{byte(ovm.OP_PAY2PKH), 0, 0, 0})
 	binary.LittleEndian.PutUint32(builder[25:], uint32(len(pubkeys)))

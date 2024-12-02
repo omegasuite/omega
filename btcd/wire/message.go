@@ -48,6 +48,10 @@ const (
 	CmdPing           = "ping"
 	CmdPong           = "pong"
 	CmdAlert          = "alert"
+	CmdFinalized      = "finalized"
+	CmdFinal          = "final"
+	CmdGetChainMap    = "getcmap"
+	CmdChainMap       = "chainmap"
 	CmdMemPool        = "mempool"
 	CmdFilterAdd      = "filteradd"
 	CmdFilterClear    = "filterclear"
@@ -176,6 +180,18 @@ func makeEmptyMessage(command string) (Message, error) {
 
 	case CmdAlert:
 		msg = &MsgAlert{}
+
+	case CmdFinalized:
+		msg = &MsgFinalized{}
+
+	case CmdFinal:
+		msg = &MsgReFinal{}
+
+	case CmdGetChainMap:
+		msg = &MsgGetChainMap{}
+
+	case CmdChainMap:
+		msg = &MsgChainMap{}
 
 	case CmdMemPool:
 		msg = &MsgMemPool{}
@@ -418,7 +434,7 @@ func ReadMessageWithEncodingN(r io.Reader, pver uint32, btcnet common.OmegaNet,
 	// Check for messages from the wrong bitcoin network.
 	if hdr.magic != btcnet {
 		discardInput(r, hdr.length)
-		str := fmt.Sprintf("message from other network [%v]", hdr.magic)
+		str := fmt.Sprintf("message from other network [%v] expect [%v]", hdr.magic, btcnet)
 		return totalBytes, nil, nil, messageError("ReadMessage", str)
 	}
 

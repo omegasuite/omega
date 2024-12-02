@@ -12,6 +12,7 @@ import (
 	"github.com/omegasuite/btcd/chaincfg"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcd/wire/common"
+	"github.com/omegasuite/omega/ovm"
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -51,6 +52,8 @@ const (
 
 	BFEasyBlocks
 
+	BFNoOrphan
+
 	// BFNone is a convenience value to specifically indicate no flags.
 	BFNone BehaviorFlags = 0
 )
@@ -60,15 +63,15 @@ const (
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) blockExists(hash *chainhash.Hash) (bool, error) {
-	// Check block index first (could be main chain or side chain blocks).
-	if b.index.HaveBlock(hash) { // index includes only the most recent blocks
+	// Check block Index first (could be main chain or side chain blocks).
+	if b.Index.HaveBlock(hash) { // Index includes only the most recent blocks
 		return true, nil
 	}
 
 	// Check in the database.
 	var exists bool
 	err := b.db.View(func(dbTx database.Tx) error {
-		// if not in index, it might still be a valid block
+		// if not in Index, it might still be a valid block
 		bucket := dbTx.Metadata().Bucket(hashIndexBucketName)
 		if bucket.Get((*hash)[:]) != nil {
 			exists = true
@@ -84,11 +87,11 @@ func (b *BlockChain) blockExists(hash *chainhash.Hash) (bool, error) {
 
 		// Ignore side chain blocks in the database.  This is necessary
 		// because there is not currently any record of the associated
-		// block index data such as its block height, so it's not yet
+		// block Index data such as its block height, so it's not yet
 		// possible to efficiently load the block and do anything useful
 		// with it.
 		//
-		// Ultimately the entire block index should be serialized
+		// Ultimately the entire block Index should be serialized
 		// instead of only the current main chain so it can be consulted
 		// directly.
 		/*
@@ -132,7 +135,7 @@ func (b *BlockChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) error {
-	behaviorFlags := BFNone
+	behaviorFlags := BFNone | BFNoOrphan
 	if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet || b.ChainParams.Net == common.RegNet {
 		behaviorFlags |= BFEasyBlocks
 	}
@@ -141,6 +144,10 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 		block := (*btcutil.Block)(blk.(*orphanBlock))
 		if prevNode := b.NodeByHash(&block.MsgBlock().Header.PrevBlock); prevNode != nil {
 			block.SetHeight(prevNode.Height + 1)
+			if !b.IsSVP && !b.MatchInpool(block) {
+				return false, nil
+			}
+
 			// Potentially accept the block into the block chain.
 			if prevNode == b.BestChain.Tip() {
 				err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags|behaviorFlags)
@@ -168,7 +175,7 @@ func (b *BlockChain) OnNewMinerNode() {
 		}
 		return added
 	}) {
-		high := b.index.Highest()
+		high := b.Index.Highest()
 		b.CheckSideChain(&high.Hash)
 	}
 }
@@ -195,7 +202,7 @@ func (b *BlockChain) CheckSideChain(hash *chainhash.Hash) {
 	b.ReorganizeChain(detachNodes, attachNodes)
 	log.Infof("CheckSideChain: tx REORGANIZE: Block %v is causing a reorganize. %d detached %d attaches. New chain height = %d", node.Hash, detachNodes.Len(), attachNodes.Len(), b.BestSnapshot().Height)
 
-	b.index.FlushToDB(dbStoreBlockNode)
+	b.Index.FlushToDB(dbStoreBlockNode)
 }
 
 type orphanBlock btcutil.Block
@@ -215,7 +222,12 @@ func (b *orphanBlock) Hash() *chainhash.Hash {
 func (b *orphanBlock) Removable(ob chainutil.Orphaned) bool {
 	block := b.MsgBlock().(*wire.MsgBlock)
 	oblock := ob.MsgBlock().(*wire.MsgBlock)
-	return len(block.Transactions[0].SignatureScripts) > len(oblock.Transactions[0].SignatureScripts)
+	if len(block.Transactions[0].SignatureScripts) > len(oblock.Transactions[0].SignatureScripts) {
+		return true
+	}
+	return !oblock.Transactions[0].TxIn[0].PreviousOutPoint.Hash.IsEqual(&zeroHash)
+	// refers a BTC block, we may remove it from orphan because it could be added when the BTC block was not ready
+	// for regulay coinbase, this Hash is 0
 }
 
 func (b *orphanBlock) NeedUpdate(ob chainutil.Orphaned) bool {
@@ -239,6 +251,43 @@ func BlockToOrphan(block *btcutil.Block) chainutil.Orphaned {
 	return (*orphanBlock)(block)
 }
 
+func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
+	r := b.db.View(func(dbtx database.Tx) error {
+		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
+				continue
+			}
+			xtx := &wire.XchainData{}
+			tntx := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
+			if tntx == nil || len(tntx) == 0 {
+				return fmt.Errorf("error")
+			}
+			if err := xtx.DeSerialize(tntx); err != nil || xtx.Finalized == 0 {
+				return fmt.Errorf("error")
+			}
+			if xtx.Txs[0].Txo.PkScript[21] != 0x66 {
+				fmt.Printf("bad XchainData")
+			}
+
+			for i, txo := range xtx.Txs {
+				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
+					if (common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
+						b.normalizeTxo(&txo.Txo)
+					}
+				}
+				if !txo.Txo.Match(tx.TxOut[i]) {
+					return fmt.Errorf("error")
+				}
+			}
+		}
+
+		return nil
+	})
+	return r == nil
+}
+
 // ProcessBlock is the main workhorse for handling insertion of new blocks into
 // the block chain.  It includes functionality such as rejecting duplicate
 // blocks, ensuring blocks follow all rules, orphan handling, and insertion into
@@ -250,18 +299,17 @@ func BlockToOrphan(block *btcutil.Block) chainutil.Orphaned {
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error, int32, *chainhash.Hash) {
-	//	if block.MsgBlock().Header.Nonce > 0 {
-	// if it is a POW block, wait 10 seconds. Thus if the committee if functioning
-	// they will generate signed blocks during this period and supersedes this block
-	//		time.Sleep(10 * time.Second)
-	//	}
-
 	//	log.Infof("ProcessBlock: ChainLock.RLock")
 	b.ChainLock.Lock()
 	defer b.ChainLock.Unlock()
 
+	blockHash := block.Hash()
+
 	blockHeader := &block.MsgBlock().Header
 	prevHash := &blockHeader.PrevBlock
+	if prevHash.IsEqual(&zerohash) { // && !blockHash.IsEqual(b.ChainParams.GenesisHash) {
+		return true, false, nil, -1, nil
+	}
 	prevHashExists, err := b.blockExists(prevHash)
 	if err != nil {
 		return false, false, err, -1, nil
@@ -276,7 +324,9 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 				return false, false, err, -1, nil
 			} else {
 				log.Infof("Adding orphan block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
-				orp = b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+				if flags&BFNoOrphan == 0 {
+					orp = b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+				}
 			}
 		}
 		return false, true, nil, -1, orp
@@ -287,14 +337,14 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	if prevNode == nil {
 		str := fmt.Sprintf("previous block %s is unknown", prevHash)
 		return false, false, ruleError(ErrPreviousBlockUnknown, str), -1, nil
-	} else if b.index.NodeStatus(prevNode).KnownInvalid() {
+	} else if b.Index.NodeStatus(prevNode).KnownInvalid() {
 		str := fmt.Sprintf("previous block %s is known to be invalid", prevHash)
 		return false, false, ruleError(ErrInvalidAncestorBlock, str), -1, prevHash
 	}
 
 	blockHeight := prevNode.Height + 1
 
-	if blockHeight <= int32(b.index.Cutoff) {
+	if blockHeight <= int32(b.Index.Cutoff) {
 		if prevNode.Height <= 0 {
 			return false, false, ruleError(ErrInvalidAncestorBlock, "Block height is in locked area"), -1, prevHash
 		}
@@ -308,7 +358,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	//	fastAdd := flags&BFFastAdd == BFFastAdd
-	blockHash := block.Hash()
 
 	// The block must not already exist as valid in the main chain or side chains.
 	exists, err := b.blockExists(blockHash)
@@ -317,23 +366,30 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	if exists {
+		if blockHash.IsEqual(&b.BestChain.Tip().Hash) {
+			return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
+		}
 		node := b.NodeByHash(blockHash)
-		if !b.index.NodeStatus(node).KnownInvalid() && node.Height == block.Height() {
+		if !b.Index.NodeStatus(node).KnownInvalid() && node.Height == block.Height() {
 			if block.Height() > b.BestChain.Height() {
 				// do we need to reorg?
 				detachNodes, attachNodes := b.getReorganizeNodes(node)
 
-				if attachNodes.Len() != 0 {
+				if detachNodes.Len() == 0 && attachNodes.Len() == 1 {
+					exists = false
+				} else if attachNodes.Len() != 0 {
 					// Reorganize the chain.
 					if err = b.ReorganizeChain(detachNodes, attachNodes); err != nil {
 						return false, true, err, -1, nil
 					}
-					if writeErr := b.index.FlushToDB(dbStoreBlockNode); writeErr != nil {
-						log.Warnf("Error flushing block index changes to disk: %v", writeErr)
+					if writeErr := b.Index.FlushToDB(dbStoreBlockNode); writeErr != nil {
+						log.Warnf("Error flushing block Index changes to disk: %v", writeErr)
 					}
 				}
 			}
-			return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
+			if !b.IsSVP && exists {
+				return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
+			}
 		} // re-examine it otherwise
 	}
 
@@ -344,9 +400,26 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	// Perform preliminary sanity checks on the block and its transactions.
-	err = checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
+	err = b.checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
 	if err != nil {
 		return false, false, err, -1, nil
+	}
+
+	for _, tx := range block.MsgBlock().Transactions {
+		for _, txo := range tx.TxOut {
+			if !txo.IsSeparator() && txo.IsCrossChain() {
+				if txo.PkScript[0] == b.ChainParams.MultiSigAddrID && (txo.PkScript[24]&0x80) != 0 {
+					// multisig xfer is not allowed in layer 2 chain
+					str := fmt.Sprintf("Invalid cross chain tx type in tx %s", blockHash.String())
+					return false, true, ruleError(ErrDuplicateBlock, str), -1, nil
+				}
+				if txo.PkScript[0] != b.ChainParams.ScriptHashAddrID && txo.PkScript[0] != b.ChainParams.PubKeyHashAddrID {
+					// only the two kind addresses are allowed in cross chain tx
+					str := fmt.Sprintf("Invalid cross chain tx type in tx %s", blockHash.String())
+					return false, true, ruleError(ErrDuplicateBlock, str), -1, nil
+				}
+			}
+		}
 	}
 
 	if block.Size() > wire.MaxBlockPayload {
@@ -376,6 +449,16 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		}
 	}
 
+	for _, tx := range block.MsgBlock().Transactions[1:] {
+		for _, txo := range tx.TxOut {
+			if !txo.IsSeparator() && txo.IsCrossChain() {
+				if len(txo.PkScript) < 26 || !b.validCrossChainScript(txo.PkScript) {
+					return false, false, fmt.Errorf("Cross chain PkScript length is less than 25b in %s", tx.TxHash().String()), -1, nil
+				}
+			}
+		}
+	}
+
 	isMainChain := false
 
 	// don't check POW if we are to extending a side chain and this is a comittee block
@@ -384,6 +467,15 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		// this mark an pre-consus block
 		//		b.AddOrphanBlock(block)
 		return isMainChain, false, nil, -1, nil
+	}
+
+	if !b.IsSVP && !b.MatchInpool(block) {
+		return false, true, nil, -1, nil
+		//		if flags&BFNoOrphan != 0 {
+		//			return false, true, nil, -1, nil
+		//		}
+		//		orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+		//		return false, true, nil, -1, orp
 	}
 
 	if prevNode == b.BestChain.Tip() {
@@ -399,8 +491,11 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		}
 		if mkorphan {
 			log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
-			orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-			return isMainChain, true, nil, -1, orp
+			if flags&BFNoOrphan == 0 {
+				orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+				return isMainChain, true, nil, -1, orp
+			}
+			return false, true, nil, -1, nil
 		}
 	} else {
 		switch {
@@ -426,7 +521,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	if isMainChain {
 		b.Miners.ProcessOrphans(&b.Miners.BestSnapshot().Hash, BFNone)
-	} else if block.MsgBlock().Header.Nonce < 0 && block.MsgBlock().Header.Version >= chaincfg.Version2 {
+	} else if block.MsgBlock().Header.Nonce < 0 && (!b.IsSVP || block.MsgBlock().Header.Version >= chaincfg.Version2) {
 		// CHECK if there is a miner violation
 		// block is in side chain
 		mblk, _ := b.BlockByHeight(block.Height()) //	main chain block
@@ -551,7 +646,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent *chainutil.BlockNod
 		snr := *(ppk.Hash160())
 		// is the signer in committee?
 		if _, ok := miners[snr]; !ok {
-			//			b.index.RemoveNode(b.index.LookupNode(block.Hash()))
+			//			b.Index.RemoveNode(b.Index.LookupNode(block.Hash()))
 			return false
 		}
 	}

@@ -33,9 +33,9 @@ const MaxBlockLocatorsPerMsg = 500
 // exponentially decrease the number of hashes the further away from head and
 // closer to the genesis block you get.
 type MsgGetBlocks struct {
-	ProtocolVersion      uint32
-	TxBlockLocatorHashes []*chainhash.Hash
-	TxHashStop           chainhash.Hash
+	ProtocolVersion         uint32
+	TxBlockLocatorHashes    []*chainhash.Hash
+	TxHashStop              chainhash.Hash
 	MinerBlockLocatorHashes []*chainhash.Hash
 	MinerHashStop           chainhash.Hash
 }
@@ -76,7 +76,7 @@ func (msg *MsgGetBlocks) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding
 	if err != nil {
 		return err
 	}
-	if count + 2 > MaxBlockLocatorsPerMsg {
+	if count+2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count, MaxBlockLocatorsPerMsg)
 		return messageError("MsgGetBlocks.OmcDecode", str)
@@ -104,7 +104,7 @@ func (msg *MsgGetBlocks) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding
 	if err != nil {
 		return err
 	}
-	if count + count2 + 2 > MaxBlockLocatorsPerMsg {
+	if count+count2+2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count, MaxBlockLocatorsPerMsg)
 		return messageError("MsgGetBlocks.OmcDecode", str)
@@ -134,7 +134,7 @@ func (msg *MsgGetBlocks) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding
 // This is part of the Message interface implementation.
 func (msg *MsgGetBlocks) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	count := len(msg.TxBlockLocatorHashes)
-	if count + 2 > MaxBlockLocatorsPerMsg {
+	if count+2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count, MaxBlockLocatorsPerMsg)
 		return messageError("MsgGetBlocks.OmcEncode", str)
@@ -162,7 +162,7 @@ func (msg *MsgGetBlocks) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding
 	}
 
 	count2 := len(msg.MinerBlockLocatorHashes)
-	if count + count2 + 2 > MaxBlockLocatorsPerMsg {
+	if count+count2+2 > MaxBlockLocatorsPerMsg {
 		str := fmt.Sprintf("too many block locator hashes for message "+
 			"[count %v, max %v]", count2, MaxBlockLocatorsPerMsg)
 		return messageError("MsgGetBlocks.OmcEncode", str)
@@ -194,7 +194,7 @@ func (msg *MsgGetBlocks) Command() string {
 func (msg *MsgGetBlocks) MaxPayloadLength(pver uint32) uint32 {
 	// Protocol version 4 bytes + num hashes (varInt) + max block locator
 	// hashes + hash stop.
-	return 4 + 2 * common.MaxVarIntPayload + (MaxBlockLocatorsPerMsg * chainhash.HashSize) + 2 * chainhash.HashSize
+	return 4 + 2*common.MaxVarIntPayload + (MaxBlockLocatorsPerMsg * chainhash.HashSize) + 2*chainhash.HashSize
 }
 
 // NewMsgGetBlocks returns a new bitcoin getblocks message that conforms to the
@@ -202,10 +202,10 @@ func (msg *MsgGetBlocks) MaxPayloadLength(pver uint32) uint32 {
 // fields.
 func NewMsgGetBlocks(hashStop, minerstop *chainhash.Hash) *MsgGetBlocks {
 	return &MsgGetBlocks{
-		ProtocolVersion:      ProtocolVersion,
-		TxBlockLocatorHashes: make([]*chainhash.Hash, 0, MaxBlockLocatorsPerMsg),
-		TxHashStop:           *hashStop,
+		ProtocolVersion:         ProtocolVersion,
+		TxBlockLocatorHashes:    make([]*chainhash.Hash, 0, MaxBlockLocatorsPerMsg),
+		TxHashStop:              *hashStop,
 		MinerBlockLocatorHashes: make([]*chainhash.Hash, 0, MaxBlockLocatorsPerMsg),
-		MinerHashStop:        *minerstop,
+		MinerHashStop:           *minerstop,
 	}
 }
