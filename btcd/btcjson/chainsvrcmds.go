@@ -1293,6 +1293,7 @@ func init() {
 	MustRegisterCmd("getissuedtokens", (*GetIssuedTokensCmd)(nil), flags)
 
 	MustRegisterCmd("getcrosschaindb", (*GetCrossChainDBCmd)(nil), flags)
+	MustRegisterCmd("clearbtcl2pool", (*GetCrossChainDBCmd)(nil), flags)
 
 	MustRegisterCmd("getmempoolinfo", (*GetMempoolInfoCmd)(nil), flags)
 	MustRegisterCmd("createxferl2txo", (*Createxferl2txoCmd)(nil), flags)
@@ -1300,7 +1301,6 @@ func init() {
 	MustRegisterCmd("getsigners", (*GetSignersCmd)(nil), flags)
 	MustRegisterCmd("getbtcpool", (*GetBtcPoolCmd)(nil), flags)
 	MustRegisterCmd("getl2pool", (*GetL2PoolCmd)(nil), flags)
-	MustRegisterCmd("clearbtcl2pool", (*GetL2PoolCmd)(nil), flags)
 	MustRegisterCmd("getmininginfo", (*GetMiningInfoCmd)(nil), flags)
 	MustRegisterCmd("getnetworkinfo", (*GetNetworkInfoCmd)(nil), flags)
 	MustRegisterCmd("getnettotals", (*GetNetTotalsCmd)(nil), flags)
@@ -1338,6 +1338,4 @@ func init() {
 	MustRegisterCmd("verifymessage", (*VerifyMessageCmd)(nil), flags)
 	MustRegisterCmd("verifytxoutproof", (*VerifyTxOutProofCmd)(nil), flags)
 	MustRegisterCmd("verifysig", (*VerifySigCmd)(nil), flags)
-	MustRegisterCmd("getcrosschaindb", (*GetCrossChainDBCmd)(nil), flags)
-	MustRegisterCmd("clearbtcl2pool", (*GetCrossChainDBCmd)(nil), flags)
 }
