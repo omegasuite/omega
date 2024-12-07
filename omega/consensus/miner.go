@@ -539,6 +539,7 @@ func VerifySig(m Message) bool {
 }
 
 func pull(hash chainhash.Hash, h int32, p ReqQueue) {
+	// should have miner.syncMutex.Lock() done before entering this func
 	t := time.Now().Unix()
 
 	if p == nil {
