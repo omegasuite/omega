@@ -1667,13 +1667,13 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		}
 		if v < out {
 			str := fmt.Sprintf("total type %d value of all transaction inputs for "+
-				"transaction %v is %v which is less than the amount "+
-				"spent of %v", in, txHash, v, out)
+				"transaction %v is %v which is less than the output amount "+
+				"of %v", in, txHash, v, out)
 			return 0, 0, ruleError(ErrSpendTooHigh, str)
 		} else if in != common.OmegaCoinTyp && in != 0x10 && in != 0 && v != out {
 			str := fmt.Sprintf("total %d type token value of all transaction inputs for "+
-				"transaction %v is %v which is not equal to the amount "+
-				"spent of %v", in, txHash, v, out)
+				"transaction %v is %v which is not equal to the output amount "+
+				"of %v", in, txHash, v, out)
 			return 0, 0, ruleError(ErrSpendTooHigh, str)
 		}
 	}

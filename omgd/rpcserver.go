@@ -5680,7 +5680,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		}
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCDeserialization,
-			Message: "TX rejected: " + err.Error(),
+			Message: tx.Hash().String() + "\nTX rejected: " + err.Error(),
 		}
 	}
 
@@ -7007,11 +7007,11 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 	case blockchain.NTBlockRejected:
 		switch notification.Data.(type) {
 		case *btcutil.Tx:
-			tx := *notification.Data.(*btcutil.Tx)
-			if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
-				ch.ch <- &wire.MsgTx{Version: 0}
-				delete(s.sendcmdconfirmation, *tx.Hash())
-			}
+			//			tx := *notification.Data.(*btcutil.Tx)
+			//			if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
+			//				ch.ch <- &wire.MsgTx{Version: 0}
+			//				delete(s.sendcmdconfirmation, *tx.Hash())
+			//			}
 		}
 	}
 }

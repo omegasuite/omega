@@ -8,10 +8,10 @@ package main
 import (
 	"bytes"
 	"os"
-//	"os/exec"
+	//	"os/exec"
 	"os/signal"
 	"runtime/pprof"
-//	"syscall"
+	//	"syscall"
 	"time"
 )
 
@@ -59,15 +59,14 @@ func interruptListener() <-chan struct{} {
 
 		close(intchannel)
 
-		time.AfterFunc(5*time.Minute, func() {
-			btcdLog.Infof("Forced exit 5 min. after shutdown notice.")
+		time.Sleep(5 * time.Minute)
+		btcdLog.Infof("Forced exit 5 min. after shutdown notice.")
 
-			pprof.Lookup("mutex").WriteTo(&wbuf, 1)
-			pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
-			btcdLog.Infof("pprof Info: \n%s", wbuf.String())
+		pprof.Lookup("mutex").WriteTo(&wbuf, 1)
+		pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
+		btcdLog.Infof("pprof Info: \n%s", wbuf.String())
 
-			os.Exit(9)
-		})
+		os.Exit(9)
 	}()
 
 	return intchannel

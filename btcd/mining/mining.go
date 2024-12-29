@@ -719,6 +719,13 @@ mempoolLoop:
 			continue
 		}
 
+		if g.Chain.CheckCrossChainTx(tx.MsgTx()) != nil {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			log.Infof("Reject expired tx %s", tx.Hash())
+			continue
+		}
+
 		if g.chainParams.ContractReqExp && (tx.MsgTx().Version&wire.TxExpire) == 0 {
 			// we reject txs that has no expiration and has contract exec
 			rjct := false
@@ -1167,7 +1174,9 @@ mempoolLoop:
 				heap.Push(priorityQueue, item)
 			}
 		}
-		g.txSource.ResetTryCount(tx)
+		if !tx.ContainContract() {
+			g.txSource.ResetTryCount(tx)
+		}
 	}
 
 	contractExec := stepLimit - Vm.StepLimit

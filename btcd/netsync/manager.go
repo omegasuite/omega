@@ -370,16 +370,17 @@ func (sm *SyncManager) updateSyncPeer() {
 	if p != nil {
 		sm.smtx.Lock()
 		state, ok := sm.peerStates[p]
-		sm.smtx.Unlock()
 
 		if ok && len(state.requestedBlocks) > 0 {
 			tm := int(time.Now().Unix())
 			for _, t := range state.requestedBlocks {
 				if t > tm-30 {
+					sm.smtx.Unlock()
 					return
 				}
 			}
 		}
+		sm.smtx.Unlock()
 	}
 
 	n := len(sm.syncjobs)
@@ -1527,7 +1528,9 @@ func (sm *SyncManager) TmpBlkSrc(hash chainhash.Hash) *peerpkg.Peer {
 // We examine the inventory advertised by the remote peer and act accordingly.
 func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 	peer := imsg.peer
+	sm.smtx.Lock()
 	state, exists := sm.peerStates[peer]
+	sm.smtx.Unlock()
 	if !exists {
 		log.Warnf("Received inv message from unknown peer %s", peer)
 		sm.updateSyncPeer()
