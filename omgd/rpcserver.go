@@ -2253,6 +2253,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
 		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 		NextHash:      nextHashString,
+		Connection:    string(blockHeader.Connection),
 		Address:       d.String(), // hex.EncodeToString(blockHeader.Miner),
 		Best:          blockHeader.BestBlock.String(),
 		Collateral:    collateral,
@@ -7007,11 +7008,11 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 	case blockchain.NTBlockRejected:
 		switch notification.Data.(type) {
 		case *btcutil.Tx:
-			//			tx := *notification.Data.(*btcutil.Tx)
-			//			if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
-			//				ch.ch <- &wire.MsgTx{Version: 0}
-			//				delete(s.sendcmdconfirmation, *tx.Hash())
-			//			}
+			tx := *notification.Data.(*btcutil.Tx)
+			if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
+				ch.ch <- &wire.MsgTx{Version: 0}
+				delete(s.sendcmdconfirmation, *tx.Hash())
+			}
 		}
 	}
 }
