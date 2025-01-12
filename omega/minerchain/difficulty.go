@@ -318,7 +318,8 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	normalizedTimespan := int64(0)
 	pb := firstNode
 
-	coll = 0x7FFFFFFF // max. min coll for next period is the min coll of all in the last period
+	bcoll := uint32(0x7FFFFFFF) // max. min coll for next period is the min coll of all in the last period
+	hasnz := false
 
 	//	bb := b.blockChain.BestChain.Tip()
 	for i := b.blocksPerRetarget - 2; i >= 0; i-- {
@@ -327,14 +328,15 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		block := pb.Data.(*blockchainNodeData).block
 		bb := b.blockChain.NodeByHash(&block.BestBlock)
 
-		if block.Collateral < coll && !b.IsSVP && block.Version&0x7FFF0000 < chaincfg.Version5 {
-			coll = block.Collateral
+		if block.Collateral < bcoll && !b.IsSVP && block.Version&0x7FFF0000 < chaincfg.Version5 {
+			bcoll = block.Collateral
 		}
 
 		j := pb.Height % b.blocksPerRetarget
 		if b.collaterals[j] != 0 {
-			if uint32(b.collaterals[j]) < coll {
-				coll = uint32(b.collaterals[j])
+			hasnz = true
+			if uint32(b.collaterals[j]) < bcoll {
+				bcoll = uint32(b.collaterals[j])
 			}
 		} else if v3 && (b.IsSVP || block.Version&0x7FFF0000 >= chaincfg.Version5) && block.Utxos != nil {
 			var op = block.Utxos
@@ -363,8 +365,8 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 				for _, tx := range blk.Transactions() {
 					if tx.Hash().IsEqual(&op.Hash) {
 						v := tx.MsgTx().TxOut[op.Index].Value.(*token.NumToken).Val / 1e8
-						if uint32(v) < coll {
-							coll = uint32(v)
+						if uint32(v) < bcoll {
+							bcoll = uint32(v)
 						}
 						fd = true
 						break
@@ -379,8 +381,8 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 				var msgTx wire.MsgTx
 				err = msgTx.Deserialize(bytes.NewReader(txBytes))
 				v := msgTx.TxOut[op.Index].Value.(*token.NumToken).Val / 1e8
-				if uint32(v) < coll {
-					coll = uint32(v)
+				if uint32(v) < bcoll {
+					bcoll = uint32(v)
 				}
 			}
 		}
@@ -453,6 +455,10 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		pb = nb
 	}
 
+	if hasnz {
+		coll = bcoll
+	}
+
 	// Limit the amount of adjustment that can occur to the previous
 	// difficulty.
 
@@ -492,7 +498,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	// intentionally converting the bits back to a number instead of using
 	// newTarget since conversion to the compact representation loses
 	// precision.
-	if v3 && coll < 100 {
+	if v3 && coll < 100 && coll > 0 {
 		coll = 100
 	}
 	coll = (coll * 7) >> 3

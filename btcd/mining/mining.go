@@ -324,15 +324,15 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 // which are not provably unspendable as available unspent transaction outputs.
 func spendTransaction(utxoView *viewpoint.ViewPointSet, tx *btcutil.Tx, height int32) error {
 	if !tx.MsgTx().IsCrossChain() {
-	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
+		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			entry := utxoView.Utxo.LookupEntry(txIn.PreviousOutPoint)
+			if entry != nil {
+				entry.Spend()
+			}
 		}
-		entry := utxoView.Utxo.LookupEntry(txIn.PreviousOutPoint)
-		if entry != nil {
-			entry.Spend()
-		}
-	}
 	}
 
 	utxoView.AddTxOuts(tx, height)
@@ -748,16 +748,16 @@ mempoolLoop:
 			var locked = false
 			locks := ""
 			if !tx.MsgTx().IsCrossChain() {
-			for _, txin := range tx.MsgTx().TxIn {
-				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-					continue
+				for _, txin := range tx.MsgTx().TxIn {
+					if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+						continue
+					}
+					if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
+						locked = true
+						locks = txin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", txin.PreviousOutPoint.Index)
+						break
+					}
 				}
-				if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
-					locked = true
-					locks = txin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", txin.PreviousOutPoint.Index)
-					break
-				}
-			}
 			}
 			if locked {
 				g.txSource.RemoveTransaction(tx, true)
@@ -793,45 +793,45 @@ mempoolLoop:
 		// ordered below.
 		prioItem := &txPrioItem{tx: tx}
 		if !tx.MsgTx().IsCrossChain() {
-		for _, txIn := range tx.MsgTx().TxIn {
-			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				// never here
-				continue
+			for _, txIn := range tx.MsgTx().TxIn {
+				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					// never here
+					continue
+				}
+				originHash := &txIn.PreviousOutPoint.Hash
+				entry := views.GetUtxo(txIn.PreviousOutPoint)
+				if entry == nil || entry.IsSpent() {
+					if !g.txSource.HaveTransaction(originHash) {
+						g.txSource.RemoveTransaction(tx, true)
+						g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+
+						log.Tracef("Remove tx %s because it "+
+							"references unspent output %s "+
+							"which is not available",
+							tx.Hash(), txIn.PreviousOutPoint)
+						continue mempoolLoop
+					}
+
+					// The transaction is referencing another
+					// transaction in the source pool, so setup an
+					// ordering dependency.
+					deps, exists := dependers[*originHash]
+					if !exists {
+						deps = make(map[chainhash.Hash]*txPrioItem)
+						dependers[*originHash] = deps
+					}
+					deps[*prioItem.tx.Hash()] = prioItem
+					if prioItem.dependsOn == nil {
+						prioItem.dependsOn = make(
+							map[chainhash.Hash]struct{})
+					}
+					prioItem.dependsOn[*originHash] = struct{}{}
+
+					// Skip the check below. We already know the
+					// referenced transaction is available.
+					continue
+				}
 			}
-			originHash := &txIn.PreviousOutPoint.Hash
-			entry := views.GetUtxo(txIn.PreviousOutPoint)
-			if entry == nil || entry.IsSpent() {
-				if !g.txSource.HaveTransaction(originHash) {
-					g.txSource.RemoveTransaction(tx, true)
-					g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
-
-					log.Tracef("Remove tx %s because it "+
-						"references unspent output %s "+
-						"which is not available",
-						tx.Hash(), txIn.PreviousOutPoint)
-					continue mempoolLoop
-				}
-
-				// The transaction is referencing another
-				// transaction in the source pool, so setup an
-				// ordering dependency.
-				deps, exists := dependers[*originHash]
-				if !exists {
-					deps = make(map[chainhash.Hash]*txPrioItem)
-					dependers[*originHash] = deps
-				}
-				deps[*prioItem.tx.Hash()] = prioItem
-				if prioItem.dependsOn == nil {
-					prioItem.dependsOn = make(
-						map[chainhash.Hash]struct{})
-				}
-				prioItem.dependsOn[*originHash] = struct{}{}
-
-				// Skip the check below. We already know the
-				// referenced transaction is available.
-				continue
-			}
-		}
 		}
 
 		// Calculate the final transaction priority using the input
@@ -1051,15 +1051,15 @@ mempoolLoop:
 			continue
 		}
 		/*
-		for ip := 0; ip < len(tx.MsgTx().TxOut); ip++ {
-			if tx.MsgTx().TxOut[ip].IsSeparator() {
-				continue
+			for ip := 0; ip < len(tx.MsgTx().TxOut); ip++ {
+				if tx.MsgTx().TxOut[ip].IsSeparator() {
+					continue
+				}
+				if tx.MsgTx().TxOut[ip].PkScript[0] == 0x88 {
+					break
+				}
 			}
-			if tx.MsgTx().TxOut[ip].PkScript[0] == 0x88 {
-				break
-			}
-		}
-		 */
+		*/
 		storage := blockchain.ContractNewStorage(tx, Vm, paidstoragefees)
 
 		tx.Executed = true
@@ -1184,6 +1184,7 @@ mempoolLoop:
 		if txo.IsSeparator() {
 			break
 		}
+
 		txo.Value.(*token.NumToken).Val += df
 	}
 

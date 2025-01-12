@@ -18,6 +18,7 @@ import (
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/famofchains/omega/token"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -106,6 +107,8 @@ type Syncer struct {
 	//	repeats   int
 
 	nmsg [7]int
+
+	tried int
 }
 
 func (self *Syncer) CommitteeMsgMG(p [20]byte, m wire.Message) {
@@ -254,15 +257,23 @@ func (self *Syncer) repeater() {
 	} else {
 		// check if we should agree with someone else
 		best := self.best()
-
-		if best >= 0 && best != self.Myself && self.asked[best] != nil && self.knowledges.Qualified(best) && miner.server.Connected(self.Names[best]) {
+		if self.tried >= 10+rand.Intn(5) {
+			better := self.best()
+			if better != self.Myself {
+				rel := self.makeRelease(better)
+				self.commands <- rel
+				miner.server.NewConsusBlock((*btcutil.Block)(nil))
+				miner.Broadcast(rel, nil)
+			}
+			self.tried = 0
+		} else if best >= 0 && best != self.Myself && self.asked[best] != nil && self.knowledges.Qualified(best) && miner.server.Connected(self.Names[best]) {
 			self.agreed = best
 			self.commands <- self.asked[best]
 			self.asked[best] = nil
 		}
 	}
 
-	if _, ok := self.forest[self.Me]; ok { // && len(self.commands) < (wire.CommitteeSize - 1) * 10 {
+	if _, ok := self.forest[self.Me]; ok && self.tried != 0 { // && len(self.commands) < (wire.CommitteeSize - 1) * 10 {
 		k := self.NewKnowledgeMsg()
 
 		self.commands <- k
@@ -270,6 +281,8 @@ func (self *Syncer) repeater() {
 		miner.Broadcast(k, nil)
 	}
 	self.forestLock.Unlock()
+
+	self.tried++
 
 	miner.syncMutex.Lock()
 	for _, tree := range self.forest {
@@ -351,7 +364,23 @@ func (self *Syncer) repeater() {
 }
 
 func (self *Syncer) Release(msg *wire.MsgRelease) {
+	if _, ok := self.signed[msg.From]; ok {
+		return
+	}
 	self.asked[self.Members[msg.From]] = nil
+	delete(self.agrees, self.Members[msg.From])
+	if f, ok := self.forest[msg.From]; ok && f != nil {
+		delete(self.blocks, f.hash)
+		delete(self.forest, msg.From)
+	}
+	for i := 0; i < wire.CommitteeSize; i++ {
+		self.knowledges.Knowledge[i][self.Members[msg.From]] = 0
+		self.knowledges.Knowledge[self.Members[msg.From]][i] = 0
+		m := ^(int64(1) << self.Members[msg.From])
+		for j := 0; j < wire.CommitteeSize; j++ {
+			self.knowledges.Knowledge[i][j] &= m
+		}
+	}
 
 	if self.agreed == self.Members[msg.From] {
 		//		self.knowledges.ProcFlatKnowledge(msg.Better, msg.K)
@@ -486,7 +515,9 @@ func (self *Syncer) process(cmd interface{}) bool {
 					self.agrees = make(map[int32]struct{})
 					self.signed = make(map[[20]byte]struct{})
 				}
+				miner.syncMutex.Lock()
 				pull(k.M, self.Height, nil)
+				miner.syncMutex.Unlock()
 			}
 
 			if self.forest[k.Finder].know == nil || len(k.K) > len(self.forest[k.Finder].know.K) {
