@@ -1429,6 +1429,7 @@ func (sp *serverPeer) OnChainMap(_ *peer.Peer, msg *wire.MsgChainMap) {
 	}
 	// shutdown & reboot
 	if added {
+		btcdLog.Infof("shutdownRequestChannel <- OnChainMap")
 		shutdownRequestChannel <- struct{}{}
 	}
 }
@@ -3208,13 +3209,13 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		newPeers:               make(chan *serverPeer, prot.cfg.MaxPeers),
 		donePeers:              make(chan *serverPeer, prot.cfg.MaxPeers),
 		banPeers:               make(chan *serverPeer, prot.cfg.MaxPeers),
-		query:                  make(chan interface{}),
+		query:                  make(chan interface{}, 1000),
 		relayInv:               make(chan relayMsg, prot.cfg.MaxPeers),
 		broadcast:              make(chan broadcastMsg, prot.cfg.MaxPeers),
 		quit:                   make(chan struct{}),
 		modifyRebroadcastInv:   make(chan interface{}),
-		peerHeightsUpdate:      make(chan updatePeerHeightsMsg),
-		peerMinerHeightsUpdate: make(chan updatePeerHeightsMsg),
+		peerHeightsUpdate:      make(chan updatePeerHeightsMsg, 1000),
+		peerMinerHeightsUpdate: make(chan updatePeerHeightsMsg, 1000),
 		nat:                    nat,
 		db:                     db,
 		minerdb:                minerdb,
@@ -3586,6 +3587,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 		// Signal process shutdown when the RPC server requests it.
 		go func() {
+			btcdLog.Infof("shutdownRequestChannel <- s.rpcServer.RequestedProcessShutdown")
 			<-s.rpcServer.RequestedProcessShutdown()
 			shutdownRequestChannel <- struct{}{}
 		}()

@@ -2825,6 +2825,9 @@ func (b *BlockChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 	if !sideChain {
 		headers := make([]wire.BlockHeader, 0, total)
 		for i := uint32(0); i < total; i++ {
+			if node == nil {
+				return headers
+			}
 			headers = append(headers, b.NodetoHeader(node))
 			node = b.BestChain.Next(node)
 		}
@@ -2833,6 +2836,9 @@ func (b *BlockChain) locateHeaders(locator chainhash.BlockLocator, hashStop *cha
 		headers := make([]wire.BlockHeader, total)
 		node = b.NodeByHash(hashStop)
 		for i := int32(total - 1); i >= 0; i-- {
+			if node == nil {
+				return headers
+			}
 			headers[i] = b.NodetoHeader(node)
 			if node.Parent != nil {
 				node = node.Parent

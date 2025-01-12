@@ -807,7 +807,7 @@ out:
 			continue
 		}
 
-		time.Sleep(time.Second * 20)
+		time.Sleep(time.Second * 60)
 		log.Info("Try to solve block")
 
 		// Attempt to solve the block.  The function will exit early

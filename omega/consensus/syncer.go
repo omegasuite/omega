@@ -484,7 +484,9 @@ func (self *Syncer) process(cmd interface{}) bool {
 					self.agrees = make(map[int32]struct{})
 					self.signed = make(map[[20]byte]struct{})
 				}
+				miner.syncMutex.Lock()
 				pull(k.M, self.Height, nil)
+				miner.syncMutex.Unlock()
 			}
 
 			if self.forest[k.Finder].know == nil || len(k.K) > len(self.forest[k.Finder].know.K) {

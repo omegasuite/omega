@@ -320,21 +320,21 @@ var MainNetParams = Params{
 		DNSSeeds: []DNSSeed{
 			{"omegasuite.org", false},
 		},
-	PowLimitBits:             0x1e00fff0,
-	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
-	SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
-	MinimalAward:             1171875,
-	TargetTimespan:           time.Hour * 24 * 14, // 14 days
-	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
-	RetargetAdjustmentFactor: 4, // 25% less, 400% more
-	MinDiffReductionTime: 0,
+		PowLimitBits:             0x1e00fff0,
+		CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+		SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
+		MinimalAward:             1171875,
+		TargetTimespan:           time.Hour * 24 * 14, // 14 days
+		TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
+		RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
+		MinDiffReductionTime:     0,
 
-	// Consensus rule change deployments.
-	//
-	// The miner confirmation window is defined as:
-	//   target proof of work timespan / target proof of work spacing
-	RuleChangeActivationThreshold: 1916, // 95% of MinerConfirmationWindow
-	MinerConfirmationWindow:       2016, //
+		// Consensus rule change deployments.
+		//
+		// The miner confirmation window is defined as:
+		//   target proof of work timespan / target proof of work spacing
+		RuleChangeActivationThreshold: 1916, // 95% of MinerConfirmationWindow
+		MinerConfirmationWindow:       2016, //
 		Forfeit: forfeitureContract{
 			Contract: [21]byte{0x88, 0x1a, 0x52, 0x0f, 0xa9, 0x4d, 0x8e, 0x07,
 				0x3b, 0x0b, 0x46, 0x79, 0x43, 0x5b, 0x55, 0x09, 0xa5, 0xc6, 0x84, 0x7d, 0xb3},
@@ -566,7 +566,7 @@ var RegressionNetParams = Params{
 	ContractExecFee:   1,
 	ContractReqExp:    false,
 }
- */
+*/
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
 // (version 3).  Not to be confused with the regression test network, this
@@ -579,20 +579,20 @@ var TestNet3Params = Params{
 		DNSSeeds: []DNSSeed{
 			{"omegasuite.org", false},
 		},
-	PowLimitBits:             0x1f0fffff, // 0x1d3fffff
-	CoinbaseMaturity:         10,
-	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
-	MinimalAward:             1171875,
-	TargetTimespan:           time.Hour * 2,   // 2 hours
-	TargetTimePerBlock:       time.Minute * 4, // 4 minutes
-	RetargetAdjustmentFactor: 4, // 25% less, 400% more
-	MinDiffReductionTime: time.Minute * 3, // TargetTimePerBlock * 2
-	// Consensus rule change deployments.
-	//
-	// The miner confirmation window is defined as:
-	//   target proof of work timespan / target proof of work spacing
-	RuleChangeActivationThreshold: 75, // 75% of MinerConfirmationWindow
-	MinerConfirmationWindow:       100,
+		PowLimitBits:             0x1f0fffff, // 0x1d3fffff
+		CoinbaseMaturity:         10,
+		SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
+		MinimalAward:             1171875,
+		TargetTimespan:           time.Hour * 2,   // 2 hours
+		TargetTimePerBlock:       time.Minute * 4, // 4 minutes
+		RetargetAdjustmentFactor: 4,               // 25% less, 400% more
+		MinDiffReductionTime:     time.Minute * 3, // TargetTimePerBlock * 2
+		// Consensus rule change deployments.
+		//
+		// The miner confirmation window is defined as:
+		//   target proof of work timespan / target proof of work spacing
+		RuleChangeActivationThreshold: 75, // 75% of MinerConfirmationWindow
+		MinerConfirmationWindow:       100,
 		Forfeit: forfeitureContract{
 			Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
 				0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
@@ -809,7 +809,7 @@ var SimNetParams = Params{
 	ContractReqExp:    false,
 }
 
- */
+*/
 
 var (
 	// ErrDuplicateNet describes an error where the parameters for a Bitcoin
@@ -957,8 +957,8 @@ func init() {
 	// Register all default networks when the package is initialized.
 	mustRegister(&MainNetParams)
 	mustRegister(&TestNet3Params)
-//	mustRegister(&RegressionNetParams)
-//	mustRegister(&SimNetParams)
+	//	mustRegister(&RegressionNetParams)
+	//	mustRegister(&SimNetParams)
 }
 
 var ActiveNetParams *Params

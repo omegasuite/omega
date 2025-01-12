@@ -2253,6 +2253,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
 		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 		NextHash:      nextHashString,
+		Connection:    string(blockHeader.Connection),
 		Address:       d.String(), // hex.EncodeToString(blockHeader.Miner),
 		Best:          blockHeader.BestBlock.String(),
 		Collateral:    collateral,
@@ -5680,7 +5681,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		}
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCDeserialization,
-			Message: "TX rejected: " + err.Error(),
+			Message: tx.Hash().String() + "\nTX rejected: " + err.Error(),
 		}
 	}
 

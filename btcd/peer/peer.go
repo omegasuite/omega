@@ -1378,6 +1378,7 @@ out:
 			if _, ok := stallCount[p.String()]; ok && !p.Inbound() {
 				offset += time.Duration(stallCount[p.String()] * 1e10)
 			}
+			stallMtx.Unlock()
 
 			if handlerActive {
 				offset += now.Sub(handlersStartTime)
@@ -1394,7 +1395,7 @@ out:
 				// keep connected if it is a committee member
 				//					continue
 				//				}
-
+				stallMtx.Lock()
 				if sc, ok := stallCount[p.String()]; ok {
 					log.Infof("Peer %s appears to be stalled or "+
 						"misbehaving, %s command %d seconds timeout. stallcount = %d -- "+
@@ -1405,10 +1406,10 @@ out:
 						"misbehaving, %s command timeout. -- "+
 						"disconnecting", p, command)
 				}
+				stallMtx.Unlock()
 				p.Disconnect("stallHandler")
 				break
 			}
-			stallMtx.Unlock()
 
 			// Reset the deadline offset for the next tick.
 			deadlineOffset = 0
