@@ -3593,6 +3593,16 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		}()
 	}
 
+	s.chain.Subscribe(func(notification *blockchain.Notification) {
+		if notification.Type != blockchain.NTBlockConnected {
+			return
+		}
+		block := notification.Data.(*btcutil.Block)
+		for _, tx := range block.Transactions()[1:] {
+			s.txMemPool.RemoveTransaction(tx, false)
+		}
+	})
+
 	return &s, nil
 }
 

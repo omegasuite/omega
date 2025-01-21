@@ -5664,6 +5664,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	if c.FulllValidate != nil && *c.FulllValidate {
 		sigcheck = true
 	}
+
 	acceptedTxs, err := s.cfg.TxMemPool.ProcessTransaction(tx, false, false, 0, sigcheck)
 	if err != nil {
 		// When the error is a rule error, it means the transaction was
@@ -5727,6 +5728,10 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	s.cfg.ConnMgr.AddRebroadcastInventory(iv, txD)
 
 	msg := tx.Hash().String()
+
+	//	if !s.cfg.Cfg.Generate && (s.cfg.Cfg.DisablePOWMining || !s.cfg.Cfg.EnablePOWMining) {
+	//		s.cfg.TxMemPool.RemoveTransaction(tx, true)
+	//	}
 
 	if *c.WaitConfirm != 0 {
 		cf := time.AfterFunc(time.Duration(*c.WaitConfirm)*time.Second, func() {
