@@ -93,38 +93,38 @@ func CalcMinRequiredTxRelayFee(serializedSize int64, minRelayTxFee btcutil.Amoun
 func checkInputsStandard(tx *btcutil.Tx, utxoView *viewpoint.UtxoViewpoint) error {
 	// nothing to do here since we use different (system call) script system
 	return nil
-/*
-	// NOTE: The reference implementation also does a coinbase check here,
-	// but coinbases have already been rejected prior to calling this
-	// function so no need to recheck.
+	/*
+		// NOTE: The reference implementation also does a coinbase check here,
+		// but coinbases have already been rejected prior to calling this
+		// function so no need to recheck.
 
-	for i, txIn := range tx.MsgTx().TxIn {
-		// It is safe to elide existence and index checks here since
-		// they have already been checked prior to calling this
-		// function.
-		entry := utxoView.LookupEntry(txIn.PreviousOutPoint)
-		originPkScript := entry.PkScript()
-		switch txscript.GetScriptClass(originPkScript) {
-		case txscript.ScriptHashTy:
-			numSigOps := txscript.GetPreciseSigOpCount(
-				txIn.SignatureScript, originPkScript, true)
-			if numSigOps > maxStandardP2SHSigOps {
-				str := fmt.Sprintf("transaction input #%d has "+
-					"%d signature operations which is more "+
-					"than the allowed max amount of %d",
-					i, numSigOps, maxStandardP2SHSigOps)
+		for i, txIn := range tx.MsgTx().TxIn {
+			// It is safe to elide existence and index checks here since
+			// they have already been checked prior to calling this
+			// function.
+			entry := utxoView.LookupEntry(txIn.PreviousOutPoint)
+			originPkScript := entry.PkScript()
+			switch txscript.GetScriptClass(originPkScript) {
+			case txscript.ScriptHashTy:
+				numSigOps := txscript.GetPreciseSigOpCount(
+					txIn.SignatureScript, originPkScript, true)
+				if numSigOps > maxStandardP2SHSigOps {
+					str := fmt.Sprintf("transaction input #%d has "+
+						"%d signature operations which is more "+
+						"than the allowed max amount of %d",
+						i, numSigOps, maxStandardP2SHSigOps)
+					return txRuleError(common.RejectNonstandard, str)
+				}
+
+			case txscript.NonStandardTy:
+				str := fmt.Sprintf("transaction input #%d has a "+
+					"non-standard script form", i)
 				return txRuleError(common.RejectNonstandard, str)
 			}
-
-		case txscript.NonStandardTy:
-			str := fmt.Sprintf("transaction input #%d has a "+
-				"non-standard script form", i)
-			return txRuleError(common.RejectNonstandard, str)
 		}
-	}
 
-	return nil
-*/
+		return nil
+	*/
 }
 
 // checkPkScriptStandard performs a series of checks on a transaction output
@@ -132,53 +132,53 @@ func checkInputsStandard(tx *btcutil.Tx, utxoView *viewpoint.UtxoViewpoint) erro
 // A standard public key script is one that is a recognized form, and for
 // multi-signature scripts, only contains from 1 to maxStandardMultiSigKeys
 // public keys.
-func checkPkScriptStandard(pkScript []byte) error {	// , scriptClass txscript.ScriptClass
+func checkPkScriptStandard(pkScript []byte) error { // , scriptClass txscript.ScriptClass
 	// nothing to do here since we use different (system call) script system
 	return nil
-/*
-	switch scriptClass {
-	case txscript.MultiSigTy:
-		numPubKeys, numSigs, err := txscript.CalcMultiSigStats(pkScript)
-		if err != nil {
-			str := fmt.Sprintf("multi-signature script parse "+
-				"failure: %v", err)
-			return txRuleError(common.RejectNonstandard, str)
-		}
+	/*
+		switch scriptClass {
+		case txscript.MultiSigTy:
+			numPubKeys, numSigs, err := txscript.CalcMultiSigStats(pkScript)
+			if err != nil {
+				str := fmt.Sprintf("multi-signature script parse "+
+					"failure: %v", err)
+				return txRuleError(common.RejectNonstandard, str)
+			}
 
-		// A standard multi-signature public key script must contain
-		// from 1 to maxStandardMultiSigKeys public keys.
-		if numPubKeys < 1 {
-			str := "multi-signature script with no pubkeys"
-			return txRuleError(common.RejectNonstandard, str)
-		}
-		if numPubKeys > maxStandardMultiSigKeys {
-			str := fmt.Sprintf("multi-signature script with %d "+
-				"public keys which is more than the allowed "+
-				"max of %d", numPubKeys, maxStandardMultiSigKeys)
-			return txRuleError(common.RejectNonstandard, str)
-		}
+			// A standard multi-signature public key script must contain
+			// from 1 to maxStandardMultiSigKeys public keys.
+			if numPubKeys < 1 {
+				str := "multi-signature script with no pubkeys"
+				return txRuleError(common.RejectNonstandard, str)
+			}
+			if numPubKeys > maxStandardMultiSigKeys {
+				str := fmt.Sprintf("multi-signature script with %d "+
+					"public keys which is more than the allowed "+
+					"max of %d", numPubKeys, maxStandardMultiSigKeys)
+				return txRuleError(common.RejectNonstandard, str)
+			}
 
-		// A standard multi-signature public key script must have at
-		// least 1 signature and no more signatures than available
-		// public keys.
-		if numSigs < 1 {
+			// A standard multi-signature public key script must have at
+			// least 1 signature and no more signatures than available
+			// public keys.
+			if numSigs < 1 {
+				return txRuleError(common.RejectNonstandard,
+					"multi-signature script with no signatures")
+			}
+			if numSigs > numPubKeys {
+				str := fmt.Sprintf("multi-signature script with %d "+
+					"signatures which is more than the available "+
+					"%d public keys", numSigs, numPubKeys)
+				return txRuleError(common.RejectNonstandard, str)
+			}
+
+		case txscript.NonStandardTy:
 			return txRuleError(common.RejectNonstandard,
-				"multi-signature script with no signatures")
-		}
-		if numSigs > numPubKeys {
-			str := fmt.Sprintf("multi-signature script with %d "+
-				"signatures which is more than the available "+
-				"%d public keys", numSigs, numPubKeys)
-			return txRuleError(common.RejectNonstandard, str)
+				"non-standard script form")
 		}
 
-	case txscript.NonStandardTy:
-		return txRuleError(common.RejectNonstandard,
-			"non-standard script form")
-	}
-
-	return nil
-*/
+		return nil
+	*/
 }
 
 // checkTransactionStandard performs a series of checks on a transaction to
@@ -193,7 +193,7 @@ func checkTransactionStandard(tx *btcutil.Tx, height int32,
 
 	// The transaction must be a currently supported version.
 	msgTx := tx.MsgTx()
-	if msgTx.Version & wire.TxTypeMask > maxTxVersion || msgTx.Version < 1 {
+	if msgTx.Version&wire.TxTypeMask > maxTxVersion || msgTx.Version < 1 {
 		str := fmt.Sprintf("transaction version %d is not in the "+
 			"valid range of %d-%d", msgTx.Version, 1,
 			maxTxVersion)

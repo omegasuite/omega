@@ -13,9 +13,8 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"strings"
 	"strconv"
-	"math/big"
+	"strings"
 )
 
 const (
@@ -29,6 +28,9 @@ const (
 	// binaryFreeListMaxItems is the number of buffers to keep in the free
 	// list to use for binary serialization and deserialization.
 	BinaryFreeListMaxItems = 1024
+	FeeCoinTyp             = 0 // type of coin for tx fee
+	OmegaCoinTyp           = 0x10
+	NewChainConsensus      = 100
 )
 
 // InvType represents the allowed types of inventory vectors.  See InvVect.
@@ -48,8 +50,13 @@ const (
 	//	InvTypeFilteredWitnessBlock InvType = InvTypeFilteredBlock | InvWitnessFlag
 )
 
+// These constants define the bucket names and meta keys.
 const (
-	MaxUint64 = 1<<64 - 1
+	INCOMINGPOOL string = "IncomingPool" // bucket for assets pending incoming transfer
+	ROLLBACKPOOL string = "ROLLBACKPOOL" // key in INCOMINGPOOL bucket for the current SVP chain height
+
+	XCAssets   string = "XCAssets" // bucket for cross chain assets
+	BTCCHAINID        = 0x400002   // BTC L2 chain id = 2,  0x400000 to indicate a base chain of L2
 )
 
 // MaxMessagePayload is the maximum bytes a message can be regardless of other
@@ -743,7 +750,6 @@ func RandomUint64() (uint64, error) {
 	return randomUint64(rand.Reader)
 }
 
-
 // MessageError describes an issue with a message.
 // An example of some potential issues are messages from the wrong bitcoin
 // network, invalid commands, mismatched checksums, and exceeding max payloads.
@@ -800,24 +806,24 @@ func (invtype InvType) String() string {
 
 // These constants define the various supported reject codes.
 const (
-	RejectMalformed       RejectCode = 0x01
-	RejectInvalid         RejectCode = 0x10
-	RejectObsolete        RejectCode = 0x11
-	RejectDuplicate       RejectCode = 0x12
-	RejectNonstandard     RejectCode = 0x40
-//	RejectDust            RejectCode = 0x41
+	RejectMalformed   RejectCode = 0x01
+	RejectInvalid     RejectCode = 0x10
+	RejectObsolete    RejectCode = 0x11
+	RejectDuplicate   RejectCode = 0x12
+	RejectNonstandard RejectCode = 0x40
+	//	RejectDust            RejectCode = 0x41
 	RejectInsufficientFee RejectCode = 0x42
 	RejectCheckpoint      RejectCode = 0x43
 )
 
 // Map of reject codes back strings for pretty printing.
 var rejectCodeStrings = map[RejectCode]string{
-	RejectMalformed:       "REJECT_MALFORMED",
-	RejectInvalid:         "REJECT_INVALID",
-	RejectObsolete:        "REJECT_OBSOLETE",
-	RejectDuplicate:       "REJECT_DUPLICATE",
-	RejectNonstandard:     "REJECT_NONSTANDARD",
-//	RejectDust:            "REJECT_DUST",
+	RejectMalformed:   "REJECT_MALFORMED",
+	RejectInvalid:     "REJECT_INVALID",
+	RejectObsolete:    "REJECT_OBSOLETE",
+	RejectDuplicate:   "REJECT_DUPLICATE",
+	RejectNonstandard: "REJECT_NONSTANDARD",
+	//	RejectDust:            "REJECT_DUST",
 	RejectInsufficientFee: "REJECT_INSUFFICIENTFEE",
 	RejectCheckpoint:      "REJECT_CHECKPOINT",
 }
@@ -830,7 +836,6 @@ func (code RejectCode) String() string {
 
 	return fmt.Sprintf("Unknown RejectCode (%d)", uint8(code))
 }
-
 
 const (
 	// SFNodeNetwork is a flag used to indicate a peer is a full node.
@@ -915,6 +920,7 @@ func (f ServiceFlag) String() string {
 const (
 	// MainNet represents the main bitcoin network.
 	MainNet OmegaNet = 0x956ca366
+	// MainNet OmegaNet = 0x956ca476 //	0x956ca366
 
 	// RegNet represents the regression test network.
 	RegNet OmegaNet = 0x6241456c
@@ -942,26 +948,4 @@ func (n OmegaNet) String() string {
 	}
 
 	return fmt.Sprintf("Unknown OmegaNet (%d)", uint32(n))
-}
-
-// HashToBig converts a chainhash.Hash into a big.Int that can be used to
-// perform math comparisons.
-func HashToBig(hash *chainhash.Hash) *big.Int {
-	// A Hash is in little-endian, but the big package wants the bytes in
-	// big-endian, so reverse them.
-	buf := *hash
-	blen := len(buf)
-	for i := 0; i < blen/2; i++ {
-		buf[i], buf[blen-1-i] = buf[blen-1-i], buf[i]
-	}
-
-	return new(big.Int).SetBytes(buf[:])
-}
-
-// SafeMul returns multiplication result and whether overflow occurred.
-func SafeMul(x, y uint64) (uint64, bool) {
-	if x == 0 || y == 0 {
-		return 0, false
-	}
-	return x * y, y > MaxUint64/x
 }

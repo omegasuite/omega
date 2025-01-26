@@ -53,7 +53,7 @@ const (
 const (
 	RECEIVED OpCode = 0x61 + iota	// "a". outpoint of the current call
 	TXFEE		// min tx fee for current tx
-	GETCOIN		// GETTXIN. coin received for the current call
+	GETCOIN		// coin received for the current call
 	NOP
 	SPEND         // add tx in
 	ADDDEF        // add def

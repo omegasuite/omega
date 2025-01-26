@@ -8,8 +8,10 @@ package mining
 import (
 	"bytes"
 	"container/heap"
+	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
+	"github.com/omegasuite/omega/chainmap"
 	//	"github.com/omegasuite/omega"
 	"github.com/omegasuite/omega/ovm"
 	"math/rand"
@@ -79,6 +81,8 @@ type TxSource interface {
 	// HaveTransaction returns whether or not the passed transaction hash
 	// exists in the source pool.
 	HaveTransaction(hash *chainhash.Hash) bool
+
+	ResetTryCount(tx *btcutil.Tx)
 }
 
 // txPrioItem houses a transaction along with extra information that allows the
@@ -288,7 +292,7 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 
 	for _, addr := range addrs {
 		t := token.Token{
-			TokenType: 0,
+			TokenType: common.FeeCoinTyp,
 			Value: &token.NumToken{
 				Val: val,
 			},
@@ -320,13 +324,15 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 // transaction as spent.  It also adds all outputs in the passed transaction
 // which are not provably unspendable as available unspent transaction outputs.
 func spendTransaction(utxoView *viewpoint.ViewPointSet, tx *btcutil.Tx, height int32) error {
-	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		entry := utxoView.Utxo.LookupEntry(txIn.PreviousOutPoint)
-		if entry != nil {
-			entry.Spend()
+	if !tx.MsgTx().IsCrossChain() {
+		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			entry := utxoView.Utxo.LookupEntry(txIn.PreviousOutPoint)
+			if entry != nil {
+				entry.Spend()
+			}
 		}
 	}
 
@@ -387,6 +393,7 @@ type BlkTmplGenerator struct {
 
 	// only used by minerchain
 	Collateral []*wire.OutPoint
+	Pledge     map[wire.OutPoint]struct{}
 	//	sigCache    *txscript.SigCache
 	//	hashCache   *txscript.HashCache
 }
@@ -399,7 +406,7 @@ type BlkTmplGenerator struct {
 // consensus rules.
 func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 	txSource TxSource, chain *blockchain.BlockChain,
-	timeSource chainutil.MedianTimeSource) *BlkTmplGenerator {
+	timeSource chainutil.MedianTimeSource, btcparams *chaincfg.Params) *BlkTmplGenerator {
 	//	sigCache *txscript.SigCache,
 	//	hashCache *txscript.HashCache) *BlkTmplGenerator {
 
@@ -504,6 +511,14 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	if err != nil {
 		return nil, err
 	}
+
+	n := len(coinbaseTx.MsgTx().TxOut)
+	for i := 0; i < n; i++ {
+		// take space for tx fees
+		to := wire.TxOut{}
+		to.Token = token.Token{TokenType: token.DefTypeSeparator}
+		coinbaseTx.AddTxOut(to)
+	}
 	coinbaseSigOpCost := int64(blockchain.CountSigOps(coinbaseTx)) // * chaincfg.WitnessScaleFactor
 
 	// Get the current source transactions and create a priority queue to
@@ -542,6 +557,80 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		blockTxns = append(blockTxns, btx)
 		spendTransaction(views, btx, nextBlockHeight)
 	}
+
+	// Check transactions in INCOMINGPOOL, include mature transactions here
+	if nonce < 0 {
+		inp := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight))
+		blockTxns = append(blockTxns, inp...)
+	}
+
+	// Check transactions in BTCL2Pool, include mature transactions here
+	/*
+		views.Db.View(func(dbtx database.Tx) error {
+			bucket := dbtx.Metadata().Bucket([]byte(common.BTCL2POOL))
+
+			ht := uint32(0)
+			head := bucket.Get([]byte("BTCHeight"))
+			if head != nil {
+				ht = common.LittleEndian.Uint32(head)
+			}
+
+			cursor := bucket.Cursor()
+			minh := uint32(0x7FFFFFFF)
+			xtx := (*common.BTCL2Data)(nil)
+
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				if len(cursor.Key()) > 4 { // this is "BTCHeight"
+					continue
+				}
+				h := common.LittleEndian.Uint32(cursor.Key())
+				if h+7 > ht { // not mature yet
+					continue
+				}
+				if h > minh {
+					continue
+				}
+
+				minh = h
+
+				xtx = &common.BTCL2Data{}
+				err := xtx.Unserialize(cursor.Value())
+				if err != nil {
+					return err
+				}
+			}
+
+			if xtx == nil {
+				return nil
+			}
+
+			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
+			mtx.LockTime = uint32(nextBlockHeight)
+			txin := wire.NewTxIn(&wire.OutPoint{Hash: *treasuary.Bhash2l2hash(xtx.Hash), Index: 0xFFFFFF}, minh)
+			mtx.AddTxIn(txin)
+			for _, txo := range xtx.Txs {
+				v := token.NumToken{
+					Val: txsparser.FindValue(txo.Value, txo.PkScript),
+				}
+				h := txsparser.FindRight(txo.PkScript)
+				right := (*chainhash.Hash)(nil)
+				if h != nil {
+					var h2 chainhash.Hash
+					copy(h2[:], h[:])
+					right = &h2
+				}
+				tokentype := txsparser.FindTokentype(txo.PkScript)
+				pkscript := treasuary.ScriptConvert(txo.PkScript)
+				txout := wire.NewTxOut(uint64(tokentype), &v, right, pkscript)
+				mtx.AddTxOut(txout)
+			}
+
+			btx := btcutil.NewTx(mtx)
+			blockTxns = append(blockTxns, btx)
+
+			return nil
+		})
+	*/
 
 	blockUtxos := views.Utxo // blockchain.NewUtxoViewpoint()
 
@@ -595,10 +684,33 @@ mempoolLoop:
 
 		if txDesc.Tried > 10 {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			//			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 			continue
 		}
 		txDesc.Tried++
+
+		ok := true
+		for _, txo := range tx.MsgTx().TxOut {
+			if txo.IsSeparator() {
+				continue
+			}
+			if len(txo.PkScript) > 21 && txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
+				if (common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8) == g.chainParams.ChainID {
+					ok = false
+					break
+				}
+				if (txo.TokenType >> 40) == 0 {
+					ok = false
+					break
+				}
+			}
+		}
+		if !ok {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			log.Infof("Reject bad tx %s", tx.Hash())
+			continue
+		}
 
 		tx.MsgTx().Strip()
 		tx.HasIns, tx.HasDefs, tx.HasOuts = false, false, false
@@ -615,6 +727,13 @@ mempoolLoop:
 			continue
 		}
 
+		if g.Chain.CheckCrossChainTx(tx.MsgTx()) != nil {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			log.Infof("Reject expired tx %s", tx.Hash())
+			continue
+		}
+
 		if g.chainParams.ContractReqExp && (tx.MsgTx().Version&wire.TxExpire) == 0 {
 			// we reject txs that has no expiration and has contract exec
 			rjct := false
@@ -623,7 +742,7 @@ mempoolLoop:
 					continue
 				}
 				g.txSource.RemoveTransaction(tx, true)
-				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+				//				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 				log.Infof("Local policy: Reject tx with contract %s for lacking expiration time", tx.Hash())
 				rjct = true
 				break
@@ -644,19 +763,21 @@ mempoolLoop:
 		if s.MsgBlock().Version >= chaincfg.Version2 {
 			var locked = false
 			locks := ""
-			for _, txin := range tx.MsgTx().TxIn {
-				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-					continue
-				}
-				if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
-					locked = true
-					locks = txin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", txin.PreviousOutPoint.Index)
-					break
+			if !tx.MsgTx().IsCrossChain() {
+				for _, txin := range tx.MsgTx().TxIn {
+					if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+						continue
+					}
+					if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
+						locked = true
+						locks = txin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", txin.PreviousOutPoint.Index)
+						break
+					}
 				}
 			}
 			if locked {
 				g.txSource.RemoveTransaction(tx, true)
-				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+				//				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 				// we should roll back result of last contract execution here
 				log.Infof("Reject tx %s that spends locked UTXO %s", tx.Hash(), locks)
@@ -687,43 +808,45 @@ mempoolLoop:
 		// other transactions in the mempool so they can be properly
 		// ordered below.
 		prioItem := &txPrioItem{tx: tx}
-		for _, txIn := range tx.MsgTx().TxIn {
-			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				// never here
-				continue
-			}
-			originHash := &txIn.PreviousOutPoint.Hash
-			entry := views.GetUtxo(txIn.PreviousOutPoint)
-			if entry == nil || entry.IsSpent() {
-				if !g.txSource.HaveTransaction(originHash) {
-					g.txSource.RemoveTransaction(tx, true)
-					g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
-
-					log.Tracef("Remove tx %s because it "+
-						"references unspent output %s "+
-						"which is not available",
-						tx.Hash(), txIn.PreviousOutPoint)
-					continue mempoolLoop
+		if !tx.MsgTx().IsCrossChain() {
+			for _, txIn := range tx.MsgTx().TxIn {
+				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					// never here
+					continue
 				}
+				originHash := &txIn.PreviousOutPoint.Hash
+				entry := views.GetUtxo(txIn.PreviousOutPoint)
+				if entry == nil || entry.IsSpent() {
+					if !g.txSource.HaveTransaction(originHash) {
+						g.txSource.RemoveTransaction(tx, true)
+						g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-				// The transaction is referencing another
-				// transaction in the source pool, so setup an
-				// ordering dependency.
-				deps, exists := dependers[*originHash]
-				if !exists {
-					deps = make(map[chainhash.Hash]*txPrioItem)
-					dependers[*originHash] = deps
-				}
-				deps[*prioItem.tx.Hash()] = prioItem
-				if prioItem.dependsOn == nil {
-					prioItem.dependsOn = make(
-						map[chainhash.Hash]struct{})
-				}
-				prioItem.dependsOn[*originHash] = struct{}{}
+						log.Tracef("Remove tx %s because it "+
+							"references output %s "+
+							"which is not available",
+							tx.Hash(), txIn.PreviousOutPoint)
+						continue mempoolLoop
+					}
 
-				// Skip the check below. We already know the
-				// referenced transaction is available.
-				continue
+					// The transaction is referencing another
+					// transaction in the source pool, so setup an
+					// ordering dependency.
+					deps, exists := dependers[*originHash]
+					if !exists {
+						deps = make(map[chainhash.Hash]*txPrioItem)
+						dependers[*originHash] = deps
+					}
+					deps[*prioItem.tx.Hash()] = prioItem
+					if prioItem.dependsOn == nil {
+						prioItem.dependsOn = make(
+							map[chainhash.Hash]struct{})
+					}
+					prioItem.dependsOn[*originHash] = struct{}{}
+
+					// Skip the check below. We already know the
+					// referenced transaction is available.
+					continue
+				}
 			}
 		}
 
@@ -796,6 +919,7 @@ mempoolLoop:
 
 	paidstoragefees := make(map[[20]byte]int64)
 	blksz := wire.MaxBlockHeaderPayload
+	totalbtcfees := int64(0)
 
 	// Choose which transactions make it into the block.
 	var skiprest = false // whether to skip rest contracts
@@ -842,33 +966,34 @@ mempoolLoop:
 			logSkippedDeps(tx, deps)
 			continue
 		}
+		/*
+			// Skip free transactions once the block is larger than the
+			// minimum txs which is 10 txs.
+			if sortedByFee && prioItem.feePerKB < int64(g.Policy.TxMinFreeFee) {
+				// free tx Policy only apply to simple small txs
+				qualified, sum := false, int64(0)
+				for _, txo := range tx.MsgTx().TxOut {
+					if txo.IsSeparator() || txo.PkScript[0] == g.chainParams.ContractAddrID {
+						qualified = true
+					} else if txo.TokenType == common.FeeCoinTyp || txo.TokenType == common.OmegaCoinTyp {
+						sum += txo.Token.Value.(*token.NumToken).Val
+					} else {
+						qualified = true
+					}
+				}
+				if !qualified && sum < 200*int64(g.Policy.TxMinFreeFee) {
+					qualified = len(tx.MsgTx().TxDef) == 0
+				}
 
-		// Skip free transactions once the block is larger than the
-		// minimum txs which is 10 txs.
-		if sortedByFee && prioItem.feePerKB < int64(g.Policy.TxMinFreeFee) {
-			// free tx Policy only apply to simple small txs
-			qualified, sum := false, int64(0)
-			for _, txo := range tx.MsgTx().TxOut {
-				if txo.IsSeparator() || txo.PkScript[0] == g.chainParams.ContractAddrID {
-					qualified = true
-				} else if txo.TokenType == 0 {
-					sum += txo.Token.Value.(*token.NumToken).Val
-				} else {
-					qualified = true
+				if !qualified && blockPlusTxWeight >= g.Policy.MinBlockWeight {
+					log.Infof("Skipping tx %s with !qualified %v && block weight %d >= "+
+						"MinBlockWeight %d", tx.Hash().String(), qualified, blockPlusTxWeight,
+						g.Policy.MinBlockWeight)
+					logSkippedDeps(tx, deps)
+					continue
 				}
 			}
-			if !qualified && sum < 200*int64(g.Policy.TxMinFreeFee) {
-				qualified = len(tx.MsgTx().TxDef) == 0
-			}
-
-			if !qualified && blockPlusTxWeight >= g.Policy.MinBlockWeight {
-				log.Infof("Skipping tx %s with !qualified %v && block weight %d >= "+
-					"MinBlockWeight %d", tx.Hash().String(), qualified, blockPlusTxWeight,
-					g.Policy.MinBlockWeight)
-				logSkippedDeps(tx, deps)
-				continue
-			}
-		}
+		*/
 
 		// Prioritize by fee per kilobyte once the block is larger than
 		// the priority size or there are no more high-priority
@@ -929,7 +1054,6 @@ mempoolLoop:
 		savedCoinBase := *coinbaseTx.MsgTx().Copy()
 		newcoins := coinbaseTx.HasOuts
 		//		Vm.Paidfees = prioItem.fee + 10
-
 		executed, vmerr := Vm.ExecContract(tx, nextBlockHeight)
 		if vmerr != nil {
 			coinbaseTx.HasOuts = newcoins
@@ -937,31 +1061,22 @@ mempoolLoop:
 
 			//			if vmerr.Level() == omega.FatalLevel {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			//			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
 			logSkippedDeps(tx, deps)
 			continue
-			/*
-				} else {
-					log.Infof("Skip tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
-					logSkippedDeps(tx, deps)
-					break skiprest	// skip rest so we don't waste time on on more contracts because this error
-							// could be caused by exec limit
-				}
-			*/
-			//			continue
 		}
 		/*
-		for ip := 0; ip < len(tx.MsgTx().TxOut); ip++ {
-			if tx.MsgTx().TxOut[ip].IsSeparator() {
-				continue
+			for ip := 0; ip < len(tx.MsgTx().TxOut); ip++ {
+				if tx.MsgTx().TxOut[ip].IsSeparator() {
+					continue
+				}
+				if tx.MsgTx().TxOut[ip].PkScript[0] == 0x88 {
+					break
+				}
 			}
-			if tx.MsgTx().TxOut[ip].PkScript[0] == 0x88 {
-				break
-			}
-		}
-		 */
+		*/
 		storage := blockchain.ContractNewStorage(tx, Vm, paidstoragefees)
 
 		tx.Executed = true
@@ -970,7 +1085,7 @@ mempoolLoop:
 			views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			//			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			logSkippedDeps(tx, deps)
 			if executed {
@@ -987,7 +1102,7 @@ mempoolLoop:
 		err = blockchain.CheckTransactionIntegrity(tx, views, s.MsgBlock().Version&^0xFFFF)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			//			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			logSkippedDeps(tx, deps)
 			if executed {
@@ -1001,10 +1116,10 @@ mempoolLoop:
 			continue
 		}
 
-		fees, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, storage, views, g.chainParams)
+		fees, btcfees, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, storage, views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			//			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			logSkippedDeps(tx, deps)
 			if executed {
@@ -1050,6 +1165,7 @@ mempoolLoop:
 		blockWeight++ // += txWeight
 		blockSigOpCost += int64(sigOpCost)
 		totalFees += prioItem.fee
+		totalbtcfees += btcfees
 		txFees = append(txFees, prioItem.fee)
 		txSigOpCosts = append(txSigOpCosts, int64(sigOpCost))
 
@@ -1067,6 +1183,9 @@ mempoolLoop:
 				heap.Push(priorityQueue, item)
 			}
 		}
+		if !tx.ContainContract() {
+			g.txSource.ResetTryCount(tx)
+		}
 	}
 
 	contractExec := stepLimit - Vm.StepLimit
@@ -1074,17 +1193,50 @@ mempoolLoop:
 	// add fees to miner outputs
 	m := int64(0)
 	for _, txo := range coinbaseTx.MsgTx().TxOut {
-		if txo.IsSeparator() {
+		if txo.IsSeparator() || txo.TokenType != 0 {
 			break
 		}
 		m++
 	}
+
 	df := totalFees / m
-	for _, txo := range coinbaseTx.MsgTx().TxOut {
-		if txo.IsSeparator() {
-			break
+	if df != 0 {
+		//		if prev.Height < 28747537 {
+		/*
+			for _, txo := range coinbaseTx.MsgTx().TxOut {
+				if txo.IsSeparator() {
+					break
+				}
+				txo.Token.Value.(*token.NumToken).Val += df
+				}
+		*/
+
+		for i := m; i < 2*m; i++ {
+			txo2 := &wire.TxOut{}
+			txo2.PkScript = coinbaseTx.MsgTx().TxOut[i-m].PkScript
+			txo2.Token.TokenType = 0x10
+			txo2.Token.Value = &token.NumToken{Val: df}
+			coinbaseTx.MsgTx().TxOut[i] = txo2
 		}
-		txo.Value.(*token.NumToken).Val += df
+	}
+
+	n = len(coinbaseTx.MsgTx().TxOut) - 1
+	for coinbaseTx.MsgTx().TxOut[n].TokenType == token.DefTypeSeparator {
+		coinbaseTx.MsgTx().TxOut = coinbaseTx.MsgTx().TxOut[:n]
+		n--
+	}
+
+	btcout := []*wire.TxOut{}
+	if totalbtcfees != 0 {
+		df = totalbtcfees / m
+		for _, txo := range coinbaseTx.MsgTx().TxOut {
+			t := &wire.TxOut{PkScript: txo.PkScript}
+			t.Token.Copy(&txo.Token)
+			t.Token.TokenType = common.BTCCHAINID << 40
+			t.Token.Value = &token.NumToken{Val: df}
+			btcout = append(btcout, t)
+		}
+		coinbaseTx.MsgTx().TxOut = append(coinbaseTx.MsgTx().TxOut, btcout...)
 	}
 	coinbaseTx.Executed = true
 
@@ -1228,12 +1380,21 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 			}
 			p = p.Parent
 		}
-		if len(usable) == 0 {
+
+		k := len(usable)
+		if k == 0 && coll > 0 {
 			return nil, fmt.Errorf("No qualified collateral available out of %d collaterals.", len(g.Collateral))
 		}
-		for c, _ := range usable {
-			uc = &c
-			break
+		if k > 0 {
+			k = rand.Intn(k)
+
+			for c, _ := range usable {
+				if k == 0 {
+					uc = &c
+					break
+				}
+				k--
+			}
 		}
 	}
 
@@ -1262,6 +1423,28 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		Utxos:           uc,
 		ViolationReport: make([]*wire.Violations, 0),
 		ContractLimit:   contractlim,
+		Instructions:    nil,
+	}
+
+	if nextBlockVersion >= chaincfg.Version5 && g.chainParams.AddChain != nil && g.chainParams.ChainID == chainmap.ROOT {
+		exist := false
+		ac := g.chainParams.AddChain.(*chainmap.ChainDescriptor)
+		for _, c := range chainmap.ChainMap {
+			if ac.Magic == c.Magic || (ac.Dns == c.Dns && ac.DefaultPort == c.DefaultPort) || ac.Genesis == c.Genesis ||
+				(c.MRChain && ac.MRChain && ac.MrGenesis == c.MrGenesis) {
+				exist = true
+			}
+		}
+		if !exist {
+			ac.ChainID = uint32(len(chainmap.ChainMap) + 1)
+			md, err := json.Marshal(ac)
+			if err == nil {
+				msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
+					InstCode: wire.AddChain,
+					InstData: md,
+				}}
+			}
+		}
 	}
 
 	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())
@@ -1282,6 +1465,8 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 						v = 1
 					}
 					msgBlock.TphReports[j] = v
+				} else if msgBlock.TphReports[j] == 0 {
+					msgBlock.TphReports[j] = 1
 				}
 			}
 			sum += v
@@ -1296,6 +1481,9 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 			msgBlock.MeanTPH = (v2*63 + sum) >> 6
 		} else {
 			msgBlock.MeanTPH = sum
+		}
+		if msgBlock.MeanTPH == 0 {
+			msgBlock.MeanTPH = 1
 		}
 	}
 

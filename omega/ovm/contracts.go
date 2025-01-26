@@ -69,6 +69,8 @@ const (
 	//	OP_PAY2MULTISCRIPTH		= 0x44
 	OP_PAY2NONE = 0x45
 	OP_PAY2ANY  = 0x46
+
+	OP_PAYCROSSCHAIN = 0x66
 )
 
 // PrecompiledContracts contains the default set of pre-compiled contracts

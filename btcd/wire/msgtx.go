@@ -21,13 +21,16 @@ const (
 	// It has two parts: higher 28 bits for features, lower 4 bit for tx type
 	// for regular tx, tx type = 1
 	// for tx regarding forfeiture/compensation, tx type = 2
-	TxVersion = 1
-	TxTypeMask = 0xF
+	TxVersion        = 1
+	TxTypeMask       = 0xF
 	ForfeitTxVersion = 2
-	TxNoLock = 0x10			// feature: the tx does not have time lock
-	TxNoDefine = 0x20		// feature: the tx does not have definition
-	TxExpire = 0x40			// feature: time lock is treated as expiration time
-							// in seconds since genesis
+	TxNoLock         = 0x10 // feature: the tx does not have time lock
+	TxNoDefine       = 0x20 // feature: the tx does not have definition
+	TxExpire         = 0x40 // feature: time lock is treated as expiration time
+	// in seconds since genesis
+
+	CrossChainFalg    = 0x800000
+	CrossChainSrcMask = CrossChainFalg - 1
 
 	// MaxTxInSequenceNum is the maximum sequence number the sequence field
 	// of a transaction input can be.
@@ -176,6 +179,10 @@ func NewOutPoint(hash *chainhash.Hash, index uint32) *OutPoint {
 	}
 }
 
+func (o *OutPoint) Equal(s *OutPoint) bool {
+	return o.Hash.IsEqual(&s.Hash) && o.Index == s.Index
+}
+
 func (o OutPoint) ToBytes() []byte {
 	buf := make([]byte, chainhash.HashSize+4)
 	copy(buf, o.Hash[:])
@@ -202,10 +209,10 @@ func (o OutPoint) String() string {
 type TxIn struct {
 	PreviousOutPoint OutPoint
 	Sequence         uint32
-	SignatureIndex   uint32		// this is an index to signature script, thus two TxIn could share one
-								// signature by having the same index. This is useful when one combine
-								// multiple utxos (belonging to one person) into one utxo since the signature
-								// would be identical for those utxos
+	SignatureIndex   uint32 // this is an index to signature script, thus two TxIn could share one
+	// signature by having the same index. This is useful when one combine
+	// multiple utxos (belonging to one person) into one utxo since the signature
+	// would be identical for those utxos
 }
 
 func (s *TxIn) Match(t *TxIn) bool {
@@ -240,7 +247,7 @@ func (t *TxIn) IsPadding() bool {
 func (t *TxIn) IsSepadding() bool {
 	z := chainhash.Hash{}
 	return t.PreviousOutPoint.Hash.IsEqual(&z) && t.PreviousOutPoint.Index == 0
-//	&& (t.SignatureIndex == 0 || t.SignatureIndex == 0xFFFFFFFF) && t.Sequence == 0 changed 2023-5-9 by howard
+	//	&& (t.SignatureIndex == 0 || t.SignatureIndex == 0xFFFFFFFF) && t.Sequence == 0 changed 2023-5-9 by howard
 }
 
 // NewTxIn returns a new bitcoin transaction input with the provided
@@ -274,13 +281,13 @@ func (s *TxOut) Match(t *TxOut) bool {
 	} else if t.Rights != nil {
 		return false
 	}
-	if s.TokenType & 1 == 0 {
+	if s.TokenType&1 == 0 {
 		return s.Value.(*token.NumToken).Val == t.Value.(*token.NumToken).Val
 	}
 	return s.Value.(*token.HashToken).Hash.IsEqual(&t.Value.(*token.HashToken).Hash)
 }
 
-func (t *TxOut) IsNumeric () bool {
+func (t *TxOut) IsNumeric() bool {
 	return t.Token.IsNumeric()
 }
 
@@ -293,22 +300,94 @@ func (t *TxOut) SerializeSize() int {
 	return t.Token.SerializeSize() + n
 }
 
-const OP_PAY2NONE = 0x45	// from ovm.contracts. redeclare here to avoid circular importation
+func (t *TxOut) Serialize() []byte {
+	var w bytes.Buffer
+
+	common.WriteElement(&w, t.TokenType)
+
+	switch t.TokenType & 1 {
+	case 0:
+		common.WriteElement(&w, t.Value.(*token.NumToken).Val)
+
+	case 1:
+		common.WriteElement(&w, &t.Value.(*token.HashToken).Hash)
+	}
+	if (t.TokenType & 2) != 0 {
+		common.WriteElement(&w, t.Rights)
+	}
+	common.WriteVarInt(&w, 0, uint64(len(t.PkScript)))
+
+	binary.Write(&w, common.LittleEndian, t.PkScript)
+
+	return w.Bytes()
+}
+
+func (t *TxOut) DeSerialize(r []byte) int {
+	reader := bytes.NewBuffer(r)
+
+	n := reader.Len()
+
+	common.ReadElement(reader, &t.TokenType)
+
+	switch t.TokenType & 1 {
+	case 0:
+		t.Value = &token.NumToken{}
+		common.ReadElement(reader, &t.Value.(*token.NumToken).Val)
+
+	case 1:
+		t.Value = &token.HashToken{}
+		common.ReadElement(reader, &t.Value.(*token.HashToken).Hash)
+	}
+	if (t.TokenType & 2) != 0 {
+		t.Rights = &chainhash.Hash{}
+		common.ReadElement(reader, t.Rights)
+	}
+
+	ln, _ := common.ReadVarInt(reader, 0)
+	if ln > 1000 {
+		return -1
+	}
+	t.PkScript = make([]byte, ln)
+	copy(t.PkScript, reader.Next(int(ln)))
+
+	return n - reader.Len()
+}
+
+const OP_PAY2NONE = 0x45      // from ovm.contracts. redeclare here to avoid circular importation
+const OP_PAYCROSSCHAIN = 0x66 // from ovm.contracts. redeclare here to avoid circular importation
 
 func (t *TxOut) IsNopaying() bool {
-	if t.TokenType & 1 == 0 && t.Token.Value.(*token.NumToken).Val == 0 {
+	if t.TokenType&1 == 0 && t.Token.Value.(*token.NumToken).Val == 0 {
 		return true
 	}
 	if t.PkScript[0] == 0x88 {
 		return false
 	}
-	if len(t.PkScript) < 22 || (t.PkScript[21] == OP_PAY2NONE && (len(t.PkScript) == 22 || bytes.Compare(t.PkScript[22:25], []byte{0,0,0}) == 0)) {
+	if t.PkScript[0] == 0xcc { // cross chain tx
+		return true
+	}
+	if len(t.PkScript) < 22 || (t.PkScript[21] == OP_PAY2NONE && (len(t.PkScript) == 22 || bytes.Compare(t.PkScript[22:25], []byte{0, 0, 0}) == 0)) {
 		return true
 	}
 	return false
 }
 
-func (t *TxOut) HasRight () bool {
+func (t *TxOut) IsContractCall() bool {
+	return t.PkScript[0] == 0x88
+}
+
+func (t *TxOut) IsCrossChain() bool {
+	return t.PkScript[0] != 0x88 && t.PkScript[21] == OP_PAYCROSSCHAIN
+}
+
+func (t *TxOut) DestChain() uint32 {
+	if t.PkScript[0] == 0x88 || t.PkScript[21] != OP_PAYCROSSCHAIN {
+		return 0
+	}
+	return common.LittleEndian.Uint32(t.PkScript[21:]) >> 8
+}
+
+func (t *TxOut) HasRight() bool {
 	return t.Token.HasRight()
 }
 
@@ -318,7 +397,7 @@ func (t *TxOut) Diff(s *TxOut) bool {
 
 // NewTxOut returns a new bitcoin transaction output with the provided
 // transaction value and public key script.
-func NewTxOut(tokenType	uint64, value token.TokenValue, rights *chainhash.Hash, pkScript []byte) *TxOut {
+func NewTxOut(tokenType uint64, value token.TokenValue, rights *chainhash.Hash, pkScript []byte) *TxOut {
 	t := TxOut{}
 	t.TokenType = tokenType
 	t.Value = value
@@ -334,23 +413,27 @@ func NewTxOut(tokenType	uint64, value token.TokenValue, rights *chainhash.Hash, 
 // Use the AddTxIn and AddTxOut functions to build up the list of transaction
 // inputs and outputs.
 type MsgTx struct {
-	Version  int32
-	TxDef    []token.Definition
-	TxIn     []*TxIn
-	TxOut    []*TxOut
-	LockTime uint32
-	SignatureScripts [][]byte		// all signatures goes here intentionally. in a block, all signatures goes to the end
+	Version          int32
+	TxDef            []token.Definition
+	TxIn             []*TxIn
+	TxOut            []*TxOut
+	LockTime         uint32
+	SignatureScripts [][]byte // all signatures goes here intentionally. in a block, all signatures goes to the end
 }
 
 func (s *MsgTx) IsForfeit() bool {
-	return s.Version & TxTypeMask == ForfeitTxVersion
+	return s.Version&TxTypeMask == ForfeitTxVersion
+}
+
+func (s *MsgTx) IsCrossChain() bool {
+	return len(s.TxIn) == 1 && !s.TxIn[0].PreviousOutPoint.Hash.IsEqual(&chainhash.Hash{}) && s.TxIn[0].PreviousOutPoint.Index&CrossChainFalg != 0
 }
 
 func (s *MsgTx) Match(t *MsgTx) bool {
 	if len(s.TxIn) != len(t.TxIn) || len(s.TxDef) != len(t.TxDef) || len(s.TxOut) != len(t.TxOut) {
 		return false
 	}
-	for i,d := range s.TxDef {
+	for i, d := range s.TxDef {
 		if d.DefType() != t.TxDef[i].DefType() {
 			return false
 		}
@@ -361,7 +444,7 @@ func (s *MsgTx) Match(t *MsgTx) bool {
 			return false
 		}
 	}
-	for i,d := range s.TxIn {
+	for i, d := range s.TxIn {
 		if d.IsSeparator() != t.TxIn[i].IsSeparator() {
 			return false
 		}
@@ -372,7 +455,7 @@ func (s *MsgTx) Match(t *MsgTx) bool {
 			return false
 		}
 	}
-	for i,d := range s.TxOut {
+	for i, d := range s.TxOut {
 		if d.IsSeparator() != t.TxOut[i].IsSeparator() {
 			return false
 		}
@@ -438,8 +521,8 @@ func (msg *MsgTx) AddDef(to token.Definition) chainhash.Hash {
 	return msg.TxDef[d].Hash()
 }
 
-func (msg *MsgTx) RemapTxout(to * TxOut) * TxOut {
-	if to.TokenType & 1 == 1 {
+func (msg *MsgTx) RemapTxout(to *TxOut) *TxOut {
+	if to.TokenType&1 == 1 {
 		h := to.Value.(*token.HashToken).Hash
 		if t := token.NeedRemap(h[:]); len(t) > 0 {
 			to.Value.(*token.HashToken).Hash = msg.TxDef[token.Bytetoint(t[1])].Hash()
@@ -538,13 +621,13 @@ func (msg *MsgTx) Copy() *MsgTx {
 
 		var newVal token.TokenValue
 
-		h,v := oldTxOut.Value.Value()
+		h, v := oldTxOut.Value.Value()
 		if oldTxOut.Value.IsNumeric() {
-			newVal = &token.NumToken {
+			newVal = &token.NumToken{
 				Val: v,
 			}
 		} else {
-			newVal = &token.HashToken {
+			newVal = &token.HashToken{
 				Hash: *h,
 			}
 		}
@@ -586,7 +669,7 @@ func (msg *MsgTx) Copy() *MsgTx {
 	}
 
 	// copy SignatureScripts
-	for _,s := range msg.SignatureScripts {
+	for _, s := range msg.SignatureScripts {
 		newTx.AddSignature(s)
 	}
 
@@ -619,12 +702,12 @@ func (msg *MsgTx) Strip() {
 // Stripped creates a copy of a transaction without addition of contract executions.
 func (msg *MsgTx) Stripped() *MsgTx {
 	newTx := MsgTx{
-		Version:  msg.Version,
-		TxIn:     make([]*TxIn, 0, len(msg.TxIn)),
-		TxDef:    make([]token.Definition, 0, len(msg.TxDef)),
-		TxOut:    make([]*TxOut, 0, len(msg.TxOut)),
+		Version:          msg.Version,
+		TxIn:             make([]*TxIn, 0, len(msg.TxIn)),
+		TxDef:            make([]token.Definition, 0, len(msg.TxDef)),
+		TxOut:            make([]*TxOut, 0, len(msg.TxOut)),
 		SignatureScripts: make([][]byte, 0, len(msg.SignatureScripts)),
-		LockTime: msg.LockTime,
+		LockTime:         msg.LockTime,
 	}
 
 	for _, oldTxOut := range msg.TxOut {
@@ -647,13 +730,13 @@ func (msg *MsgTx) Stripped() *MsgTx {
 
 		var newVal token.TokenValue
 
-		h,v := oldTxOut.Value.Value()
+		h, v := oldTxOut.Value.Value()
 		if oldTxOut.Value.IsNumeric() {
-			newVal = &token.NumToken {
+			newVal = &token.NumToken{
 				Val: v,
 			}
 		} else {
-			newVal = &token.HashToken {
+			newVal = &token.HashToken{
 				Hash: *h,
 			}
 		}
@@ -698,7 +781,7 @@ func (msg *MsgTx) Stripped() *MsgTx {
 	}
 
 	// copy SignatureScripts
-	for _,s := range msg.SignatureScripts {
+	for _, s := range msg.SignatureScripts {
 		newTx.AddSignature(s)
 	}
 
@@ -718,7 +801,7 @@ func (msg *MsgTx) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 
 	var count uint64
 
-	if version & TxNoDefine == 0 {
+	if version&TxNoDefine == 0 {
 		// definitions
 		count, err = common.ReadVarInt(r, pver)
 		if err != nil {
@@ -806,7 +889,7 @@ func (msg *MsgTx) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error
 		}
 	}
 
-	if msg.Version & TxNoLock == 0 {
+	if msg.Version&TxNoLock == 0 {
 		msg.LockTime, err = common.BinarySerializer.Uint32(r, common.LittleEndian)
 		if err != nil {
 			return err
@@ -849,7 +932,7 @@ func (msg *MsgTx) DeserializeNoWitness(r io.Reader) error {
 // database, as opposed to encoding transactions for the wire.
 func (msg *MsgTx) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
 	full := false
-	if enc & FullEncoding != 0 {
+	if enc&FullEncoding != 0 {
 		full = true
 		enc &^= FullEncoding
 	}
@@ -860,7 +943,7 @@ func (msg *MsgTx) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 	}
 
 	count := uint64(0)
-	if msg.Version & TxNoDefine == 0 {
+	if msg.Version&TxNoDefine == 0 {
 		count = uint64(len(msg.TxDef))
 
 		if !full {
@@ -939,7 +1022,7 @@ func (msg *MsgTx) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 		}
 	}
 
-	if msg.Version & TxNoLock == 0 {
+	if msg.Version&TxNoLock == 0 {
 		if err := common.BinarySerializer.PutUint32(w, common.LittleEndian, msg.LockTime); err != nil {
 			return err
 		}
@@ -962,7 +1045,7 @@ func (msg *MsgTx) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error
 // the protocol version and doesn't even really need to match the format of a
 // stored transaction at all.
 func (msg *MsgTx) Serialize(w io.Writer) error {
-	return msg.OmcEncode(w, 0, SignatureEncoding | FullEncoding)	// SignatureEncoding
+	return msg.OmcEncode(w, 0, SignatureEncoding|FullEncoding) // SignatureEncoding
 }
 
 // SerializeNoWitness encodes the transaction to w in an identical manner to
@@ -973,7 +1056,7 @@ func (msg *MsgTx) SerializeNoSignature(w io.Writer) error {
 }
 
 func (msg *MsgTx) SerializeFull(w io.Writer) error {
-	return msg.OmcEncode(w, 0, BaseEncoding | FullEncoding)
+	return msg.OmcEncode(w, 0, BaseEncoding|FullEncoding)
 }
 
 // baseSize returns the serialized size of the transaction without accounting
@@ -1060,12 +1143,12 @@ func (msg *MsgTx) MaxPayloadLength(pver uint32) uint32 {
 // future.
 func NewMsgTx(version int32) *MsgTx {
 	return &MsgTx{
-		Version: version,
-		TxDef:   make([]token.Definition, 0, defaultTxInOutAlloc),
-		TxIn:    make([]*TxIn, 0, defaultTxInOutAlloc),
-		TxOut:   make([]*TxOut, 0, defaultTxInOutAlloc),
-		SignatureScripts:   make([][]byte, 0, defaultTxInOutAlloc),
-//		StateChgs: make(map[[20]byte]*StateChange),
+		Version:          version,
+		TxDef:            make([]token.Definition, 0, defaultTxInOutAlloc),
+		TxIn:             make([]*TxIn, 0, defaultTxInOutAlloc),
+		TxOut:            make([]*TxOut, 0, defaultTxInOutAlloc),
+		SignatureScripts: make([][]byte, 0, defaultTxInOutAlloc),
+		//		StateChgs: make(map[[20]byte]*StateChange),
 	}
 }
 
@@ -1159,7 +1242,7 @@ func (to *TxOut) ReadTxOut(r io.Reader, pver uint32, version uint32) error {
 		return err
 	}
 	to.PkScript, err = readScript(r, pver, MaxMessagePayload,
-	"transaction output public key script")
+		"transaction output public key script")
 	return err
 }
 
@@ -1193,7 +1276,7 @@ func (to *TxOut) Read(r io.Reader, pver uint32, version int32, enc MessageEncodi
 		return err
 	}
 
-	ln,err := common.BinarySerializer.Uint32(r, common.LittleEndian)
+	ln, err := common.BinarySerializer.Uint32(r, common.LittleEndian)
 	if err != nil {
 		return err
 	}
@@ -1206,7 +1289,7 @@ func (to *TxOut) Read(r io.Reader, pver uint32, version int32, enc MessageEncodi
 
 // writeSignature encodes the bitcoin protocol encoding for a transaction
 // input's witness into to w.
-func (tx * MsgTx) WriteSignature(w io.Writer, pver uint32) error {
+func (tx *MsgTx) WriteSignature(w io.Writer, pver uint32) error {
 	err := common.WriteVarInt(w, pver, uint64(len(tx.SignatureScripts)))
 	if err != nil {
 		return err
@@ -1221,7 +1304,7 @@ func (tx * MsgTx) WriteSignature(w io.Writer, pver uint32) error {
 
 // ReadSignature decodes the bitcoin protocol encoding for a transaction
 // input's witness into to w.
-func (tx * MsgTx) ReadSignature(r io.Reader, pver uint32) error {
+func (tx *MsgTx) ReadSignature(r io.Reader, pver uint32) error {
 	count, err := common.ReadVarInt(r, pver)
 	if err != nil {
 		return err
@@ -1253,7 +1336,7 @@ func (tx * MsgTx) ReadSignature(r io.Reader, pver uint32) error {
 }
 
 func zeroaddr(addr []byte) bool {
-	for _,t := range addr {
+	for _, t := range addr {
 		if t != 0 {
 			return false
 		}
@@ -1269,15 +1352,15 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 
 	// The previous output of a coin base must have a zero hash. index is height of the block.
 	prevOut := &msgTx.TxIn[0].PreviousOutPoint
-	if !prevOut.Hash.IsEqual(&chainhash.Hash{}) {	// prevOut.Index != math.MaxUint32 ||
+	if !prevOut.Hash.IsEqual(&chainhash.Hash{}) { // prevOut.Index != math.MaxUint32 ||
 		return false
 	}
 
-	for _,to := range msgTx.TxOut {
+	for _, to := range msgTx.TxOut {
 		if to.IsSeparator() {
 			return true
 		}
-		if to.TokenType != 0 {
+		if to.TokenType != common.FeeCoinTyp && to.TokenType != common.OmegaCoinTyp {
 			return false
 		}
 	}
@@ -1287,4 +1370,9 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 
 func (msg *MsgTx) RemapDef(to token.Definition) token.Definition {
 	return token.RemapDef(msg.TxDef, to)
+}
+
+func (msg *MsgTx) IsBtcL2() bool { // whether it is a TX from BTC to L2 xfer
+	return len(msg.TxIn) == 1 && msg.TxIn[0].PreviousOutPoint.Index == 0xFFFFFF &&
+		!msg.TxIn[0].PreviousOutPoint.Hash.IsEqual(&chainhash.Hash{})
 }

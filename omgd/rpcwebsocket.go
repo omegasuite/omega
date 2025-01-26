@@ -97,9 +97,9 @@ func (s *rpcServer) WebsocketHandler(conn *websocket.Conn, remoteAddr string,
 
 	// Limit max number of websocket clients.
 	rpcsLog.Infof("New websocket client %s", remoteAddr)
-	if s.ntfnMgr.NumClients()+1 > cfg.RPCMaxWebsockets {
+	if s.ntfnMgr.NumClients()+1 > s.cfg.Cfg.RPCMaxWebsockets {
 		rpcsLog.Infof("Max websocket clients exceeded [%d] - "+
-			"disconnecting client %s", cfg.RPCMaxWebsockets,
+			"disconnecting client %s", s.cfg.Cfg.RPCMaxWebsockets,
 			remoteAddr)
 		conn.Close()
 		return
@@ -685,22 +685,24 @@ func (m *wsNotificationManager) subscribedClients(tx *btcutil.Tx,
 	subscribed := make(map[chan struct{}]struct{})
 
 	msgTx := tx.MsgTx()
-	for _, input := range msgTx.TxIn {
-		if input.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		for quitChan, wsc := range clients {
-			wsc.Lock()
-			filter := wsc.filterData
-			wsc.Unlock()
-			if filter == nil {
+	if !msgTx.IsCrossChain() {
+		for _, input := range msgTx.TxIn {
+			if input.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
-			filter.mu.Lock()
-			if filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
-				subscribed[quitChan] = struct{}{}
+			for quitChan, wsc := range clients {
+				wsc.Lock()
+				filter := wsc.filterData
+				wsc.Unlock()
+				if filter == nil {
+					continue
+				}
+				filter.mu.Lock()
+				if filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
+					subscribed[quitChan] = struct{}{}
+				}
+				filter.mu.Unlock()
 			}
-			filter.mu.Unlock()
 		}
 	}
 
@@ -1051,8 +1053,8 @@ func (*wsNotificationManager) removeSpentRequest(ops map[wire.OutPoint]map[chan 
 func txHexString(tx *wire.MsgTx) string {
 	buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 	// Ignore Serialize's error, as writing to a bytes.buffer cannot fail.
-	tx.OmcEncode(buf, 0, wire.SignatureEncoding | wire.FullEncoding)
-//	tx.Serialize(buf)
+	tx.OmcEncode(buf, 0, wire.SignatureEncoding|wire.FullEncoding)
+	//	tx.Serialize(buf)
 	return hex.EncodeToString(buf.Bytes())
 }
 
@@ -1184,28 +1186,30 @@ func (m *wsNotificationManager) notifyForTxIns(ops map[wire.OutPoint]map[chan st
 
 	txHex := ""
 	wscNotified := make(map[chan struct{}]struct{})
-	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		prevOut := &txIn.PreviousOutPoint
-		if cmap, ok := ops[*prevOut]; ok {
-			if txHex == "" {
-				txHex = txHexString(tx.MsgTx())
-			}
-			marshalledJSON, err := newRedeemingTxNotification(txHex, tx.Index(), block)
-			if err != nil {
-				rpcsLog.Warnf("Failed to marshal redeemingtx notification: %v", err)
+	if !tx.MsgTx().IsCrossChain() {
+		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
-			for wscQuit, wsc := range cmap {
-				if block != nil {
-					m.removeSpentRequest(ops, wsc, prevOut)
+			prevOut := &txIn.PreviousOutPoint
+			if cmap, ok := ops[*prevOut]; ok {
+				if txHex == "" {
+					txHex = txHexString(tx.MsgTx())
 				}
+				marshalledJSON, err := newRedeemingTxNotification(txHex, tx.Index(), block)
+				if err != nil {
+					rpcsLog.Warnf("Failed to marshal redeemingtx notification: %v", err)
+					continue
+				}
+				for wscQuit, wsc := range cmap {
+					if block != nil {
+						m.removeSpentRequest(ops, wsc, prevOut)
+					}
 
-				if _, ok := wscNotified[wscQuit]; !ok {
-					wscNotified[wscQuit] = struct{}{}
-					wsc.QueueNotification(marshalledJSON)
+					if _, ok := wscNotified[wscQuit]; !ok {
+						wscNotified[wscQuit] = struct{}{}
+						wsc.QueueNotification(marshalledJSON)
+					}
 				}
 			}
 		}
@@ -1463,7 +1467,7 @@ out:
 		//
 		// RPC quirks can be enabled by the user to avoid compatibility issues
 		// with software relying on Core's behavior.
-		if request.ID == nil && !(cfg.RPCQuirks && request.Jsonrpc == "") {
+		if request.ID == nil && !(c.server.cfg.Cfg.RPCQuirks && request.Jsonrpc == "") {
 			if !c.authenticated {
 				break out
 			}
@@ -1826,7 +1830,7 @@ func newWebsocketClient(server *rpcServer, conn *websocket.Conn,
 		server:            server,
 		addrRequests:      make(map[string]struct{}),
 		spentRequests:     make(map[wire.OutPoint]struct{}),
-		serviceRequestSem: makeSemaphore(cfg.RPCMaxConcurrentReqs),
+		serviceRequestSem: makeSemaphore(server.cfg.Cfg.RPCMaxConcurrentReqs),
 		ntfnChan:          make(chan []byte, 1), // nonblocking sync
 		sendChan:          make(chan wsResponse, websocketSendBufferSize),
 		quit:              make(chan struct{}),
@@ -2120,33 +2124,36 @@ func rescanBlock(wsc *wsClient, lookups *rescanKeys, blk *btcutil.Block) {
 		spentNotified := false
 		recvNotified := false
 
-		for _, txin := range tx.MsgTx().TxIn {
-			if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
-			}
-			if _, ok := lookups.unspent[txin.PreviousOutPoint]; ok {
-				delete(lookups.unspent, txin.PreviousOutPoint)
+		if !tx.MsgTx().IsCrossChain() {
 
-				if spentNotified {
+			for _, txin := range tx.MsgTx().TxIn {
+				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
+				if _, ok := lookups.unspent[txin.PreviousOutPoint]; ok {
+					delete(lookups.unspent, txin.PreviousOutPoint)
 
-				if txHex == "" {
-					txHex = txHexString(tx.MsgTx())
-				}
-				marshalledJSON, err := newRedeemingTxNotification(txHex, tx.Index(), blk)
-				if err != nil {
-					rpcsLog.Errorf("Failed to marshal redeemingtx notification: %v", err)
-					continue
-				}
+					if spentNotified {
+						continue
+					}
 
-				err = wsc.QueueNotification(marshalledJSON)
-				// Stop the rescan early if the websocket client
-				// disconnected.
-				if err == ErrClientQuit {
-					return
+					if txHex == "" {
+						txHex = txHexString(tx.MsgTx())
+					}
+					marshalledJSON, err := newRedeemingTxNotification(txHex, tx.Index(), blk)
+					if err != nil {
+						rpcsLog.Errorf("Failed to marshal redeemingtx notification: %v", err)
+						continue
+					}
+
+					err = wsc.QueueNotification(marshalledJSON)
+					// Stop the rescan early if the websocket client
+					// disconnected.
+					if err == ErrClientQuit {
+						return
+					}
+					spentNotified = true
 				}
-				spentNotified = true
 			}
 		}
 
@@ -2262,10 +2269,10 @@ func rescanBlockFilter(filter *wsClientFilter, block *btcutil.Block, params *cha
 		added := false
 
 		// Scan inputs if not a coinbase transaction.
-		if !blockchain.IsCoinBaseTx(msgTx) {
+		if !blockchain.IsCoinBaseTx(msgTx) && !msgTx.IsCrossChain() {
 			for _, input := range msgTx.TxIn {
 				if input.PreviousOutPoint.Hash.IsEqual(&zerohash) ||
-						!filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
+					!filter.existsUnspentOutPoint(&input.PreviousOutPoint) {
 					continue
 				}
 				if !added {

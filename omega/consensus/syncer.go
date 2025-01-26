@@ -15,6 +15,7 @@ import (
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btcd/wire"
+	"github.com/omegasuite/btcd/wire/common"
 	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/omega/token"
 	"net"
@@ -483,7 +484,9 @@ func (self *Syncer) process(cmd interface{}) bool {
 					self.agrees = make(map[int32]struct{})
 					self.signed = make(map[[20]byte]struct{})
 				}
+				miner.syncMutex.Lock()
 				pull(k.M, self.Height, nil)
+				miner.syncMutex.Unlock()
 			}
 
 			if self.forest[k.Finder].know == nil || len(k.K) > len(self.forest[k.Finder].know.K) {
@@ -525,6 +528,9 @@ func (self *Syncer) process(cmd interface{}) bool {
 			if _, ok := self.forest[k.F]; !ok || self.forest[k.F].block == nil {
 				//				self.pull(k.M, self.Members[k.F])
 				self.asked[self.Members[k.F]] = k
+				if ok {
+					self.pull(self.forest[k.F].hash, frm)
+				}
 			} else {
 				self.Candidate(k)
 			}
@@ -1519,7 +1525,6 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	}
 }
 
-/*
 func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 	self.handeling = "pull"
 	if _, ok := self.pulling[from]; !ok || self.pulling[from] == 0 {
@@ -1538,7 +1543,6 @@ func (self *Syncer) pull(hash chainhash.Hash, from int32) {
 		//		log.Infof("Have pulled for %d at height %d", from, self.Height)
 	}
 }
-*/
 
 func (self *Syncer) Quit() {
 	self.Done = true

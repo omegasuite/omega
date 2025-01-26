@@ -578,13 +578,13 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, omega.Err) {
 
 	tx := ovm.GetTx()
 	m := ovm.GetCurrentOutput()
-	coin := tx.MsgTx().TxOut[m.Index].Token
-	if coin.TokenType != 0 || coin.Value.(*token.NumToken).Val != 0 {
-		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation does not take a value.")
-	}
+	//	coin := tx.MsgTx().TxOut[m.Index].Token
+	//	if coin.TokenType != 0 || coin.Value.(*token.NumToken).Val != 0 {
+	//		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation does not take a value.")
+	//	}
 
-	if len(tx.MsgTx().TxIn) != 1 {
-		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation must have exactly one input.")
+	if len(tx.MsgTx().TxIn) < 1 {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation must have one input.")
 	}
 	// the only input must come from a pkh address so we can identify the creator
 	ovm.views.Utxo.FetchUtxosMain(ovm.DB, map[wire.OutPoint]struct{}{tx.MsgTx().TxIn[0].PreviousOutPoint: struct{}{}})

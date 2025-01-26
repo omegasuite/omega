@@ -10,7 +10,6 @@ package minerchain
 
 import (
 	"bytes"
-	"github.com/davecgh/go-spew/spew"
 	//	"fmt"
 	"github.com/omegasuite/btcd/blockchain"
 	"github.com/omegasuite/btcd/blockchain/chainutil"
@@ -65,12 +64,6 @@ type Config struct {
 	// ExternalIPs, the ip we listen on
 	ExternalIPs []string
 
-	// RSAPubKey for people to connect to us
-	RSAPubKey string
-
-	// whether in ShareMining mode
-	ShareMining bool
-
 	// BlockTemplateGenerator identifies the instance to use in order to
 	// generate block templates that the miner will attempt to solve.
 	BlockTemplateGenerator *mining.BlkTmplGenerator
@@ -78,6 +71,7 @@ type Config struct {
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
 	MiningAddrs []btcutil.Address
+	Privkeys    []*btcec.PrivateKey
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -421,7 +415,15 @@ func (m *CPUMiner) ChangeMiningKey(miningAddr btcutil.Address) {
 func (m *CPUMiner) generateBlocks(quit chan struct{}, numWorkers uint32) {
 	// Start a ticker which is used to signal checks for stale work and
 	// updates to the speed monitor.
-	m.workerWg.Add(1)
+	//	m.workerWg.Add(1)
+
+	pendingMiner := make(map[[20]byte]struct{})
+	// shall load those between current rotation and MR chain top
+
+	for i := m.g.Chain.BestSnapshot().LastRotation + 1; i <= uint32(m.g.Chain.Miners.BestSnapshot().Height); i++ {
+		mr, _ := m.g.Chain.Miners.BlockByHeight(int32(i))
+		pendingMiner[mr.MsgBlock().Miner] = struct{}{}
+	}
 
 out:
 	for {
@@ -467,7 +469,7 @@ out:
 		curHeight := m.g.Chain.Miners.BestSnapshot().Height
 
 		if curHeight == 0 && !isCurrent {
-			time.Sleep(time.Minute * 10)
+			time.Sleep(time.Second * 10)
 			curHeight = m.g.Chain.Miners.BestSnapshot().Height
 		}
 
@@ -504,9 +506,6 @@ out:
 		// Choose a payment address at random.
 		rand.Seed(time.Now().Unix())
 		rnd := rand.Intn(len(m.cfg.MiningAddrs))
-		if m.cfg.ShareMining && rnd > 1 {
-			rnd = 1 // all addresses except for the first are external
-		}
 
 		mtch := false
 		qc := chainChoice
@@ -590,7 +589,6 @@ out:
 				}
 				if inrange && len(vb) > 0 {
 					t = append(t, v)
-					log.Infof("violation: ", spew.Sdump(v))
 				}
 			}
 			sort.Slice(t, func(i int, j int) bool {
@@ -604,8 +602,6 @@ out:
 
 		if len(m.cfg.ExternalIPs) > 0 {
 			block.MsgBlock().Connection = []byte(m.cfg.ExternalIPs[0])
-		} else if len(m.cfg.RSAPubKey) > 0 {
-			block.MsgBlock().Connection = []byte(m.cfg.RSAPubKey)
 		} else {
 			m.submitBlockLock.Unlock()
 			m.Stale = true
@@ -613,24 +609,7 @@ out:
 			time.Sleep(time.Second * 5)
 			continue
 		}
-		/*
-			bm := len(m.g.Chain.BlackedList)
-			if bm > 0 {
-				bl := make([]*wire.Violations, 0, bm)
-				for j := 0; j < bm; j++ {
-					n := m.g.Chain.BlackedList[j]
-					mb, _ := m.g.Chain.Miners.BlockByHash(&n.MRBlock)
-					if mb.Height() < template.Height-99 {
-						continue
-					}
-					bl = append(bl, n)
-				}
-				m.g.Chain.BlackedList = m.g.Chain.BlackedList[bm:]
-				if len(bl) > 0 {
-					block.MsgBlock().ViolationReport = bl
-				}
-			}
-		*/
+
 		m.submitBlockLock.Unlock()
 
 		var h1, h2 int64
@@ -644,6 +623,7 @@ out:
 			}
 			v, err := m.g.Chain.CheckCollateral(block, nil, 0)
 			if err != nil {
+				log.Infof(err.Error())
 				time.Sleep(time.Second * 5)
 				continue
 			}
@@ -688,7 +668,7 @@ out:
 		}
 	}
 
-	m.workerWg.Done()
+	//	m.workerWg.Done()
 }
 
 // miningWorkerController launches the worker goroutines that are used to
@@ -724,7 +704,7 @@ out:
 
 			close(quit)
 
-			m.workerWg.Wait()
+			//			m.workerWg.Wait()
 			quit = make(chan struct{})
 
 			launchWorkers(m.numWorkers)
@@ -738,7 +718,7 @@ out:
 
 	// Wait until all workers shut down to stop the speed monitor since
 	// they rely on being able to send updates to it.
-	m.workerWg.Wait()
+	//	m.workerWg.Wait()
 	close(m.speedMonitorQuit)
 	m.wg.Done()
 }

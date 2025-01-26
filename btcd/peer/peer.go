@@ -226,6 +226,12 @@ type MessageListeners struct {
 	// circumstances such as keeping track of server-wide byte counts.
 	OnWrite func(p *Peer, bytesWritten int, msg wire.Message, err error)
 
+	OnFinalized func(p *Peer, msg *wire.MsgFinalized)
+	OnFinal     func(p *Peer, msg *wire.MsgReFinal)
+
+	OnGetChainMap func(p *Peer, msg *wire.MsgGetChainMap)
+	OnChainMap    func(p *Peer, msg *wire.MsgChainMap)
+
 	PushGetBlock func(p *Peer)
 }
 
@@ -394,6 +400,7 @@ type StatsSnap struct {
 	LastPingNonce       uint64
 	LastPingTime        time.Time
 	LastPingMicros      int64
+	RpcPort             string
 }
 
 // HashFunc is a function which returns a block hash, height and error
@@ -508,9 +515,11 @@ type Peer struct {
 	Miner     [20]byte // a copy of miner in the miner block to avoid lookup
 	TxSent    int32    // highest tx block we have sent
 	MinerSent int32    // highest miner block we have sent
+
+	RpcPort string
 }
 
-var stallex sync.Mutex
+var stallMtx sync.Mutex
 var stallCount = make(map[string]int)
 
 // String returns the peer's address and directionality as a human-readable
@@ -605,6 +614,7 @@ func (p *Peer) StatsSnapshot() *StatsSnap {
 		LastPingNonce:       p.lastPingNonce,
 		LastPingMicros:      p.lastPingMicros,
 		LastPingTime:        p.lastPingTime,
+		RpcPort:             p.RpcPort,
 	}
 
 	p.statsMtx.RUnlock()
@@ -1279,11 +1289,11 @@ func (p *Peer) stallHandler() {
 	defer stallTicker.Stop()
 
 	if !p.Inbound() {
-		stallex.Lock()
+		stallMtx.Lock()
 		if _, ok := stallCount[p.String()]; !ok {
 			stallCount[p.String()] = 1
 		}
-		stallex.Unlock()
+		stallMtx.Unlock()
 	}
 
 	// ioStopped is used to detect when both the input and output handler
@@ -1364,11 +1374,11 @@ out:
 			now := time.Now()
 			offset := deadlineOffset
 
-			stallex.Lock()
+			stallMtx.Lock()
 			if _, ok := stallCount[p.String()]; ok && !p.Inbound() {
 				offset += time.Duration(stallCount[p.String()] * 1e10)
 			}
-			stallex.Unlock()
+			stallMtx.Unlock()
 
 			if handlerActive {
 				offset += now.Sub(handlersStartTime)
@@ -1385,8 +1395,7 @@ out:
 				// keep connected if it is a committee member
 				//					continue
 				//				}
-
-				stallex.Lock()
+				stallMtx.Lock()
 				if sc, ok := stallCount[p.String()]; ok {
 					log.Infof("Peer %s appears to be stalled or "+
 						"misbehaving, %s command %d seconds timeout. stallcount = %d -- "+
@@ -1397,7 +1406,7 @@ out:
 						"misbehaving, %s command timeout. -- "+
 						"disconnecting", p, command)
 				}
-				stallex.Unlock()
+				stallMtx.Unlock()
 				p.Disconnect("stallHandler")
 				break
 			}
@@ -1721,6 +1730,9 @@ out:
 			}
 
 		case consensus.Message:
+			if p.cfg.ChainParams.Net != common.MainNet {
+				continue
+			}
 			if consensus.VerifySig(msg) {
 				var ea [20]byte
 				if p.Inbound() && bytes.Compare(p.Miner[:], ea[:]) == 0 {
@@ -1744,7 +1756,28 @@ out:
 				}
 				log.Debugf("inHandler consensus.Message %s processed", msg.Command())
 			} else {
-				log.Infof("inHandler consensus.VerifySig failed")
+				// log.Infof("inHandler consensus.VerifySig failed, try to relay")
+				consensus.HandleMessage(p, msg)
+			}
+
+		case *wire.MsgFinalized:
+			if p.cfg.Listeners.OnFinalized != nil {
+				p.cfg.Listeners.OnFinalized(p, msg)
+			}
+
+		case *wire.MsgReFinal:
+			if p.cfg.Listeners.OnFinal != nil {
+				p.cfg.Listeners.OnFinal(p, msg)
+			}
+
+		case *wire.MsgGetChainMap:
+			if p.cfg.Listeners.OnGetChainMap != nil {
+				p.cfg.Listeners.OnGetChainMap(p, msg)
+			}
+
+		case *wire.MsgChainMap:
+			if p.cfg.Listeners.OnChainMap != nil {
+				p.cfg.Listeners.OnChainMap(p, msg)
 			}
 
 		default:
@@ -2147,6 +2180,7 @@ func (p *Peer) readRemoteVersionMsg() error {
 		_ = p.writeMessage(rejectMsg, wire.LatestEncoding)
 		return errors.New(reason)
 	}
+	p.RpcPort = msg.RpcPort
 
 	// check dup conn from same IP & latest state, if more than 5 recently, reject it
 	cntconlock.Lock()
@@ -2309,6 +2343,8 @@ func (p *Peer) localVersionMsg() (*wire.MsgVersion, error) {
 	msg.AddUserAgent(p.cfg.UserAgentName, p.cfg.UserAgentVersion,
 		p.cfg.UserAgentComments...)
 
+	msg.RpcPort = p.cfg.ChainParams.RpcPort
+
 	// Advertise local services.
 	msg.Services = p.cfg.Services
 
@@ -2370,7 +2406,7 @@ func (p *Peer) start() error {
 	select {
 	case err := <-negotiateErr:
 		if err != nil {
-			p.Disconnect("start @ negotiateErr")
+			p.Disconnect("start @ negotiateErr " + err.Error())
 			return err
 		}
 	case <-time.After(negotiateTimeout):
@@ -2473,6 +2509,7 @@ func newPeerBase(origCfg *Config, inbound bool) *Peer {
 		protocolVersion: cfg.ProtocolVersion,
 		lastBlock:       0,
 		lastMinerBlock:  0,
+		RpcPort:         "8789",
 	}
 
 	return &p

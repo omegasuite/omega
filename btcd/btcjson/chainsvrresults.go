@@ -49,6 +49,11 @@ type GetBlockVerboseResult struct {
 	NextHash     string        `json:"nextblockhash,omitempty"`
 }
 
+type Instruction struct {
+	InstCode uint32
+	InstData string
+}
+
 type GetMinerBlockVerboseResult struct {
 	Hash          string             `json:"hash"`
 	Confirmations int64              `json:"confirmations"`
@@ -62,10 +67,12 @@ type GetMinerBlockVerboseResult struct {
 	NextHash      string             `json:"nextblockhash,omitempty"`
 	Bits          string             `json:"bits"`
 	Difficulty    float64            `json:"difficulty"`
+	Connection    string             `json:"connection"`
 	Address       string             `json:"address"`
 	Best          string             `json:"best"`
 	Collateral    string             `json:"collateral"`
 	Violations    []*wire.Violations `json:"violations"`
+	Instructions  []Instruction      `json:"instructions"`
 }
 
 // CreateMultiSigResult models the data returned from the createmultisig
@@ -276,6 +283,7 @@ type GetPeerInfoResult struct {
 	Version             uint32  `json:"version"`
 	SubVer              string  `json:"subver"`
 	Inbound             bool    `json:"inbound"`
+	RpcPort             string  `json:"rpcport"`
 	StartingHeight      int32   `json:"startingheight"`
 	StartingMinerHeight int32   `json:"startingminerheight"`
 	CurrentHeight       int32   `json:"currentheight,omitempty"`
@@ -306,6 +314,16 @@ type ScriptPubKeyResult struct {
 	Hex       string   `json:"hex,omitempty"`
 	Type      string   `json:"type"`
 	Addresses []string `json:"addresses,omitempty"`
+}
+
+type GetCrossChainDBResult struct {
+	IncomingPool []*wire.XchainData `json:"incomingpool"`
+	Btc2L2Pool   []*wire.XchainData `json:"btc2l2pool"`
+	L2BtcPool    []*wire.XchainData `json:"l2btcpool"`
+	//	BridgeSigners []*treasury.Signers `json:"bridgesigners"`
+	//	XBTCAssets    []*treasury.Asset   `json:"xbtcassets"`
+	XCAssets []*wire.XchainData `json:"xcassets"`
+	RedeemDB map[string]string  `json:"redeemdb"`
 }
 
 // GetTxOutResult models the data from the gettxout command.
@@ -595,6 +613,11 @@ type MiningPolicy struct {
 type MultiSigAddr struct {
 	Address string `json:"address"`
 	Script  string `json:"script"`
+}
+
+type BtcL2Script struct {
+	Addresses []string `json:"addresses"`
+	Script    string   `json:"script"`
 }
 
 // Try result

@@ -170,6 +170,9 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getblockheader":  handleGetBlockHeader,
 	"genmultisigaddr": handleGenMultiSigAddr,
 
+	"clearbtcl2pool":  handleClearBtcL2Pool,  // new
+	"getcrosschaindb": handleGetCrossChainDB, // new
+
 	"getminerblock":       handleGetMinerBlock,       // New
 	"getmbk":              handleGetMinerBlock,       // New
 	"getminerblockheight": handleGetMinerBlockHeight, // New
@@ -189,8 +192,8 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"verifysig":       handleVerifySig,
 
 	//	"getblocktemplate":      handleGetBlockTemplate,
-	"getcfilter":            handleGetCFilter,
-	"getcfilterheader":      handleGetCFilterHeader,
+	//"getcfilter":            handleGetCFilter,
+	//"getcfilterheader":      handleGetCFilterHeader,
 	"getconnectioncount":    handleGetConnectionCount,
 	"resetconnection":       handleResetConnection,
 	"getcurrentnet":         handleGetCurrentNet,
@@ -340,14 +343,22 @@ var rpcLimited = map[string]struct{}{
 	"getmbkh":               {},
 	//	"getcfilter":            {},
 	//	"getcfilterheader":      {},
-	"getcurrentnet":      {},
-	"getdifficulty":      {},
-	"getheaders":         {},
-	"getinfo":            {},
-	"getnettotals":       {},
-	"getnetworkhashps":   {},
-	"getrawmempool":      {},
-	"getissuedtokens":    {},
+	"clearbtcl2pool":  {}, // new
+	"getcrosschaindb": {}, // new
+
+	"getcurrentnet":    {},
+	"getdifficulty":    {},
+	"getheaders":       {},
+	"getinfo":          {},
+	"getnettotals":     {},
+	"getnetworkhashps": {},
+	"getrawmempool":    {},
+	"getissuedtokens":  {},
+	//	"createxferl2txo":    {},
+	"gettreasury":        {}, // new
+	"getsigners":         {}, // new
+	"getbtcpool":         {}, // new
+	"getl2pool":          {}, // new
 	"signrawtransaction": {},
 
 	//	"clearmempool":          {},	this is admin command
@@ -1093,6 +1104,18 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 		}
 	}
 
+	targetchains := []uint32{}
+	if c.Targetchains != nil {
+		targetchains = *c.Targetchains
+	}
+
+	if len(targetchains) != 0 && len(targetchains) != len(c.Amounts) {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCInvalidParameter,
+			Message: "Targetchains and Amounts mismatch",
+		}
+	}
+
 	// Add all transaction inputs to a new transaction after performing
 	// some validity checks.
 	mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoLock)
@@ -1170,12 +1193,22 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 	// Add all transaction outputs to the transaction after performing
 	// some validity checks.
 	params := s.cfg.ChainParams
-	for _, mid := range c.Amounts {
+	for i, mid := range c.Amounts {
+		targetchain := uint32(0)
+		if len(targetchains) > 0 {
+			targetchain = targetchains[i]
+			if (targetchain & 0xFF000000) != 0 {
+				return nil, &btcjson.RPCError{
+					Code:    btcjson.ErrRPCInvalidParameter,
+					Message: "Invalid target chain",
+				}
+			}
+		}
 		for encodedAddr, amount := range mid {
 			// Decode the provided address.
 			var pkScript []byte
 			if encodedAddr == "contract" {
-				if amount.Script == nil {
+				if amount.Script == nil || targetchain != 0 {
 					return nil, &btcjson.RPCError{
 						Code:    btcjson.ErrRPCInvalidParameter,
 						Message: "Invalid contract script.",
@@ -1213,10 +1246,22 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 				if amount.Script != nil {
 					switch *amount.Script {
 					case "paynone":
+						if targetchain != 0 {
+							return nil, &btcjson.RPCError{
+								Code:    btcjson.ErrRPCInvalidAddressOrKey,
+								Message: "Can not send to black hole in another chain",
+							}
+						}
 						pkFunc = []byte{ovm.OP_PAY2NONE, 0, 0, 0}
 
 					case "payany":
 						pkFunc = []byte{ovm.OP_PAY2ANY, 0, 0, 0}
+						if targetchain != 0 {
+							return nil, &btcjson.RPCError{
+								Code:    btcjson.ErrRPCInvalidAddressOrKey,
+								Message: "Can not send to Anyone in another chain",
+							}
+						}
 					}
 				}
 				if !addr.IsForNet(params) {
@@ -1231,7 +1276,16 @@ func handleCreateRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan 
 				pkScript = make([]byte, 25)
 				pkScript[0] = addr.Version()
 				copy(pkScript[1:], addr.ScriptAddress())
-				copy(pkScript[21:], pkFunc)
+
+				if targetchain != 0 {
+					pkScript[21] = ovm.OP_PAYCROSSCHAIN
+					var t [4]byte
+					common.LittleEndian.PutUint32(t[:], uint32(targetchain))
+					copy(pkScript[22:25], t[:3])
+					pkScript = append(pkScript, pkFunc...)
+				} else {
+					copy(pkScript[21:], pkFunc)
+				}
 			}
 
 			txOut := amount.ConvertTo(mtx)
@@ -1331,32 +1385,33 @@ func createVinList(mtx *wire.MsgTx) []btcjson.Vin {
 	}
 
 	j := 0
+	if !mtx.IsCrossChain() {
+		for _, txIn := range mtx.TxIn {
+			// The disassembled string will contain [error] inline
+			// if the script doesn't fully parse, so ignore the
+			// error here.
+			//		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			var disbuf string
+			var hexs string
+			if mtx.SignatureScripts != nil && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && mtx.SignatureScripts[txIn.SignatureIndex] != nil {
+				disbuf = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+				hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+			}
+			vinEntry := &vinList[j]
+			j++
+			vinEntry.Txid = txIn.PreviousOutPoint.Hash.String()
+			vinEntry.Vout = txIn.PreviousOutPoint.Index
+			vinEntry.Sequence = txIn.Sequence
+			vinEntry.ScriptSig = &btcjson.ScriptSig{
+				Asm: disbuf,
+				Hex: hexs,
+			}
 
-	for _, txIn := range mtx.TxIn {
-		// The disassembled string will contain [error] inline
-		// if the script doesn't fully parse, so ignore the
-		// error here.
-		//		disbuf, _ := txscript.DisasmString(txIn.SignatureScript)
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
+			vinEntry.SignatureIndex = txIn.SignatureIndex
 		}
-		var disbuf string
-		var hexs string
-		if mtx.SignatureScripts != nil && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && mtx.SignatureScripts[txIn.SignatureIndex] != nil {
-			disbuf = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
-			hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
-		}
-		vinEntry := &vinList[j]
-		j++
-		vinEntry.Txid = txIn.PreviousOutPoint.Hash.String()
-		vinEntry.Vout = txIn.PreviousOutPoint.Index
-		vinEntry.Sequence = txIn.Sequence
-		vinEntry.ScriptSig = &btcjson.ScriptSig{
-			Asm: disbuf,
-			Hex: hexs,
-		}
-
-		vinEntry.SignatureIndex = txIn.SignatureIndex
 	}
 
 	vinList = vinList[:j]
@@ -1632,7 +1687,7 @@ func handleGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 	return nil, fmt.Errorf("This interface has been disabled.")
 	// Respond with an error if there are no addresses to pay the
 	// created blocks to.
-	if len(cfg.miningAddrs) == 0 {
+	if len(s.cfg.Cfg.miningAddrs) == 0 {
 		return nil, &btcjson.RPCError{
 			Code: btcjson.ErrRPCInternal.Code,
 			Message: "No payment addresses specified " +
@@ -1743,7 +1798,7 @@ func handleGetAddedNodeInfo(s *rpcServer, cmd interface{}, closeChan <-chan stru
 		default:
 			// Do a DNS lookup for the address.  If the lookup fails, just
 			// use the host.
-			ips, err := btcdLookup(host)
+			ips, err := btcdLookup(host, s.cfg.Cfg)
 			if err != nil {
 				ipList = make([]string, 1)
 				ipList[0] = host
@@ -1826,7 +1881,7 @@ func getDifficultyRatio(bits uint32, params *chaincfg.Params) float64 {
 
 func handleGetTPSView(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetTPSViewCmd)
-	addr, err := btcutil.DecodeAddress(c.Address, activeNetParams.Params)
+	addr, err := btcutil.DecodeAddress(c.Address, s.cfg.ChainParams)
 	if err != nil {
 		return nil, err
 	}
@@ -1848,7 +1903,7 @@ func handleGetTPSView(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 
 func handleGetTPSReport(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetTPSViewCmd)
-	addr, err := btcutil.DecodeAddress(c.Address, activeNetParams.Params)
+	addr, err := btcutil.DecodeAddress(c.Address, s.cfg.ChainParams)
 	if err != nil {
 		return nil, err
 	}
@@ -2177,6 +2232,14 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		collateral = blockHeader.Utxos.String()
 	}
 
+	insts := make([]btcjson.Instruction, len(blockHeader.Instructions))
+	for i, t := range blockHeader.Instructions {
+		insts[i] = btcjson.Instruction{
+			InstCode: uint32(t.InstCode),
+			InstData: string(t.InstData),
+		}
+	}
+
 	blockReply := btcjson.GetMinerBlockVerboseResult{
 		Hash:          c.Hash,
 		Version:       blockHeader.Version,
@@ -2190,10 +2253,12 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
 		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 		NextHash:      nextHashString,
+		Connection:    string(blockHeader.Connection),
 		Address:       d.String(), // hex.EncodeToString(blockHeader.Miner),
 		Best:          blockHeader.BestBlock.String(),
 		Collateral:    collateral,
 		Violations:    blockHeader.ViolationReport,
+		Instructions:  insts,
 	}
 
 	return blockReply, nil
@@ -2227,7 +2292,7 @@ func handleAddCollateral(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		return nil, rpcDecodeHexError(c.Hash)
 	}
 
-	fp, err := os.OpenFile(cfg.ConfigFile, os.O_APPEND|os.O_WRONLY, 0666)
+	fp, err := os.OpenFile(s.cfg.Cfg.ConfigFile, os.O_APPEND|os.O_WRONLY, 0666)
 
 	if err != nil {
 		return "failed", nil
@@ -2265,7 +2330,7 @@ func handleAddMiningKey(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 			}
 		}
 	} else if s.cfg.MinerMiner != nil && s.cfg.MinerMiner.IsMining() {
-		if addr, err := btcutil.DecodeAddress(c.Key, activeNetParams.Params); err == nil {
+		if addr, err := btcutil.DecodeAddress(c.Key, s.cfg.ChainParams); err == nil {
 			s.cfg.MinerMiner.ChangeMiningKey(addr)
 			result.Status = 1
 		} else {
@@ -2815,10 +2880,12 @@ func (state *gbtWorkState) blockTemplateResult(useCoinbaseValue bool, submitOld 
 		// before creating the final array to prevent duplicate entries
 		// when multiple inputs reference the same transaction.
 		dependsMap := make(map[int64]struct{})
-		for _, txIn := range tx.TxIn {
-			if !txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
-					dependsMap[idx] = struct{}{}
+		if !tx.IsCrossChain() {
+			for _, txIn := range tx.TxIn {
+				if !txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					if idx, ok := txIndex[txIn.PreviousOutPoint.Hash]; ok {
+						dependsMap[idx] = struct{}{}
+					}
 				}
 			}
 		}
@@ -3298,66 +3365,6 @@ func handleGetBlockTemplate(s *rpcServer, cmd interface{}, closeChan <-chan stru
 }
 */
 
-// handleGetCFilter implements the getcfilter command.
-func handleGetCFilter(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	if s.cfg.CfIndex == nil {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCNoCFIndex,
-			Message: "The CF index must be enabled for this command",
-		}
-	}
-
-	c := cmd.(*btcjson.GetCFilterCmd)
-	hash, err := chainhash.NewHashFromStr(c.Hash)
-	if err != nil {
-		return nil, rpcDecodeHexError(c.Hash)
-	}
-
-	filterBytes, err := s.cfg.CfIndex.FilterByBlockHash(hash, c.FilterType)
-	if err != nil {
-		rpcsLog.Debugf("Could not find committed filter for %v: %v",
-			hash, err)
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCBlockNotFound,
-			Message: "Block not found",
-		}
-	}
-
-	rpcsLog.Debugf("Found committed filter for %v", hash)
-	return hex.EncodeToString(filterBytes), nil
-}
-
-// handleGetCFilterHeader implements the getcfilterheader command.
-func handleGetCFilterHeader(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	if s.cfg.CfIndex == nil {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCNoCFIndex,
-			Message: "The CF index must be enabled for this command",
-		}
-	}
-
-	c := cmd.(*btcjson.GetCFilterHeaderCmd)
-	hash, err := chainhash.NewHashFromStr(c.Hash)
-	if err != nil {
-		return nil, rpcDecodeHexError(c.Hash)
-	}
-
-	headerBytes, err := s.cfg.CfIndex.FilterHeaderByBlockHash(hash, c.FilterType)
-	if len(headerBytes) > 0 {
-		rpcsLog.Debugf("Found header of committed filter for %v", hash)
-	} else {
-		rpcsLog.Debugf("Could not find header of committed filter for %v: %v",
-			hash, err)
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCBlockNotFound,
-			Message: "Block not found",
-		}
-	}
-
-	hash.SetBytes(headerBytes)
-	return hash.String(), nil
-}
-
 // handleGetConnectionCount implements the getconnectioncount command.
 func handleGetConnectionCount(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	return s.cfg.ConnMgr.ConnectedCount(), nil
@@ -3454,10 +3461,10 @@ func handleGetInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 		Blocks:          best.Height,
 		TimeOffset:      int64(s.cfg.TimeSource.Offset().Seconds()),
 		Connections:     s.cfg.ConnMgr.ConnectedCount(),
-		Proxy:           cfg.Proxy,
+		Proxy:           s.cfg.Cfg.Proxy,
 		Difficulty:      getDifficultyRatio(best.Bits, s.cfg.ChainParams),
-		TestNet:         cfg.TestNet,
-		RelayFee:        cfg.minRelayTxFee.ToOMC(),
+		TestNet:         s.cfg.Cfg.TestNet,
+		RelayFee:        s.cfg.Cfg.minRelayTxFee.ToOMC(),
 	}
 
 	return ret, nil
@@ -3511,7 +3518,7 @@ func handleGetMiningInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		HashesPerSec:   0, // int64(s.cfg.CPUMiner.HashesPerSecond()),
 		NetworkHashPS:  networkHashesPerSec,
 		PooledTx:       uint64(s.cfg.TxMemPool.Count()),
-		TestNet:        cfg.TestNet,
+		TestNet:        s.cfg.Cfg.TestNet,
 	}
 	return &result, nil
 }
@@ -3653,6 +3660,7 @@ func handleGetPeerInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 			BanScore:            int32(p.BanScore()),
 			FeeFilter:           p.FeeFilter(),
 			SyncNode:            statsSnap.ID == syncPeerID,
+			RpcPort:             statsSnap.RpcPort,
 		}
 		if p.ToPeer().LastPingNonce() != 0 {
 			wait := float64(time.Since(statsSnap.LastPingTime).Nanoseconds())
@@ -4390,65 +4398,67 @@ type retrievedTx struct {
 func fetchInputTxos(s *rpcServer, tx *wire.MsgTx) (map[wire.OutPoint]wire.TxOut, error) {
 	mp := s.cfg.TxMemPool
 	originOutputs := make(map[wire.OutPoint]wire.TxOut)
-	for txInIndex, txIn := range tx.TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-
-		// Attempt to fetch and use the referenced transaction from the
-		// memory pool.
-		origin := &txIn.PreviousOutPoint
-		originTx, err := mp.FetchTransaction(&origin.Hash)
-		if err == nil {
-			txOuts := originTx.MsgTx().TxOut
-			if origin.Index >= uint32(len(txOuts)) {
-				errStr := fmt.Sprintf("unable to find output "+
-					"%v referenced from transaction %s:%d",
-					origin, tx.TxHash(), txInIndex)
-				return nil, internalRPCError(errStr, "")
+	if !tx.IsCrossChain() {
+		for txInIndex, txIn := range tx.TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
 			}
 
-			originOutputs[*origin] = *txOuts[origin.Index]
-			continue
-		}
+			// Attempt to fetch and use the referenced transaction from the
+			// memory pool.
+			origin := &txIn.PreviousOutPoint
+			originTx, err := mp.FetchTransaction(&origin.Hash)
+			if err == nil {
+				txOuts := originTx.MsgTx().TxOut
+				if origin.Index >= uint32(len(txOuts)) {
+					errStr := fmt.Sprintf("unable to find output "+
+						"%v referenced from transaction %s:%d",
+						origin, tx.TxHash(), txInIndex)
+					return nil, internalRPCError(errStr, "")
+				}
 
-		// Look up the location of the transaction.
-		blockRegion, err := s.cfg.TxIndex.TxBlockRegion(&origin.Hash)
-		if err != nil {
-			context := "Failed to retrieve transaction location"
-			return nil, internalRPCError(err.Error(), context)
-		}
-		if blockRegion == nil {
-			return nil, rpcNoTxInfoError(&origin.Hash)
-		}
+				originOutputs[*origin] = *txOuts[origin.Index]
+				continue
+			}
 
-		// Load the raw transaction bytes from the database.
-		var txBytes []byte
-		err = s.cfg.DB.View(func(dbTx database.Tx) error {
-			var err error
-			txBytes, err = dbTx.FetchBlockRegion(blockRegion)
-			return err
-		})
-		if err != nil {
-			return nil, rpcNoTxInfoError(&origin.Hash)
-		}
+			// Look up the location of the transaction.
+			blockRegion, err := s.cfg.TxIndex.TxBlockRegion(&origin.Hash)
+			if err != nil {
+				context := "Failed to retrieve transaction location"
+				return nil, internalRPCError(err.Error(), context)
+			}
+			if blockRegion == nil {
+				return nil, rpcNoTxInfoError(&origin.Hash)
+			}
 
-		// Deserialize the transaction
-		var msgTx wire.MsgTx
-		err = msgTx.Deserialize(bytes.NewReader(txBytes))
-		if err != nil {
-			context := "Failed to deserialize transaction"
-			return nil, internalRPCError(err.Error(), context)
-		}
+			// Load the raw transaction bytes from the database.
+			var txBytes []byte
+			err = s.cfg.DB.View(func(dbTx database.Tx) error {
+				var err error
+				txBytes, err = dbTx.FetchBlockRegion(blockRegion)
+				return err
+			})
+			if err != nil {
+				return nil, rpcNoTxInfoError(&origin.Hash)
+			}
 
-		// Add the referenced output to the map.
-		if origin.Index >= uint32(len(msgTx.TxOut)) {
-			errStr := fmt.Sprintf("unable to find output %v "+
-				"referenced from transaction %s:%d", origin,
-				tx.TxHash(), txInIndex)
-			return nil, internalRPCError(errStr, "")
+			// Deserialize the transaction
+			var msgTx wire.MsgTx
+			err = msgTx.Deserialize(bytes.NewReader(txBytes))
+			if err != nil {
+				context := "Failed to deserialize transaction"
+				return nil, internalRPCError(err.Error(), context)
+			}
+
+			// Add the referenced output to the map.
+			if origin.Index >= uint32(len(msgTx.TxOut)) {
+				errStr := fmt.Sprintf("unable to find output %v "+
+					"referenced from transaction %s:%d", origin,
+					tx.TxHash(), txInIndex)
+				return nil, internalRPCError(errStr, "")
+			}
+			originOutputs[*origin] = *msgTx.TxOut[origin.Index]
 		}
-		originOutputs[*origin] = *msgTx.TxOut[origin.Index]
 	}
 
 	return originOutputs, nil
@@ -4489,98 +4499,101 @@ func createVinListPrevOut(s *rpcServer, mtx *wire.MsgTx, chainParams *chaincfg.P
 
 	contracts := false
 
-	for _, txIn := range mtx.TxIn {
-		if txIn.IsSeparator() {
-			contracts = true
-			continue
-		}
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		// The disassembled string will contain [error] inline
-		// if the script doesn't fully parse, so ignore the
-		// error here.
-		hexs := "by contract"
-		if !contracts && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && txIn.SignatureIndex > 0 {
-			hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
-		}
+	if !mtx.IsCrossChain() {
 
-		// Create the basic input entry without the additional optional
-		// previous output details which will be added later if
-		// requested and available.
-		prevOut := &txIn.PreviousOutPoint
-		vinEntry := btcjson.VinPrevOut{
-			Txid:     prevOut.Hash.String(),
-			Vout:     prevOut.Index,
-			Sequence: txIn.Sequence,
-			ScriptSig: &btcjson.ScriptSig{
-				Asm: "",
-				Hex: hexs,
-			},
-		}
-
-		vinEntry.SignatureIndex = txIn.SignatureIndex
-
-		// Add the entry to the list now if it already passed the filter
-		// since the previous output might not be available.
-		passesFilter := len(filterAddrMap) == 0
-		if passesFilter {
-			vinList = append(vinList, vinEntry)
-		}
-
-		// Only populate previous output information if requested and
-		// available.
-		if len(originOutputs) == 0 {
-			continue
-		}
-		originTxOut, ok := originOutputs[*prevOut]
-		if !ok {
-			continue
-		}
-
-		// Ignore the error here since an error means the script
-		// couldn't parse and there is no additional information about
-		// it anyways.
-		addrs, _, _ := indexers.ExtractPkScriptAddrs(originTxOut.PkScript, chainParams)
-
-		// Encode the addresses while checking if the address passes the
-		// filter when needed.
-		encodedAddrs := make([]string, len(addrs))
-		for j, addr := range addrs {
-			encodedAddr := addr.EncodeAddress()
-			encodedAddrs[j] = encodedAddr
-
-			// No need to check the map again if the filter already
-			// passes.
-			if passesFilter {
+		for _, txIn := range mtx.TxIn {
+			if txIn.IsSeparator() {
+				contracts = true
 				continue
 			}
-			if _, exists := filterAddrMap[encodedAddr]; exists {
-				passesFilter = true
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
 			}
-		}
+			// The disassembled string will contain [error] inline
+			// if the script doesn't fully parse, so ignore the
+			// error here.
+			hexs := "by contract"
+			if !contracts && txIn.SignatureIndex < uint32(len(mtx.SignatureScripts)) && txIn.SignatureIndex > 0 {
+				hexs = hex.EncodeToString(mtx.SignatureScripts[txIn.SignatureIndex])
+			}
 
-		// Ignore the entry if it doesn't pass the filter.
-		if !passesFilter {
-			continue
-		}
+			// Create the basic input entry without the additional optional
+			// previous output details which will be added later if
+			// requested and available.
+			prevOut := &txIn.PreviousOutPoint
+			vinEntry := btcjson.VinPrevOut{
+				Txid:     prevOut.Hash.String(),
+				Vout:     prevOut.Index,
+				Sequence: txIn.Sequence,
+				ScriptSig: &btcjson.ScriptSig{
+					Asm: "",
+					Hex: hexs,
+				},
+			}
 
-		// Add entry to the list if it wasn't already done above.
-		if len(filterAddrMap) != 0 {
-			vinList = append(vinList, vinEntry)
-		}
+			vinEntry.SignatureIndex = txIn.SignatureIndex
 
-		// Update the entry with previous output information if
-		// requested.
-		/*
-			if vinExtra {
-				vinListEntry := &vinList[len(vinList)-1]
-				vinListEntry.PrevOut = &btcjson.PrevOut{
-					Addresses: encodedAddrs,
-					Value:     btcutil.Amount(originTxOut.Value.(*token.NumToken).Val).ToOMC(),
+			// Add the entry to the list now if it already passed the filter
+			// since the previous output might not be available.
+			passesFilter := len(filterAddrMap) == 0
+			if passesFilter {
+				vinList = append(vinList, vinEntry)
+			}
+
+			// Only populate previous output information if requested and
+			// available.
+			if len(originOutputs) == 0 {
+				continue
+			}
+			originTxOut, ok := originOutputs[*prevOut]
+			if !ok {
+				continue
+			}
+
+			// Ignore the error here since an error means the script
+			// couldn't parse and there is no additional information about
+			// it anyways.
+			addrs, _, _ := indexers.ExtractPkScriptAddrs(originTxOut.PkScript, chainParams)
+
+			// Encode the addresses while checking if the address passes the
+			// filter when needed.
+			encodedAddrs := make([]string, len(addrs))
+			for j, addr := range addrs {
+				encodedAddr := addr.EncodeAddress()
+				encodedAddrs[j] = encodedAddr
+
+				// No need to check the map again if the filter already
+				// passes.
+				if passesFilter {
+					continue
+				}
+				if _, exists := filterAddrMap[encodedAddr]; exists {
+					passesFilter = true
 				}
 			}
-		*/
+
+			// Ignore the entry if it doesn't pass the filter.
+			if !passesFilter {
+				continue
+			}
+
+			// Add entry to the list if it wasn't already done above.
+			if len(filterAddrMap) != 0 {
+				vinList = append(vinList, vinEntry)
+			}
+
+			// Update the entry with previous output information if
+			// requested.
+			/*
+				if vinExtra {
+					vinListEntry := &vinList[len(vinList)-1]
+					vinListEntry.PrevOut = &btcjson.PrevOut{
+						Addresses: encodedAddrs,
+						Value:     btcutil.Amount(originTxOut.Value.(*token.NumToken).Val).ToOMC(),
+					}
+				}
+			*/
+		}
 	}
 
 	return vinList, nil
@@ -4781,7 +4794,8 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 				mtx := new(wire.MsgTx)
 				err := mtx.Deserialize(bytes.NewReader(serializedTx))
 				if err != nil {
-					return err
+					fmt.Printf("error: bad data in addr index at %d -- %s", heights[i], err.Error())
+					continue
 				}
 				mtx.SignatureScripts = make([][]byte, 0)
 
@@ -5233,7 +5247,7 @@ type SignatureError struct {
 	Error      error
 }
 
-// signRawTransaction handles the signrawtransaction command.
+// handleSignRawTransaction handles the signrawtransaction command.
 func handleSignRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.SignRawTransactionCmd)
 
@@ -5287,32 +5301,32 @@ func handleSignRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 			return nil, e
 		}
 
-		var hashType txscript.SigHashType
+		var hashType ovm.SigHashType
 		switch *c.Flags {
 		case "ALL":
-			hashType = txscript.SigHashAll
+			hashType = ovm.SigHashAll
 		case "NONE":
-			hashType = txscript.SigHashNone
+			hashType = ovm.SigHashNone
 		case "SINGLE":
-			hashType = txscript.SigHashSingle
+			hashType = ovm.SigHashSingle
 		case "DOUBLE":
-			hashType = txscript.SigHashDouble
+			hashType = ovm.SigHashDouble
 		case "TRIPLE":
-			hashType = txscript.SigHashTriple
+			hashType = ovm.SigHashTriple
 		case "QUARDRUPLE":
-			hashType = txscript.SigHashQuardruple
+			hashType = ovm.SigHashQuardruple
 		case "ALL|ANYONECANPAY":
-			hashType = txscript.SigHashAll | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashAll | ovm.SigHashAnyOneCanPay
 		case "NONE|ANYONECANPAY":
-			hashType = txscript.SigHashNone | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashNone | ovm.SigHashAnyOneCanPay
 		case "SINGLE|ANYONECANPAY":
-			hashType = txscript.SigHashSingle | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashSingle | ovm.SigHashAnyOneCanPay
 		case "DOUBLE|ANYONECANPAY":
-			hashType = txscript.SigHashDouble | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashDouble | ovm.SigHashAnyOneCanPay
 		case "TRIPLE|ANYONECANPAY":
-			hashType = txscript.SigHashTriple | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashTriple | ovm.SigHashAnyOneCanPay
 		case "QUARDRUPLE|ANYONECANPAY":
-			hashType = txscript.SigHashQuardruple | txscript.SigHashAnyOneCanPay
+			hashType = ovm.SigHashQuardruple | ovm.SigHashAnyOneCanPay
 		default:
 			e := errors.New("Invalid sighash parameter")
 			return nil, e
@@ -5479,7 +5493,7 @@ func handleSignRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 // being unable to determine a previous output script to redeem.
 //
 // The transaction pointed to by tx is modified by this function.
-func (s *rpcServer) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashType,
+func (s *rpcServer) SignTransaction(tx *wire.MsgTx, hashType ovm.SigHashType,
 	additionalPrevScripts map[wire.OutPoint][]byte,
 	additionalKeysByAddress map[string]*btcutil.WIF,
 	redeemScriptsByAddress map[string][]byte, view *viewpoint.ViewPointSet) ([]SignatureError, error) {
@@ -5561,7 +5575,7 @@ func (s *rpcServer) SignTransaction(tx *wire.MsgTx, hashType txscript.SigHashTyp
 		// SigHashSingle inputs can only be signed if there's a
 		// corresponding output. However this could be already signed,
 		// so we always verify the output.
-		if (hashType&txscript.SigHashMask) < txscript.SigHashSingle || i < len(tx.TxOut) {
+		if (hashType&ovm.SigHashMask) < ovm.SigHashSingle || i < len(tx.TxOut) {
 			//				txIn.SignatureIndex = uint32(i)
 			if tx.SignatureScripts == nil {
 				tx.SignatureScripts = make([][]byte, 0)
@@ -5650,6 +5664,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	if c.FulllValidate != nil && *c.FulllValidate {
 		sigcheck = true
 	}
+
 	acceptedTxs, err := s.cfg.TxMemPool.ProcessTransaction(tx, false, false, 0, sigcheck)
 	if err != nil {
 		// When the error is a rule error, it means the transaction was
@@ -5667,7 +5682,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		}
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCDeserialization,
-			Message: "TX rejected: " + err.Error(),
+			Message: tx.Hash().String() + "\nTX rejected: " + err.Error(),
 		}
 	}
 
@@ -5714,6 +5729,10 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 
 	msg := tx.Hash().String()
 
+	//	if !s.cfg.Cfg.Generate && (s.cfg.Cfg.DisablePOWMining || !s.cfg.Cfg.EnablePOWMining) {
+	//		s.cfg.TxMemPool.RemoveTransaction(tx, true)
+	//	}
+
 	if *c.WaitConfirm != 0 {
 		cf := time.AfterFunc(time.Duration(*c.WaitConfirm)*time.Second, func() {
 			s.statusLock.Lock()
@@ -5736,6 +5755,150 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	}
 
 	return msg, nil
+}
+
+func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetCrossChainDBCmd)
+
+	res := &btcjson.GetCrossChainDBResult{
+		IncomingPool: make([]*wire.XchainData, 0),
+		//Btc2L2Pool:   make([]*wire.XchainData, 0),
+		//L2BtcPool:    make([]*wire.XchainData, 0),
+		//		BridgeSigners: make([]*treasury.Signers, 0),
+		//		XBTCAssets:    make([]*treasury.Asset, 0),
+		//XCAssets: make([]*wire.XchainData, 0),
+		//RedeemDB: make(map[string]string),
+	}
+
+	s.cfg.DB.View(func(tx database.Tx) error {
+		meta := tx.Metadata()
+		if c.Clear&1 != 0 { // INCOMINGPOOL
+			bucket := meta.Bucket([]byte(common.INCOMINGPOOL))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				xchain := &wire.XchainData{}
+				xchain.DeSerialize(cursor.Value())
+				res.IncomingPool = append(res.IncomingPool, xchain)
+			}
+		}
+		/*
+			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
+				fmt.Printf("BTCL2POOL\n")
+				bucket := meta.Bucket([]byte(common.BTCL2POOL))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					xchain := &wire.XchainData{}
+					xchain.DeSerialize(cursor.Value())
+					res.Btc2L2Pool = append(res.Btc2L2Pool, xchain)
+				}
+
+				bucket = meta.Bucket([]byte(common.L2BTCPOOL))
+				cursor = bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					xchain := &wire.XchainData{}
+					xchain.DeSerialize(cursor.Value())
+					res.L2BtcPool = append(res.L2BtcPool, xchain)
+				}
+			}
+			if c.Clear&4 != 0 { // BRIDGESIGNERS
+				fmt.Printf("BRIDGESIGNERS\n")
+				bucket := meta.Bucket([]byte(common.BRIDGESIGNERS))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					var addr [20]byte
+					copy(addr[:], cursor.Key())
+
+					t := &treasury.Signers{}
+					copy(t.Address[:], addr[:])
+					t.Pledged = make([]*treasury.PlgAsset, 0)
+
+					_, err := t.Deserialize(cursor.Value())
+					if err != nil {
+						continue
+					}
+					res.BridgeSigners = append(res.BridgeSigners, t)
+				}
+			}
+			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+				fmt.Printf("XBTCAssets\n")
+				bucket := meta.Bucket([]byte(common.XBTCAssets))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					var outp wire.OutPoint
+					key := cursor.Key()
+					outp.Hash.SetBytes(key[:32])
+					outp.Index = common.LittleEndian.Uint32(key[32:])
+					plg := &treasury.Asset{}
+					_, err := plg.Deserialize(cursor.Value())
+					if err != nil {
+						return err
+					}
+					res.XBTCAssets = append(res.XBTCAssets, plg)
+				}
+				/*
+					bucket = meta.Bucket([]byte(common.XCAssets))
+					cursor = bucket.Cursor()
+					n := 0
+					for ok := cursor.First(); ok; ok = cursor.Next() {
+						n++
+					}
+					fmt.Printf("XCAssets has %d items\n", n)
+				* /
+			}
+			if c.Clear&16 != 0 { // REEDEEM
+				bucket := meta.Bucket([]byte(common.REDEEMDB))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					res.RedeemDB[string(cursor.Key())] = hex.EncodeToString(cursor.Value())
+				}
+			}
+		*/
+		return nil
+	})
+	return res, nil
+}
+
+func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetCrossChainDBCmd)
+
+	s.cfg.DB.View(func(tx database.Tx) error {
+		meta := tx.Metadata()
+		if c.Clear&1 != 0 { // INCOMINGPOOL
+			bucketName := []byte(common.INCOMINGPOOL)
+			meta.DeleteBucket(bucketName)
+			meta.CreateBucket(bucketName)
+		}
+		/*
+			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
+				bucketName := []byte(common.L2BTCPOOL)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+				bucketName = []byte(common.L2BTCPOOL)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+
+			if c.Clear&4 != 0 { // BRIDGESIGNERS
+				bucketName := []byte(common.BRIDGESIGNERS)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+
+			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+				bucketName := []byte(common.XBTCAssets)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+			if c.Clear&16 != 0 { // REEDEEM
+				bucketName := []byte(common.REDEEMDB)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+		*/
+		return nil
+	})
+
+	return "Done.", nil
 }
 
 func handleVerifySig(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
@@ -6174,9 +6337,9 @@ func (s *rpcServer) NotifyNewTransactions(txns []*mempool.TxDesc) {
 //
 // This function is safe for concurrent access.
 func (s *rpcServer) limitConnections(w http.ResponseWriter, remoteAddr string) bool {
-	if int(atomic.LoadInt32(&s.numClients)+1) > cfg.RPCMaxClients {
+	if int(atomic.LoadInt32(&s.numClients)+1) > s.cfg.Cfg.RPCMaxClients {
 		rpcsLog.Infof("Max RPC clients exceeded [%d] - "+
-			"disconnecting client %s", cfg.RPCMaxClients,
+			"disconnecting client %s", s.cfg.Cfg.RPCMaxClients,
 			remoteAddr)
 		http.Error(w, "503 Too busy.  Try again later.",
 			http.StatusServiceUnavailable)
@@ -6402,7 +6565,7 @@ func (s *rpcServer) jsonRPCRead(w http.ResponseWriter, r *http.Request, isAdmin 
 			//
 			// RPC quirks can be enabled by the user to avoid compatibility issues
 			// with software relying on Core's behavior.
-			if request.ID == nil && !(cfg.RPCQuirks && request.Jsonrpc == "") {
+			if request.ID == nil && !(s.cfg.Cfg.RPCQuirks && request.Jsonrpc == "") {
 				return
 			}
 
@@ -6702,6 +6865,7 @@ type rpcserverSyncManager interface {
 
 // rpcserverConfig is a descriptor containing the RPC server configuration.
 type rpcserverConfig struct {
+	Cfg *config
 	// Listeners defines a slice of listeners for which the RPC server will
 	// take ownership of and accept connections.  Since the RPC server takes
 	// ownership of these listeners, they will be closed when the RPC server
@@ -6745,12 +6909,10 @@ type rpcserverConfig struct {
 	// of to provide additional data when queried.
 	TxIndex   *indexers.TxIndex
 	AddrIndex *indexers.AddrIndex
-	CfIndex   *indexers.CfIndex
 
 	// The fee estimator keeps track of how long transactions are left in
 	// the mempool before they are mined into blocks.
 	FeeEstimator *mempool.FeeEstimator
-	ShareMining  bool
 }
 
 // newRPCServer returns a new instance of the rpcServer struct.
@@ -6763,13 +6925,13 @@ func newRPCServer(config *rpcserverConfig) (*rpcServer, error) {
 		requestProcessShutdown: make(chan struct{}),
 		quit:                   make(chan int),
 	}
-	if cfg.RPCUser != "" && cfg.RPCPass != "" {
-		login := cfg.RPCUser + ":" + cfg.RPCPass
+	if config.Cfg.RPCUser != "" && config.Cfg.RPCPass != "" {
+		login := config.Cfg.RPCUser + ":" + config.Cfg.RPCPass
 		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(login))
 		rpc.authsha = sha256.Sum256([]byte(auth))
 	}
-	if cfg.RPCLimitUser != "" { // && cfg.RPCLimitPass != "" {
-		login := cfg.RPCLimitUser + ":" + cfg.RPCLimitPass
+	if config.Cfg.RPCLimitUser != "" { // && cfg.RPCLimitPass != "" {
+		login := config.Cfg.RPCLimitUser + ":" + config.Cfg.RPCLimitPass
 		auth := "Basic " + base64.StdEncoding.EncodeToString([]byte(login))
 		rpc.limitauthsha = sha256.Sum256([]byte(auth))
 	}
@@ -6783,6 +6945,10 @@ func newRPCServer(config *rpcserverConfig) (*rpcServer, error) {
 // Callback for notifications from blockchain.  It notifies clients that are
 // long polling for changes or subscribed to websockets notifications.
 func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notification) {
+	if notification.Data == nil {
+		return
+	}
+
 	switch notification.Type {
 	case blockchain.NTBlockAccepted:
 		block, ok := notification.Data.(*btcutil.Block)
@@ -6801,6 +6967,9 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 		case *btcutil.Block:
 			// Notify registered websocket clients of incoming block.
 			blk := notification.Data.(*btcutil.Block)
+			if blk == nil {
+				return
+			}
 			s.ntfnMgr.NotifyBlockConnected(blk)
 			s.statusLock.Lock()
 			for _, tx := range blk.Transactions() {

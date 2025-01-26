@@ -25,6 +25,10 @@ const (
 	NDisconnect NodeSubCmd = "disconnect"
 )
 
+type GetBtcL2ScriptCmd struct {
+	Address string
+}
+
 // GenMultiSigAddr defines the GenMultiSigAddr JSON-RPC command.
 type GenMultiSigAddr struct {
 	Addresses  []string

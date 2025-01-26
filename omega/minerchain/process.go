@@ -115,7 +115,7 @@ func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.Behav
 			return true, nil
 		}
 
-		if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
+		if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 			if r, _, hreq := b.checkV2(block, parent, flags); !r {
 				return true, hreq
 			}
@@ -164,18 +164,28 @@ func (b *MinerChain) CheckSideChain(hash *chainhash.Hash) {
 
 func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode, flags blockchain.BehaviorFlags) (bool, error, wire.Message) {
 	// if it is in side chain, skip these tests below as they depends on chain state
-	for p, i := parent, int32(0); i <= b.chainParams.ViolationReportDeadline && p != nil; i++ {
-		if p.Data.GetVersion() < chaincfg.Version2 {
-			break
+	if b.IsSVP {
+		return true, nil, nil
+	}
+	_, err := b.blockChain.CheckCollateral(block, &block.MsgBlock().BestBlock, flags)
+	if err != nil {
+		return false, err, nil
+	}
+
+	if block.MsgBlock().Utxos != nil {
+		for p, i := parent, int32(0); i <= b.chainParams.ViolationReportDeadline && p != nil; i++ {
+			if p.Data.GetVersion() < chaincfg.Version2 {
+				break
+			}
+			if p.Data.(*blockchainNodeData).block.Utxos != nil && *block.MsgBlock().Utxos == *p.Data.(*blockchainNodeData).block.Utxos {
+				// not allowed same utxo in 100 blks
+				return false, fmt.Errorf("Re-use UTXO for collateral within 100 miner blocks"), nil
+			}
+			p = p.Parent
 		}
-		if *block.MsgBlock().Utxos == *p.Data.(*blockchainNodeData).block.Utxos {
-			// not allowed same utxo in 100 blks
-			return false, fmt.Errorf("Re-use UTXO for collateral within 100 miner blocks"), nil
-		}
-		p = p.Parent
 	}
 	// check the coin for collateral exists and have correct amount
-	_, err := b.blockChain.CheckCollateral(block, &block.MsgBlock().BestBlock, flags)
+	_, err = b.blockChain.CheckCollateral(block, &block.MsgBlock().BestBlock, flags)
 	if err != nil {
 		return false, err, nil
 	}
@@ -277,7 +287,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		log.Infof("best block %s does not exist", block.MsgBlock().BestBlock.String())
 		return false, false, ruleError(ErrMissingBestBlock, "best block does not exist"), &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
-	if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version3 && bestblk.Data.GetNonce() >= 0 && bestblk.Height > 0 {
+	if (b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version3) && bestblk.Data.GetNonce() >= 0 && bestblk.Height > 0 {
 		log.Infof("best block is not a signed block")
 		return false, false, ruleError(ErrMissingBestBlock, "best block is not a signed block"), &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
@@ -289,7 +299,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, false, fmt.Errorf("block and parent tx reference not in the same chain."), nil
 	}
 
-	if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
+	if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 		if r, err, hreq := b.checkV2(block, parent, flags); !r {
 			return false, false, err, hreq
 		}
@@ -303,7 +313,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// ContractLimit if that is less than chain param, it could be 0
 	// implying the chain param value
 	lastBlk := parent.Data.(*blockchainNodeData).block
-	if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
+	if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
 		contractlim := block.MsgBlock().ContractLimit
 		if contractlim == 0 {
 			contractlim = b.chainParams.ContractExecLimit

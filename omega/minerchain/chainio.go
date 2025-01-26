@@ -246,6 +246,10 @@ func (b *MinerChain) initChainState() error {
 		}
 	}
 
+	//	orphans := make(map[chainhash.Hash]*chainutil.BlockNode)
+
+	skipped := 0
+
 	// Attempt to load the chain state from the database.
 	exec := func(dbTx database.Tx) error {
 		// Fetch the stored chain state from the database metadata.
@@ -282,6 +286,7 @@ func (b *MinerChain) initChainState() error {
 		cursor = blockIndexBucket.Cursor()
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			header, status, err := deserializeBlockRow(cursor.Value())
+
 			if err != nil {
 				return err
 			}
@@ -305,8 +310,13 @@ func (b *MinerChain) initChainState() error {
 			} else {
 				parent = b.index.LookupNode(&header.MsgBlock().PrevBlock)
 				if parent == nil {
-					return AssertError(fmt.Sprintf("initChainState: Could "+
-						"not find parent for block %s", header.MsgBlock().BlockHash()))
+					skipped++
+					//					node := &chainutil.BlockNode{}
+					//					InitBlockNode(node, header.MsgBlock(), nil)
+					//					orphans[header.MsgBlock().PrevBlock] = node
+					continue
+					//					return AssertError(fmt.Sprintf("initChainState: Could "+
+					//						"not find parent for block %s", header.MsgBlock().BlockHash()))
 				}
 			}
 
@@ -316,17 +326,50 @@ func (b *MinerChain) initChainState() error {
 			InitBlockNode(node, header.MsgBlock(), parent)
 
 			node.Status = status
+			kh := cursor.Key()
+			if bytes.Compare(node.Hash[:], kh[4:]) != 0 {
+				fmt.Printf("Mismatch block hash")
+			}
 			b.index.AddNodeUL(node)
 
 			lastNode = node
+
 			i++
+
+			/*
+				for p, ok := orphans[lastNode.Hash]; ok; p, ok = orphans[lastNode.Hash] {
+					if p.Data.(*blockchainNodeData).block.Bits == 0 {
+						p.Data.(*blockchainNodeData).block.Bits = lastNode.Data.GetBits()
+					}
+					p.Parent = lastNode
+					p.Height = lastNode.Height + 1
+
+					blockNodes[i] = *p
+					b.index.AddNodeUL(&blockNodes[i])
+
+					delete(orphans, lastNode.Hash)
+
+					lastNode = &blockNodes[i]
+					i++
+				}
+			*/
 		}
 
 		// Set the best chain view to the stored best state.
 		tip := b.index.LookupNode(&state.hash)
 		if tip == nil {
+			log.Tracef("Serialized chain state: %x", serializedData)
 			return AssertError(fmt.Sprintf("initChainState: cannot find "+
 				"chain tip %s in block index", state.hash))
+			/*
+				tip = &blockNodes[i-1]
+				state.hash = tip.Hash
+				state.height = uint32(i - 1)
+
+				buf := serializeBestChainState(state)
+				dbTx.Metadata().Put(chainStateKeyName, buf)
+
+			*/
 		}
 
 		b.BestChain.SetTip(tip)
@@ -383,7 +426,7 @@ func (b *MinerChain) initChainState() error {
 // deserializeBlockRow parses a value in the block index bucket into a block
 // header and block status bitfield.
 func deserializeBlockRow(blockRow []byte) (*wire.MinerBlock, chainutil.BlockStatus, error) {
-	buffer := bytes.NewReader(blockRow)
+	buffer := bytes.NewReader(blockRow[:len(blockRow)-1])
 
 	var header wire.MingingRightBlock
 	err := header.Deserialize(buffer)
@@ -391,15 +434,18 @@ func deserializeBlockRow(blockRow []byte) (*wire.MinerBlock, chainutil.BlockStat
 		return nil, chainutil.StatusNone, err
 	}
 
-	statusByte, err := buffer.ReadByte()
-	if err != nil {
-		// make sure we get the last byte
-		buffer.UnreadByte()
-		statusByte, err = buffer.ReadByte()
+	statusByte := blockRow[len(blockRow)-1]
+	/*
+		statusByte, err := buffer.ReadByte()
 		if err != nil {
-			return nil, chainutil.StatusNone, err
+			// make sure we get the last byte
+			buffer.UnreadByte()
+			statusByte, err = buffer.ReadByte()
+			if err != nil {
+				return nil, chainutil.StatusNone, err
+			}
 		}
-	}
+	*/
 
 	return wire.NewMinerBlock(&header), chainutil.BlockStatus(statusByte), nil
 }

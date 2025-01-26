@@ -129,6 +129,10 @@ const (
 	DefinedDeployments
 )
 
+const DefaultChainID = 1           // ID of this chain. each chain has a unique id
+const DefaultParentChainID = 0     // ID of this chain. each chain has a unique id
+const defaultSVPChainID = 0x800001 // Root xfer chain
+
 const (
 	Version1 = 0x10000
 	Version2 = 0x20000
@@ -136,6 +140,8 @@ const (
 	Version4 = 0x40000
 	Version5 = 0x50000
 	Version6 = 0x60000
+
+	SVPVersion1 = 0x10000
 )
 
 type forfeitureContract struct {
@@ -145,10 +151,7 @@ type forfeitureContract struct {
 	Claim    [4]byte
 }
 
-// Params defines a Bitcoin network by its parameters.  These parameters may be
-// used by Bitcoin applications to differentiate networks as well as addresses
-// and keys for one network from those intended for use on another network.
-type Params struct {
+type GlobalParams struct { // The params that must be the same for every node in the blockchain
 	// Name defines a human-readable identifier for the network.
 	Name string
 
@@ -157,25 +160,11 @@ type Params struct {
 
 	// DefaultPort defines the default peer-to-peer port for the network.
 	DefaultPort string
-
-	// external IPs that peers can reach us
-	ExternalIPs []string
+	RpcPort     string // default rpc port
 
 	// DNSSeeds defines a list of DNS seeds for the network that are used
 	// as one method to discover peers.
 	DNSSeeds []DNSSeed
-
-	// GenesisBlock defines the first block of the chain.
-	GenesisBlock      *wire.MsgBlock
-	GenesisMinerBlock *wire.MingingRightBlock
-
-	// GenesisHash is the starting block hash.
-	GenesisHash      *chainhash.Hash
-	GenesisMinerHash *chainhash.Hash
-
-	// PowLimit defines the highest allowed proof of work value for a block
-	// as a uint256.
-	PowLimit *big.Int
 
 	// PowLimitBits defines the highest allowed proof of work value for a
 	// block in compact form.
@@ -201,10 +190,6 @@ type Params struct {
 	// block.
 	TargetTimePerBlock time.Duration
 
-	// ChainCurrentStd is the latest best block time for chain to be
-	// considered corrent. Default is 24 hours
-	ChainCurrentStd time.Duration
-
 	// RetargetAdjustmentFactor is the adjustment factor used to limit
 	// the minimum and maximum amount of adjustment that can occur between
 	// difficulty retargets.
@@ -222,12 +207,6 @@ type Params struct {
 	// NOTE: This only applies if ReduceMinDifficulty is true.
 	MinDiffReductionTime time.Duration
 
-	// GenerateSupported specifies whether or not CPU mining is allowed.
-	GenerateSupported bool
-
-	// Checkpoints ordered from oldest to newest.
-	Checkpoints []Checkpoint
-
 	// These fields are related to voting on consensus rule changes as
 	// defined by BIP0009.
 	//
@@ -243,7 +222,49 @@ type Params struct {
 	// on.
 	RuleChangeActivationThreshold uint32
 	MinerConfirmationWindow       uint32
-	Deployments                   [DefinedDeployments]ConsensusDeployment
+
+	// forfeiture
+	Forfeit                 forfeitureContract
+	ViolationReportDeadline int32
+
+	ChainID uint32
+}
+
+// Params defines a Bitcoin network by its parameters.  These parameters may be
+// used by Bitcoin applications to differentiate networks as well as addresses
+// and keys for one network from those intended for use on another network.
+type Params struct {
+	GlobalParams
+
+	// GenesisHash is the starting block hash.
+	GenesisHash      *chainhash.Hash
+	GenesisMinerHash *chainhash.Hash
+
+	// PowLimit defines the highest allowed proof of work value for a block
+	// as a uint256.
+	PowLimit *big.Int
+
+	// parent chainid of main chain
+	ParentChainId uint32
+
+	// external IPs that peers can reach us
+	ExternalIPs []string
+
+	// GenesisBlock defines the first block of the chain.
+	GenesisBlock      *wire.MsgBlock
+	GenesisMinerBlock *wire.MingingRightBlock
+
+	// ChainCurrentStd is the latest best block time for chain to be
+	// considered corrent. Default is 24 hours
+	ChainCurrentStd time.Duration
+
+	// GenerateSupported specifies whether or not CPU mining is allowed.
+	GenerateSupported bool
+
+	// Checkpoints ordered from oldest to newest.
+	Checkpoints []Checkpoint
+
+	Deployments [DefinedDeployments]ConsensusDeployment
 
 	// Mempool parameters
 	RelayNonStdTxs bool
@@ -279,45 +300,65 @@ type Params struct {
 	MinRelayTxFee   int64
 	ContractExecFee int64 // contract execution cost as Haos per 10K steps
 
-	// forfeiture
-	Forfeit                 forfeitureContract
-	ViolationReportDeadline int32
-
 	// local rule: require expiration time set if tx has contract
 	ContractReqExp bool
 
 	// whether we log time blocks received
 	LogBlockTime bool
+
+	MainChainID uint32
+
+	AddChain interface{}
 }
 
 // MainNetParams defines the network parameters for the main Omega network.
 var MainNetParams = Params{
-	Name:        "mainnet",
-	Net:         common.MainNet,
-	DefaultPort: "8788",
-	DNSSeeds: []DNSSeed{
-		{"omegasuite.org", false},
+	GlobalParams: GlobalParams{
+		Name:        "mainnet",
+		Net:         common.MainNet,
+		DefaultPort: "8788",
+		DNSSeeds: []DNSSeed{
+			{"omegasuite.org", false},
+		},
+		PowLimitBits:             0x1e00fff0,
+		CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+		SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
+		MinimalAward:             1171875,
+		TargetTimespan:           time.Hour * 24 * 14, // 14 days
+		TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
+		RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
+		MinDiffReductionTime:     0,
+
+		// Consensus rule change deployments.
+		//
+		// The miner confirmation window is defined as:
+		//   target proof of work timespan / target proof of work spacing
+		RuleChangeActivationThreshold: 1916, // 95% of MinerConfirmationWindow
+		MinerConfirmationWindow:       2016, //
+		Forfeit: forfeitureContract{
+			Contract: [21]byte{0x88, 0x1a, 0x52, 0x0f, 0xa9, 0x4d, 0x8e, 0x07,
+				0x3b, 0x0b, 0x46, 0x79, 0x43, 0x5b, 0x55, 0x09, 0xa5, 0xc6, 0x84, 0x7d, 0xb3},
+			Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
+			Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
+			Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
+		},
+		ViolationReportDeadline: 100,
+		ChainID:                 DefaultChainID, // Omega
+		RpcPort:                 "8789",
 	},
+	GenesisHash:      GenesisHash[0x956ca366],
+	GenesisMinerHash: GenesisMinerHash[0x956ca366],
+	PowLimit:         mainPowLimit,
+
+	ParentChainId: DefaultParentChainID,
 
 	// Chain parameters
-	GenesisBlock:             &genesisBlock,
-	GenesisMinerBlock:        &genesisMinerBlock,
-	GenesisHash:              &genesisHash,
-	GenesisMinerHash:         &genesisMinerHash,
-	PowLimit:                 mainPowLimit,
-	PowLimitBits:             0x1e00fff0,
-	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
-	SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
-	MinimalAward:             1171875,
-	TargetTimespan:           time.Hour * 24 * 14, // 14 days
-	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
-	ChainCurrentStd:          time.Hour * 24,
-	RetargetAdjustmentFactor: 4, // 25% less, 400% more
-	MinBorderFee:             100000,
+	GenesisBlock:      GenesisBlock[0x956ca366],
+	GenesisMinerBlock: GenesisMinerBlock[0x956ca366],
+	ChainCurrentStd:   time.Hour * 24,
+	MinBorderFee:      100000,
 	//	ReduceMinDifficulty:      false,
-	MinDiffReductionTime: 0,
-	GenerateSupported:    false,
-
+	GenerateSupported: false,
 	// Checkpoints ordered from oldest to newest.
 	Checkpoints: []Checkpoint{
 		{20000000, &chainhash.Hash{
@@ -340,13 +381,6 @@ var MainNetParams = Params{
 
 		*/
 	},
-
-	// Consensus rule change deployments.
-	//
-	// The miner confirmation window is defined as:
-	//   target proof of work timespan / target proof of work spacing
-	RuleChangeActivationThreshold: 1916, // 95% of MinerConfirmationWindow
-	MinerConfirmationWindow:       2016, //
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
 			PrevVersion: 0,
@@ -411,54 +445,60 @@ var MainNetParams = Params{
 	HDCoinType:        0,
 	ContractExecLimit: 10000, // min limit of total contract execution steps in a block
 	ContractExecFee:   1,
-	Forfeit: forfeitureContract{
-		Contract: [21]byte{0x88, 0x1a, 0x52, 0x0f, 0xa9, 0x4d, 0x8e, 0x07,
-			0x3b, 0x0b, 0x46, 0x79, 0x43, 0x5b, 0x55, 0x09, 0xa5, 0xc6, 0x84, 0x7d, 0xb3},
-		Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
-		Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
-		Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
-	},
-	ViolationReportDeadline: 100,
-	ContractReqExp:          false,
+	ContractReqExp:    false,
 }
 
 // RegressionNetParams defines the network parameters for the regression test
 // Bitcoin network.  Not to be confused with the test Bitcoin network (version
 // 3), this network is sometimes simply called "testnet".
+/*
 var RegressionNetParams = Params{
-	Name:        "regtest",
-	Net:         common.RegNet,
-	DefaultPort: "18484",
-	DNSSeeds:    []DNSSeed{},
-
-	// Chain parameters
-	GenesisBlock:             &regTestGenesisBlock,
-	GenesisMinerBlock:        &regTestGenesisMinerBlock,
-	GenesisHash:              &regTestGenesisHash,
-	GenesisMinerHash:         &regTestGenesisMinerHash,
-	PowLimit:                 regressionPowLimit,
+	GlobalParams: GlobalParams{
+		Name:                     "regtest",
+		Net:                      common.RegNet,
+		DefaultPort:              "18484",
+		DNSSeeds:                 []DNSSeed{},
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         10,
 	SubsidyReductionInterval: 150 * wire.MINER_RORATE_FREQ,
 	MinimalAward:             1171875,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
-	ChainCurrentStd:          time.Hour * 24000,
 	RetargetAdjustmentFactor: 4, // 25% less, 400% more
-	MinBorderFee:             100000,
-	//	ReduceMinDifficulty:      true,
 	MinDiffReductionTime: time.Minute * 20, // TargetTimePerBlock * 2
-	GenerateSupported:    true,
-
-	// Checkpoints ordered from oldest to newest.
-	Checkpoints: nil,
-
 	// Consensus rule change deployments.
 	//
 	// The miner confirmation window is defined as:
 	//   target proof of work timespan / target proof of work spacing
 	RuleChangeActivationThreshold: 75, // 75%  of MinerConfirmationWindow
 	MinerConfirmationWindow:       100,
+		Forfeit: forfeitureContract{
+			Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
+				0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
+			Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
+			Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
+			Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
+		},
+		ViolationReportDeadline: 10,
+		ChainID:                 DefaultChainID, // Omega
+		RpcPort:                 "18840",
+	},
+	GenesisHash:      &regTestGenesisHash,
+	GenesisMinerHash: &regTestGenesisMinerHash,
+	PowLimit:         regressionPowLimit,
+
+	ParentChainId: DefaultParentChainID,
+	// Chain parameters
+	GenesisBlock:      &regTestGenesisBlock,
+	GenesisMinerBlock: &regTestGenesisMinerBlock,
+	ChainCurrentStd:   time.Hour * 24000,
+	MinBorderFee:      100000,
+	//	ReduceMinDifficulty:      true,
+	GenerateSupported: true,
+
+	// Checkpoints ordered from oldest to newest.
+	Checkpoints: nil,
+
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
 			PrevVersion: 0,
@@ -524,56 +564,61 @@ var RegressionNetParams = Params{
 
 	ContractExecLimit: 10000,
 	ContractExecFee:   1,
-	Forfeit: forfeitureContract{
-		Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
-			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
-		Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
-		Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
-		Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
-	},
-	ViolationReportDeadline: 10,
-	ContractReqExp:          false,
+	ContractReqExp:    false,
 }
+*/
 
 // TestNet3Params defines the network parameters for the test Bitcoin network
 // (version 3).  Not to be confused with the regression test network, this
 // network is sometimes simply called "testnet".
 var TestNet3Params = Params{
-	Name:        "testnet",
-	Net:         common.TestNet,
-	DefaultPort: "18383",
-	DNSSeeds: []DNSSeed{
-		{"omegasuite.org", false},
+	GlobalParams: GlobalParams{
+		Name:        "testnet",
+		Net:         common.TestNet,
+		DefaultPort: "18383",
+		DNSSeeds: []DNSSeed{
+			{"omegasuite.org", false},
+		},
+		PowLimitBits:             0x1f0fffff, // 0x1d3fffff
+		CoinbaseMaturity:         10,
+		SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
+		MinimalAward:             1171875,
+		TargetTimespan:           time.Hour * 2,   // 2 hours
+		TargetTimePerBlock:       time.Minute * 4, // 4 minutes
+		RetargetAdjustmentFactor: 4,               // 25% less, 400% more
+		MinDiffReductionTime:     time.Minute * 3, // TargetTimePerBlock * 2
+		// Consensus rule change deployments.
+		//
+		// The miner confirmation window is defined as:
+		//   target proof of work timespan / target proof of work spacing
+		RuleChangeActivationThreshold: 75, // 75% of MinerConfirmationWindow
+		MinerConfirmationWindow:       100,
+		Forfeit: forfeitureContract{
+			Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
+				0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
+			Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
+			Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
+			Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
+		},
+		ViolationReportDeadline: 10,
+		ChainID:                 DefaultChainID, // Omega
+		RpcPort:                 "18840",
 	},
+	GenesisHash:      TestNet3GenesisHash[0x956ca366],
+	GenesisMinerHash: TestNet3GenesisMinerHash[0x956ca366],
+	PowLimit:         testNet3PowLimit,
 
+	ParentChainId: DefaultParentChainID,
 	// Chain parameters
-	GenesisBlock:             &testNet3GenesisBlock,
-	GenesisMinerBlock:        &testNet3GenesisMinerBlock,
-	GenesisHash:              &testNet3GenesisHash,
-	GenesisMinerHash:         &testNet3GenesisMinerHash,
-	PowLimit:                 testNet3PowLimit,
-	PowLimitBits:             0x1f0fffff, // 0x1d3fffff
-	CoinbaseMaturity:         10,
-	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
-	MinimalAward:             1171875,
-	TargetTimespan:           time.Hour * 2,   // 2 hours
-	TargetTimePerBlock:       time.Minute * 4, // 4 minutes
-	ChainCurrentStd:          time.Hour * 24000,
-	RetargetAdjustmentFactor: 4, // 25% less, 400% more
-	MinBorderFee:             100000,
+	GenesisBlock:      TestNet3GenesisBlock[0x956ca366],
+	GenesisMinerBlock: TestNet3GenesisMinerBlock[0x956ca366],
+	ChainCurrentStd:   time.Hour * 24000,
+	MinBorderFee:      100000,
 	//	ReduceMinDifficulty:      true,
-	MinDiffReductionTime: time.Minute * 3, // TargetTimePerBlock * 2
-	GenerateSupported:    true,
+	GenerateSupported: true,
 
 	// Checkpoints ordered from oldest to newest.
 	Checkpoints: []Checkpoint{},
-
-	// Consensus rule change deployments.
-	//
-	// The miner confirmation window is defined as:
-	//   target proof of work timespan / target proof of work spacing
-	RuleChangeActivationThreshold: 75, // 75% of MinerConfirmationWindow
-	MinerConfirmationWindow:       100,
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
 			PrevVersion: 0,
@@ -639,15 +684,7 @@ var TestNet3Params = Params{
 
 	ContractExecLimit: 10000,
 	ContractExecFee:   1,
-	Forfeit: forfeitureContract{
-		Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
-			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
-		Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
-		Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
-		Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
-	},
-	ViolationReportDeadline: 10,
-	ContractReqExp:          false,
+	ContractReqExp:    false,
 }
 
 // SimNetParams defines the network parameters for the simulation test Bitcoin
@@ -657,40 +694,53 @@ var TestNet3Params = Params{
 // which are specifically specified are used to create the network rather than
 // following normal discovery rules.  This is important as otherwise it would
 // just turn into another public testnet.
+/*
 var SimNetParams = Params{
-	Name:        "simnet",
-	Net:         common.SimNet,
-	DefaultPort: "18585",
-	DNSSeeds:    []DNSSeed{}, // NOTE: There must NOT be any seeds.
-
-	// Chain parameters
-	GenesisBlock:             &simNetGenesisBlock,
-	GenesisMinerBlock:        &simNetGenesisMinerBlock,
-	GenesisHash:              &simNetGenesisHash,
-	GenesisMinerHash:         &simNetGenesisMinerHash,
-	PowLimit:                 simNetPowLimit,
+	GlobalParams: GlobalParams{
+		Name:                     "simnet",
+		Net:                      common.SimNet,
+		DefaultPort:              "18585",
+		DNSSeeds:                 []DNSSeed{}, // NOTE: There must NOT be any seeds.
 	PowLimitBits:             0x207fffff,
 	CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 	SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
 	MinimalAward:             1171875,
 	TargetTimespan:           time.Hour * 24 * 14, // 14 days
 	TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
-	ChainCurrentStd:          time.Hour * 24000,
 	RetargetAdjustmentFactor: 4, // 25% less, 400% more
-	MinBorderFee:             100000,
-	//	ReduceMinDifficulty:      true,
 	MinDiffReductionTime: time.Minute * 20, // TargetTimePerBlock * 2
-	GenerateSupported:    true,
-
-	// Checkpoints ordered from oldest to newest.
-	Checkpoints: nil,
-
 	// Consensus rule change deployments.
 	//
 	// The miner confirmation window is defined as:
 	//   target proof of work timespan / target proof of work spacing
 	RuleChangeActivationThreshold: 75, // 75% of MinerConfirmationWindow
 	MinerConfirmationWindow:       100,
+		Forfeit: forfeitureContract{
+			Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
+				0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
+			Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
+			Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
+			Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
+		},
+		ViolationReportDeadline: 10,
+		ChainID:                 DefaultChainID, // Omega
+		RpcPort:                 "18840",
+	},
+	GenesisHash:      &simNetGenesisHash,
+	GenesisMinerHash: &simNetGenesisMinerHash,
+	PowLimit:         simNetPowLimit,
+
+	ParentChainId: DefaultParentChainID,
+	// Chain parameters
+	GenesisBlock:      &simNetGenesisBlock,
+	GenesisMinerBlock: &simNetGenesisMinerBlock,
+	ChainCurrentStd:   time.Hour * 24000,
+	MinBorderFee:      100000,
+	//	ReduceMinDifficulty:      true,
+	GenerateSupported: true,
+
+	// Checkpoints ordered from oldest to newest.
+	Checkpoints: nil,
 	Deployments: [DefinedDeployments]ConsensusDeployment{
 		DeploymentTestDummy: {
 			PrevVersion: 0,
@@ -756,16 +806,10 @@ var SimNetParams = Params{
 
 	ContractExecLimit: 10000,
 	ContractExecFee:   1,
-	Forfeit: forfeitureContract{
-		Contract: [21]byte{0x88, 0xeb, 0xa5, 0x7d, 0xba, 0x8e, 0x88, 0x3e, 0x96, 0x2b,
-			0x1f, 0x13, 0xe7, 0xb0, 0xf3, 0x7f, 0x6d, 0x3b, 0x48, 0x48, 0xfc},
-		Opening: [4]byte{0x7c, 0xef, 0x8a, 0x73},
-		Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
-		Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
-	},
-	ViolationReportDeadline: 10,
-	ContractReqExp:          false,
+	ContractReqExp:    false,
 }
+
+*/
 
 var (
 	// ErrDuplicateNet describes an error where the parameters for a Bitcoin
@@ -913,8 +957,8 @@ func init() {
 	// Register all default networks when the package is initialized.
 	mustRegister(&MainNetParams)
 	mustRegister(&TestNet3Params)
-	mustRegister(&RegressionNetParams)
-	mustRegister(&SimNetParams)
+	//	mustRegister(&RegressionNetParams)
+	//	mustRegister(&SimNetParams)
 }
 
 var ActiveNetParams *Params

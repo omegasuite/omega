@@ -130,6 +130,10 @@ func (b *BlockChain) TphNotice(t *Notification) {
 		return
 	}
 
+	if t.Data == nil {
+		return
+	}
+
 	if !b.IsCurrent() {
 		// if not current, we are syncing chain, it does not reflect real TPS
 		return
@@ -138,6 +142,9 @@ func (b *BlockChain) TphNotice(t *Notification) {
 	switch t.Data.(type) {
 	case *btcutil.Block:
 		block := t.Data.(*btcutil.Block)
+		if block == nil {
+			return
+		}
 
 		h := uint32(block.Height())
 		rot := b.Rotation(block.MsgBlock().Header.PrevBlock)

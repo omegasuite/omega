@@ -131,6 +131,7 @@ func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoi
 	}
 
 	nsigs := uint32(len(tx.MsgTx().SignatureScripts))
+	if !tx.MsgTx().IsCrossChain() {
 	for _, tin := range tx.MsgTx().TxIn[skip:] {
 		if tin.IsSeparator() {
 			break
@@ -142,6 +143,7 @@ func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoi
 		if tin.SignatureIndex >= nsigs || tx.MsgTx().SignatureScripts[tin.SignatureIndex] == nil { // no signature
 			return omega.ScriptError(omega.ErrInternal, "Signature script does not exist.")
 		}
+	}
 	}
 
 	if nsigs == 0 {
@@ -232,6 +234,7 @@ func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoi
 	sharedSigs := make(map[uint32]*shared)
 
 	// prepare and shoot the real work
+	if !tx.MsgTx().IsCrossChain() {
 	for txinidx, txin := range tx.MsgTx().TxIn[skip:] {
 		if txin.IsSeparator() { // never
 			break
@@ -417,6 +420,7 @@ func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoi
 		atomic.AddInt32(&toverify, 1)
 
 		queue <- tbv{tinidx, txin.PreviousOutPoint, tx.MsgTx().SignatureScripts[txin.SignatureIndex], code}
+	}
 	}
 
 	allrun = true

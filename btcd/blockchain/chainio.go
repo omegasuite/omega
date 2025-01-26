@@ -20,7 +20,8 @@ import (
 	"github.com/omegasuite/btcd/database"
 	"github.com/omegasuite/btcd/wire"
 	"github.com/omegasuite/btcutil"
-	//	"github.com/omegasuite/omega/ovm"
+	"github.com/omegasuite/omega/chainmap"
+	"github.com/omegasuite/omega/ovm"
 	"github.com/omegasuite/omega/token"
 	"github.com/omegasuite/omega/viewpoint"
 )
@@ -51,11 +52,11 @@ var (
 	blockIndexBucketName = []byte("blockheaderidx")
 
 	// hashIndexBucketName is the name of the db bucket used to house to the
-	// block hash -> block height index.
+	// block hash -> block height Index.
 	hashIndexBucketName = []byte("hashidx")
 
 	// heightIndexBucketName is the name of the db bucket used to house to
-	// the block height -> block hash index.
+	// the block height -> block hash Index.
 	heightIndexBucketName = []byte("heightidx")
 
 	// chainStateKeyName is the name of the db key used to store the best
@@ -217,7 +218,7 @@ func (b *BlockChain) NewViewPointSet() *viewpoint.ViewPointSet {
 // Since the utxo set, by definition, only contains unspent transaction outputs,
 // the spent transaction outputs must be resurrected from somewhere.  There is
 // more than one way this could be done, however this is the most straight
-// forward method that does not require having a transaction index and unpruned
+// forward method that does not require having a transaction Index and unpruned
 // blockchain.
 //
 // NOTE: This format is NOT self describing.  The additional details such as
@@ -442,10 +443,12 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 	// Calculate the total number of stxos.
 	var numStxos int
 	for _, tx := range txns {
-		numStxos += len(tx.TxIn)
-		for _, in := range tx.TxIn {
-			if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				numStxos--
+		if !tx.IsCrossChain() {
+			numStxos += len(tx.TxIn)
+			for _, in := range tx.TxIn {
+				if in.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					numStxos--
+				}
 			}
 		}
 	}
@@ -471,6 +474,9 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 	stxos := make([]viewpoint.SpentTxOut, numStxos)
 	for txIdx := len(txns) - 1; txIdx > -1; txIdx-- {
 		tx := txns[txIdx]
+		if tx.IsCrossChain() {
+			continue
+		}
 
 		// Loop backwards through all of the transaction inputs and read
 		// the associated stxo.
@@ -479,6 +485,7 @@ func deserializeSpendJournalEntry(serialized []byte, txns []*wire.MsgTx) ([]view
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
 			}
+
 			stxo := &stxos[stxoIdx]
 			stxoIdx--
 
@@ -532,18 +539,32 @@ func dbFetchSpendJournalEntry(dbTx database.Tx, block *btcutil.Block) ([]viewpoi
 	blockTxns := block.MsgBlock().Transactions[1:]
 	stxos, err := deserializeSpendJournalEntry(serialized, blockTxns)
 	if err != nil {
-		// Ensure any deserialization errors are returned as database
-		// corruption errors.
-		if bccompress.IsDeserializeErr(err) {
-			return nil, database.Error{
-				ErrorCode: database.ErrCorruption,
-				Description: fmt.Sprintf("corrupt spend "+
-					"information for %v: %v", block.Hash(),
-					err),
+		realspend := false
+		for _, tx := range blockTxns {
+			if !tx.IsCrossChain() {
+				for _, txin := range tx.TxIn {
+					if !txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+						realspend = true
+					}
+				}
 			}
 		}
+		if realspend {
+			// Ensure any deserialization errors are returned as database
+			// corruption errors.
+			if bccompress.IsDeserializeErr(err) {
+				return nil, database.Error{
+					ErrorCode: database.ErrCorruption,
+					Description: fmt.Sprintf("corrupt spend "+
+						"information for %v: %v", block.Hash(),
+						err),
+				}
+			}
 
-		return nil, err
+			return nil, err
+		} else {
+			stxos = make([]viewpoint.SpentTxOut, 0)
+		}
 	}
 
 	return stxos, nil
@@ -567,7 +588,7 @@ func dbRemoveSpendJournalEntry(dbTx database.Tx, blockHash *chainhash.Hash) erro
 }
 
 // -----------------------------------------------------------------------------
-// The block index consists of two buckets with an entry for every block in the
+// The block Index consists of two buckets with an entry for every block in the
 // main chain.  One bucket is for the hash to height mapping and the other is
 // for the height to hash mapping.
 //
@@ -585,26 +606,26 @@ func dbRemoveSpendJournalEntry(dbTx database.Tx, blockHash *chainhash.Hash) erro
 // -----------------------------------------------------------------------------
 
 // DbPutBlockIndex uses an existing database transaction to update or add the
-// block index entries for the hash to height and height to hash mappings for
+// block Index entries for the hash to height and height to hash mappings for
 // the provided values.
 func DbPutBlockIndex(dbTx database.Tx, hash *chainhash.Hash, height int32) error {
-	// Serialize the height for use in the index entries.
+	// Serialize the height for use in the Index entries.
 	var serializedHeight [4]byte
 	byteOrder.PutUint32(serializedHeight[:], uint32(height))
 
-	// Add the block hash to height mapping to the index.
+	// Add the block hash to height mapping to the Index.
 	meta := dbTx.Metadata()
 	hashIndex := meta.Bucket(hashIndexBucketName)
 	if err := hashIndex.Put(hash[:], serializedHeight[:]); err != nil {
 		return err
 	}
 
-	// Add the block height to hash mapping to the index.
+	// Add the block height to hash mapping to the Index.
 	heightIndex := meta.Bucket(heightIndexBucketName)
 	return heightIndex.Put(serializedHeight[:], hash[:])
 }
 
-// DbRemoveBlockIndex uses an existing database transaction remove block index
+// DbRemoveBlockIndex uses an existing database transaction remove block Index
 // entries from the hash to height and height to hash mappings for the provided
 // values.
 func DbRemoveBlockIndex(dbTx database.Tx, hash *chainhash.Hash, height int32) error {
@@ -623,7 +644,7 @@ func DbRemoveBlockIndex(dbTx database.Tx, hash *chainhash.Hash, height int32) er
 }
 
 // DbFetchHeightByHash uses an existing database transaction to retrieve the
-// height for the provided hash from the index.
+// height for the provided hash from the Index.
 func DbFetchHeightByHash(dbTx database.Tx, hash *chainhash.Hash) (int32, error) {
 	meta := dbTx.Metadata()
 	hashIndex := meta.Bucket(hashIndexBucketName)
@@ -637,7 +658,7 @@ func DbFetchHeightByHash(dbTx database.Tx, hash *chainhash.Hash) (int32, error) 
 }
 
 // DbFetchHashByHeight uses an existing database transaction to retrieve the
-// hash for the provided height from the index.
+// hash for the provided height from the Index.
 func DbFetchHashByHeight(dbTx database.Tx, height int32) (*chainhash.Hash, error) {
 	var serializedHeight [4]byte
 	byteOrder.PutUint32(serializedHeight[:], uint32(height))
@@ -762,8 +783,8 @@ func (b *BlockChain) createChainState() error {
 	node.Status = chainutil.StatusDataStored | chainutil.StatusValid
 	b.BestChain.SetTip(node)
 
-	// Add the new node to the index which is used for faster lookups.
-	b.index.AddNodeUL(node)
+	// Add the new node to the Index which is used for faster lookups.
+	b.Index.AddNodeUL(node)
 
 	// Initialize the state related to the best block.  Since it is the
 	// genesis block, use its timestamp for the median time.
@@ -776,29 +797,43 @@ func (b *BlockChain) createChainState() error {
 		0)
 
 	// Create the initial the database chain state including creating the
-	// necessary index buckets and inserting the genesis block.
+	// necessary Index buckets and inserting the genesis block.
 	err := b.db.Update(func(dbTx database.Tx) error {
 		meta := dbTx.Metadata()
 
 		var err error
+
+		// Create the bucket for pool of incoming tx
+		if _, err = meta.CreateBucket([]byte(common.INCOMINGPOOL)); err != nil {
+			return err
+		}
+
+		// Create the bucket for cross chain assets
+		if _, err = meta.CreateBucket([]byte(common.XCAssets)); err != nil {
+			return err
+		}
+		if _, err = meta.CreateBucket([]byte(common.ROLLBACKPOOL)); err != nil {
+			return err
+		}
+
 		// Create the bucket that houses map from tokentype to contract.
 		if _, err = meta.CreateBucket(IssuedTokenTypes); err != nil {
 			return err
 		}
 
-		// Create the bucket that houses the block index data.
+		// Create the bucket that houses the block Index data.
 		if _, err = meta.CreateBucket(blockIndexBucketName); err != nil {
 			return err
 		}
 
 		// Create the bucket that houses the chain block hash to height
-		// index.
+		// Index.
 		if _, err = meta.CreateBucket(hashIndexBucketName); err != nil {
 			return err
 		}
 
 		// Create the bucket that houses the chain block height to hash
-		// index.
+		// Index.
 		if _, err = meta.CreateBucket(heightIndexBucketName); err != nil {
 			return err
 		}
@@ -862,13 +897,13 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
-		// Save the genesis block to the block index database.
+		// Save the genesis block to the block Index database.
 		if err = dbStoreBlockNode(dbTx, node); err != nil {
 			return err
 		}
 
 		// Add the genesis block hash to height and height to hash
-		// mappings to the index.
+		// mappings to the Index.
 		err = DbPutBlockIndex(dbTx, &node.Hash, node.Height)
 		if err != nil {
 			return err
@@ -903,8 +938,39 @@ type indexer interface {
 	DbFetchTxIndexEntry(dbTx database.Tx, txHash *chainhash.Hash) (*database.BlockRegion, error)
 }
 
-func (b *BlockChain) GetAccounts() map[[21]byte]int64 {
-	accounts := make(map[[21]byte]int64)
+func clearBucket(bucket database.Bucket) {
+	cursor := bucket.Cursor()
+	for ok := cursor.First(); ok; ok = cursor.Next() {
+		bucket.Delete(cursor.Key())
+	}
+}
+
+func (b *BlockChain) ShowL2DB(clearAssets int) {
+	b.db.Update(func(dbTx database.Tx) error {
+		if clearAssets != 0 {
+			bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+			if (clearAssets & 1) != 0 {
+				clearBucket(bucket)
+			}
+		}
+
+		bucketName := []byte(common.INCOMINGPOOL)
+		bucket := dbTx.Metadata().Bucket(bucketName)
+		cursor := bucket.Cursor()
+
+		fmt.Printf("INCOMINGPOOL\n")
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			if bytes.Compare(cursor.Key(), []byte("BTCHeight")) == 0 {
+				continue
+			}
+		}
+
+		return nil
+	})
+}
+
+func (b *BlockChain) GetAccounts() map[[21]byte]map[uint64]uint64 {
+	accounts := make(map[[21]byte]map[uint64]uint64)
 	b.db.View(func(dbTx database.Tx) error {
 		utxoSetBucketName := []byte("utxosetv2")
 		utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
@@ -916,10 +982,6 @@ func (b *BlockChain) GetAccounts() map[[21]byte]int64 {
 				return err
 			}
 
-			if entry.TokenType != 0 {
-				continue
-			}
-
 			pks := entry.PkScript()
 
 			var addr [21]byte
@@ -927,10 +989,15 @@ func (b *BlockChain) GetAccounts() map[[21]byte]int64 {
 
 			_, v := entry.Amount.Value()
 			if _, ok := accounts[addr]; ok {
-				accounts[addr] = accounts[addr] + v
+				if _, ok := accounts[addr][entry.TokenType]; !ok {
+					accounts[addr] = make(map[uint64]uint64)
+					accounts[addr][entry.TokenType] = 0
+				}
 			} else {
-				accounts[addr] = v
+				accounts[addr] = make(map[uint64]uint64)
+				accounts[addr][entry.TokenType] = 0
 			}
+			accounts[addr][entry.TokenType] = accounts[addr][entry.TokenType] + uint64(v)
 		}
 		return nil
 	})
@@ -1020,15 +1087,23 @@ func (b *BlockChain) Rebuildutxo(index indexer) {
 func (b *BlockChain) initChainState() error {
 	// Determine the state of the chain database. We may need to initialize
 	// everything from scratch or upgrade certain buckets.
-	var initialized, hasBlockIndex, hasminertps, hascomptx, hasaddrusage bool
+	var initialized, hasBlockIndex, hascomptx, hasaddrusage bool
 	var addrUseIndexKey = []byte("usebyaddridx")
 
 	err := b.db.Update(func(dbTx database.Tx) error {
 		initialized = dbTx.Metadata().Get(chainStateKeyName) != nil
 		hasBlockIndex = dbTx.Metadata().Bucket(blockIndexBucketName) != nil
-		hasminertps = dbTx.Metadata().Bucket(minerTPSBucketName) != nil
+		//		hasminertps = dbTx.Metadata().Bucket(minerTPSBucketName) != nil
 		hascomptx = dbTx.Metadata().Bucket(compendatedBucketName) != nil
 		hasaddrusage = dbTx.Metadata().Bucket(addrUseIndexKey) != nil
+
+		if dbTx.Metadata().Bucket([]byte("RECVTXPOOL")) == nil {
+			// Create the pool of pending tx from another chain bucket
+			if _, err := dbTx.Metadata().CreateBucket([]byte("RECVTXPOOL")); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 	if err != nil {
@@ -1042,20 +1117,17 @@ func (b *BlockChain) initChainState() error {
 	}
 
 	if !hasBlockIndex {
-		panic("block index mssing")
+		panic("block Index mssing")
 	}
 
-	if !hasminertps {
-		err := b.db.Update(func(dbTx database.Tx) error {
-			if _, err = dbTx.Metadata().CreateBucket(minerTPSBucketName); err != nil {
-				return err
-			}
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-	}
+	b.db.Update(func(dbTx database.Tx) error {
+		dbTx.Metadata().CreateBucket(minerTPSBucketName)
+		dbTx.Metadata().CreateBucket([]byte(common.INCOMINGPOOL))
+		dbTx.Metadata().CreateBucket([]byte(common.XCAssets))
+
+		return nil
+	})
+
 	if !hasaddrusage {
 		err := b.db.Update(func(dbTx database.Tx) error {
 			if _, err = dbTx.Metadata().CreateBucket(addrUseIndexKey); err != nil {
@@ -1095,6 +1167,16 @@ func (b *BlockChain) initChainState() error {
 			return err
 		}
 	}
+	b.db.Update(func(dbTx database.Tx) error {
+		meta := dbTx.Metadata()
+		// Create the bucket for pool of incoming tx
+		meta.CreateBucket([]byte(common.INCOMINGPOOL))
+		meta.CreateBucket([]byte(common.XCAssets))
+		meta.CreateBucket([]byte(common.ROLLBACKPOOL))
+		meta.CreateBucket([]byte("ChainMap"))
+
+		return nil
+	})
 
 	unloaded := make(map[chainhash.Hash]int32)
 	buffer := make([]struct {
@@ -1121,19 +1203,19 @@ func (b *BlockChain) initChainState() error {
 		if state.height > 200000 {
 			cutoff = state.height - 200000
 		}
-		b.index.Cutoff = cutoff
-		//		b.index.Unloaded = make([]chainhash.Hash, cutoff + 1)
+		b.Index.Cutoff = cutoff
+		//		b.Index.Unloaded = make([]chainhash.Hash, cutoff + 1)
 
 		// Load all of the headers from the data for the known best
-		// chain and construct the block index accordingly.  Since the
+		// chain and construct the block Index accordingly.  Since the
 		// number of nodes are already known, perform a single alloc
 		// for them versus a whole bunch of little ones to reduce
 		// pressure on the GC.
-		log.Infof("Loading block index...")
+		log.Infof("Loading block Index...")
 
 		blockIndexBucket := dbTx.Metadata().Bucket(blockIndexBucketName)
 
-		// Determine how many blocks will be loaded into the index so we can
+		// Determine how many blocks will be loaded into the Index so we can
 		// allocate the right amount.
 		var blockCount int32
 		cursor := blockIndexBucket.Cursor()
@@ -1164,7 +1246,7 @@ func (b *BlockChain) initChainState() error {
 				blockHash := header.BlockHash()
 				if !blockHash.IsEqual(b.ChainParams.GenesisHash) {
 					return AssertError(fmt.Sprintf("initChainState: Expected "+
-						"first entry in block index to be genesis block, "+
+						"first entry in block Index to be genesis block, "+
 						"found %s", blockHash))
 				}
 				parentheight = 0
@@ -1180,7 +1262,7 @@ func (b *BlockChain) initChainState() error {
 				badblocks[header.BlockHash()] = struct{}{}
 				continue
 			} else {
-				parent = b.index.LookupNode(&header.PrevBlock)
+				parent = b.Index.LookupNode(&header.PrevBlock)
 				if parent == nil {
 					if parentheight, ok = unloaded[header.PrevBlock]; !ok {
 						parentheight = -1
@@ -1191,8 +1273,8 @@ func (b *BlockChain) initChainState() error {
 						}
 						if parentheight < 0 {
 							continue
-							//							return AssertError(fmt.Sprintf("initChainState: Could "+
-							//								"not find parent for block %s", header.BlockHash()))
+							//	return AssertError(fmt.Sprintf("initChainState: Could "+
+							//	"not find parent for block %s", header.BlockHash()))
 						}
 					}
 				} else {
@@ -1214,10 +1296,10 @@ func (b *BlockChain) initChainState() error {
 				buffertop++
 
 				delete(unloaded, header.PrevBlock)
-				b.index.Untip(header.PrevBlock)
+				b.Index.Untip(header.PrevBlock)
 				unloaded[blockHash] = peekh
-				//				b.index.Unloaded[peekh] = blockHash
-				//				b.index.AddNodeHash(blockHash)
+				//				b.Index.Unloaded[peekh] = blockHash
+				//				b.Index.AddNodeHash(blockHash)
 			} else if parent == nil && cutoff > 0 && parentheight > 0 {
 				// this forms a side chain and will be discarded
 				buffer[buffertop%5000] = struct {
@@ -1227,7 +1309,7 @@ func (b *BlockChain) initChainState() error {
 				buffertop++
 			} else {
 				// Initialize the block node for the block, connect it,
-				// and add it to the block index.
+				// and add it to the block Index.
 				node := &blockNodes[i]
 				i++
 				InitBlockNode(node, header, parent)
@@ -1237,7 +1319,7 @@ func (b *BlockChain) initChainState() error {
 				}
 				peekh = node.Height
 				node.Status = status
-				b.index.AddNodeUL(node)
+				b.Index.AddNodeUL(node)
 				if lastNode == nil {
 					b.BestChain.SetTip(node)
 				}
@@ -1246,23 +1328,28 @@ func (b *BlockChain) initChainState() error {
 		}
 
 		// Set the best chain view to the stored best state.
-		tip := b.index.LookupNode(&state.hash)
+		tip := b.Index.LookupNode(&state.hash)
 		if tip == nil {
 			return AssertError(fmt.Sprintf("initChainState: cannot find "+
-				"chain tip %s in block index", state.hash))
+				"chain tip %s in block Index", state.hash))
 		}
 
 		b.BestChain.SetTip(tip)
-
-		// Load the raw block bytes for the best block.
-		blockBytes, err := dbTx.FetchBlock(&state.hash)
-		if err != nil {
-			return err
-		}
 		var block wire.MsgBlock
-		err = block.Deserialize(bytes.NewReader(blockBytes))
-		if err != nil {
-			return err
+		// Initialize the state related to the best block.
+		numTxns, blockSize := uint64(0), uint64(0)
+
+		if !b.IsSVP {
+			// Load the raw block bytes for the best block.
+			blockBytes, err := dbTx.FetchBlock(&state.hash)
+			if err != nil {
+				return err
+			}
+			err = block.Deserialize(bytes.NewReader(blockBytes))
+			if err != nil {
+				return err
+			}
+			blockSize = uint64(len(blockBytes))
 		}
 
 		// As a final consistency check, we'll run through all the
@@ -1271,7 +1358,7 @@ func (b *BlockChain) initChainState() error {
 		// is a safe assumption as all the block before the current tip
 		// are valid by definition.
 		for iterNode := tip; iterNode != nil; iterNode = iterNode.Parent {
-			// If this isn't already marked as valid in the index, then
+			// If this isn't already marked as valid in the Index, then
 			// we'll mark it as valid now to ensure consistency once
 			// we're up and running.
 			if !iterNode.Status.KnownValid() {
@@ -1280,13 +1367,13 @@ func (b *BlockChain) initChainState() error {
 					"upgrading to valid for consistency",
 					iterNode.Hash, iterNode.Height)
 
-				b.index.SetStatusFlags(iterNode, chainutil.StatusValid)
+				b.Index.SetStatusFlags(iterNode, chainutil.StatusValid)
 			}
 		}
 
-		// Initialize the state related to the best block.
-		blockSize := uint64(len(blockBytes))
-		numTxns := uint64(len(block.Transactions))
+		if !b.IsSVP {
+			numTxns = uint64(len(block.Transactions))
+		}
 
 		b.stateSnapshot = newBestState(tip, blockSize,
 			numTxns, state.totalTxns, tip.CalcPastMedianTime(), // state.bits,
@@ -1301,104 +1388,11 @@ func (b *BlockChain) initChainState() error {
 		return err
 	}
 
-	// As we might have updated the index after it was loaded, we'll
-	// attempt to flush the index to the DB. This will only result in a
+	// As we might have updated the Index after it was loaded, we'll
+	// attempt to flush the Index to the DB. This will only result in a
 	// write if the elements are dirty, so it'll usually be a noop.
-	return b.index.FlushToDB(dbStoreBlockNode)
+	return b.Index.FlushToDB(dbStoreBlockNode)
 }
-
-/*
-func (b *BlockChain) FetchMissingNodes(hash * chainhash.Hash, to int32) error {
-	// fetching missing nodes in best chain from tip till 'to'
-	log.Infof("FetchMissingNodes from %s to %d", hash.String(), to)
-	return b.db.View(func(dbTx database.Tx) error {
-		b.index.Lock()
-		b.BestChain.Lock()
-
-		defer func() {
-			b.BestChain.Unlock()
-			b.index.Unlock()
-		} ()
-
-		var loading = func (p * chainutil.BlockNode, to int32) {
-			var ph *wire.BlockHeader
-			var r *chainutil.BlockNode
-			var newnodes []chainutil.BlockNode
-			var j int32
-
-			for ; p.Height > to; p = p.Parent {
-				if p.Parent == nil {
-					if ph == nil {
-						ph, _ = DbFetchHeaderByHash(dbTx, &p.Hash)
-					}
-
-					if r = b.index.LookupNodeUL(&ph.PrevBlock); r == nil {
-						ph2, _ := DbFetchHeaderByHash(dbTx, &ph.PrevBlock)
-						if j == 0 {
-							newnodes = make([]chainutil.BlockNode, p.Height - to)
-							j = p.Height - to
-						}
-						j--
-						r = &newnodes[j]
-						InitBlockNode(r, ph2, b.index.LookupNodeUL(&ph2.PrevBlock))
-						r.Height = p.Height - 1
-						b.index.AddNodeDirect(r)
-						delete(b.index.Unloaded, ph.PrevBlock)
-						delete(b.index.Tips, ph2.PrevBlock)
-						ph = ph2
-					} else {
-						ph = nil
-					}
-					p.Parent = r
-				}
-			}
-		}
-
-		var ph *wire.BlockHeader
-
-		p := b.index.LookupNodeUL(hash)
-		var h int32
-		if p != nil {
-			h = p.Height
-		} else {
-			h = b.index.Unloaded[*hash]
-		}
-
-		tip := b.BestChain.NodeByHeightUL(h)
-		if tip == nil {
-			tip = b.BestChain.NodeByHeightUL(b.BestChain.LastNil(h, b.BestChain.HeightUL()))
-			loading(tip, h)
-			for tip = tip.Parent; tip != nil; tip = tip.Parent {
-				b.BestChain.SetNode(tip.Height, tip)
-			}
-			tip = b.BestChain.NodeByHeightUL(h)
-			if p == nil {
-				p = b.index.LookupNodeUL(hash)
-			}
-		}
-
-		if p == nil {
-			ph, _ = DbFetchHeaderByHash(dbTx, hash)
-			p = &chainutil.BlockNode{ }
-			InitBlockNode(p, ph, b.index.LookupNodeUL(&ph.PrevBlock))
-			p.Height = b.index.Unloaded[*hash]
-			b.index.AddNodeUL(p)
-			delete(b.index.Unloaded, *hash)
-		}
-
-		loading(p, to)
-
-		for ; p != nil; p, tip = p.Parent, tip.Parent {
-			if p == tip {
-				b.BestChain.SetNode(h, p)
-			}
-			h--
-		}
-
-		return nil
-	})
-}
-*/
 
 type blockchainNodeData struct {
 	// Some fields from block headers to aid in best chain selection and
@@ -1516,7 +1510,7 @@ func NewBlockNode(blockHeader *wire.BlockHeader, parent *chainutil.BlockNode) *c
 	return &node
 }
 
-// deserializeBlockRow parses a value in the block index bucket into a block
+// deserializeBlockRow parses a value in the block Index bucket into a block
 // header and block status bitfield.
 func deserializeBlockRow(blockRow []byte) (*wire.BlockHeader, chainutil.BlockStatus, error) {
 	buffer := bytes.NewReader(blockRow)
@@ -1584,7 +1578,7 @@ func dbFetchBlockByNode(dbTx database.Tx, node *chainutil.BlockNode) (*btcutil.B
 }
 
 // dbStoreBlockNode stores the block header and validation status to the block
-// index bucket. This overwrites the current entry if there exists one.
+// Index bucket. This overwrites the current entry if there exists one.
 func dbStoreBlockNode(dbTx database.Tx, node *chainutil.BlockNode) error {
 	// Serialize block data to be stored.
 	w := bytes.NewBuffer(make([]byte, 0, blockHdrSize+1))
@@ -1626,12 +1620,12 @@ func dbStoreBlockNode(dbTx database.Tx, node *chainutil.BlockNode) error {
 	var serializedHeight [4]byte
 	byteOrder.PutUint32(serializedHeight[:], uint32(node.Height))
 
-	// Add the block hash to height mapping to the index. It might be a dup op, but necessary
+	// Add the block hash to height mapping to the Index. It might be a dup op, but necessary
 	if err := bucket.Put(node.Hash[:], serializedHeight[:]); err != nil {
 		return err
 	}
 
-	// Write block header data to block index bucket.
+	// Write block header data to block Index bucket.
 	blockIndexBucket := dbTx.Metadata().Bucket(blockIndexBucketName)
 	key := BlockIndexKey(&node.Hash, uint32(0xFFFFFFFF))
 	blockIndexBucket.Delete(key) // remove invalid data that might be there
@@ -1653,7 +1647,7 @@ func dbStoreBlock(dbTx database.Tx, block *btcutil.Block) error {
 	return dbTx.StoreBlock(block)
 }
 
-// BlockIndexKey generates the binary key for an entry in the block index
+// BlockIndexKey generates the binary key for an entry in the block Index
 // bucket. The key is composed of the block height encoded as a big-endian
 // 32-bit unsigned int followed by the 32 byte block hash.
 func BlockIndexKey(blockHash *chainhash.Hash, blockHeight uint32) []byte {
@@ -1684,18 +1678,8 @@ func (b *BlockChain) BlockByHeight(blockHeight int32) (*btcutil.Block, error) {
 	return block, err
 }
 
-/*
-func (b *BlockChain) HeightOfBlock(hash chainhash.Hash) int32 {
-	n := b.NodeByHash(&hash)
-	if n == nil {
-		return -1
-	}
-	return n.Height
-}
-*/
-
 func (b *BlockChain) AnyBlockByHash(hash *chainhash.Hash) (*btcutil.Block, error) {
-	// Lookup the block hash in block index and ensure it is in the best
+	// Lookup the block hash in block Index and ensure it is in the best
 	// chain.
 	node := b.NodeByHash(hash)
 	if node == nil {
@@ -1718,7 +1702,7 @@ func (b *BlockChain) AnyBlockByHash(hash *chainhash.Hash) (*btcutil.Block, error
 //
 // This function is safe for concurrent access.
 func (b *BlockChain) BlockByHash(hash *chainhash.Hash) (*btcutil.Block, error) {
-	// Lookup the block hash in block index and ensure it is in the best
+	// Lookup the block hash in block Index and ensure it is in the best
 	// chain.
 	node := b.NodeByHash(hash)
 	if node == nil || !b.BestChainContains(hash) {
@@ -1908,7 +1892,7 @@ func (b *BlockChain) FetchUtxoView(tx *btcutil.Tx) (*viewpoint.ViewPointSet, err
 		prevOut.Index = uint32(txOutIdx)
 		neededSet[prevOut] = struct{}{}
 	}
-	if !IsCoinBase(tx) {
+	if !b.isCoinBase(tx) && !tx.MsgTx().IsCrossChain() {
 		for _, txIn := range tx.MsgTx().TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue
@@ -1954,4 +1938,342 @@ func (b *BlockChain) dbHeightofHash(key chainhash.Hash) int32 {
 		return int32(common.LittleEndian.Uint32(d))
 	}
 	return -1
+}
+
+func (b *BlockChain) makeAssetKey(txo *wire.TxOut) ([]byte, uint32, []byte, uint32) {
+	dest := txo.DestChain()
+	if dest == 0 {
+		dest = b.ChainParams.MainChainID
+	}
+
+	var tokentype uint64
+	var tokensrc uint32
+	if uint32(txo.TokenType>>40) == 0 {
+		tokensrc = b.ChainParams.ChainID
+		tokentype = (txo.TokenType & 0xFFFFFFFFFF) | (uint64(b.ChainParams.ChainID) << 40)
+	} else {
+		tokentype = txo.TokenType
+		tokensrc = uint32(txo.TokenType >> 40)
+	}
+
+	assetKey := make([]byte, 12, 76)
+	srcKey := make([]byte, 12, 76)
+
+	common.LittleEndian.PutUint32(assetKey[:], dest)
+	common.LittleEndian.PutUint32(srcKey[:], tokensrc)
+
+	common.LittleEndian.PutUint64(assetKey[4:], tokentype)
+	common.LittleEndian.PutUint64(srcKey[4:], tokentype)
+
+	if (tokentype & 1) == 1 {
+		assetKey = append(assetKey, txo.Value.(*token.HashToken).Hash[:]...)
+		srcKey = append(srcKey, txo.Value.(*token.HashToken).Hash[:]...)
+	}
+	if (tokentype & 2) == 2 {
+		if txo.Rights != nil {
+			assetKey = append(assetKey, txo.Rights[:]...)
+			srcKey = append(srcKey, txo.Rights[:]...)
+		}
+	}
+	return assetKey, dest, srcKey, tokensrc
+}
+
+func (b *BlockChain) validCrossChainScript(script []byte) bool {
+	if len(script) < 22 {
+		return false
+	}
+	if script[21] == ovm.OP_PAY2PKH || script[21] != ovm.OP_PAY2SCRIPTH || script[21] != ovm.OP_PAYMULTISIG {
+		if script[0] != b.ChainParams.PubKeyHashAddrID && script[0] != b.ChainParams.ScriptHashAddrID && script[0] != b.ChainParams.MultiSigAddrID {
+			return false
+		}
+	} else {
+		if len(script) < 29 || script[21] != ovm.OP_PAYCROSSCHAIN {
+			return false
+		}
+		switch script[0] {
+		case b.ChainParams.PubKeyHashAddrID:
+			if script[25] != ovm.OP_PAY2PKH {
+				return false
+			}
+		case b.ChainParams.ScriptHashAddrID:
+			if script[25] != ovm.OP_PAY2SCRIPTH {
+				return false
+			}
+		case b.ChainParams.MultiSigAddrID:
+			if script[25] != ovm.OP_PAYMULTISIG {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	if script[21] == ovm.OP_PAYCROSSCHAIN {
+		chain := common.LittleEndian.Uint32(script[21:]) >> 8
+		_, ok := chainmap.ChainMap[chain&0x3FFFFF]
+		return ok
+	}
+	return true
+}
+
+func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) error {
+	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
+		mainchain := chainmap.ChainMap[b.ChainParams.MainChainID&0x3FFFFF]
+		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			var xchain *wire.XchainData
+			if tx.IsCrossChain() {
+				xchain = &wire.XchainData{
+					ChainID:   tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
+					Hash:      tx.TxIn[0].PreviousOutPoint.Hash,
+					Height:    int32(tx.TxIn[0].PreviousOutPoint.Index),
+					Txs:       []*wire.MsgXrossL2{},
+					Finalized: 0,
+				}
+			} else {
+				xchain = &wire.XchainData{
+					ChainID:   b.ChainParams.ChainID,
+					Hash:      *block.Hash(),
+					Height:    block.Height(),
+					Txs:       []*wire.MsgXrossL2{},
+					Finalized: 0,
+				}
+			}
+			for i, txo := range tx.TxOut {
+				if txo.IsSeparator() || !txo.IsCrossChain() {
+					continue
+				}
+				if !b.validCrossChainScript(txo.PkScript) {
+					return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
+				}
+				dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8 // destination of this tx
+
+				if !mainchain.PassThru(xchain.ChainID, dest) {
+					// if it will pass through the main chain, ignore it, otherwise add the tx to main chain
+					continue
+				}
+
+				t := &wire.MsgXrossL2{
+					Utxo: wire.OutPoint{
+						Hash:  tx.TxHash(),
+						Index: uint32(i),
+					},
+					Txo: *txo,
+				}
+				xchain.Txs = append(xchain.Txs, t)
+			}
+
+			if len(xchain.Txs) > 0 {
+				key := wire.OutPoint{
+					Hash:  xchain.Hash,
+					Index: xchain.ChainID | wire.CrossChainFalg,
+				}
+				k := key.ToBytes()
+				d := bucket.Get(k)
+				if d != nil && len(d) > 0 {
+					return fmt.Errorf("Duplicated cross chain tx")
+				}
+				bucket.Put(k, xchain.Serialize())
+			}
+		}
+	} else {
+		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		bucketrb := dbTx.Metadata().Bucket([]byte(common.ROLLBACKPOOL))
+		rbd := make([]byte, 4, 1024)
+		n := 0
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			if !tx.IsCrossChain() {
+				continue
+			}
+			var h [4]byte
+			d := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
+			if d == nil || len(d) == 0 {
+				fmt.Printf("crodd chain tx does not exist in db")
+				continue
+			}
+			common.LittleEndian.PutUint32(h[:], uint32(len(d)))
+			rbd = append(rbd, h[:]...)
+			rbd = append(rbd, d...)
+			n++
+			bucket.Delete(tx.TxIn[0].PreviousOutPoint.ToBytes())
+		}
+		if n > 0 {
+			var h [4]byte
+			common.LittleEndian.PutUint32(h[:], uint32(block.Height()))
+			common.LittleEndian.PutUint32(rbd[:], uint32(n))
+			bucketrb.Put(h[:], rbd)
+		}
+
+		bucket = dbTx.Metadata().Bucket([]byte(common.XCAssets))
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			svp := uint32(0)
+			if tx.IsCrossChain() {
+				svp = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+			}
+			for _, txo := range tx.TxOut {
+				if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
+					continue
+				}
+				if !b.validCrossChainScript(txo.PkScript) {
+					return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
+				}
+				assetKey, dest, srckey, tokensrc := b.makeAssetKey(txo)
+
+				out := dest != tokensrc
+
+				val := bucket.Get(assetKey)
+				sval := bucket.Get(srckey)
+				v, d, vs := int64(0), int64(0), int64(0)
+				switch txo.TokenType & 3 {
+				case 0, 2:
+					d = txo.Value.(*token.NumToken).Val
+				case 1, 3:
+					d = 1
+				}
+
+				if val != nil {
+					v = int64(common.LittleEndian.Uint64(val))
+				}
+				if sval != nil {
+					vs = int64(common.LittleEndian.Uint64(sval))
+				}
+				if out {
+					v += d
+					vs += d
+				} else {
+					if v >= d {
+						v -= d
+					} else {
+						return fmt.Errorf("back value excees out value")
+					}
+					if vs >= d {
+						vs -= d
+					} else {
+						return fmt.Errorf("back value excees out value")
+					}
+				}
+
+				if v == 0 {
+					bucket.Delete(assetKey)
+				} else {
+					val = make([]byte, 8)
+					common.LittleEndian.PutUint64(val, uint64(v))
+					bucket.Put(assetKey, val)
+				}
+				if vs == 0 {
+					bucket.Delete(srckey)
+				} else {
+					val = make([]byte, 8)
+					common.LittleEndian.PutUint64(val, uint64(vs))
+					bucket.Put(srckey, val)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (b *BlockChain) dbRestoreCrossChain(dbTx database.Tx, block *btcutil.Block) error {
+	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
+		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			var k [36]byte
+			if tx.IsCrossChain() {
+				copy(k[:], tx.TxIn[0].PreviousOutPoint.Hash[:])
+				common.LittleEndian.PutUint32(k[32:], uint32(tx.TxIn[0].PreviousOutPoint.Index))
+			} else {
+				copy(k[:], (*block.Hash())[:])
+				common.LittleEndian.PutUint32(k[32:], uint32(b.ChainParams.ChainID|wire.CrossChainFalg))
+			}
+
+			bucket.Delete(k[:])
+		}
+	} else {
+		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		bucketrb := dbTx.Metadata().Bucket([]byte(common.ROLLBACKPOOL))
+
+		var h [4]byte
+		common.LittleEndian.PutUint32(h[:], uint32(block.Height()))
+		rbd := bucketrb.Get(h[:])
+
+		if rbd != nil {
+			n, m := common.LittleEndian.Uint32(rbd), uint32(4)
+			for i := uint32(0); i < n; i++ {
+				l := common.LittleEndian.Uint32(rbd[m:])
+				m += 4
+				data := rbd[m : m+l]
+				m += l
+				xchain := &wire.XchainData{}
+				if xchain.DeSerialize(data) != nil {
+					return fmt.Errorf("bad XchainData")
+				}
+				if xchain.Txs[0].Txo.PkScript[21] != 0x66 {
+					fmt.Printf("bad XchainData")
+				}
+
+				var key [36]byte
+				copy(key[:], xchain.Hash[:])
+				common.LittleEndian.PutUint32(key[32:], xchain.ChainID|wire.CrossChainFalg)
+				bucket.Put(key[:], data)
+			}
+			bucketrb.Delete(h[:])
+		}
+
+		bucket = dbTx.Metadata().Bucket([]byte(common.XCAssets))
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			svp := uint32(0)
+			if tx.IsCrossChain() {
+				svp = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+			}
+			for _, txo := range tx.TxOut {
+				if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
+					continue
+				}
+				if !b.validCrossChainScript(txo.PkScript) {
+					return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
+				}
+				assetKey, dest, srckey, tokensrc := b.makeAssetKey(txo)
+
+				out := dest != tokensrc
+
+				val := bucket.Get(assetKey)
+				sval := bucket.Get(srckey)
+				v, d, vs := int64(0), int64(0), int64(0)
+				switch txo.TokenType & 3 {
+				case 0, 2:
+					d = txo.Value.(*token.NumToken).Val
+				case 1, 3:
+					d = 1
+				}
+
+				if val != nil {
+					v = int64(common.LittleEndian.Uint64(val))
+				}
+				if sval != nil {
+					vs = int64(common.LittleEndian.Uint64(sval))
+				}
+				if out {
+					v -= d
+					vs -= d
+				} else {
+					v += d
+					vs += d
+				}
+				if v == 0 {
+					bucket.Delete(assetKey)
+				} else {
+					val = make([]byte, 8)
+					common.LittleEndian.PutUint64(val, uint64(v))
+					bucket.Put(assetKey, val)
+				}
+				if vs == 0 {
+					bucket.Delete(srckey)
+				} else {
+					val = make([]byte, 8)
+					common.LittleEndian.PutUint64(val, uint64(vs))
+					bucket.Put(srckey, val)
+				}
+			}
+		}
+	}
+	return nil
 }
