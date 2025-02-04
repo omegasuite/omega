@@ -668,16 +668,16 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		ts = time.Unix(prev.Data.TimeStamp(), 0)
 	}
 
-	startTime := time.Now().UnixNano()
+	//	startTime := time.Now().UnixNano()
 
 mempoolLoop:
 	for _, txDesc := range sourceTxns {
 		// max time allowed
-		nt := time.Now()
-		if priorityQueue.Len() > 0 && nt.UnixNano()-startTime > 2500*1e6 {
-			// allow 2.5 seconds
-			break
-		}
+		//		nt := time.Now()
+		//		if priorityQueue.Len() > 0 && nt.UnixNano()-startTime > 2500*1e6 {
+		// allow 2.5 seconds
+		//			break
+		//		}
 		// A block can't have more than one coinbase or contain
 		// non-finalized transactions.
 		tx := txDesc.Tx
@@ -779,7 +779,6 @@ mempoolLoop:
 				g.txSource.RemoveTransaction(tx, true)
 				//				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-				// we should roll back result of last contract execution here
 				log.Infof("Reject tx %s that spends locked UTXO %s", tx.Hash(), locks)
 				continue
 			}
@@ -819,7 +818,7 @@ mempoolLoop:
 				if entry == nil || entry.IsSpent() {
 					if !g.txSource.HaveTransaction(originHash) {
 						g.txSource.RemoveTransaction(tx, true)
-						g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+						//						g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 						log.Tracef("Remove tx %s because it "+
 							"references output %s "+
@@ -925,11 +924,11 @@ mempoolLoop:
 	var skiprest = false // whether to skip rest contracts
 
 	for priorityQueue.Len() > 0 {
-		nt := time.Now()
-		if nt.UnixNano()-startTime > 40000*1e6 {
-			// allow 4 seconds
-			break
-		}
+		//		nt := time.Now()
+		//		if nt.UnixNano()-startTime > 40000*1e6 {
+		// allow 4 seconds
+		//			break
+		//		}
 
 		// Grab the highest priority (or highest fee per kilobyte
 		// depending on the sort order) transaction.
@@ -1034,12 +1033,20 @@ mempoolLoop:
 			continue
 		}
 
+		if len(tx.MsgTx().TxIn) > 1000 || len(tx.MsgTx().TxOut) > 1000 {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+
+			log.Infof("Remove tx %s becase TxIn/TxOut count exceeds 1000", tx.Hash())
+			logSkippedDeps(tx, deps)
+			continue
+		}
+
 		vmerr := ovm.VerifySigs(tx, g.chainParams, 0, views)
 		if vmerr != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-			// we should roll back result of last contract execution here
 			log.Infof("Remove tx %s due to error in VerifySigs: %v", tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
@@ -1061,7 +1068,7 @@ mempoolLoop:
 
 			//			if vmerr.Level() == omega.FatalLevel {
 			g.txSource.RemoveTransaction(tx, true)
-			//			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
 			logSkippedDeps(tx, deps)
@@ -1085,7 +1092,7 @@ mempoolLoop:
 			views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			//			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			logSkippedDeps(tx, deps)
 			if executed {
@@ -1102,7 +1109,7 @@ mempoolLoop:
 		err = blockchain.CheckTransactionIntegrity(tx, views, s.MsgBlock().Version&^0xFFFF)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			//			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			logSkippedDeps(tx, deps)
 			if executed {
@@ -1119,7 +1126,7 @@ mempoolLoop:
 		fees, btcfees, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, storage, views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			//			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
 			logSkippedDeps(tx, deps)
 			if executed {

@@ -2913,7 +2913,7 @@ func (s *server) Start() {
 	// Start the CPU miner if generation is enabled.
 	//	if cfg.Generate {
 	btcdLog.Infof("Start minging blocks.")
-	if s.cpuMiner != nil && s.rpcServer.cfg.Cfg.Generate {
+	if s.cpuMiner != nil && (s.rpcServer.cfg.Cfg.Generate || s.rpcServer.cfg.Cfg.EnablePOWMining || !s.rpcServer.cfg.Cfg.DisablePOWMining) {
 		s.cpuMiner.Start()
 	}
 	//	}
@@ -3598,6 +3598,9 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			return
 		}
 		block := notification.Data.(*btcutil.Block)
+		if block == nil {
+			return
+		}
 		for _, tx := range block.Transactions()[1:] {
 			s.txMemPool.RemoveTransaction(tx, false)
 		}

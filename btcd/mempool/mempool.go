@@ -579,8 +579,8 @@ func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.
 
 	mp.pool[*tx.Hash()] = txD
 	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
+		if txIn.IsSeparator() { // .PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			break
 		}
 		mp.outpoints[txIn.PreviousOutPoint] = tx
 	}
@@ -736,6 +736,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 
 	// Don't allow non-standard transactions if the network parameters
 	// forbid their acceptance.
+
 	if !mp.cfg.Policy.AcceptNonStd {
 		err = checkTransactionStandard(tx, nextBlockHeight,
 			medianTimePast, mp.cfg.Policy.MinRelayTxFee,

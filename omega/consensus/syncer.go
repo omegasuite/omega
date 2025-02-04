@@ -417,7 +417,9 @@ func (self *Syncer) process(cmd interface{}) bool {
 			}
 			//					self.repeats = 0
 			self.blocks[tree.hash] = tree.block
+			miner.syncMutex.Lock()
 			miner.allblks[tree.hash] = tree.block
+			miner.syncMutex.Unlock()
 		} else if (self.forest[tree.creator].hash != chainhash.Hash{}) && tree.hash != self.forest[tree.creator].hash {
 			if self.Me == tree.creator {
 				log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)

@@ -583,11 +583,13 @@ func cleaner(top int32) {
 			t.Quit()
 		}
 	}
+	miner.syncMutex.Lock()
 	for i, b := range miner.allblks {
 		if b.Height() < top {
 			delete(miner.allblks, i)
 		}
 	}
+	miner.syncMutex.Unlock()
 }
 
 func Shutdown() {
