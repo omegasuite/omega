@@ -930,7 +930,7 @@ mempoolLoop:
 	totalbtcfees := int64(0)
 
 	// Choose which transactions make it into the block.
-	var skiprest = false // whether to skip rest contracts
+	//	var skiprest = false // whether to skip rest contracts
 
 	for priorityQueue.Len() > 0 {
 		//		nt := time.Now()
@@ -1063,9 +1063,11 @@ mempoolLoop:
 			logSkippedDeps(tx, deps)
 			continue
 		}
-		if skiprest && tx.ContainContract() {
-			continue
-		}
+		/*
+			if skiprest && tx.ContainContract() {
+				continue
+			}
+		*/
 
 		// excute contracts if necessary. note, if the execution causes any change in
 		// in transaction, a new copy of tx will be returned.
@@ -1111,7 +1113,7 @@ mempoolLoop:
 			if executed {
 				coinbaseTx.HasOuts = newcoins
 				*coinbaseTx.MsgTx() = savedCoinBase
-				skiprest = true // skip rest so we don't waste time on more contracts
+				// skiprest = true // skip rest so we don't waste time on more contracts
 				continue
 			}
 
@@ -1129,7 +1131,7 @@ mempoolLoop:
 			if executed {
 				coinbaseTx.HasOuts = newcoins
 				*coinbaseTx.MsgTx() = savedCoinBase
-				skiprest = true // skip rest so we don't waste time on more contracts
+				// skiprest = true // skip rest so we don't waste time on more contracts
 				continue
 			}
 
@@ -1146,7 +1148,7 @@ mempoolLoop:
 			if executed {
 				coinbaseTx.HasOuts = newcoins
 				*coinbaseTx.MsgTx() = savedCoinBase
-				skiprest = true // skip rest so we don't waste time on more contracts
+				// skiprest = true // skip rest so we don't waste time on more contracts
 				continue
 			}
 			rmd++
@@ -1162,7 +1164,7 @@ mempoolLoop:
 			if executed {
 				coinbaseTx.HasOuts = newcoins
 				*coinbaseTx.MsgTx() = savedCoinBase
-				skiprest = true // skip rest so we don't waste time on more contracts
+				// skiprest = true // skip rest so we don't waste time on more contracts
 				continue
 			}
 
