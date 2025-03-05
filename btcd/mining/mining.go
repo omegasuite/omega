@@ -669,6 +669,8 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	}
 
 	//	startTime := time.Now().UnixNano()
+	log.Infof("%d txs in mempool", len(sourceTxns))
+	rmd := 0
 
 mempoolLoop:
 	for _, txDesc := range sourceTxns {
@@ -684,7 +686,8 @@ mempoolLoop:
 
 		if txDesc.Tried > 10 {
 			g.txSource.RemoveTransaction(tx, true)
-			//			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			rmd++
 			continue
 		}
 		txDesc.Tried++
@@ -724,6 +727,7 @@ mempoolLoop:
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 			log.Infof("Reject expired tx %s", tx.Hash())
+			rmd++
 			continue
 		}
 
@@ -731,6 +735,7 @@ mempoolLoop:
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 			log.Infof("Reject expired tx %s", tx.Hash())
+			rmd++
 			continue
 		}
 
@@ -742,12 +747,13 @@ mempoolLoop:
 					continue
 				}
 				g.txSource.RemoveTransaction(tx, true)
-				//				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 				log.Infof("Local policy: Reject tx with contract %s for lacking expiration time", tx.Hash())
 				rjct = true
 				break
 			}
 			if rjct {
+				rmd++
 				continue
 			}
 		}
@@ -755,6 +761,7 @@ mempoolLoop:
 		if tx.MsgTx().IsForfeit() {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			rmd++
 
 			log.Infof("Reject standalone Forfeiture tx %s", tx.Hash())
 			continue
@@ -777,7 +784,8 @@ mempoolLoop:
 			}
 			if locked {
 				g.txSource.RemoveTransaction(tx, true)
-				//				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+				rmd++
 
 				log.Infof("Reject tx %s that spends locked UTXO %s", tx.Hash(), locks)
 				continue
@@ -818,7 +826,8 @@ mempoolLoop:
 				if entry == nil || entry.IsSpent() {
 					if !g.txSource.HaveTransaction(originHash) {
 						g.txSource.RemoveTransaction(tx, true)
-						//						g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+						g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+						rmd++
 
 						log.Tracef("Remove tx %s because it "+
 							"references output %s "+
@@ -960,8 +969,9 @@ mempoolLoop:
 		}
 		if blockSigOpCost+int64(sigOpCost) < blockSigOpCost ||
 			blockSigOpCost+int64(sigOpCost) > chaincfg.MaxBlockSigOpsCost {
-			log.Infof("Skipping tx %s because it would "+
-				"exceed the maximum sigops per block", tx.Hash())
+			rmd++
+			log.Infof("%d - Skipping tx %s because it would "+
+				"exceed the maximum sigops per block", rmd, tx.Hash())
 			logSkippedDeps(tx, deps)
 			continue
 		}
@@ -1037,7 +1047,8 @@ mempoolLoop:
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-			log.Infof("Remove tx %s becase TxIn/TxOut count exceeds 1000", tx.Hash())
+			rmd++
+			log.Infof("%d - Remove tx %s becase TxIn/TxOut count exceeds 1000", rmd, tx.Hash())
 			logSkippedDeps(tx, deps)
 			continue
 		}
@@ -1046,12 +1057,12 @@ mempoolLoop:
 		if vmerr != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			rmd++
 
-			log.Infof("Remove tx %s due to error in VerifySigs: %v", tx.Hash(), err)
+			log.Infof("%d - Remove tx %s due to error in VerifySigs: %v", rmd, tx.Hash(), err)
 			logSkippedDeps(tx, deps)
 			continue
 		}
-
 		if skiprest && tx.ContainContract() {
 			continue
 		}
@@ -1066,11 +1077,12 @@ mempoolLoop:
 			coinbaseTx.HasOuts = newcoins
 			*coinbaseTx.MsgTx() = savedCoinBase
 
+			rmd++
 			//			if vmerr.Level() == omega.FatalLevel {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-			log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
+			log.Infof("%d - Remove tx %s due to error in ExecContract: %v", rmd, tx.Hash(), vmerr)
 			logSkippedDeps(tx, deps)
 			continue
 		}
@@ -1093,6 +1105,7 @@ mempoolLoop:
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			rmd++
 
 			logSkippedDeps(tx, deps)
 			if executed {
@@ -1102,7 +1115,7 @@ mempoolLoop:
 				continue
 			}
 
-			log.Infof("Skipping tx %s due to error in CheckTransactionInputs: %v", tx.Hash(), err)
+			log.Infof("%d - Skipping tx %s due to error in CheckTransactionInputs: %v", rmd, tx.Hash(), err)
 			continue
 		}
 
@@ -1111,6 +1124,7 @@ mempoolLoop:
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
+			rmd++
 			logSkippedDeps(tx, deps)
 			if executed {
 				coinbaseTx.HasOuts = newcoins
@@ -1119,7 +1133,7 @@ mempoolLoop:
 				continue
 			}
 
-			log.Infof("Skipping tx %s due to error in CheckTransactionIntegrity: %v", tx.Hash(), err)
+			log.Infof("%d - Skipping tx %s due to error in CheckTransactionIntegrity: %v", rmd, tx.Hash(), err)
 			continue
 		}
 
@@ -1135,8 +1149,8 @@ mempoolLoop:
 				skiprest = true // skip rest so we don't waste time on more contracts
 				continue
 			}
-
-			log.Infof("Skipping tx %s due to error in CheckTransactionFeess: %v", tx.Hash(), err)
+			rmd++
+			log.Infof("%d - Skipping tx %s due to error in CheckTransactionFeess: %v", rmd, tx.Hash(), err)
 			continue
 		}
 
