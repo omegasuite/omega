@@ -527,8 +527,15 @@ func (mp *TxPool) removeTransaction(tx *btcutil.Tx, removeRedeemers bool) {
 // they would otherwise become orphans.
 //
 // This function is safe for concurrent access.
+
+var bannedTxs map[chainhash.Hash]struct{}
+
 func (mp *TxPool) RemoveTransaction(tx *btcutil.Tx, removeRedeemers bool) {
 	// Protect concurrent access.
+	if removeRedeemers {
+		bannedTxs[*tx.Hash()] = struct{}{}
+	}
+
 	mp.mtx.Lock()
 	mp.removeTransaction(tx, removeRedeemers)
 	mp.mtx.Unlock()
@@ -695,6 +702,11 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 
 	if txHash.IsEqual(&zerohash) {
 		str := fmt.Sprintf("transaction txid is zero")
+		return nil, nil, txRuleError(common.RejectDuplicate, str)
+	}
+
+	if _, ok := bannedTxs[*txHash]; ok {
+		str := fmt.Sprintf("transaction previouly processed and failed")
 		return nil, nil, txRuleError(common.RejectDuplicate, str)
 	}
 
@@ -1356,6 +1368,8 @@ func (mp *TxPool) LastUpdated() time.Time {
 // New returns a new memory pool for validating and storing standalone
 // transactions until they are mined into a block.
 func New(cfg *Config) *TxPool {
+	bannedTxs = make(map[chainhash.Hash]struct{})
+
 	return &TxPool{
 		cfg:            *cfg,
 		pool:           make(map[chainhash.Hash]*TxDesc),
