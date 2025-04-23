@@ -1053,6 +1053,18 @@ mempoolLoop:
 			continue
 		}
 
+		err = blockchain.CheckBlacklist(tx, views, g.chainParams)
+		if err != nil {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			rmd++
+
+			logSkippedDeps(tx, deps)
+
+			log.Infof("%d - Skipping tx %s due to error in CheckBlacklist: %v", rmd, tx.Hash(), err)
+			continue
+		}
+
 		vmerr := ovm.VerifySigs(tx, g.chainParams, 0, views)
 		if vmerr != nil {
 			g.txSource.RemoveTransaction(tx, true)

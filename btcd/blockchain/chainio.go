@@ -1127,6 +1127,10 @@ func (b *BlockChain) initChainState() error {
 
 		return nil
 	})
+	b.db.Update(func(dbTx database.Tx) error {
+		dbTx.Metadata().CreateBucket([]byte("blacklist"))
+		return nil
+	})
 
 	if !hasaddrusage {
 		err := b.db.Update(func(dbTx database.Tx) error {

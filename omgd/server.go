@@ -2034,6 +2034,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 
 		// Don't relay the transaction if there is a bloom
 		// filter loaded and the transaction doesn't match it.
+
 		if sp.filter.IsLoaded() {
 			if !sp.filter.MatchTxAndUpdate(txD.Tx) {
 				continue
@@ -3403,6 +3404,15 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		s.chainParams, s.txMemPool, s.chain, s.timeSource, prot.activeNetParams)
 	//		s.sigCache, s.hashCache)
 	// This is the miner for Tx chain
+
+	prot.db.View(func(tx database.Tx) error {
+		bucket := tx.Metadata().Bucket([]byte("blacklist"))
+		for _, s := range prot.cfg.Blacklist {
+			addr, _ := btcutil.DecodeAddress(s, prot.activeNetParams)
+			bucket.Put(addr.ScriptNetAddress()[:21], []byte(s))
+		}
+		return nil
+	})
 
 	s.minerMiner = nil
 	s.cpuMiner = nil

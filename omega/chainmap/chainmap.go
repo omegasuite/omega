@@ -96,9 +96,6 @@ func LoadChainMap(db database.DB, isroot bool) {
 	db.Update(func(tx database.Tx) error {
 		bucketname := []byte("ChainMap")
 		meta := tx.Metadata()
-
-		meta.DeleteBucket(bucketname)
-
 		bucket := meta.Bucket(bucketname)
 		if bucket == nil {
 			bucket, _ = meta.CreateBucket(bucketname)
@@ -126,7 +123,6 @@ func LoadChainMap(db database.DB, isroot bool) {
 				bad = true
 				break
 			}
-
 			if _, ok := ChainMap[m.Parent]; m.Parent != 0 && !ok {
 				bad = true
 				break

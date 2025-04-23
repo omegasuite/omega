@@ -4777,6 +4777,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		// Load the raw transaction bytes from the database.
 		serializedTxns, err := dbTx.FetchBlockRegions(regions)
 		if err != nil {
+			fmt.Printf("corrupted block regions")
 			return err
 		}
 

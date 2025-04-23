@@ -179,8 +179,9 @@ type config struct {
 	LogBlockTime    bool   `long:"logblocktime" description:"Log the time that blocks are received"`
 	Accounts        bool   `long:"accounts" description:"list omega accounts & balance"`
 	NetMagic        common.OmegaNet
-	AddChain        string `long:"addchain" description:"Add a blockchain to FOC"`
-	Clear           int    `long:"clear" description:"Clear DBs"`
+	AddChain        string   `long:"addchain" description:"Add a blockchain to FOC"`
+	Clear           int      `long:"clear" description:"Clear DBs"`
+	Blacklist       []string `long:"blacklist" description:"Put address in blacklist"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on

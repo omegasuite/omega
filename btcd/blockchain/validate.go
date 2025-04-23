@@ -1131,6 +1131,32 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 	return nil
 }
 
+func CheckBlacklist(tx *btcutil.Tx, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
+	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		utxo := views.Utxo.LookupEntry(txIn.PreviousOutPoint)
+
+		if utxo == nil {
+			continue
+		}
+
+		err := views.Db.View(func(tx database.Tx) error {
+			bucket := tx.Metadata().Bucket([]byte("blacklist"))
+			d := bucket.Get(utxo.PkScript()[:21])
+			if d != nil && len(d) > 0 {
+				return fmt.Errorf("Blacklist address %s", string(d))
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// Coinbase transactions have no inputs.
 	if len(tx.MsgTx().TxIn) == 0 || tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) {
@@ -2158,6 +2184,13 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	err = b.checkCrossChain(block)
 	if err != nil {
 		return err
+	}
+
+	for _, tx := range block.Transactions()[1:] {
+		err = CheckBlacklist(tx, views, b.ChainParams)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = CheckTransactionInputs(transactions[0], node.Height, views, b.ChainParams)
