@@ -376,6 +376,8 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 		}
 	*/
 
+	debugging = true
+
 	if debugging && in.evm.chainConfig.Net == common.TestNet {
 		log.Info("start intrepdebug")
 		if attaching == nil {
@@ -385,6 +387,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 
 	//	debugging = true
 	var printInst = in.evm.chainConfig.Net == common.TestNet && strings.Contains(in.evm.chainConfig.ExternalIPs[0], ":8383") // debugging
+	printInst = true
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
@@ -449,13 +452,17 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 
 		switch {
 		case err != nil:
+			debugging = false
 			return nil, err
 		case operation.reverts:
+			debugging = false
 			return stack.data[0].space[4:mln], errExecutionReverted
 		case stop:
 			stop = false
+			debugging = false
 			return nil, nil
 		case operation.halts:
+			debugging = false
 			return stack.data[0].space[4:mln], nil
 		case !operation.jumps:
 			if pc+1 < int(contract.libs[stack.data[stack.callTop].inlib].end) {
@@ -465,6 +472,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 			}
 		}
 	}
+	debugging = false
 	return nil, err
 }
 

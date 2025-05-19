@@ -661,6 +661,16 @@ func main() {
 		os.Exit(1)
 	}
 
+	if tcfg.TestNet {
+		tcfg.NetMagic = common.TestNet
+	}
+	if tcfg.SimNet {
+		tcfg.NetMagic = common.SimNet
+	}
+	if tcfg.RegressionTest {
+		tcfg.NetMagic = common.RegNet
+	}
+
 	debugLevel()
 
 	defer func() {

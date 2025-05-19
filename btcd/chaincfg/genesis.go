@@ -46,10 +46,12 @@ var GenesisMinerHash = map[uint32]*chainhash.Hash{
 // RegTestGenesisHash is the hash of the first block in the block chain for the
 // regression test network (genesis block).
 var RegTestGenesisHash = map[uint32]chainhash.Hash{
+	0x709c5fed: chainhash.Hash{},
 	0x956ca366: chainhash.Hash{},
 	0xA117FE3D: chainhash.Hash{},
 }
 var RegTestGenesisMinerHash = map[uint32]chainhash.Hash{
+	0x709c5fed: chainhash.Hash{},
 	0x956ca366: chainhash.Hash{},
 	0xA117FE3D: chainhash.Hash{},
 }
@@ -58,6 +60,7 @@ var RegTestGenesisMinerHash = map[uint32]chainhash.Hash{
 // block for the regression test network.  It is the same as the merkle root for
 // the main network.
 var RegTestGenesisMerkleRoot = map[uint32]chainhash.Hash{
+	0x709c5fed: chainhash.Hash{},
 	0x956ca366: chainhash.Hash{},
 	0xA117FE3D: chainhash.Hash{},
 }
@@ -65,10 +68,12 @@ var RegTestGenesisMerkleRoot = map[uint32]chainhash.Hash{
 // TestNet3GenesisHash is the hash of the first block in the block chain for the
 // test network (version 3).
 var TestNet3GenesisHash = map[uint32]*chainhash.Hash{
+	0x709c5fed: &omega.TestNetGenesisHash[0],
 	0x956ca366: &omega.TestNetGenesisHash[0],
 	0xA117FE3D: &omega.TestNetGenesisHashA117FE3D[0],
 }
 var TestNet3GenesisMinerHash = map[uint32]*chainhash.Hash{
+	0x709c5fed: &omega.TestNetGenesisHash[1],
 	0x956ca366: &omega.TestNetGenesisHash[1],
 	0xA117FE3D: &omega.TestNetGenesisHashA117FE3D[1],
 }
@@ -77,6 +82,7 @@ var TestNet3GenesisMinerHash = map[uint32]*chainhash.Hash{
 // block for the test network (version 3).  It is the same as the merkle root
 // for the main network.
 var TestNet3GenesisMerkleRoot = map[uint32]chainhash.Hash{
+	0x709c5fed: omega.TestNetGenesisMerkleRoot,
 	0x956ca366: omega.TestNetGenesisMerkleRoot,
 	0xA117FE3D: omega.TestNetGenesisMerkleRootA117FE3D,
 }
@@ -84,10 +90,12 @@ var TestNet3GenesisMerkleRoot = map[uint32]chainhash.Hash{
 // TestNet3GenesisBlock defines the genesis block of the block chain which
 // serves as the public transaction ledger for the test network (version 3).
 var TestNet3GenesisBlock = map[uint32]*wire.MsgBlock{
+	0x709c5fed: &omega.TestNetGenesisBlock,
 	0x956ca366: &omega.TestNetGenesisBlock,
 	0xA117FE3D: &omega.TestNetGenesisBlockA117FE3D,
 }
 var TestNet3GenesisMinerBlock = map[uint32]*wire.MingingRightBlock{
+	0x709c5fed: &omega.TestNetGenesisMinerBlock,
 	0x956ca366: &omega.TestNetGenesisMinerBlock,
 	0xA117FE3D: &omega.TestNetGenesisMinerBlockA117FE3D,
 }
