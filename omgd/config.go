@@ -182,6 +182,7 @@ type config struct {
 	AddChain        string   `long:"addchain" description:"Add a blockchain to FOC"`
 	Clear           int      `long:"clear" description:"Clear DBs"`
 	Blacklist       []string `long:"blacklist" description:"Put address in blacklist"`
+	RpcLimit        int      `long:"rpclimit" description:"Return size limit (KB) of RPC calls"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -450,6 +451,7 @@ func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error)
 		NetMagic:             common.MainNet,
 		AddChain:             "",
 		Clear:                0,
+		RpcLimit:             1000, // RPC return size 1000 K
 	}
 
 	if uint32(omegaNet) != 0 {

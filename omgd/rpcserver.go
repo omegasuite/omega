@@ -4757,7 +4757,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		}
 	*/
 
-	memlimit := 5 * 1024 * 1024 // 5 M mem limit
+	memlimit := s.cfg.Cfg.RpcLimit * 1024
 	if c.Verbose == nil || *c.Verbose != 0 {
 		memlimit /= 4
 	}

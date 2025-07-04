@@ -249,6 +249,7 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 			return nil, false
 		}
 	}
+	//usum := uint64(0)
 
 	if tcfg.Accounts {
 		// print balances of all addresses
@@ -269,6 +270,10 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 			}
 			for t, amt := range bal {
 				fmt.Printf("%s, %x => %f\n", address.EncodeAddress(), t, float64(amt)/1e8)
+				//if t == 0x5500 {
+				//	usum += amt
+				//}
+
 			}
 		}
 		fmt.Printf("Total %d addresses\n", len(accounts))

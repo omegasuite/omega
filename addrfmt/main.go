@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"github.com/omegasuite/btcutil"
 	"github.com/omegasuite/btcutil/base58"
 	"os"
 )
@@ -20,6 +21,11 @@ func atype(netID byte) (itype string, convto []byte) {
 	case 0x00: // mainnet PubKeyHashAddrID
 		itype = "mainnet PubKeyHashAddr"
 		convto = []byte{0x6f, 0x3f}
+
+	case 0x02, 0x03: // pubkey
+		itype = "PubKey"
+		convto = []byte{}
+
 	case 0x05: // mainnet ScriptHashAddrID
 		itype = "mainnet ScriptHashAddr"
 		convto = []byte{0xc4, 0x7b}
@@ -78,11 +84,15 @@ func main() {
 		var wifdecoded []byte
 		var netID byte
 
-		if decodedLen == 42 {
+		if decodedLen == 42 || decodedLen == 66 {
 			// bytes,
-			var dec [25]byte
-			hex.Decode(dec[:], wb[:decodedLen])
-			wifdecoded = dec[:]
+			ln := 25
+			if decodedLen/2 > ln {
+				ln = decodedLen / 2
+			}
+			dec := make([]byte, ln)
+			hex.Decode(dec, wb[:decodedLen])
+			wifdecoded = dec
 		} else {
 			wif = string(wb[:decodedLen])
 			wifdecoded = base58.Decode(wif)
@@ -95,6 +105,10 @@ func main() {
 		fmt.Printf("Key is %s\nBytes: %x\n", itype, wifdecoded[:decodedLen-4])
 
 		if convto != nil {
+			if len(convto) == 0 {
+				h160 := btcutil.Hash160(wifdecoded)
+				fmt.Printf("Pubkey hash = %s\n", hex.EncodeToString(h160))
+			}
 			for _, t := range convto {
 				wifdecoded[0] = t
 
