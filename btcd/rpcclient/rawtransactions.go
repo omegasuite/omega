@@ -264,7 +264,7 @@ func (c *Client) CreateRawTransactionAsync(inputs []btcjson.TransactionInput, de
 func (c *Client) CreateRawTransaction(inputs []btcjson.TransactionInput, definitions []btcjson.Definition,
 	amounts map[btcutil.Address]btcjson.Token, lockTime *int64) (*wire.MsgTx, error) {
 
-	return c.CreateRawTransactionAsync(inputs, definitions, amounts, lockTime).Receive()
+	return c.CreateRawTransactionAsync(inputs, definitions, amounts, nil, lockTime).Receive()
 }
 
 // FutureSendRawTransactionResult is a future promise to deliver the result
@@ -337,7 +337,7 @@ func (c *Client) SendRawTransactionAsync(tx *wire.MsgTx, allowHighFees bool) Fut
 		// Serialize the transaction and convert to hex string.
 		buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 
-		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding); err != nil {
+		if err := tx.OmcEncode(buf, 0, wire.SignatureEncoding|wire.FullEncoding); err != nil {
 			//		if err := tx.Serialize(buf); err != nil {
 			return newFutureError(err)
 		}

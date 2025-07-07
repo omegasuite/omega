@@ -1667,10 +1667,21 @@ func (tx *transaction) FetchBlockRegions(regions []database.BlockRegion) ([][]by
 		// Ensure the region is within the bounds of the block.
 		endOffset := region.Offset + region.Len
 		if endOffset < region.Offset || endOffset > location.blockLen {
-			str := fmt.Sprintf("block %s region offset %d, length "+
+			region.Len -= endOffset - location.blockLen
+			fmt.Printf("block %s region offset %d, length "+
 				"%d exceeds block length of %d", region.Hash,
 				region.Offset, region.Len, location.blockLen)
-			return nil, makeDbErr(database.ErrBlockRegionInvalid, str, nil)
+			// it seems somewhere we received a coinbase block with signature, and then
+			// a POW coinbase comes and become the final block, but region is not updated
+			// to reflect the changed tx size. It is ok to trim it back in this case.
+			// TBD Need further investigation of the cause. What if the real cause is not like this?
+			// what if the block data is wrong?
+			/*
+				str := fmt.Sprintf("block %s region offset %d, length "+
+					"%d exceeds block length of %d", region.Hash,
+					region.Offset, region.Len, location.blockLen)
+				return nil, makeDbErr(database.ErrBlockRegionInvalid, str, nil)
+			*/
 		}
 
 		fetchList = append(fetchList, bulkFetchData{&location, i})

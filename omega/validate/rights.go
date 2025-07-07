@@ -109,9 +109,6 @@ func parseRights(tx *btcutil.Tx, views *viewpoint.ViewPointSet, checkPolygon boo
 		if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
-		if txin.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
-			continue
-		}
 		tin := views.Utxo.LookupEntry(txin.PreviousOutPoint).ToTxOut()
 		if tin.TokenType&2 != 0 {
 			txouts = append(txouts, tin)
@@ -249,9 +246,6 @@ func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 		if y.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 			continue
 		}
-		if y.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
-			continue
-		}
 		x := views.Utxo.LookupEntry(y.PreviousOutPoint).ToTxOut()
 		if x.TokenType&2 == 0 {
 			continue
@@ -323,9 +317,6 @@ func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement
 	res := make(map[tokenRElement]int64)
 	for _, y := range tx.MsgTx().TxIn {
 		if y.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		if y.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 			continue
 		}
 
@@ -529,9 +520,6 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 	if checkPolygon {
 		for _, txIn := range msgtx.TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
-			}
-			if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
 				continue
 			}
 			txin := views.Utxo.LookupEntry(txIn.PreviousOutPoint).ToTxOut()

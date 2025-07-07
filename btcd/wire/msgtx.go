@@ -426,7 +426,7 @@ func (s *MsgTx) IsForfeit() bool {
 }
 
 func (s *MsgTx) IsCrossChain() bool {
-	return len(s.TxIn) == 1 && s.TxIn[0].PreviousOutPoint.Index&CrossChainFalg != 0
+	return len(s.TxIn) == 1 && !s.TxIn[0].PreviousOutPoint.Hash.IsEqual(&chainhash.Hash{}) && s.TxIn[0].PreviousOutPoint.Index&CrossChainFalg != 0
 }
 
 func (s *MsgTx) Match(t *MsgTx) bool {

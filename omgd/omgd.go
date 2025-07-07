@@ -642,6 +642,7 @@ func loadMinerDB(cfg *config) (database.DB, error) {
 }
 
 var wg sync.WaitGroup
+var Server *server
 
 func main() {
 	// Use all processor cores.
@@ -650,6 +651,16 @@ func main() {
 	tcfg, _, err := loadConfig("Main Options", 0) // chain main options
 	if err != nil {
 		os.Exit(1)
+	}
+
+	if tcfg.TestNet {
+		tcfg.NetMagic = common.TestNet
+	}
+	if tcfg.SimNet {
+		tcfg.NetMagic = common.SimNet
+	}
+	if tcfg.RegressionTest {
+		tcfg.NetMagic = common.RegNet
 	}
 
 	debugLevel()
@@ -802,7 +813,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	Server := p.Server
+	Server = p.Server
 	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
 
@@ -884,6 +895,10 @@ func main() {
 		time.Sleep(3 * time.Second)
 	}
 
+	if tcfg.ExitOnStall {
+		go exitonstall()
+	}
+
 	wg.Wait()
 	chainmap.Close()
 	return
@@ -959,5 +974,30 @@ func retrievedefs(p *Protocol, q *Protocol) {
 			return nil
 		})
 		time.Sleep(15 * time.Second)
+	}
+}
+
+func exitonstall() {
+	lastHeight := int32(0)
+	for {
+		time.Sleep(10 * time.Minute)
+		h := Server.chain.BestChain.Height()
+		if h != lastHeight {
+			lastHeight = h
+		} else {
+			btcdLog.Infof("exitonstall requesting shutdown at %d - %d", h, lastHeight)
+
+			shutdownRequestChannel <- struct{}{}
+
+			var wbuf bytes.Buffer
+			time.Sleep(2 * time.Minute)
+			btcdLog.Infof("exitonstall: 2 min. after shutdown notice.")
+
+			pprof.Lookup("mutex").WriteTo(&wbuf, 1)
+			pprof.Lookup("goroutine").WriteTo(&wbuf, 1)
+			btcdLog.Infof("pprof Info: \n%s", wbuf.String())
+
+			os.Exit(9)
+		}
 	}
 }

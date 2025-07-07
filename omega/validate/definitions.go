@@ -499,9 +499,6 @@ func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error
 				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 					continue
 				}
-				if txIn.SignatureIndex == 0xFFFFFFFF && len(tx.MsgTx().TxOut) == 0 {
-					continue
-				}
 				utxo := views.Utxo.LookupEntry(txIn.PreviousOutPoint)
 				if utxo.TokenType != 3 {
 					continue

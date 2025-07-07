@@ -68,6 +68,7 @@ type GetMinerBlockVerboseResult struct {
 	NextHash      string             `json:"nextblockhash,omitempty"`
 	Bits          string             `json:"bits"`
 	Difficulty    float64            `json:"difficulty"`
+	Connection    string             `json:"connection"`
 	Address       string             `json:"address"`
 	Best          string             `json:"best"`
 	Collateral    string             `json:"collateral"`

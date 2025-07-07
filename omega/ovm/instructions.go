@@ -4378,6 +4378,10 @@ func nextop(contract *Contract, u int) {
 func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.Code[0].param
 
+	if len(param) == 0 {
+		return omega.ScriptError(omega.ErrInternal, "Insufficient data for line signature")
+	}
+
 	it := param[0]
 	tx := ovm.GetTx()
 

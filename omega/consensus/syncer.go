@@ -107,8 +107,6 @@ type Syncer struct {
 	//	repeats   int
 
 	nmsg [7]int
-
-	tried int
 }
 
 func (self *Syncer) CommitteeMsgMG(p [20]byte, m wire.Message) {
@@ -165,7 +163,7 @@ func (self *Syncer) repeater() {
 	if self.agreed != -1 && len(self.signed) >= wire.CommitteeSigs && !self.Done {
 		self.forestLock.Unlock()
 		self.Done = true
-		//		close(self.quit)
+		close(self.quit)
 		return
 	}
 
@@ -257,23 +255,15 @@ func (self *Syncer) repeater() {
 	} else {
 		// check if we should agree with someone else
 		best := self.best()
-		if self.tried >= 10+rand.Intn(5) {
-			better := self.best()
-			if better != self.Myself {
-				rel := self.makeRelease(better)
-				self.commands <- rel
-				miner.server.NewConsusBlock((*btcutil.Block)(nil))
-				miner.Broadcast(rel, nil)
-			}
-			self.tried = 0
-		} else if best >= 0 && best != self.Myself && self.asked[best] != nil && self.knowledges.Qualified(best) && miner.server.Connected(self.Names[best]) {
+
+		if best >= 0 && best != self.Myself && self.asked[best] != nil && self.knowledges.Qualified(best) && miner.server.Connected(self.Names[best]) {
 			self.agreed = best
 			self.commands <- self.asked[best]
 			self.asked[best] = nil
 		}
 	}
 
-	if _, ok := self.forest[self.Me]; ok && self.tried != 0 { // && len(self.commands) < (wire.CommitteeSize - 1) * 10 {
+	if _, ok := self.forest[self.Me]; ok { // && len(self.commands) < (wire.CommitteeSize - 1) * 10 {
 		k := self.NewKnowledgeMsg()
 
 		self.commands <- k
@@ -281,8 +271,6 @@ func (self *Syncer) repeater() {
 		miner.Broadcast(k, nil)
 	}
 	self.forestLock.Unlock()
-
-	self.tried++
 
 	miner.syncMutex.Lock()
 	for _, tree := range self.forest {
@@ -415,25 +403,23 @@ func (self *Syncer) process(cmd interface{}) bool {
 		if self.sigGiven >= 0 {
 			return false
 		}
-		//		if tree.block != nil {
-		//			log.Infof("newtree %s at %d width %d txs", tree.hash.String(), self.Height, len(tree.block.MsgBlock().Transactions))
-		//		} else {
-		//			log.Infof("newtree %s at %d", tree.hash.String(), self.Height)
-		//		}
+		if tree.block != nil {
+			log.Infof("newtree %s at %d width %d txs", tree.hash.String(), self.Height, len(tree.block.MsgBlock().Transactions))
+		} else {
+			log.Infof("newtree %s at %d", tree.hash.String(), self.Height)
+		}
 
 		if !self.validateMsg(tree.creator, nil, nil) {
 			log.Infof("tree creator %x is not a member of committee", tree.creator)
 			return false
 		}
 
-		/*
-			if tree.block != nil &&
-				len(tree.block.MsgBlock().Transactions) > 1 &&
-				len(tree.block.MsgBlock().Transactions[1].TxIn) > 1 &&
-				tree.block.MsgBlock().Transactions[1].TxIn[0].SignatureIndex == 0xFFFFFFFF {
-				log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
-			}
-		*/
+		if tree.block != nil &&
+			len(tree.block.MsgBlock().Transactions) > 1 &&
+			len(tree.block.MsgBlock().Transactions[1].TxIn) > 1 &&
+			tree.block.MsgBlock().Transactions[1].TxIn[0].SignatureIndex == 0xFFFFFFFF {
+			log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
+		}
 
 		self.handeling = "New tree"
 		c := self.Members[tree.creator]
@@ -491,7 +477,7 @@ func (self *Syncer) process(cmd interface{}) bool {
 				return false
 			}
 
-			//			log.Infof("MsgKnowledge originated from %d with %v", self.Members[k.Finder], k.K)
+			log.Infof("MsgKnowledge originated from %d with %v", self.Members[k.Finder], k.K)
 
 			if bytes.Compare(self.forest[k.Finder].hash[:], k.M[:]) != 0 {
 				// reset it

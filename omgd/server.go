@@ -1429,6 +1429,7 @@ func (sp *serverPeer) OnChainMap(_ *peer.Peer, msg *wire.MsgChainMap) {
 	}
 	// shutdown & reboot
 	if added {
+		btcdLog.Infof("shutdownRequestChannel <- OnChainMap")
 		shutdownRequestChannel <- struct{}{}
 	}
 }
@@ -3208,13 +3209,13 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		newPeers:               make(chan *serverPeer, prot.cfg.MaxPeers),
 		donePeers:              make(chan *serverPeer, prot.cfg.MaxPeers),
 		banPeers:               make(chan *serverPeer, prot.cfg.MaxPeers),
-		query:                  make(chan interface{}),
+		query:                  make(chan interface{}, 1000),
 		relayInv:               make(chan relayMsg, prot.cfg.MaxPeers),
 		broadcast:              make(chan broadcastMsg, prot.cfg.MaxPeers),
 		quit:                   make(chan struct{}),
 		modifyRebroadcastInv:   make(chan interface{}),
-		peerHeightsUpdate:      make(chan updatePeerHeightsMsg),
-		peerMinerHeightsUpdate: make(chan updatePeerHeightsMsg),
+		peerHeightsUpdate:      make(chan updatePeerHeightsMsg, 1000),
+		peerMinerHeightsUpdate: make(chan updatePeerHeightsMsg, 1000),
 		nat:                    nat,
 		db:                     db,
 		minerdb:                minerdb,
@@ -3403,6 +3404,15 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 	//		s.sigCache, s.hashCache)
 	// This is the miner for Tx chain
 
+	prot.db.View(func(tx database.Tx) error {
+		bucket := tx.Metadata().Bucket([]byte("blacklist"))
+		for _, s := range prot.cfg.Blacklist {
+			addr, _ := btcutil.DecodeAddress(s, prot.activeNetParams)
+			bucket.Put(addr.ScriptNetAddress()[:21], []byte(s))
+		}
+		return nil
+	})
+
 	s.minerMiner = nil
 	s.cpuMiner = nil
 	if prot.IsSvp {
@@ -3586,10 +3596,24 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 		// Signal process shutdown when the RPC server requests it.
 		go func() {
+			btcdLog.Infof("shutdownRequestChannel <- s.rpcServer.RequestedProcessShutdown")
 			<-s.rpcServer.RequestedProcessShutdown()
 			shutdownRequestChannel <- struct{}{}
 		}()
 	}
+
+	s.chain.Subscribe(func(notification *blockchain.Notification) {
+		if notification.Type != blockchain.NTBlockConnected {
+			return
+		}
+		block := notification.Data.(*btcutil.Block)
+		if block == nil {
+			return
+		}
+		for _, tx := range block.Transactions()[1:] {
+			s.txMemPool.RemoveTransaction(tx, false)
+		}
+	})
 
 	return &s, nil
 }

@@ -540,7 +540,10 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			awd := make(map[uint64]int64)
 			for _, txo := range block.MsgBlock().Transactions[0].TxOut {
 				if txo.IsSeparator() {
-					continue
+					break
+				}
+				if txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.OmegaCoinTyp {
+					return fmt.Errorf("Coinbase output tokentype is not 0."), false
 				}
 				if _, ok := awd[txo.TokenType]; !ok {
 					_, awd[txo.TokenType] = txo.Value.Value()
@@ -549,9 +552,6 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			for _, txo := range block.MsgBlock().Transactions[0].TxOut {
 				if txo.IsSeparator() {
 					break
-				}
-				if txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.OmegaCoinTyp {
-					return fmt.Errorf("Coinbase output tokentype is not 0."), false
 				}
 				dif := txo.Value.(*token.NumToken).Val - awd[txo.TokenType]
 				if dif < 0 {
@@ -1127,6 +1127,32 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 	return nil
 }
 
+func CheckBlacklist(tx *btcutil.Tx, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
+	for _, txIn := range tx.MsgTx().TxIn {
+		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+			continue
+		}
+		utxo := views.Utxo.LookupEntry(txIn.PreviousOutPoint)
+
+		if utxo == nil {
+			continue
+		}
+
+		err := views.Db.View(func(tx database.Tx) error {
+			bucket := tx.Metadata().Bucket([]byte("blacklist"))
+			d := bucket.Get(utxo.PkScript()[:21])
+			if d != nil && len(d) > 0 {
+				return fmt.Errorf("Blacklist address %s", string(d))
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// Coinbase transactions have no inputs.
 	if len(tx.MsgTx().TxIn) == 0 || tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) {
@@ -1475,7 +1501,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ve
 	// and load view at the same time
 	inputs := make([]token.Token, 0)
 	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+		if txIn.IsSepadding() {
 			continue
 		}
 		out := txIn.PreviousOutPoint
@@ -1499,7 +1525,8 @@ func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ve
 				if t & 1 != 1 {
 					continue
 				}
-			} else*/if t&3 != 1 {
+			} else*/
+		if t&3 != 1 { // 00 - handle in check fees, 01 - handle here, 10 - handle in right check 11 - handle in geo check
 			continue
 		}
 		inputs = append(inputs, x.ToTxOut().Token)
@@ -1514,7 +1541,8 @@ func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ve
 				if t & 1 != 1 {
 					continue
 				}
-			} else*/if t&3 != 1 {
+			} else*/
+		if t&3 != 1 {
 			continue
 		}
 		match := false
@@ -1571,7 +1599,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		return 0, 0, nil
 	}
 	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+		if txIn.IsSepadding() {
 			continue
 		}
 		// Ensure the referenced input transaction is available.
@@ -1663,19 +1691,19 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		}
 		if v < out {
 			str := fmt.Sprintf("total type %d value of all transaction inputs for "+
-				"transaction %v is %v which is less than the amount "+
-				"spent of %v", in, txHash, v, out)
+				"transaction %v is %v which is less than the output amount "+
+				"of %v", in, txHash, v, out)
 			return 0, 0, ruleError(ErrSpendTooHigh, str)
 		} else if in != common.OmegaCoinTyp && in != 0x10 && in != 0 && v != out {
 			str := fmt.Sprintf("total %d type token value of all transaction inputs for "+
-				"transaction %v is %v which is not equal to the amount "+
-				"spent of %v", in, txHash, v, out)
+				"transaction %v is %v which is not equal to the output amount "+
+				"of %v", in, txHash, v, out)
 			return 0, 0, ruleError(ErrSpendTooHigh, str)
 		}
 	}
 
 	for in, out := range totalIns {
-		if in == common.OmegaCoinTyp || in == 0x10 || in == 0 {
+		if in == common.OmegaCoinTyp || in == common.FeeCoinTyp {
 			continue
 		}
 		v := int64(0)
@@ -1694,12 +1722,17 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 	// is an impossible condition because of the check above that ensures
 	// the inputs are >= the outputs.
 	txFeeInHao := int64(0)
-	txbtcFeeInHao := int64(0)
-	if _, ok := totalIns[0]; ok {
-		txFeeInHao = totalIns[0] - totalHaoOut[0]
+	if _, ok := totalIns[common.FeeCoinTyp]; ok {
+		txFeeInHao = totalIns[common.FeeCoinTyp]
 	}
-	if _, ok := totalIns[0x10]; ok {
-		txbtcFeeInHao += totalIns[0x10] - totalHaoOut[0x10]
+	if _, ok := totalIns[common.OmegaCoinTyp]; ok {
+		txFeeInHao += totalIns[common.OmegaCoinTyp]
+	}
+	if _, ok := totalHaoOut[common.FeeCoinTyp]; ok {
+		txFeeInHao -= totalHaoOut[common.FeeCoinTyp]
+	}
+	if _, ok := totalHaoOut[common.OmegaCoinTyp]; ok {
+		txFeeInHao -= totalHaoOut[common.OmegaCoinTyp]
 	}
 
 	n := 0
@@ -1721,7 +1754,7 @@ func CheckTransactionFees(tx *btcutil.Tx, version uint32, storage int64, views *
 		}
 	}
 
-	return txFeeInHao, txbtcFeeInHao, nil
+	return txFeeInHao, 0, nil
 }
 
 func ContractNewStorage(tx *btcutil.Tx, vm *ovm.OVM, paidstoragefees map[[20]byte]int64) int64 {
@@ -1990,8 +2023,15 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// portion of block handling.
 	checkpoint := b.LatestCheckpoint()
 	runScripts := true
+	flag := BFNone
+
 	if checkpoint != nil && node.Height <= checkpoint.Height {
 		runScripts = false
+		if node.Height < checkpoint.Height {
+			flag |= BFFastAdd
+		} else if node.Height == checkpoint.Height && checkpoint.Hash.IsEqual(&node.Hash) {
+			flag |= BFFastAdd
+		}
 	}
 
 	// Perform several checks on the inputs for each transaction.  Also
@@ -2142,6 +2182,13 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		return err
 	}
 
+	for _, tx := range block.Transactions()[1:] {
+		err = CheckBlacklist(tx, views, b.ChainParams)
+		if err != nil {
+			return err
+		}
+	}
+
 	err = CheckTransactionInputs(transactions[0], node.Height, views, b.ChainParams)
 	if err != nil {
 		return err
@@ -2159,7 +2206,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	}
 
 	ck := b.LatestCheckpoint()
-	flag := BFNone
 	if ck != nil && node.Height <= ck.Height {
 		flag |= BFFastAdd
 	}
@@ -2182,47 +2228,45 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			}
 		}
 
-		if flag&BFFastAdd == 0 {
-			err = CheckTransactionIntegrity(tx, views, block.MsgBlock().Header.Version)
-			if err != nil {
-				return err
-			}
+		err = CheckTransactionIntegrity(tx, views, block.MsgBlock().Header.Version)
+		if err != nil {
+			return err
+		}
 
-			txFee, txbtcfee, err := CheckTransactionFees(tx, block.MsgBlock().Header.Version, storages[i], views, b.ChainParams)
-			if err != nil {
-				return err
-			}
+		txFee, txbtcfee, err := CheckTransactionFees(tx, block.MsgBlock().Header.Version, storages[i], views, b.ChainParams)
+		if err != nil {
+			return err
+		}
 
-			// check locked collateral
-			if block.MsgBlock().Header.Version >= chaincfg.Version2 {
-				for _, txin := range tx.MsgTx().TxIn {
-					if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-						continue
-					}
-					if txin.PreviousOutPoint.Index&wire.OP_PAYCROSSCHAIN != 0 {
-						continue
-					}
-					if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; ok {
-						return fmt.Errorf("Try to spend locked collateral")
-					}
+		// check locked collateral
+		if block.MsgBlock().Header.Version >= chaincfg.Version2 {
+			for _, txin := range tx.MsgTx().TxIn {
+				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					continue
+				}
+				if txin.PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
+					continue
+				}
+				if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; ok {
+					return fmt.Errorf("Try to spend locked collateral")
 				}
 			}
+		}
 
-			// Sum the total fees and ensure we don't overflow the
-			// accumulator.
-			lastTotalFees := totalFees
-			totalFees += txFee
+		// Sum the total fees and ensure we don't overflow the
+		// accumulator.
+		lastTotalFees := totalFees
+		totalFees += txFee
 
-			lastbtcTotalFees := totalbtcFees
-			totalbtcFees += txbtcfee
-			if totalFees < lastTotalFees {
-				return ruleError(ErrBadFees, "total fees for block "+
-					"overflows accumulator")
-			}
-			if totalbtcFees < lastbtcTotalFees {
-				return ruleError(ErrBadFees, "total fees for block "+
-					"overflows accumulator")
-			}
+		lastbtcTotalFees := totalbtcFees
+		totalbtcFees += txbtcfee
+		if totalFees < lastTotalFees {
+			return ruleError(ErrBadFees, "total fees for block "+
+				"overflows accumulator")
+		}
+		if totalbtcFees < lastbtcTotalFees {
+			return ruleError(ErrBadFees, "total fees for block "+
+				"overflows accumulator")
 		}
 
 		// Add all of the outputs for this transaction which are not
@@ -2264,12 +2308,21 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// errors here because those error conditions would have already been
 	// caught by checkTransactionSanity.
 	totalHaoOut := int64(0)
+	totalAward := int64(0)
 
 	for _, txOut := range transactions[0].MsgTx().TxOut {
 		if txOut.IsSeparator() {
 			break
 		}
+		if txOut.TokenType != common.FeeCoinTyp && txOut.TokenType != common.OmegaCoinTyp {
+			str := fmt.Sprintf("coinbase transaction for block %s awards $d type tokrn", block.Hash().String(),
+				txOut.TokenType)
+			return ruleError(ErrBadCoinbaseValue, str)
+		}
 		if txOut.TokenType == common.FeeCoinTyp {
+			totalAward += txOut.Value.(*token.NumToken).Val
+		}
+		if txOut.TokenType == common.FeeCoinTyp || txOut.TokenType == common.OmegaCoinTyp {
 			totalHaoOut += txOut.Value.(*token.NumToken).Val
 		}
 	}
@@ -2302,6 +2355,13 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		str := fmt.Sprintf("coinbase transaction for block %s pays %v "+
 			"which is more than expected value of %v\nblock has %d txs\n%s", block.Hash().String(),
 			totalHaoOut, expectedHaoOut, len(block.MsgBlock().Transactions), s)
+		return ruleError(ErrBadCoinbaseValue, str)
+	}
+
+	if totalHaoOut-totalAward > totalFees {
+		str := fmt.Sprintf("coinbase transaction for block %s pays %d awared, "+
+			"which is more than expected value of %d", block.Hash().String(),
+			totalAward, award)
 		return ruleError(ErrBadCoinbaseValue, str)
 	}
 

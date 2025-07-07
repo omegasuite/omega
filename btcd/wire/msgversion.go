@@ -110,11 +110,6 @@ func (msg *MsgVersion) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) 
 		}
 	}
 
-	msg.RpcPort, err = common.ReadVarString(r, pver)
-	if err != nil {
-		return err
-	}
-
 	if buf.Len() > 0 {
 		err = readElement(buf, &msg.Nonce)
 		if err != nil {
@@ -161,6 +156,11 @@ func (msg *MsgVersion) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) 
 		msg.DisableRelayTx = !relayTx
 	}
 
+	msg.RpcPort, err = common.ReadVarString(r, pver)
+	if err != nil {
+		msg.RpcPort = "8789"
+	}
+
 	return nil
 }
 
@@ -188,11 +188,6 @@ func (msg *MsgVersion) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) 
 		return err
 	}
 
-	err = common.WriteVarBytes(w, pver, []byte(msg.RpcPort))
-	if err != nil {
-		return err
-	}
-
 	err = writeElement(w, msg.Nonce)
 	if err != nil {
 		return err
@@ -214,6 +209,11 @@ func (msg *MsgVersion) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) 
 	}
 
 	err = writeElement(w, !msg.DisableRelayTx)
+	if err != nil {
+		return err
+	}
+
+	err = common.WriteVarBytes(w, pver, []byte(msg.RpcPort))
 	if err != nil {
 		return err
 	}

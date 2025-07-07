@@ -344,6 +344,9 @@ var rpcLimited = map[string]struct{}{
 	"getmbkh":               {},
 	//	"getcfilter":            {},
 	//	"getcfilterheader":      {},
+	"clearbtcl2pool":  {}, // new
+	"getcrosschaindb": {}, // new
+
 	"getcurrentnet":    {},
 	"getdifficulty":    {},
 	"getheaders":       {},
@@ -357,10 +360,7 @@ var rpcLimited = map[string]struct{}{
 	"getsigners":         {}, // new
 	"getbtcpool":         {}, // new
 	"getl2pool":          {}, // new
-	"clearbtcl2pool":     {}, // new
 	"signrawtransaction": {},
-
-	"getcrosschaindb": {},
 
 	//	"clearmempool":          {},	this is admin command
 	"getrawtransaction":     {},
@@ -2299,6 +2299,7 @@ func handleGetMinerBlock(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		Bits:          strconv.FormatInt(int64(blockHeader.Bits), 16),
 		Difficulty:    getDifficultyRatio(blockHeader.Bits, params),
 		NextHash:      nextHashString,
+		Connection:    string(blockHeader.Connection),
 		Address:       d.String(), // hex.EncodeToString(blockHeader.Miner),
 		Best:          blockHeader.BestBlock.String(),
 		Collateral:    collateral,
@@ -5168,7 +5169,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		}
 	*/
 
-	memlimit := 5 * 1024 * 1024 // 5 M mem limit
+	memlimit := s.cfg.Cfg.RpcLimit * 1024
 	if c.Verbose == nil || *c.Verbose != 0 {
 		memlimit /= 4
 	}
@@ -5188,6 +5189,7 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		// Load the raw transaction bytes from the database.
 		serializedTxns, err := dbTx.FetchBlockRegions(regions)
 		if err != nil {
+			fmt.Printf("corrupted block regions")
 			return err
 		}
 
@@ -6092,7 +6094,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		}
 		return nil, &btcjson.RPCError{
 			Code:    btcjson.ErrRPCDeserialization,
-			Message: "TX rejected: " + err.Error(),
+			Message: tx.Hash().String() + "\nTX rejected: " + err.Error(),
 		}
 	}
 
@@ -6161,6 +6163,150 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	}
 
 	return msg, nil
+}
+
+func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetCrossChainDBCmd)
+
+	res := &btcjson.GetCrossChainDBResult{
+		IncomingPool: make([]*wire.XchainData, 0),
+		//Btc2L2Pool:   make([]*wire.XchainData, 0),
+		//L2BtcPool:    make([]*wire.XchainData, 0),
+		//		BridgeSigners: make([]*treasury.Signers, 0),
+		//		XBTCAssets:    make([]*treasury.Asset, 0),
+		//XCAssets: make([]*wire.XchainData, 0),
+		//RedeemDB: make(map[string]string),
+	}
+
+	s.cfg.DB.View(func(tx database.Tx) error {
+		meta := tx.Metadata()
+		if c.Clear&1 != 0 { // INCOMINGPOOL
+			bucket := meta.Bucket([]byte(common.INCOMINGPOOL))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				xchain := &wire.XchainData{}
+				xchain.DeSerialize(cursor.Value())
+				res.IncomingPool = append(res.IncomingPool, xchain)
+			}
+		}
+		/*
+			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
+				fmt.Printf("BTCL2POOL\n")
+				bucket := meta.Bucket([]byte(common.BTCL2POOL))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					xchain := &wire.XchainData{}
+					xchain.DeSerialize(cursor.Value())
+					res.Btc2L2Pool = append(res.Btc2L2Pool, xchain)
+				}
+
+				bucket = meta.Bucket([]byte(common.L2BTCPOOL))
+				cursor = bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					xchain := &wire.XchainData{}
+					xchain.DeSerialize(cursor.Value())
+					res.L2BtcPool = append(res.L2BtcPool, xchain)
+				}
+			}
+			if c.Clear&4 != 0 { // BRIDGESIGNERS
+				fmt.Printf("BRIDGESIGNERS\n")
+				bucket := meta.Bucket([]byte(common.BRIDGESIGNERS))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					var addr [20]byte
+					copy(addr[:], cursor.Key())
+
+					t := &treasury.Signers{}
+					copy(t.Address[:], addr[:])
+					t.Pledged = make([]*treasury.PlgAsset, 0)
+
+					_, err := t.Deserialize(cursor.Value())
+					if err != nil {
+						continue
+					}
+					res.BridgeSigners = append(res.BridgeSigners, t)
+				}
+			}
+			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+				fmt.Printf("XBTCAssets\n")
+				bucket := meta.Bucket([]byte(common.XBTCAssets))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					var outp wire.OutPoint
+					key := cursor.Key()
+					outp.Hash.SetBytes(key[:32])
+					outp.Index = common.LittleEndian.Uint32(key[32:])
+					plg := &treasury.Asset{}
+					_, err := plg.Deserialize(cursor.Value())
+					if err != nil {
+						return err
+					}
+					res.XBTCAssets = append(res.XBTCAssets, plg)
+				}
+				/*
+					bucket = meta.Bucket([]byte(common.XCAssets))
+					cursor = bucket.Cursor()
+					n := 0
+					for ok := cursor.First(); ok; ok = cursor.Next() {
+						n++
+					}
+					fmt.Printf("XCAssets has %d items\n", n)
+				* /
+			}
+			if c.Clear&16 != 0 { // REEDEEM
+				bucket := meta.Bucket([]byte(common.REDEEMDB))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					res.RedeemDB[string(cursor.Key())] = hex.EncodeToString(cursor.Value())
+				}
+			}
+		*/
+		return nil
+	})
+	return res, nil
+}
+
+func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetCrossChainDBCmd)
+
+	s.cfg.DB.View(func(tx database.Tx) error {
+		meta := tx.Metadata()
+		if c.Clear&1 != 0 { // INCOMINGPOOL
+			bucketName := []byte(common.INCOMINGPOOL)
+			meta.DeleteBucket(bucketName)
+			meta.CreateBucket(bucketName)
+		}
+		/*
+			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
+				bucketName := []byte(common.L2BTCPOOL)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+				bucketName = []byte(common.L2BTCPOOL)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+
+			if c.Clear&4 != 0 { // BRIDGESIGNERS
+				bucketName := []byte(common.BRIDGESIGNERS)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+
+			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+				bucketName := []byte(common.XBTCAssets)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+			if c.Clear&16 != 0 { // REEDEEM
+				bucketName := []byte(common.REDEEMDB)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+		*/
+		return nil
+	})
+
+	return "Done.", nil
 }
 
 func handleVerifySig(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
