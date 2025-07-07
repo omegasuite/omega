@@ -18,7 +18,6 @@ import (
 	"github.com/omegasuite/famofchains/btcd/wire/common"
 	"github.com/omegasuite/famofchains/btcutil"
 	"github.com/omegasuite/famofchains/omega/token"
-	"math/rand"
 	"net"
 	"sync"
 	"time"

@@ -102,7 +102,7 @@ func (s PkScript) Script() []byte {
 
 // Address encodes the script into an address for the given chain.
 func (s PkScript) Address(chainParams *chaincfg.Params) (btcutil.Address, error) {
-	addrs, _, err := indexers.ExtractPkScriptAddrs(s.Script(), chainParams)
+	_, addrs, _, err := ExtractPkScriptAddrs(s.Script(), chainParams)
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse address: %v", err)
 	}

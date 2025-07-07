@@ -1037,7 +1037,7 @@ mempoolLoop:
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-			log.Infof("%d - Remove tx %s becase TxIn/TxOut count exceeds 1000", rmd, tx.Hash())
+			log.Infof("Remove tx %s becase TxIn/TxOut count exceeds 1000", tx.Hash())
 			logSkippedDeps(tx, deps)
 			continue
 		}
@@ -1049,7 +1049,7 @@ mempoolLoop:
 
 			logSkippedDeps(tx, deps)
 
-			log.Infof("%d - Skipping tx %s due to error in CheckBlacklist: %v", rmd, tx.Hash(), err)
+			log.Infof("Skipping tx %s due to error in CheckBlacklist: %v", tx.Hash(), err)
 			continue
 		}
 
@@ -1145,7 +1145,7 @@ mempoolLoop:
 			if executed {
 				coinbaseTx.HasOuts = newcoins
 				*coinbaseTx.MsgTx() = savedCoinBase
-				skiprest = true // skip rest so we don't waste time on more contracts
+				//skiprest = true // skip rest so we don't waste time on more contracts
 				continue
 			}
 
