@@ -8,11 +8,11 @@ package blockchain
 import (
 	"bytes"
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/gct/btcd/wire"
 	"math"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/gct/btcutil"
 )
 
 const (

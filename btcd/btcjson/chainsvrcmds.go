@@ -13,9 +13,9 @@ import (
 	"fmt"
 	"github.com/goinggo/mapstructure"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega/token"
+	"github.com/omegasuite/gct/btcd/wire"
+	"github.com/omegasuite/gct/btcutil"
+	"github.com/omegasuite/gct/omega/token"
 )
 
 // AddNodeSubCmd defines the type used in the addnode JSON-RPC command for the

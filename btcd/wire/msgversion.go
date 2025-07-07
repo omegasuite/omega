@@ -8,7 +8,7 @@ package wire
 import (
 	"bytes"
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/gct/btcd/wire/common"
 	"io"
 	"strings"
 	"time"

@@ -5,7 +5,7 @@
 package ffldb
 
 import (
-	"github.com/omegasuite/famofchains/btcd/database/internal/treap"
+	"github.com/omegasuite/gct/btcd/database/internal/treap"
 	"github.com/omegasuite/goleveldb/leveldb/iterator"
 	"github.com/omegasuite/goleveldb/leveldb/util"
 )

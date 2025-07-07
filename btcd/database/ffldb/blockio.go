@@ -18,8 +18,8 @@ import (
 	"sync"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/database"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/gct/btcd/database"
+	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 const (

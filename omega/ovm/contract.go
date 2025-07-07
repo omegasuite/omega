@@ -11,8 +11,8 @@ package ovm
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/omegasuite/famofchains/omega"
-	"github.com/omegasuite/famofchains/omega/token"
+	"github.com/omegasuite/gct/omega"
+	"github.com/omegasuite/gct/omega/token"
 	"math/big"
 )
 
@@ -117,11 +117,11 @@ type Contract struct {
 // NewContract returns a new contract environment for the execution of EVM.
 func NewContract(object Address, value *token.Token) *Contract {
 	c := &Contract{
-		self: AccountRef(object),
+		self:  AccountRef(object),
 		isnew: true,
-		Args: nil,
-		libs:	make(map[Address]lib),
-//		jumpdests: make(destinations),
+		Args:  nil,
+		libs:  make(map[Address]lib),
+		//		jumpdests: make(destinations),
 		value: value,
 	}
 	return c
@@ -179,7 +179,8 @@ func ByteCodeParser(code []byte) []inst {
 	empty := true
 	for i := 0; i < len(code); i++ {
 		switch {
-		case code[i] == ' ' || code[i] == '\t' || code[i] == '\r':		// skip space or tab
+		case code[i] == ' ' || code[i] == '\t' || code[i] == '\r':
+		// skip space or tab
 
 		case code[i] != ';' && code[i] != '\n': // ";\n":
 			if empty {
@@ -192,7 +193,8 @@ func ByteCodeParser(code []byte) []inst {
 
 		default: // ";\n":
 			instructions = append(instructions, tmp)
-			for ; i < len(code) && code[i] != '\n'; i++ {}
+			for ; i < len(code) && code[i] != '\n'; i++ {
+			}
 			empty = true
 		}
 	}
@@ -203,36 +205,36 @@ func ByteCodeParser(code []byte) []inst {
 	return instructions
 }
 
-type codeValidator func ([]byte) int
+type codeValidator func([]byte) int
 
-var validators = map[OpCode]codeValidator {
-	EVAL8:  opEval8Validator,
-	EVAL16:  opEval16Validator,
-	EVAL32:  opEval32Validator,
-	EVAL64:  opEval64Validator,
-	EVAL256:  opEval256Validator,
-	CONV:   opConvValidator,
-	HASH:   opHashValidator,
-	HASH160:  opHash160Validator,
-	SIGCHECK:   opSigCheckValidator,
-	IF:  opIfValidator,
-	CALL:  opCallValidator,
-	EXEC:  opExecValidator,
-	LOAD:  opLoadValidator,
-	STORE:   opStoreValidator,
-	DEL: opDelValidator,
+var validators = map[OpCode]codeValidator{
+	EVAL8:     opEval8Validator,
+	EVAL16:    opEval16Validator,
+	EVAL32:    opEval32Validator,
+	EVAL64:    opEval64Validator,
+	EVAL256:   opEval256Validator,
+	CONV:      opConvValidator,
+	HASH:      opHashValidator,
+	HASH160:   opHash160Validator,
+	SIGCHECK:  opSigCheckValidator,
+	IF:        opIfValidator,
+	CALL:      opCallValidator,
+	EXEC:      opExecValidator,
+	LOAD:      opLoadValidator,
+	STORE:     opStoreValidator,
+	DEL:       opDelValidator,
 	LIBLOAD:   opLibLoadValidator,
-	MALLOC:  opMallocValidator,
-	ALLOC:  opAllocValidator,
-	COPY: opCopyValidator,
-	COPYIMM:  opCopyImmValidator,
-	RECEIVED: opReceivedValidator,
-	TXFEE: opTxFeeValidator,
-	GETCOIN: opGetCoinValidator,
-	NOP: func ([]byte) int { return 1},
-	TXIOCOUNT:  opTxIOCountValidator,
-//	GETTXIN: opGetTxInValidator,
-//	GETTXOUT: opGetTxOutValidator,
+	MALLOC:    opMallocValidator,
+	ALLOC:     opAllocValidator,
+	COPY:      opCopyValidator,
+	COPYIMM:   opCopyImmValidator,
+	RECEIVED:  opReceivedValidator,
+	TXFEE:     opTxFeeValidator,
+	GETCOIN:   opGetCoinValidator,
+	NOP:       func([]byte) int { return 1 },
+	TXIOCOUNT: opTxIOCountValidator,
+	//	GETTXIN: opGetTxInValidator,
+	//	GETTXOUT: opGetTxOutValidator,
 	SPEND:         opSpendValidator,
 	ADDDEF:        opAddDefValidator,
 	ADDTXOUT:      opAddTxOutValidator,
@@ -245,10 +247,10 @@ var validators = map[OpCode]codeValidator {
 	MINT:          opMintValidator,
 	META:          opMetaValidator,
 	TIME:          opTimeValidator,
-	HEIGHT: opHeightValidator,
-	VERSION: opVersionValidator,
+	HEIGHT:        opHeightValidator,
+	VERSION:       opVersionValidator,
 	TOKENCONTRACT: opTokenContractValidator,
-	LOG: opLogValidator,
+	LOG:           opLogValidator,
 }
 
 func ByteCodeValidator(code []inst) omega.Err {
@@ -256,10 +258,10 @@ func ByteCodeValidator(code []inst) omega.Err {
 		if v, ok := validators[c.op]; ok {
 			offset := v(c.param)
 			if i+offset < 0 || i+offset > len(code) {
-				return omega.ScriptError(omega.ErrInternal,fmt.Sprintf("Illegal instruction %c %s in contract code.", c.op, string(c.param)))
+				return omega.ScriptError(omega.ErrInternal, fmt.Sprintf("Illegal instruction %c %s in contract code.", c.op, string(c.param)))
 			}
 		} else {
-			return omega.ScriptError(omega.ErrInternal,fmt.Sprintf("Illegal instruction %c in contract code.", c.op))
+			return omega.ScriptError(omega.ErrInternal, fmt.Sprintf("Illegal instruction %c in contract code.", c.op))
 		}
 	}
 

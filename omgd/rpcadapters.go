@@ -8,12 +8,12 @@ import (
 	"sync/atomic"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/blockchain"
-	"github.com/omegasuite/famofchains/btcd/mempool"
-	"github.com/omegasuite/famofchains/btcd/netsync"
-	"github.com/omegasuite/famofchains/btcd/peer"
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/gct/btcd/blockchain"
+	"github.com/omegasuite/gct/btcd/mempool"
+	"github.com/omegasuite/gct/btcd/netsync"
+	"github.com/omegasuite/gct/btcd/peer"
+	"github.com/omegasuite/gct/btcd/wire"
+	"github.com/omegasuite/gct/btcutil"
 )
 
 // rpcPeer provides a peer for use with the RPC server and implements the

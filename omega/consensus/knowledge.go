@@ -10,7 +10,7 @@ package consensus
 
 import (
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/gct/btcd/wire"
 	"net/http"
 )
 

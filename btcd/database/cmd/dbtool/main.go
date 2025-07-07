@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/omegasuite/famofchains/btcd/database"
+	"github.com/omegasuite/gct/btcd/database"
 	"github.com/omegasuite/btclog"
 	flags "github.com/jessevdk/go-flags"
 )

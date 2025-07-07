@@ -11,11 +11,11 @@ import (
 	"sync"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/famofchains/btcd/database"
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega/viewpoint"
+	"github.com/omegasuite/gct/btcd/chaincfg"
+	"github.com/omegasuite/gct/btcd/database"
+	"github.com/omegasuite/gct/btcd/wire"
+	"github.com/omegasuite/gct/btcutil"
+	"github.com/omegasuite/gct/omega/viewpoint"
 )
 
 const (

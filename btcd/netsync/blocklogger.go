@@ -5,12 +5,12 @@
 package netsync
 
 import (
-	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/gct/btcd/wire"
 	"sync"
 	"time"
 
 	"github.com/omegasuite/btclog"
-	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/gct/btcutil"
 )
 
 // blockProgressLogger provides periodic logging for other services in order

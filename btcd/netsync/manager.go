@@ -9,7 +9,7 @@ import (
 	"bytes"
 	"container/list"
 	"fmt"
-	"github.com/omegasuite/famofchains/omega/minerchain"
+	"github.com/omegasuite/gct/omega/minerchain"
 	"math/rand"
 	"reflect"
 	"sync"
@@ -17,15 +17,15 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/blockchain"
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/famofchains/btcd/database"
-	"github.com/omegasuite/famofchains/btcd/mempool"
-	peerpkg "github.com/omegasuite/famofchains/btcd/peer"
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
-	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega/consensus"
+	"github.com/omegasuite/gct/btcd/blockchain"
+	"github.com/omegasuite/gct/btcd/chaincfg"
+	"github.com/omegasuite/gct/btcd/database"
+	"github.com/omegasuite/gct/btcd/mempool"
+	peerpkg "github.com/omegasuite/gct/btcd/peer"
+	"github.com/omegasuite/gct/btcd/wire"
+	"github.com/omegasuite/gct/btcd/wire/common"
+	"github.com/omegasuite/gct/btcutil"
+	"github.com/omegasuite/gct/omega/consensus"
 )
 
 const (

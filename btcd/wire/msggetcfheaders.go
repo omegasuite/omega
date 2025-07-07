@@ -9,7 +9,7 @@ import (
 	"io"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 // MsgGetCFHeaders is a message similar to MsgGetHeaders, but for committed

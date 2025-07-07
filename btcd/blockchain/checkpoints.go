@@ -6,12 +6,12 @@ package blockchain
 
 import (
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
+	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/gct/btcd/chaincfg"
+	"github.com/omegasuite/gct/btcutil"
 )
 
 // CheckpointConfirmations is the number of blocks before the end of the current

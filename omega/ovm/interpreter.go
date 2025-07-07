@@ -11,8 +11,8 @@ package ovm
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
-	"github.com/omegasuite/famofchains/omega"
+	"github.com/omegasuite/gct/btcd/wire/common"
+	"github.com/omegasuite/gct/omega"
 	"strings"
 	"sync/atomic"
 	"time"

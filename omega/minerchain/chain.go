@@ -11,7 +11,7 @@ package minerchain
 import (
 	"container/list"
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/gct/btcd/wire/common"
 	"math/big"
 	"os"
 	"sort"
@@ -19,12 +19,12 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/blockchain"
-	"github.com/omegasuite/famofchains/btcd/blockchain/bccompress"
-	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/famofchains/btcd/database"
-	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/gct/btcd/blockchain"
+	"github.com/omegasuite/gct/btcd/blockchain/bccompress"
+	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
+	"github.com/omegasuite/gct/btcd/chaincfg"
+	"github.com/omegasuite/gct/btcd/database"
+	"github.com/omegasuite/gct/btcd/wire"
 	//	"github.com/omegasuite/btcd/wire/common"
 )
 

@@ -10,12 +10,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/famofchains/btcd/txscript/txsparser"
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
-	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega/ovm"
+	"github.com/omegasuite/gct/btcd/chaincfg"
+	"github.com/omegasuite/gct/btcd/txscript/txsparser"
+	"github.com/omegasuite/gct/btcd/wire"
+	"github.com/omegasuite/gct/btcd/wire/common"
+	"github.com/omegasuite/gct/btcutil"
+	"github.com/omegasuite/gct/omega/ovm"
 )
 
 // RawTxInWitnessSignature returns the serialized ECDA signature for the input

@@ -11,7 +11,7 @@ package ovm
 import (
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/omega"
+	"github.com/omegasuite/gct/omega"
 	"math/big"
 )
 
@@ -89,7 +89,8 @@ func (s *Stack) toBig(p *pointer) (*big.Int, omega.Err) {
 
 	copy(h[:], s.data[area].space[offset:offset+32])
 	i, n := 31, 0
-	for ; i >= 0 && h[i] == 0; i-- { }
+	for ; i >= 0 && h[i] == 0; i-- {
+	}
 	n = i + 1
 	for i = 0; i < n/2; i++ {
 		s, t := h[i], h[n-1-i]

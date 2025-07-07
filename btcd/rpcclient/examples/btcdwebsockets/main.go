@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/omegasuite/famofchains/btcd/rpcclient"
-	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/gct/btcd/rpcclient"
+	"github.com/omegasuite/gct/btcd/wire"
 	"github.com/omegasuite/btcutil"
 )
 

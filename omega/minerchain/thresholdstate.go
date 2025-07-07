@@ -10,7 +10,7 @@ package minerchain
 
 import (
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
+	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 )
@@ -265,11 +265,11 @@ func (b *MinerChain) thresholdState(prevNode *chainutil.BlockNode, checker thres
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) ThresholdState(deploymentID uint32) (ThresholdState, error) {
-//	log.Infof("ThresholdState: ChainLock.RLock")
+	//	log.Infof("ThresholdState: ChainLock.RLock")
 	b.chainLock.Lock()
 	state, err := b.deploymentState(b.BestChain.Tip(), deploymentID)
 	b.chainLock.Unlock()
-//	log.Infof("ThresholdState: ChainLock.Unlock")
+	//	log.Infof("ThresholdState: ChainLock.Unlock")
 
 	return state, err
 }
@@ -279,11 +279,11 @@ func (b *MinerChain) ThresholdState(deploymentID uint32) (ThresholdState, error)
 //
 // This function is safe for concurrent access.
 func (b *MinerChain) IsDeploymentActive(deploymentID uint32) (bool, error) {
-//	log.Infof("IsDeploymentActive: ChainLock.RLock")
+	//	log.Infof("IsDeploymentActive: ChainLock.RLock")
 	b.chainLock.Lock()
 	state, err := b.deploymentState(b.BestChain.Tip(), deploymentID)
 	b.chainLock.Unlock()
-//	log.Infof("IsDeploymentActive: ChainLock.Unlock")
+	//	log.Infof("IsDeploymentActive: ChainLock.Unlock")
 
 	if err != nil {
 		return false, err

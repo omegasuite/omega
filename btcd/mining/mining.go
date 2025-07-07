@@ -10,22 +10,22 @@ import (
 	"container/heap"
 	"encoding/json"
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
-	"github.com/omegasuite/famofchains/omega/chainmap"
+	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
+	"github.com/omegasuite/gct/omega/chainmap"
 
 	"math/rand"
 	"time"
 
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/blockchain"
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
-	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega/ovm"
-	"github.com/omegasuite/famofchains/omega/token"
-	"github.com/omegasuite/famofchains/omega/viewpoint"
+	"github.com/omegasuite/gct/btcd/blockchain"
+	"github.com/omegasuite/gct/btcd/chaincfg"
+	"github.com/omegasuite/gct/btcd/wire"
+	"github.com/omegasuite/gct/btcd/wire/common"
+	"github.com/omegasuite/gct/btcutil"
+	"github.com/omegasuite/gct/omega/ovm"
+	"github.com/omegasuite/gct/omega/token"
+	"github.com/omegasuite/gct/omega/viewpoint"
 )
 
 const (

@@ -11,10 +11,10 @@ package viewpoint
 import (
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/blockchain/bccompress"
-	"github.com/omegasuite/famofchains/btcd/database"
-	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega/token"
+	"github.com/omegasuite/gct/btcd/blockchain/bccompress"
+	"github.com/omegasuite/gct/btcd/database"
+	"github.com/omegasuite/gct/btcutil"
+	"github.com/omegasuite/gct/omega/token"
 	"math/big"
 )
 

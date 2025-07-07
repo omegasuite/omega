@@ -6,7 +6,7 @@
 package wire
 
 import (
-	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/gct/btcd/wire/common"
 	"io"
 )
 

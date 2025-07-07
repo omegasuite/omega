@@ -13,12 +13,12 @@ import (
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	//	"fmt"
-	"github.com/omegasuite/famofchains/btcd/blockchain"
-	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/famofchains/btcd/mining"
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/gct/btcd/blockchain"
+	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
+	"github.com/omegasuite/gct/btcd/chaincfg"
+	"github.com/omegasuite/gct/btcd/mining"
+	"github.com/omegasuite/gct/btcd/wire"
+	"github.com/omegasuite/gct/btcutil"
 	"math/big"
 	"math/rand"
 	"sort"
@@ -624,7 +624,7 @@ out:
 			}
 			v, err := m.g.Chain.CheckCollateral(block, nil, 0)
 			if err != nil {
-			log.Infof(err.Error())
+				log.Infof(err.Error())
 				time.Sleep(time.Second * 5)
 				continue
 			}

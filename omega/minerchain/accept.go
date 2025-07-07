@@ -13,19 +13,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/chaincfg"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
-	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega/chainmap"
+	"github.com/omegasuite/gct/btcd/chaincfg"
+	"github.com/omegasuite/gct/btcd/wire/common"
+	"github.com/omegasuite/gct/btcutil"
+	"github.com/omegasuite/gct/omega/chainmap"
 	"sort"
 
 	//	"github.com/omegasuite/btcutil/base58"
 
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/famofchains/btcd/blockchain"
-	"github.com/omegasuite/famofchains/btcd/blockchain/chainutil"
-	"github.com/omegasuite/famofchains/btcd/database"
-	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/gct/btcd/blockchain"
+	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
+	"github.com/omegasuite/gct/btcd/database"
+	"github.com/omegasuite/gct/btcd/wire"
 	"math/big"
 )
 
@@ -239,42 +239,42 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 				}
 				sum /= 50
 
-			h2 := int64(1)
-			if sum <= minscore {
-				h2 = 1
-			} else {
-				h2 = int64(sum / minscore)
-			}
-			if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
-				h2 *= 16
-			}
-
-			if factor > 0 {
-				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-				target = target.Mul(target, big.NewInt(h1+h2))
-			} else {
+				h2 := int64(1)
+				if sum <= minscore {
+					h2 = 1
+				} else {
+					h2 = int64(sum / minscore)
+				}
 				if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
-					factor *= 16
+					h2 *= 16
 				}
-				target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
-			}
 
-			if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
-				if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
-					target = powLimit.Mul(powLimit, big.NewInt(16))
+				if factor > 0 {
+					hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+					target = target.Mul(target, big.NewInt(h1+h2))
+				} else {
+					if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
+						factor *= 16
+					}
+					target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
+				}
+
+				if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
+					if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
+						target = powLimit.Mul(powLimit, big.NewInt(16))
+					}
+				} else {
+					if target.Cmp(powLimit) > 0 {
+						target = powLimit
+					}
 				}
 			} else {
-				if target.Cmp(powLimit) > 0 {
-					target = powLimit
+				if factor > 0 {
+					hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+				} else {
+					target = target.Mul(target, big.NewInt(-factor))
 				}
 			}
-		} else {
-			if factor > 0 {
-				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-			} else {
-				target = target.Mul(target, big.NewInt(-factor))
-			}
-		}
 
 			if !m.IsSVP && hashNum.Cmp(target) > 0 {
 				str := fmt.Sprintf("block hash of %064x is higher than "+

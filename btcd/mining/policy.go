@@ -6,9 +6,9 @@
 package mining
 
 import (
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega/viewpoint"
+	"github.com/omegasuite/gct/btcd/wire"
+	"github.com/omegasuite/gct/btcutil"
+	"github.com/omegasuite/gct/omega/viewpoint"
 )
 
 const (

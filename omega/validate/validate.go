@@ -12,9 +12,9 @@ import (
 	"fmt"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcutil"
-	"github.com/omegasuite/famofchains/omega/token"
-	"github.com/omegasuite/famofchains/omega/viewpoint"
+	"github.com/omegasuite/gct/btcutil"
+	"github.com/omegasuite/gct/omega/token"
+	"github.com/omegasuite/gct/omega/viewpoint"
 )
 
 func abs(x int64) int64 {

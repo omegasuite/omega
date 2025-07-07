@@ -7,8 +7,8 @@ package addrmgr
 import (
 	"time"
 
-	"github.com/omegasuite/famofchains/btcd/wire"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/gct/btcd/wire"
+	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 // KnownAddress tracks information about a known network address that is used

@@ -10,8 +10,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
-	"github.com/omegasuite/famofchains/omega/token"
+	"github.com/omegasuite/gct/btcd/wire/common"
+	"github.com/omegasuite/gct/omega/token"
 	"io"
 	"strconv"
 )

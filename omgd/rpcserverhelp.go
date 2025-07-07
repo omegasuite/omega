@@ -7,12 +7,12 @@ package main
 
 import (
 	"errors"
-	"github.com/omegasuite/famofchains/btcd/blockchain"
+	"github.com/omegasuite/gct/btcd/blockchain"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/omegasuite/famofchains/btcd/btcjson"
+	"github.com/omegasuite/gct/btcd/btcjson"
 )
 
 // helpDescsEnUS defines the English descriptions used for the help strings.
@@ -699,7 +699,7 @@ var rpcResultTypes = map[string][]interface{}{
 	"getbestminerblockhash": {(*string)(nil)},
 	"getblock":              {(*string)(nil), (*btcjson.GetBlockVerboseResult)(nil)},
 	"getblocktxhashes":      {(*string)(nil), (*string)(nil)},
-	"searchborder":		 {(*string)(nil), (*string)(nil)},
+	"searchborder":          {(*string)(nil), (*string)(nil)},
 	"getminerblock":         {(*string)(nil), (*btcjson.GetMinerBlockVerboseResult)(nil)},
 	"getblockcount":         {(*int64)(nil)},
 	"getminerblockcount":    {(*int64)(nil)},
@@ -738,7 +738,7 @@ var rpcResultTypes = map[string][]interface{}{
 	"verifychain":           {(*bool)(nil)},
 	"verifymessage":         {(*bool)(nil)},
 	"version":               {(*map[string]btcjson.VersionResult)(nil)},
-	"getTPSView":			 {(*[]blockchain.TPHRecord)(nil)},
+	"getTPSView":            {(*[]blockchain.TPHRecord)(nil)},
 
 	// Websocket commands.
 	"loadtxfilter":              nil,

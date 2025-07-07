@@ -7,7 +7,7 @@ package wire
 
 import (
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/wire/common"
+	"github.com/omegasuite/gct/btcd/wire/common"
 	"io"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"

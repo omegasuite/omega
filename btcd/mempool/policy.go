@@ -6,7 +6,7 @@
 package mempool
 
 import (
-	"github.com/omegasuite/famofchains/btcutil"
+	"github.com/omegasuite/gct/btcutil"
 )
 
 const (

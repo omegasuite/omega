@@ -8,7 +8,7 @@ package connmgr
 import (
 	"errors"
 	"fmt"
-	"github.com/omegasuite/famofchains/btcd/wire"
+	"github.com/omegasuite/gct/btcd/wire"
 	"net"
 	"sync"
 	"sync/atomic"
