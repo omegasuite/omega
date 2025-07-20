@@ -478,29 +478,34 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 		if !state.syncCandidate || !peer.Connected() || state.syncTime > tm {
 			continue
 		}
-		rd := rand.Intn(100) < 50
-		if bestPeer != nil && peer != avoid {
-			if sm.chain.IsCurrent() {
-				// peer priority: select by committe first, length of chain
-				cd := int32(best.LastRotation) - bestPeer.Committee
-				cp := int32(best.LastRotation) - peer.Committee
-
-				if cd >= 0 && cd < wire.CommitteeSize {
-					if cp < 0 || cp >= wire.CommitteeSize {
-						continue
-					}
-					if rd {
-						continue
-					}
-				} else if !(cp >= 0 && cp < wire.CommitteeSize) {
-					if rd {
-						continue
-					}
-				}
-			} else if rd {
-				continue
-			}
+		if bestPeer != nil && peer == avoid {
+			continue
 		}
+		/*
+			rd := rand.Intn(100) < 50
+			if bestPeer != nil {
+				if sm.chain.IsCurrent() {
+					// peer priority: select by committe first, length of chain
+					cd := int32(best.LastRotation) - bestPeer.Committee
+					cp := int32(best.LastRotation) - peer.Committee
+
+					if cd >= 0 && cd < wire.CommitteeSize {
+						if cp < 0 || cp >= wire.CommitteeSize {
+							continue
+						}
+						if rd {
+							continue
+						}
+					} else if !(cp >= 0 && cp < wire.CommitteeSize) {
+						if rd {
+							continue
+						}
+					}
+				} else if rd {
+					continue
+				}
+			}
+		*/
 		tm = state.syncTime
 		bestPeer = peer
 	}

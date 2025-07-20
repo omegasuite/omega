@@ -353,6 +353,7 @@ func (t *TxOut) DeSerialize(r []byte) int {
 	return n - reader.Len()
 }
 
+const OP_PAYMINER = 0x44
 const OP_PAY2NONE = 0x45      // from ovm.contracts. redeclare here to avoid circular importation
 const OP_PAYCROSSCHAIN = 0x66 // from ovm.contracts. redeclare here to avoid circular importation
 
@@ -363,10 +364,13 @@ func (t *TxOut) IsNopaying() bool {
 	if t.PkScript[0] == 0x88 {
 		return false
 	}
-	if t.PkScript[0] == 0xcc { // cross chain tx
+	if t.PkScript[0] == OP_PAYCROSSCHAIN { // cross chain tx
 		return true
 	}
 	if len(t.PkScript) < 22 || (t.PkScript[21] == OP_PAY2NONE && (len(t.PkScript) == 22 || bytes.Compare(t.PkScript[22:25], []byte{0, 0, 0}) == 0)) {
+		return true
+	}
+	if t.PkScript[21] == OP_PAYMINER && (len(t.PkScript) == 22 || bytes.Compare(t.PkScript[22:25], []byte{0, 0, 0}) == 0) {
 		return true
 	}
 	return false
