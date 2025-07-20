@@ -9,10 +9,10 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/txscript/txsparser"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/ovm"
+	"btcd/chaincfg"
+	"btcd/txscript/txsparser"
+	"btcutil"
+	"omega/ovm"
 )
 
 const (

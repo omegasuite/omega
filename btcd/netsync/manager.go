@@ -9,23 +9,24 @@ import (
 	"bytes"
 	"container/list"
 	"fmt"
-	"github.com/omegasuite/gct/omega/minerchain"
 	"math/rand"
+	"omega/minerchain"
 	"reflect"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"btcd/blockchain"
+	"btcd/chaincfg"
+	"btcd/database"
+	"btcd/mempool"
+	peerpkg "btcd/peer"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/mempool"
-	peerpkg "github.com/omegasuite/gct/btcd/peer"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/consensus"
+	"omega/consensus"
 )
 
 const (
@@ -515,6 +516,8 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 	}
 
 	sm.peerStates[bestPeer].syncTime = time.Now().Unix()
+
+	fmt.Printf("Start sync with %s at %d\n", bestPeer.NA().IP.String()+":"+strconv.Itoa(int(bestPeer.NA().Port)), sm.peerStates[bestPeer].syncTime)
 	sm.smtx.Unlock()
 
 	// Start syncing from the best peer if one was selected.
@@ -1179,7 +1182,7 @@ func (sm *SyncManager) handleMinerBlockMsg(bmsg *minerBlockMsg) {
 	// handling, etc.
 
 	log.Tracef("sm.chain.Miners.ProcessBlock")
-	if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet || sm.chainParams.Net == common.RegNet {
+	if sm.chainParams.Net == uint32(common.TestNet) || sm.chainParams.Net == uint32(common.SimNet) || sm.chainParams.Net == uint32(common.RegNet) {
 		behaviorFlags |= blockchain.BFEasyBlocks
 	}
 	isMainchain, isOrphan, err, h := sm.chain.Miners.ProcessBlock(bmsg.block, behaviorFlags)
@@ -1996,6 +1999,9 @@ func (sm *SyncManager) limitMap(m interface{}, limit int) {
 }
 
 func (sm *SyncManager) CachedBlock(h chainhash.Hash) *btcutil.Block {
+	sm.smtx.Lock()
+	defer sm.smtx.Unlock()
+
 	if b, ok := sm.cachedBlocks[h]; ok {
 		return b
 	}
@@ -2174,7 +2180,7 @@ out:
 
 			case processMinerBlockMsg:
 				if !passiveMode {
-					if sm.chainParams.Net == common.TestNet || sm.chainParams.Net == common.SimNet || sm.chainParams.Net == common.RegNet {
+					if sm.chainParams.Net == uint32(common.TestNet) || sm.chainParams.Net == uint32(common.SimNet) || sm.chainParams.Net == uint32(common.RegNet) {
 						msg.flags |= blockchain.BFEasyBlocks
 					}
 					main, isOrphan, err, _ := sm.chain.Miners.ProcessBlock(

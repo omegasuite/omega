@@ -7,14 +7,13 @@ package chaincfg
 
 import (
 	"errors"
-	"math"
 	"math/big"
 
 	"time"
 
+	"btcd/wire"
+	"btcd/wire/common"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 // These variables are the chain proof-of-work limit parameters for each default
@@ -101,45 +100,18 @@ const (
 	// purposes.
 	DeploymentTestDummy = iota
 
-	// DeploymentVersion2 includes: requirement for collateral, treating tx fees
-	// as insurance and compensate seller using collateral; new POW adjust scheme
-	// combining collecteral amount and TPS score.
-	DeploymentVersion2
-
-	// DeploymentVersion3 includes: adjusting requirement for collateral based on
-	// min coll actually offered in the prev adj cycle.
-	DeploymentVersion3
-
-	// DeploymentVersion4 includes: check 0-hash for polygons and its rights (bug fix); add
-	// token-to-contract OVM instructions; mandate new block having timestamp not before
-	// previous block; add tx expire time - a tx will not be in a block if block time is
-	// after the expire time
-	DeploymentVersion4
-
-	// DeploymentVersion5 includes: new way to calculate collateral requirement (7/8 of min.
-	// collateral provided in the previous adj. period)
-	DeploymentVersion5
-
-	// DeploymentVersion6 includes: a bug fix in miner chain about h2 value
-	DeploymentVersion6
-
 	// DefinedDeployments is the number of currently defined deployments.
 	// It must always come last since it is used to determine how many
 	// defined deployments there currently are.
 	DefinedDeployments
 )
 
-const DefaultChainID = 1           // ID of this chain. each chain has a unique id
-const DefaultParentChainID = 0     // ID of this chain. each chain has a unique id
-const defaultSVPChainID = 0x800001 // Root xfer chain
+const DefaultChainID = 10      // ID of this chain. each chain has a unique id
+const DefaultParentChainID = 1 // ID of this chain. each chain has a unique id
+// const defaultSVPChainID = 0x800001 // Root xfer chain
 
 const (
 	Version1 = 0x10000
-	Version2 = 0x20000
-	Version3 = 0x30000
-	Version4 = 0x40000
-	Version5 = 0x50000
-	Version6 = 0x60000
 
 	SVPVersion1 = 0x10000
 )
@@ -156,7 +128,7 @@ type GlobalParams struct { // The params that must be the same for every node in
 	Name string
 
 	// Net defines the magic bytes used to identify the network.
-	Net common.OmegaNet
+	Net uint32
 
 	// DefaultPort defines the default peer-to-peer port for the network.
 	DefaultPort string
@@ -267,11 +239,11 @@ type Params struct {
 	Deployments [DefinedDeployments]ConsensusDeployment
 
 	// Mempool parameters
-	RelayNonStdTxs bool
+	// RelayNonStdTxs bool
 
 	// Human-readable part for Bech32 encoded segwit addresses, as defined
 	// in BIP 173.
-	Bech32HRPSegwit string
+	// Bech32HRPSegwit string
 
 	// Address encoding magics
 	PubKeyHashAddrID byte // First byte of a P2PKH address
@@ -283,12 +255,12 @@ type Params struct {
 	PrivateKeyID     byte // First byte of a WIF private key
 
 	// BIP32 hierarchical deterministic extended key magics
-	HDPublicKeyID  [4]byte
-	HDPrivateKeyID [4]byte
+	// HDPublicKeyID  [4]byte
+	// HDPrivateKeyID [4]byte
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
-	HDCoinType uint32
+	// HDCoinType uint32
 
 	// ContractExecLimit is a policy by each node to limit step a contract may execute
 	ContractExecLimit int64
@@ -296,9 +268,10 @@ type Params struct {
 	// SigVeriConcurrency is the number of concurrent verifiers for signature veridfication
 	SigVeriConcurrency int
 
-	MinBorderFee    int
-	MinRelayTxFee   int64
-	ContractExecFee int64 // contract execution cost as Haos per 10K steps
+	MinBorderFee         int
+	MinContractDeployFee int // Min fee per byte for contract deployment
+	MinRelayTxFee        int64
+	ContractExecFee      int64 // contract execution cost as Haos per 10K steps
 
 	// local rule: require expiration time set if tx has contract
 	ContractReqExp bool
@@ -315,15 +288,15 @@ type Params struct {
 var MainNetParams = Params{
 	GlobalParams: GlobalParams{
 		Name:        "mainnet",
-		Net:         common.MainNet,
-		DefaultPort: "8788",
+		Net:         uint32(common.MainNet),
+		DefaultPort: "7788",
 		DNSSeeds: []DNSSeed{
-			{"omegasuite.org", false},
+			{"gctoid.com", false},
 		},
-		PowLimitBits:             0x1e003ff0,
+		PowLimitBits:             0x1e000ff0,
 		CoinbaseMaturity:         100, // * wire.MINER_RORATE_FREQ,
-		SubsidyReductionInterval: 105000 * wire.MINER_RORATE_FREQ,
-		MinimalAward:             73242,
+		SubsidyReductionInterval: 210240 * wire.MINER_RORATE_FREQ,
+		MinimalAward:             0,
 		TargetTimespan:           time.Hour * 24 * 14, // 14 days
 		TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 		RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
@@ -343,20 +316,21 @@ var MainNetParams = Params{
 		},
 		ViolationReportDeadline: 100,
 		ChainID:                 DefaultChainID, // Omega
-		RpcPort:                 "8789",
+		RpcPort:                 "7789",
 	},
 
-	GenesisHash:      GenesisHash[0],
-	GenesisMinerHash: GenesisMinerHash[0],
+	GenesisHash:      GenesisHash[uint32(common.MainNet)],
+	GenesisMinerHash: GenesisMinerHash[uint32(common.MainNet)],
 	PowLimit:         mainPowLimit,
 
 	ParentChainId: DefaultParentChainID,
 
 	// Chain parameters
-	GenesisBlock:      GenesisBlock[0],
-	GenesisMinerBlock: GenesisMinerBlock[0],
-	ChainCurrentStd:   time.Hour * 24,
-	MinBorderFee:      100000,
+	GenesisBlock:         GenesisBlock[uint32(common.MainNet)],
+	GenesisMinerBlock:    GenesisMinerBlock[uint32(common.MainNet)],
+	ChainCurrentStd:      time.Hour * 24,
+	MinBorderFee:         100000,
+	MinContractDeployFee: 100000,
 	//	ReduceMinDifficulty:      false,
 	GenerateSupported: false,
 
@@ -368,46 +342,16 @@ var MainNetParams = Params{
 			PrevVersion: 0,
 			FeatureMask: 0,
 			StartTime:   1199145601, // January 1, 2008 UTC
-			ExpireTime:  1230767999, // December 31, 2008 UTC
-		},
-		DeploymentVersion2: {
-			PrevVersion: 0x10000,
-			FeatureMask: 0x3,
-			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 3, 28, 0, 0, 0, 0, time.UTC).Unix()),
-		},
-		DeploymentVersion3: {
-			PrevVersion: 0x20000,
-			FeatureMask: 0x4,
-			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 7, 17, 0, 0, 0, 0, time.UTC).Unix()),
-		},
-		DeploymentVersion4: {
-			PrevVersion: 0x30000,
-			FeatureMask: 0x4,
-			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2021, 12, 21, 0, 0, 0, 0, time.UTC).Unix()),
-		},
-		DeploymentVersion5: {
-			PrevVersion: 0x40000,
-			FeatureMask: 0x8,
-			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2023, 5, 2, 0, 0, 0, 0, time.UTC).Unix()),
-		},
-		DeploymentVersion6: {
-			PrevVersion: 0x50000,
-			FeatureMask: 0x5,
-			StartTime:   uint64(time.Date(2023, 8, 1, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  uint64(time.Date(2023, 11, 2, 0, 0, 0, 0, time.UTC).Unix()),
+			ExpireTime:  1757289600, // Sept 8, 2025 UTC
 		},
 	},
 
 	// Mempool parameters
-	RelayNonStdTxs: false,
+	// RelayNonStdTxs: false,
 
 	// Human-readable part for Bech32 encoded segwit addresses, as defined in
 	// BIP 173.
-	Bech32HRPSegwit: "bc", // always bc for main net
+	// Bech32HRPSegwit: "bc", // always bc for main net
 
 	// Address encoding magics
 	PubKeyHashAddrID: 0x00, // starts with 1
@@ -419,12 +363,12 @@ var MainNetParams = Params{
 	ContractAddrID:   0x88, // start with 8
 	PrivateKeyID:     0x80, // starts with 5 (uncompressed) or K (compressed)
 
-	HDPublicKeyID:  [4]byte{0x04, 0x88, 0xad, 0xe4},
-	HDPrivateKeyID: [4]byte{0x04, 0x88, 0xb2, 0x1e},
+	// HDPublicKeyID:  [4]byte{0x04, 0x88, 0xad, 0xe4},
+	// HDPrivateKeyID: [4]byte{0x04, 0x88, 0xb2, 0x1e},
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
-	HDCoinType:        0,
+	// HDCoinType:        0,
 	ContractExecLimit: 10000, // min limit of total contract execution steps in a block
 	ContractExecFee:   1,
 	ContractReqExp:    false,
@@ -557,15 +501,15 @@ var RegressionNetParams = Params{
 var TestNet3Params = Params{
 	GlobalParams: GlobalParams{
 		Name:        "testnet",
-		Net:         common.TestNet,
+		Net:         uint32(common.TestNet),
 		DefaultPort: "18383",
 		DNSSeeds: []DNSSeed{
 			{"omegasuite.org", false},
 		},
 		PowLimitBits:             0x1f0fffff, // 0x1d3fffff
 		CoinbaseMaturity:         10,
-		SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
-		MinimalAward:             73242,
+		SubsidyReductionInterval: 210240 * wire.MINER_RORATE_FREQ,
+		MinimalAward:             0,
 		TargetTimespan:           time.Hour * 2,   // 2 hours
 		TargetTimePerBlock:       time.Minute * 4, // 4 minutes
 		RetargetAdjustmentFactor: 4,               // 25% less, 400% more
@@ -588,16 +532,17 @@ var TestNet3Params = Params{
 		RpcPort:                 "18840",
 	},
 
-	GenesisHash:      TestNet3GenesisHash[0],
-	GenesisMinerHash: TestNet3GenesisMinerHash[0],
+	GenesisHash:      TestNet3GenesisHash[uint32(common.TestNet)],
+	GenesisMinerHash: TestNet3GenesisMinerHash[uint32(common.TestNet)],
 	PowLimit:         testNet3PowLimit,
 
 	ParentChainId: DefaultParentChainID,
 	// Chain parameters
-	GenesisBlock:      TestNet3GenesisBlock[0],
-	GenesisMinerBlock: TestNet3GenesisMinerBlock[0],
-	ChainCurrentStd:   time.Hour * 24000,
-	MinBorderFee:      100000,
+	GenesisBlock:         TestNet3GenesisBlock[uint32(common.TestNet)],
+	GenesisMinerBlock:    TestNet3GenesisMinerBlock[uint32(common.TestNet)],
+	ChainCurrentStd:      time.Hour * 24000,
+	MinBorderFee:         100000,
+	MinContractDeployFee: 1e5,
 	//	ReduceMinDifficulty:      true,
 	GenerateSupported: true,
 
@@ -609,46 +554,16 @@ var TestNet3Params = Params{
 			PrevVersion: 0,
 			FeatureMask: 0,
 			StartTime:   1199145601, // January 1, 2008 UTC
-			ExpireTime:  1230767999, // December 31, 2008 UTC
-		},
-		DeploymentVersion2: {
-			PrevVersion: 0x10000,
-			FeatureMask: 0x3,
-			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion3: {
-			PrevVersion: 0x20000,
-			FeatureMask: 0x4,
-			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion4: {
-			PrevVersion: 0x30000,
-			FeatureMask: 0x4,
-			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion5: {
-			PrevVersion: 0x40000,
-			FeatureMask: 0x8,
-			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion6: {
-			PrevVersion: 0x50000,
-			FeatureMask: 0x5,
-			StartTime:   uint64(time.Date(2023, 8, 1, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
+			ExpireTime:  1757289600, // Sept 8, 2025 UTC
 		},
 	},
 
 	// Mempool parameters
-	RelayNonStdTxs: true,
+	// RelayNonStdTxs: true,
 
 	// Human-readable part for Bech32 encoded segwit addresses, as defined in
 	// BIP 173.
-	Bech32HRPSegwit: "tb", // always tb for test net
+	// Bech32HRPSegwit: "tb", // always tb for test net
 
 	// Address encoding magics
 	PubKeyHashAddrID: 0x6f, // starts with m or n
@@ -660,12 +575,12 @@ var TestNet3Params = Params{
 	ContractAddrID:   0x88, // start with 8
 	PrivateKeyID:     0xef, // starts with 9 (uncompressed) or c (compressed)
 
-	HDPublicKeyID:  [4]byte{0x04, 0x35, 0x83, 0x94},
-	HDPrivateKeyID: [4]byte{0x04, 0x35, 0x87, 0xcf},
+	// HDPublicKeyID:  [4]byte{0x04, 0x35, 0x83, 0x94},
+	// HDPrivateKeyID: [4]byte{0x04, 0x35, 0x87, 0xcf},
 
 	// BIP44 coin type used in the hierarchical deterministic path for
 	// address generation.
-	HDCoinType: 1,
+	// HDCoinType: 1,
 
 	ContractExecLimit: 10000,
 	ContractExecFee:   1,
@@ -810,7 +725,7 @@ var (
 )
 
 var (
-	registeredNets    = make(map[common.OmegaNet]struct{})
+	registeredNets    = make(map[uint32]struct{})
 	pubKeyHashAddrIDs = make(map[byte]struct{})
 	multisigAddrIDs   = make(map[byte]struct{})
 	contractAddrIDs   = make(map[byte]struct{})
@@ -842,7 +757,7 @@ func Register(params *Params) error {
 	multisigAddrIDs[params.MultiSigAddrID] = struct{}{}
 	contractAddrIDs[params.ContractAddrID] = struct{}{}
 	scriptHashAddrIDs[params.ScriptHashAddrID] = struct{}{}
-	hdPrivToPubKeyIDs[params.HDPrivateKeyID] = params.HDPublicKeyID[:]
+	// hdPrivToPubKeyIDs[params.HDPrivateKeyID] = params.HDPublicKeyID[:]
 
 	return nil
 }

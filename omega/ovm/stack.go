@@ -11,8 +11,8 @@ package ovm
 import (
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/omega"
 	"math/big"
+	"omega"
 )
 
 type frame struct {

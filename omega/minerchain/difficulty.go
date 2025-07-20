@@ -9,18 +9,17 @@
 package minerchain
 
 import (
+	"btcd/database"
 	"bytes"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/omega/token"
 	"math/big"
+	"omega/token"
 	"strconv"
 	"time"
 
+	"btcd/blockchain/chainutil"
+	"btcd/wire"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/wire"
 )
 
 var (
@@ -206,9 +205,6 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 
 	coll := lastNode.Data.(*blockchainNodeData).block.Collateral
 
-	v2 := b.IsSVP || lastNode.Data.GetVersion() >= chaincfg.Version2
-	v3 := b.IsSVP || lastNode.Data.GetVersion() >= chaincfg.Version3
-
 	// Return the previous block's difficulty requirements if this block
 	// is not at a difficulty retarget interval.
 	if (lastNode.Height+1)%b.blocksPerRetarget != 0 {
@@ -222,7 +218,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			}
 		}
 		firstNode := lastNode.RelativeAncestor(b.blocksPerRetarget - 1)
-		if firstNode == nil || !v3 {
+		if firstNode == nil {
 			return lastNode.Data.(*blockchainNodeData).block.Bits, coll, nil
 		}
 
@@ -238,7 +234,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 				i = -1
 			} else if b.collaterals[j] == 0 && pb.Height < lastNode.Height-7 { // block is considered finalized after 7 confirmations
 				i--
-				if (b.IsSVP || block.Version&0x7FFF0000 >= chaincfg.Version5) && block.Utxos != nil {
+				if block.Utxos != nil {
 					var op = block.Utxos
 
 					// it could have been spent, so we get the raw tx and find out its value
@@ -328,17 +324,13 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		block := pb.Data.(*blockchainNodeData).block
 		bb := b.blockChain.NodeByHash(&block.BestBlock)
 
-		if block.Collateral < bcoll && !b.IsSVP && block.Version&0x7FFF0000 < chaincfg.Version5 {
-			bcoll = block.Collateral
-		}
-
 		j := pb.Height % b.blocksPerRetarget
 		if b.collaterals[j] != 0 {
 			hasnz = true
 			if uint32(b.collaterals[j]) < bcoll {
 				bcoll = uint32(b.collaterals[j])
 			}
-		} else if v3 && (b.IsSVP || block.Version&0x7FFF0000 >= chaincfg.Version5) && block.Utxos != nil {
+		} else if block.Utxos != nil {
 			var op = block.Utxos
 
 			// it could have been spent, so we get the raw tx and find out its value
@@ -422,9 +414,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		if mb != nil {
 			h = -mb.Data.GetNonce() - wire.MINER_RORATE_FREQ
 		}
-		if b.IsSVP || lastNode.Data.GetVersion() >= chaincfg.Version2 {
-			h += dh
-		}
+		h += dh
 		d = int(pb.Height - h)
 		nb := pb.Parent
 
@@ -437,7 +427,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			dt = dt >> wire.SCALEFACTORCAP
 		} else if d > wire.DESIRABLE_MINER_CANDIDATES {
 			dt = dt >> (d - wire.DESIRABLE_MINER_CANDIDATES)
-		} else if v2 && d < wire.DESIRABLE_MINER_CANDIDATES/2 {
+		} else if d < wire.DESIRABLE_MINER_CANDIDATES/2 {
 			m := wire.DESIRABLE_MINER_CANDIDATES/2 - d
 			if m > 10 {
 				m = 10
@@ -498,9 +488,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	// intentionally converting the bits back to a number instead of using
 	// newTarget since conversion to the compact representation loses
 	// precision.
-	if v3 && coll < 100 && coll > 0 {
-		coll = 100
-	}
+
 	coll = (coll * 7) >> 3
 	return newTargetBits, coll, nil
 }

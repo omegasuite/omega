@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
+	"btcd/chaincfg"
+	"btcd/database"
 )
 
 // BlockStatus is a bit field representing the validation state of the block.

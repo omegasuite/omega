@@ -6,14 +6,14 @@
 package blockchain
 
 import (
+	"btcd/blockchain/chainutil"
+	"btcd/database"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/chainmap"
+	"omega/chainmap"
 	"time"
 )
 

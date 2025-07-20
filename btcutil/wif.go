@@ -8,10 +8,10 @@ import (
 	"bytes"
 	"errors"
 
+	"btcd/chaincfg"
+	"btcutil/base58"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcutil/base58"
 )
 
 // ErrMalformedPrivateKey describes an error where a WIF-encoded private

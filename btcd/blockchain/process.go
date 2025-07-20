@@ -6,19 +6,18 @@
 package blockchain
 
 import (
+	"btcd/blockchain/chainutil"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/omega/ovm"
+	"omega/ovm"
 
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/wire"
+	"btcd/wire/common"
 	"time"
 
+	"btcd/database"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcutil"
 )
 
 // BehaviorFlags is a bitmask defining tweaks to the normal behavior when
@@ -137,7 +136,7 @@ func (b *BlockChain) TryConnectOrphan(hash *chainhash.Hash) bool {
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) error {
 	behaviorFlags := BFNone | BFNoOrphan
-	if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet || b.ChainParams.Net == common.RegNet {
+	if b.ChainParams.Net == uint32(common.TestNet) || b.ChainParams.Net == uint32(common.SimNet) || b.ChainParams.Net == uint32(common.RegNet) {
 		behaviorFlags |= BFEasyBlocks
 	}
 
@@ -483,7 +482,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		// only check proof of work if it extends the best chain. if the block
 		// would cause a reorg, pow check will be done in reorg
 		behaviorFlags := BFNone
-		if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet || b.ChainParams.Net == common.RegNet {
+		if b.ChainParams.Net == uint32(common.TestNet) || b.ChainParams.Net == uint32(common.SimNet) || b.ChainParams.Net == uint32(common.RegNet) {
 			behaviorFlags |= BFEasyBlocks
 		}
 		err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags|behaviorFlags)
@@ -522,7 +521,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	if isMainChain {
 		b.Miners.ProcessOrphans(&b.Miners.BestSnapshot().Hash, BFNone)
-	} else if block.MsgBlock().Header.Nonce < 0 && (!b.IsSVP || block.MsgBlock().Header.Version >= chaincfg.Version2) {
+	} else if block.MsgBlock().Header.Nonce < 0 {
 		// CHECK if there is a miner violation
 		// block is in side chain
 		mblk, _ := b.BlockByHeight(block.Height()) //	main chain block

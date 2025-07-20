@@ -7,7 +7,7 @@ package wire
 import (
 	"bytes"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/wire/common"
 	"io"
 )
 

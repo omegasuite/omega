@@ -9,10 +9,10 @@ import (
 	"bytes"
 	"io"
 
+	"btcd/chaincfg"
+	"btcd/wire"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/omega/token"
+	"omega/token"
 )
 
 // TxIndexUnknown is the value returned for a transaction index that is unknown.

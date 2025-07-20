@@ -8,12 +8,12 @@ import (
 	"bytes"
 	"fmt"
 
+	"btcd/blockchain"
+	"btcd/database"
+	"btcd/wire"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/viewpoint"
 )
 
 var (

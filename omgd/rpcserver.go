@@ -14,35 +14,33 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/binary"
-	"github.com/btcsuite/btcd/btc2omg/btcd/treasury"
+	"omega/chainmap"
+
+	// "github.com/btcsuite/btcd/btc2omg/btcd/treasury"
 
 	"encoding/base64"
 
+	"btcd/blockchain"
+	"btcd/blockchain/chainutil"
+	"btcd/blockchain/indexers"
+	"btcd/btcjson"
+	"btcd/chaincfg"
+	"btcd/database"
+	"btcd/mempool"
+	"btcd/mining"
+	"btcd/mining/cpuminer"
+	"btcd/peer"
+	"btcd/txscript"
+	"btcd/txscript/txsparser"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/blockchain/indexers"
-	"github.com/omegasuite/gct/btcd/btcjson"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/mempool"
-	"github.com/omegasuite/gct/btcd/mining"
-	"github.com/omegasuite/gct/btcd/mining/cpuminer"
-	"github.com/omegasuite/gct/btcd/peer"
-	"github.com/omegasuite/gct/btcd/txscript"
-	"github.com/omegasuite/gct/btcd/txscript/txsparser"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/minerchain"
-	"github.com/omegasuite/gct/omega/ovm"
-	"github.com/omegasuite/gct/omega/token"
-	"github.com/omegasuite/gct/omega/viewpoint"
 	"github.com/omegasuite/websocket"
 	"io"
 	"io/ioutil"
@@ -50,6 +48,10 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"omega/minerchain"
+	"omega/ovm"
+	"omega/token"
+	"omega/viewpoint"
 	"os"
 	"strconv"
 	"strings"
@@ -237,6 +239,8 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"shutdownserver":        handleShutdown,
 	"vmdebug":               handleVMDebug,
 	"settip":                handleSetTip,
+
+	"getxchtxfee": handleGetXChTxFee,
 }
 
 // list of commands that we recognize, but for which btcd has no support because
@@ -556,51 +560,6 @@ func createMultiSigScript(scripts [][]byte, n uint16, chainParams *chaincfg.Para
 	return btcutil.Hash160(h), builder.Script()
 }
 
-/*
-// handleGetBtcL2Script handles getbtcl2script
-func handleGetBtcL2Script(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.GetBtcL2ScriptCmd)
-
-	from, err := btcutil.DecodeAddress(c.Address, s.cfg.ChainParams)
-
-	if err != nil {
-		return nil, err
-	}
-
-	var hash [20]byte
-
-	if !from.IsForNet(s.cfg.ChainParams) || from.Version() != s.cfg.ChainParams.PubKeyHashAddrID {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCInvalidAddressOrKey,
-			Message: "Invalid address or key: " + c.Address,
-		}
-	}
-	copy(hash[:], from.ScriptAddress())
-
-	addr, _, signers := treasury.Get75pctMSScript(hash)
-
-	addr2, err := btcbtcutil.DecodeAddress(addr, treasury.BTCParams)
-	if err != nil {
-		return nil, err
-	}
-	pkScript := []byte{0, btctxscript.OP_DATA_32}
-	pkScript = append(pkScript, addr2.ScriptAddress()...)
-
-	snrs := make([]string, 0, len(signers))
-	for _, ss := range signers {
-		adr, _ := btcutil.NewAddressPubKeyHash(ss[:], s.cfg.ChainParams)
-		snrs = append(snrs, adr.EncodeAddress())
-	}
-
-	reply := &btcjson.BtcL2Script{
-		Addresses: snrs,
-		Script:    hex.EncodeToString(pkScript),
-	}
-
-	return reply, nil
-}
-*/
-
 // handleAddNode handles addnode commands.
 func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GenMultiSigAddr)
@@ -752,7 +711,7 @@ func handleSetTip(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (int
 }
 
 func handleVMDebug(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	if s.cfg.ChainParams.Net != common.TestNet {
+	if s.cfg.ChainParams.Net != uint32(common.TestNet) {
 		return nil, fmt.Errorf("Vm debugging is only enabled in testNet")
 	}
 
@@ -3718,372 +3677,6 @@ func handleGetPeerInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	return infos, nil
 }
 
-/*
-func handleGetTreasury(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	mydb := s.cfg.DB
-	treasure := make(map[string]btcjson.TreasuryAsset)
-
-	mydb.View(func(tx database.Tx) error {
-		bucket := tx.Metadata().Bucket([]byte(common.XCAssets))
-		cursor := bucket.Cursor()
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			var outp wire.OutPoint
-			key := cursor.Key()
-			if len(key) == 8 {
-				// it is typemap
-				continue
-			}
-			outp.Hash.SetBytes(key[:32])
-			outp.Index = common.LittleEndian.Uint32(key[32:])
-			plg := &treasury.Asset{}
-			_, err := plg.Deserialize(cursor.Value())
-			if err != nil {
-				return err
-			}
-
-			fmt.Printf("Asset: %s => amount: %d, outpoint: %s, pkscript: %x, owners: %d,", outp.String(), plg.Amount, plg.Outpoint.String(), plg.Pkscript, len(plg.Owners))
-			if len(plg.Owners) > 0 {
-				fmt.Printf(" owners: ")
-				for _, p := range plg.Owners {
-					fmt.Printf(" %x\n", p)
-				}
-			}
-			fmt.Printf("\n")
-			t := btcjson.TreasuryAsset{
-				Amount:   plg.Amount,
-				Outpoint: plg.Outpoint.String(),
-				Owners:   []string{},
-				Pkscript: hex.EncodeToString(plg.Pkscript),
-			}
-			for _, u := range plg.Owners {
-				d, _ := btcutil.NewAddressPubKeyHash(u[:], s.cfg.ChainParams)
-				t.Owners = append(t.Owners, d.String())
-			}
-			treasure[outp.String()] = t
-		}
-		return nil
-	})
-	return treasure, nil
-}
-
-func handleGetSigners(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	mydb := s.cfg.DB
-
-	signers := make(map[string]btcjson.TreasurySigners)
-
-	mydb.View(func(tx database.Tx) error {
-		bucket := tx.Metadata().Bucket([]byte(common.BRIDGESIGNERS))
-		cursor := bucket.Cursor()
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			var addr [20]byte
-			copy(addr[:], cursor.Key())
-
-			t := &treasury.Signers{}
-			copy(t.Address[:], addr[:])
-			t.Pledged = make([]*treasury.PlgAsset, 0)
-
-			_, err := t.Deserialize(cursor.Value())
-			if err != nil {
-				continue
-			}
-
-			fmt.Printf("%x: address: %x, joined: %d, retiring: %d, voting: %d, pubkey: %x, pledges： %d\n", addr, t.Address, t.Joined, t.Retiring, t.Voting, t.Pubkey, len(t.Pledged))
-			for _, p := range t.Pledged {
-				fmt.Printf("Pledged: utxo: %s firstuse: %d amount: %d\n", p.Utxo.String(), p.Firstuse, p.Amount)
-			}
-
-			ad, _ := btcutil.NewAddressPubKeyHash(addr[:], s.cfg.ChainParams)
-
-			p := btcjson.TreasurySigners{
-				Address:   ad.String(),
-				Pubkey:    hex.EncodeToString(t.Pubkey), // Pubkey of signer
-				Voting:    t.Voting,                     // Voting power in %
-				Retiring:  t.Retiring,                   // whether is Retiring
-				Joined:    t.Joined,                     // height when it becomes a signer
-				Pledged:   []btcjson.TreasuryPlgAsset{}, // Assets Pledged
-				Btcprofit: t.Btcprofit,                  // profits in BTC
-			}
-
-			for _, q := range t.Pledged {
-				p.Pledged = append(p.Pledged, btcjson.TreasuryPlgAsset{
-					Utxo:     q.Utxo.String(),
-					Amount:   q.Amount,
-					Firstuse: q.Firstuse, // height when it becomes a signer
-				})
-			}
-
-			signers[ad.String()] = p
-		}
-		return nil
-	})
-	return signers, nil
-}
-*/
-
-func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.GetCrossChainDBCmd)
-
-	res := &btcjson.GetCrossChainDBResult{
-		IncomingPool:  make([]*wire.XchainData, 0),
-		Btc2L2Pool:    make([]*wire.XchainData, 0),
-		L2BtcPool:     make([]*wire.XchainData, 0),
-		BridgeSigners: make([]*treasury.Signers, 0),
-		XBTCAssets:    make([]*treasury.Asset, 0),
-		XCAssets:      make([]*wire.XchainData, 0),
-		RedeemDB:      make(map[string]string),
-	}
-
-	s.cfg.DB.View(func(tx database.Tx) error {
-		meta := tx.Metadata()
-		if c.Clear&1 != 0 { // INCOMINGPOOL
-			bucket := meta.Bucket([]byte(common.INCOMINGPOOL))
-			xchain := &wire.XchainData{}
-			cursor := bucket.Cursor()
-			for ok := cursor.First(); ok; ok = cursor.Next() {
-				xchain.DeSerialize(cursor.Value())
-				res.IncomingPool = append(res.IncomingPool, xchain)
-			}
-		}
-		/*
-			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
-				fmt.Printf("BTCL2POOL\n")
-				bucket := meta.Bucket([]byte(common.BTCL2POOL))
-				xchain := &wire.XchainData{}
-				cursor := bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					xchain.DeSerialize(cursor.Value())
-					res.Btc2L2Pool = append(res.Btc2L2Pool, xchain)
-				}
-
-				bucket = meta.Bucket([]byte(common.L2BTCPOOL))
-				cursor = bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					xchain.DeSerialize(cursor.Value())
-					res.L2BtcPool = append(res.L2BtcPool, xchain)
-				}
-			}
-			if c.Clear&4 != 0 { // BRIDGESIGNERS
-				fmt.Printf("BRIDGESIGNERS\n")
-				bucket := meta.Bucket([]byte(common.BRIDGESIGNERS))
-				cursor := bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					var addr [20]byte
-					copy(addr[:], cursor.Key())
-
-					t := &treasury.Signers{}
-					copy(t.Address[:], addr[:])
-					t.Pledged = make([]*treasury.PlgAsset, 0)
-
-					_, err := t.Deserialize(cursor.Value())
-					if err != nil {
-						continue
-					}
-					res.BridgeSigners = append(res.BridgeSigners, t)
-				}
-			}
-
-			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
-				fmt.Printf("XBTCAssets\n")
-				bucket := meta.Bucket([]byte(common.XBTCAssets))
-				cursor := bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					var outp wire.OutPoint
-					key := cursor.Key()
-					outp.Hash.SetBytes(key[:32])
-					outp.Index = common.LittleEndian.Uint32(key[32:])
-					plg := &treasury.Asset{}
-					_, err := plg.Deserialize(cursor.Value())
-					if err != nil {
-						return err
-					}
-					res.XBTCAssets = append(res.XBTCAssets, plg)
-				}
-				/*
-					bucket = meta.Bucket([]byte(common.XCAssets))
-					cursor = bucket.Cursor()
-					n := 0
-					for ok := cursor.First(); ok; ok = cursor.Next() {
-						n++
-					}
-					fmt.Printf("XCAssets has %d items\n", n)
-				* /
-			}
-			if c.Clear&16 != 0 { // REEDEEM
-				bucket := meta.Bucket([]byte(common.REDEEMDB))
-				cursor := bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					res.RedeemDB[string(cursor.Key())] = hex.EncodeToString(cursor.Value())
-				}
-			}
-
-		*/
-		return nil
-	})
-	return res, nil
-}
-
-func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.GetCrossChainDBCmd)
-
-	s.cfg.DB.Update(func(tx database.Tx) error {
-		meta := tx.Metadata()
-		if c.Clear&1 != 0 { // INCOMINGPOOL
-			bucketName := []byte(common.INCOMINGPOOL)
-			meta.DeleteBucket(bucketName)
-			meta.CreateBucket(bucketName)
-			/*
-				bucket := meta.Bucket(bucketName)
-				cursor := bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					bucket.Delete(cursor.Key())
-				}
-			*/
-		}
-		/*
-			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
-				bucketName := []byte(common.L2BTCPOOL)
-				meta.DeleteBucket(bucketName)
-				meta.CreateBucket(bucketName)
-				bucketName = []byte(common.L2BTCPOOL)
-				meta.DeleteBucket(bucketName)
-				meta.CreateBucket(bucketName)
-			}
-
-			if c.Clear&4 != 0 { // BRIDGESIGNERS
-				bucketName := []byte(common.BRIDGESIGNERS)
-				meta.DeleteBucket(bucketName)
-				meta.CreateBucket(bucketName)
-			}
-
-			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
-				bucketName := []byte(common.XBTCAssets)
-				meta.DeleteBucket(bucketName)
-				meta.CreateBucket(bucketName)
-			}
-			if c.Clear&16 != 0 { // REEDEEM
-				bucketName := []byte(common.REDEEMDB)
-				meta.DeleteBucket(bucketName)
-				meta.CreateBucket(bucketName)
-			}
-		*/
-		return nil
-	})
-
-	return "Done.", nil
-}
-
-/*
-func handleGetBtcPool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	res := make(map[string]btcjson.BTCL2Data)
-	s.cfg.DB.View(func(dbTx database.Tx) error {
-		bucketName := []byte(common.BTCL2POOL)
-		bucket := dbTx.Metadata().Bucket(bucketName)
-		cursor := bucket.Cursor()
-
-		head := bucket.Get([]byte("BTCHeight")) // height of current BTC tip
-		if head != nil {
-			ht := common.LittleEndian.Uint32(head)
-			res["BTCHeight"] = btcjson.BTCL2Data{Height: int32(ht)}
-		}
-
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			if bytes.Compare(cursor.Key(), []byte("BTCHeight")) == 0 {
-				continue
-			}
-			h := common.LittleEndian.Uint32(cursor.Key())
-
-			fromBTC := common.BTCL2Data{}
-			fromBTC.Unserialize(cursor.Value())
-
-			t := btcjson.BTCL2Data{
-				Hash:   fromBTC.Hash.String(),
-				Height: fromBTC.Height,
-				Txs:    []btcjson.MsgXrossL2{},
-			}
-
-			for _, p := range fromBTC.Txs {
-				t.Txs = append(t.Txs, btcjson.MsgXrossL2{
-					Utxo:     p.Utxo.String(),
-					Value:    p.Value,
-					PkScript: hex.EncodeToString(p.PkScript),
-					Redeem:   hex.EncodeToString(p.Redeem),
-				})
-			}
-
-			res[fmt.Sprintf("%d", h)] = t
-		}
-		return nil
-	})
-	return res, nil
-}
-*/
-/*
-func handleGetL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	res := make(map[string]btcjson.BTCL2Data)
-	s.cfg.DB.View(func(dbTx database.Tx) error {
-		bucketName := []byte(common.L2BTCPOOL)
-		bucket := dbTx.Metadata().Bucket(bucketName)
-		cursor := bucket.Cursor()
-
-		head := bucket.Get([]byte("ChainHeight")) // height of current BTC tip
-		if head != nil {
-			ht := common.LittleEndian.Uint32(head)
-			res["ChainHeight"] = btcjson.BTCL2Data{Height: int32(ht)}
-		}
-
-		for ok := cursor.First(); ok; ok = cursor.Next() {
-			if len(cursor.Key()) != 4 {
-				continue
-			}
-			h := common.LittleEndian.Uint32(cursor.Key())
-			d := &common.BTCL2Data{}
-			d.Unserialize(cursor.Value())
-
-			t := btcjson.BTCL2Data{
-				Hash:   d.Hash.String(),
-				Height: d.Height,
-				Txs:    []btcjson.MsgXrossL2{},
-			}
-
-			for _, p := range d.Txs {
-				t.Txs = append(t.Txs, btcjson.MsgXrossL2{
-					Utxo:     p.Utxo.String(),
-					Value:    p.Value,
-					PkScript: hex.EncodeToString(p.PkScript),
-					Redeem:   hex.EncodeToString(p.Redeem),
-				})
-			}
-
-			res[fmt.Sprintf("%d", h)] = t
-		}
-
-		return nil
-	})
-	return res, nil
-}
-*/
-/*
-func handleCreatexferl2txo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.Createxferl2txoCmd)
-	if c.AssetType == nil || *c.AssetType == 0 {
-		witnessadress, _, _ := treasury.Get75pctMSScript(c.Address)
-		addr, err := btcbtcutil.DecodeAddress(witnessadress, treasury.BTCParams)
-		if err != nil {
-			return nil, err
-		}
-		pkScript := []byte{0, btctxscript.OP_DATA_32}
-		pkScript = append(pkScript, addr.ScriptAddress()...)
-
-		result := btcwire.TxOut{
-			Value:    int64(c.Amount),
-			PkScript: pkScript,
-		}
-		return &result, nil
-	}
-	return nil, fmt.Errorf("Unsupported asset type")
-}
-*/
-
 // handleGetIssuedTokens implements the getissuedtokens command.
 func handleGetIssuedTokens(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	var IssuedTokenTypes = []byte("issuedTokens")
@@ -4300,8 +3893,15 @@ func handleListUtxos(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 	if c.Minval != nil {
 		minval = *c.Minval
 	}
+	var pks []byte
+	pks = nil
+	if c.Address != nil {
+		addr, _ := btcutil.DecodeAddress(*c.Address, s.cfg.ChainParams)
+		pks = addr.ScriptNetAddress()
+	}
 
 	utxoReply := make([]*btcjson.GetTxOutResult, 0)
+	best := s.cfg.Chain.BestSnapshot().Height
 
 	// Attempt to load the chain state from the database.
 	s.cfg.DB.View(func(dbTx database.Tx) error {
@@ -4317,6 +3917,17 @@ func handleListUtxos(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 		}
 		var ok bool
 		for ok = bgn(); ok && start > 0; ok = nxt() {
+			e, err := viewpoint.DeserializeUtxoEntry(cursor.Value())
+			if e == nil || err != nil {
+				continue
+			}
+			txo := e.ToTxOut()
+			if c.Tokentype != nil && txo.TokenType != *c.Tokentype {
+				continue
+			}
+			if pks != nil && bytes.Compare(pks, txo.PkScript[:len(pks)]) == 0 {
+				continue
+			}
 			start--
 		}
 
@@ -4326,6 +3937,13 @@ func handleListUtxos(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 				continue
 			}
 			txo := e.ToTxOut()
+
+			if c.Tokentype != nil && txo.TokenType != *c.Tokentype {
+				continue
+			}
+			if pks != nil && bytes.Compare(pks, txo.PkScript[:len(pks)]) == 0 {
+				continue
+			}
 			run--
 
 			op := viewpoint.Key2Outpoint(cursor.Key())
@@ -4356,11 +3974,12 @@ func handleListUtxos(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (
 			}
 
 			txOutReply := &btcjson.GetTxOutResult{
-				BestBlock: op.String(),
-				Height:    e.BlockHeight(),
-				TokenType: txo.TokenType,
-				Value:     ivalue,
-				Rights:    r,
+				BestBlock:     op.String(),
+				Height:        e.BlockHeight(),
+				Confirmations: int64(best-e.BlockHeight()) + 1,
+				TokenType:     txo.TokenType,
+				Value:         ivalue,
+				Rights:        r,
 				ScriptPubKey: btcjson.ScriptPubKeyResult{
 					Asm:       disbuf,
 					Hex:       hex.EncodeToString(txo.PkScript),
@@ -6077,6 +5696,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	if c.FulllValidate != nil && *c.FulllValidate {
 		sigcheck = true
 	}
+
 	acceptedTxs, err := s.cfg.TxMemPool.ProcessTransaction(tx, false, false, 0, sigcheck)
 	if err != nil {
 		// When the error is a rule error, it means the transaction was
@@ -6141,6 +5761,10 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 
 	msg := tx.Hash().String()
 
+	//	if !s.cfg.Cfg.Generate && (s.cfg.Cfg.DisablePOWMining || !s.cfg.Cfg.EnablePOWMining) {
+	//		s.cfg.TxMemPool.RemoveTransaction(tx, true)
+	//	}
+
 	if *c.WaitConfirm != 0 {
 		cf := time.AfterFunc(time.Duration(*c.WaitConfirm)*time.Second, func() {
 			s.statusLock.Lock()
@@ -6163,6 +5787,150 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	}
 
 	return msg, nil
+}
+
+func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetCrossChainDBCmd)
+
+	res := &btcjson.GetCrossChainDBResult{
+		IncomingPool: make([]*wire.XchainData, 0),
+		//Btc2L2Pool:   make([]*wire.XchainData, 0),
+		//L2BtcPool:    make([]*wire.XchainData, 0),
+		//		BridgeSigners: make([]*treasury.Signers, 0),
+		//		XBTCAssets:    make([]*treasury.Asset, 0),
+		//XCAssets: make([]*wire.XchainData, 0),
+		//RedeemDB: make(map[string]string),
+	}
+
+	s.cfg.DB.View(func(tx database.Tx) error {
+		meta := tx.Metadata()
+		if c.Clear&1 != 0 { // INCOMINGPOOL
+			bucket := meta.Bucket([]byte(common.INCOMINGPOOL))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				xchain := &wire.XchainData{}
+				xchain.DeSerialize(cursor.Value())
+				res.IncomingPool = append(res.IncomingPool, xchain)
+			}
+		}
+		/*
+			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
+				fmt.Printf("BTCL2POOL\n")
+				bucket := meta.Bucket([]byte(common.BTCL2POOL))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					xchain := &wire.XchainData{}
+					xchain.DeSerialize(cursor.Value())
+					res.Btc2L2Pool = append(res.Btc2L2Pool, xchain)
+				}
+
+				bucket = meta.Bucket([]byte(common.L2BTCPOOL))
+				cursor = bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					xchain := &wire.XchainData{}
+					xchain.DeSerialize(cursor.Value())
+					res.L2BtcPool = append(res.L2BtcPool, xchain)
+				}
+			}
+			if c.Clear&4 != 0 { // BRIDGESIGNERS
+				fmt.Printf("BRIDGESIGNERS\n")
+				bucket := meta.Bucket([]byte(common.BRIDGESIGNERS))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					var addr [20]byte
+					copy(addr[:], cursor.Key())
+
+					t := &treasury.Signers{}
+					copy(t.Address[:], addr[:])
+					t.Pledged = make([]*treasury.PlgAsset, 0)
+
+					_, err := t.Deserialize(cursor.Value())
+					if err != nil {
+						continue
+					}
+					res.BridgeSigners = append(res.BridgeSigners, t)
+				}
+			}
+			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+				fmt.Printf("XBTCAssets\n")
+				bucket := meta.Bucket([]byte(common.XBTCAssets))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					var outp wire.OutPoint
+					key := cursor.Key()
+					outp.Hash.SetBytes(key[:32])
+					outp.Index = common.LittleEndian.Uint32(key[32:])
+					plg := &treasury.Asset{}
+					_, err := plg.Deserialize(cursor.Value())
+					if err != nil {
+						return err
+					}
+					res.XBTCAssets = append(res.XBTCAssets, plg)
+				}
+				/*
+					bucket = meta.Bucket([]byte(common.XCAssets))
+					cursor = bucket.Cursor()
+					n := 0
+					for ok := cursor.First(); ok; ok = cursor.Next() {
+						n++
+					}
+					fmt.Printf("XCAssets has %d items\n", n)
+				* /
+			}
+			if c.Clear&16 != 0 { // REEDEEM
+				bucket := meta.Bucket([]byte(common.REDEEMDB))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					res.RedeemDB[string(cursor.Key())] = hex.EncodeToString(cursor.Value())
+				}
+			}
+		*/
+		return nil
+	})
+	return res, nil
+}
+
+func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetCrossChainDBCmd)
+
+	s.cfg.DB.View(func(tx database.Tx) error {
+		meta := tx.Metadata()
+		if c.Clear&1 != 0 { // INCOMINGPOOL
+			bucketName := []byte(common.INCOMINGPOOL)
+			meta.DeleteBucket(bucketName)
+			meta.CreateBucket(bucketName)
+		}
+		/*
+			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
+				bucketName := []byte(common.L2BTCPOOL)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+				bucketName = []byte(common.L2BTCPOOL)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+
+			if c.Clear&4 != 0 { // BRIDGESIGNERS
+				bucketName := []byte(common.BRIDGESIGNERS)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+
+			if c.Clear&16 != 0 { // REEDEEM
+				bucketName := []byte(common.REDEEMDB)
+				meta.DeleteBucket(bucketName)
+				meta.CreateBucket(bucketName)
+			}
+		*/
+		if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+			bucketName := []byte(common.XCAssets)
+			meta.DeleteBucket(bucketName)
+			meta.CreateBucket(bucketName)
+		}
+		return nil
+	})
+
+	return "Done.", nil
 }
 
 func handleVerifySig(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {

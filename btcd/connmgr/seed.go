@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/chaincfg"
+	"btcd/wire"
+	"btcd/wire/common"
 )
 
 const (

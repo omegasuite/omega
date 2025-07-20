@@ -6,9 +6,9 @@
 package mining
 
 import (
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"btcd/wire"
+	"btcutil"
+	"omega/viewpoint"
 )
 
 const (
@@ -53,34 +53,34 @@ func minInt(a, b int) int {
 func calcInputValueAge(tx *wire.MsgTx, utxoView *viewpoint.UtxoViewpoint, nextBlockHeight int32) float64 {
 	var totalInputAge float64
 	if !tx.IsCrossChain() {
-	for _, txIn := range tx.TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		// Don't attempt to accumulate the total input age if the
-		// referenced transaction output doesn't exist.
-		entry := utxoView.LookupEntry(txIn.PreviousOutPoint)
-		if entry != nil && !entry.IsSpent() {
-			// Inputs with dependencies currently in the mempool
-			// have their block height set to a special constant.
-			// Their input age should computed as zero since their
-			// parent hasn't made it into a block yet.
-			var inputAge int32
-			originHeight := entry.BlockHeight()
-			if originHeight == UnminedHeight {
-				inputAge = 0
-			} else {
-				inputAge = nextBlockHeight - originHeight
+		for _, txIn := range tx.TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
 			}
+			// Don't attempt to accumulate the total input age if the
+			// referenced transaction output doesn't exist.
+			entry := utxoView.LookupEntry(txIn.PreviousOutPoint)
+			if entry != nil && !entry.IsSpent() {
+				// Inputs with dependencies currently in the mempool
+				// have their block height set to a special constant.
+				// Their input age should computed as zero since their
+				// parent hasn't made it into a block yet.
+				var inputAge int32
+				originHeight := entry.BlockHeight()
+				if originHeight == UnminedHeight {
+					inputAge = 0
+				} else {
+					inputAge = nextBlockHeight - originHeight
+				}
 
-			// Sum the input value times age.
-			inputValue := int64(1)
-			if entry.TokenType&1 == 0 {
-				inputValue = entry.NumAmount()
+				// Sum the input value times age.
+				inputValue := int64(1)
+				if entry.TokenType&1 == 0 {
+					inputValue = entry.NumAmount()
+				}
+				totalInputAge += float64(inputValue * int64(inputAge))
 			}
-			totalInputAge += float64(inputValue * int64(inputAge))
 		}
-	}
 	}
 
 	return totalInputAge

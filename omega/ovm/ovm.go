@@ -9,19 +9,19 @@
 package ovm
 
 import (
+	"btcd/chaincfg"
+	"btcd/database"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega"
-	"github.com/omegasuite/gct/omega/token"
-	"github.com/omegasuite/gct/omega/viewpoint"
 	"golang.org/x/crypto/ripemd160"
+	"omega"
+	"omega/token"
+	"omega/viewpoint"
 	"sync/atomic"
 )
 
@@ -578,10 +578,10 @@ func (ovm *OVM) Create(data []byte, contract *Contract) ([]byte, omega.Err) {
 
 	tx := ovm.GetTx()
 	m := ovm.GetCurrentOutput()
-	//	coin := tx.MsgTx().TxOut[m.Index].Token
-	//	if coin.TokenType != 0 || coin.Value.(*token.NumToken).Val != 0 {
-	//		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation does not take a value.")
-	//	}
+	coin := tx.MsgTx().TxOut[m.Index].Token
+	if coin.TokenType != 0 || coin.Value.(*token.NumToken).Val != 0 {
+		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation does not take a value.")
+	}
 
 	if len(tx.MsgTx().TxIn) < 1 {
 		return nil, omega.ScriptError(omega.ErrInternal, "Contract creation must have one input.")

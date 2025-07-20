@@ -13,13 +13,13 @@ import (
 	"time"
 
 	//	"bufio"
+	"btcd/blockchain"
+	"btcd/chaincfg"
+	"btcd/wire"
+	"btcutil"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
 	//	"io"
 	"os"
 
@@ -122,6 +122,10 @@ func ServeBlock(h *chainhash.Hash) *btcutil.Block {
 	if miner == nil || miner.shutdown {
 		return nil
 	}
+
+	miner.syncMutex.Lock()
+	defer miner.syncMutex.Unlock()
+
 	for _, s := range miner.Sync {
 		b := s.findBlock(h)
 		if b != nil {

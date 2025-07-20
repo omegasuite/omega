@@ -11,10 +11,10 @@ package validate
 import (
 	"fmt"
 
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/token"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/token"
+	"omega/viewpoint"
 )
 
 func abs(x int64) int64 {

@@ -5,8 +5,8 @@
 package mempool
 
 import (
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/blockchain"
+	"btcd/wire/common"
 )
 
 // RuleError identifies a rule violation.  It is used to indicate that
@@ -34,7 +34,7 @@ func (e RuleError) Error() string {
 // ascertain the specific reason for the rule violation.
 type TxRuleError struct {
 	RejectCode  common.RejectCode // The code to send with reject messages
-	Description string          // Human readable description of the issue
+	Description string            // Human readable description of the issue
 }
 
 // Error satisfies the error interface and prints human-readable errors.

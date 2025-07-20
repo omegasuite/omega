@@ -13,12 +13,12 @@ import (
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	//	"fmt"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/mining"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
+	"btcd/blockchain"
+	"btcd/blockchain/chainutil"
+	"btcd/chaincfg"
+	"btcd/mining"
+	"btcd/wire"
+	"btcutil"
 	"math/big"
 	"math/rand"
 	"sort"
@@ -269,7 +269,7 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 	//		if block.Version&0x7FFF0000 <= chaincfg.Version5 && targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))) > 0 {
 	//			targetDifficulty = m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))
 	//		} else
-	if block.Version&0x7FFF0000 > chaincfg.Version5 && targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
+	if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
 		targetDifficulty = m.cfg.ChainParams.PowLimit
 	}
 	//	} else if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
@@ -565,7 +565,7 @@ out:
 		// true a solution was found, so submit the solved block.
 		block := wire.NewMinerBlock(template.Block.(*wire.MingingRightBlock))
 
-		if chainChoice.Hash == *m.g.Chain.Miners.Tip().Hash() && block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
+		if chainChoice.Hash == *m.g.Chain.Miners.Tip().Hash() {
 			// we choose the best chain, file violation report
 			violations := m.g.Chain.Miners.(*MinerChain).violations
 			t := make([]*wire.Violations, 0, len(violations))
@@ -615,49 +615,47 @@ out:
 
 		var h1, h2 int64
 
-		if block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
-			// for h1, we compare this block's coin & Collateral for simplicity
-			h := NodetoHeader(chainChoice)
-			c := h.Collateral
-			if c == 0 {
-				c = 1
-			}
-			v, err := m.g.Chain.CheckCollateral(block, nil, 0)
-			if err != nil {
-				log.Infof(err.Error())
-				time.Sleep(time.Second * 5)
-				continue
-			}
-			h1 = int64(v / c)
-			if h1 < 1 {
-				h1 = 1
-			}
+		// for h1, we compare this block's coin & Collateral for simplicity
+		h := NodetoHeader(chainChoice)
+		c := h.Collateral
+		if c == 0 {
+			c = 1
+		}
+		v, err := m.g.Chain.CheckCollateral(block, nil, 0)
+		if err != nil {
+			log.Infof(err.Error())
+			time.Sleep(time.Second * 5)
+			continue
+		}
+		h1 = int64(v / c)
+		if h1 < 1 {
+			h1 = 1
+		}
 
-			me := m.g.Chain.Miners.(*MinerChain)
-			prev, _ := me.BlockByHash(&block.MsgBlock().PrevBlock)
-			minscore := prev.MsgBlock().MeanTPH >> 3
-			if minscore == 0 {
-				minscore = 1
-			}
-			r := me.TPSreportFromDB(block.MsgBlock().Miner, uint32(template.Height-1)) // max most recent 100 records
-			for i := len(r); i < 100; i++ {
-				r = append(r, blockchain.TPSrv{Val: minscore})
-			}
-			sort.Slice(r, func(i, j int) bool {
-				return r[i].Val < r[j].Val
-			})
+		me := m.g.Chain.Miners.(*MinerChain)
+		prev, _ := me.BlockByHash(&block.MsgBlock().PrevBlock)
+		minscore := prev.MsgBlock().MeanTPH >> 3
+		if minscore == 0 {
+			minscore = 1
+		}
+		r := me.TPSreportFromDB(block.MsgBlock().Miner, uint32(template.Height-1)) // max most recent 100 records
+		for i := len(r); i < 100; i++ {
+			r = append(r, blockchain.TPSrv{Val: minscore})
+		}
+		sort.Slice(r, func(i, j int) bool {
+			return r[i].Val < r[j].Val
+		})
 
-			sum := uint32(0)
-			for k := 25; k < 75; k++ {
-				sum += r[k].Val
-			}
-			sum /= 50
+		sum := uint32(0)
+		for k := 25; k < 75; k++ {
+			sum += r[k].Val
+		}
+		sum /= 50
 
-			if sum <= minscore {
-				h2 = 1
-			} else {
-				h2 = int64(sum / minscore)
-			}
+		if sum <= minscore {
+			h2 = 1
+		} else {
+			h2 = int64(sum / minscore)
 		}
 
 		log.Infof("miner Trying to solve block at %d with difficulty %d", template.Height, template.Bits)

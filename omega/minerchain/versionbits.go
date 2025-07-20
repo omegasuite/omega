@@ -10,9 +10,9 @@ package minerchain
 
 import (
 	//	"fmt"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
+	"btcd/blockchain/chainutil"
 
-	"github.com/omegasuite/gct/btcd/chaincfg"
+	"btcd/chaincfg"
 	//	"github.com/omegasuite/btcd/wire"
 )
 

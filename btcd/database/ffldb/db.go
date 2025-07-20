@@ -14,12 +14,12 @@ import (
 	"sort"
 	"sync"
 
+	"btcd/database"
+	"btcd/database/internal/treap"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/database/internal/treap"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
 	"github.com/omegasuite/goleveldb/leveldb"
 	"github.com/omegasuite/goleveldb/leveldb/comparer"
 	ldberrors "github.com/omegasuite/goleveldb/leveldb/errors"
@@ -1257,7 +1257,7 @@ func (tx *transaction) UpdateBlock(block *btcutil.Block) error {
 //   - ErrTxClosed if the transaction has already been closed
 //
 // This function is part of the database.Tx interface implementation.
-func (tx *transaction) StoreMinerBlock(block * wire.MinerBlock) error {
+func (tx *transaction) StoreMinerBlock(block *wire.MinerBlock) error {
 	// Ensure transaction state is valid.
 	if err := tx.checkClosed(); err != nil {
 		return err

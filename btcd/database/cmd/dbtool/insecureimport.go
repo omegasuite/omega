@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
+	"btcd/database"
+	"btcd/wire"
 	"github.com/omegasuite/btcutil"
 )
 

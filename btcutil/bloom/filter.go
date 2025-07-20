@@ -9,13 +9,13 @@ import (
 	"math"
 	"sync"
 
+	"btcd/blockchain/indexers"
+	"btcd/chaincfg"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain/indexers"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/ovm"
+	"omega/ovm"
 )
 
 // ln2Squared is simply the square of the natural log of 2.

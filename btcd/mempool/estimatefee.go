@@ -6,11 +6,11 @@
 package mempool
 
 import (
+	"btcd/blockchain"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/blockchain"
 	"io"
 	"math"
 	"math/rand"
@@ -18,9 +18,9 @@ import (
 	"strings"
 	"sync"
 
+	"btcd/mining"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/mining"
-	"github.com/omegasuite/gct/btcutil"
 )
 
 // TODO incorporate Alex Morcos' modifications to Gavin's initial model

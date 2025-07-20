@@ -9,10 +9,10 @@
 package ovm
 
 import (
+	"btcd/wire/common"
 	"encoding/binary"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/omega"
+	"omega"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -373,7 +373,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 		}
 	*/
 
-	if debugging && in.evm.chainConfig.Net == common.TestNet {
+	if debugging && in.evm.chainConfig.Net == uint32(common.TestNet) {
 		log.Info("start intrepdebug")
 		if attaching == nil {
 			attaching = make(chan struct{}, 10)
@@ -381,7 +381,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 	}
 
 	//	debugging = true
-	var printInst = in.evm.chainConfig.Net == common.TestNet && strings.Contains(in.evm.chainConfig.ExternalIPs[0], ":8383") // debugging
+	var printInst = in.evm.chainConfig.Net == uint32(common.TestNet) && strings.Contains(in.evm.chainConfig.ExternalIPs[0], ":8383") // debugging
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
@@ -389,7 +389,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 	// parent context.
 	for atomic.LoadInt32(&in.evm.abort) == 0 {
 		in.evm.StepLimit--
-		if in.evm.StepLimit < 0 && in.evm.chainConfig.Net == common.MainNet {
+		if in.evm.StepLimit < 0 && in.evm.chainConfig.Net == uint32(common.MainNet) {
 			err := omega.ScriptError(omega.ErrInternal, "Exceeded operation limit")
 			err.ErrorLevel = omega.RecoverableLevel
 			return nil, err

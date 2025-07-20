@@ -6,13 +6,13 @@
 package wire
 
 import (
+	"btcd/wire/common"
 	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/omega/token"
 	"io"
+	"omega/token"
 	"strconv"
 )
 
@@ -1310,17 +1310,17 @@ func (tx *MsgTx) ReadSignature(r io.Reader, pver uint32) error {
 		return err
 	}
 
-	/*
-		str := fmt.Sprintf("more signatures than inputs (%d, %d)", count, len(tx.TxIn))
-		if tx.IsCoinBase() {
-			// allow one for signature because coin base Tx includes signature merkle root
-			if int(count) > CommitteeSize+1 {
-				return messageError("MsgTx.OmcDecode", str)
-			}
-		} else if int(count) > len(tx.TxIn) {
+	// Prevent a possible memory exhaustion attack by
+	// limiting the witCount value to a sane upper bound.
+	str := fmt.Sprintf("more signatures than inputs (%d, %d)", count, len(tx.TxIn))
+	if tx.IsCoinBase() {
+		// allow one for signature because coin base Tx includes signature merkle root
+		if int(count) > CommitteeSize+1 {
 			return messageError("MsgTx.OmcDecode", str)
 		}
-	*/
+	} else if int(count) > len(tx.TxIn) {
+		return messageError("MsgTx.OmcDecode", str)
+	}
 
 	// signature data.
 	for i := 0; i < int(count); i++ {
@@ -1363,10 +1363,6 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 		if to.IsContractCall() || to.IsCrossChain() {
 			return false
 		}
-		// don't check tokentype if it is a SVP, otherwise we should check it
-		//		if to.TokenType != common.FeeCoinTyp && to.TokenType != common.OmegaCoinTyp {
-		//			return false
-		//		}
 	}
 
 	return true

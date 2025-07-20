@@ -11,10 +11,10 @@ import (
 	"encoding/binary"
 	"errors"
 
+	"btcd/database"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/viewpoint"
 )
 
 var (

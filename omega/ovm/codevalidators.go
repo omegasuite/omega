@@ -366,7 +366,7 @@ func opExecValidator(param []byte) int {
 	if n == 6 {
 		p := make([]formatDesc, 6)
 		copy(p[:], formatExec[:])
-		p[5] = formatDesc{patOperand, 0xFFFFFFFF, }
+		p[5] = formatDesc{patOperand, 0xFFFFFFFF}
 		return formatParser(p, param)
 	} else {
 		return formatParser(formatExec, param)
@@ -429,17 +429,17 @@ func opCopyImmValidator(param []byte) int {
 	if n < 2 {
 		return -0xfffffff
 	}
-/*
-	if n > 2 {
-		fmt := make([]formatDesc, 2 * n - 1)
-		copy(fmt, formatImm)
-		for i := 3; i < 2 * n - 1; i += 2 {
-			fmt[i] = formatImm[1]
-			fmt[i + 1] = formatImm[2]
+	/*
+		if n > 2 {
+			fmt := make([]formatDesc, 2 * n - 1)
+			copy(fmt, formatImm)
+			for i := 3; i < 2 * n - 1; i += 2 {
+				fmt[i] = formatImm[1]
+				fmt[i + 1] = formatImm[2]
+			}
+			return formatParser(formatImm, param)
 		}
-		return formatParser(formatImm, param)
-	}
- */
+	*/
 	return formatParser(formatImm, param)
 }
 
@@ -452,7 +452,7 @@ var formatCopyCode = []formatDesc{
 func opCodeCopyValidator(param []byte) int {
 	return formatParser(formatCopyCode, param)
 }
- */
+*/
 
 var formatSuicide = []formatDesc{
 	{patOperand, 0}, {patOperand, 0},
@@ -522,7 +522,7 @@ func opGetTxInValidator(param []byte) int {
 func opGetTxOutValidator(param []byte) int {
 	return formatParser(formatTxIO, param)
 }
- */
+*/
 
 var formatSpend = []formatDesc{
 	{patOperand, 0}, {patOperand, 0xFFFFFFFF}, {addrOperand, 0xFFFFFFFF},
@@ -576,7 +576,7 @@ func opGetCoinValidator(param []byte) int {
 	return formatParser(formatGetCoin, param)
 }
 
- */
+*/
 
 var formatGetUTXO = []formatDesc{
 	{addrOperand, 0xFFFFFFFF}, {patOperand, 0},
@@ -603,7 +603,6 @@ func opMintValidator(param []byte) int {
 	}
 	return d
 }
-
 
 var formatMeta = []formatDesc{
 	{addrOperand, 0xFFFFFFFF}, {patOperand, 32}, {patOperand, 0},

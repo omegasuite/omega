@@ -19,7 +19,7 @@ import (
 
 	"encoding/binary"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/wire/common"
 )
 
 const MaxMessagePayload = (1024 * 1024 * 400) // must be same as in wire.message.go

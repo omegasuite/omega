@@ -5,13 +5,12 @@
 package indexers
 
 import (
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/wire/common"
 
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"btcd/chaincfg"
+	"btcd/database"
+	"btcutil"
+	"omega/viewpoint"
 )
 
 const (
@@ -83,9 +82,6 @@ func (idx *AddrUseIndex) Create(dbTx database.Tx) error {
 }
 func (idx *AddrUseIndex) keyList(block *btcutil.Block,
 	stxos []viewpoint.SpentTxOut) map[[addrKeySize]byte]struct{} {
-	if block.MsgBlock().Header.Version < wire.Version2 {
-		return nil
-	}
 
 	umap := make(map[[addrKeySize]byte]struct{})
 	for _, txIdxs := range stxos {

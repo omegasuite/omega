@@ -6,6 +6,15 @@
 package main
 
 import (
+	"btcd/chaincfg"
+	"btcd/connmgr"
+	"btcd/database"
+	_ "btcd/database/ffldb"
+	"btcd/mempool"
+	"btcd/peer"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"bufio"
 	"crypto/rand"
 	"encoding/base64"
@@ -14,15 +23,6 @@ import (
 	flags "github.com/jessevdk/go-flags"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/connmgr"
-	"github.com/omegasuite/gct/btcd/database"
-	_ "github.com/omegasuite/gct/btcd/database/ffldb"
-	"github.com/omegasuite/gct/btcd/mempool"
-	"github.com/omegasuite/gct/btcd/peer"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
 	"github.com/omegasuite/go-socks/socks"
 	"io"
 	"net"
@@ -177,7 +177,7 @@ type config struct {
 	Concurrency     int    `long:"concurrency" description:"Concurrency"`
 	LogBlockTime    bool   `long:"logblocktime" description:"Log the time that blocks are received"`
 	Accounts        bool   `long:"accounts" description:"list omega accounts & balance"`
-	NetMagic        common.OmegaNet
+	NetMagic        uint32
 	AddChain        string   `long:"addchain" description:"Add a blockchain to FOC"`
 	Clear           int      `long:"clear" description:"Clear DBs"`
 	Blacklist       []string `long:"blacklist" description:"Put address in blacklist"`
@@ -413,7 +413,7 @@ func newConfigParser(cfg *config, so *serviceOptions, options flags.Options) *fl
 // The above results in btcd functioning properly without any config settings
 // while still allowing the user to override settings with config files and
 // command line options.  Command line options always take precedence.
-func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error) {
+func loadConfig(sec string, omegaNet uint32) (*config, []string, error) {
 	// Default config.
 	cfg := config{
 		ConfigFile:           defaultConfigFile,
@@ -447,14 +447,14 @@ func loadConfig(sec string, omegaNet common.OmegaNet) (*config, []string, error)
 		Concurrency:          1,
 		LogBlockTime:         false,
 		Accounts:             false,
-		NetMagic:             common.MainNet,
+		NetMagic:             uint32(common.MainNet),
 		AddChain:             "",
 		Clear:                0,
 		RpcLimit:             1000, // RPC return size 1000 K
 	}
 
 	if uint32(omegaNet) != 0 {
-		cfg.NetMagic = omegaNet
+		cfg.NetMagic = uint32(omegaNet)
 	}
 
 	// Service options which are only added on Windows.

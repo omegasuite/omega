@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/database"
+	"btcd/database"
 )
 
 // fetchBlockCmd defines the configuration options for the fetchblock command.

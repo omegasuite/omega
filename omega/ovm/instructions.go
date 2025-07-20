@@ -9,23 +9,23 @@
 package ovm
 
 import (
+	"btcd/chaincfg"
+	"btcd/database"
+	"btcd/wire/common"
 	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/btcsuite/btcd/btc2omg/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire/common"
 
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega"
-	"github.com/omegasuite/gct/omega/token"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"btcd/wire"
+	"btcutil"
 	"golang.org/x/crypto/ripemd160"
 	"math"
 	"math/big"
+	"omega"
+	"omega/token"
+	"omega/viewpoint"
 	"time"
 )
 
@@ -2013,7 +2013,7 @@ func opCall(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 		f.pure = stack.data[stack.callTop].pure | contract.libs[libAddr].pure
 		if isself {
 			libAddr = stack.data[stack.callTop].inlib
-		} else if evm.BlockVersion() >= wire.Version2 {
+		} else {
 			binary.LittleEndian.PutUint32(f.space[4:8], uint32(contract.libs[libAddr].base))
 		}
 		f.gbase = contract.libs[libAddr].base
@@ -3807,10 +3807,6 @@ func opMint(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 
 	dataType := []byte{0xFF, 'Q', 'Q', 'h'}
 
-	if ovm.BlockVersion() < wire.Version2 {
-		dataType[2] = 'D'
-	}
-
 	for j := 0; j < ln; j++ {
 		switch param[j] {
 		case '0', '1', '2', '3', '4', '5',
@@ -4432,10 +4428,8 @@ func opAddSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Er
 		t.TxIn = t.TxIn[start : inidx+1]
 		t.LockTime = 0
 
-		if ovm.Context.BlockVersion() >= wire.Version3 {
-			for i := 0; i < len(t.TxIn); i++ {
-				t.TxIn[i].SignatureIndex = 0
-			}
+		for i := 0; i < len(t.TxIn); i++ {
+			t.TxIn[i].SignatureIndex = 0
 		}
 
 		it = it &^ byte(SigHashAnyOneCanPay) // to skip SigHashAnyOneCanPay check below

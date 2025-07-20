@@ -9,12 +9,13 @@
 package chainmap
 
 import (
+	"btcd/chaincfg"
+	"btcd/database"
+	"btcd/wire"
+	"btcd/wire/common"
 	"encoding/json"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"omega/ovm"
 )
 
 // chainmap is a map of blockchains in FOC.

@@ -6,19 +6,17 @@
 package main
 
 import (
+	"btcd/chaincfg"
 	"bytes"
-	"container/list"
 	//	"encoding/hex"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"encoding/json"
 	"fmt"
 	"github.com/decred/dcrd/dcrec/secp256k1"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/chainmap"
-	"github.com/omegasuite/gct/omega/consensus"
+	"omega/chainmap"
+	"omega/consensus"
 	"strings"
 	"sync"
 
@@ -32,10 +30,9 @@ import (
 	"runtime/pprof"
 	"time"
 
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain/indexers"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/limits"
+	"btcd/blockchain/indexers"
+	"btcd/database"
+	"btcd/limits"
 )
 
 const (
@@ -131,15 +128,15 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 		//		prot.activeNetParams.PowLimit = blockchain.CompactToBig(globalParams.PowLimitBits)
 	}
 	if tcfg.TestNet {
-		prot.activeNetParams.GenesisHash = chaincfg.TestNet3GenesisHash[uint32(tcfg.NetMagic)]
-		prot.activeNetParams.GenesisBlock = chaincfg.TestNet3GenesisBlock[uint32(tcfg.NetMagic)]
-		prot.activeNetParams.GenesisMinerHash = chaincfg.TestNet3GenesisMinerHash[uint32(tcfg.NetMagic)]
-		prot.activeNetParams.GenesisMinerBlock = chaincfg.TestNet3GenesisMinerBlock[uint32(tcfg.NetMagic)]
+		prot.activeNetParams.GenesisHash = chaincfg.TestNet3GenesisHash[tcfg.NetMagic]
+		prot.activeNetParams.GenesisBlock = chaincfg.TestNet3GenesisBlock[tcfg.NetMagic]
+		prot.activeNetParams.GenesisMinerHash = chaincfg.TestNet3GenesisMinerHash[tcfg.NetMagic]
+		prot.activeNetParams.GenesisMinerBlock = chaincfg.TestNet3GenesisMinerBlock[tcfg.NetMagic]
 	} else {
-		prot.activeNetParams.GenesisHash = chaincfg.GenesisHash[uint32(tcfg.NetMagic)]
-		prot.activeNetParams.GenesisBlock = chaincfg.GenesisBlock[uint32(tcfg.NetMagic)]
-		prot.activeNetParams.GenesisMinerHash = chaincfg.GenesisMinerHash[uint32(tcfg.NetMagic)]
-		prot.activeNetParams.GenesisMinerBlock = chaincfg.GenesisMinerBlock[uint32(tcfg.NetMagic)]
+		prot.activeNetParams.GenesisHash = chaincfg.GenesisHash[tcfg.NetMagic]
+		prot.activeNetParams.GenesisBlock = chaincfg.GenesisBlock[tcfg.NetMagic]
+		prot.activeNetParams.GenesisMinerHash = chaincfg.GenesisMinerHash[tcfg.NetMagic]
+		prot.activeNetParams.GenesisMinerBlock = chaincfg.GenesisMinerBlock[tcfg.NetMagic]
 	}
 
 	prot.activeNetParams.MinRelayTxFee = int64(tcfg.minRelayTxFee)
@@ -236,13 +233,6 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 		}
 	}()
 
-	if tcfg.Settip != "" {
-		tips := strings.Split(tcfg.Settip, ":")
-		if !setTip(tips[0], tips[1], servergr.chain) {
-			return nil, false
-		}
-	}
-
 	if tcfg.Accounts {
 		// print balances of all addresses
 		accounts := servergr.chain.GetAccounts()
@@ -264,6 +254,7 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 				fmt.Printf("%s, %x => %f\n", address.EncodeAddress(), t, float64(amt)/1e8)
 			}
 		}
+		fmt.Printf("Total %d addresses\n", len(accounts))
 	}
 
 	return prot, false
@@ -284,6 +275,7 @@ func runserver(p *Protocol) {
 	}
 
 	if p.running {
+		wg.Add(1)
 		p.Server.Start()
 		if p.Server.chainParams.ChainID == chaincfg.DefaultParentChainID {
 			p.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
@@ -338,94 +330,6 @@ func cleanup(p *Protocol) {
 		wg.Done()
 	}
 	btcdLog.Infof("%x done cleanup", uint32(p.Server.chainParams.Net))
-}
-
-func setTip(tx, miner string, chain *blockchain.BlockChain) bool {
-	fmt.Printf("Setting new tips %s & %s\n", tx, miner)
-	txtip, err := chainhash.NewHashFromStr(tx)
-	if err != nil || txtip == nil {
-		fmt.Printf("Non-exist tx tip hash\n")
-		return false
-	}
-	minertip, err := chainhash.NewHashFromStr(miner)
-	if err != nil || minertip == nil {
-		fmt.Printf("Non-exist miner tip hash\n")
-		return false
-	}
-
-	txblk, err := chain.HashToBlock(txtip)
-	if err != nil || txblk == nil {
-		fmt.Printf("Non-exist tx tip")
-		return false
-	}
-	minerblk, err := chain.Miners.DBBlockByHash(minertip)
-	if err != nil || minerblk == nil {
-		fmt.Printf("Non-exist miner tip\n")
-		return false
-	}
-
-	state := chain.BestSnapshot()
-	bestblk, _ := chain.HashToBlock(&minerblk.MsgBlock().BestBlock)
-	bestheight := bestblk.Height()
-
-	mstate := chain.Miners.BestSnapshot()
-
-	if !chain.SameChain(*txtip, state.Hash) {
-		fmt.Printf("New tx tip %s not in same chain as current tip %s\n", txtip.String(), state.Hash.String())
-		return false
-	}
-
-	pb := minerblk.MsgBlock().PrevBlock
-	for i := minerblk.Height() - 1; i > mstate.Height; i-- {
-		fmt.Printf("Add miner block %s\n", pb.String())
-		pbb, err := chain.Miners.DBBlockByHash(&pb)
-		if err != nil || pbb == nil {
-			fmt.Printf("New miner tip %s not in same chain as current tip %s\n", minertip.String(), mstate.Hash.String())
-			return false
-		}
-		if !chain.SameChain(minerblk.MsgBlock().BestBlock, pbb.MsgBlock().BestBlock) {
-			fmt.Printf("Best chain not in sync @ miner block %s width best block %s compare to current tip best block %s\n", pb.String(), pbb.MsgBlock().BestBlock.String(), minerblk.MsgBlock().BestBlock.String())
-			return false
-		}
-		bestblk, _ := chain.HashToBlock(&pbb.MsgBlock().BestBlock)
-		nbestheight := bestblk.Height()
-		if nbestheight > bestheight {
-			fmt.Printf("Best not in order\n")
-			return false
-		}
-		bestheight = nbestheight
-		pb = pbb.MsgBlock().PrevBlock
-	}
-	if !pb.IsEqual(&mstate.Hash) {
-		fmt.Printf("New miner tip not in same chain as current tip\n")
-		return false
-	}
-
-	attachNodes := list.New()
-
-	node := chain.NodeByHash(txtip)
-	forkNode := chain.NodeByHash(&state.Hash)
-	for n := node; n != nil && n != forkNode; n = n.Parent {
-		fmt.Printf("Add tx block %s\n", n.Hash.String())
-		attachNodes.PushFront(n)
-	}
-	err = chain.FastReorganizeChain(attachNodes)
-	if err != nil {
-		panic("Tx FastReorganizeChain failed: " + err.Error())
-	}
-
-	attachNodes = list.New()
-	mnode := chain.Miners.DeepNodeByHash(minertip)
-	mforkNode := chain.Miners.DeepNodeByHash(&mstate.Hash)
-	for n := mnode; n != nil && n != mforkNode; n = n.Parent {
-		attachNodes.PushFront(n)
-	}
-	err = chain.Miners.FastReorganizeChain(attachNodes)
-
-	if err != nil {
-		panic("Miner FastReorganizeChain failed: " + err.Error())
-	}
-	return true
 }
 
 // removeRegressionDB removes the existing regression test database if running
@@ -519,7 +423,7 @@ func loadChainmapDB(tcfg *config) (database.DB, error) {
 	path[len(path)-1] = "chainmap"
 	dataDir := strings.Join(path, "/")
 
-	db, err := database.Open(tcfg.DbType, dataDir, tcfg.NetMagic)
+	db, err := database.Open(tcfg.DbType, dataDir, common.OmegaNet(tcfg.NetMagic))
 	if err != nil {
 		// Return the error if it's not because the database doesn't
 		// exist.
@@ -534,7 +438,7 @@ func loadChainmapDB(tcfg *config) (database.DB, error) {
 		if err != nil {
 			return nil, err
 		}
-		db, err = database.Create(tcfg.DbType, dataDir, tcfg.NetMagic)
+		db, err = database.Create(tcfg.DbType, dataDir, common.OmegaNet(tcfg.NetMagic))
 		if err != nil {
 			return nil, err
 		}
@@ -570,7 +474,7 @@ func loadBlockDB(cfg *config) (database.DB, error) {
 	removeRegressionDB(dbPath, cfg)
 
 	btcdLog.Infof("Loading block database from '%s'", dbPath)
-	db, err := database.Open(cfg.DbType, dbPath, cfg.NetMagic)
+	db, err := database.Open(cfg.DbType, dbPath, common.OmegaNet(cfg.NetMagic))
 	if err != nil {
 		// Return the error if it's not because the database doesn't
 		// exist.
@@ -585,7 +489,7 @@ func loadBlockDB(cfg *config) (database.DB, error) {
 		if err != nil {
 			return nil, err
 		}
-		db, err = database.Create(cfg.DbType, dbPath, cfg.NetMagic)
+		db, err = database.Create(cfg.DbType, dbPath, common.OmegaNet(cfg.NetMagic))
 		if err != nil {
 			return nil, err
 		}
@@ -616,7 +520,7 @@ func loadMinerDB(cfg *config) (database.DB, error) {
 	removeRegressionDB(dbPath, cfg)
 
 	btcdLog.Infof("Loading miner database from '%s'", dbPath)
-	db, err := database.Open(cfg.DbType, dbPath, cfg.NetMagic)
+	db, err := database.Open(cfg.DbType, dbPath, common.OmegaNet(cfg.NetMagic))
 	if err != nil {
 		// Return the error if it's not because the database doesn't
 		// exist.
@@ -631,7 +535,7 @@ func loadMinerDB(cfg *config) (database.DB, error) {
 		if err != nil {
 			return nil, err
 		}
-		db, err = database.Create(cfg.DbType, dbPath, cfg.NetMagic)
+		db, err = database.Create(cfg.DbType, dbPath, common.OmegaNet(cfg.NetMagic))
 		if err != nil {
 			return nil, err
 		}
@@ -644,6 +548,18 @@ func loadMinerDB(cfg *config) (database.DB, error) {
 var wg sync.WaitGroup
 var Server *server
 
+func setMagic(tcfg *config) {
+	if tcfg.TestNet {
+		tcfg.NetMagic = uint32(common.TestNet)
+	}
+	if tcfg.SimNet {
+		tcfg.NetMagic = uint32(common.SimNet)
+	}
+	if tcfg.RegressionTest {
+		tcfg.NetMagic = uint32(common.RegNet)
+	}
+}
+
 func main() {
 	// Use all processor cores.
 	runtime.GOMAXPROCS(runtime.NumCPU())
@@ -653,15 +569,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if tcfg.TestNet {
-		tcfg.NetMagic = common.TestNet
-	}
-	if tcfg.SimNet {
-		tcfg.NetMagic = common.SimNet
-	}
-	if tcfg.RegressionTest {
-		tcfg.NetMagic = common.RegNet
-	}
+	setMagic(tcfg)
 
 	debugLevel()
 
@@ -728,7 +636,7 @@ func main() {
 
 	if chaincfg.DefaultChainID == chainmap.ROOT {
 		s, _ := json.Marshal(activeNetParams.GlobalParams)
-		chainmap.RootMeta.GlobalParams = string(s)
+		chainmap.RootMeta[common.OmegaNet(tcfg.NetMagic)].GlobalParams = string(s)
 	}
 
 	cmdb, err := loadChainmapDB(tcfg)
@@ -736,9 +644,11 @@ func main() {
 		fmt.Printf("loadChainmapDB failed")
 		os.Exit(1)
 	}
-	chainmap.LoadChainMap(cmdb, chaincfg.DefaultChainID == chainmap.ROOT)
+	chainmap.LoadChainMap(cmdb, chaincfg.DefaultChainID == chainmap.ROOT, common.OmegaNet(tcfg.NetMagic))
 
 	protocols = make([]*Protocol, 0)
+
+	fmt.Printf("DefaultParentChainID = %d\n", chaincfg.DefaultParentChainID)
 
 	if _, ok := chainmap.ChainMap[chaincfg.DefaultParentChainID]; chaincfg.DefaultParentChainID != 0 && !ok {
 		// create a svp server for parent
@@ -747,12 +657,15 @@ func main() {
 		if err != nil {
 			os.Exit(1)
 		}
+
+		setMagic(pcfg)
+
 		pcfg.DbType = tcfg.DbType
 		//		pcfg.LogDir = tcfg.LogDir
 		//		pcfg.DataDir = tcfg.DataDir
-		pcfg.NetMagic = common.OmegaNet(chainmap.ParentChain.Magic)
+		pcfg.NetMagic = chainmap.RootMeta[common.OmegaNet(pcfg.NetMagic)].Magic
 
-		fmt.Printf("parent options loaded, magic = %d", pcfg.NetMagic)
+		fmt.Printf("parent options loaded, magic = %x", pcfg.NetMagic)
 
 		pcfg.Generate = false
 		pcfg.GenerateMiner = false
@@ -762,6 +675,7 @@ func main() {
 			os.Exit(1)
 		}
 		p.cfg = pcfg
+		// wg.Add(1)
 		p.running = true
 		p.Server.syncManager.Passive()
 		protocols = append(protocols, p)
@@ -770,7 +684,7 @@ func main() {
 		for done, i := false, 0; !done && i < 5; i++ {
 			p.Server.Randcast(wire.NewMsgGetChainMap(uint32(0)), nil)
 			time.Sleep(2 * time.Second)
-			chainmap.LoadChainMap(cmdb, chaincfg.DefaultChainID == chainmap.ROOT)
+			chainmap.LoadChainMap(cmdb, chaincfg.DefaultChainID == chainmap.ROOT, common.OmegaNet(tcfg.NetMagic))
 			_, done = chainmap.ChainMap[chaincfg.DefaultParentChainID]
 			if done {
 				cmdb.Close()
@@ -783,7 +697,7 @@ func main() {
 	}
 
 	// main chain
-	fmt.Printf("loading main options, magic = %d", tcfg.NetMagic)
+	fmt.Printf("loading main options, magic = %x", tcfg.NetMagic)
 	p, quit := prepareServer(tcfg, nil, nil, false)
 	if quit && p != nil {
 		cleanup(p)
@@ -882,7 +796,6 @@ func main() {
 	}
 
 	for i, p := range protocols {
-		wg.Add(1)
 		p.running = true
 
 		go runserver(p)

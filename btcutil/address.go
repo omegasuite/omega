@@ -9,9 +9,9 @@ import (
 	"encoding/hex"
 	"errors"
 
+	"btcd/chaincfg"
+	"btcutil/base58"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcutil/base58"
 	"golang.org/x/crypto/ripemd160"
 )
 

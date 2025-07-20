@@ -12,17 +12,17 @@ import (
 	//	"bufio"
 	"bytes"
 	"crypto/rand"
-	"github.com/omegasuite/gct/omega/chainmap"
+	"omega/chainmap"
 	//	"crypto/sha256"
 	"crypto/tls"
 	"encoding/binary"
 
+	"btcd/blockchain/chainutil"
 	"errors"
 	"fmt"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/omega/minerchain"
+	"omega/minerchain"
 	//	"io"
 	"math"
 	"net"
@@ -36,23 +36,23 @@ import (
 	"sync/atomic"
 	"time"
 
+	"btcd/addrmgr"
+	"btcd/blockchain"
+	"btcd/blockchain/indexers"
+	"btcd/chaincfg"
+	"btcd/connmgr"
+	"btcd/database"
+	"btcd/mempool"
+	"btcd/mining"
+	"btcd/mining/cpuminer"
+	"btcd/netsync"
+	"btcd/peer"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
+	"btcutil/bloom"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/addrmgr"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/blockchain/indexers"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/connmgr"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/mempool"
-	"github.com/omegasuite/gct/btcd/mining"
-	"github.com/omegasuite/gct/btcd/mining/cpuminer"
-	"github.com/omegasuite/gct/btcd/netsync"
-	"github.com/omegasuite/gct/btcd/peer"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/btcutil/bloom"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/viewpoint"
 )
 
 const (
@@ -2417,7 +2417,7 @@ func disconnectPeer(peerList map[int32]*serverPeer, compareFunc func(*serverPeer
 }
 
 // newPeerConfig returns the configuration for the given serverPeer.
-func newPeerConfig(sp *serverPeer) *peer.Config {
+func newPeerConfig(sp *serverPeer, svp bool) *peer.Config {
 	return &peer.Config{
 		Listeners: peer.MessageListeners{
 			OnVersion:      sp.OnVersion,
@@ -2463,6 +2463,7 @@ func newPeerConfig(sp *serverPeer) *peer.Config {
 		DisableRelayTx:    sp.server.rpcServer.cfg.Cfg.BlocksOnly,
 		ProtocolVersion:   peer.MaxProtocolVersion,
 		TrickleInterval:   sp.server.rpcServer.cfg.Cfg.TrickleInterval,
+		IsSvp:             svp,
 	}
 }
 
@@ -2496,7 +2497,7 @@ func (s *server) inboundPeerConnected(conn net.Conn) {
 
 	sp := newServerPeer(s, false)
 	sp.isWhitelisted = isWhitelisted(conn.RemoteAddr(), s.rpcServer.cfg.Cfg)
-	sp.Peer = peer.NewInboundPeer(newPeerConfig(sp))
+	sp.Peer = peer.NewInboundPeer(newPeerConfig(sp, s.chain.IsSVP))
 	sp.AssociateConnection(conn)
 	go s.peerDoneHandler(sp)
 }
@@ -2511,7 +2512,7 @@ func (s *server) outboundPeerDisConnected(c *connmgr.ConnReq) {
 // manager of the attempt.
 func (s *server) outboundPeerConnected(c *connmgr.ConnReq, conn net.Conn) {
 	sp := newServerPeer(s, c.Permanent)
-	p, err := peer.NewOutboundPeer(newPeerConfig(sp), c.Addr.String())
+	p, err := peer.NewOutboundPeer(newPeerConfig(sp, s.chain.IsSVP), c.Addr.String())
 	if err != nil {
 		srvrLog.Debugf("Cannot create outbound peer %s: %v", c.Addr, err)
 		s.connManager.Disconnect(c.ID())

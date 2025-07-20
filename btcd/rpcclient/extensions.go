@@ -14,9 +14,9 @@ import (
 
 	"github.com/omegasuite/btcd/btcjson"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire"
+	"btcd/wire"
 	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/wire/common"
 )
 
 // FutureDebugLevelResult is a future promise to deliver the result of a

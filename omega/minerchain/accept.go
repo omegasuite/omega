@@ -9,23 +9,22 @@
 package minerchain
 
 import (
+	"btcd/wire/common"
+	"btcutil"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/chainmap"
+	"omega/chainmap"
 	"sort"
 
 	//	"github.com/omegasuite/btcutil/base58"
 
+	"btcd/blockchain"
+	"btcd/blockchain/chainutil"
+	"btcd/database"
+	"btcd/wire"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
 	"math/big"
 )
 
@@ -374,12 +373,12 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 
 	for p, i := prevNode, 0; p != nil && i < wire.MinerGap; i++ {
 		h := NodetoHeader(p)
-		if bytes.Compare(h.Connection, block.MsgBlock().Connection) == 0 && (h.Version&0x7FFF0000) > wire.Version5 {
+		if bytes.Compare(h.Connection, block.MsgBlock().Connection) == 0 {
 			str := "Miner's IP/port has appeared in the past %d blocks"
 			str = fmt.Sprintf(str, wire.MinerGap)
 			return ruleError(ErrRotationViolation, str)
 		}
-		if bytes.Compare(h.Miner[:], block.MsgBlock().Miner[:]) == 0 && (h.Version&0x7FFF0000) > wire.Version5 {
+		if bytes.Compare(h.Miner[:], block.MsgBlock().Miner[:]) == 0 {
 			str := "Miner has appeared in the past %d blocks"
 			str = fmt.Sprintf(str, wire.MinerGap)
 			return ruleError(ErrRotationViolation, str)
@@ -398,7 +397,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
-	if (b.IsSVP || header.Version&0x7FFF0000 >= chaincfg.Version4) && header.Collateral != coll {
+	if b.IsSVP && header.Collateral != coll {
 		str := "block collateral of %d is not the expected value of %d"
 		str = fmt.Sprintf(str, header.Collateral, coll)
 		return ruleError(ErrUnexpectedDifficulty, str)
@@ -425,7 +424,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	if block.Height() > 2200 || block.MsgBlock().Version&0x7FFF0000 >= 0x20000 {
 		xf = blockchain.BFWatingFactor
 	}
-	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet || b.chainParams.Net == common.RegNet {
+	if b.chainParams.Net == uint32(common.TestNet) || b.chainParams.Net == uint32(common.SimNet) || b.chainParams.Net == uint32(common.RegNet) {
 		xf |= blockchain.BFEasyBlocks
 	}
 
@@ -544,7 +543,7 @@ func (b *MinerChain) CheckConnectBlockTemplate(block *wire.MinerBlock) error {
 
 	// Skip the proof of work check as this is just a block template.
 	flags := blockchain.BFNoPoWCheck
-	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet || b.chainParams.Net == common.RegNet {
+	if b.chainParams.Net == uint32(common.TestNet) || b.chainParams.Net == uint32(common.SimNet) || b.chainParams.Net == uint32(common.RegNet) {
 		flags |= blockchain.BFEasyBlocks
 	}
 	tip := b.BestChain.Tip()

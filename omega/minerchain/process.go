@@ -9,22 +9,21 @@
 package minerchain
 
 import (
+	"btcutil"
 	"bytes"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcutil"
 	"math/big"
 	//	"net"
 	"time"
 
+	"btcd/blockchain"
+	"btcd/blockchain/chainutil"
+	"btcd/database"
+	"btcd/wire"
+	"btcd/wire/common"
 	"encoding/hex"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 /*
@@ -115,12 +114,8 @@ func (b *MinerChain) ProcessOrphans(hash *chainhash.Hash, flags blockchain.Behav
 			return true, nil
 		}
 
-		if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
-			if r, _, hreq := b.checkV2(block, parent, flags); !r {
-				return true, hreq
-			}
-		} else if len(block.MsgBlock().ViolationReport) > 0 {
-			return true, nil
+		if r, _, hreq := b.checkV2(block, parent, flags); !r {
+			return true, hreq
 		}
 
 		// Potentially accept the block into the block chain.
@@ -174,9 +169,6 @@ func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode
 
 	if block.MsgBlock().Utxos != nil {
 		for p, i := parent, int32(0); i <= b.chainParams.ViolationReportDeadline && p != nil; i++ {
-			if p.Data.GetVersion() < chaincfg.Version2 {
-				break
-			}
 			if p.Data.(*blockchainNodeData).block.Utxos != nil && *block.MsgBlock().Utxos == *p.Data.(*blockchainNodeData).block.Utxos {
 				// not allowed same utxo in 100 blks
 				return false, fmt.Errorf("Re-use UTXO for collateral within 100 miner blocks"), nil
@@ -247,7 +239,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	}
 
 	// Perform preliminary sanity checks on the block.
-	if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet || b.chainParams.Net == common.RegNet {
+	if b.chainParams.Net == uint32(common.TestNet) || b.chainParams.Net == uint32(common.SimNet) || b.chainParams.Net == uint32(common.RegNet) {
 		flags |= blockchain.BFEasyBlocks
 	}
 
@@ -287,7 +279,7 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		log.Infof("best block %s does not exist", block.MsgBlock().BestBlock.String())
 		return false, false, ruleError(ErrMissingBestBlock, "best block does not exist"), &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
-	if (b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version3) && bestblk.Data.GetNonce() >= 0 && bestblk.Height > 0 {
+	if bestblk.Data.GetNonce() >= 0 && bestblk.Height > 0 {
 		log.Infof("best block is not a signed block")
 		return false, false, ruleError(ErrMissingBestBlock, "best block is not a signed block"), &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
@@ -299,12 +291,8 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 		return false, false, fmt.Errorf("block and parent tx reference not in the same chain."), nil
 	}
 
-	if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
-		if r, err, hreq := b.checkV2(block, parent, flags); !r {
-			return false, false, err, hreq
-		}
-	} else if len(block.MsgBlock().ViolationReport) > 0 {
-		return false, false, fmt.Errorf("Unexpected blacklist"), nil
+	if r, err, hreq := b.checkV2(block, parent, flags); !r {
+		return false, false, err, hreq
 	}
 
 	// the rule is new ContractLimit must not less than prev ContractLimit
@@ -313,18 +301,16 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// ContractLimit if that is less than chain param, it could be 0
 	// implying the chain param value
 	lastBlk := parent.Data.(*blockchainNodeData).block
-	if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
-		contractlim := block.MsgBlock().ContractLimit
-		if contractlim == 0 {
-			contractlim = b.chainParams.ContractExecLimit
-		}
-		limita := b.blockChain.MaxContractExec(lastBlk.BestBlock, block.MsgBlock().BestBlock)
-		if contractlim < limita || contractlim < lastBlk.ContractLimit*95/100 {
-			return false, false, fmt.Errorf("ContractLimit is too low"), nil
-		}
-		if contractlim > 2*limita && contractlim > lastBlk.ContractLimit && contractlim > b.chainParams.ContractExecLimit {
-			return false, false, fmt.Errorf("ContractLimit is too big"), nil
-		}
+	contractlim := block.MsgBlock().ContractLimit
+	if contractlim == 0 {
+		contractlim = b.chainParams.ContractExecLimit
+	}
+	limita := b.blockChain.MaxContractExec(lastBlk.BestBlock, block.MsgBlock().BestBlock)
+	if contractlim < limita || contractlim < lastBlk.ContractLimit*95/100 {
+		return false, false, fmt.Errorf("ContractLimit is too low"), nil
+	}
+	if contractlim > 2*limita && contractlim > lastBlk.ContractLimit && contractlim > b.chainParams.ContractExecLimit {
+		return false, false, fmt.Errorf("ContractLimit is too big"), nil
 	}
 
 	// The block has passed all context independent checks and appears sane

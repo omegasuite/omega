@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/omegasuite/gct/btcd/wire"
+	"btcd/wire"
 )
 
 var (

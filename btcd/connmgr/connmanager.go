@@ -6,9 +6,9 @@
 package connmgr
 
 import (
+	"btcd/wire"
 	"errors"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/wire"
 	"net"
 	"sync"
 	"sync/atomic"

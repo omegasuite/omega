@@ -47,6 +47,11 @@ func NewGenMultiSigAddrCmd(addresses []string, req int) *GenMultiSigAddr {
 	}
 }
 
+// GetXChTxFeeCmd defines the GetXChTxFee JSON-RPC command.
+type GetXChTxFeeCmd struct {
+	Target uint64 // target chain ID
+}
+
 // SetTipCmd defines the SetTip JSON-RPC command.
 type SetTipCmd struct {
 	TxTip    string

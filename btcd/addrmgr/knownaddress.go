@@ -7,8 +7,8 @@ package addrmgr
 import (
 	"time"
 
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/wire"
+	"btcd/wire/common"
 )
 
 // KnownAddress tracks information about a known network address that is used
@@ -22,7 +22,6 @@ type KnownAddress struct {
 	tried       bool
 	refs        int // reference count of new buckets
 }
-
 
 // Services returns the services supported by the peer with the known address.
 func (ka *KnownAddress) Services() common.ServiceFlag {

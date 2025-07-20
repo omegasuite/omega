@@ -9,8 +9,8 @@
 package consensus
 
 import (
+	"btcd/wire"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/wire"
 	"net/http"
 )
 

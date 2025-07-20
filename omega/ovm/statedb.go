@@ -9,15 +9,15 @@
 package ovm
 
 import (
+	"btcd/database"
+	"btcd/wire"
+	"btcd/wire/common"
 	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/omega"
+	"omega"
 )
 
 // EVM is the Ethereum Virtual Machine base object and provides

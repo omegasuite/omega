@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 
+	"btcd/chaincfg"
+	"btcd/txscript/txsparser"
+	"btcutil"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/txscript/txsparser"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/ovm"
+	"omega/ovm"
 )
 
 const (

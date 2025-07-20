@@ -10,10 +10,10 @@ import (
 	"fmt"
 	"math"
 
+	"btcd/wire"
+	"btcutil/gcs"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/omega/ovm"
-	"github.com/omegasuite/btcutil/gcs"
+	"omega/ovm"
 )
 
 const (
@@ -283,7 +283,7 @@ func WithRandomKey() *GCSBuilder {
 }
 
 func isContract(netid byte) bool {
-	return netid & 0x88 == 0x88
+	return netid&0x88 == 0x88
 }
 
 // BuildBasicFilter builds a basic GCS filter from a block. A basic GCS filter

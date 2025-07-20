@@ -9,22 +9,22 @@
 package minerchain
 
 import (
+	"btcd/wire/common"
 	"container/list"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/wire/common"
 	"math/big"
 	"os"
 	"sort"
 	"sync"
 	"time"
 
+	"btcd/blockchain"
+	"btcd/blockchain/bccompress"
+	"btcd/blockchain/chainutil"
+	"btcd/chaincfg"
+	"btcd/database"
+	"btcd/wire"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/blockchain/bccompress"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
 	//	"github.com/omegasuite/btcd/wire/common"
 )
 

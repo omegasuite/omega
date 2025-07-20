@@ -6,24 +6,25 @@
 package blockchain
 
 import (
+	"btcd/blockchain/chainutil"
+	"btcd/chaincfg"
+	"btcd/wire/common"
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/omega/chainmap"
 	"math/big"
+	"omega/chainmap"
 	//	"sort"
 	"time"
 
+	"btcd/blockchain/bccompress"
+	"btcd/database"
+	"btcd/wire"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain/bccompress"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/ovm"
-	"github.com/omegasuite/gct/omega/token"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/ovm"
+	"omega/token"
+	"omega/viewpoint"
 )
 
 const (
@@ -1067,11 +1068,7 @@ func (b *BlockChain) initChainState() error {
 			var hash chainhash.Hash
 			copy(hash[:], serializedData[0:chainhash.HashSize])
 
-			h, _ := DbFetchHeaderByHash(dbTx, &hash)
-			if h.Version < wire.Version2 {
-				indexesBucket := dbTx.Metadata().Bucket([]byte("idxtips"))
-				return indexesBucket.Put(addrUseIndexKey, serializedData)
-			}
+			DbFetchHeaderByHash(dbTx, &hash)
 
 			return nil
 		})
@@ -1197,8 +1194,8 @@ func (b *BlockChain) initChainState() error {
 						}
 						if parentheight < 0 {
 							continue
-							//							return AssertError(fmt.Sprintf("initChainState: Could "+
-							//								"not find parent for block %s", header.BlockHash()))
+							//	return AssertError(fmt.Sprintf("initChainState: Could "+
+							//	"not find parent for block %s", header.BlockHash()))
 						}
 					}
 				} else {
@@ -1906,7 +1903,7 @@ func (b *BlockChain) validCrossChainScript(script []byte) bool {
 	if len(script) < 22 {
 		return false
 	}
-	if script[21] == ovm.OP_PAY2PKH || script[21] != ovm.OP_PAY2SCRIPTH || script[21] != ovm.OP_PAYMULTISIG {
+	if script[21] == ovm.OP_PAY2PKH || script[21] == ovm.OP_PAY2SCRIPTH || script[21] == ovm.OP_PAYMULTISIG || script[21] == ovm.OP_PAYMINER {
 		if script[0] != b.ChainParams.PubKeyHashAddrID && script[0] != b.ChainParams.ScriptHashAddrID && script[0] != b.ChainParams.MultiSigAddrID {
 			return false
 		}

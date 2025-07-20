@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"btcd/blockchain"
+	"btcd/wire"
+	"btcd/wire/common"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"github.com/omegasuite/btclog"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 const (

@@ -6,16 +6,16 @@
 package txscript
 
 import (
+	"btcd/chaincfg"
+	"btcd/txscript/txsparser"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"bytes"
 	"errors"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/txscript/txsparser"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/ovm"
+	"omega/ovm"
 )
 
 // RawTxInWitnessSignature returns the serialized ECDA signature for the input

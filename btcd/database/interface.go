@@ -8,9 +8,9 @@
 package database
 
 import (
+	"btcd/wire"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
 )
 
 // Cursor represents a cursor over key/value pairs and nested buckets of a

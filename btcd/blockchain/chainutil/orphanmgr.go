@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire"
+	"btcd/wire"
 )
 
 const (

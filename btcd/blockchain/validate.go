@@ -6,29 +6,29 @@
 package blockchain
 
 import (
+	"btcd/blockchain/chainutil"
+	"btcd/database"
+	"btcd/wire/common"
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/omega/chainmap"
 	"math"
 	"math/big"
+	"omega/chainmap"
 	"time"
 
+	"btcd/chaincfg"
+	"btcd/wire"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/ovm"
-	"github.com/omegasuite/gct/omega/token"
+	"omega/ovm"
+	"omega/token"
 	//	"sort"
-	"github.com/omegasuite/gct/omega/validate"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/validate"
+	"omega/viewpoint"
 )
 
 const (
@@ -37,9 +37,9 @@ const (
 	// hours.
 	MaxTimeOffsetSeconds = 2 * 60 * 60
 
-	// baseSubsidy is the starting subsidy amount for mined blocks.  This
+	// BaseSubsidy is the starting subsidy amount for mined blocks.  This
 	// value is halved every SubsidyHalvingInterval blocks.
-	baseSubsidy = 6 * btcutil.HaoPerBitcoin
+	BaseSubsidy = 5 * btcutil.HaoPerBitcoin
 )
 
 var (
@@ -198,17 +198,17 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 // has the expected value.
 //
 // The subsidy is halved every SubsidyReductionInterval blocks.  Mathematically
-// this is: baseSubsidy / 2^(height/SubsidyReductionInterval)
+// this is: BaseSubsidy / 2^(height/SubsidyReductionInterval)
 //
 // At the target block generation rate for the main network, this is
 // approximately every 4 years.
 func CalcBlockSubsidy(height int32, chainParams *chaincfg.Params, prevPows uint) int64 {
 	if chainParams.SubsidyReductionInterval == 0 {
-		return baseSubsidy
+		return BaseSubsidy
 	}
 
-	// Equivalent to: baseSubsidy / 2^(height/subsidyHalvingInterval)
-	return baseSubsidy >> (prevPows + uint(height/chainParams.SubsidyReductionInterval))
+	// Equivalent to: BaseSubsidy / 2^(height/subsidyHalvingInterval)
+	return BaseSubsidy >> (prevPows + uint(height/chainParams.SubsidyReductionInterval))
 }
 
 // CheckTransactionSanity performs some preliminary checks on a transaction to
@@ -271,7 +271,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 				"value of %v", hao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if (txOut.TokenType == 0 || txOut.TokenType == 0x10) && hao > btcutil.MaxHao {
+		if (txOut.TokenType == common.FeeCoinTyp || txOut.TokenType == common.BTCCoinTyp) && hao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v", hao,
 				btcutil.MaxHao)
@@ -291,7 +291,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 			str := fmt.Sprintf("transaction output is negative")
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if (txOut.TokenType == 0 || txOut.TokenType == 0x10) && totals[txOut.TokenType] > btcutil.MaxHao {
+		if (txOut.TokenType == common.FeeCoinTyp || txOut.TokenType == common.BTCCoinTyp) && totals[txOut.TokenType] > btcutil.MaxHao {
 			str := fmt.Sprintf("total value of all transaction "+
 				"outputs is %v which is higher than max "+
 				"allowed value of %v", totals[txOut.TokenType],
@@ -441,25 +441,8 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			// The block hash must be less than the claimed target.
 			hash := header.BlockHash()
 			hashNum := HashToBig(&hash)
-			/*if block.Height() < 383300 {
-				target = target.Mul(target, big.NewInt(wire.DifficultyRatio))
-			} else */if block.MsgBlock().Header.Version < chaincfg.Version2 {
-				hashNum = hashNum.Mul(hashNum, big.NewInt(wire.DifficultyRatio))
-			} else if block.MsgBlock().Header.Version >= wire.Version2 {
-				/*
-					s, _ := b.Miners.BlockByHeight(int32(best.LastRotation))
-					blk := b.NodeByHash(&s.MsgBlock().BestBlock)
 
-					for blk != nil && blk.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
-						blk = blk.Parent
-					}
-					pows := int32(best.LastRotation) + (blk.Data.GetNonce() + wire.MINER_RORATE_FREQ) - wire.DESIRABLE_MINER_CANDIDATES
-					if pows < 0 {
-						pows = 0
-					}
-				*/
-				target = target.Mul(target, big.NewInt(40)) // TBD: pow algo
-			}
+			target = target.Mul(target, big.NewInt(40)) // TBD: pow algo
 
 			if hashNum.Cmp(target) > 0 {
 				str := fmt.Sprintf("block hash of %064x is higher than expected max of %064x", hashNum, target)
@@ -525,7 +508,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 		var imin = false
 		var meme btcutil.Address
 
-		var mbs [3]*wire.MinerBlock
+		var mbs [wire.CommitteeSize]*wire.MinerBlock
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
 			mb, _ := b.Miners.BlockByHeight(int32(i))
@@ -542,8 +525,8 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 				if txo.IsSeparator() {
 					break
 				}
-				if txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.OmegaCoinTyp {
-					return fmt.Errorf("Coinbase output tokentype is not 0."), false
+				if txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.BTCCoinTyp {
+					return fmt.Errorf("Coinbase output tokentype %d is not correct.", txo.TokenType), false
 				}
 				if _, ok := awd[txo.TokenType]; !ok {
 					_, awd[txo.TokenType] = txo.Value.Value()
@@ -597,6 +580,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 				}
 			}
 		}
+
 		if !b.IsSVP && len(awardto) != 0 {
 			return nil, true
 		}
@@ -639,7 +623,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 // target difficulty as claimed.
 func (b *BlockChain) CheckProofOfWork(block *btcutil.Block, powLimit *big.Int) error {
 	behaviorFlags := BFNone
-	if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet || b.ChainParams.Net == common.RegNet {
+	if b.ChainParams.Net == uint32(common.TestNet) || b.ChainParams.Net == uint32(common.SimNet) || b.ChainParams.Net == uint32(common.RegNet) {
 		behaviorFlags |= BFEasyBlocks
 	}
 	err, _ := b.checkProofOfWork(block, b.BestChain.Tip(), powLimit, behaviorFlags)
@@ -783,15 +767,15 @@ func (b *BlockChain) checkBlockSanity(block *btcutil.Block, powLimit *big.Int, t
 		} else if tx.MsgTx().Version&wire.TxTypeMask == wire.ForfeitTxVersion {
 			minrtx++
 		}
-		if (header.Version&0x7FFF0000) > wire.Version5 && len(tx.MsgTx().TxIn) > 1000 {
+		if len(tx.MsgTx().TxIn) > 1000 {
 			str := fmt.Sprintf("Too many inputs in a transactions %d", len(tx.MsgTx().TxIn))
 			return ruleError(ErrMultipleCoinbases, str)
 		}
-		if (header.Version&0x7FFF0000) > wire.Version5 && len(tx.MsgTx().TxOut) > 1000 {
+		if len(tx.MsgTx().TxOut) > 1000 {
 			str := fmt.Sprintf("Too many outputs in a transactions %d", len(tx.MsgTx().TxOut))
 			return ruleError(ErrMultipleCoinbases, str)
 		}
-		if (header.Version&0x7FFF0000) > wire.Version5 && len(tx.MsgTx().TxDef) > 1000 {
+		if len(tx.MsgTx().TxDef) > 1000 {
 			str := fmt.Sprintf("Too many definitions in a transactions %d", len(tx.MsgTx().TxDef))
 			return ruleError(ErrMultipleCoinbases, str)
 		}
@@ -972,7 +956,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 		// timestamps for all lock-time based checks.
 		blockTime := header.Timestamp
 
-		if header.Version >= wire.Version4 && blockTime.Unix() < prevNode.Data.TimeStamp() {
+		if blockTime.Unix() < prevNode.Data.TimeStamp() {
 			str := fmt.Sprintf("block time is older than the previous block's: %s", header.BlockHash().String())
 			return ruleError(ErrBlockTimeOutOfOrder, str)
 		}
@@ -1100,7 +1084,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 				"value of %v", btcutil.Amount(originTxHao))
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if (utxo.TokenType == 0 || utxo.TokenType == 0x10) && originTxHao > btcutil.MaxHao {
+		if (utxo.TokenType == common.FeeCoinTyp || utxo.TokenType == common.BTCCoinTyp) && originTxHao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v",
 				btcutil.Amount(originTxHao),
@@ -1114,7 +1098,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 		lastHaoIn := totalIns[utxo.TokenType]
 		totalIns[utxo.TokenType] += originTxHao
 		if totalIns[utxo.TokenType] < lastHaoIn ||
-			(utxo.TokenType == common.OmegaCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) ||
+			(utxo.TokenType == common.BTCCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) ||
 			(utxo.TokenType == common.FeeCoinTyp && totalIns[common.FeeCoinTyp] > btcutil.MaxHao) {
 			str := fmt.Sprintf("total value of all transaction "+
 				"inputs is %v which is higher than max "+

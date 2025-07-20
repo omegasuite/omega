@@ -11,8 +11,8 @@ import (
 	"io"
 	"unicode/utf8"
 
+	"btcd/wire/common"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 // MessageHeaderSize is the number of bytes in a bitcoin message header.
@@ -267,10 +267,10 @@ func makeEmptyMessage(command string) (Message, error) {
 
 // messageHeader defines the header structure for all bitcoin protocol messages.
 type messageHeader struct {
-	magic    common.OmegaNet // 4 bytes
-	command  string          // 12 bytes
-	length   uint32          // 4 bytes
-	checksum [4]byte         // 4 bytes
+	magic    uint32  // 4 bytes
+	command  string  // 12 bytes
+	length   uint32  // 4 bytes
+	checksum [4]byte // 4 bytes
 }
 
 // readMessageHeader reads a bitcoin message header from r.
@@ -340,7 +340,7 @@ func discardInput(r io.Reader, n uint32) {
 // to specify the message encoding format to be used when serializing wire
 // messages.
 func WriteMessageWithEncodingN(w io.Writer, msg Message, pver uint32,
-	btcnet common.OmegaNet, encoding MessageEncoding) (int, error) {
+	btcnet uint32, encoding MessageEncoding) (int, error) {
 
 	totalBytes := 0
 
@@ -412,7 +412,7 @@ func WriteMessageWithEncodingN(w io.Writer, msg Message, pver uint32,
 // comprise the message.  This function is the same as ReadMessageN except it
 // allows the caller to specify which message encoding is to to consult when
 // decoding wire messages.
-func ReadMessageWithEncodingN(r io.Reader, pver uint32, btcnet common.OmegaNet,
+func ReadMessageWithEncodingN(r io.Reader, pver uint32, btcnet uint32,
 	enc MessageEncoding) (int, Message, []byte, error) {
 
 	totalBytes := 0
@@ -499,7 +499,7 @@ func ReadMessageWithEncodingN(r io.Reader, pver uint32, btcnet common.OmegaNet,
 // bytes read in addition to the parsed Message and raw bytes which comprise the
 // message.  This function is the same as ReadMessage except it also returns the
 // number of bytes read.
-func ReadMessageN(r io.Reader, pver uint32, btcnet common.OmegaNet) (int, Message, []byte, error) {
+func ReadMessageN(r io.Reader, pver uint32, btcnet uint32) (int, Message, []byte, error) {
 	return ReadMessageWithEncodingN(r, pver, btcnet, BaseEncoding)
 }
 
@@ -509,7 +509,7 @@ func ReadMessageN(r io.Reader, pver uint32, btcnet common.OmegaNet) (int, Messag
 // from ReadMessageN in that it doesn't return the number of bytes read.  This
 // function is mainly provided for backwards compatibility with the original
 // API, but it's also useful for callers that don't care about byte counts.
-func ReadMessage(r io.Reader, pver uint32, btcnet common.OmegaNet) (Message, []byte, error) {
+func ReadMessage(r io.Reader, pver uint32, btcnet uint32) (Message, []byte, error) {
 	_, msg, buf, err := ReadMessageN(r, pver, btcnet)
 	return msg, buf, err
 }

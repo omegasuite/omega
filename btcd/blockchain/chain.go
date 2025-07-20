@@ -7,28 +7,28 @@
 package blockchain
 
 import (
+	"btcd/blockchain/chainutil"
+	"btcd/wire/common"
 	"bytes"
 	"container/list"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/omega/chainmap"
-	"github.com/omegasuite/gct/omega/ovm"
-	"github.com/omegasuite/gct/omega/token"
+	"omega/chainmap"
+	"omega/ovm"
+	"omega/token"
 	"os"
 	"sync"
 	"time"
 
+	"btcd/blockchain/bccompress"
+	"btcd/chaincfg"
+	"btcd/database"
+	"btcd/wire"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain/bccompress"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/viewpoint"
 )
 
 const (
@@ -1393,7 +1393,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		var mkorphan bool
 		if check && err == nil {
 			behaviorFlags := BFNone
-			if b.ChainParams.Net == common.TestNet || b.ChainParams.Net == common.SimNet || b.ChainParams.Net == common.RegNet {
+			if b.ChainParams.Net == uint32(common.TestNet) || b.ChainParams.Net == uint32(common.SimNet) || b.ChainParams.Net == uint32(common.RegNet) {
 				behaviorFlags |= BFEasyBlocks
 			}
 			err, mkorphan = b.checkProofOfWork(block, newBest, b.ChainParams.PowLimit, behaviorFlags)
@@ -1623,7 +1623,7 @@ func (b *BlockChain) HasUTXO(u *wire.OutPoint) bool {
 
 // checkBlockSanity check whether the miner has provided sufficient collateral
 func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest *chainhash.Hash, flags BehaviorFlags) (uint32, error) {
-	if b.IsSVP || block.MsgBlock().Utxos == nil || block.MsgBlock().Version&0x7FFF0000 < chaincfg.Version2 {
+	if b.IsSVP || block.MsgBlock().Utxos == nil {
 		return 0, nil
 	}
 
@@ -1695,7 +1695,7 @@ func (b *BlockChain) CheckCollateral(block *wire.MinerBlock, latest *chainhash.H
 		return 0, fmt.Errorf("Insufficient Collateral.")
 	}
 
-	if !b.IsSVP && block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version3 {
+	if !b.IsSVP {
 		pks := e.PkScript()
 		if bytes.Compare(pks[1:21], block.MsgBlock().Miner[:]) != 0 {
 			return 0, fmt.Errorf("Collateral belongs to someone else.")
@@ -1838,7 +1838,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 	}
 }
 
-func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
+func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32) []*btcutil.Tx {
 	r := make([]*btcutil.Tx, 0)
 	b.db.Update(func(dbtx database.Tx) error {
 		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
@@ -1855,7 +1855,7 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32) []*btcutil.Tx {
 			if err != nil || xtx.Finalized == 0 {
 				continue
 			}
-			if xtx.Finalized+int32(time.Now().Unix()) < 0 {
+			if xtx.Finalized+blocktime < 0 {
 				continue
 			}
 
@@ -1957,7 +1957,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		if cnl == 0 {
 			cnl = b.ChainParams.ContractExecLimit
 		}
-		if block.MsgBlock().Header.ContractExec > cnl && b.ChainParams.Net == common.MainNet {
+		if block.MsgBlock().Header.ContractExec > cnl && b.ChainParams.Net == uint32(common.MainNet) {
 			// contract execution must not exceed block limit
 			str := fmt.Sprintf("Contract execution steps exceeds block limit in %v", *block.Hash())
 			return false, ruleError(ErrExcessContractExec, str)

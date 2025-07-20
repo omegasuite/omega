@@ -10,10 +10,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/database"
-	_ "github.com/omegasuite/gct/btcd/database/ffldb"
-	"github.com/omegasuite/gct/btcd/wire"
+	"btcd/chaincfg"
+	"btcd/database"
+	_ "btcd/database/ffldb"
+	"btcd/wire"
 	"github.com/omegasuite/btcutil"
 )
 

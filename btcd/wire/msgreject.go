@@ -10,7 +10,7 @@ import (
 	"io"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/wire/common"
 )
 
 // MsgReject implements the Message interface and represents a bitcoin reject

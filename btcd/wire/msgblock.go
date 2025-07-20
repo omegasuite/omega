@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"io"
 
+	"btcd/wire/common"
 	"bytes"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 // defaultTransactionAlloc is the default size used for the backing array

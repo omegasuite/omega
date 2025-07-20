@@ -6,7 +6,7 @@
 package mempool
 
 import (
-	"github.com/omegasuite/gct/btcutil"
+	"btcutil"
 )
 
 const (
@@ -209,12 +209,14 @@ func checkTransactionStandard(tx *btcutil.Tx, height int32,
 	// almost as much to process as the sender fees, limit the maximum
 	// size of a transaction.  This also helps mitigate CPU exhaustion
 	// attacks.
-	txWeight := blockchain.GetTransactionWeight(tx)
-	if txWeight > maxStandardTxWeight {
-		str := fmt.Sprintf("weight of transaction %v is larger than max "+
-			"allowed weight of %v", txWeight, maxStandardTxWeight)
-		return txRuleError(common.RejectNonstandard, str)
-	}
+	/*
+		txWeight := blockchain.GetTransactionWeight(tx)
+		if txWeight > maxStandardTxWeight {
+			str := fmt.Sprintf("weight of transaction %v is larger than max "+
+				"allowed weight of %v", txWeight, maxStandardTxWeight)
+			return txRuleError(common.RejectNonstandard, str)
+		}
+	* /
 
 	return nil
 }

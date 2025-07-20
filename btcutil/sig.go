@@ -5,10 +5,10 @@
 package btcutil
 
 import (
+	"btcd/chaincfg"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/omega"
+	"omega"
 )
 
 func VerifySigScript(sign, hash []byte, chainParams *chaincfg.Params) (*AddressPubKeyHash, error) {

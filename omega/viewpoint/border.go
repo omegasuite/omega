@@ -9,12 +9,12 @@
 package viewpoint
 
 import (
+	"btcd/database"
+	"btcutil"
 	"encoding/binary"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/token"
+	"omega/token"
 )
 
 // var borderBoxSetBucketName = []byte("borderboxes")

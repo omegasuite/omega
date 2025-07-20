@@ -9,16 +9,16 @@
 package consensus
 
 import (
+	"btcd/blockchain"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"bytes"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/token"
 	"net"
+	"omega/token"
 	"sync"
 	"time"
 )
@@ -1390,7 +1390,7 @@ func (self *Syncer) validateMsg(finder [20]byte, m *chainhash.Hash, msg Message)
 			block:   nil,
 		}
 
-		//		self.pull(*m, c)
+		self.pull(*m, self.Members[finder])
 		return true
 	}
 

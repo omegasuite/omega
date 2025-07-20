@@ -9,10 +9,10 @@
 package ovm
 
 import (
+	"btcd/wire/common"
+	"btcutil"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega"
+	"omega"
 	"sync/atomic"
 
 	"bytes"
@@ -65,8 +65,8 @@ const (
 	OP_PAY2PKH     = 0x41
 	OP_PAY2SCRIPTH = 0x42
 	OP_PAYMULTISIG = 0x43
-	//	OP_PAY2MULTIPKH			= 0x43
-	//	OP_PAY2MULTISCRIPTH		= 0x44
+	OP_PAYMINER    = 0x44
+
 	OP_PAY2NONE = 0x45
 	OP_PAY2ANY  = 0x46
 

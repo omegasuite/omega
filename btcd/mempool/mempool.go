@@ -15,17 +15,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	"btcd/blockchain"
+	"btcd/blockchain/indexers"
+	"btcd/btcjson"
+	"btcd/chaincfg"
+	"btcd/mining"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/blockchain/indexers"
-	"github.com/omegasuite/gct/btcd/btcjson"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/mining"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/ovm"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/ovm"
+	"omega/viewpoint"
 )
 
 const (
@@ -526,8 +526,15 @@ func (mp *TxPool) removeTransaction(tx *btcutil.Tx, removeRedeemers bool) {
 // they would otherwise become orphans.
 //
 // This function is safe for concurrent access.
+
+var bannedTxs map[chainhash.Hash]struct{}
+
 func (mp *TxPool) RemoveTransaction(tx *btcutil.Tx, removeRedeemers bool) {
 	// Protect concurrent access.
+	if removeRedeemers {
+		bannedTxs[*tx.Hash()] = struct{}{}
+	}
+
 	mp.mtx.Lock()
 	mp.removeTransaction(tx, removeRedeemers)
 	mp.mtx.Unlock()
@@ -622,15 +629,6 @@ func (mp *TxPool) checkPoolDoubleSpend(tx *btcutil.Tx, fulllValidate bool) error
 			}
 		}
 	}
-	/*
-			if txR, exists := mp.outpoints[txIn.PreviousOutPoint]; exists {
-				str := fmt.Sprintf("output %v already spent by "+
-					"transaction %v in the memory pool",
-					txIn.PreviousOutPoint, txR.Hash())
-				return txRuleError(common.RejectDuplicate, str)
-			}
-		}
-	*/
 
 	return nil
 }
@@ -708,6 +706,11 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 
 	if txHash.IsEqual(&zerohash) {
 		str := fmt.Sprintf("transaction txid is zero")
+		return nil, nil, txRuleError(common.RejectDuplicate, str)
+	}
+
+	if _, ok := bannedTxs[*txHash]; ok {
+		str := fmt.Sprintf("transaction previouly processed and failed")
 		return nil, nil, txRuleError(common.RejectDuplicate, str)
 	}
 
@@ -876,7 +879,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 
 	txFee := int64(0)
 	if !contract {
-		txFee, _, err = blockchain.CheckTransactionFees(tx, chaincfg.Version2, 0, views, mp.cfg.ChainParams)
+		txFee, _, err = blockchain.CheckTransactionFees(tx, 0, views, mp.cfg.ChainParams)
 		if err != nil {
 			if cerr, ok := err.(blockchain.RuleError); ok {
 				return nil, nil, chainRuleError(cerr)
@@ -1372,6 +1375,8 @@ func (mp *TxPool) LastUpdated() time.Time {
 // New returns a new memory pool for validating and storing standalone
 // transactions until they are mined into a block.
 func New(cfg *Config) *TxPool {
+	bannedTxs = make(map[chainhash.Hash]struct{})
+
 	return &TxPool{
 		cfg:            *cfg,
 		pool:           make(map[chainhash.Hash]*TxDesc),

@@ -6,17 +6,17 @@
 package blockchain
 
 import (
+	"btcd/blockchain/chainutil"
+	"btcd/database"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"bytes"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/ovm"
-	"github.com/omegasuite/gct/omega/token"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/ovm"
+	"omega/token"
+	"omega/viewpoint"
 )
 
 type reportedblk struct {
@@ -126,7 +126,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 		ctx := &wire.MsgTx{}
 		ctx.Version = wire.ForfeitTxVersion | wire.TxNoLock | wire.TxNoDefine
 		cto := &wire.TxOut{}
-		cto.TokenType = common.OmegaCoinTyp
+		cto.TokenType = common.FeeCoinTyp
 
 		cto.Value = &token.NumToken{0}
 		cto.PkScript = make([]byte, 25)
@@ -166,7 +166,7 @@ func (g *BlockChain) CompTxs(prevNode *chainutil.BlockNode, views *viewpoint.Vie
 			if sum < bal {
 				leftover := &wire.TxOut{}
 				leftover.Value = &token.NumToken{bal - sum}
-				leftover.TokenType = common.OmegaCoinTyp
+				leftover.TokenType = common.FeeCoinTyp
 				leftover.PkScript = []byte{g.ChainParams.PubKeyHashAddrID, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ovm.OP_PAY2NONE}
 				ctx.AddTxOut(leftover)
 			}
@@ -383,7 +383,7 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 	// 2. if a victim does claim award in certain time, the award is considered abandoned and
 	// the fund will be divert to someone claim it. thus a claim step by victim is needed.
 	rpo := &wire.TxOut{}
-	rpo.TokenType = common.OmegaCoinTyp
+	rpo.TokenType = common.FeeCoinTyp
 	rpo.Value = &token.NumToken{forcontract}
 	rpo.PkScript = make([]byte, 21, 25)
 	copy(rpo.PkScript, g.ChainParams.Forfeit.Contract[:])
@@ -400,7 +400,7 @@ func (g *BlockChain) processviolator(blk *wire.MinerBlock, mrblks []wire.Minging
 			continue
 		}
 		rpo := &wire.TxOut{}
-		rpo.TokenType = common.OmegaCoinTyp
+		rpo.TokenType = common.FeeCoinTyp
 		rpo.Value = &token.NumToken{r125 * int64(s) / int64(totalblks)}
 		rpo.PkScript = make([]byte, 22)
 		rpo.PkScript[0] = g.ChainParams.PubKeyHashAddrID

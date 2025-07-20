@@ -5,10 +5,10 @@
 package wire
 
 import (
+	"btcd/wire/common"
 	"bytes"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 type MsgXrossL2 struct {
@@ -39,11 +39,11 @@ func (t *MsgXrossL2) DeSerialize(d []byte) (int, error) {
 }
 
 type XchainData struct {
-	ChainID   uint32
-	Hash      chainhash.Hash // block
-	Height    int32          // height
+	ChainID   uint32         // origin chain id
+	Hash      chainhash.Hash // origin block
+	Height    int32          // origin height
 	Txs       []*MsgXrossL2
-	Finalized int32 // whether the block is finalized
+	Finalized int32 // whether the origin block is finalized
 }
 
 func (t *XchainData) Serialize() []byte {

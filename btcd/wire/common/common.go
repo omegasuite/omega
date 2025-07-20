@@ -28,8 +28,8 @@ const (
 	// binaryFreeListMaxItems is the number of buffers to keep in the free
 	// list to use for binary serialization and deserialization.
 	BinaryFreeListMaxItems = 1024
-	FeeCoinTyp             = 0 // type of coin for tx fee
-	OmegaCoinTyp           = 0x10000000000
+	FeeCoinTyp             = 0             // type of coin for tx fee
+	BTCCoinTyp             = 0x10000000000 // should be 0x40020000000000, for testing purpose use nxus coin
 	NewChainConsensus      = 100
 )
 
@@ -919,27 +919,22 @@ func (f ServiceFlag) String() string {
 // better idea to simply disconnect clients that are misbehaving over TCP.
 const (
 	// MainNet represents the main Zentrophy network.
-	MainNet OmegaNet = 0x956ca476 //	0x956ca366
+	MainNet OmegaNet = 0x4743546d //	GCTm
 	// RegNet represents the regression test network.
-	RegNet OmegaNet = 0x6241467c // 0x6241456c
+	RegNet OmegaNet = 0x47435472 // GCTr
 	// TestNet represents the test network.
-	TestNet OmegaNet = 0x709c60fd // 0x709c5fed
+	TestNet OmegaNet = 0x47435474 // GCTt
 	// SimNet represents the simulation test network.
-	SimNet OmegaNet = 0xe10b71bd // 0xe10b70ad
-
-	//	SVPMainNet = 0x665872cc
-	//	SVPTestNet = 0x625678cd
+	SimNet OmegaNet = 0x47435473 // GCTs
 )
 
 // bnStrings is a map of omega networks back to their constant names for
 // pretty printing.
 var bnStrings = map[OmegaNet]string{
-	MainNet: "OmgMain",
-	RegNet:  "OmgReg",
-	TestNet: "OmgTest",
-	SimNet:  "OmgSim",
-	//	SVPMainNet: "SVPMain",
-	//	SVPTestNet: "SVPTest",
+	MainNet: "GctMain",
+	RegNet:  "GctReg",
+	TestNet: "GctTest",
+	SimNet:  "GctSim",
 }
 
 // String returns the OmegaNet in human-readable form.

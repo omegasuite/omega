@@ -6,26 +6,26 @@
 package mining
 
 import (
+	"btcd/blockchain/chainutil"
 	"bytes"
 	"container/heap"
 	"encoding/json"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/blockchain/chainutil"
-	"github.com/omegasuite/gct/omega/chainmap"
+	"omega/chainmap"
 
 	"math/rand"
 	"time"
 
+	"btcd/blockchain"
+	"btcd/chaincfg"
+	"btcd/wire"
+	"btcd/wire/common"
+	"btcutil"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/ovm"
-	"github.com/omegasuite/gct/omega/token"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/ovm"
+	"omega/token"
+	"omega/viewpoint"
 )
 
 const (
@@ -918,10 +918,12 @@ mempoolLoop:
 
 	paidstoragefees := make(map[[20]byte]int64)
 	blksz := wire.MaxBlockHeaderPayload
-	totalbtcfees := int64(0)
+	// totalbtcfees := int64(0)
 
 	// Choose which transactions make it into the block.
 	//	var skiprest = false // whether to skip rest contracts
+
+	minerDirect := make(map[uint64]int64) // direct payment to miners of this blockchain
 
 	for priorityQueue.Len() > 0 {
 		nt := time.Now()
@@ -974,7 +976,7 @@ mempoolLoop:
 				for _, txo := range tx.MsgTx().TxOut {
 					if txo.IsSeparator() || txo.PkScript[0] == g.chainParams.ContractAddrID {
 						qualified = true
-					} else if txo.TokenType == common.FeeCoinTyp || txo.TokenType == common.OmegaCoinTyp {
+					} else if txo.TokenType == common.FeeCoinTyp || txo.TokenType == common.BTCCoinTyp {
 						sum += txo.Token.Value.(*token.NumToken).Val
 					} else {
 						qualified = true
@@ -1136,7 +1138,7 @@ mempoolLoop:
 			continue
 		}
 
-		fees, btcfees, err := blockchain.CheckTransactionFees(tx, chaincfg.Version2, storage, views, g.chainParams)
+		fees, directPay, err := blockchain.CheckTransactionFees(tx, storage, views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
 			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
@@ -1362,10 +1364,6 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		return nil, err
 	}
 
-	if nextBlockVersion < chaincfg.Version2 {
-		coll = 0
-	}
-
 	bestblk := g.Chain.BestChain.Tip()
 
 	//	cbest := g.Chain.BestSnapshot()
@@ -1445,7 +1443,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		Instructions:    nil,
 	}
 
-	if nextBlockVersion >= chaincfg.Version5 && g.chainParams.AddChain != nil && g.chainParams.ChainID == chainmap.ROOT {
+	if g.chainParams.AddChain != nil && g.chainParams.ChainID == chainmap.ROOT {
 		exist := false
 		ac := g.chainParams.AddChain.(*chainmap.ChainDescriptor)
 		for _, c := range chainmap.ChainMap {

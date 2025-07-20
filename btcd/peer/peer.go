@@ -11,20 +11,20 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
-	"github.com/omegasuite/gct/omega/consensus"
 	"io"
 	"math/rand"
 	"net"
+	"omega/consensus"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"btcd/chaincfg"
+	"btcd/wire"
+	"btcd/wire/common"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
 	"github.com/omegasuite/go-socks/socks"
 )
 
@@ -294,6 +294,8 @@ type Config struct {
 	// TrickleInterval is the duration of the ticker which trickles down the
 	// inventory to a peer.
 	TrickleInterval time.Duration
+
+	IsSvp bool
 }
 
 // minUint32 is a helper function to return the minimum of two uint32s.
@@ -1173,7 +1175,7 @@ func (p *Peer) writeMessage(msg wire.Message, enc wire.MessageEncoding) error {
 // to send malformed messages without the peer being disconnected.
 func (p *Peer) isAllowedReadError(err error) bool {
 	// Only allow read errors in regression test mode.
-	if p.cfg.ChainParams.Net != common.RegNet {
+	if p.cfg.ChainParams.Net != uint32(common.RegNet) {
 		return false
 	}
 
@@ -1730,7 +1732,10 @@ out:
 			}
 
 		case consensus.Message:
-			if p.cfg.ChainParams.Net != common.MainNet {
+			//			if p.cfg.ChainParams.Net != uint32(common.MainNet) {
+			//				continue
+			//			}
+			if p.cfg.IsSvp {
 				continue
 			}
 			if consensus.VerifySig(msg) {
@@ -1771,11 +1776,17 @@ out:
 			}
 
 		case *wire.MsgGetChainMap:
+			if p.cfg.IsSvp {
+				continue
+			}
 			if p.cfg.Listeners.OnGetChainMap != nil {
 				p.cfg.Listeners.OnGetChainMap(p, msg)
 			}
 
 		case *wire.MsgChainMap:
+			if p.cfg.IsSvp {
+				continue
+			}
 			if p.cfg.Listeners.OnChainMap != nil {
 				p.cfg.Listeners.OnChainMap(p, msg)
 			}

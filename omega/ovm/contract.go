@@ -11,9 +11,9 @@ package ovm
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/omegasuite/gct/omega"
-	"github.com/omegasuite/gct/omega/token"
 	"math/big"
+	"omega"
+	"omega/token"
 )
 
 const (

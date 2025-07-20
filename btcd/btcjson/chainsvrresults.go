@@ -6,9 +6,8 @@
 package btcjson
 
 import (
+	"btcd/wire"
 	"encoding/json"
-	"github.com/btcsuite/btcd/btc2omg/btcd/treasury"
-	"github.com/omegasuite/gct/btcd/wire"
 )
 
 // GetBlockHeaderVerboseResult models the data from the getblockheader command when
@@ -318,13 +317,13 @@ type ScriptPubKeyResult struct {
 }
 
 type GetCrossChainDBResult struct {
-	IncomingPool  []*wire.XchainData  `json:"incomingpool"`
-	Btc2L2Pool    []*wire.XchainData  `json:"btc2l2pool"`
-	L2BtcPool     []*wire.XchainData  `json:"l2btcpool"`
-	BridgeSigners []*treasury.Signers `json:"bridgesigners"`
-	XBTCAssets    []*treasury.Asset   `json:"xbtcassets"`
-	XCAssets      []*wire.XchainData  `json:"xcassets"`
-	RedeemDB      map[string]string   `json:"redeemdb"`
+	IncomingPool []*wire.XchainData `json:"incomingpool"`
+	Btc2L2Pool   []*wire.XchainData `json:"btc2l2pool"`
+	L2BtcPool    []*wire.XchainData `json:"l2btcpool"`
+	// BridgeSigners []*treasury.Signers `json:"bridgesigners"`
+	// XBTCAssets    []*treasury.Asset   `json:"xbtcassets"`
+	XCAssets []*wire.XchainData `json:"xcassets"`
+	RedeemDB map[string]string  `json:"redeemdb"`
 }
 
 // GetTxOutResult models the data from the gettxout command.
@@ -608,6 +607,12 @@ type MiningPolicy struct {
 	MaxExecSteps    int32 `json:"maxexecsteps"`    // max allowed contract exec steps
 	ContractExecFee int64 `json:"contractexecfee"` // Contract Exec Fee per K steps
 	MinContractFee  int64 `json:"mincontractfee"`  // minimal contract exec fee
+}
+
+// XChTxFee
+type XChTxFee struct { // cross chain tx fee description
+	Path []string // chain ids
+	Fees []int64  // BTCs
 }
 
 // MultiSigAddr

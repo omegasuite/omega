@@ -9,12 +9,12 @@
 package validate
 
 import (
+	"btcd/wire"
+	"btcutil"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/token"
-	"github.com/omegasuite/gct/omega/viewpoint"
+	"omega/token"
+	"omega/viewpoint"
 )
 
 type tokenElement struct {
@@ -478,17 +478,15 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 
 	msgtx := tx.MsgTx()
 
-	if ver >= wire.Version4 {
-		for _, txOut := range msgtx.TxOut {
-			if txOut.IsSeparator() || (txOut.TokenType&3) != 0 {
-				continue
-			}
-			if (txOut.TokenType&1) != 0 && txOut.Token.Value.(*token.HashToken).Hash.IsEqual(&zerohash) {
-				return false, fmt.Errorf("Hash token value is zero hash")
-			}
-			if (txOut.TokenType&2) != 0 && (txOut.Token.Rights == nil || txOut.Token.Rights.IsEqual(&zerohash)) {
-				return false, fmt.Errorf("Right is zero hash")
-			}
+	for _, txOut := range msgtx.TxOut {
+		if txOut.IsSeparator() || (txOut.TokenType&3) != 0 {
+			continue
+		}
+		if (txOut.TokenType&1) != 0 && txOut.Token.Value.(*token.HashToken).Hash.IsEqual(&zerohash) {
+			return false, fmt.Errorf("Hash token value is zero hash")
+		}
+		if (txOut.TokenType&2) != 0 && (txOut.Token.Rights == nil || txOut.Token.Rights.IsEqual(&zerohash)) {
+			return false, fmt.Errorf("Right is zero hash")
 		}
 	}
 

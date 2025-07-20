@@ -15,7 +15,7 @@ import (
 
 	"github.com/omegasuite/btcd/btcjson"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire"
+	"btcd/wire"
 	"github.com/omegasuite/btcutil"
 )
 

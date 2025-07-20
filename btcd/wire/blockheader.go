@@ -10,8 +10,8 @@ import (
 	"io"
 	"time"
 
+	"btcd/wire/common"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 const (
@@ -30,23 +30,14 @@ const (
 	SCALEFACTORCAP             = 48
 	DifficultyRatio            = 4 // ratio of difficulty for tx chain and miner chain
 
-	Version1  = 0x10000
-	Version2  = 0x20000
-	Version3  = 0x30000
-	Version4  = 0x40000
-	Version5  = 0x50000
-	Version6  = 0x60000
-	Version7  = 0x70000
-	Version8  = 0x80000
-	Version9  = 0x90000
-	Version10 = 0xA0000
+	Version1 = 0x10000
 )
 
 // current code version
 // version (in block) is a uint32, consists of 2 parts:
 // high 16 bits is a odd number increases with each code revision
 // low 16 bits is for version bits scheme to be voted on.
-var CodeVersion = uint32(Version6) // current version of code.
+var CodeVersion = uint32(Version1) // current version of code.
 
 // MaxBlockHeaderPayload is the maximum number of bytes a block header can be.
 // Version 4 bytes + Timestamp 4 bytes + Bits 4 bytes + Nonce 4 bytes +
@@ -437,52 +428,49 @@ func readMinerBlock(r io.Reader, pver uint32, bh *MingingRightBlock) error {
 		}
 	}
 
-	if bh.Version >= Version2 {
-		if d, err := common.ReadVarInt(r, 0); err != nil {
-			return err
-		} else {
-			bh.Collateral = uint32(d)
-		}
-		if d, err := common.ReadVarInt(r, 0); err != nil {
-			return err
-		} else {
-			bh.MeanTPH = uint32(d)
-		}
+	if d, err := common.ReadVarInt(r, 0); err != nil {
+		return err
+	} else {
+		bh.Collateral = uint32(d)
+	}
+	if d, err := common.ReadVarInt(r, 0); err != nil {
+		return err
+	} else {
+		bh.MeanTPH = uint32(d)
+	}
 
-		d, err = common.ReadVarInt(r, 0)
+	d, err = common.ReadVarInt(r, 0)
+	if err != nil {
+		return err
+	}
+
+	bh.TphReports = make([]uint32, d)
+
+	for i := 0; i < int(d); i++ {
+		t, err := common.ReadVarInt(r, 0)
 		if err != nil {
 			return err
 		}
-
-		bh.TphReports = make([]uint32, d)
-
-		for i := 0; i < int(d); i++ {
-			t, err := common.ReadVarInt(r, 0)
-			if err != nil {
-				return err
-			}
-			bh.TphReports[i] = uint32(t)
-		}
-		if err := common.ReadElements(r, &bh.ContractLimit); err != nil {
-			bh.ContractLimit = 0
-			bh.Instructions = make([]*Instruction, 0)
-			return nil
-		}
+		bh.TphReports[i] = uint32(t)
 	}
-	if bh.Version >= Version5 {
+	if err := common.ReadElements(r, &bh.ContractLimit); err != nil {
+		bh.ContractLimit = 0
 		bh.Instructions = make([]*Instruction, 0)
-		d, err = common.ReadVarInt(r, 0)
-		if err != nil || d == 0 {
-			return nil
-		}
+		return nil
+	}
 
-		for i := uint64(0); i < d; i++ {
-			p := &Instruction{}
-			if err := p.deserializer(r); err != nil {
-				return err
-			}
-			bh.Instructions = append(bh.Instructions, p)
+	bh.Instructions = make([]*Instruction, 0)
+	d, err = common.ReadVarInt(r, 0)
+	if err != nil || d == 0 {
+		return nil
+	}
+
+	for i := uint64(0); i < d; i++ {
+		p := &Instruction{}
+		if err := p.deserializer(r); err != nil {
+			return err
 		}
+		bh.Instructions = append(bh.Instructions, p)
 	}
 
 	return nil
@@ -529,43 +517,35 @@ func writeMinerBlock(w io.Writer, pver uint32, bh *MingingRightBlock) error {
 		}
 	}
 
-	if bh.Version >= Version2 { // TphReports activated
-		if err := common.WriteVarInt(w, 0, uint64(bh.Collateral)); err != nil {
-			return err
-		}
-		if err := common.WriteVarInt(w, 0, uint64(bh.MeanTPH)); err != nil {
-			return err
-		}
+	if err := common.WriteVarInt(w, 0, uint64(bh.Collateral)); err != nil {
+		return err
+	}
+	if err := common.WriteVarInt(w, 0, uint64(bh.MeanTPH)); err != nil {
+		return err
+	}
 
-		// for compatibility with old structure, we should not write a '0' when report
-		// length is 0 for it would change block hash
-		if err := common.WriteVarInt(w, 0, uint64(len(bh.TphReports))); err != nil {
-			return err
-		}
-		for _, p := range bh.TphReports {
-			if err := common.WriteVarInt(w, 0, uint64(p)); err != nil {
-				return err
-			}
-		}
-		if err := common.WriteElement(w, bh.ContractLimit); err != nil {
+	// for compatibility with old structure, we should not write a '0' when report
+	// length is 0 for it would change block hash
+	if err := common.WriteVarInt(w, 0, uint64(len(bh.TphReports))); err != nil {
+		return err
+	}
+	for _, p := range bh.TphReports {
+		if err := common.WriteVarInt(w, 0, uint64(p)); err != nil {
 			return err
 		}
 	}
-
-	if len(bh.Instructions) == 0 && bh.Version < Version6 {
-		return nil
+	if err := common.WriteElement(w, bh.ContractLimit); err != nil {
+		return err
 	}
 
-	if bh.Version >= Version5 {
-		err := common.WriteVarInt(w, 0, uint64(len(bh.Instructions)))
-		if err != nil {
-			return err
-		}
+	err := common.WriteVarInt(w, 0, uint64(len(bh.Instructions)))
+	if err != nil {
+		return err
+	}
 
-		for _, inst := range bh.Instructions {
-			if err := inst.serializer(w); err != nil {
-				return err
-			}
+	for _, inst := range bh.Instructions {
+		if err := inst.serializer(w); err != nil {
+			return err
 		}
 	}
 

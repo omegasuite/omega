@@ -6,13 +6,13 @@
 package blockchain
 
 import (
+	"btcd/wire"
 	"bytes"
 	"fmt"
-	"github.com/omegasuite/gct/btcd/wire"
 	"math"
 
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcutil"
 )
 
 const (
@@ -100,11 +100,7 @@ func BuildMerkleTreeStore(transactions []*btcutil.Tx, witness bool, version uint
 		switch {
 		case i == 0:
 			var txHash chainhash.Hash
-			if version >= wire.Version2 {
-				txHash = tx.MsgTx().TxFullHash()
-			} else {
-				txHash = tx.MsgTx().TxHash()
-			}
+			txHash = tx.MsgTx().TxFullHash()
 			merkles[i] = &txHash // &zeroHash
 		default:
 			if witness {

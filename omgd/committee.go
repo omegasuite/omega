@@ -5,18 +5,18 @@
 package main
 
 import (
+	"btcd/blockchain"
+	"btcd/connmgr"
 	"bytes"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/connmgr"
-	"github.com/omegasuite/gct/omega/minerchain"
 	"math/rand"
 	"net"
+	"omega/minerchain"
 	"time"
 
+	"btcd/wire"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
 )
 
 const advanceCommitteeConnection = wire.CommitteeSize // # of miner blocks we should prepare for connection
@@ -447,28 +447,6 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 			go s.makeConnection(mb.MsgBlock().Connection, p, h)
 		}
 	}
-	/*
-		if !ok {
-			mb, _ := s.chain.Miners.BlockByHeight(h)
-			if p != mb.MsgBlock().Miner {
-				btcdLog.Infof("CommitteeMsgMG passed inconsistent peer & height")
-				return
-			}
-			btcdLog.Infof("CommitteeMsgMG makeConnection to %s %d", mb.MsgBlock().Connection, mb.Height())
-
-			s.makeConnection(mb.MsgBlock().Connection, p, mb.Height())
-
-			s.peerState.cmutex.Lock()
-			sp, ok := s.peerState.committee[p]
-			s.peerState.cmutex.Unlock()
-
-			s.peerState.qmutex.Lock()
-			if ok && !sp.closed && len(sp.queue) < 50 {
-				sp.queue <- msgnb{m, nil}
-			}
-			s.peerState.qmutex.Unlock()
-		}
-	*/
 }
 
 func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {

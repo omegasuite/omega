@@ -9,13 +9,13 @@
 package viewpoint
 
 import (
+	"btcd/blockchain/bccompress"
+	"btcd/database"
+	"btcutil"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain/bccompress"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/token"
 	"math/big"
+	"omega/token"
 )
 
 // VtxEntry houses details about an individual vertex definition in a definition

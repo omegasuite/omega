@@ -25,8 +25,8 @@ import (
 	"time"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/wire"
+	"btcd/wire/common"
 )
 
 // AddrManager provides a concurrency safe address manager for caching potential

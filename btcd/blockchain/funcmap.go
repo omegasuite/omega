@@ -6,8 +6,8 @@
 package blockchain
 
 import (
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/database"
+	"btcd/wire/common"
 	"sort"
 	"sync"
 )

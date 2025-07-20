@@ -5,8 +5,8 @@
 package bloom
 
 import (
+	"btcd/blockchain"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
 )
 
 // merkleBlock is used to house intermediate information needed to generate a

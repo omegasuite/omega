@@ -6,11 +6,11 @@
 package cpuminer
 
 import (
+	"btcd/wire/common"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
-	"github.com/omegasuite/gct/btcd/wire/common"
-	"github.com/omegasuite/gct/omega/consensus"
 	"math/big"
+	"omega/consensus"
 
 	"bytes"
 	"math/rand"
@@ -19,13 +19,13 @@ import (
 	"sync"
 	"time"
 
+	"btcd/blockchain"
+	"btcd/chaincfg"
+	"btcd/mining"
+	"btcd/wire"
+	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/blockchain"
-	"github.com/omegasuite/gct/btcd/chaincfg"
-	"github.com/omegasuite/gct/btcd/mining"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/token"
+	"omega/token"
 )
 
 const (
@@ -277,22 +277,20 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 
 	targetDifficulty := blockchain.CompactToBig(template.Bits)
 
-	if msgBlock.Header.Version >= wire.Version2 {
-		/*
-			st := m.g.Chain.BestSnapshot()
-			s, _ := m.g.Chain.Miners.BlockByHeight(int32(st.LastRotation))
-			blk := m.g.Chain.NodeByHash(&s.MsgBlock().BestBlock)
+	/*
+		st := m.g.Chain.BestSnapshot()
+		s, _ := m.g.Chain.Miners.BlockByHeight(int32(st.LastRotation))
+		blk := m.g.Chain.NodeByHash(&s.MsgBlock().BestBlock)
 
-			for blk != nil && blk.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
-				blk = blk.Parent
-			}
-			pows := int32(st.LastRotation) + (blk.Data.GetNonce() + wire.MINER_RORATE_FREQ) - wire.DESIRABLE_MINER_CANDIDATES
-			if pows < 0 {
-				pows = 0
-			}
-		*/
-		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(40))
-	}
+		for blk != nil && blk.Data.GetNonce() > -wire.MINER_RORATE_FREQ {
+			blk = blk.Parent
+		}
+		pows := int32(st.LastRotation) + (blk.Data.GetNonce() + wire.MINER_RORATE_FREQ) - wire.DESIRABLE_MINER_CANDIDATES
+		if pows < 0 {
+			pows = 0
+		}
+	*/
+	targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(40))
 
 	if targetDifficulty.Cmp(m.g.Chain.ChainParams.PowLimit) > 0 {
 		targetDifficulty = m.g.Chain.ChainParams.PowLimit
@@ -725,7 +723,7 @@ out:
 			// if block is too small, wait upto wire.TimeGap
 			nt := wire.TimeGap - (time.Now().Unix() - lastblkgen)
 
-			if m.g.Chain.ChainParams.Net == common.MainNet {
+			if m.g.Chain.ChainParams.Net == uint32(common.MainNet) {
 				wanted := m.cfg.BlockTemplateGenerator.Policy.MinBlockWeight
 				if sz < int(wanted)/2 && nt > 4 {
 					time.Sleep(time.Duration(nt) / 4 * time.Second)

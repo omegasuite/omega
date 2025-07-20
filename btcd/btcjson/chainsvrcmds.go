@@ -9,13 +9,13 @@
 package btcjson
 
 import (
+	"btcd/wire"
+	"btcutil"
 	"encoding/json"
 	"fmt"
 	"github.com/goinggo/mapstructure"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire"
-	"github.com/omegasuite/gct/btcutil"
-	"github.com/omegasuite/gct/omega/token"
+	"omega/token"
 )
 
 // AddNodeSubCmd defines the type used in the addnode JSON-RPC command for the
@@ -857,9 +857,11 @@ func NewGetTxOutCmd(txHash string, vout uint32, includeMempool *bool, IncludeLoc
 
 // ListUtxosCmd defines the ListUtxos JSON-RPC command.
 type ListUtxosCmd struct {
-	Begin  *int32
-	Run    *uint32
-	Minval *int64
+	Begin     *int32
+	Run       *uint32
+	Minval    *int64
+	Tokentype *uint64
+	Address   *string
 }
 
 // NewListUtxosCmd returns a new instance which can be used to issue a ListUtxos

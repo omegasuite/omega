@@ -6,7 +6,7 @@ package wire
 
 import (
 	"fmt"
-	"github.com/omegasuite/gct/btcd/wire/common"
+	"btcd/wire/common"
 	"io"
 )
 

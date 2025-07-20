@@ -5,13 +5,13 @@
 package blockchain
 
 import (
+	"btcd/database"
+	"btcd/wire"
 	"bytes"
 	"container/list"
 	"errors"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/database"
-	"github.com/omegasuite/gct/btcd/wire"
 )
 
 const (

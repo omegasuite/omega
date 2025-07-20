@@ -6,13 +6,13 @@
 package main
 
 import (
+	"btcd/blockchain"
 	"errors"
-	"github.com/omegasuite/gct/btcd/blockchain"
 	"sort"
 	"strings"
 	"sync"
 
-	"github.com/omegasuite/gct/btcd/btcjson"
+	"btcd/btcjson"
 )
 
 // helpDescsEnUS defines the English descriptions used for the help strings.

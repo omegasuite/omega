@@ -5,7 +5,7 @@
 package txsparser
 
 import (
-	"github.com/omegasuite/gct/omega/ovm"
+	"omega/ovm"
 )
 
 // ScriptFlags is a bitmask defining additional operations or tests that will be

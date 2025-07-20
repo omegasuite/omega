@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/omegasuite/gct/btcd/database/internal/treap"
+	"btcd/database/internal/treap"
 	"github.com/omegasuite/goleveldb/leveldb"
 	"github.com/omegasuite/goleveldb/leveldb/iterator"
 	"github.com/omegasuite/goleveldb/leveldb/util"

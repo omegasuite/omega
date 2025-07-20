@@ -8,8 +8,8 @@ package wire
 import (
 	"io"
 
+	"btcd/wire/common"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/gct/btcd/wire/common"
 )
 
 // MsgGetCFHeaders is a message similar to MsgGetHeaders, but for committed
