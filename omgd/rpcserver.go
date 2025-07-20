@@ -627,6 +627,25 @@ func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struc
 	return reply, nil
 }
 
+func handleGetXChTxFee(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetXChTxFeeCmd)
+	target := c.Target
+
+	path, fees := chainmap.ChainMap[s.cfg.ChainParams.ChainID].CtxFees(uint32(target))
+
+	pks := make([]string, len(path))
+	for i, s := range path {
+		pks[i] = hex.EncodeToString(s)
+	}
+
+	reply := &btcjson.XChTxFee{
+		Path: pks,  // pkscripts containing chain id
+		Fees: fees, // fees
+	}
+
+	return reply, nil
+}
+
 var debugchan chan []byte
 var pendattach bool
 
