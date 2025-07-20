@@ -4241,6 +4241,129 @@ func opLog(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	return nil
 }
 
+func opLedger(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
+	param := contract.GetBytes(*pc)
+
+	ln := len(param)
+
+	top := 0
+	num := int64(0)
+	var dest pointer
+
+	tokentype := uint64(0)
+	start := int32(0)
+	run := uint32(100)
+
+	var tl int
+	var err omega.Err
+
+	dataType := []byte{'Q', 'Q', 'D', 'D'}
+
+	for j := 0; j < ln; j++ {
+		switch param[j] {
+		case '0', '1', '2', '3', '4', '5',
+			'6', '7', '8', '9', 'a', 'b', 'c',
+			'd', 'e', 'f', 'x', 'i', 'g':
+			num, tl, err = stack.getNum(param[j:], dataType[top])
+			if err != nil {
+				return err
+			}
+			j += tl
+
+			switch top {
+			case 0:
+				dest = pointer(num)
+
+			case 1:
+				tokentype = uint64(num)
+
+			case 2:
+				start = int32(num)
+
+			case 3:
+				run = uint32(num)
+			}
+			top++
+		}
+	}
+
+	d0 := dest
+	dest += 4
+	n := int32(0)
+
+	UtxoSetBucketName := []byte("utxosetv2") // should be same as blockchain.UtxoSetBucketName, defined here to avoid circular import
+
+	ovm.DB.View(func(dbTx database.Tx) error {
+		blockIndexBucket := dbTx.Metadata().Bucket(UtxoSetBucketName)
+		cursor := blockIndexBucket.Cursor()
+		bgn := cursor.Last
+		nxt := cursor.Prev
+		if start < 0 {
+			start = -start - 1
+			bgn = cursor.First
+			nxt = cursor.Next
+		}
+		var ok bool
+		for ok = bgn(); ok && start > 0; ok = nxt() {
+			e, err := viewpoint.DeserializeUtxoEntry(cursor.Value())
+			if e == nil || err != nil {
+				continue
+			}
+			if e.TokenType != tokentype {
+				continue
+			}
+			start--
+		}
+
+		for ; ok && run > 0; ok = nxt() {
+			e, err := viewpoint.DeserializeUtxoEntry(cursor.Value())
+			if e == nil || err != nil {
+				continue
+			}
+
+			if e.TokenType != tokentype || ((tokentype&2) != 0 && e.Rights == nil) {
+				continue
+			}
+
+			switch tokentype & 0x1 {
+			case 0:
+				_, v := e.Amount.Value()
+				if err = stack.saveInt64(&dest, v); err != nil {
+					return err
+				}
+				dest += 4
+
+			case 1:
+				hash, _ := e.Amount.Value()
+				if hash == nil {
+					continue
+				}
+				if err = stack.saveHash(&dest, *hash); err != nil {
+					return err
+				}
+				dest += 32
+			}
+
+			if (tokentype & 0x2) == 2 {
+				if err = stack.saveHash(&dest, *e.Rights); err != nil {
+					return err
+				}
+				dest += 32
+			}
+			if err = stack.saveBytes(&dest, e.PkScript()[:21]); err != nil {
+				return err
+			}
+			dest += 21
+
+			run--
+			n++
+		}
+		return nil
+	})
+
+	return stack.saveInt32(&d0, n)
+}
+
 /*
 func opSignText(pc *int, ovm *OVM, contract *Contract, stack *Stack) omega.Err {
 	param := contract.GetBytes(*pc)

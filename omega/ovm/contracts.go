@@ -101,6 +101,9 @@ var PrecompiledContracts = map[[4]byte]func(evm *OVM, contract *Contract) Precom
 	([4]byte{OP_PAY2NONE, 0, 0, 0}): func(evm *OVM, contract *Contract) PrecompiledContract {
 		return &payreturn{}
 	}, // pay to no one and burn it
+	([4]byte{OP_PAYMINER, 0, 0, 0}): func(evm *OVM, contract *Contract) PrecompiledContract {
+		return &payreturn{}
+	}, // pay to no one and burn it
 	([4]byte{OP_PAY2ANY, 0, 0, 0}): func(evm *OVM, contract *Contract) PrecompiledContract {
 		return &payanyone{}
 	}, // pay to anyone

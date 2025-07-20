@@ -647,3 +647,14 @@ var formatLog = []formatDesc{
 func opLogValidator(param []byte) int {
 	return formatParser(formatLog, param)
 }
+
+var formatLedger = []formatDesc{
+	{addrOperand, 0xFFFFFFFF},              // return data address
+	{regexp.MustCompile(`x?[0-9a-f]+`), 0}, // tokentype
+	{regexp.MustCompile(`x?[0-9a-f]+`), 0}, // start
+	{regexp.MustCompile(`x?[0-9a-f]+`), 0}, // limit
+}
+
+func opLedgerValidator(param []byte) int {
+	return formatParser(formatLedger, param)
+}

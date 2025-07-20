@@ -225,12 +225,10 @@ func NewOmegaInstructionSet() [256]operation {
 			execute: opLog,
 			valid:   true,
 		},
-		/*
-			SIGNTEXT: operation{
-				execute:       opSignText,
-				valid:         true,
-			},
-		*/
+		LEDGER: {
+			execute: opLedger,
+			valid:   true,
+		},
 	}
 }
 

@@ -66,10 +66,11 @@ const (
 	HEIGHT        // block height
 	TXIOCOUNT     // current io count of this tx
 	VERSION       // get tx version
-	TOKENCONTRACT	// contract address issuing a type of token
-	LOG				// print values to log
-	
-	STOP	 OpCode = 0x7A	//  "z"
+	TOKENCONTRACT // contract address issuing a type of token
+	LOG           // print values to log
+	LEDGER        // print values to log
+
+	STOP OpCode = 0x7A //  "z"
 )
 
 // Since the opcodes aren't all in order we can't use a regular slice
@@ -120,7 +121,8 @@ var opCodeToString = map[OpCode]string{
 	META:    "META",
 	VERSION: "VERSION",
 	TOKENCONTRACT: "TOKENCONTRACT",
-	LOG: "LOG",
+	LOG:           "LOG",
+	LEDGER:        "LEDGER",
 }
 
 func (o OpCode) String() string {
@@ -177,7 +179,8 @@ var stringToOp = map[string]OpCode{
 	"HEIGHT": 		 HEIGHT,
 	"VERSION": 		 VERSION,
 	"TOKENCONTRACT": TOKENCONTRACT,
-	"LOG":			 LOG,
+	"LOG":           LOG,
+	"LEDGER":        LEDGER,
 }
 
 func StringToOp(str string) OpCode {
