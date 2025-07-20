@@ -41,6 +41,65 @@ func (t *ChainDescriptor) Decendant(cid uint32) bool {
 	return d.Parent == t.ChainID
 }
 
+func (t *ChainDescriptor) CtxFees(dest uint32) (path [][]byte, fees []int64) {
+	if t.ChainID == dest {
+		return nil, nil
+	}
+	srctoroot := make([]*ChainDescriptor, 0)
+	d := t
+	for d.Parent != 0 {
+		srctoroot = append(srctoroot, d)
+		d, _ = ChainMap[d.Parent]
+	}
+	d = ChainMap[dest]
+	desttoroot := make([]*ChainDescriptor, 1)
+	desttoroot[0] = d
+	for d.Parent != 0 {
+		srctoroot = append(srctoroot, d)
+		d, _ = ChainMap[d.Parent]
+	}
+	// reverse path
+	for i, j := 0, len(desttoroot); i < j; {
+		srctoroot[i], desttoroot[j] = desttoroot[j], srctoroot[i]
+		i++
+		j--
+	}
+
+	m := false
+	for i := 0; i < len(desttoroot); i++ {
+		if m && srctoroot[len(srctoroot)-1] == desttoroot[i] {
+			srctoroot = srctoroot[:len(srctoroot)-1]
+		} else if srctoroot[len(srctoroot)-1] == desttoroot[i] {
+			m = true
+		} else {
+			srctoroot = append(srctoroot, desttoroot[i])
+			m = false
+		}
+	}
+
+	path, fees = make([][]byte, 0), make([]int64, 0)
+	for i := 0; i < len(srctoroot); i++ {
+		path, fees = append(path, srctoroot[i].FeeScript()), append(fees, srctoroot[i].FeeAmount())
+	}
+	return path, fees
+}
+
+func (t *ChainDescriptor) FeeScript() []byte {
+	var s [29]byte
+	for i := 0; i < 29; i++ {
+		s[i] = 0
+	}
+	s[1] = 1
+	common.LittleEndian.PutUint32(s[22:], t.ChainID)
+	s[21], s[25] = ovm.OP_PAYCROSSCHAIN, ovm.OP_PAYMINER
+	return s[:]
+}
+
+func (t *ChainDescriptor) FeeAmount() int64 {
+	// for now, flat 100 Satoshi. in the future, it would be chain dependent
+	return 100
+}
+
 func (t *ChainDescriptor) PassThru(src, dest uint32) bool {
 	if t.ChainID == src || t.ChainID == dest {
 		return true
@@ -64,34 +123,38 @@ func (t *ChainDescriptor) PassThru(src, dest uint32) bool {
 	return p != q
 }
 
-var RootMeta = &ChainDescriptor{
-	Magic:          0x956ca476,  // 0x956ca366,
-	Dns:            "localhost", // "omegasuite.org",
-	DefaultPort:    "8788",
-	DefaultRPCPort: "8789",
-	MRChain:        true,
-	Parent:         0,
-	ChainID:        ROOT,
-	Genesis:        "0000000fca59d9ceb85d0c076c211bc84391d8de5352597e825c453a2f5be963",
-	MrGenesis:      "0000003c37c434f066dfed9f8569803dfcde9b318fc22b6b1fac11b32623a826",
+var RootMeta = map[common.OmegaNet]*ChainDescriptor{
+	common.MainNet: &ChainDescriptor{
+		Magic:          0x4e585553,  // 0x956ca366,
+		Dns:            "localhost", // "omegasuite.org",
+		DefaultPort:    "8788",
+		DefaultRPCPort: "8789",
+		MRChain:        true,
+		Parent:         0,
+		ChainID:        ROOT,
+		Genesis:        "0000000fca59d9ceb85d0c076c211bc84391d8de5352597e825c453a2f5be963",
+		MrGenesis:      "0000003c37c434f066dfed9f8569803dfcde9b318fc22b6b1fac11b32623a826",
+	},
+	common.TestNet: &ChainDescriptor{
+		Magic:          0x4e585574,  // test net
+		Dns:            "localhost", // "omegasuite.org",
+		DefaultPort:    "7788",
+		DefaultRPCPort: "7789",
+		MRChain:        true,
+		Parent:         0,
+		ChainID:        ROOT,
+		Genesis:        "003b7c24ab8d47386f6acb9ce1ac87c8861db46340747f50b83ca3f2f8de6585",
+		MrGenesis:      "000634587726987c5624c4f6b0b952499c03983a245df6ad83a8bc88b6e89d61",
+	},
 }
 
-var ParentChain = &ChainDescriptor{
-	Magic:          0,  // 0x956ca366,
-	Dns:            "", // "omegasuite.org",
-	DefaultPort:    "",
-	DefaultRPCPort: "",
-	MRChain:        false,
-	Parent:         0,
-	ChainID:        0,
-	Genesis:        "",
-	MrGenesis:      "",
-}
+var useNet = common.MainNet
 
 var dmdb database.DB
 
-func LoadChainMap(db database.DB, isroot bool) {
+func LoadChainMap(db database.DB, isroot bool, net common.OmegaNet) {
 	dmdb = db
+	useNet = net
 	ChainMap = make(map[uint32]*ChainDescriptor)
 
 	db.Update(func(tx database.Tx) error {
@@ -132,15 +195,11 @@ func LoadChainMap(db database.DB, isroot bool) {
 
 		if _, ok := ChainMap[ROOT]; isroot && (!ok || bad) {
 			ChainMap = map[uint32]*ChainDescriptor{}
-			//			h, _ := hex.DecodeString("0000000fca59d9ceb85d0c076c211bc84391d8de5352597e825c453a2f5be963")
-			RootMeta.Genesis = "0000000fca59d9ceb85d0c076c211bc84391d8de5352597e825c453a2f5be963"
-			//			h, _ = hex.DecodeString("0000003c37c434f066dfed9f8569803dfcde9b318fc22b6b1fac11b32623a826")
-			RootMeta.MrGenesis = "0000003c37c434f066dfed9f8569803dfcde9b318fc22b6b1fac11b32623a826"
-			ChainMap[ROOT] = RootMeta
+			ChainMap[ROOT] = RootMeta[useNet]
 
 			meta.DeleteBucket(bucketname)
 			bucket, _ = meta.CreateBucket(bucketname)
-			bucket.Put([]byte{1, 0, 0, 0}, (*wire.ChainDescriptor)(RootMeta).Serialize())
+			bucket.Put([]byte{1, 0, 0, 0}, (*wire.ChainDescriptor)(RootMeta[useNet]).Serialize())
 		}
 		return nil
 	})

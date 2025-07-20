@@ -64,33 +64,27 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 		flags |= blockchain.BFNoReorg | blockchain.BFSideChain
 	}
 
-	if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
-		sum := uint32(0)
-		p2 := b.IsSVP || prevNode.Data.(*blockchainNodeData).block.Version&0x7FFF0000 >= chaincfg.Version2
-		v2 := prevNode.Data.(*blockchainNodeData).block.MeanTPH
-		for _, v := range block.MsgBlock().TphReports {
-			if p2 && (v > v2*8 || 8*v < v2) && v2 > 0 {
-				return false, ruleError(ErrInvalidAncestorBlock, "Out of range TPH score")
-			}
-			sum += v
+	sum := uint32(0)
+	v2 := prevNode.Data.(*blockchainNodeData).block.MeanTPH
+	for _, v := range block.MsgBlock().TphReports {
+		if (v > v2*8 || 8*v < v2) && v2 > 0 {
+			return false, ruleError(ErrInvalidAncestorBlock, "Out of range TPH score")
 		}
-		if len(block.MsgBlock().TphReports) == 0 {
-			sum = 1
-		} else {
-			sum /= uint32(len(block.MsgBlock().TphReports))
-		}
-		var meanTPH uint32
-		if p2 {
-			meanTPH = (v2*63 + sum) >> 6
-		} else {
-			meanTPH = sum
-		}
-		if meanTPH == 0 {
-			meanTPH = 1
-		}
-		if meanTPH != block.MsgBlock().MeanTPH {
-			return false, ruleError(ErrInvalidAncestorBlock, "Incorrect mean TPH score")
-		}
+		sum += v
+	}
+	if len(block.MsgBlock().TphReports) == 0 {
+		sum = 1
+	} else {
+		sum /= uint32(len(block.MsgBlock().TphReports))
+	}
+	var meanTPH uint32
+	meanTPH = (v2*63 + sum) >> 6
+
+	if meanTPH == 0 {
+		meanTPH = 1
+	}
+	if meanTPH != block.MsgBlock().MeanTPH {
+		return false, ruleError(ErrInvalidAncestorBlock, "Incorrect mean TPH score")
 	}
 
 	// Insert the block into the database if it's not already there.  Even
@@ -197,89 +191,75 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 		//			return fmt.Errorf("Curable POW factor error.")
 		//		}
 
-		if m.IsSVP || header.Version&0x7FFF0000 >= chaincfg.Version2 {
-			// since Ver 0x20000, the formula is:
-			// 2 * hashNum * factor <= target * (h1 + h2)
-			// h1 is collacteral factor, h2 is tps factor
-			//			factor *= 16
+		// since Ver 0x20000, the formula is:
+		// 2 * hashNum * factor <= target * (h1 + h2)
+		// h1 is collacteral factor, h2 is tps factor
+		//			factor *= 16
 
-			// for h1, we compare this block's coin & Collateral for simplicity
-			c := header.Collateral
-			if c == 0 {
-				c = 1
+		// for h1, we compare this block's coin & Collateral for simplicity
+		c := header.Collateral
+		if c == 0 {
+			c = 1
+		}
+		if !m.IsSVP {
+			v, err := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
+			if err != nil {
+				return err
 			}
-			if !m.IsSVP {
-				v, err := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
-				if err != nil {
-					return err
-				}
-				h1 := int64(v / c)
-				if h1 < 1 {
-					h1 = 1
-				}
+			h1 := int64(v / c)
+			if h1 < 1 {
+				h1 = 1
+			}
 
-				prev, _ := m.DBBlockByHash(&header.PrevBlock)
-				minscore := prev.MsgBlock().MeanTPH >> 3
-				if minscore == 0 {
-					minscore = 1
-				}
+			prev, _ := m.DBBlockByHash(&header.PrevBlock)
+			minscore := prev.MsgBlock().MeanTPH >> 3
+			if minscore == 0 {
+				minscore = 1
+			}
 
-				r := m.TPSreportFromDB(header.Miner, h) // max most recent 100 records
-				for i := len(r); i < 100; i++ {
-					r = append(r, blockchain.TPSrv{Val: minscore})
-				}
-				sort.Slice(r, func(i, j int) bool {
-					return r[i].Val < r[j].Val
-				})
+			r := m.TPSreportFromDB(header.Miner, h) // max most recent 100 records
+			for i := len(r); i < 100; i++ {
+				r = append(r, blockchain.TPSrv{Val: minscore})
+			}
+			sort.Slice(r, func(i, j int) bool {
+				return r[i].Val < r[j].Val
+			})
 
-				sum := uint32(0)
-				for k := 25; k < 75; k++ {
-					sum += r[k].Val
-				}
-				sum /= 50
+			sum := uint32(0)
+			for k := 25; k < 75; k++ {
+				sum += r[k].Val
+			}
+			sum /= 50
 
-				h2 := int64(1)
-				if sum <= minscore {
-					h2 = 1
-				} else {
-					h2 = int64(sum / minscore)
-				}
-				if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
-					h2 *= 16
-				}
-
-				if factor > 0 {
-					hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-					target = target.Mul(target, big.NewInt(h1+h2))
-				} else {
-					if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
-						factor *= 16
-					}
-					target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
-				}
-
-				if (header.Version & 0x7FFF0000) <= chaincfg.Version5 {
-					if target.Cmp(powLimit.Mul(powLimit, big.NewInt(16))) > 0 {
-						target = powLimit.Mul(powLimit, big.NewInt(16))
-					}
-				} else {
-					if target.Cmp(powLimit) > 0 {
-						target = powLimit
-					}
-				}
+			h2 := int64(1)
+			if sum <= minscore {
+				h2 = 1
 			} else {
-				if factor > 0 {
-					hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-				} else {
-					target = target.Mul(target, big.NewInt(-factor))
-				}
+				h2 = int64(sum / minscore)
 			}
 
-			if !m.IsSVP && hashNum.Cmp(target) > 0 {
-				str := fmt.Sprintf("block hash of %064x is higher than "+
-					"expected max of %064x", hashNum, target)
-				return ruleError(ErrHighHash, str)
+			if factor > 0 {
+				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+				target = target.Mul(target, big.NewInt(h1+h2))
+			} else {
+				target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
 			}
+
+			if target.Cmp(powLimit) > 0 {
+				target = powLimit
+			}
+		} else {
+			if factor > 0 {
+				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+			} else {
+				target = target.Mul(target, big.NewInt(-factor))
+			}
+		}
+
+		if !m.IsSVP && hashNum.Cmp(target) > 0 {
+			str := fmt.Sprintf("block hash of %064x is higher than "+
+				"expected max of %064x", hashNum, target)
+			return ruleError(ErrHighHash, str)
 		}
 	}
 

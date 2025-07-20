@@ -706,22 +706,18 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 			return err
 		}
 
-		if b.IsSVP || block.MsgBlock().Version&0x7FFF0000 >= chaincfg.Version2 {
-			if r, err, _ := b.checkV2(block, newBest, blockchain.BFNone); !r {
-				if err != nil {
-					log.Infof("checkV2 failed for attaching block: %s", err.Error())
-				} else {
-					log.Infof("checkV2 failed for attaching block")
-				}
-				break
+		if r, err, _ := b.checkV2(block, newBest, blockchain.BFNone); !r {
+			if err != nil {
+				log.Infof("checkV2 failed for attaching block: %s", err.Error())
+			} else {
+				log.Infof("checkV2 failed for attaching block")
 			}
+			break
 		}
 
-		xf := blockchain.BFNone
-		if block.Height() > 2200 || block.MsgBlock().Version&0x7FFF0000 >= wire.Version2 {
-			xf = blockchain.BFWatingFactor
-		}
-		if b.chainParams.Net == common.TestNet || b.chainParams.Net == common.SimNet || b.chainParams.Net == common.RegNet {
+		xf := blockchain.BFWatingFactor
+
+		if b.chainParams.Net == uint32(common.TestNet) || b.chainParams.Net == uint32(common.SimNet) || b.chainParams.Net == uint32(common.RegNet) {
 			xf |= blockchain.BFEasyBlocks
 		}
 
