@@ -1960,7 +1960,10 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 				}
 			}
 			for i, txo := range tx.TxOut {
-				if txo.IsSeparator() || !txo.IsCrossChain() {
+				if txo.IsSeparator() {
+					continue
+				}
+				if !txo.IsCrossChain() && (txo.PkScript[21] != ovm.OP_PAYMINER || bytes.Compare(txo.PkScript[22:25], []byte{0, 0, 0}) == 0) {
 					continue
 				}
 				if !b.validCrossChainScript(txo.PkScript) {
@@ -1979,6 +1982,9 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 						Index: uint32(i),
 					},
 					Txo: *txo,
+				}
+				if txo.PkScript[21] != ovm.OP_PAYMINER && (common.LittleEndian.Uint32(txo.PkScript[21:])>>8) == chaincfg.DefaultChainID {
+					txo.PkScript[22], txo.PkScript[23], txo.PkScript[24] = 0, 0, 0
 				}
 				xchain.Txs = append(xchain.Txs, t)
 			}

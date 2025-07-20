@@ -510,14 +510,6 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	if err != nil {
 		return nil, err
 	}
-
-	n := len(coinbaseTx.MsgTx().TxOut)
-	for i := 0; i < n; i++ {
-		// take space for tx fees
-		to := wire.TxOut{}
-		to.Token = token.Token{TokenType: token.DefTypeSeparator}
-		coinbaseTx.AddTxOut(to)
-	}
 	coinbaseSigOpCost := int64(blockchain.CountSigOps(coinbaseTx)) // * chaincfg.WitnessScaleFactor
 
 	// Get the current source transactions and create a priority queue to
@@ -538,11 +530,9 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	stepLimit := Vm.StepLimit
 
 	var comptx []*wire.MsgTx
-	if s.MsgBlock().Version >= chaincfg.Version2 {
-		comptx, err = g.Chain.CompTxs(g.Chain.BestChain.Tip(), views)
-		if err != nil {
-			return nil, err
-		}
+	comptx, err = g.Chain.CompTxs(g.Chain.BestChain.Tip(), views)
+	if err != nil {
+		return nil, err
 	}
 
 	// Create a slice to hold the transactions to be included in the
@@ -555,12 +545,6 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		btx := btcutil.NewTx(tx)
 		blockTxns = append(blockTxns, btx)
 		spendTransaction(views, btx, nextBlockHeight)
-	}
-
-	// Check transactions in INCOMINGPOOL, include mature transactions here
-	if nonce < 0 {
-		inp := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight))
-		blockTxns = append(blockTxns, inp...)
 	}
 
 	// Check transactions in BTCL2Pool, include mature transactions here
@@ -667,6 +651,18 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		ts = time.Unix(prev.Data.TimeStamp(), 0)
 	}
 
+	if comptx != nil {
+		for _, tx := range comptx {
+			blockTxns = append(blockTxns, btcutil.NewTx(tx))
+		}
+	}
+
+	// Check transactions in INCOMINGPOOL, include mature transactions here
+	if nonce < 0 {
+		inp := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight), int32(ts.Unix()))
+		blockTxns = append(blockTxns, inp...)
+	}
+
 	startTime := time.Now().UnixNano()
 
 mempoolLoop:
@@ -759,29 +755,27 @@ mempoolLoop:
 			continue
 		}
 
-		if s.MsgBlock().Version >= chaincfg.Version2 {
-			var locked = false
-			locks := ""
-			if !tx.MsgTx().IsCrossChain() {
-				for _, txin := range tx.MsgTx().TxIn {
-					if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-						continue
-					}
-					if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
-						locked = true
-						locks = txin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", txin.PreviousOutPoint.Index)
-						break
-					}
+		var locked = false
+		locks := ""
+		if !tx.MsgTx().IsCrossChain() {
+			for _, txin := range tx.MsgTx().TxIn {
+				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					continue
+				}
+				if _, ok := g.Chain.LockedCollaterals[txin.PreviousOutPoint]; ok {
+					locked = true
+					locks = txin.PreviousOutPoint.Hash.String() + ":" + fmt.Sprintf("%d", txin.PreviousOutPoint.Index)
+					break
 				}
 			}
-			if locked {
-				g.txSource.RemoveTransaction(tx, true)
-				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+		}
+		if locked {
+			g.txSource.RemoveTransaction(tx, true)
+			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
 
-				// we should roll back result of last contract execution here
-				log.Infof("Reject tx %s that spends locked UTXO %s", tx.Hash(), locks)
-				continue
-			}
+			// we should roll back result of last contract execution here
+			log.Infof("Reject tx %s that spends locked UTXO %s", tx.Hash(), locks)
+			continue
 		}
 
 		if !blockchain.IsFinalizedTransaction(tx, nextBlockHeight,
@@ -1155,6 +1149,14 @@ mempoolLoop:
 			continue
 		}
 
+		for typ, amt := range directPay {
+			if m, ok := minerDirect[typ]; ok {
+				minerDirect[typ] = m + amt
+			} else {
+				minerDirect[typ] = amt
+			}
+		}
+
 		// check block size
 		if blksz+coinbaseTx.MsgTx().SerializeSize()+tx.MsgTx().SerializeSize() > wire.MaxBlockPayload {
 			log.Infof("Skipping tx %s because it would make block size exceeding the max", tx.Hash())
@@ -1187,7 +1189,7 @@ mempoolLoop:
 		blockWeight++ // += txWeight
 		blockSigOpCost += int64(sigOpCost)
 		totalFees += prioItem.fee
-		totalbtcfees += btcfees
+		//totalbtcfees += btcfees
 		txFees = append(txFees, prioItem.fee)
 		txSigOpCosts = append(txSigOpCosts, int64(sigOpCost))
 
@@ -1221,44 +1223,43 @@ mempoolLoop:
 		m++
 	}
 	df := totalFees / m
-	if df != 0 {
-		//		if prev.Height < 28747537 {
-		/*
+	for _, txo := range coinbaseTx.MsgTx().TxOut {
+		if txo.IsSeparator() {
+			break
+		}
+		txo.Value.(*token.NumToken).Val += df
+	}
+
+	if len(minerDirect) > 0 {
+		btcout := []*wire.TxOut{}
+		for typ, amt := range minerDirect {
+			df = amt / m
 			for _, txo := range coinbaseTx.MsgTx().TxOut {
 				if txo.IsSeparator() {
 					break
 				}
-				txo.Token.Value.(*token.NumToken).Val += df
-				}
-		*/
-
-		for i := m; i < 2*m; i++ {
-			txo2 := &wire.TxOut{}
-			txo2.PkScript = coinbaseTx.MsgTx().TxOut[i-m].PkScript
-			txo2.Token.TokenType = 0x10
-			txo2.Token.Value = &token.NumToken{Val: df}
-			coinbaseTx.MsgTx().TxOut[i] = txo2
-		}
-	}
-
-	n = len(coinbaseTx.MsgTx().TxOut) - 1
-	for coinbaseTx.MsgTx().TxOut[n].TokenType == token.DefTypeSeparator {
-		coinbaseTx.MsgTx().TxOut = coinbaseTx.MsgTx().TxOut[:n]
-		n--
-	}
-
-	btcout := []*wire.TxOut{}
-	if totalbtcfees != 0 {
-		df = totalbtcfees / m
-		for _, txo := range coinbaseTx.MsgTx().TxOut {
-			t := &wire.TxOut{PkScript: txo.PkScript}
-			t.Token.Copy(&txo.Token)
-			t.Token.TokenType = common.BTCCHAINID << 40
-			t.Token.Value = &token.NumToken{Val: df}
-			btcout = append(btcout, t)
+				t := &wire.TxOut{PkScript: txo.PkScript}
+				t.Token.Copy(&txo.Token)
+				t.Token.TokenType = typ
+				t.Token.Value = &token.NumToken{Val: df}
+				btcout = append(btcout, t)
+			}
 		}
 		coinbaseTx.MsgTx().TxOut = append(coinbaseTx.MsgTx().TxOut, btcout...)
 	}
+	/*
+		if totalbtcfees != 0 {
+			df = totalbtcfees / m
+			for _, txo := range coinbaseTx.MsgTx().TxOut {
+				t := &wire.TxOut{PkScript: txo.PkScript}
+				t.Token.Copy(&txo.Token)
+				t.Token.TokenType = common.BTCCHAINID << 40
+				t.Token.Value = &token.NumToken{Val: df}
+				btcout = append(btcout, t)
+			}
+			coinbaseTx.MsgTx().TxOut = append(coinbaseTx.MsgTx().TxOut, btcout...)
+		}
+	*/
 	coinbaseTx.Executed = true
 
 	txFees[0] = -totalFees
@@ -1385,33 +1386,31 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	var uc *wire.OutPoint
 
 	uc = nil
-	if nextBlockVersion >= chaincfg.Version2 {
-		usable := make(map[wire.OutPoint]struct{})
-		for _, c := range g.Collateral {
-			usable[*c] = struct{}{}
-		}
+	usable := make(map[wire.OutPoint]struct{})
+	for _, c := range g.Collateral {
+		usable[*c] = struct{}{}
+	}
 
-		for p, i := last, int32(0); i <= g.chainParams.ViolationReportDeadline && p != nil; i++ {
-			if q := g.Chain.Miners.NodetoHeader(p).Utxos; q != nil {
-				delete(usable, *q)
+	for p, i := last, int32(0); i <= g.chainParams.ViolationReportDeadline && p != nil; i++ {
+		if q := g.Chain.Miners.NodetoHeader(p).Utxos; q != nil {
+			delete(usable, *q)
+		}
+		p = p.Parent
+	}
+
+	k := len(usable)
+	if k == 0 && coll > 0 {
+		return nil, fmt.Errorf("No qualified collateral available out of %d collaterals.", len(g.Collateral))
+	}
+	if k > 0 {
+		k = rand.Intn(k)
+
+		for c, _ := range usable {
+			if k == 0 {
+				uc = &c
+				break
 			}
-			p = p.Parent
-		}
-
-		k := len(usable)
-		if k == 0 && coll > 0 {
-			return nil, fmt.Errorf("No qualified collateral available out of %d collaterals.", len(g.Collateral))
-		}
-		if k > 0 {
-			k = rand.Intn(k)
-
-			for c, _ := range usable {
-				if k == 0 {
-					uc = &c
-					break
-				}
-				k--
-			}
+			k--
 		}
 	}
 
@@ -1465,43 +1464,35 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	}
 
 	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())
-	if nextBlockVersion >= chaincfg.Version2 {
-		msgBlock.TphReports = g.Chain.Miners.TphReport(wire.MinTPSReports, last, msgBlock.Miner)
-		sum := uint32(0)
-		prev := g.Chain.Miners.NodetoHeader(last)
-		p2 := prev.Version >= chaincfg.Version2
-		v2 := prev.MeanTPH
-		for j, v := range msgBlock.TphReports {
-			if p2 {
-				if v > v2*8 {
-					v = v2 * 8
-					msgBlock.TphReports[j] = v
-				} else if 8*v < v2 {
-					v = (v2 + 7) >> 3
-					if v == 0 {
-						v = 1
-					}
-					msgBlock.TphReports[j] = v
-				} else if msgBlock.TphReports[j] == 0 {
-					msgBlock.TphReports[j] = 1
-				}
-			}
-			sum += v
-		}
-		if len(msgBlock.TphReports) == 0 {
-			sum = 1
-		} else {
-			sum /= uint32(len(msgBlock.TphReports))
-		}
 
-		if p2 {
-			msgBlock.MeanTPH = (v2*63 + sum) >> 6
-		} else {
-			msgBlock.MeanTPH = sum
+	msgBlock.TphReports = g.Chain.Miners.TphReport(wire.MinTPSReports, last, msgBlock.Miner)
+	sum := uint32(0)
+	prev := g.Chain.Miners.NodetoHeader(last)
+	v2 := prev.MeanTPH
+	for j, v := range msgBlock.TphReports {
+		if v > v2*8 {
+			v = v2 * 8
+			msgBlock.TphReports[j] = v
+		} else if 8*v < v2 {
+			v = (v2 + 7) >> 3
+			if v == 0 {
+				v = 1
+			}
+			msgBlock.TphReports[j] = v
+		} else if msgBlock.TphReports[j] == 0 {
+			msgBlock.TphReports[j] = 1
 		}
-		if msgBlock.MeanTPH == 0 {
-			msgBlock.MeanTPH = 1
-		}
+		sum += v
+	}
+	if len(msgBlock.TphReports) == 0 {
+		sum = 1
+	} else {
+		sum /= uint32(len(msgBlock.TphReports))
+	}
+
+	msgBlock.MeanTPH = (v2*63 + sum) >> 6
+	if msgBlock.MeanTPH == 0 {
+		msgBlock.MeanTPH = 1
 	}
 
 	// Finally, perform a full check on the created block against the Chain
