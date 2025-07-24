@@ -429,9 +429,6 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 			dt = dt >> (d - wire.DESIRABLE_MINER_CANDIDATES)
 		} else if d < wire.DESIRABLE_MINER_CANDIDATES/2 {
 			m := wire.DESIRABLE_MINER_CANDIDATES/2 - d
-			if m > 10 {
-				m = 10
-			}
 			dt = dt << m
 		}
 

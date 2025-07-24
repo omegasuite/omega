@@ -924,7 +924,11 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 	var missing int32
 	var orp *chainhash.Hash
 
+	sm.smtx.Lock()
+
 	if _, ok := sm.cachedBlocks[*blockHash]; behaviorFlags&blockchain.BFNoConnect != blockchain.BFNoConnect || !ok {
+		sm.smtx.Unlock()
+
 		isMainchain, isOrphan, err, missing, orp = sm.chain.ProcessBlock(bmsg.block, behaviorFlags)
 
 		b1 = sm.chain.BestSnapshot()
@@ -986,6 +990,8 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 				return
 			}
 		}
+	} else {
+		sm.smtx.Unlock()
 	}
 
 	if b1 == nil {
@@ -997,16 +1003,20 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 		// passing it to consensus maker
 		consensus.ProcessBlock(bmsg.block, behaviorFlags)
 		if bmsg.block.Height() > b1.Height {
+			sm.smtx.Lock()
 			sm.cachedBlocks[*blockHash] = bmsg.block
+			sm.smtx.Unlock()
 		}
 		return
 	}
 
+	sm.smtx.Lock()
 	for hash, h := range sm.cachedBlocks {
 		if h.Height() <= b1.Height { // block height has passed
 			delete(sm.cachedBlocks, hash)
 		}
 	}
+	sm.smtx.Unlock()
 
 	// Meta-data about the new block this peer is reporting. We use this
 	// below to update this peer's lastest block height and the heights of
@@ -2105,7 +2115,11 @@ out:
 
 			case *sigMsg:
 				if !passiveMode {
+					sm.smtx.Lock()
+
 					if b, ok := sm.cachedBlocks[msg.hash]; ok {
+						sm.smtx.Unlock()
+
 						b.MsgBlock().Transactions[0].SignatureScripts = msg.signatures
 						bm := blockMsg{
 							b,
@@ -2113,7 +2127,10 @@ out:
 							msg.reply,
 						}
 						sm.handleBlockMsg(&bm)
+					} else {
+						sm.smtx.Unlock()
 					}
+
 					msg.reply <- struct{}{}
 
 					// we should broadcast this message here

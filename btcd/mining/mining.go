@@ -657,9 +657,12 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		}
 	}
 
+	minerDirect := make(map[uint64]int64) // direct payment to miners of this blockchain
+
 	// Check transactions in INCOMINGPOOL, include mature transactions here
 	if nonce < 0 {
-		inp := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight), int32(ts.Unix()))
+		inp, md := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight), int32(ts.Unix()))
+		minerDirect = md
 		blockTxns = append(blockTxns, inp...)
 	}
 
@@ -916,8 +919,6 @@ mempoolLoop:
 
 	// Choose which transactions make it into the block.
 	//	var skiprest = false // whether to skip rest contracts
-
-	minerDirect := make(map[uint64]int64) // direct payment to miners of this blockchain
 
 	for priorityQueue.Len() > 0 {
 		nt := time.Now()
@@ -1222,6 +1223,11 @@ mempoolLoop:
 		}
 		m++
 	}
+
+	if f, ok := minerDirect[0]; ok {
+		totalFees += f
+		delete(minerDirect, 0)
+	}
 	df := totalFees / m
 	for _, txo := range coinbaseTx.MsgTx().TxOut {
 		if txo.IsSeparator() {
@@ -1453,6 +1459,11 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		}
 		if !exist {
 			ac.ChainID = uint32(len(chainmap.ChainMap) + 1)
+			param := chaincfg.GlobalParams{}
+			json.Unmarshal([]byte(ac.GlobalParams), &param)
+			param.ChainID = ac.ChainID
+			s, _ := json.Marshal(param)
+			ac.GlobalParams = string(s)
 			md, err := json.Marshal(ac)
 			if err == nil {
 				msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{

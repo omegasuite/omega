@@ -278,7 +278,9 @@ func runserver(p *Protocol) {
 		wg.Add(1)
 		p.Server.Start()
 		if p.Server.chainParams.ChainID == chaincfg.DefaultParentChainID {
-			p.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
+			time.AfterFunc(20*time.Second, func() {
+				p.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
+			})
 		}
 	}
 
@@ -791,7 +793,9 @@ func main() {
 
 		protocols = append(protocols, q)
 		if q.Server.chainParams.ChainID == chaincfg.DefaultParentChainID {
-			q.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
+			time.AfterFunc(20*time.Second, func() {
+				q.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
+			})
 		}
 	}
 
@@ -841,7 +845,6 @@ func checkfinal() {
 					fmt.Printf("bad XchainData")
 				}
 				for _, p := range protocols[1:] {
-					chain := chainmap.ChainMap[p.Server.chainParams.ChainID]
 					if xdata.ChainID&0x400000 != 0 {
 						switch xdata.ChainID {
 						case common.BTCCHAINID:
@@ -851,8 +854,11 @@ func checkfinal() {
 								break
 							}
 						}
-					} else if chain.PassThru(protocols[0].Server.chainParams.MainChainID, xdata.ChainID) {
-						p.Server.Randcast(wire.NewMsgFinalized(xdata.ChainID, xdata.Hash), nil)
+					} else {
+						chain := chainmap.ChainMap[p.Server.chainParams.ChainID]
+						if chain.PassThru(protocols[0].Server.chainParams.MainChainID, xdata.ChainID) {
+							p.Server.Randcast(wire.NewMsgFinalized(xdata.ChainID, xdata.Hash), nil)
+						}
 					}
 				}
 			}

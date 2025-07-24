@@ -1685,24 +1685,26 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 		dtype := rtype
 		if (origin & 0x3FFFFF) == chainParams.ChainID {
 			dtype = dtype & 0xFFFFFFFFFF
+			origin = 0
 		}
-		if txOut.IsCrossChain() {
-			if origin != 0 {
-				if (dtype>>40) != 0 && uint32(rtype>>40) != (common.LittleEndian.Uint32(txOut.PkScript[21:])>>8) {
+		if txOut.IsCrossChain() || txOut.PkScript[21] == ovm.OP_PAYMINER {
+			dest := common.LittleEndian.Uint32(txOut.PkScript[21:]) >> 8
+			if origin != 0 && dest != 0 {
+				if !chainmap.ChainMap[dest].PassThru(chainParams.ChainID, origin) {
 					str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", rtype>>40,
 						common.LittleEndian.Uint32(txOut.PkScript[21:])>>8)
-					return 0, 0, ruleError(ErrBadTxOutValue, str)
+					return 0, nil, ruleError(ErrBadTxOutValue, str)
 				}
-			} else {
-				str := fmt.Sprintf("Tokentype in a cross chain tx must include chainid")
+			} else if dest == 0 && txOut.PkScript[21] != ovm.OP_PAYMINER {
+				str := fmt.Sprintf("Crosschain tx must have a destination")
 				return 0, nil, ruleError(ErrBadTxOutValue, str)
 			}
 		}
 
-		if _, ok := totalHaoOut[rtype]; ok {
-			totalHaoOut[rtype] += txOut.Value.(*token.NumToken).Val
+		if _, ok := totalHaoOut[dtype]; ok {
+			totalHaoOut[dtype] += txOut.Value.(*token.NumToken).Val
 		} else {
-			totalHaoOut[rtype] = txOut.Value.(*token.NumToken).Val
+			totalHaoOut[dtype] = txOut.Value.(*token.NumToken).Val
 		}
 		if txOut.IsContractCall() && len(txOut.PkScript) > 25 && bytes.Compare(txOut.PkScript[21:25], []byte{0, 0, 0, 0}) == 0 {
 			// Contract creation
@@ -1816,71 +1818,160 @@ func ContractNewStorage(tx *btcutil.Tx, vm *ovm.OVM, paidstoragefees map[[20]byt
 }
 
 func (b *BlockChain) normalizeTxo(txo *wire.TxOut) {
-	copy(txo.PkScript[21:], txo.PkScript[25:])
-	txo.PkScript = txo.PkScript[:len(txo.PkScript)-4]
-	if (txo.TokenType >> 40) == uint64(b.ChainParams.ChainID) {
+	dc := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
+	if txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
+		copy(txo.PkScript[21:], txo.PkScript[25:])
+		txo.PkScript = txo.PkScript[:len(txo.PkScript)-4]
+	} else if txo.PkScript[21] == ovm.OP_PAYMINER && dc == chaincfg.DefaultChainID {
+		txo.PkScript[22], txo.PkScript[23], txo.PkScript[24] = 0, 0, 0
+	}
+	if (txo.TokenType>>40) == chaincfg.DefaultChainID && dc == chaincfg.DefaultChainID {
 		txo.TokenType &= 0xFFFFFFFFFF
 	}
 }
 
 func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
-	chain := chainmap.ChainMap[b.ChainParams.ChainID&0x3FFFFF]
+	chain := chainmap.ChainMap[b.ChainParams.ChainID]
+	if chain == nil {
+		b.SrvReq <- ReqChain(b.ChainParams.ChainID)
+	}
 	for _, tx := range block.MsgBlock().Transactions[1:] {
-		beginctx, ctxfeepaid, path, fees := false, true, make([][]byte, 0), make([]int64, 0)
+		path, fees := make([][]byte, 0), make([]int64, 0)
+		// check if cross chain tx fee is paid
+		iscrosschain := tx.IsCrossChain()
+		payminer := false
 		for _, txo := range tx.TxOut {
-			if txo.IsSeparator() || !txo.IsCrossChain() {
+			if txo.IsSeparator() {
 				continue
 			}
-			if len(path) == 0 {
-				return fmt.Errorf("Cross chain tx fee not paid")
+			iscrosschain = iscrosschain || txo.IsCrossChain()
+			payminer = payminer || txo.PkScript[21] == ovm.OP_PAYMINER
+		}
+		if !iscrosschain {
+			if payminer {
+				return fmt.Errorf("Pay miner in a none cross chain tx")
 			}
-			if beginctx {
-				if bytes.Compare(txo.PkScript, path[0]) != 0 {
-					return fmt.Errorf("Cross chain tx fee not paid")
+			return nil
+		} else if !payminer {
+			return fmt.Errorf("Not paying miner in a cross chain tx")
+		}
+
+		src := uint32(0)
+		if tx.IsCrossChain() {
+			src = tx.TxIn[0].PreviousOutPoint.Index ^ wire.CrossChainFalg
+		}
+
+		paid := make(map[uint32]int64)
+		need := make(map[uint32]int64)
+
+		xc := tx.IsCrossChain()
+
+		for _, txo := range tx.TxOut {
+			if txo.IsSeparator() {
+				continue
+			}
+			if !xc && txo.PkScript[21] != ovm.OP_PAYCROSSCHAIN && txo.PkScript[21] != ovm.OP_PAYMINER {
+				continue
+			}
+
+			dc := b.ChainParams.ChainID
+			if txo.PkScript[21] == ovm.OP_PAYMINER {
+				if txo.TokenType != common.BTCCoinTyp && (txo.TokenType != 0 || b.ChainParams.ChainID != chainmap.ROOT) {
+					return fmt.Errorf("cross chain tx fee must be paid in %x\n", common.BTCCoinTyp)
 				}
-				if txo.TokenType != uint64(common.BTCCHAINID)<<uint64(40) { // txfee must be in BTC
-					return fmt.Errorf("Cross chain tx fee not paid")
+				dc = common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
+				if dc == 0 {
+					dc = b.ChainParams.ChainID
 				}
-				_, v := txo.Value.Value()
-				if v < fees[0] { // fee
-					return fmt.Errorf("Cross chain tx fee not paid")
-				}
-				fees = fees[1:]
-				if len(path) == 1 {
-					beginctx, ctxfeepaid, path = false, true, make([][]byte, 0)
+				if t, ok := paid[dc]; !ok {
+					paid[dc] = txo.Token.Value.(*token.NumToken).Val
 				} else {
-					path = path[1:]
+					paid[dc] = txo.Token.Value.(*token.NumToken).Val + t
 				}
 				continue
 			}
-			dc := txo.DestChain()
-			if chainmap.ChainMap[dc&0x3FFFFF] == nil {
-				b.SrvReq <- ReqChain(dc)
-				return fmt.Errorf("Dest chain unknown %d", dc)
+
+			if txo.IsCrossChain() {
+				dc = txo.DestChain()
+				if t, ok := chainmap.ChainMap[dc&0x3FFFFF]; t == nil || !ok {
+					b.SrvReq <- ReqChain(dc & 0x3FFFFF)
+					return fmt.Errorf("Dest chain unknown %d", dc)
+				}
+				if dc == b.ChainParams.MainChainID {
+					return fmt.Errorf("Can not cross chain to self")
+				}
 			}
-			if dc == b.ChainParams.MainChainID {
-				return fmt.Errorf("Can not cross chain to self")
+
+			tc := uint32(txo.TokenType >> 40)
+			if src != 0 && !chain.PassThru(src, dc) {
+				return fmt.Errorf("cross chain path does not go thru this chain")
 			}
-			if (txo.TokenType>>40) != 0 && uint32(txo.TokenType>>40) != dc && !chain.PassThru(uint32(txo.TokenType>>40)&0x3FFFFF, dc) {
-				return fmt.Errorf("Cross chain tx not in propgation path")
+			if tc != 0 && tc != b.ChainParams.ChainID && !chainmap.ChainMap[dc].PassThru(src, dc) {
+				return fmt.Errorf("invalid cross chain destination")
 			}
-			path, fees = chain.CtxFees(dc)
-			copy(path[0][21:], path[0][25:])
-			path[0] = path[0][:25]
-			beginctx, ctxfeepaid = true, false
+
+			if tc != 0 && tc != b.ChainParams.ChainID && tc != dc {
+				if src != uint32(tc) && !chainmap.ChainMap[dc].PassThru(src, tc) {
+					return fmt.Errorf("Cross chain tx not in propgation path")
+				}
+			}
+
+			if src != 0 || txo.IsCrossChain() {
+				path, fees = chain.CtxFees(dc)
+				for i, p := range path {
+					r := common.LittleEndian.Uint32(p[21:]) >> 8
+					if t, ok := need[r]; !ok {
+						need[r] = fees[i]
+					} else {
+						need[r] = fees[i] + t
+					}
+				}
+			}
 		}
-		if !ctxfeepaid {
-			return fmt.Errorf("Cross chain tx fee not paid")
+		for r, f := range need {
+			if paid[r] < f {
+				return fmt.Errorf("Cross chain tx fee not paid or insufficient")
+			}
+			delete(paid, r)
 		}
+		if len(paid) > 0 {
+			return fmt.Errorf("Payment to miner not in cross chain path")
+		}
+	}
+
+	if b.IsSVP {
+		return nil
 	}
 
 	return b.db.View(func(dbTx database.Tx) error {
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+
+		atxs := make(map[wire.OutPoint]*wire.XchainData)
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			if !tx.IsCrossChain() {
 				continue
 			}
-			d := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
+			xtx := &wire.XchainData{
+				ChainID: tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
+				Hash:    tx.TxIn[0].PreviousOutPoint.Hash,
+				Txs:     make([]*wire.MsgXrossL2, 0),
+			}
+			for _, txo := range tx.TxOut {
+				xtx.Txs = append(xtx.Txs, &wire.MsgXrossL2{
+					Utxo: wire.OutPoint{},
+					Txo:  *txo,
+				})
+			}
+
+			if x, ok := atxs[tx.TxIn[0].PreviousOutPoint]; ok {
+				x.Txs = append(x.Txs, xtx.Txs...)
+			} else {
+				atxs[tx.TxIn[0].PreviousOutPoint] = xtx
+			}
+		}
+
+		for k, stx := range atxs {
+			d := bucket.Get(k.ToBytes())
 			if d == nil || len(d) == 0 {
 				return fmt.Errorf("Cross chain source does not exist")
 			}
@@ -1889,33 +1980,25 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 			if err != nil {
 				return err
 			}
-			if xtx.Txs[0].Txo.PkScript[21] != 0x66 {
-				fmt.Printf("bad XchainData")
-			}
+			//if xtx.Txs[0].Txo.PkScript[21] != 0x66 {
+			//	fmt.Printf("bad XchainData")
+			//}
 			if xtx.Finalized == 0 {
 				return fmt.Errorf("Cross chain source is not finalized")
 			}
-
-			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
-			mtx.LockTime = uint32(block.Height()) + 1
-			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: wire.CrossChainFalg | xtx.ChainID}, uint32(xtx.Height))
-			mtx.AddTxIn(txin)
-			for _, txo := range xtx.Txs {
-				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
-					if (common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
-						b.normalizeTxo(&txo.Txo)
+			for _, txo := range stx.Txs {
+				matched := false
+				for i, to := range xtx.Txs {
+					if to.Txo.Match(&txo.Txo) {
+						xtx.Txs = append(xtx.Txs[:i], xtx.Txs[i+1:]...)
+						matched = true
+						break
 					}
 				}
-
-				mtx.AddTxOut(&txo.Txo)
+				if !matched {
+					return fmt.Errorf("tx does not match INCOMINGPOOL data")
+				}
 			}
-			if !mtx.Match(tx) {
-				return fmt.Errorf("tx does not match cross chain source %x v. %x", mtx.TxOut[0].PkScript, tx.TxOut[0].PkScript)
-			}
-		}
-
-		if b.IsSVP {
-			return nil
 		}
 
 		xcbucket := dbTx.Metadata().Bucket([]byte(common.XCAssets))
@@ -1930,7 +2013,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 				if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
 					continue
 				}
-				dest := txo.DestChain()
+				dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
 				if dest == 0 {
 					dest = b.ChainParams.MainChainID
 				}
@@ -2317,7 +2400,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		if len(payDirect) > 0 {
 			for typ, amt := range payDirect {
 				if amt <= 0 {
-					return ruleError(ErrBadFees, "direct miner fee for tx %s in block %s is negative or 0", tx.Hash().String(), block.Hash().String())
+					return ruleError(ErrBadFees, "direct miner fee for tx "+tx.Hash().String()+" in block "+block.Hash().String()+" is negative or 0")
 				}
 				if m, ok := payMiner[typ]; ok {
 					if amt+m < m {
@@ -2331,8 +2414,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			}
 		}
 		if totalFees < lastTotalFees {
-			return ruleError(ErrBadFees, "total fees for block "+
-				"overflows accumulator")
+			return ruleError(ErrBadFees, "total fees for block overflows accumulator")
 		}
 
 		/*
@@ -2382,7 +2464,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// mining the block.  It is safe to ignore overflow and out of range
 	// errors here because those error conditions would have already been
 	// caught by checkTransactionSanity.
-	totalHaoOut := int64(0)
+	//	totalHaoOut := int64(0)
 	totalAward := int64(0)
 
 	for _, txOut := range transactions[0].MsgTx().TxOut {
@@ -2397,7 +2479,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		if txOut.TokenType == common.FeeCoinTyp {
 			totalAward += txOut.Value.(*token.NumToken).Val
 		}
-		totalHaoOut += txOut.Value.(*token.NumToken).Val
+		//		totalHaoOut += txOut.Value.(*token.NumToken).Val
 	}
 
 	prevPows := uint(0)
@@ -2421,22 +2503,22 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	}
 
 	expectedHaoOut := award + totalFees //  + adj
-	if totalHaoOut > expectedHaoOut {
+	if totalAward > expectedHaoOut {
 		var w bytes.Buffer
 		block.Transactions()[0].MsgTx().Serialize(&w)
 		s := hex.EncodeToString(w.Bytes())
 		str := fmt.Sprintf("coinbase transaction for block %s pays %v "+
 			"which is more than expected value of %v\nblock has %d txs\n%s", block.Hash().String(),
-			totalHaoOut, expectedHaoOut, len(block.MsgBlock().Transactions), s)
+			totalAward, expectedHaoOut, len(block.MsgBlock().Transactions), s)
 		return ruleError(ErrBadCoinbaseValue, str)
 	}
 
-	if totalHaoOut-totalAward > totalFees {
-		str := fmt.Sprintf("coinbase transaction for block %s pays %d awared, "+
-			"which is more than expected value of %d", block.Hash().String(),
-			totalAward, award)
-		return ruleError(ErrBadCoinbaseValue, str)
-	}
+	//	if totalHaoOut-totalAward > totalFees {
+	//		str := fmt.Sprintf("coinbase transaction for block %s pays %d awared, "+
+	//			"which is more than expected value of %d", block.Hash().String(),
+	//			totalAward, award)
+	//		return ruleError(ErrBadCoinbaseValue, str)
+	//	}
 
 	// We obtain the MTP of the *previous* block in order to
 	// determine if transactions in the current block are final.

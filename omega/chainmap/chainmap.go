@@ -42,39 +42,45 @@ func (t *ChainDescriptor) Decendant(cid uint32) bool {
 }
 
 func (t *ChainDescriptor) CtxFees(dest uint32) (path [][]byte, fees []int64) {
-	if t.ChainID == dest {
-		return nil, nil
-	}
-	srctoroot := make([]*ChainDescriptor, 0)
+	srctoroot := make([]*ChainDescriptor, 1)
 	d := t
+	srctoroot[0] = d
 	for d.Parent != 0 {
-		srctoroot = append(srctoroot, d)
 		d, _ = ChainMap[d.Parent]
+		srctoroot = append(srctoroot, d)
 	}
 	d = ChainMap[dest]
+	if d == nil {
+		return nil, nil
+	}
 	desttoroot := make([]*ChainDescriptor, 1)
 	desttoroot[0] = d
 	for d.Parent != 0 {
-		srctoroot = append(srctoroot, d)
 		d, _ = ChainMap[d.Parent]
+		desttoroot = append(desttoroot, d)
 	}
 	// reverse path
-	for i, j := 0, len(desttoroot); i < j; {
-		srctoroot[i], desttoroot[j] = desttoroot[j], srctoroot[i]
-		i++
+	trm := false
+	for i, j := len(srctoroot), len(desttoroot); i > 0 && j > 0; {
+		nt := srctoroot[i-1].ChainID == desttoroot[j-1].ChainID
+		if trm && nt {
+			srctoroot = srctoroot[:len(srctoroot)-1]
+			desttoroot = desttoroot[:len(desttoroot)-1]
+		}
+		if trm && !nt {
+			break
+		}
+		trm = nt
+		i--
 		j--
 	}
 
-	m := false
-	for i := 0; i < len(desttoroot); i++ {
-		if m && srctoroot[len(srctoroot)-1] == desttoroot[i] {
-			srctoroot = srctoroot[:len(srctoroot)-1]
-		} else if srctoroot[len(srctoroot)-1] == desttoroot[i] {
-			m = true
-		} else {
-			srctoroot = append(srctoroot, desttoroot[i])
-			m = false
-		}
+	if trm {
+		desttoroot = desttoroot[:len(desttoroot)-1]
+	}
+
+	for i := len(desttoroot) - 1; i >= 0; i-- {
+		srctoroot = append(srctoroot, desttoroot[i])
 	}
 
 	path, fees = make([][]byte, 0), make([]int64, 0)
@@ -85,14 +91,14 @@ func (t *ChainDescriptor) CtxFees(dest uint32) (path [][]byte, fees []int64) {
 }
 
 func (t *ChainDescriptor) FeeScript() []byte {
-	var s [29]byte
-	for i := 0; i < 29; i++ {
+	var s [26]byte
+	for i := 0; i < 25; i++ {
 		s[i] = 0
 	}
 	s[1] = 1
 	common.LittleEndian.PutUint32(s[22:], t.ChainID)
-	s[21], s[25] = ovm.OP_PAYCROSSCHAIN, ovm.OP_PAYMINER
-	return s[:]
+	s[21] = ovm.OP_PAYMINER
+	return s[:25]
 }
 
 func (t *ChainDescriptor) FeeAmount() int64 {

@@ -219,9 +219,6 @@ func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 { // *big.I
 		return int64(1) << wire.SCALEFACTORCAP
 	} else if d < wire.DESIRABLE_MINER_CANDIDATES/2 {
 		m := wire.DESIRABLE_MINER_CANDIDATES/2 - d
-		if m > 10 {
-			m = 10
-		}
 		return (-1) << m
 	} else if d <= wire.DESIRABLE_MINER_CANDIDATES {
 		return 1
@@ -246,35 +243,18 @@ func (m *CPUMiner) solveBlock(header *mining.BlockTemplate, blockHeight int32, h
 	targetDifficulty := blockchain.CompactToBig(header.Bits)
 	header.Block.(*wire.MingingRightBlock).Bits = header.Bits
 
-	block := header.Block.(*wire.MingingRightBlock)
-
-	factorPOW := int64(1)
-
-	if header.Height > 2200 || block.Version&0x7FFF0000 >= 0x20000 {
-		factorPOW = m.factorPOW(header.Height-1, header.Block.(*wire.MingingRightBlock).BestBlock)
-	}
-
-	// Normal mode
-	//if block.Version < chaincfg.Version5 && block.Version >= chaincfg.Version2 && factorPOW > 0 {
-	//	factorPOW = 16 * factorPOW // factor 16 is for smooth transition from V1 to V2
-	//}
+	factorPOW := m.factorPOW(header.Height-1, header.Block.(*wire.MingingRightBlock).BestBlock)
 
 	if factorPOW < 0 {
 		targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(-factorPOW))
 		factorPOW = 1
 	}
 
-	//	if block.Version&0x7FFF0000 >= chaincfg.Version2 {
 	targetDifficulty = targetDifficulty.Mul(targetDifficulty, big.NewInt(h))
-	//		if block.Version&0x7FFF0000 <= chaincfg.Version5 && targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))) > 0 {
-	//			targetDifficulty = m.cfg.ChainParams.PowLimit.Mul(m.cfg.ChainParams.PowLimit, big.NewInt(16))
-	//		} else
+
 	if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
 		targetDifficulty = m.cfg.ChainParams.PowLimit
 	}
-	//	} else if targetDifficulty.Cmp(m.cfg.ChainParams.PowLimit) > 0 {
-	//		targetDifficulty = m.cfg.ChainParams.PowLimit
-	//	}
 
 	// Initial state.
 	tbest := m.g.Chain.BestSnapshot()

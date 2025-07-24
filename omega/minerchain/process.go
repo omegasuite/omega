@@ -177,16 +177,6 @@ func (b *MinerChain) checkV2(block *wire.MinerBlock, parent *chainutil.BlockNode
 		}
 	}
 	// check the coin for collateral exists and have correct amount
-	_, err = b.blockChain.CheckCollateral(block, &block.MsgBlock().BestBlock, flags)
-	if err != nil {
-		return false, err, nil
-	}
-	/* SameChain includes test of existence
-	   if have, _ := b.blockChain.HaveBlock(&block.MsgBlock().BestBlock); !have {
-	   	log.Infof("BestBlock %s does not Exists ", block.MsgBlock().BestBlock.String())
-	   	return false, true, nil, &block.MsgBlock().BestBlock
-	   }
-	*/
 
 	for _, p := range block.MsgBlock().ViolationReport {
 		for j, tb := range p.Blocks {

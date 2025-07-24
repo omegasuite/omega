@@ -275,7 +275,7 @@ func (s *TxOut) Match(t *TxOut) bool {
 		return false
 	}
 	if s.Rights != nil {
-		if !s.Rights.IsEqual(t.Rights) {
+		if t.Rights == nil || !s.Rights.IsEqual(t.Rights) {
 			return false
 		}
 	} else if t.Rights != nil {

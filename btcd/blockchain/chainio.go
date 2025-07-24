@@ -1862,7 +1862,7 @@ func (b *BlockChain) dbHeightofHash(key chainhash.Hash) int32 {
 }
 
 func (b *BlockChain) makeAssetKey(txo *wire.TxOut) ([]byte, uint32, []byte, uint32) {
-	dest := txo.DestChain()
+	dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
 	if dest == 0 {
 		dest = b.ChainParams.MainChainID
 	}
@@ -1931,6 +1931,9 @@ func (b *BlockChain) validCrossChainScript(script []byte) bool {
 	if script[21] == ovm.OP_PAYCROSSCHAIN {
 		chain := common.LittleEndian.Uint32(script[21:]) >> 8
 		_, ok := chainmap.ChainMap[chain&0x3FFFFF]
+		if !ok {
+			b.SrvReq <- ReqChain(chain & 0x3FFFFF)
+		}
 		return ok
 	}
 	return true
@@ -1938,10 +1941,14 @@ func (b *BlockChain) validCrossChainScript(script []byte) bool {
 
 func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) error {
 	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
-		mainchain := chainmap.ChainMap[b.ChainParams.MainChainID&0x3FFFFF]
+		mainchain := chainmap.ChainMap[b.ChainParams.MainChainID]
+		if mainchain == nil {
+			b.SrvReq <- ReqChain(b.ChainParams.MainChainID)
+		}
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			var xchain *wire.XchainData
+			txhash := tx.TxHash()
 			if tx.IsCrossChain() {
 				xchain = &wire.XchainData{
 					ChainID:   tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
@@ -1959,33 +1966,44 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 					Finalized: 0,
 				}
 			}
+
 			for i, txo := range tx.TxOut {
 				if txo.IsSeparator() {
 					continue
 				}
-				if !txo.IsCrossChain() && (txo.PkScript[21] != ovm.OP_PAYMINER || bytes.Compare(txo.PkScript[22:25], []byte{0, 0, 0}) == 0) {
+				if txo.IsContractCall() {
 					continue
 				}
-				if !b.validCrossChainScript(txo.PkScript) {
-					return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
+				if txo.PkScript[21] != ovm.OP_PAYMINER && txo.PkScript[21] != ovm.OP_PAYCROSSCHAIN {
+					continue
 				}
-				dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8 // destination of this tx
+				dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
+				if dest == b.ChainParams.ChainID || dest == 0 {
+					continue
+				}
 
 				if !mainchain.PassThru(xchain.ChainID, dest) {
-					// if it will pass through the main chain, ignore it, otherwise add the tx to main chain
+					// if it will not pass through the main chain, ignore it, otherwise add the tx to main chain
 					continue
 				}
 
 				t := &wire.MsgXrossL2{
 					Utxo: wire.OutPoint{
-						Hash:  tx.TxHash(),
+						Hash:  txhash,
 						Index: uint32(i),
 					},
 					Txo: *txo,
 				}
-				if txo.PkScript[21] != ovm.OP_PAYMINER && (common.LittleEndian.Uint32(txo.PkScript[21:])>>8) == chaincfg.DefaultChainID {
-					txo.PkScript[22], txo.PkScript[23], txo.PkScript[24] = 0, 0, 0
+
+				st := uint32(t.Txo.TokenType >> 40)
+				if dest == chaincfg.DefaultChainID {
+					b.normalizeTxo(&t.Txo)
 				}
+
+				if st == 0 {
+					t.Txo.TokenType |= uint64(b.ChainParams.ChainID) << 40
+				}
+
 				xchain.Txs = append(xchain.Txs, t)
 			}
 
@@ -1996,8 +2014,10 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 				}
 				k := key.ToBytes()
 				d := bucket.Get(k)
+				dchain := &wire.XchainData{}
 				if d != nil && len(d) > 0 {
-					return fmt.Errorf("Duplicated cross chain tx")
+					dchain.DeSerialize(d)
+					xchain.Txs = append(xchain.Txs, dchain.Txs...)
 				}
 				bucket.Put(k, xchain.Serialize())
 			}
@@ -2012,16 +2032,44 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 				continue
 			}
 			var h [4]byte
+			// it should have been verified that tx is consistent with what is in db
 			d := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
 			if d == nil || len(d) == 0 {
-				fmt.Printf("crodd chain tx does not exist in db")
+				// already processed
 				continue
 			}
-			common.LittleEndian.PutUint32(h[:], uint32(len(d)))
-			rbd = append(rbd, h[:]...)
-			rbd = append(rbd, d...)
-			n++
-			bucket.Delete(tx.TxIn[0].PreviousOutPoint.ToBytes())
+			xchain := &wire.XchainData{}
+			xchain.DeSerialize(d)
+			rmchain := &wire.XchainData{
+				ChainID:   xchain.ChainID,
+				Hash:      xchain.Hash,
+				Height:    xchain.Height,
+				Txs:       make([]*wire.MsgXrossL2, 0),
+				Finalized: xchain.Finalized,
+			}
+			for _, txo := range tx.TxOut {
+				for i, to := range xchain.Txs {
+					if to.Txo.Match(txo) {
+						rmchain.Txs = append(rmchain.Txs, xchain.Txs[i])
+						xchain.Txs = append(xchain.Txs[:i], xchain.Txs[i+1:]...)
+						break
+					}
+				}
+			}
+			if len(xchain.Txs) == 0 {
+				common.LittleEndian.PutUint32(h[:], uint32(len(d)))
+				rbd = append(rbd, h[:]...)
+				rbd = append(rbd, d...)
+				n++
+				bucket.Delete(tx.TxIn[0].PreviousOutPoint.ToBytes())
+			} else {
+				d = rmchain.Serialize()
+				common.LittleEndian.PutUint32(h[:], uint32(len(d)))
+				rbd = append(rbd, h[:]...)
+				rbd = append(rbd, d...)
+				n++
+				bucket.Put(tx.TxIn[0].PreviousOutPoint.ToBytes(), xchain.Serialize())
+			}
 		}
 		if n > 0 {
 			var h [4]byte
@@ -2039,9 +2087,6 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 			for _, txo := range tx.TxOut {
 				if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
 					continue
-				}
-				if !b.validCrossChainScript(txo.PkScript) {
-					return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
 				}
 				assetKey, dest, srckey, tokensrc := b.makeAssetKey(txo)
 
@@ -2070,11 +2115,13 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 					if v >= d {
 						v -= d
 					} else {
+						// TBD: this should have been done earlier
 						return fmt.Errorf("back value excees out value")
 					}
 					if vs >= d {
 						vs -= d
 					} else {
+						// TBD: this should have been done earlier
 						return fmt.Errorf("back value excees out value")
 					}
 				}
@@ -2133,13 +2180,22 @@ func (b *BlockChain) dbRestoreCrossChain(dbTx database.Tx, block *btcutil.Block)
 				if xchain.DeSerialize(data) != nil {
 					return fmt.Errorf("bad XchainData")
 				}
-				if xchain.Txs[0].Txo.PkScript[21] != 0x66 {
-					fmt.Printf("bad XchainData")
-				}
+				//if xchain.Txs[0].Txo.PkScript[21] != 0x66 {
+				//	fmt.Printf("bad XchainData")
+				//}
 
 				var key [36]byte
 				copy(key[:], xchain.Hash[:])
 				common.LittleEndian.PutUint32(key[32:], xchain.ChainID|wire.CrossChainFalg)
+
+				od := bucket.Get(key[:])
+				if len(od) > 0 {
+					ochain := &wire.XchainData{}
+					ochain.DeSerialize(od)
+					xchain.Txs = append(ochain.Txs, xchain.Txs...)
+					data = xchain.Serialize()
+				}
+
 				bucket.Put(key[:], data)
 			}
 			bucketrb.Delete(h[:])

@@ -30,7 +30,8 @@ const (
 	BinaryFreeListMaxItems = 1024
 	FeeCoinTyp             = 0             // type of coin for tx fee
 	BTCCoinTyp             = 0x10000000000 // should be 0x40020000000000, for testing purpose use nxus coin
-	NewChainConsensus      = 100
+	NewChainPool           = 100
+	NewChainConsensus      = 75
 )
 
 // InvType represents the allowed types of inventory vectors.  See InvVect.

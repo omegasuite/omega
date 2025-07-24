@@ -1392,10 +1392,9 @@ func (sp *serverPeer) OnGetChainMap(_ *peer.Peer, msg *wire.MsgGetChainMap) {
 	if protocols[0].Server.chain.ChainParams.ChainID != chainmap.ROOT {
 		// forwarding
 		for _, p := range protocols[1:] {
-			if p.Server.chainParams.ChainID != protocols[0].Server.chainParams.ParentChainId {
-				continue
+			if p.Server.chainParams.ChainID == protocols[0].Server.chainParams.ParentChainId {
+				p.Server.Randcast(msg, nil)
 			}
-			p.Server.Randcast(msg, nil)
 		}
 		return
 	}
@@ -3893,24 +3892,29 @@ func mergeCheckpoints(defaultCheckpoints, additional []chaincfg.Checkpoint) []ch
 }
 
 func (s *server) RequestChain(chainid uint32) {
+	// request missing map data for chainid
 	if _, ok := chainmap.ChainMap[chainid]; ok {
+		// already have it
 		return
 	}
-	if s.chainParams.ChainID == chainmap.ROOT {
-		return
-	}
+	//	if s.chainParams.ChainID == chainmap.ROOT {
+	//		return
+	//	}
 	for _, p := range protocols {
-		if p.Server.chainParams.ChainID == s.chainParams.ChainID {
-			continue
-		}
-		chain, ok := chainmap.ChainMap[p.Server.chainParams.ChainID]
-		if !ok {
-			continue
-		}
-		if chain.PassThru(s.chainParams.ChainID, chainmap.ROOT) {
-			s.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
+		if p.Server.chainParams.ChainID == chaincfg.DefaultParentChainID {
+			p.Server.Broadcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
 			return
 		}
+		/*
+			chain, ok := chainmap.ChainMap[p.Server.chainParams.ChainID]
+			if !ok {
+				continue
+			}
+			if chain.PassThru(p.Server.chainParams.ChainID, chainmap.ROOT) {
+				p.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
+				return
+			}
+		*/
 	}
 }
 

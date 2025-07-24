@@ -7,12 +7,10 @@ package blockchain
 
 import (
 	"btcd/blockchain/chainutil"
-	"fmt"
-	"github.com/omegasuite/btcd/btcec"
-	"omega/ovm"
-
 	"btcd/wire"
 	"btcd/wire/common"
+	"fmt"
+	"github.com/omegasuite/btcd/btcec"
 	"time"
 
 	"btcd/database"
@@ -255,30 +253,55 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 	r := b.db.View(func(dbtx database.Tx) error {
 		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 
+		dxchain := make(map[wire.OutPoint]*wire.XchainData)
+
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
 				continue
 			}
-			xtx := &wire.XchainData{}
-			tntx := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
-			if tntx == nil || len(tntx) == 0 {
-				return fmt.Errorf("error")
-			}
-			if err := xtx.DeSerialize(tntx); err != nil || xtx.Finalized == 0 {
-				return fmt.Errorf("error")
-			}
-			if xtx.Txs[0].Txo.PkScript[21] != 0x66 {
-				fmt.Printf("bad XchainData")
+
+			xtx := &wire.XchainData{
+				ChainID:   tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
+				Hash:      tx.TxIn[0].PreviousOutPoint.Hash,
+				Height:    int32(tx.TxIn[0].PreviousOutPoint.Index),
+				Txs:       []*wire.MsgXrossL2{},
+				Finalized: 0,
 			}
 
-			for i, txo := range xtx.Txs {
-				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
-					if (common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
-						b.normalizeTxo(&txo.Txo)
+			if d, ok := dxchain[tx.TxIn[0].PreviousOutPoint]; ok {
+				xtx = d
+			} else {
+				dxchain[tx.TxIn[0].PreviousOutPoint] = xtx
+			}
+			for _, txo := range tx.TxOut {
+				xtx.Txs = append(xtx.Txs, &wire.MsgXrossL2{
+					Utxo: wire.OutPoint{},
+					Txo:  *txo,
+				})
+			}
+		}
+
+		for key, xchain := range dxchain {
+			xtx := &wire.XchainData{}
+			tntx := bucket.Get(key.ToBytes())
+			if tntx == nil || len(tntx) == 0 {
+				return fmt.Errorf("cross chain tx does not exist in INCOMINGPOOL")
+			}
+			if err := xtx.DeSerialize(tntx); err != nil || xtx.Finalized == 0 {
+				return fmt.Errorf("INCOMINGPOOL deserialization error or the source block is not finalized")
+			}
+
+			for _, to := range xchain.Txs {
+				matched := false
+				for i, txo := range xtx.Txs {
+					if txo.Txo.Match(&to.Txo) {
+						matched = true
+						xtx.Txs = append(xtx.Txs[:i], xtx.Txs[i+1:]...)
+						break
 					}
 				}
-				if !txo.Txo.Match(tx.TxOut[i]) {
-					return fmt.Errorf("error")
+				if !matched {
+					return fmt.Errorf("An unknown cross chain tx")
 				}
 			}
 		}

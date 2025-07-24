@@ -1776,17 +1776,17 @@ out:
 			}
 
 		case *wire.MsgGetChainMap:
-			if p.cfg.IsSvp {
-				continue
-			}
+			// if p.cfg.IsSvp {
+			//	continue
+			// }
 			if p.cfg.Listeners.OnGetChainMap != nil {
 				p.cfg.Listeners.OnGetChainMap(p, msg)
 			}
 
 		case *wire.MsgChainMap:
-			if p.cfg.IsSvp {
-				continue
-			}
+			// if p.cfg.IsSvp {
+			// 	continue
+			// }
 			if p.cfg.Listeners.OnChainMap != nil {
 				p.cfg.Listeners.OnChainMap(p, msg)
 			}

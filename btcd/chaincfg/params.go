@@ -106,7 +106,7 @@ const (
 	DefinedDeployments
 )
 
-const DefaultChainID = 10      // ID of this chain. each chain has a unique id
+const DefaultChainID = 2       // ID of this chain. each chain has a unique id
 const DefaultParentChainID = 1 // ID of this chain. each chain has a unique id
 // const defaultSVPChainID = 0x800001 // Root xfer chain
 
@@ -297,8 +297,8 @@ var MainNetParams = Params{
 		CoinbaseMaturity:         100, // * wire.MINER_RORATE_FREQ,
 		SubsidyReductionInterval: 210240 * wire.MINER_RORATE_FREQ,
 		MinimalAward:             0,
-		TargetTimespan:           time.Hour * 24 * 14, // 14 days
-		TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
+		TargetTimespan:           time.Hour * 24 * 14, // adjust every 14 days
+		TargetTimePerBlock:       time.Minute * 10,    // 10 minutes/block
 		RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 		MinDiffReductionTime:     0,
 		// Consensus rule change deployments.
@@ -502,7 +502,7 @@ var TestNet3Params = Params{
 	GlobalParams: GlobalParams{
 		Name:        "testnet",
 		Net:         uint32(common.TestNet),
-		DefaultPort: "18383",
+		DefaultPort: "6788",
 		DNSSeeds: []DNSSeed{
 			{"omegasuite.org", false},
 		},
@@ -529,7 +529,7 @@ var TestNet3Params = Params{
 		},
 		ViolationReportDeadline: 10,
 		ChainID:                 DefaultChainID, // Omega
-		RpcPort:                 "18840",
+		RpcPort:                 "6789",
 	},
 
 	GenesisHash:      TestNet3GenesisHash[uint32(common.TestNet)],

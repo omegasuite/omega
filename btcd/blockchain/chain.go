@@ -772,10 +772,6 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 				bucket.Put(h[:], d.Serialize())
 			}
 		*/
-		err = b.dbPutCrossChain(dbTx, block)
-		if err != nil {
-			return err
-		}
 
 		return nil
 	})
@@ -783,6 +779,15 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	if err != nil {
 		return err
 	}
+
+	// whatever b is, cross chain data always goes to mainchain db
+	ab := b
+	if b.IsSVP {
+		ab = b.MainChain
+	}
+	err = ab.db.Update(func(dbTx database.Tx) error {
+		return b.dbPutCrossChain(dbTx, block)
+	})
 
 	if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
 		// a rotation block, needs to execute ops in 1 MR block
@@ -1775,6 +1780,7 @@ func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) {
 				continue
 			}
 			if _, ok := chainmap.ChainMap[meta.ChainId]; !ok {
+				b.SrvReq <- ReqChain(meta.ChainId)
 				continue
 			}
 			if chainmap.ChainMap[meta.ChainId].Height != uint32(block.Height()) {
@@ -1789,7 +1795,6 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 	for _, op := range block.MsgBlock().Instructions {
 		switch op.InstCode {
 		case wire.AddChain:
-			// TBD: add a blockchain to FOC
 			if b.ChainParams.ChainID != chainmap.ROOT {
 				return
 			}
@@ -1800,6 +1805,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 				continue
 			}
 			if _, ok := chainmap.ChainMap[cd.ChainID]; ok {
+				b.SrvReq <- ReqChain(cd.ChainID)
 				continue
 			}
 			cd.MRChain = cd.MrGenesis != ""
@@ -1807,9 +1813,9 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 
 			// if 100 MR block all having this inst, then add it
 			mr := b.Miners
-			top := mr.BestSnapshot().Height - 1
+			top := int32(height)
 			agreed := 0
-			for i := 0; i < 100; i++ {
+			for i := 0; i < common.NewChainPool; i++ {
 				blk, err := mr.BlockByHeight(top)
 				top--
 				if err != nil || blk == nil || top == 0 {
@@ -1830,7 +1836,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 					}
 				}
 			}
-			if agreed == common.NewChainConsensus {
+			if agreed >= common.NewChainConsensus {
 				// add it to chainmap
 				chainmap.AddChain(cd)
 			}
@@ -1838,8 +1844,9 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 	}
 }
 
-func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32) []*btcutil.Tx {
+func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32) ([]*btcutil.Tx, map[uint64]int64) {
 	r := make([]*btcutil.Tx, 0)
+	chfee := make(map[uint64]int64)
 	b.db.Update(func(dbtx database.Tx) error {
 		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 		//		heightbucket := dbtx.Metadata().Bucket([]byte(common.SVPHeights))
@@ -1869,15 +1876,17 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: wire.CrossChainFalg | xtx.ChainID}, uint32(xtx.Height))
 			mtx.AddTxIn(txin)
 
-			if xtx.ChainID == common.BTCCHAINID {
-				for _, txo := range xtx.Txs {
-					mtx.AddTxOut(&txo.Txo)
-				}
+			/*
+				if xtx.ChainID == common.BTCCHAINID {	// target chain is BTC
+					for _, txo := range xtx.Txs {
+						mtx.AddTxOut(&txo.Txo)
+					}
 
-				btx := btcutil.NewTx(mtx)
-				r = append(r, btx)
-				continue
-			}
+					btx := btcutil.NewTx(mtx)
+					r = append(r, btx)
+					continue
+				}
+			*/
 
 			if len(xtx.Txs) > 0 {
 				dst := common.LittleEndian.Uint32(xtx.Txs[0].Txo.PkScript[21:])
@@ -1889,20 +1898,35 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 
 				fmt.Printf(" TokenType=%x Val=%d To: %d\n", xtx.Txs[0].Txo.TokenType, xtx.Txs[0].Txo.Value.(*token.NumToken).Val, dst)
 			}
-			if xtx.Txs[0].Txo.PkScript[21] != 0x66 {
-				fmt.Printf("bad XchainData")
-			}
+			// if xtx.Txs[0].Txo.PkScript[21] != ovm.OP_PAYCROSSCHAIN {
+			//	fmt.Printf("bad XchainData")
+			//}
 
 			for _, txo := range xtx.Txs {
-				if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
-					if (common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
-						b.normalizeTxo(&txo.Txo)
+				// should have been done when tx is put in pool
+				/*
+					if txo.Txo.PkScript[21] == ovm.OP_PAYMINER && (common.LittleEndian.Uint32(txo.Txo.PkScript[21:])>>8) == b.ChainParams.ChainID {
+						if uint32(txo.Txo.TokenType>>40) == b.ChainParams.ChainID {
+							txo.Txo.TokenType &= 0xFFFFFFFFFF
+							txo.Txo.PkScript[22], txo.Txo.PkScript[23], txo.Txo.PkScript[24] = 0, 0, 0
+						}
+					} else if txo.Txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
+						if (common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
+							b.normalizeTxo(&txo.Txo)
+						}
+					} else if uint32(txo.Txo.TokenType>>40) == b.ChainParams.ChainID {
+						txo.Txo.TokenType &= 0xFFFFFFFFFF
 					}
-				} else if uint32(txo.Txo.TokenType>>40) == b.ChainParams.ChainID {
-					txo.Txo.TokenType &= 0xFFFFFFFFFF
-				}
+				*/
 
 				mtx.AddTxOut(&txo.Txo)
+				if common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) == (b.ChainParams.ChainID<<8 | ovm.OP_PAYMINER) {
+					if f, ok := chfee[txo.Txo.TokenType]; ok {
+						chfee[txo.Txo.TokenType] = f + txo.Txo.Token.Value.(*token.NumToken).Val
+					} else {
+						chfee[txo.Txo.TokenType] = txo.Txo.Token.Value.(*token.NumToken).Val
+					}
+				}
 			}
 
 			btx := btcutil.NewTx(mtx)
@@ -1911,7 +1935,7 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 
 		return nil
 	})
-	return r
+	return r, chfee
 }
 
 // connectBestChain handles connecting the passed block to the chain while

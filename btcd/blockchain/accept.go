@@ -7,6 +7,7 @@ package blockchain
 
 import (
 	"btcd/blockchain/chainutil"
+	"btcd/chaincfg"
 	"btcd/database"
 	"btcd/wire"
 	"btcd/wire/common"
@@ -14,70 +15,101 @@ import (
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"omega/chainmap"
+	"omega/ovm"
+	"omega/token"
 	"time"
 )
 
 func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 	src := b.ChainParams.ChainID
+	xt := false
 	if len(tx.TxIn) == 1 && (tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg) != 0 {
 		src = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+		xt = true
 	}
 
+	minerFees := make(map[uint32]int64)
+
 	for _, txo := range tx.TxOut {
-		if txo.IsSeparator() || !txo.IsCrossChain() {
+		if txo.IsSeparator() || txo.PkScript[21] == ovm.OP_PAYMINER || (!txo.IsCrossChain() && !xt) {
 			continue
 		}
 		if txo.IsContractCall() {
 			return fmt.Errorf("cross chain tx with contract call")
 		}
 
-		tdest := uint32(txo.TokenType >> 40)
-		tdest &= 0x3FFFFF
+		tdest := uint32(txo.TokenType>>40) & 0x3FFFFF
+		dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
+		if dest == b.ChainParams.ChainID {
+			return fmt.Errorf("cross chain transferring to local chain")
+		}
+		if !txo.IsCrossChain() {
+			dest = 0
+		}
+		if dest == b.ChainParams.ChainID {
+			return fmt.Errorf("cross chain transferring to local chain")
+		}
+
 		if _, ok := chainmap.ChainMap[tdest]; tdest != 0 && !ok {
 			b.SrvReq <- ReqChain(tdest)
 			return fmt.Errorf("Cross chain TokenType not found")
 		}
 
-		if tdest != 0 && tdest != src && tdest != txo.DestChain() {
-			return fmt.Errorf("Invalid cross chain tokentype")
+		if dest != 0 {
+			if _, ok := chainmap.ChainMap[dest]; !ok {
+				b.SrvReq <- ReqChain(dest)
+				return fmt.Errorf("Cross chain TokenType not found")
+			}
+
+			if tdest == 0 {
+				return fmt.Errorf("Local Tokentype in a cross chain tx")
+			}
+
+			if tdest != 0 && tdest != b.ChainParams.ChainID && !chainmap.ChainMap[dest].PassThru(chaincfg.DefaultChainID, tdest) {
+				return fmt.Errorf("Invalid cross chain destination")
+			}
+			if !chainmap.ChainMap[chaincfg.DefaultChainID].PassThru(src, dest) {
+				return fmt.Errorf("Invalid cross chain destination")
+			}
 		}
 
-		if src != 0 && tdest == 0 {
-			return fmt.Errorf("Local Tokentype in a cross chain tx")
-		}
-
-		dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
-		if tdest != b.ChainParams.ChainID && tdest != dest {
-			return fmt.Errorf("Incorrect cross chain destination")
-		}
-		if uint32(txo.TokenType>>40) == b.ChainParams.ChainID && tdest == dest {
-			return fmt.Errorf("Incorrect cross chain destination")
-		}
-		if len(txo.PkScript) != 26 && len(txo.PkScript) != 29 {
+		if txo.IsCrossChain() && len(txo.PkScript) != 26 && len(txo.PkScript) != 29 {
 			return fmt.Errorf("incorrect cross chain pkscript length")
 		}
-		if ((txo.TokenType >> 40) & 0xFFFFFF) == 0 {
-			return fmt.Errorf("Local tokentype in cross chain tx")
+		if dest == 0 {
+			dest = b.ChainParams.ChainID
 		}
-		/*
-			var chain [4]byte
-			copy(chain[:], txo.PkScript[22:25])
-			chain[3] = 0
-			cid := common.LittleEndian.Uint32(chain[:])
-
-		*/
-
-		cid := dest
-
-		if cid == b.ChainParams.ChainID {
-			return fmt.Errorf("cross chain transferring to local chain")
+		pks, fee := chainmap.ChainMap[b.ChainParams.ChainID].CtxFees(dest)
+		for i, p := range pks {
+			d := common.LittleEndian.Uint32(p[21:]) >> 8
+			if f, ok := minerFees[d]; ok {
+				minerFees[d] = f + fee[i]
+			} else {
+				minerFees[d] = fee[i]
+			}
 		}
-		if _, ok := chainmap.ChainMap[cid&0x3FFFFF]; !ok {
-			b.SrvReq <- ReqChain(cid)
-			return fmt.Errorf("unknown cross chain destination")
+	}
+
+	for _, txo := range tx.TxOut {
+		if txo.IsSeparator() || txo.PkScript[21] != ovm.OP_PAYMINER {
+			continue
 		}
-		if src != 0 && src != tdest && tdest != cid {
-			return fmt.Errorf("Incorrect cross chain destination")
+		dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
+		if dest == 0 {
+			dest = b.ChainParams.ChainID
+		}
+		if txo.TokenType != common.BTCCoinTyp && (txo.TokenType != 0 || dest != chainmap.ROOT) {
+			return fmt.Errorf("incorrect cross chain tx fee tokentype")
+		}
+		if f, ok := minerFees[dest]; ok {
+			minerFees[dest] = f - txo.Token.Value.(*token.NumToken).Val
+		} else {
+			return fmt.Errorf("incorrect cross chain tx fee destination")
+		}
+	}
+	for _, f := range minerFees {
+		if f != 0 {
+			return fmt.Errorf("incorrect cross chain tx fee amount")
 		}
 	}
 
@@ -120,9 +152,9 @@ func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 			if err := xdata.DeSerialize(v); err != nil {
 				return err
 			}
-			if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
-				fmt.Printf("bad XchainData")
-			}
+			//if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
+			//	fmt.Printf("bad XchainData")
+			//}
 			if xdata.Finalized == 0 {
 				return fmt.Errorf("tx not finalized")
 			}
@@ -142,9 +174,9 @@ func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 			for _, txo := range tx.TxOut {
 				match := false
 				for i, xto := range xdata.Txs {
-					if (common.LittleEndian.Uint32(xto.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
-						b.normalizeTxo(&xto.Txo)
-					}
+					//					if (common.LittleEndian.Uint32(xto.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
+					//						b.normalizeTxo(&xto.Txo)
+					//					}
 					if txo.Match(&xto.Txo) {
 						match = true
 						xdata.Txs = append(xdata.Txs[:i], xdata.Txs[i+1:]...)
@@ -230,7 +262,10 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		}
 	}
 	if !b.IsSVP {
-		m := chainmap.ChainMap[b.ChainParams.ChainID&0x3FFFFF]
+		m := chainmap.ChainMap[b.ChainParams.ChainID]
+		if m == nil {
+			b.SrvReq <- ReqChain(b.ChainParams.ChainID)
+		}
 		initems := make(map[chainhash.Hash]*wire.XchainData)
 		b.db.View(func(dbtx database.Tx) error {
 			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
@@ -249,9 +284,9 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 				if x.DeSerialize(t) != nil {
 					return fmt.Errorf("bad XchainData")
 				}
-				if x.Txs[0].Txo.PkScript[21] != 0x66 {
-					fmt.Printf("bad XchainData")
-				}
+				//if x.Txs[0].Txo.PkScript[21] != 0x66 {
+				//	fmt.Printf("bad XchainData")
+				//}
 				initems[tx.TxIn[0].PreviousOutPoint.Hash] = x
 			}
 			return nil

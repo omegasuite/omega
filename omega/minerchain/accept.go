@@ -377,19 +377,22 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
 		return ruleError(ErrUnexpectedDifficulty, str)
 	}
-	if b.IsSVP && header.Collateral != coll {
-		str := "block collateral of %d is not the expected value of %d"
-		str = fmt.Sprintf(str, header.Collateral, coll)
-		return ruleError(ErrUnexpectedDifficulty, str)
-	}
 
-	// Ensure the timestamp for the block header is after the
-	// median time of the last several blocks (medianTimeBlocks).
-	medianTime := prevNode.CalcPastMedianTime()
-	if !header.Timestamp.After(medianTime) {
-		str := "block timestamp of %v is not after expected %v"
-		str = fmt.Sprintf(str, header.Timestamp, medianTime)
-		return ruleError(ErrTimeTooOld, str)
+	if !b.IsSVP {
+		if header.Collateral != coll {
+			str := "block collateral of %d is not the expected value of %d"
+			str = fmt.Sprintf(str, header.Collateral, coll)
+			return ruleError(ErrUnexpectedDifficulty, str)
+		}
+
+		// Ensure the timestamp for the block header is after the
+		// median time of the last several blocks (medianTimeBlocks).
+		medianTime := prevNode.CalcPastMedianTime()
+		if !header.Timestamp.After(medianTime) {
+			str := "block timestamp of %v is not after expected %v"
+			str = fmt.Sprintf(str, header.Timestamp, medianTime)
+			return ruleError(ErrTimeTooOld, str)
+		}
 	}
 
 	// the following condition must be met before NewNodeBlock may be accepted
@@ -400,10 +403,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	// is set to generate 2 NewNodeBlock every MINER_RORATE_FREQ block time. Once number of miner candidates reaches
 	// MINER_RORATE_FREQ, the difficulty increases 20% for every one more candidate.
 
-	xf := blockchain.BFNone
-	if block.Height() > 2200 || block.MsgBlock().Version&0x7FFF0000 >= 0x20000 {
-		xf = blockchain.BFWatingFactor
-	}
+	xf := blockchain.BFWatingFactor
 	if b.chainParams.Net == uint32(common.TestNet) || b.chainParams.Net == uint32(common.SimNet) || b.chainParams.Net == uint32(common.RegNet) {
 		xf |= blockchain.BFEasyBlocks
 	}

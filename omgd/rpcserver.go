@@ -241,6 +241,7 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"settip":                handleSetTip,
 
 	"getxchtxfee": handleGetXChTxFee,
+	"getchainmap": handleGetChainMap,
 }
 
 // list of commands that we recognize, but for which btcd has no support because
@@ -398,6 +399,8 @@ var rpcLimited = map[string]struct{}{
 	"gps":                 {},
 	"node":                {},
 	"ping":                {},
+	"getxchtxfee":         {},
+	"getchainmap":         {},
 }
 
 /*
@@ -627,11 +630,39 @@ func handleGenMultiSigAddr(s *rpcServer, cmd interface{}, closeChan <-chan struc
 	return reply, nil
 }
 
+func handleGetChainMap(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.GetChainMapCmd)
+
+	target := c.ChainID
+
+	reply := make([]chainmap.ChainDescriptor, 0)
+	if target != nil {
+		node, ok := chainmap.ChainMap[*target]
+		if ok {
+			reply = append(reply, *node)
+		}
+	} else {
+		for _, m := range chainmap.ChainMap {
+			reply = append(reply, *m)
+		}
+	}
+
+	return reply, nil
+}
+
 func handleGetXChTxFee(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetXChTxFeeCmd)
 	target := c.Target
 
-	path, fees := chainmap.ChainMap[s.cfg.ChainParams.ChainID].CtxFees(uint32(target))
+	node := chainmap.ChainMap[chaincfg.DefaultChainID]
+	if node == nil {
+		return &btcjson.XChTxFee{
+			Path: nil, // pkscripts containing chain id
+			Fees: nil, // fees
+		}, nil
+	}
+
+	path, fees := node.CtxFees(uint32(target))
 
 	pks := make([]string, len(path))
 	for i, s := range path {
