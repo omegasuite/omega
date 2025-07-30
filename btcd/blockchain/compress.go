@@ -4,9 +4,6 @@
 
 package blockchain
 
-import (
-)
-
 // -----------------------------------------------------------------------------
 // A variable length quantity (VLQ) is an encoding that uses an arbitrary number
 // of binary octets to represent an arbitrarily large integer.  The scheme

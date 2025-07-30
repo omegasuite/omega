@@ -667,7 +667,7 @@ func main() {
 		//		pcfg.DataDir = tcfg.DataDir
 		pcfg.NetMagic = chainmap.RootMeta[common.OmegaNet(pcfg.NetMagic)].Magic
 
-		fmt.Printf("parent options loaded, magic = %x", pcfg.NetMagic)
+		fmt.Printf("parent options loaded, magic = %x\n", pcfg.NetMagic)
 
 		pcfg.Generate = false
 		pcfg.GenerateMiner = false
@@ -825,81 +825,80 @@ var btcHeight int32
 
 func checkfinal() {
 	interrupt := interruptListener()
+	ticker := time.NewTicker(time.Second * 15)
 
-	for true {
+	for {
 		select {
 		case <-interrupt:
 			return
-		default:
-		}
-
-		protocols[0].db.Update(func(dbtx database.Tx) error {
-			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-			cursor := bucket.Cursor()
-			for ok := cursor.First(); ok; ok = cursor.Next() {
-				xdata := wire.XchainData{}
-				if err := xdata.DeSerialize(cursor.Value()); err != nil || xdata.Finalized != 0 {
-					continue
-				}
-				if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
-					fmt.Printf("bad XchainData")
-				}
-				for _, p := range protocols[1:] {
-					if xdata.ChainID&0x400000 != 0 {
-						switch xdata.ChainID {
-						case common.BTCCHAINID:
-							if btcHeight >= xdata.Height+7 {
-								xdata.Finalized = -int32(time.Now().Unix() + 120)
-								bucket.Put(cursor.Key(), xdata.Serialize())
-								break
+		case <-ticker.C:
+			protocols[0].db.Update(func(dbtx database.Tx) error {
+				bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					xdata := wire.XchainData{}
+					if err := xdata.DeSerialize(cursor.Value()); err != nil || xdata.Finalized != 0 {
+						continue
+					}
+					//if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
+					//	fmt.Printf("bad XchainData")
+					//}
+					for _, p := range protocols[1:] {
+						if xdata.ChainID&0x400000 != 0 {
+							switch xdata.ChainID {
+							case common.BTCCHAINID:
+								if btcHeight >= xdata.Height+7 {
+									xdata.Finalized = -int32(time.Now().Unix() + 120)
+									bucket.Put(cursor.Key(), xdata.Serialize())
+									break
+								}
 							}
-						}
-					} else {
-						chain := chainmap.ChainMap[p.Server.chainParams.ChainID]
-						if chain.PassThru(protocols[0].Server.chainParams.MainChainID, xdata.ChainID) {
-							p.Server.Randcast(wire.NewMsgFinalized(xdata.ChainID, xdata.Hash), nil)
+						} else {
+							chain := chainmap.ChainMap[p.Server.chainParams.ChainID]
+							if chain.PassThru(protocols[0].Server.chainParams.MainChainID, xdata.ChainID) {
+								p.Server.Randcast(wire.NewMsgFinalized(xdata.ChainID, xdata.Hash), nil)
+							}
 						}
 					}
 				}
-			}
-			return nil
-		})
-		time.Sleep(15 * time.Second)
+				return nil
+			})
+		}
 	}
 }
 
 func retrievedefs(p *Protocol, q *Protocol) {
 	interrupt := interruptListener()
+	ticker := time.NewTicker(time.Second * 15)
 
-	for true {
+	for {
 		select {
 		case <-interrupt:
 			return
-		default:
+		case <-ticker.C:
+			p.db.View(func(dbtx database.Tx) error {
+				bucket := dbtx.Metadata().Bucket([]byte("RECVTXPOOL"))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					var tx wire.MsgTx
+					var r bytes.Reader
+					r.Reset(cursor.Value()[:])
+					tx.Deserialize(&r)
+
+					undefined := p.Server.chain.UndefinedDefinitions(btcutil.NewTx(&tx), p.activeNetParams)
+					q.Server.GetDefinition(undefined)
+				}
+				return nil
+			})
 		}
-
-		p.db.View(func(dbtx database.Tx) error {
-			bucket := dbtx.Metadata().Bucket([]byte("RECVTXPOOL"))
-			cursor := bucket.Cursor()
-			for ok := cursor.First(); ok; ok = cursor.Next() {
-				var tx wire.MsgTx
-				var r bytes.Reader
-				r.Reset(cursor.Value()[:])
-				tx.Deserialize(&r)
-
-				undefined := p.Server.chain.UndefinedDefinitions(btcutil.NewTx(&tx), p.activeNetParams)
-				q.Server.GetDefinition(undefined)
-			}
-			return nil
-		})
-		time.Sleep(15 * time.Second)
 	}
 }
 
 func exitonstall() {
 	lastHeight := int32(0)
+	ticker := time.NewTicker(5 * time.Minute)
 	for {
-		time.Sleep(10 * time.Minute)
+		<-ticker.C
 		h := Server.chain.BestChain.Height()
 		if h != lastHeight {
 			lastHeight = h
@@ -910,6 +909,7 @@ func exitonstall() {
 
 			var wbuf bytes.Buffer
 			time.Sleep(2 * time.Minute)
+
 			btcdLog.Infof("exitonstall: 2 min. after shutdown notice.")
 
 			pprof.Lookup("mutex").WriteTo(&wbuf, 1)

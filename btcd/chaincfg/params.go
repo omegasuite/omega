@@ -108,7 +108,6 @@ const (
 
 const DefaultChainID = 2       // ID of this chain. each chain has a unique id
 const DefaultParentChainID = 1 // ID of this chain. each chain has a unique id
-// const defaultSVPChainID = 0x800001 // Root xfer chain
 
 const (
 	Version1 = 0x10000
@@ -294,7 +293,7 @@ var MainNetParams = Params{
 			{"gctoid.com", false},
 		},
 		PowLimitBits:             0x1e000ff0,
-		CoinbaseMaturity:         100, // * wire.MINER_RORATE_FREQ,
+		CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 		SubsidyReductionInterval: 210240 * wire.MINER_RORATE_FREQ,
 		MinimalAward:             0,
 		TargetTimespan:           time.Hour * 24 * 14, // adjust every 14 days
@@ -431,36 +430,6 @@ var RegressionNetParams = Params{
 			PrevVersion: 0,
 			FeatureMask: 0,
 			StartTime:   0,             // Always available for vote
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion2: {
-			PrevVersion: 0x10000,
-			FeatureMask: 0x3,
-			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion3: {
-			PrevVersion: 0x20000,
-			FeatureMask: 0x4,
-			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion4: {
-			PrevVersion: 0x30000,
-			FeatureMask: 0x4,
-			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion5: {
-			PrevVersion: 0x40000,
-			FeatureMask: 0x8,
-			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion6: {
-			PrevVersion: 0x50000,
-			FeatureMask: 0x5,
-			StartTime:   uint64(time.Date(2023, 8, 1, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  math.MaxInt64, // Never expires
 		},
 	},
@@ -648,36 +617,6 @@ var SimNetParams = Params{
 			PrevVersion: 0,
 			FeatureMask: 0,
 			StartTime:   0,             // Always available for vote
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion2: {
-			PrevVersion: 0x10000,
-			FeatureMask: 0x3,
-			StartTime:   uint64(time.Date(2021, 1, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion3: {
-			PrevVersion: 0x20000,
-			FeatureMask: 0x4,
-			StartTime:   uint64(time.Date(2021, 5, 17, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion4: {
-			PrevVersion: 0x30000,
-			FeatureMask: 0x4,
-			StartTime:   uint64(time.Date(2021, 10, 21, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion5: {
-			PrevVersion: 0x40000,
-			FeatureMask: 0x8,
-			StartTime:   uint64(time.Date(2022, 3, 2, 0, 0, 0, 0, time.UTC).Unix()),
-			ExpireTime:  math.MaxInt64, // Never expires
-		},
-		DeploymentVersion6: {
-			PrevVersion: 0x50000,
-			FeatureMask: 0x5,
-			StartTime:   uint64(time.Date(2023, 8, 1, 0, 0, 0, 0, time.UTC).Unix()),
 			ExpireTime:  math.MaxInt64, // Never expires
 		},
 	},

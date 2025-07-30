@@ -816,6 +816,9 @@ func (b *BlockChain) createChainState() error {
 		if _, err = meta.CreateBucket([]byte(common.ROLLBACKPOOL)); err != nil {
 			return err
 		}
+		if _, err = meta.CreateBucket([]byte("blacklist")); err != nil {
+			return err
+		}
 
 		// Create the bucket that houses map from tokentype to contract.
 		if _, err = meta.CreateBucket(IssuedTokenTypes); err != nil {
@@ -1904,8 +1907,25 @@ func (b *BlockChain) validCrossChainScript(script []byte) bool {
 		return false
 	}
 	if script[21] == ovm.OP_PAY2PKH || script[21] == ovm.OP_PAY2SCRIPTH || script[21] == ovm.OP_PAYMULTISIG || script[21] == ovm.OP_PAYMINER {
-		if script[0] != b.ChainParams.PubKeyHashAddrID && script[0] != b.ChainParams.ScriptHashAddrID && script[0] != b.ChainParams.MultiSigAddrID {
-			return false
+		switch script[21] {
+		case ovm.OP_PAY2PKH:
+			if script[0] != b.ChainParams.PubKeyHashAddrID {
+				return false
+			}
+
+		case ovm.OP_PAY2SCRIPTH:
+			if script[0] != b.ChainParams.ScriptHashAddrID {
+				return false
+			}
+
+		case ovm.OP_PAYMULTISIG:
+			if script[0] != b.ChainParams.MultiSigAddrID {
+				return false
+			}
+		case ovm.OP_PAYMINER:
+			if script[0] != b.ChainParams.PubKeyHashAddrID {
+				return false
+			}
 		}
 	} else {
 		if len(script) < 29 || script[21] != ovm.OP_PAYCROSSCHAIN {
@@ -2085,7 +2105,7 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 				svp = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
 			}
 			for _, txo := range tx.TxOut {
-				if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
+				if txo.IsSeparator() || (svp == 0 && txo.DestChain() == 0) {
 					continue
 				}
 				assetKey, dest, srckey, tokensrc := b.makeAssetKey(txo)
@@ -2208,7 +2228,7 @@ func (b *BlockChain) dbRestoreCrossChain(dbTx database.Tx, block *btcutil.Block)
 				svp = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
 			}
 			for _, txo := range tx.TxOut {
-				if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
+				if txo.IsSeparator() || (svp == 0 && txo.DestChain() == 0) {
 					continue
 				}
 				if !b.validCrossChainScript(txo.PkScript) {

@@ -432,7 +432,7 @@ func (s *server) AddKnownCommittee(id int32, member [20]byte) bool {
 	return added
 }
 
-func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
+func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) bool {
 	s.peerState.print()
 
 	s.peerState.cmutex.Lock()
@@ -441,12 +441,14 @@ func (s *server) CommitteeMsgMG(p [20]byte, h int32, m wire.Message) {
 
 	if ok && !sp.closed && len(sp.queue) < 50 {
 		sp.queue <- msgnb{m, nil}
+		return true
 	} else if !ok || sp == nil {
 		mb, _ := s.chain.Miners.BlockByHeight(h)
 		if mb != nil {
 			go s.makeConnection(mb.MsgBlock().Connection, p, h)
 		}
 	}
+	return false
 }
 
 func (s *server) ChainSync(h chainhash.Hash, p [20]byte) {

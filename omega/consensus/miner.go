@@ -49,7 +49,7 @@ type PeerNotifier interface {
 	MyPlaceInCommittee(r int32) int32
 	CommitteeMsg([20]byte, int32, wire.Message) bool
 	Connected(p [20]byte) bool
-	CommitteeMsgMG([20]byte, int32, wire.Message)
+	CommitteeMsgMG([20]byte, int32, wire.Message) bool
 	NewConsusBlock(block *btcutil.Block)
 	GetPrivKey([20]byte) *btcec.PrivateKey
 	BestSnapshot() *blockchain.BestState

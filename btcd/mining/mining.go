@@ -268,27 +268,12 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 		Sequence:         wire.MaxTxInSequenceNum,
 	})
 
-	prevPows := uint(0)
-	adj := int64(0)
-	/*
-		best := chain.BestSnapshot()
-
-		for pw := chain.BestChain.Tip(); pw != nil && pw.Data.GetNonce() > 0; pw = pw.Parent {
-			prevPows++
-		}
-		if prevPows != 0 {
-			adj = blockchain.CalcBlockSubsidy(best.Height, params, 0) -
-				blockchain.CalcBlockSubsidy(best.Height, params, prevPows)
-		}
-	*/
-	award := blockchain.CalcBlockSubsidy(nextBlockHeight, params, prevPows)
+	award := blockchain.CalcBlockSubsidy(nextBlockHeight, params)
 	if award < params.MinimalAward {
 		award = params.MinimalAward
 	}
 
-	val := award + adj
-	val /= int64(len(addrs))
-
+	val := award / int64(len(addrs))
 	for _, addr := range addrs {
 		t := token.Token{
 			TokenType: common.FeeCoinTyp,

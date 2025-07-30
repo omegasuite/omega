@@ -134,9 +134,6 @@ type config struct {
 	GenerateMiner        bool          `long:"generateminer" description:"Generate (mine) miner blocks using the CPU"`
 	DisablePOWMining     bool          `long:"disablepowmining" description:"Disable generation of POW blocks"`
 
-	// no longer use EnablePOWMining, but keep it here for compatibility
-	EnablePOWMining bool `long:"enablepowmining" description:"Enable generation of POW blocks"`
-
 	MiningAddrs        []string `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
 	PrivKeys           []string `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
 	RsaPrivateKey      string   `long:"rsaprivatekey" description:"Add the specified RSA private key to decode invitation -- At least one key is required if the generate option is set"`
@@ -144,6 +141,8 @@ type config struct {
 	MinBlockWeight     uint32   `long:"minblockweight" description:"Minimal desired transactions in a block"`
 	UserAgentComments  []string `long:"uacomment" description:"Comment to add to the user agent -- See BIP 14 for more information."`
 	NoPeerBloomFilters bool     `long:"nopeerbloomfilters" description:"Disable bloom filtering support"`
+	NoCFilters         bool     `long:"nocfilters" description:"Disable committed filtering (CF) support"`
+	DropCfIndex        bool     `long:"dropcfindex" description:"Deletes the index used for committed filtering (CF) support from the database on start up and then exits."`
 	SigCacheMaxSize    uint     `long:"sigcachemaxsize" description:"The maximum number of entries in the signature verification cache"`
 	BlocksOnly         bool     `long:"blocksonly" description:"Do not accept transactions from remote peers."`
 	TxIndex            bool     `long:"txindex" description:"Maintain a full hash-based transaction index which makes all transactions available via the getrawtransaction RPC"`
@@ -394,10 +393,10 @@ func fileExists(name string) bool {
 // newConfigParser returns a new command line flags parser.
 func newConfigParser(cfg *config, so *serviceOptions, options flags.Options) *flags.Parser {
 	parser := flags.NewParser(cfg, options)
+
 	if runtime.GOOS == "windows" {
 		parser.AddGroup("Service Options", "Service Options", so)
 	}
-
 	return parser
 }
 
@@ -438,7 +437,6 @@ func loadConfig(sec string, omegaNet uint32) (*config, []string, error) {
 		Generate:             defaultGenerate,
 		GenerateMiner:        defaultGenerate,
 		DisablePOWMining:     false,
-		EnablePOWMining:      false,
 		TxIndex:              defaultTxIndex,
 		AddrIndex:            defaultAddrIndex,
 		ChainCurrentStd:      24,

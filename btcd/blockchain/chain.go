@@ -792,16 +792,16 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
 		// a rotation block, needs to execute ops in 1 MR block
 		mrb, _ := b.Miners.BlockByHeight(-(wire.MINER_RORATE_FREQ + block.MsgBlock().Header.Nonce))
-		b.ExecOps(mrb, uint32(block.Height()))
+		b.ExecOps(mrb, uint32(-(wire.MINER_RORATE_FREQ + block.MsgBlock().Header.Nonce)))
 	} else if block.MsgBlock().Header.Nonce > 0 {
 		// a POW block, needs to execute ops in 2 MR blocks
 		rot := int32(b.BestSnapshot().LastRotation)
 		mrb, _ := b.Miners.BlockByHeight(rot - 1)
 		if mrb != nil {
-			b.ExecOps(mrb, uint32(block.Height()))
+			b.ExecOps(mrb, uint32(rot-1))
 		}
 		mrb, _ = b.Miners.BlockByHeight(rot)
-		b.ExecOps(mrb, uint32(block.Height()))
+		b.ExecOps(mrb, uint32(rot))
 	}
 
 	for i := 0; i < m; i++ {
@@ -1889,18 +1889,9 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 			*/
 
 			if len(xtx.Txs) > 0 {
-				dst := common.LittleEndian.Uint32(xtx.Txs[0].Txo.PkScript[21:])
-				dst = dst >> 8
-
-				if !xtx.Txs[0].Txo.IsCrossChain() {
-					dst = 0
-				}
-
+				dst := xtx.Txs[0].Txo.DestChain()
 				fmt.Printf(" TokenType=%x Val=%d To: %d\n", xtx.Txs[0].Txo.TokenType, xtx.Txs[0].Txo.Value.(*token.NumToken).Val, dst)
 			}
-			// if xtx.Txs[0].Txo.PkScript[21] != ovm.OP_PAYCROSSCHAIN {
-			//	fmt.Printf("bad XchainData")
-			//}
 
 			for _, txo := range xtx.Txs {
 				// should have been done when tx is put in pool

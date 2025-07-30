@@ -371,20 +371,19 @@ func CheckBlockSanity(header *wire.MinerBlock, powLimit *big.Int, timeSource cha
 			hex.EncodeToString(header.MsgBlock().Connection))
 	}
 
-	if header.MsgBlock().Version&0x7FFF0000 >= 0x20000 {
-		k := len(header.MsgBlock().TphReports)
-		if k > wire.MaxTPSReports {
-			return fmt.Errorf("Reported more than max allowed TPS items")
-		}
-		if k < wire.MinTPSReports && header.Height() > wire.MinTPSReports {
-			return fmt.Errorf("Reported less than min required TPS items")
-		}
-		for _, v := range header.MsgBlock().TphReports {
-			if v == 0 {
-				return fmt.Errorf("Reported 0 in TPS value")
-			}
+	k := len(header.MsgBlock().TphReports)
+	if k > wire.MaxTPSReports {
+		return fmt.Errorf("Reported more than max allowed TPS items")
+	}
+	if k < wire.MinTPSReports && header.Height() > wire.MinTPSReports {
+		return fmt.Errorf("Reported less than min required TPS items")
+	}
+	for _, v := range header.MsgBlock().TphReports {
+		if v == 0 {
+			return fmt.Errorf("Reported 0 in TPS value")
 		}
 	}
+
 	return nil
 }
 

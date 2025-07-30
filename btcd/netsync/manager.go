@@ -12,7 +12,6 @@ import (
 	"math/rand"
 	"omega/minerchain"
 	"reflect"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -521,8 +520,6 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 	}
 
 	sm.peerStates[bestPeer].syncTime = time.Now().Unix()
-
-	fmt.Printf("Start sync with %s at %d\n", bestPeer.NA().IP.String()+":"+strconv.Itoa(int(bestPeer.NA().Port)), sm.peerStates[bestPeer].syncTime)
 	sm.smtx.Unlock()
 
 	// Start syncing from the best peer if one was selected.

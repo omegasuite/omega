@@ -384,8 +384,12 @@ func (t *TxOut) IsCrossChain() bool {
 	return t.PkScript[0] != 0x88 && t.PkScript[21] == OP_PAYCROSSCHAIN
 }
 
+func (t *TxOut) Crossing() bool {
+	return t.PkScript[0] != 0x88 && (t.PkScript[21] == OP_PAYCROSSCHAIN || t.PkScript[21] == OP_PAYMINER)
+}
+
 func (t *TxOut) DestChain() uint32 {
-	if t.PkScript[0] == 0x88 || t.PkScript[21] != OP_PAYCROSSCHAIN {
+	if t.PkScript[0] == 0x88 || (t.PkScript[21] != OP_PAYCROSSCHAIN && t.PkScript[21] != OP_PAYMINER) {
 		return 0
 	}
 	return common.LittleEndian.Uint32(t.PkScript[21:]) >> 8
@@ -1364,7 +1368,7 @@ func (msgTx *MsgTx) IsCoinBase() bool {
 		if to.IsSeparator() {
 			return true
 		}
-		if to.IsContractCall() || to.IsCrossChain() {
+		if to.IsContractCall() || to.Crossing() {
 			return false
 		}
 	}

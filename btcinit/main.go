@@ -5,17 +5,17 @@
 package main
 
 import (
-	"fmt"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"btcd/blockchain"
 	"btcd/chaincfg"
 	"btcd/wire"
 	"btcd/wire/common"
 	"btcutil"
 	"btcutil/base58"
-	"omega/token"
+	"fmt"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"math/big"
 	_ "net/http/pprof"
+	"omega/token"
 	"os"
 	"time"
 )
@@ -79,7 +79,7 @@ func solveMinerBlock(header *wire.MingingRightBlock) {
 	}
 }
 
-const BaseSubsidy = 5 * btcutil.HaoPerBitcoin
+const BaseSubsidy = 0x108e8d71
 
 func main() {
 	fmt.Printf("\n\nvar coinToken = token.Token{\n\t"+

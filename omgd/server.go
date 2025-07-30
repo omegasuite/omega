@@ -331,8 +331,7 @@ type server struct {
 	chainParams *chaincfg.Params
 	addrManager *addrmgr.AddrManager
 	connManager *connmgr.ConnManager
-	//	sigCache             *SigCache
-	//	hashCache            *HashCache
+
 	rpcServer              *rpcServer
 	syncManager            *netsync.SyncManager
 	chain                  *blockchain.BlockChain
@@ -3426,7 +3425,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			SignAddress:            prot.cfg.signAddress,
 			PrivKeys:               prot.cfg.privateKeys,
 			DisablePOWMining:       prot.cfg.DisablePOWMining,
-			EnablePOWMining:        prot.cfg.EnablePOWMining,
+
 			ProcessBlock:           s.syncManager.ProcessBlock,
 			ConnectedCount:         s.ConnectedCount,
 			IsCurrent:              s.syncManager.IsCurrent,

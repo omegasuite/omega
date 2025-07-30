@@ -15,7 +15,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/btcsuite/btcd/btc2omg/btcd/btcec"
+	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 
 	"btcd/wire"

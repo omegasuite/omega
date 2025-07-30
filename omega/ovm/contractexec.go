@@ -268,7 +268,7 @@ func VerifySigs(tx *btcutil.Tx, param *chaincfg.Params, skip int, views *viewpoi
 			if method[0] == OP_PAY2ANY {
 				continue
 			}
-			if method[0] == OP_PAY2NONE {
+			if method[0] == OP_PAY2NONE || method[0] == OP_PAYMINER {
 				final <- false
 				break
 			}

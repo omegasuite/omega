@@ -105,13 +105,15 @@ func parseRights(tx *btcutil.Tx, views *viewpoint.ViewPointSet, checkPolygon boo
 		}
 		txouts = append(txouts, txo)
 	}
-	for _, txin := range tx.MsgTx().TxIn {
-		if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-		tin := views.Utxo.LookupEntry(txin.PreviousOutPoint).ToTxOut()
-		if tin.TokenType&2 != 0 {
-			txouts = append(txouts, tin)
+	if !tx.MsgTx().IsCrossChain() {
+		for _, txin := range tx.MsgTx().TxIn {
+			if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			tin := views.Utxo.LookupEntry(txin.PreviousOutPoint).ToTxOut()
+			if tin.TokenType&2 != 0 {
+				txouts = append(txouts, tin)
+			}
 		}
 	}
 
@@ -242,22 +244,25 @@ var zerohash chainhash.Hash
 func ioTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) [][]tokennelement {
 	res := [2][]tokennelement{make([]tokennelement, 0, len(tx.MsgTx().TxIn)),
 		make([]tokennelement, 0, len(tx.MsgTx().TxOut))}
-	for _, y := range tx.MsgTx().TxIn {
-		if y.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
+
+	if !tx.MsgTx().IsCrossChain() {
+		for _, y := range tx.MsgTx().TxIn {
+			if y.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			x := views.Utxo.LookupEntry(y.PreviousOutPoint).ToTxOut()
+			if x.TokenType&2 == 0 {
+				continue
+			}
+			te := tokennelement{}
+			te.tokenType = x.TokenType
+			if x.TokenType&1 == 1 {
+				te.polygon = x.Value.(*token.HashToken).Hash
+			}
+			te.right = *x.Rights
+			te.value = x.Value
+			res[0] = append(res[0], te)
 		}
-		x := views.Utxo.LookupEntry(y.PreviousOutPoint).ToTxOut()
-		if x.TokenType&2 == 0 {
-			continue
-		}
-		te := tokennelement{}
-		te.tokenType = x.TokenType
-		if x.TokenType&1 == 1 {
-			te.polygon = x.Value.(*token.HashToken).Hash
-		}
-		te.right = *x.Rights
-		te.value = x.Value
-		res[0] = append(res[0], te)
 	}
 	/*
 		for i, x := range tx.Spends {
@@ -315,54 +320,56 @@ func unirightfetch(views *viewpoint.ViewPointSet, right chainhash.Hash, defdrigh
 
 func ioRTokens(tx *btcutil.Tx, views *viewpoint.ViewPointSet) (map[tokenRElement]int64, map[chainhash.Hash]*viewpoint.RightEntry, error) {
 	res := make(map[tokenRElement]int64)
-	for _, y := range tx.MsgTx().TxIn {
-		if y.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
-		}
-
-		e := views.Utxo.LookupEntry(y.PreviousOutPoint)
-		x := e.ToTxOut()
-
-		if (x.TokenType & 2) == 0 {
-			continue
-		}
-
-		te := tokenRElement{}
-		te.tokenType = x.TokenType
-		v := int64(-1)
-		if (x.TokenType & 1) == 1 {
-			te.polygon = x.Value.(*token.HashToken).Hash
-		} else {
-			v = -x.Value.(*token.NumToken).Val
-		}
-
-		p := views.Rights.GetRight(views.Db, *x.Rights)
-
-		//		p := views.Rights.LookupEntry(*x.Rights)
-		switch p.(type) {
-		case *viewpoint.RightEntry:
-			if p.(*viewpoint.RightEntry) == nil {
-				return nil, nil, fmt.Errorf("Right undefined")
+	if !tx.MsgTx().IsCrossChain() {
+		for _, y := range tx.MsgTx().TxIn {
+			if y.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
 			}
-			te.right = *x.Rights
 
-			if _, ok := res[te]; !ok {
-				res[te] = v
+			e := views.Utxo.LookupEntry(y.PreviousOutPoint)
+			x := e.ToTxOut()
+
+			if (x.TokenType & 2) == 0 {
+				continue
+			}
+
+			te := tokenRElement{}
+			te.tokenType = x.TokenType
+			v := int64(-1)
+			if (x.TokenType & 1) == 1 {
+				te.polygon = x.Value.(*token.HashToken).Hash
 			} else {
-				res[te] += v
+				v = -x.Value.(*token.NumToken).Val
 			}
 
-		case *viewpoint.RightSetEntry:
-			if p.(*viewpoint.RightSetEntry) == nil {
-				return nil, nil, fmt.Errorf("Right undefined")
-			}
-			for _, r := range p.(*viewpoint.RightSetEntry).Rights {
-				te.right = r
+			p := views.Rights.GetRight(views.Db, *x.Rights)
+
+			//		p := views.Rights.LookupEntry(*x.Rights)
+			switch p.(type) {
+			case *viewpoint.RightEntry:
+				if p.(*viewpoint.RightEntry) == nil {
+					return nil, nil, fmt.Errorf("Right undefined")
+				}
+				te.right = *x.Rights
 
 				if _, ok := res[te]; !ok {
 					res[te] = v
 				} else {
 					res[te] += v
+				}
+
+			case *viewpoint.RightSetEntry:
+				if p.(*viewpoint.RightSetEntry) == nil {
+					return nil, nil, fmt.Errorf("Right undefined")
+				}
+				for _, r := range p.(*viewpoint.RightSetEntry).Rights {
+					te.right = r
+
+					if _, ok := res[te]; !ok {
+						res[te] = v
+					} else {
+						res[te] += v
+					}
 				}
 			}
 		}
@@ -515,7 +522,7 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 			}
 		}
 	}
-	if checkPolygon {
+	if checkPolygon && !tx.MsgTx().IsCrossChain() {
 		for _, txIn := range msgtx.TxIn {
 			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
 				continue

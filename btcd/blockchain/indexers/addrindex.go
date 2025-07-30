@@ -790,7 +790,7 @@ func (idx *AddrIndex) indexBlock(data writeIndexData, block *btcutil.Block,
 		}
 
 		for _, txOut := range tx.MsgTx().TxOut {
-			if txOut.IsSeparator() || txOut.IsCrossChain() {
+			if txOut.IsSeparator() || txOut.Crossing() {
 				continue
 			}
 			idx.indexPkScript(data, txOut.PkScript, txIdx)

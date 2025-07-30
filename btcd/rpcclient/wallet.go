@@ -11,12 +11,12 @@ import (
 //	"fmt"
 //	"reflect"
 
-	"github.com/omegasuite/btcd/btcjson"
-	"github.com/omegasuite/btcd/chaincfg"
+	"btcd/btcjson"
+	"btcd/chaincfg"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
-	"github.com/omegasuite/btcutil"
-	"github.com/omegasuite/omega/token"
+	"btcd/wire"
+	"btcutil"
+	"omega/token"
 )
 
 // *****************************

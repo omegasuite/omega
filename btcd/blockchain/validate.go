@@ -39,7 +39,7 @@ const (
 
 	// BaseSubsidy is the starting subsidy amount for mined blocks.  This
 	// value is halved every SubsidyHalvingInterval blocks.
-	BaseSubsidy = 5 * btcutil.HaoPerBitcoin
+	BaseSubsidy = 0x108e8d71
 )
 
 var (
@@ -202,13 +202,18 @@ func IsFinalizedTransaction(tx *btcutil.Tx, blockHeight int32, blockTime time.Ti
 //
 // At the target block generation rate for the main network, this is
 // approximately every 4 years.
-func CalcBlockSubsidy(height int32, chainParams *chaincfg.Params, prevPows uint) int64 {
+func CalcBlockSubsidy(height int32, chainParams *chaincfg.Params) int64 {
 	if chainParams.SubsidyReductionInterval == 0 {
 		return BaseSubsidy
 	}
 
-	// Equivalent to: BaseSubsidy / 2^(height/subsidyHalvingInterval)
-	return BaseSubsidy >> (prevPows + uint(height/chainParams.SubsidyReductionInterval))
+	n := uint(height / chainParams.SubsidyReductionInterval)
+	v := int64(BaseSubsidy)
+	for i := uint(0); i < n; i++ {
+		v = v * 708 / 1000
+	}
+
+	return v
 }
 
 // CheckTransactionSanity performs some preliminary checks on a transaction to
@@ -260,9 +265,9 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 			continue
 		}
 
-		if txOut.IsCrossChain() {
-			continue
-		}
+		//if txOut.IsCrossChain() {
+		//	continue
+		//}
 
 		v := txOut.Value.(*token.NumToken)
 		hao := v.Val
@@ -1471,10 +1476,10 @@ func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views *viewpoint
 }
 
 func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, version uint32) error {
-	if len(tx.MsgTx().TxIn) == 0 || tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
+	if tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
 		return nil
 	}
-	if tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) { // coinbase
+	if len(tx.MsgTx().TxIn) != 0 && tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) { // coinbase
 		return nil
 	}
 
@@ -1687,7 +1692,7 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 			dtype = dtype & 0xFFFFFFFFFF
 			origin = 0
 		}
-		if txOut.IsCrossChain() || txOut.PkScript[21] == ovm.OP_PAYMINER {
+		if txOut.Crossing() {
 			dest := common.LittleEndian.Uint32(txOut.PkScript[21:]) >> 8
 			if origin != 0 && dest != 0 {
 				if !chainmap.ChainMap[dest].PassThru(chainParams.ChainID, origin) {
@@ -1834,6 +1839,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 	chain := chainmap.ChainMap[b.ChainParams.ChainID]
 	if chain == nil {
 		b.SrvReq <- ReqChain(b.ChainParams.ChainID)
+		// return fmt.Errorf("chain info does not exist")
 	}
 	for _, tx := range block.MsgBlock().Transactions[1:] {
 		path, fees := make([][]byte, 0), make([]int64, 0)
@@ -1903,7 +1909,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 			}
 
 			tc := uint32(txo.TokenType >> 40)
-			if src != 0 && !chain.PassThru(src, dc) {
+			if chain == nil || (src != 0 && !chain.PassThru(src, dc)) {
 				return fmt.Errorf("cross chain path does not go thru this chain")
 			}
 			if tc != 0 && tc != b.ChainParams.ChainID && !chainmap.ChainMap[dc].PassThru(src, dc) {
@@ -2010,7 +2016,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 			}
 
 			for _, txo := range tx.TxOut {
-				if txo.IsSeparator() || (svp == 0 && !txo.IsCrossChain()) {
+				if txo.IsSeparator() || (svp == 0 && txo.DestChain() == 0) {
 					continue
 				}
 				dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
@@ -2482,22 +2488,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		//		totalHaoOut += txOut.Value.(*token.NumToken).Val
 	}
 
-	prevPows := uint(0)
-	/*
-		if node.Data.GetNonce() > 0 {
-			for pw := node.Parent; pw != nil && pw.Data.GetNonce() > 0; pw = b.ParentNode(pw) {
-				prevPows++
-			}
-		}
-		adj := int64(0)
-
-		if prevPows != 0 {
-			best := b.BestSnapshot()
-			adj = CalcBlockSubsidy(best.Height, b.ChainParams, 0) -
-				CalcBlockSubsidy(best.Height, b.ChainParams, prevPows)
-		}
-	*/
-	award := CalcBlockSubsidy(node.Height, b.ChainParams, prevPows)
+	award := CalcBlockSubsidy(node.Height, b.ChainParams)
 	if award < b.ChainParams.MinimalAward {
 		award = b.ChainParams.MinimalAward
 	}

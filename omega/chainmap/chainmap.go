@@ -20,7 +20,8 @@ import (
 
 // chainmap is a map of blockchains in FOC.
 const (
-	ROOT = 1 // Chain ID of root blockchain, i.e. the Omega
+	ROOT                    = 1 // Chain ID of root blockchain, i.e. the Omega
+	CrossChainTxFeePerChain = 1e5
 )
 
 type ChainDescriptor wire.ChainDescriptor
@@ -103,7 +104,7 @@ func (t *ChainDescriptor) FeeScript() []byte {
 
 func (t *ChainDescriptor) FeeAmount() int64 {
 	// for now, flat 100 Satoshi. in the future, it would be chain dependent
-	return 100
+	return CrossChainTxFeePerChain
 }
 
 func (t *ChainDescriptor) PassThru(src, dest uint32) bool {

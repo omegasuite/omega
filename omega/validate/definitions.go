@@ -495,21 +495,23 @@ func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error
 				sum += views.Border.LookupEntry(af).RefCnt
 			}
 
-			for _, txIn := range tx.MsgTx().TxIn {
-				if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-					continue
-				}
-				utxo := views.Utxo.LookupEntry(txIn.PreviousOutPoint)
-				if utxo.TokenType != 3 {
-					continue
-				}
-				h := &utxo.Amount.(*token.HashToken).Hash
-				sum -= appeared(h, as, views)
+			if !tx.MsgTx().IsCrossChain() {
+				for _, txIn := range tx.MsgTx().TxIn {
+					if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+						continue
+					}
+					utxo := views.Utxo.LookupEntry(txIn.PreviousOutPoint)
+					if utxo.TokenType != 3 {
+						continue
+					}
+					h := &utxo.Amount.(*token.HashToken).Hash
+					sum -= appeared(h, as, views)
 
-				if sum != 0 {
-					return ruleError(1, "Illegal border definition.")
+					if sum != 0 {
+						return ruleError(1, "Illegal border definition.")
+					}
+					// everyone affected by modification of this border has approved by appearing in input
 				}
-				// everyone affected by modification of this border has approved by appearing in input
 			}
 		}
 	}

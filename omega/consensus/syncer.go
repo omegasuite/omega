@@ -108,11 +108,15 @@ type Syncer struct {
 	nmsg [7]int
 }
 
-func (self *Syncer) CommitteeMsgMG(p [20]byte, m wire.Message) {
+func (self *Syncer) CommitteeMsgMG(p [20]byte, m wire.OmegaMessage) {
+	r := false
 	if h, ok := self.Members[p]; ok {
-		miner.server.CommitteeMsgMG(p, h+self.Base, m)
+		r = miner.server.CommitteeMsgMG(p, h+self.Base, m)
 	} else {
 		log.Infof("Msg not sent because %s is not a memnber", p)
+	}
+	if !r {
+		miner.Broadcast(m, nil)
 	}
 }
 
@@ -123,7 +127,11 @@ func (self *Syncer) CommitteeMsg(p [20]byte, m wire.Message) bool {
 }
 */
 
-func (self *Syncer) CommitteeCastMG(msg wire.Message) {
+func (self *Syncer) Broadcast(msg wire.OmegaMessage) {
+	miner.Broadcast(msg, nil)
+}
+
+func (self *Syncer) CommitteeCastMG(msg wire.OmegaMessage) {
 	for i, p := range self.Names {
 		if i == self.Myself {
 			continue

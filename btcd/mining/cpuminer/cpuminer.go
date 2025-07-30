@@ -74,7 +74,6 @@ type Config struct {
 	SignAddress      []btcutil.Address
 	PrivKeys         []*btcec.PrivateKey
 	DisablePOWMining bool
-	EnablePOWMining  bool
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -133,6 +132,10 @@ type CPUMiner struct {
 	generating bool
 }
 
+func (m *CPUMiner) IsGenerating() bool {
+	return m.started && m.generating
+}
+
 func (m *CPUMiner) IsPendingGenerating() bool { // whether we are generating or next in line to generate
 	r := m.started && m.generating
 	if m.started && !r {
@@ -149,55 +152,6 @@ func (m *CPUMiner) IsPendingGenerating() bool { // whether we are generating or 
 	}
 	return r
 }
-
-// speedMonitor handles tracking the number of hashes per second the mining
-// process is performing.  It must be run as a goroutine.
-/*
-func (m *CPUMiner) speedMonitor() {
-	log.Tracef("CPU miner speed monitor started")
-
-	var hashesPerSec float64
-	var totalHashes uint64
-	ticker := time.NewTicker(time.Second * hpsUpdateSecs)
-	defer ticker.Stop()
-
-out:
-	for {
-		select {
-		// Periodic updates from the workers with how many hashes they
-		// have performed.
-		case numHashes := <-m.updateHashes:
-			totalHashes += numHashes
-
-		// Time to update the hashes per second.
-		case <-ticker.C:
-			curHashesPerSec := float64(totalHashes) / hpsUpdateSecs
-			if hashesPerSec == 0 {
-				hashesPerSec = curHashesPerSec
-			}
-			hashesPerSec = (hashesPerSec + curHashesPerSec) / 2
-			totalHashes = 0
-			if hashesPerSec != 0 {
-				log.Debugf("Hash speed: %6.0f kilohashes/s",
-					hashesPerSec/1000)
-			}
-			if len(m.queryHashesPerSec) == 0 {
-//				m.queryHashesPerSec <- hashesPerSec
-			}
-
-		// Request for the number of hashes per second.
-		case m.queryHashesPerSec <- hashesPerSec:
-			// Nothing to do.
-
-		case <-m.speedMonitorQuit:
-			break out
-		}
-	}
-
-	m.wg.Done()
-	log.Tracef("CPU miner speed monitor done")
-}
-*/
 
 // submitBlock submits the passed block to network after ensuring it passes all
 // of the consensus validation rules.
@@ -453,7 +407,7 @@ func (m *CPUMiner) AddMiningKey(miningAddr *btcec.PrivateKey) bool {
 func (m *CPUMiner) generateBlocks() {
 	log.Info("Starting generate blocks")
 
-	if !m.cfg.Generate && m.cfg.DisablePOWMining && !m.cfg.EnablePOWMining {
+	if !m.cfg.Generate && m.cfg.DisablePOWMining {
 		m.wg.Done()
 		return
 	}
@@ -536,8 +490,6 @@ out:
 			time.Sleep(time.Second * 5)
 			m.generating = false
 			continue
-			//		} else {
-			//			log.Infof("ConnectedCount = %d.", ccnt)
 		}
 
 		if len(m.cfg.MiningAddrs) == 0 {
@@ -647,10 +599,6 @@ out:
 				}
 			}
 		} else {
-			if (m.cfg.DisablePOWMining && m.cfg.Generate) || !m.cfg.EnablePOWMining {
-				time.Sleep(time.Second * wire.TimeGap)
-				continue
-			}
 			nonce = 1
 		}
 
@@ -793,12 +741,12 @@ out:
 
 		mh := m.g.Chain.Miners.BestSnapshot().Height
 
-		if m.cfg.DisablePOWMining && !m.cfg.EnablePOWMining {
+		if m.cfg.DisablePOWMining || !m.cfg.Generate {
 			time.Sleep(time.Second * wire.TimeGap)
 			continue
 		}
 
-		if time.Now().Unix()-lastblkrcv < 2*wire.TimeGap || (m.cfg.DisablePOWMining && m.cfg.Generate) || !m.cfg.EnablePOWMining || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
+		if time.Now().Unix()-lastblkrcv < 2*wire.TimeGap || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
 			time.Sleep(time.Second * wire.TimeGap)
 			continue
 		}

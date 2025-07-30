@@ -323,6 +323,9 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 // This function is safe for concurrent access.
 func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bool, bool, error, int32, *chainhash.Hash) {
 	//	log.Infof("ProcessBlock: ChainLock.RLock")
+	if block == nil {
+		return false, false, fmt.Errorf("nil block"), -1, nil
+	}
 	b.ChainLock.Lock()
 	defer b.ChainLock.Unlock()
 
@@ -430,14 +433,9 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	for _, tx := range block.MsgBlock().Transactions {
 		for _, txo := range tx.TxOut {
-			if !txo.IsSeparator() && txo.IsCrossChain() {
-				if txo.PkScript[0] == b.ChainParams.MultiSigAddrID && (txo.PkScript[24]&0x80) != 0 {
-					// multisig xfer is not allowed in layer 2 chain
-					str := fmt.Sprintf("Invalid cross chain tx type in tx %s", blockHash.String())
-					return false, true, ruleError(ErrDuplicateBlock, str), -1, nil
-				}
-				if txo.PkScript[0] != b.ChainParams.ScriptHashAddrID && txo.PkScript[0] != b.ChainParams.PubKeyHashAddrID {
-					// only the two kind addresses are allowed in cross chain tx
+			if !txo.IsSeparator() && txo.Crossing() {
+				if txo.PkScript[0] != b.ChainParams.PubKeyHashAddrID && (txo.PkScript[24]&0x80) != 0 {
+					// only PKH xfer is not allowed in layer 2 chain
 					str := fmt.Sprintf("Invalid cross chain tx type in tx %s", blockHash.String())
 					return false, true, ruleError(ErrDuplicateBlock, str), -1, nil
 				}

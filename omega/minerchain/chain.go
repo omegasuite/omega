@@ -1715,9 +1715,6 @@ type TPSrv struct {
 }
 
 func (g *MinerChain) TphReport(rpts int, last *chainutil.BlockNode, me [20]byte) []uint32 {
-	if last.Data.GetVersion() < 0x2000 {
-		return nil
-	}
 	rpt := make([]uint32, 0, rpts)
 	miners := make(map[[20]byte]struct{})
 

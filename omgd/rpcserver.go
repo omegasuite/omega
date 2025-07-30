@@ -170,10 +170,10 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getblockheader":  handleGetBlockHeader,
 	"genmultisigaddr": handleGenMultiSigAddr,
 	//	"getbtcl2script":  handleGetBtcL2Script, // new, get a script for transfer Bitcoin to L2
-	//	"gettreasury":     handleGetTreasury,    // new
-	//	"getsigners":      handleGetSigners,     // new
-	//  "getbtcpool":     handleGetBtcPool,     // new
-	// "getl2pool":      handleGetL2Pool,      // new
+	// "gettreasury": handleGetTreasury, // new
+	// "getsigners":  handleGetSigners,  // new
+	//	"getbtcpool":      handleGetBtcPool,      // new
+	//	"getl2pool":       handleGetL2Pool,       // new
 	"clearbtcl2pool":  handleClearBtcL2Pool,  // new
 	"getcrosschaindb": handleGetCrossChainDB, // new
 
@@ -1659,6 +1659,8 @@ func DisasmScript(script []byte) string {
 		return "pay2pkh(" + hex.EncodeToString(script[:21]) + ")"
 	case ovm.OP_PAY2NONE:
 		return "payreturn"
+	case ovm.OP_PAYMINER:
+		return "payminer"
 	case ovm.OP_PAY2ANY:
 		return "payanyone"
 	case ovm.OP_PAYMULTISIG:
@@ -5810,10 +5812,6 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	s.cfg.ConnMgr.AddRebroadcastInventory(iv, txD)
 
 	msg := tx.Hash().String()
-
-	//	if !s.cfg.Cfg.Generate && (s.cfg.Cfg.DisablePOWMining || !s.cfg.Cfg.EnablePOWMining) {
-	//		s.cfg.TxMemPool.RemoveTransaction(tx, true)
-	//	}
 
 	if *c.WaitConfirm != 0 {
 		cf := time.AfterFunc(time.Duration(*c.WaitConfirm)*time.Second, func() {

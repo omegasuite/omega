@@ -6,8 +6,10 @@
 package wire
 
 import (
-	"fmt"
 	"btcd/wire/common"
+	"bytes"
+	"fmt"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"io"
 )
 
@@ -132,4 +134,18 @@ func NewMsgGetDataSizeHint(sizeHint uint) *MsgGetData {
 	return &MsgGetData{
 		InvList: make([]*InvVect, 0, sizeHint),
 	}
+}
+
+// OmegaMessage interface
+func (msg *MsgGetData) SetSeq(t int32) {
+}
+
+func (msg *MsgGetData) DoubleHashB() []byte {
+	var w bytes.Buffer
+	msg.OmcEncode(&w, 0, BaseEncoding)
+	return chainhash.DoubleHashB(w.Bytes())
+}
+
+func (msg *MsgGetData) GetSignature() []byte {
+	return []byte{0}
 }

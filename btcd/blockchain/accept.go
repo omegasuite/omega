@@ -38,11 +38,8 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 			return fmt.Errorf("cross chain tx with contract call")
 		}
 
-		tdest := uint32(txo.TokenType>>40) & 0x3FFFFF
+		tdest := uint32(txo.TokenType >> 40)
 		dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
-		if dest == b.ChainParams.ChainID {
-			return fmt.Errorf("cross chain transferring to local chain")
-		}
 		if !txo.IsCrossChain() {
 			dest = 0
 		}
@@ -71,11 +68,12 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 			if !chainmap.ChainMap[chaincfg.DefaultChainID].PassThru(src, dest) {
 				return fmt.Errorf("Invalid cross chain destination")
 			}
+
+			if len(txo.PkScript) != 26 && len(txo.PkScript) != 29 {
+				return fmt.Errorf("incorrect cross chain pkscript length")
+			}
 		}
 
-		if txo.IsCrossChain() && len(txo.PkScript) != 26 && len(txo.PkScript) != 29 {
-			return fmt.Errorf("incorrect cross chain pkscript length")
-		}
 		if dest == 0 {
 			dest = b.ChainParams.ChainID
 		}
@@ -257,7 +255,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		if txo.IsSeparator() {
 			continue
 		}
-		if txo.IsCrossChain() {
+		if txo.Crossing() {
 			return false, fmt.Errorf("Coinbase tx can not be a cross chain transaction"), -1
 		}
 	}
@@ -300,7 +298,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 				srcchain := tx.TxIn[0].PreviousOutPoint.Index & wire.CrossChainSrcMask
 
 				for _, txo := range tx.TxOut {
-					if txo.IsCrossChain() {
+					if txo.Crossing() {
 						destchain := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
 						if destchain == 0 {
 							destchain = b.ChainParams.ChainID

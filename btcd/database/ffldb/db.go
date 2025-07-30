@@ -2050,10 +2050,12 @@ func (db *db) Close() error {
 	// Close any open flat files that house the blocks.
 	wc := db.store.writeCursor
 	if wc.curFile.file != nil {
+		wc.curFile.file.Sync()
 		_ = wc.curFile.file.Close()
 		wc.curFile.file = nil
 	}
 	for _, blockFile := range db.store.openBlockFiles {
+		blockFile.file.Sync()
 		_ = blockFile.file.Close()
 	}
 	db.store.openBlockFiles = nil

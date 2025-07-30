@@ -328,7 +328,7 @@ func (view *ViewPointSet) AddTxOuts(tx *btcutil.Tx, blockHeight int32) {
 		if txOut.IsNopaying() {
 			continue
 		}
-		if txOut.IsCrossChain() {
+		if txOut.Crossing() {
 			// if it is cross chain txout, don't add it to utxo view, so it does not appear in this chain
 			continue
 		}
