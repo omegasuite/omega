@@ -637,6 +637,7 @@ func (self *Syncer) run() {
 	ticker := time.NewTicker(time.Second * 2)
 	//	begin := time.Now().Unix()
 	//	alive := false
+	tkcnt := 20 // will quit after 20 ticks no matter what
 
 loop:
 	for {
@@ -657,6 +658,10 @@ loop:
 			for len(ticker.C) > 0 {
 				<-ticker.C
 			}
+			if tkcnt == 0 {
+				break loop
+			}
+			tkcnt--
 			//			if !alive {
 			self.repeater()
 			//			}
@@ -668,7 +673,7 @@ loop:
 	ticker.Stop()
 	//	log.Infof("\nmessage statistics at %d: %v\nTime span: %d sec\n", self.Height, self.nmsg, time.Now().Unix()-begin)
 
-	for true {
+	for {
 		select {
 		// drain all msgs
 		case m := <-self.commands:

@@ -464,8 +464,8 @@ var InitDefs4e585574 = []token.Definition{
 	},
 }
 
-const HaoPerBitcoin = 1e8
-const BaseSubsidy = 6 * HaoPerBitcoin
+// const HaoPerBitcoin = 1e8
+// const BaseSubsidy = 6 * HaoPerBitcoin
 
 var coinToken4e585574 = token.Token{
 	TokenType: 0,
