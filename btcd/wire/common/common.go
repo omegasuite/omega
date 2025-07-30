@@ -920,13 +920,13 @@ func (f ServiceFlag) String() string {
 // better idea to simply disconnect clients that are misbehaving over TCP.
 const (
 	// MainNet represents the main Zentrophy network.
-	MainNet OmegaNet = 0x4743546d //	GCTm
+	MainNet OmegaNet = 0x4e585553 //	NXUS
 	// RegNet represents the regression test network.
-	RegNet OmegaNet = 0x47435472 // GCTr
+	RegNet OmegaNet = 0x4e585572 // NXUr
 	// TestNet represents the test network.
-	TestNet OmegaNet = 0x47435474 // GCTt
+	TestNet OmegaNet = 0x4e585574 // NXUt
 	// SimNet represents the simulation test network.
-	SimNet OmegaNet = 0x47435473 // GCTs
+	SimNet OmegaNet = 0x4e585573 // NXUs
 )
 
 // bnStrings is a map of omega networks back to their constant names for

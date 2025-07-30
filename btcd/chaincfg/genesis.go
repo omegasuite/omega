@@ -14,89 +14,89 @@ import (
 // genesisMerkleRoot is the hash of the first transaction in the genesis block
 // for the main network. ----
 var GenesisMerkleRoot = map[uint32]chainhash.Hash{
-	0x4743546d: omega.MainNetGenesisMerkleRoot,
+	0x4e585553: omega.MainNetGenesisMerkleRoot,
+	0x47435474: omega.MainNetGenesisMerkleRoot47435474,
 }
 
 // GenesisBlock defines the genesis block of the block chain which serves as the
 // public transaction ledger for the main network.
 var GenesisBlock = map[uint32]*wire.MsgBlock{
-	0x4743546d: &omega.MainNetGenesisBlock,
+	0x4e585553: &omega.MainNetGenesisBlock,
+	0x47435474: &omega.MainNetGenesisBlock47435474,
 }
 
 var GenesisMinerBlock = map[uint32]*wire.MingingRightBlock{
-	0x4743546d: &omega.MainNetGenesisMinerBlock,
+	0x4e585553: &omega.MainNetGenesisMinerBlock,
+	0x47435474: &omega.MainNetGenesisMinerBlock47435474,
 }
 
 // GenesisHash is the hash of the first block in the block chain for the main
 // network (genesis block). ----
 var GenesisHash = map[uint32]*chainhash.Hash{
-	0x4743546d: &omega.MainNetGenesisHash[0],
+	0x4e585553: &omega.MainNetGenesisHash[0],
+	0x47435474: &omega.MainNetGenesisHash47435474[0],
 }
 var GenesisMinerHash = map[uint32]*chainhash.Hash{
-	0x4743546d: &omega.MainNetGenesisHash[1],
+	0x4e585553: &omega.MainNetGenesisHash[1],
+	0x47435474: &omega.MainNetGenesisHash47435474[1],
 }
 
 // RegTestGenesisHash is the hash of the first block in the block chain for the
 // regression test network (genesis block).
 var RegTestGenesisHash = map[uint32]chainhash.Hash{
-	0x47435472: chainhash.Hash{},
+	0x4e585572: chainhash.Hash{},
+	0x47435474: chainhash.Hash{},
 }
 var RegTestGenesisMinerHash = map[uint32]chainhash.Hash{
-	0x47435472: chainhash.Hash{},
+	0x4e585572: chainhash.Hash{},
+	0x47435474: chainhash.Hash{},
 }
 
 // RegTestGenesisMerkleRoot is the hash of the first transaction in the genesis
 // block for the regression test network.  It is the same as the merkle root for
 // the main network.
 var RegTestGenesisMerkleRoot = map[uint32]chainhash.Hash{
-	0x47435472: chainhash.Hash{},
+	0x4e585572: chainhash.Hash{},
+	0x47435474: chainhash.Hash{},
 }
 
 // TestNet3GenesisHash is the hash of the first block in the block chain for the
 // test network (version 3).
 var TestNet3GenesisHash = map[uint32]*chainhash.Hash{
-	0x47435474: &omega.TestNetGenesisHash[0],
-	0x4e585574: &omega.TestNetGenesisHash4e585574[0],
+	0x4e585574: &omega.TestNetGenesisHash[0],
+	0x47435474: &omega.TestNetGenesisHash47435474[0],
 }
 var TestNet3GenesisMinerHash = map[uint32]*chainhash.Hash{
-	0x47435474: &omega.TestNetGenesisHash[1],
-	0x4e585574: &omega.TestNetGenesisHash4e585574[1],
-}
-
-// TestNet3GenesisMerkleRoot is the hash of the first transaction in the genesis
-// block for the test network (version 3).  It is the same as the merkle root
-// for the main network.
-var TestNet3GenesisMerkleRoot = map[uint32]chainhash.Hash{
-	0x47435474: omega.TestNetGenesisMerkleRoot,
-	0x4e585574: omega.TestNetGenesisMerkleRoot4e585574,
+	0x4e585574: &omega.TestNetGenesisHash[1],
+	0x47435474: &omega.TestNetGenesisHash47435474[1],
 }
 
 // TestNet3GenesisBlock defines the genesis block of the block chain which
 // serves as the public transaction ledger for the test network (version 3).
 var TestNet3GenesisBlock = map[uint32]*wire.MsgBlock{
-	0x47435474: &omega.TestNetGenesisBlock,
-	0x4e585574: &omega.TestNetGenesisBlock4e585574,
+	0x4e585574: &omega.TestNetGenesisBlock,
+	0x47435474: &omega.TestNetGenesisBlock47435474,
 }
 var TestNet3GenesisMinerBlock = map[uint32]*wire.MingingRightBlock{
-	0x47435474: &omega.TestNetGenesisMinerBlock,
-	0x4e585574: &omega.TestNetGenesisMinerBlock4e585574,
+	0x4e585574: &omega.TestNetGenesisMinerBlock,
+	0x47435474: &omega.TestNetGenesisMinerBlock47435474,
 }
 
 // SimNetGenesisHash is the hash of the first block in the block chain for the
 // simulation test network.
 var SimNetGenesisHash = map[uint32]*chainhash.Hash{
-	0x47435473: &chainhash.Hash{},
-	0x4743546d: &chainhash.Hash{},
+	0x4e585573: &chainhash.Hash{},
+	0x47435474: &chainhash.Hash{},
 }
 var SimNetGenesisMinerHash = map[uint32]*chainhash.Hash{
-	0x47435473: &chainhash.Hash{},
-	0x4743546d: &chainhash.Hash{},
+	0x4e585573: &chainhash.Hash{},
+	0x47435474: &chainhash.Hash{},
 }
 
 // SimNetGenesisMerkleRoot is the hash of the first transaction in the genesis
 // block for the simulation test network.  It is the same as the merkle root for
 // the main network.
 var SimNetGenesisMerkleRoot = map[uint32]chainhash.Hash{
-	0x47435473: chainhash.Hash{},
-	0x4743546d: chainhash.Hash{},
+	0x4e585573: chainhash.Hash{},
+	0x47435474: chainhash.Hash{},
 }

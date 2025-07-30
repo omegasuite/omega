@@ -39,7 +39,7 @@ const (
 
 	// BaseSubsidy is the starting subsidy amount for mined blocks.  This
 	// value is halved every SubsidyHalvingInterval blocks.
-	BaseSubsidy = 0x108e8d71
+	BaseSubsidy = 6 * btcutil.HaoPerBitcoin
 )
 
 var (
@@ -207,13 +207,8 @@ func CalcBlockSubsidy(height int32, chainParams *chaincfg.Params) int64 {
 		return BaseSubsidy
 	}
 
-	n := uint(height / chainParams.SubsidyReductionInterval)
-	v := int64(BaseSubsidy)
-	for i := uint(0); i < n; i++ {
-		v = v * 708 / 1000
-	}
-
-	return v
+	// Equivalent to: BaseSubsidy / 2^(height/subsidyHalvingInterval)
+	return BaseSubsidy >> uint(height/chainParams.SubsidyReductionInterval)
 }
 
 // CheckTransactionSanity performs some preliminary checks on a transaction to

@@ -106,8 +106,8 @@ const (
 	DefinedDeployments
 )
 
-const DefaultChainID = 2       // ID of this chain. each chain has a unique id
-const DefaultParentChainID = 1 // ID of this chain. each chain has a unique id
+const DefaultChainID = 1       // ID of this chain. each chain has a unique id
+const DefaultParentChainID = 0 // ID of this chain. each chain has a unique id
 
 const (
 	Version1 = 0x10000
@@ -290,7 +290,7 @@ var MainNetParams = Params{
 		Net:         uint32(common.MainNet),
 		DefaultPort: "7788",
 		DNSSeeds: []DNSSeed{
-			{"gctoid.com", false},
+			{"omegasuite.org", false},
 		},
 		PowLimitBits:             0x1e000ff0,
 		CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
@@ -471,7 +471,7 @@ var TestNet3Params = Params{
 	GlobalParams: GlobalParams{
 		Name:        "testnet",
 		Net:         uint32(common.TestNet),
-		DefaultPort: "6788",
+		DefaultPort: "7788",
 		DNSSeeds: []DNSSeed{
 			{"omegasuite.org", false},
 		},
@@ -498,7 +498,7 @@ var TestNet3Params = Params{
 		},
 		ViolationReportDeadline: 10,
 		ChainID:                 DefaultChainID, // Omega
-		RpcPort:                 "6789",
+		RpcPort:                 "7789",
 	},
 
 	GenesisHash:      TestNet3GenesisHash[uint32(common.TestNet)],
