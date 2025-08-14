@@ -536,7 +536,12 @@ func (s *server) SubscribeChain(fn func(*blockchain.Notification)) {
 }
 
 func (s *server) NewConsusBlock(m *btcutil.Block) {
-	m.ClearSize()
+	if m == nil {
+		s.chain.SendNotification(blockchain.NTBlockConnected, m)
+	}
+	if m != nil {
+		m.ClearSize()
+	}
 	if isMainchain, orphan, err, _, _ := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil && !orphan && isMainchain {
 		consensusLog.Debugf("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
 	} else {

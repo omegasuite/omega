@@ -12,7 +12,6 @@ import (
 	//	"bufio"
 	"bytes"
 	"crypto/rand"
-	"omega/chainmap"
 	//	"crypto/sha256"
 	"crypto/tls"
 	"encoding/binary"
@@ -434,11 +433,17 @@ func newServerPeer(s *server, isPersistent bool) *serverPeer {
 // newestBlock returns the current best block hash and height using the format
 // required by the configuration for the peer package.
 func (sp *serverPeer) newestBlock() (*chainhash.Hash, int32, error) {
+	if sp.server.chain == nil {
+		return &chainhash.Hash{}, 0, nil
+	}
 	best := sp.server.chain.BestSnapshot()
 	return &best.Hash, best.Height, nil
 }
 
 func (sp *serverPeer) newestMinerBlock() (*chainhash.Hash, int32, error) {
+	if sp.server.chain == nil {
+		return &chainhash.Hash{}, 0, nil
+	}
 	best := sp.server.chain.Miners.BestSnapshot()
 	return &best.Hash, best.Height, nil
 }
@@ -502,7 +507,7 @@ func (sp *serverPeer) pushAddrMsg(addresses []*wire.NetAddress) {
 // disconnected.
 func (sp *serverPeer) addBanScore(persistent, transient uint32, reason string) {
 	// No warning is logged and no score is calculated if banning is disabled.
-	if sp.server.rpcServer.cfg.Cfg.DisableBanning {
+	if sp.server.prot.cfg.DisableBanning {
 		return
 	}
 	if sp.isWhitelisted {
@@ -510,7 +515,7 @@ func (sp *serverPeer) addBanScore(persistent, transient uint32, reason string) {
 		return
 	}
 
-	warnThreshold := sp.server.rpcServer.cfg.Cfg.BanThreshold >> 1
+	warnThreshold := sp.server.prot.cfg.BanThreshold >> 1
 	if transient == 0 && persistent == 0 {
 		// The score is not being increased, but a warning message is still
 		// logged if the score is above the warn threshold.
@@ -525,7 +530,7 @@ func (sp *serverPeer) addBanScore(persistent, transient uint32, reason string) {
 	if score > warnThreshold {
 		peerLog.Warnf("Misbehaving peer %s: %s -- ban score increased to %d",
 			sp, reason, score)
-		if score > sp.server.rpcServer.cfg.Cfg.BanThreshold {
+		if score > sp.server.prot.cfg.BanThreshold {
 			if sp.Peer.Committee > 0 {
 				return
 			}
@@ -560,7 +565,7 @@ func (sp *serverPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 	isInbound := sp.Inbound()
 	remoteAddr := sp.NA()
 	addrManager := sp.server.addrManager
-	if !sp.server.rpcServer.cfg.Cfg.SimNet && !isInbound {
+	if !sp.server.prot.cfg.SimNet && !isInbound {
 		addrManager.SetServices(remoteAddr, msg.Services)
 	}
 
@@ -587,7 +592,7 @@ func (sp *serverPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 	// on the simulation test network since it is only intended to connect
 	// to specified peers and actively avoids advertising and connecting to
 	// discovered peers.
-	if !sp.server.rpcServer.cfg.Cfg.SimNet && !isInbound {
+	if !sp.server.prot.cfg.SimNet && !isInbound {
 		// After soft-fork activation, only make outbound
 		// connection to peers if they flag that they're segwit
 		// enabled.
@@ -601,7 +606,7 @@ func (sp *serverPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 
 		// Advertise the local address when the server accepts incoming
 		// connections and it believes itself to be close to the best known tip.
-		if !sp.server.rpcServer.cfg.Cfg.DisableListen && sp.server.syncManager.IsCurrent() {
+		if !sp.server.prot.cfg.DisableListen && sp.server.syncManager.IsCurrent() {
 			// Get address that best matches.
 			lna := addrManager.GetBestLocalAddress(remoteAddr)
 			if addrmgr.IsRoutable(lna) {
@@ -694,7 +699,7 @@ func (sp *serverPeer) OnMemPool(_ *peer.Peer, msg *wire.MsgMemPool) {
 // handler this does not serialize all transactions through a single thread
 // transactions don't rely on the previous one in a linear fashion like blocks.
 func (sp *serverPeer) OnTx(_ *peer.Peer, msg *wire.MsgTx) {
-	if sp.server.rpcServer.cfg.Cfg.BlocksOnly {
+	if sp.server.prot.cfg.BlocksOnly {
 		peerLog.Tracef("Ignoring tx %v from %v - blocksonly enabled",
 			msg.TxHash(), sp)
 		return
@@ -787,7 +792,7 @@ func (sp *serverPeer) OnMinerBlock(_ *peer.Peer, msg *wire.MingingRightBlock, bu
 // accordingly.  We pass the message down to blockmanager which will call
 // QueueMessage with any appropriate responses.
 func (sp *serverPeer) OnInv(_ *peer.Peer, msg *wire.MsgInv) {
-	if !sp.server.rpcServer.cfg.Cfg.BlocksOnly {
+	if !sp.server.prot.cfg.BlocksOnly {
 		if len(msg.InvList) > 0 {
 			sp.server.syncManager.QueueInv(msg, sp.Peer)
 		}
@@ -1113,7 +1118,7 @@ func (sp *serverPeer) enforceNodeBloomFlag(cmd string) bool {
 		// whether or not banning is enabled, it is checked here as well
 		// to ensure the violation is logged and the peer is
 		// disconnected regardless.
-		if !sp.server.rpcServer.cfg.Cfg.DisableBanning {
+		if !sp.server.prot.cfg.DisableBanning {
 
 			// Disconnect the peer regardless of whether it was
 			// banned.
@@ -1218,7 +1223,7 @@ func (sp *serverPeer) OnGetAddr(_ *peer.Peer, msg *wire.MsgGetAddr) {
 	// network.  This helps prevent the network from becoming another
 	// public test network since it will not be able to learn about other
 	// peers that have not specifically been provided.
-	if sp.server.rpcServer.cfg.Cfg.SimNet {
+	if sp.server.prot.cfg.SimNet {
 		return
 	}
 
@@ -1253,7 +1258,7 @@ func (sp *serverPeer) OnAddr(_ *peer.Peer, msg *wire.MsgAddr) {
 	// helps prevent the network from becoming another public test network
 	// since it will not be able to learn about other peers that have not
 	// specifically been provided.
-	if sp.server.rpcServer.cfg.Cfg.SimNet {
+	if sp.server.prot.cfg.SimNet {
 		return
 	}
 
@@ -1306,130 +1311,6 @@ func (sp *serverPeer) OnRead(_ *peer.Peer, bytesRead int, msg wire.Message, err 
 // the bytes sent by the server.
 func (sp *serverPeer) OnWrite(_ *peer.Peer, bytesWritten int, msg wire.Message, err error) {
 	sp.server.AddBytesSent(uint64(bytesWritten))
-}
-
-func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
-	if sp.server.chainParams.ChainID != msg.ChainId {
-		// forwarding
-		for _, p := range protocols {
-			if p.Server.chainParams.ChainID == sp.server.chainParams.ChainID {
-				continue
-			}
-			chain := chainmap.ChainMap[p.Server.chainParams.ChainID]
-			if chain.PassThru(sp.server.chainParams.ChainID, msg.ChainId) {
-				p.Server.Randcast(msg, nil)
-				return
-			}
-		}
-		return
-	}
-
-	reply := &wire.MsgReFinal{
-		ChainId: msg.ChainId,
-		Block:   msg.Block,
-	}
-	block, err := sp.server.chain.BlockByHash(&msg.Block)
-	if err != nil || block == nil {
-		return
-	}
-	state := sp.server.chain.BestSnapshot()
-
-	if state.Height-60 > block.Height() {
-		if sp.server.chain.InBestChain(&msg.Block) {
-			reply.ETA = 0
-		} else {
-			reply.ETA = -1
-		}
-	} else {
-		reply.ETA = (block.Height() + 60 - state.Height) * 4
-	}
-
-	// Push the result.
-	sp.QueueMessage(reply, nil)
-}
-
-func (sp *serverPeer) OnFinal(_ *peer.Peer, msg *wire.MsgReFinal) {
-	if msg.ETA > 0 {
-		return
-	}
-
-	protocols[0].db.Update(func(dbtx database.Tx) error {
-		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-
-		var k [36]byte
-		copy(k[:], msg.Block[:])
-		common.LittleEndian.PutUint32(k[32:], uint32(msg.ChainId|wire.CrossChainFalg))
-		xdata := wire.XchainData{}
-
-		d := bucket.Get(k[:])
-		if d == nil || len(d) == 0 {
-			return nil
-		}
-
-		if err := xdata.DeSerialize(d); err != nil || xdata.Finalized != 0 {
-			return nil
-		}
-		if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
-			fmt.Printf("bad XchainData")
-		}
-
-		if msg.ETA == 0 {
-			xdata.Finalized = -int32(time.Now().Unix() + 120)
-			bucket.Put(k[:], xdata.Serialize())
-		} else {
-			bucket.Delete(k[:])
-		}
-
-		return nil
-	})
-}
-
-func (sp *serverPeer) OnGetChainMap(_ *peer.Peer, msg *wire.MsgGetChainMap) {
-	if msg.Sequence < 0 {
-		msg.Sequence = 0
-	}
-	if protocols[0].Server.chain.ChainParams.ChainID != chainmap.ROOT {
-		// forwarding
-		for _, p := range protocols[1:] {
-			if p.Server.chainParams.ChainID == protocols[0].Server.chainParams.ParentChainId {
-				p.Server.Randcast(msg, nil)
-			}
-		}
-		return
-	}
-
-	reply := &wire.MsgChainMap{}
-	reply.Count = uint32(len(chainmap.ChainMap)) - msg.Sequence
-	reply.Chains = make([]wire.ChainDescriptor, 0)
-	for id, m := range chainmap.ChainMap {
-		if id <= msg.Sequence {
-			continue
-		}
-		reply.Chains = append(reply.Chains, *(*wire.ChainDescriptor)(m))
-	}
-
-	sort.Slice(reply.Chains, func(i, j int) bool {
-		return reply.Chains[i].ChainID < reply.Chains[j].ChainID
-	})
-
-	// Push the result.
-	sp.QueueMessage(reply, nil)
-}
-
-func (sp *serverPeer) OnChainMap(_ *peer.Peer, msg *wire.MsgChainMap) {
-	if msg.Count <= 0 {
-		return
-	}
-
-	added := false
-	for _, p := range msg.Chains {
-		added = chainmap.AddChain((*chainmap.ChainDescriptor)(&p)) || added
-	}
-	// shutdown & reboot
-	if added {
-		btcdLog.Infof("shutdownRequestChannel <- OnChainMap")
-		shutdownRequestChannel <- struct{}{}
-	}
 }
 
 func (sp *serverPeer) OnReject(p *peer.Peer, msg *wire.MsgReject) {
@@ -1934,8 +1815,8 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		pt = 1
 	}
 
-	if state.Count(pt) >= sp.server.rpcServer.cfg.Cfg.MaxPeers {
-		srvrLog.Infof("Max peers reached [%d] - ResetConnections", sp.server.rpcServer.cfg.Cfg.MaxPeers)
+	if state.Count(pt) >= sp.server.prot.cfg.MaxPeers {
+		srvrLog.Infof("Max peers reached [%d] - ResetConnections", sp.server.prot.cfg.MaxPeers)
 		btcdLog.Infof("%v", newLogClosure(func() string {
 			return spew.Sdump(state)
 		}))
@@ -2014,7 +1895,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 		}
 	}
 
-	if sp.relayTxDisabled() {
+	if sp.relayTxDisabled() || s.prot.cfg.Passive {
 		return true
 	}
 
@@ -2104,8 +1985,8 @@ func (s *server) handleBanPeerMsg(state *peerState, sp *serverPeer) {
 	}
 	direction := directionString(sp.Inbound())
 	srvrLog.Infof("Banned peer %s (%s) for %v", host, direction,
-		s.rpcServer.cfg.Cfg.BanDuration)
-	state.banned[host] = time.Now().Add(s.rpcServer.cfg.Cfg.BanDuration)
+		s.prot.cfg.BanDuration)
+	state.banned[host] = time.Now().Add(s.prot.cfg.BanDuration)
 }
 
 // handleRelayInvMsg deals with relaying inventory to peers that are not already
@@ -2281,7 +2162,7 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 	case connectNodeMsg:
 		// TODO: duplicate oneshots?
 		// Limit max number of total peers.
-		if state.Count(6) >= s.rpcServer.cfg.Cfg.MaxPeers {
+		if state.Count(6) >= s.prot.cfg.MaxPeers {
 			msg.reply <- errors.New("max peers reached")
 			return
 		}
@@ -2444,23 +2325,23 @@ func newPeerConfig(sp *serverPeer, svp bool) *peer.Config {
 			OnAlert:        sp.OnAlert,
 			OnSignatures:   sp.OnSignatures,
 
-			OnFinalized:   sp.OnFinalized,
-			OnFinal:       sp.OnFinal,
-			OnGetChainMap: sp.OnGetChainMap,
-			OnChainMap:    sp.OnChainMap,
+			//OnFinalized:   sp.OnFinalized,
+			//OnFinal:       sp.OnFinal,
+			//OnGetChainMap: sp.OnGetChainMap,
+			//OnChainMap:    sp.OnChainMap,
 		},
 		NewestBlock:       sp.newestBlock,
 		NewestMinerBlock:  sp.newestMinerBlock,
 		HostToNetAddress:  sp.server.addrManager.HostToNetAddress,
-		Proxy:             sp.server.rpcServer.cfg.Cfg.Proxy,
+		Proxy:             sp.server.prot.cfg.Proxy,
 		UserAgentName:     userAgentName,
 		UserAgentVersion:  userAgentVersion,
-		UserAgentComments: sp.server.rpcServer.cfg.Cfg.UserAgentComments,
+		UserAgentComments: sp.server.prot.cfg.UserAgentComments,
 		ChainParams:       sp.server.chainParams,
 		Services:          sp.server.services,
-		DisableRelayTx:    sp.server.rpcServer.cfg.Cfg.BlocksOnly,
+		DisableRelayTx:    sp.server.prot.cfg.BlocksOnly,
 		ProtocolVersion:   peer.MaxProtocolVersion,
-		TrickleInterval:   sp.server.rpcServer.cfg.Cfg.TrickleInterval,
+		TrickleInterval:   sp.server.prot.cfg.TrickleInterval,
 		IsSvp:             svp,
 	}
 }
@@ -2494,7 +2375,7 @@ func (s *server) inboundPeerConnected(conn net.Conn) {
 	*/
 
 	sp := newServerPeer(s, false)
-	sp.isWhitelisted = isWhitelisted(conn.RemoteAddr(), s.rpcServer.cfg.Cfg)
+	sp.isWhitelisted = isWhitelisted(conn.RemoteAddr(), s.prot.cfg)
 	sp.Peer = peer.NewInboundPeer(newPeerConfig(sp, s.chain.IsSVP))
 	sp.AssociateConnection(conn)
 	go s.peerDoneHandler(sp)
@@ -2510,14 +2391,14 @@ func (s *server) outboundPeerDisConnected(c *connmgr.ConnReq) {
 // manager of the attempt.
 func (s *server) outboundPeerConnected(c *connmgr.ConnReq, conn net.Conn) {
 	sp := newServerPeer(s, c.Permanent)
-	p, err := peer.NewOutboundPeer(newPeerConfig(sp, s.chain.IsSVP), c.Addr.String())
+	p, err := peer.NewOutboundPeer(newPeerConfig(sp, s.prot.IsSvp), c.Addr.String())
 	if err != nil {
 		srvrLog.Debugf("Cannot create outbound peer %s: %v", c.Addr, err)
 		s.connManager.Disconnect(c.ID())
 	}
 	sp.Peer = p
 	sp.connReq = c
-	sp.isWhitelisted = isWhitelisted(conn.RemoteAddr(), s.rpcServer.cfg.Cfg)
+	sp.isWhitelisted = isWhitelisted(conn.RemoteAddr(), s.prot.cfg)
 	sp.AssociateConnection(conn)
 	go s.peerDoneHandler(sp)
 	s.addrManager.Attempt(sp.NA())
@@ -2562,7 +2443,9 @@ func (s *server) peerHandler() {
 	// things, it's easier and slightly faster to simply start and stop them
 	// in this handler.
 	s.addrManager.Start()
-	s.syncManager.Start()
+	if s.syncManager != nil {
+		s.syncManager.Start()
+	}
 
 	srvrLog.Tracef("Starting peer handler")
 
@@ -2579,12 +2462,12 @@ func (s *server) peerHandler() {
 	s.peerState = state
 
 	wrapbtcdLookup := func(host string) ([]net.IP, error) {
-		return btcdLookup(host, s.rpcServer.cfg.Cfg)
+		return btcdLookup(host, s.prot.cfg)
 	}
 
-	if !s.rpcServer.cfg.Cfg.DisableDNSSeed {
+	if !s.prot.cfg.DisableDNSSeed {
 		// Add peers discovered through DNS to the address manager.
-		connmgr.SeedFromDNS(s.rpcServer.cfg.ChainParams, defaultRequiredServices,
+		connmgr.SeedFromDNS(s.chainParams, defaultRequiredServices,
 			wrapbtcdLookup, func(addrs []*wire.NetAddress) {
 				// Omega uses a lookup of the dns seeder here. This
 				// is rather strange since the values looked up by the
@@ -2598,27 +2481,28 @@ func (s *server) peerHandler() {
 
 	newBlock := make(chan int32, 50)
 
-	s.chain.Subscribe(func(msg *blockchain.Notification) {
-		if msg.Type == blockchain.NTBlockConnected {
-			s.connManager.Alive = time.Now()
+	if s.chain != nil {
+		s.chain.Subscribe(func(msg *blockchain.Notification) {
+			if msg.Type == blockchain.NTBlockConnected {
+				s.connManager.Alive = time.Now()
 
-			if msg.Data == nil {
-				return
-			}
+				if msg.Data == nil {
+					return
+				}
 
-			block := msg.Data.(*btcutil.Block)
-			if block == nil {
-				return
+				block := msg.Data.(*btcutil.Block)
+				if block == nil {
+					return
+				}
+				nonce := block.MsgBlock().Header.Nonce
+				if nonce <= -wire.MINER_RORATE_FREQ || nonce > 0 {
+					newBlock <- int32(s.chain.BestSnapshot().LastRotation)
+				}
 			}
-			nonce := block.MsgBlock().Header.Nonce
-			if nonce <= -wire.MINER_RORATE_FREQ || nonce > 0 {
-				newBlock <- int32(s.chain.BestSnapshot().LastRotation)
-			}
-		}
-	})
-
-	// initialize committee
-	newBlock <- int32(s.chain.BestSnapshot().LastRotation)
+		})
+		// initialize committee
+		newBlock <- int32(s.chain.BestSnapshot().LastRotation)
+	}
 
 out:
 	for {
@@ -2692,9 +2576,11 @@ out:
 	s.connManager.Stop()
 	btcdLog.Infof("connManager stopped")
 
-	btcdLog.Infof("Stopping syncManager")
-	s.syncManager.Stop()
-	btcdLog.Infof("syncManager stopped")
+	if s.syncManager != nil {
+		btcdLog.Infof("Stopping syncManager")
+		s.syncManager.Stop()
+		btcdLog.Infof("syncManager stopped")
+	}
 
 	btcdLog.Infof("Stopping addrManager")
 	s.addrManager.Stop()
@@ -2899,7 +2785,7 @@ func (s *server) Start() {
 		go s.upnpUpdateThread()
 	}
 
-	if !s.rpcServer.cfg.Cfg.DisableRPC {
+	if s.rpcServer != nil && !s.rpcServer.cfg.Cfg.DisableRPC {
 		s.wg.Add(1)
 
 		// Start the rebroadcastHandler, which ensures user tx received by
@@ -2912,13 +2798,13 @@ func (s *server) Start() {
 	// Start the CPU miner if generation is enabled.
 	//	if cfg.Generate {
 	btcdLog.Infof("Start minging blocks.")
-	if s.cpuMiner != nil && s.rpcServer.cfg.Cfg.Generate {
+	if s.cpuMiner != nil && s.prot.cfg.Generate {
 		s.cpuMiner.Start()
 	}
 	//	}
-	if s.rpcServer.cfg.Cfg.GenerateMiner {
-		btcdLog.Infof("Start minging miner blocks with %d collaterals.", len(s.rpcServer.cfg.Cfg.collateral))
-		s.minerMiner.Start(s.rpcServer.cfg.Cfg.collateral)
+	if s.prot.cfg.GenerateMiner {
+		btcdLog.Infof("Start minging miner blocks with %d collaterals.", len(s.prot.cfg.collateral))
+		s.minerMiner.Start(s.prot.cfg.collateral)
 	}
 }
 
@@ -2954,12 +2840,14 @@ func (s *server) Stop() error {
 	btcdLog.Info("Save fee estimator state in the database")
 
 	// Save fee estimator state in the database.
-	s.db.Update(func(tx database.Tx) error {
-		metadata := tx.Metadata()
-		metadata.Put(mempool.EstimateFeeDatabaseKey, s.feeEstimator.Save())
+	if !s.prot.cfg.Passive {
+		s.db.Update(func(tx database.Tx) error {
+			metadata := tx.Metadata()
+			metadata.Put(mempool.EstimateFeeDatabaseKey, s.feeEstimator.Save())
 
-		return nil
-	})
+			return nil
+		})
+	}
 
 	// Signal the remaining goroutines to quit.
 	btcdLog.Info("Signal the remaining goroutines to quit")
@@ -3069,7 +2957,7 @@ func (s *server) upnpUpdateThread() {
 	// Go off immediately to prevent code duplication, thereafter we renew
 	// lease every 15 minutes.
 	timer := time.NewTimer(0 * time.Second)
-	lport, _ := strconv.ParseInt(s.rpcServer.cfg.ChainParams.DefaultPort, 10, 16)
+	lport, _ := strconv.ParseInt(s.chainParams.DefaultPort, 10, 16)
 	first := true
 out:
 	for {
@@ -3289,186 +3177,259 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 	// Create a new block chain instance with the appropriate configuration.
 	var err error
 	s.srvReq = make(chan interface{}, 50)
-	s.chain, err = minerchain.New(&blockchain.Config{
-		DB:          s.db,
-		MinerDB:     s.minerdb,
-		Interrupt:   interrupt,
-		ChainParams: s.chainParams,
-		Checkpoints: checkpoints,
-		TimeSource:  s.timeSource,
-		//		SigCache:     s.sigCache,
-		IndexManager: indexManager,
-		Miner:        prot.cfg.signAddress,
-		PrivKey:      prot.cfg.privateKeys,
-		AddrUsage:    s.addrUseIndex.Usage,
-		IsSVP:        prot.IsSvp,
-		SrvReq:       s.srvReq,
-		//		HashCache:    s.hashCache,
-	})
-	if err != nil {
-		return nil, err
-	}
+	if !prot.cfg.Passive {
+		s.chain, err = minerchain.New(&blockchain.Config{
+			DB:          s.db,
+			MinerDB:     s.minerdb,
+			Interrupt:   interrupt,
+			ChainParams: s.chainParams,
+			Checkpoints: checkpoints,
+			TimeSource:  s.timeSource,
+			//		SigCache:     s.sigCache,
+			IndexManager: indexManager,
+			Miner:        prot.cfg.signAddress,
+			PrivKey:      prot.cfg.privateKeys,
+			AddrUsage:    s.addrUseIndex.Usage,
+			IsSVP:        prot.IsSvp,
+			SrvReq:       s.srvReq,
+			//		HashCache:    s.hashCache,
+		})
+		if err != nil {
+			return nil, err
+		}
 
-	s.chain.Subscribe(s.chain.TphNotice)
-	go s.handleSrvReq()
+		s.chain.Subscribe(s.chain.TphNotice)
+		// go s.handleSrvReq()
 
-	// Search for a FeeEstimator state in the database. If none can be found
-	// or if it cannot be loaded, create a new one.
+		// Search for a FeeEstimator state in the database. If none can be found
+		// or if it cannot be loaded, create a new one.
 
-	db.Update(func(tx database.Tx) error {
-		metadata := tx.Metadata()
-		feeEstimationData := metadata.Get(mempool.EstimateFeeDatabaseKey)
-		if feeEstimationData != nil {
-			// delete it from the database so that we don't try to restore the
-			// same thing again somehow.
-			metadata.Delete(mempool.EstimateFeeDatabaseKey)
+		db.Update(func(tx database.Tx) error {
+			metadata := tx.Metadata()
+			feeEstimationData := metadata.Get(mempool.EstimateFeeDatabaseKey)
+			if feeEstimationData != nil {
+				// delete it from the database so that we don't try to restore the
+				// same thing again somehow.
+				metadata.Delete(mempool.EstimateFeeDatabaseKey)
 
-			// If there is an error, log it and make a new fee estimator.
-			var err error
-			s.feeEstimator, err = mempool.RestoreFeeEstimator(feeEstimationData)
+				// If there is an error, log it and make a new fee estimator.
+				var err error
+				s.feeEstimator, err = mempool.RestoreFeeEstimator(feeEstimationData)
 
-			if err != nil {
-				peerLog.Errorf("Failed to restore fee estimator %v", err)
+				if err != nil {
+					peerLog.Errorf("Failed to restore fee estimator %v", err)
+				}
 			}
-		}
 
-		return nil
-	})
-
-	s.chain.InitCollateral()
-
-	// If no feeEstimator has been found, or if the one that has been found
-	// is behind somehow, create a new one and start over.
-	if s.feeEstimator == nil || s.feeEstimator.LastKnownHeight() != s.chain.BestSnapshot().Height {
-		s.feeEstimator = mempool.NewFeeEstimator(
-			mempool.DefaultEstimateFeeMaxRollback,
-			mempool.DefaultEstimateFeeMinRegisteredBlocks)
-	}
-
-	txC := mempool.Config{
-		Policy: mempool.Policy{
-			DisableRelayPriority: prot.cfg.NoRelayPriority,
-			AcceptNonStd:         prot.cfg.RelayNonStd,
-			FreeTxRelayLimit:     prot.cfg.FreeTxRelayLimit,
-			MaxOrphanTxs:         prot.cfg.MaxOrphanTxs,
-			MaxOrphanTxSize:      defaultMaxOrphanTxSize,
-			MaxSigOpCostPerTx:    chaincfg.MaxBlockSigOpsCost / 4,
-			MinRelayTxFee:        prot.cfg.minRelayTxFee,
-			MaxTxVersion:         2,
-		},
-		ChainParams:   prot.activeNetParams,
-		FetchUtxoView: s.chain.FetchUtxoView,
-		//		Views: s.chain.NewViewPointSet(),
-		BestHeight:     func() int32 { return s.chain.BestSnapshot().Height },
-		MedianTimePast: func() time.Time { return s.chain.BestSnapshot().MedianTime },
-		CalcSequenceLock: func(tx *btcutil.Tx, view *viewpoint.UtxoViewpoint) (*blockchain.SequenceLock, error) {
-			return s.chain.CalcSequenceLock(tx, view, true)
-		},
-		IsDeploymentActive: s.chain.Miners.IsDeploymentActive,
-		//		SigCache:           s.sigCache,
-		//		HashCache:          s.hashCache,
-		AddrIndex:    s.addrIndex,
-		FeeEstimator: s.feeEstimator,
-	}
-	s.txMemPool = mempool.New(&txC)
-	//	s.txMemPool.Blacklist = &s
-
-	//	s.chain.Blacklist = &s
-
-	s.syncManager, err = netsync.New(&netsync.Config{
-		PeerNotifier:       &s,
-		Chain:              s.chain,
-		TxMemPool:          s.txMemPool,
-		ChainParams:        s.chainParams,
-		DisableCheckpoints: prot.cfg.DisableCheckpoints,
-		MaxPeers:           prot.cfg.MaxPeers,
-		FeeEstimator:       s.feeEstimator,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	// Create the mining policy and block template generator based on the
-	// configuration options.
-	//
-	// NOTE: The CPU miner relies on the mempool, so the mempool has to be
-	// created before calling the function to create the CPU miner.
-	policy := mining.Policy{
-		BlockPrioritySize: prot.cfg.BlockPrioritySize,
-		MinBlockWeight:    prot.cfg.MinBlockWeight,
-		TxMinFreeFee:      prot.cfg.minRelayTxFee,
-	}
-	blockTemplateGenerator := mining.NewBlkTmplGenerator(&policy,
-		s.chainParams, s.txMemPool, s.chain, s.timeSource, prot.activeNetParams)
-	//		s.sigCache, s.hashCache)
-	// This is the miner for Tx chain
-
-	prot.db.View(func(tx database.Tx) error {
-		bucket := tx.Metadata().Bucket([]byte("blacklist"))
-		for _, s := range prot.cfg.Blacklist {
-			addr, _ := btcutil.DecodeAddress(s, prot.activeNetParams)
-			bucket.Put(addr.ScriptNetAddress()[:21], []byte(s))
-		}
-		return nil
-	})
-
-	s.minerMiner = nil
-	s.cpuMiner = nil
-	if prot.IsSvp {
-		prot.cfg.GenerateMiner = false
-		prot.cfg.Generate = false
-	} else {
-		s.cpuMiner = cpuminer.New(&cpuminer.Config{
-			ChainParams:            prot.activeNetParams,
-			BlockTemplateGenerator: blockTemplateGenerator,
-			MiningAddrs:            prot.cfg.miningAddrs,
-			SignAddress:            prot.cfg.signAddress,
-			PrivKeys:               prot.cfg.privateKeys,
-			DisablePOWMining:       prot.cfg.DisablePOWMining,
-
-			ProcessBlock:           s.syncManager.ProcessBlock,
-			ConnectedCount:         s.ConnectedCount,
-			IsCurrent:              s.syncManager.IsCurrent,
-			AppendPrivKey: func(key *btcec.PrivateKey) bool {
-				fp, err := os.OpenFile(prot.cfg.ConfigFile, os.O_APPEND|os.O_WRONLY, 0666)
-
-				if err != nil {
-					return false
-				}
-				w, err := btcutil.NewWIF(key, prot.activeNetParams, true)
-				if err != nil {
-					return false
-				}
-
-				_, err = fp.WriteString("\nprivkeys=" + w.String() + "\n")
-				if err != nil {
-					return false
-				}
-				fp.Close()
-				return true
-			},
-			Generate: prot.cfg.Generate,
+			return nil
 		})
 
-		if prot.cfg.GenerateMiner {
-			mcfg := &minerchain.Config{
+		s.chain.InitCollateral()
+
+		// If no feeEstimator has been found, or if the one that has been found
+		// is behind somehow, create a new one and start over.
+		if s.feeEstimator == nil || s.feeEstimator.LastKnownHeight() != s.chain.BestSnapshot().Height {
+			s.feeEstimator = mempool.NewFeeEstimator(
+				mempool.DefaultEstimateFeeMaxRollback,
+				mempool.DefaultEstimateFeeMinRegisteredBlocks)
+		}
+
+		txC := mempool.Config{
+			Policy: mempool.Policy{
+				DisableRelayPriority: prot.cfg.NoRelayPriority,
+				AcceptNonStd:         prot.cfg.RelayNonStd,
+				FreeTxRelayLimit:     prot.cfg.FreeTxRelayLimit,
+				MaxOrphanTxs:         prot.cfg.MaxOrphanTxs,
+				MaxOrphanTxSize:      defaultMaxOrphanTxSize,
+				MaxSigOpCostPerTx:    chaincfg.MaxBlockSigOpsCost / 4,
+				MinRelayTxFee:        prot.cfg.minRelayTxFee,
+				MaxTxVersion:         2,
+			},
+			ChainParams:   prot.activeNetParams,
+			FetchUtxoView: s.chain.FetchUtxoView,
+			//		Views: s.chain.NewViewPointSet(),
+			BestHeight:     func() int32 { return s.chain.BestSnapshot().Height },
+			MedianTimePast: func() time.Time { return s.chain.BestSnapshot().MedianTime },
+			CalcSequenceLock: func(tx *btcutil.Tx, view *viewpoint.UtxoViewpoint) (*blockchain.SequenceLock, error) {
+				return s.chain.CalcSequenceLock(tx, view, true)
+			},
+			IsDeploymentActive: s.chain.Miners.IsDeploymentActive,
+			//		SigCache:           s.sigCache,
+			//		HashCache:          s.hashCache,
+			AddrIndex:    s.addrIndex,
+			FeeEstimator: s.feeEstimator,
+		}
+		s.txMemPool = mempool.New(&txC)
+		//	s.txMemPool.Blacklist = &s
+
+		s.syncManager, err = netsync.New(&netsync.Config{
+			PeerNotifier:       &s,
+			Chain:              s.chain,
+			TxMemPool:          s.txMemPool,
+			ChainParams:        s.chainParams,
+			DisableCheckpoints: prot.cfg.DisableCheckpoints,
+			MaxPeers:           prot.cfg.MaxPeers,
+			FeeEstimator:       s.feeEstimator,
+			Passive:            prot.cfg.Passive,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		//	s.chain.Blacklist = &s
+
+		// Create the mining policy and block template generator based on the
+		// configuration options.
+		//
+		// NOTE: The CPU miner relies on the mempool, so the mempool has to be
+		// created before calling the function to create the CPU miner.
+		policy := mining.Policy{
+			BlockPrioritySize: prot.cfg.BlockPrioritySize,
+			MinBlockWeight:    prot.cfg.MinBlockWeight,
+			TxMinFreeFee:      prot.cfg.minRelayTxFee,
+		}
+		blockTemplateGenerator := mining.NewBlkTmplGenerator(&policy,
+			s.chainParams, s.txMemPool, s.chain, s.timeSource, prot.activeNetParams)
+		//		s.sigCache, s.hashCache)
+		// This is the miner for Tx chain
+
+		prot.db.View(func(tx database.Tx) error {
+			bucket := tx.Metadata().Bucket([]byte("blacklist"))
+			for _, s := range prot.cfg.Blacklist {
+				addr, _ := btcutil.DecodeAddress(s, prot.activeNetParams)
+				bucket.Put(addr.ScriptNetAddress()[:21], []byte(s))
+			}
+			return nil
+		})
+
+		s.minerMiner = nil
+		s.cpuMiner = nil
+		if prot.IsSvp {
+			prot.cfg.GenerateMiner = false
+			prot.cfg.Generate = false
+		} else {
+			s.cpuMiner = cpuminer.New(&cpuminer.Config{
 				ChainParams:            prot.activeNetParams,
 				BlockTemplateGenerator: blockTemplateGenerator,
-				ProcessBlock:           s.syncManager.ProcessMinerBlock,
-				ConnectedCount:         s.ConnectedCount,
-				IsCurrent:              s.syncManager.IsCurrent,
-				ExternalIPs:            prot.cfg.ExternalIPs,
-			}
-			if len(prot.cfg.signAddress) > 0 {
-				mcfg.MiningAddrs = prot.cfg.signAddress
+				MiningAddrs:            prot.cfg.miningAddrs,
+				SignAddress:            prot.cfg.signAddress,
+				PrivKeys:               prot.cfg.privateKeys,
+				DisablePOWMining:       prot.cfg.DisablePOWMining,
+
+				ProcessBlock:   s.syncManager.ProcessBlock,
+				ConnectedCount: s.ConnectedCount,
+				IsCurrent:      s.syncManager.IsCurrent,
+				AppendPrivKey: func(key *btcec.PrivateKey) bool {
+					fp, err := os.OpenFile(prot.cfg.ConfigFile, os.O_APPEND|os.O_WRONLY, 0666)
+
+					if err != nil {
+						return false
+					}
+					w, err := btcutil.NewWIF(key, prot.activeNetParams, true)
+					if err != nil {
+						return false
+					}
+
+					_, err = fp.WriteString("\nprivkeys=" + w.String() + "\n")
+					if err != nil {
+						return false
+					}
+					fp.Close()
+					return true
+				},
+				Generate: prot.cfg.Generate,
+			})
+
+			if prot.cfg.GenerateMiner {
+				mcfg := &minerchain.Config{
+					ChainParams:            prot.activeNetParams,
+					BlockTemplateGenerator: blockTemplateGenerator,
+					ProcessBlock:           s.syncManager.ProcessMinerBlock,
+					ConnectedCount:         s.ConnectedCount,
+					IsCurrent:              s.syncManager.IsCurrent,
+					ExternalIPs:            prot.cfg.ExternalIPs,
+				}
+				if len(prot.cfg.signAddress) > 0 {
+					mcfg.MiningAddrs = prot.cfg.signAddress
+				} else {
+					mcfg.MiningAddrs = prot.cfg.miningAddrs
+				}
+				mcfg.Privkeys = prot.cfg.privateKeys
+				s.minerMiner = minerchain.NewMiner(mcfg)
 			} else {
-				mcfg.MiningAddrs = prot.cfg.miningAddrs
+				s.minerMiner = nil
+				prot.cfg.GenerateMiner = false
 			}
-			mcfg.Privkeys = prot.cfg.privateKeys
-			s.minerMiner = minerchain.NewMiner(mcfg)
-		} else {
-			s.minerMiner = nil
-			prot.cfg.GenerateMiner = false
+		}
+
+		if !prot.cfg.DisableRPC {
+			// Setup listeners for the configured RPC listen addresses and
+			// TLS settings.
+			rpcListeners, err := setupRPCListeners(prot.cfg)
+			if err != nil {
+				return nil, err
+			}
+			if len(rpcListeners) == 0 {
+				return nil, errors.New("RPCS: No valid listen address")
+			}
+
+			s.rpcServer, err = newRPCServer(&rpcserverConfig{
+				Cfg:          prot.cfg,
+				Listeners:    rpcListeners,
+				StartupTime:  s.startupTime,
+				ConnMgr:      &rpcConnManager{&s},
+				SyncMgr:      &rpcSyncMgr{&s, s.syncManager},
+				TimeSource:   s.timeSource,
+				Chain:        s.chain,
+				ChainParams:  prot.activeNetParams,
+				DB:           db,
+				MinerDB:      minerdb,
+				TxMemPool:    s.txMemPool,
+				Generator:    blockTemplateGenerator,
+				CPUMiner:     s.cpuMiner,
+				MinerMiner:   s.minerMiner,
+				TxIndex:      s.txIndex,
+				AddrIndex:    s.addrIndex,
+				FeeEstimator: s.feeEstimator,
+			})
+
+			if err != nil {
+				return nil, err
+			}
+
+			// Signal process shutdown when the RPC server requests it.
+			go func() {
+				btcdLog.Infof("shutdownRequestChannel <- s.rpcServer.RequestedProcessShutdown")
+				<-s.rpcServer.RequestedProcessShutdown()
+				shutdownRequestChannel <- struct{}{}
+			}()
+		}
+
+		s.chain.Subscribe(func(notification *blockchain.Notification) {
+			if notification.Type != blockchain.NTBlockConnected {
+				return
+			}
+			block := notification.Data.(*btcutil.Block)
+			if block == nil {
+				return
+			}
+			for _, tx := range block.Transactions()[1:] {
+				s.txMemPool.RemoveTransaction(tx, false)
+			}
+		})
+	} else {
+		s.syncManager, err = netsync.New(&netsync.Config{
+			PeerNotifier:       &s,
+			Chain:              s.chain,
+			TxMemPool:          s.txMemPool,
+			ChainParams:        s.chainParams,
+			DisableCheckpoints: prot.cfg.DisableCheckpoints,
+			MaxPeers:           prot.cfg.MaxPeers,
+			FeeEstimator:       s.feeEstimator,
+			Passive:            prot.cfg.Passive,
+		})
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -3505,7 +3466,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 				}
 
 				// allow nondefault ports after 50 failed tries.
-				if tries < 50 && fmt.Sprintf("%d", addr.NetAddress().Port) != s.rpcServer.cfg.ChainParams.DefaultPort {
+				if tries < 50 && fmt.Sprintf("%d", addr.NetAddress().Port) != prot.activeNetParams.DefaultPort {
 					continue
 				}
 
@@ -3557,62 +3518,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			Permanent: true,
 		})
 	}
-
-	if !prot.cfg.DisableRPC {
-		// Setup listeners for the configured RPC listen addresses and
-		// TLS settings.
-		rpcListeners, err := setupRPCListeners(prot.cfg)
-		if err != nil {
-			return nil, err
-		}
-		if len(rpcListeners) == 0 {
-			return nil, errors.New("RPCS: No valid listen address")
-		}
-
-		s.rpcServer, err = newRPCServer(&rpcserverConfig{
-			Cfg:          prot.cfg,
-			Listeners:    rpcListeners,
-			StartupTime:  s.startupTime,
-			ConnMgr:      &rpcConnManager{&s},
-			SyncMgr:      &rpcSyncMgr{&s, s.syncManager},
-			TimeSource:   s.timeSource,
-			Chain:        s.chain,
-			ChainParams:  prot.activeNetParams,
-			DB:           db,
-			MinerDB:      minerdb,
-			TxMemPool:    s.txMemPool,
-			Generator:    blockTemplateGenerator,
-			CPUMiner:     s.cpuMiner,
-			MinerMiner:   s.minerMiner,
-			TxIndex:      s.txIndex,
-			AddrIndex:    s.addrIndex,
-			FeeEstimator: s.feeEstimator,
-		})
-
-		if err != nil {
-			return nil, err
-		}
-
-		// Signal process shutdown when the RPC server requests it.
-		go func() {
-			btcdLog.Infof("shutdownRequestChannel <- s.rpcServer.RequestedProcessShutdown")
-			<-s.rpcServer.RequestedProcessShutdown()
-			shutdownRequestChannel <- struct{}{}
-		}()
-	}
-
-	s.chain.Subscribe(func(notification *blockchain.Notification) {
-		if notification.Type != blockchain.NTBlockConnected {
-			return
-		}
-		block := notification.Data.(*btcutil.Block)
-		if block == nil {
-			return
-		}
-		for _, tx := range block.Transactions()[1:] {
-			s.txMemPool.RemoveTransaction(tx, false)
-		}
-	})
 
 	return &s, nil
 }
@@ -3888,46 +3793,4 @@ func mergeCheckpoints(defaultCheckpoints, additional []chaincfg.Checkpoint) []ch
 	}
 	sort.Sort(checkpointSorter(checkpoints))
 	return checkpoints
-}
-
-func (s *server) RequestChain(chainid uint32) {
-	// request missing map data for chainid
-	if _, ok := chainmap.ChainMap[chainid]; ok {
-		// already have it
-		return
-	}
-	//	if s.chainParams.ChainID == chainmap.ROOT {
-	//		return
-	//	}
-	for _, p := range protocols {
-		if p.Server.chainParams.ChainID == chaincfg.DefaultParentChainID {
-			p.Server.Broadcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
-			return
-		}
-		/*
-			chain, ok := chainmap.ChainMap[p.Server.chainParams.ChainID]
-			if !ok {
-				continue
-			}
-			if chain.PassThru(p.Server.chainParams.ChainID, chainmap.ROOT) {
-				p.Server.Randcast(wire.NewMsgGetChainMap(uint32(len(chainmap.ChainMap))), nil)
-				return
-			}
-		*/
-	}
-}
-
-func (s *server) handleSrvReq() {
-	for true {
-		select {
-		case r := <-s.srvReq:
-			switch r.(type) {
-			case blockchain.ReqChain:
-				s.RequestChain(uint32(r.(blockchain.ReqChain)))
-			}
-
-		case <-s.quit:
-			return
-		}
-	}
 }

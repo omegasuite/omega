@@ -1433,17 +1433,44 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		Instructions:    nil,
 	}
 
-	if g.chainParams.AddChain != nil && g.chainParams.ChainID == chainmap.ROOT {
+	if g.chainParams.ChainID != chainmap.ROOT {
+		// get parent chain, find out what parent has in chainmap and we don't, add it to instructions
+		parent := chainmap.AllChains[chaincfg.DefaultParentChainID]
+		me := chainmap.AllChains[chaincfg.DefaultChainID]
+
+		if parent != nil {
+			msgBlock.Instructions = make([]*wire.Instruction, 0)
+			for _, ac := range parent.ChainMap {
+				if ac.ChainID == chainmap.ROOT {
+					continue
+				}
+				if me != nil && me.ChainMap[ac.ChainID] != nil {
+					continue
+				}
+
+				md, err := json.Marshal(ac)
+				if err != nil {
+					continue
+				}
+
+				inst := wire.Instruction{
+					InstCode: wire.AddChain,
+					InstData: md,
+				}
+				msgBlock.Instructions = append(msgBlock.Instructions, &inst)
+			}
+		}
+	} else if g.chainParams.AddChain != nil {
 		exist := false
 		ac := g.chainParams.AddChain.(*chainmap.ChainDescriptor)
-		for _, c := range chainmap.ChainMap {
+		for _, c := range chainmap.AllChains[chainmap.ROOT].ChainMap {
 			if ac.Magic == c.Magic || (ac.Dns == c.Dns && ac.DefaultPort == c.DefaultPort) || ac.Genesis == c.Genesis ||
 				(c.MRChain && ac.MRChain && ac.MrGenesis == c.MrGenesis) {
 				exist = true
 			}
 		}
 		if !exist {
-			ac.ChainID = uint32(len(chainmap.ChainMap) + 1)
+			ac.ChainID = uint32(len(chainmap.AllChains[chainmap.ROOT].ChainMap) + 1)
 			param := chaincfg.GlobalParams{}
 			json.Unmarshal([]byte(ac.GlobalParams), &param)
 			param.ChainID = ac.ChainID

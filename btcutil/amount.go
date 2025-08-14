@@ -7,6 +7,7 @@ package btcutil
 
 import (
 	"errors"
+	"btcd/wire/common"
 	"math"
 	"strconv"
 )
@@ -25,7 +26,7 @@ const (
 	AmountOMC      AmountUnit = 0
 	AmountMilliOMC AmountUnit = -3
 	AmountMicroOMC AmountUnit = -6
-	AmountHao  AmountUnit = -8
+	AmountHao      AmountUnit = -8
 )
 
 // String returns the unit as a string.  For recognized units, the SI
@@ -86,7 +87,7 @@ func NewAmount(f float64, tokentype uint64) (Amount, error) {
 		return 0, errors.New("invalid bitcoin amount")
 	}
 
-	if tokentype == 0 {
+	if tokentype == common.FeeCoinTyp {
 		return round(f * HaoPerBitcoin), nil
 	} else {
 		return round(f), nil

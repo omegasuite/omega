@@ -32,6 +32,7 @@ const (
 	BTCCoinTyp             = 0x10000000000 // should be 0x40020000000000, for testing purpose use nxus coin
 	NewChainPool           = 100
 	NewChainConsensus      = 75
+	PolyGonType            = 0x3
 )
 
 // InvType represents the allowed types of inventory vectors.  See InvVect.

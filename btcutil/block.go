@@ -95,6 +95,9 @@ func (b *Block) Bytes() ([]byte, error) {
 }
 
 func (b *Block) ClearSize() {
+	if b == nil {
+		return
+	}
 	b.serializedBlock = nil
 	b.serializedBlockNoWitness = nil
 }

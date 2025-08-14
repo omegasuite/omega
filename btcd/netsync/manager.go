@@ -174,9 +174,6 @@ type pauseMsg struct {
 	unpause <-chan struct{}
 }
 
-type passiveMsg struct {
-}
-
 // headerNode is used as a node in a list of headers that are linked together
 // between checkpoints.
 type headerNode struct {
@@ -250,6 +247,7 @@ type SyncManager struct {
 	smtx        sync.Mutex
 
 	tmpblksrc map[chainhash.Hash]*peerpkg.Peer
+	passive   bool
 }
 
 // resetHeaderState sets the headers-first mode state to values appropriate for
@@ -459,6 +457,9 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 	}
 	// Return now if we're already syncing.
 	if sm.syncPeer != nil {
+		return true
+	}
+	if sm.passive {
 		return true
 	}
 
@@ -2083,7 +2084,7 @@ func (sm *SyncManager) blockHandler() {
 	defer ticker.Stop()
 
 	sm.lastBlockOp = ""
-	passiveMode := false
+	passiveMode := sm.passive
 
 out:
 	for {
@@ -2234,9 +2235,6 @@ out:
 				if msg.reply != nil {
 					msg.reply <- struct{}{}
 				}
-
-			case passiveMsg:
-				passiveMode = true
 
 			case pauseMsg:
 				// Wait until the sender unpauses the manager.
@@ -2597,10 +2595,6 @@ func (sm *SyncManager) Pause() chan<- struct{} {
 	return c
 }
 
-func (sm *SyncManager) Passive() {
-	sm.msgChan <- passiveMsg{}
-}
-
 // New constructs a new SyncManager. Use Start to begin processing asynchronous
 // block, tx, and inv updates.
 func New(config *Config) (*SyncManager, error) {
@@ -2624,10 +2618,15 @@ func New(config *Config) (*SyncManager, error) {
 		syncjobs:         make([]*pendginGetBlocks, 0),
 		syncPeer:         nil,
 		tmpblksrc:        make(map[chainhash.Hash]*peerpkg.Peer),
+		passive:          config.Passive,
 	}
 
-	best := sm.chain.BestSnapshot()
-	if !config.DisableCheckpoints {
+	best := &blockchain.BestState{}
+	if sm.chain != nil {
+		best = sm.chain.BestSnapshot()
+	}
+
+	if !config.DisableCheckpoints && !config.Passive {
 		// Initialize the next checkpoint based on the current height.
 		sm.nextCheckpoint = sm.findNextHeaderCheckpoint(best.Height)
 		if sm.nextCheckpoint != nil {
@@ -2637,8 +2636,10 @@ func New(config *Config) (*SyncManager, error) {
 		log.Info("Checkpoints are disabled")
 	}
 
-	sm.chain.Subscribe(sm.handleBlockchainNotification)
-	sm.chain.Miners.Subscribe(sm.handleBlockchainNotification)
+	if sm.chain != nil {
+		sm.chain.Subscribe(sm.handleBlockchainNotification)
+		sm.chain.Miners.Subscribe(sm.handleBlockchainNotification)
+	}
 
 	return &sm, nil
 }

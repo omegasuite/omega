@@ -48,25 +48,25 @@ const (
 	CmdPing           = "ping"
 	CmdPong           = "pong"
 	CmdAlert          = "alert"
-	CmdFinalized      = "finalized"
-	CmdFinal          = "final"
-	CmdGetChainMap    = "getcmap"
-	CmdChainMap       = "chainmap"
-	CmdMemPool        = "mempool"
-	CmdFilterAdd      = "filteradd"
-	CmdFilterClear    = "filterclear"
-	CmdFilterLoad     = "filterload"
-	CmdReject         = "reject"
-	CmdSendHeaders    = "sendheaders"
-	CmdFeeFilter      = "feefilter"
-	CmdGetCFilters    = "getcfilters"
-	CmdGetCFHeaders   = "getcfheaders"
-	CmdGetCFCheckpt   = "getcfcheckpt"
-	CmdCFilter        = "cfilter"
-	CmdCFHeaders      = "cfheaders"
-	CmdCFCheckpt      = "cfcheckpt"
-	CmdMerkleBlock    = "merkleblock"
-	CmdSignatures     = "signatures"
+	//CmdFinalized      = "finalized"
+	//CmdFinal          = "final"
+	//CmdGetChainMap    = "getcmap"
+	//CmdChainMap       = "chainmap"
+	CmdMemPool      = "mempool"
+	CmdFilterAdd    = "filteradd"
+	CmdFilterClear  = "filterclear"
+	CmdFilterLoad   = "filterload"
+	CmdReject       = "reject"
+	CmdSendHeaders  = "sendheaders"
+	CmdFeeFilter    = "feefilter"
+	CmdGetCFilters  = "getcfilters"
+	CmdGetCFHeaders = "getcfheaders"
+	CmdGetCFCheckpt = "getcfcheckpt"
+	CmdCFilter      = "cfilter"
+	CmdCFHeaders    = "cfheaders"
+	CmdCFCheckpt    = "cfcheckpt"
+	CmdMerkleBlock  = "merkleblock"
+	CmdSignatures   = "signatures"
 
 	// consensus protocol message
 	CmdKnowledge      = "knowledge"
@@ -180,18 +180,6 @@ func makeEmptyMessage(command string) (Message, error) {
 
 	case CmdAlert:
 		msg = &MsgAlert{}
-
-	case CmdFinalized:
-		msg = &MsgFinalized{}
-
-	case CmdFinal:
-		msg = &MsgReFinal{}
-
-	case CmdGetChainMap:
-		msg = &MsgGetChainMap{}
-
-	case CmdChainMap:
-		msg = &MsgChainMap{}
 
 	case CmdMemPool:
 		msg = &MsgMemPool{}

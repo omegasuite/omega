@@ -26,10 +26,44 @@ const (
 
 type ChainDescriptor wire.ChainDescriptor
 
-var ChainMap map[uint32]*ChainDescriptor
+var RootMeta = []*ChainDescriptor{
+	&ChainDescriptor{
+		Magic:          0x4e585553,       // 0x956ca366,
+		Dns:            "omegasuite.org", // "omegasuite.org",
+		DefaultPort:    "9788",
+		DefaultRPCPort: "9789",
+		MRChain:        true,
+		Parent:         0,
+		ChainID:        ROOT,
+		Genesis:        "000000305e53c709d2cee79b972414e5ab43f46e52e303b036541f9b2156bda3,",
+		MrGenesis:      "0000000c8ece44d2fb2d6be96c0de146806c062011b3e3665835ed399ffd2465",
+		GlobalParams:   "{\"Name\":\"mainnet\",\"Net\":1314411859,\"DefaultPort\":\"9788\",\"RpcPort\":\"9789\",\"DNSSeeds\":[{\"Host\":\"omegasuite.org\",\"HasFiltering\":false}],\"PowLimitBits\":503320560,\"CoinbaseMaturity\":20000,\"SubsidyReductionInterval\":42048000,\"MinimalAward\":0,\"TargetTimespan\":1209600000000000,\"TargetTimePerBlock\":600000000000,\"RetargetAdjustmentFactor\":4,\"MinDiffReductionTime\":0,\"RuleChangeActivationThreshold\":1916,\"MinerConfirmationWindow\":2016,\"Forfeit\":{\"Contract\":[136,26,82,15,169,77,142,7,59,11,70,121,67,91,85,9,165,198,132,125,179],\"Opening\":[124,239,138,115],\"Filing\":[178,24,22,90],\"Claim\":[68,144,2,248]},\"ViolationReportDeadline\":100,\"ChainID\":1}",
+	},
+	&ChainDescriptor{
+		Magic:          0x4e585574,       // test net
+		Dns:            "omegasuite.org", // "omegasuite.org",
+		DefaultPort:    "7788",
+		DefaultRPCPort: "7789",
+		MRChain:        true,
+		Parent:         0,
+		ChainID:        ROOT,
+		Genesis:        "003b7c24ab8d47386f6acb9ce1ac87c8861db46340747f50b83ca3f2f8de6585",
+		MrGenesis:      "000634587726987c5624c4f6b0b952499c03983a245df6ad83a8bc88b6e89d61",
+		GlobalParams:   "{\"Name\":\"testnet\",\"Net\":1314411892,\"DefaultPort\":\"7788\",\"RpcPort\":\"7789\",\"DNSSeeds\":[{\"Host\":\"omegasuite.org\",\"HasFiltering\":false}],\"PowLimitBits\":521142271,\"CoinbaseMaturity\":10,\"SubsidyReductionInterval\":42048000,\"MinimalAward\":0,\"TargetTimespan\":7200000000000,\"TargetTimePerBlock\":240000000000,\"RetargetAdjustmentFactor\":4,\"MinDiffReductionTime\":180000000000,\"RuleChangeActivationThreshold\":75,\"MinerConfirmationWindow\":100,\"Forfeit\":{\"Contract\":[136,235,165,125,186,142,136,62,150,43,31,19,231,176,243,127,109,59,72,72,252],\"Opening\":[124,239,138,115],\"Filing\":[178,24,22,90],\"Claim\":[68,144,2,248]},\"ViolationReportDeadline\":10,\"ChainID\":1}",
+	},
+}
 
-func (t *ChainDescriptor) Decendant(cid uint32) bool {
-	d, ok := ChainMap[cid]
+var useNet = common.MainNet
+
+type FOCMap struct {
+	ChainMap map[uint32]*ChainDescriptor
+	dmdb     database.DB
+}
+
+var AllChains map[uint32]*FOCMap
+
+func (m *FOCMap) Decendant(t *ChainDescriptor, cid uint32) bool {
+	d, ok := m.ChainMap[cid]
 	if !ok {
 		return false
 	}
@@ -37,27 +71,27 @@ func (t *ChainDescriptor) Decendant(cid uint32) bool {
 		return false
 	}
 	for d.Parent != t.ChainID && d.Parent != 0 {
-		d, _ = ChainMap[d.Parent]
+		d, _ = m.ChainMap[d.Parent]
 	}
 	return d.Parent == t.ChainID
 }
 
-func (t *ChainDescriptor) CtxFees(dest uint32) (path [][]byte, fees []int64) {
+func (m *FOCMap) CtxFees(t *ChainDescriptor, dest uint32) (path [][]byte, fees []int64) {
 	srctoroot := make([]*ChainDescriptor, 1)
 	d := t
 	srctoroot[0] = d
 	for d.Parent != 0 {
-		d, _ = ChainMap[d.Parent]
+		d, _ = m.ChainMap[d.Parent]
 		srctoroot = append(srctoroot, d)
 	}
-	d = ChainMap[dest]
+	d = m.ChainMap[dest]
 	if d == nil {
 		return nil, nil
 	}
 	desttoroot := make([]*ChainDescriptor, 1)
 	desttoroot[0] = d
 	for d.Parent != 0 {
-		d, _ = ChainMap[d.Parent]
+		d, _ = m.ChainMap[d.Parent]
 		desttoroot = append(desttoroot, d)
 	}
 	// reverse path
@@ -107,12 +141,13 @@ func (t *ChainDescriptor) FeeAmount() int64 {
 	return CrossChainTxFeePerChain
 }
 
-func (t *ChainDescriptor) PassThru(src, dest uint32) bool {
-	if t.ChainID == src || t.ChainID == dest {
+func (m *FOCMap) PassThru(tid, src, dest uint32) bool {
+	t := m.ChainMap[tid]
+	if tid == src || tid == dest {
 		return true
 	}
-	sd := t.Decendant(src)
-	dd := t.Decendant(dest)
+	sd := m.Decendant(t, src)
+	dd := m.Decendant(t, dest)
 	if sd != dd {
 		return true
 	}
@@ -120,49 +155,26 @@ func (t *ChainDescriptor) PassThru(src, dest uint32) bool {
 		return false
 	}
 	p := src
-	for ChainMap[p].Parent != t.ChainID {
-		p = ChainMap[p].Parent
+	for m.ChainMap[p].Parent != tid {
+		p = m.ChainMap[p].Parent
 	}
 	q := dest
-	for ChainMap[q].Parent != t.ChainID {
-		q = ChainMap[q].Parent
+	for m.ChainMap[q].Parent != tid {
+		q = m.ChainMap[q].Parent
 	}
 	return p != q
 }
 
-var RootMeta = map[common.OmegaNet]*ChainDescriptor{
-	common.MainNet: &ChainDescriptor{
-		Magic:          0x4e585553,  // 0x956ca366,
-		Dns:            "localhost", // "omegasuite.org",
-		DefaultPort:    "8788",
-		DefaultRPCPort: "8789",
-		MRChain:        true,
-		Parent:         0,
-		ChainID:        ROOT,
-		Genesis:        "0000000fca59d9ceb85d0c076c211bc84391d8de5352597e825c453a2f5be963",
-		MrGenesis:      "0000003c37c434f066dfed9f8569803dfcde9b318fc22b6b1fac11b32623a826",
-	},
-	common.TestNet: &ChainDescriptor{
-		Magic:          0x4e585574,  // test net
-		Dns:            "localhost", // "omegasuite.org",
-		DefaultPort:    "7788",
-		DefaultRPCPort: "7789",
-		MRChain:        true,
-		Parent:         0,
-		ChainID:        ROOT,
-		Genesis:        "003b7c24ab8d47386f6acb9ce1ac87c8861db46340747f50b83ca3f2f8de6585",
-		MrGenesis:      "000634587726987c5624c4f6b0b952499c03983a245df6ad83a8bc88b6e89d61",
-	},
-}
-
-var useNet = common.MainNet
-
-var dmdb database.DB
-
-func LoadChainMap(db database.DB, isroot bool, net common.OmegaNet) {
-	dmdb = db
+func LoadChainMap(db database.DB, net common.OmegaNet, chainid uint32) {
+	if AllChains == nil {
+		AllChains = make(map[uint32]*FOCMap)
+	}
+	m := FOCMap{}
+	m.dmdb = db
 	useNet = net
-	ChainMap = make(map[uint32]*ChainDescriptor)
+	m.ChainMap = make(map[uint32]*ChainDescriptor)
+
+	AllChains[chainid] = &m
 
 	db.Update(func(tx database.Tx) error {
 		bucketname := []byte("ChainMap")
@@ -178,41 +190,45 @@ func LoadChainMap(db database.DB, isroot bool, net common.OmegaNet) {
 				break
 			}
 			k := common.LittleEndian.Uint32(cursor.Key())
-			ChainMap[k] = (*ChainDescriptor)(t)
+			m.ChainMap[k] = (*ChainDescriptor)(t)
 			s, _ := json.Marshal(t)
 			fmt.Printf("chain data: %s\n", s)
 		}
 
 		bad := false
 
-		for i, m := range ChainMap {
-			if i != m.ChainID {
+		for i, n := range m.ChainMap {
+			if i != n.ChainID {
 				bad = true
 				break
 			}
-			if m.Parent == 0 && i != ROOT {
+			if n.Parent == 0 && i != ROOT {
 				bad = true
 				break
 			}
-			if _, ok := ChainMap[m.Parent]; m.Parent != 0 && !ok {
+			if _, ok := m.ChainMap[n.Parent]; n.Parent != 0 && !ok {
 				bad = true
 				break
 			}
 		}
 
-		if _, ok := ChainMap[ROOT]; isroot && (!ok || bad) {
-			ChainMap = map[uint32]*ChainDescriptor{}
-			ChainMap[ROOT] = RootMeta[useNet]
+		if _, ok := m.ChainMap[ROOT]; !ok || bad {
+			m.ChainMap = map[uint32]*ChainDescriptor{}
+			net := 0
+			if useNet == common.TestNet {
+				net = 1
+			}
+			m.ChainMap[ROOT] = RootMeta[net]
 
 			meta.DeleteBucket(bucketname)
 			bucket, _ = meta.CreateBucket(bucketname)
-			bucket.Put([]byte{1, 0, 0, 0}, (*wire.ChainDescriptor)(RootMeta[useNet]).Serialize())
+			bucket.Put([]byte{ROOT, 0, 0, 0}, (*wire.ChainDescriptor)(m.ChainMap[ROOT]).Serialize())
 		}
 		return nil
 	})
 }
 
-func AddChain(c *ChainDescriptor) bool {
+func (m *FOCMap) AddChain(c *ChainDescriptor) bool {
 	if c.ChainID != ROOT && c.Parent == 0 {
 		return false
 	}
@@ -220,11 +236,11 @@ func AddChain(c *ChainDescriptor) bool {
 		return false
 	}
 
-	if _, ok := ChainMap[c.ChainID]; ok {
+	if _, ok := m.ChainMap[c.ChainID]; ok {
 		return true
 	}
 
-	for _, d := range ChainMap {
+	for _, d := range m.ChainMap {
 		if d.Magic == c.Magic || (d.Dns == c.Dns && d.DefaultPort == c.DefaultRPCPort) || d.Genesis == c.Genesis || (c.MRChain && d.MRChain && d.MrGenesis == c.MrGenesis) {
 			return false
 		}
@@ -236,7 +252,7 @@ func AddChain(c *ChainDescriptor) bool {
 		panic("bad GlobalParams data")
 	}
 
-	dmdb.Update(func(tx database.Tx) error {
+	m.dmdb.Update(func(tx database.Tx) error {
 		bucketname := []byte("ChainMap")
 		bucket := tx.Metadata().Bucket(bucketname)
 
@@ -244,15 +260,15 @@ func AddChain(c *ChainDescriptor) bool {
 		common.LittleEndian.PutUint32(cid[:], c.ChainID)
 
 		bucket.Put(cid[:], (*wire.ChainDescriptor)(c).Serialize())
-		ChainMap[c.ChainID] = c
+		m.ChainMap[c.ChainID] = c
 
 		return nil
 	})
 	return true
 }
 
-func RemoveChain(c uint32) {
-	if _, ok := ChainMap[c]; !ok {
+func (m *FOCMap) RemoveChain(c uint32) {
+	if _, ok := m.ChainMap[c]; !ok {
 		return
 	}
 
@@ -260,7 +276,7 @@ func RemoveChain(c uint32) {
 		return
 	}
 
-	dmdb.Update(func(tx database.Tx) error {
+	m.dmdb.Update(func(tx database.Tx) error {
 		bucketname := []byte("ChainMap")
 		bucket := tx.Metadata().Bucket(bucketname)
 
@@ -268,12 +284,12 @@ func RemoveChain(c uint32) {
 		common.LittleEndian.PutUint32(cid[:], c)
 
 		bucket.Delete(cid[:])
-		delete(ChainMap, c)
+		delete(m.ChainMap, c)
 
 		return nil
 	})
 }
 
 func Close() {
-	dmdb.Close()
+	// m.dmdb.Close()
 }

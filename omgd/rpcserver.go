@@ -637,12 +637,12 @@ func handleGetChainMap(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 	reply := make([]chainmap.ChainDescriptor, 0)
 	if target != nil {
-		node, ok := chainmap.ChainMap[*target]
+		node, ok := chainmap.AllChains[chaincfg.DefaultChainID].ChainMap[*target]
 		if ok {
 			reply = append(reply, *node)
 		}
 	} else {
-		for _, m := range chainmap.ChainMap {
+		for _, m := range chainmap.AllChains[chaincfg.DefaultChainID].ChainMap {
 			reply = append(reply, *m)
 		}
 	}
@@ -654,7 +654,7 @@ func handleGetXChTxFee(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	c := cmd.(*btcjson.GetXChTxFeeCmd)
 	target := c.Target
 
-	node := chainmap.ChainMap[chaincfg.DefaultChainID]
+	node := chainmap.AllChains[chaincfg.DefaultChainID].ChainMap[chaincfg.DefaultChainID]
 	if node == nil {
 		return &btcjson.XChTxFee{
 			Path: nil, // pkscripts containing chain id
@@ -662,7 +662,7 @@ func handleGetXChTxFee(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 		}, nil
 	}
 
-	path, fees := node.CtxFees(uint32(target))
+	path, fees := chainmap.AllChains[chaincfg.DefaultChainID].CtxFees(node, uint32(target))
 
 	pks := make([]string, len(path))
 	for i, s := range path {
@@ -3794,7 +3794,7 @@ func handleClearMempool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	// verbose flag is not set.
 	descs := mp.TxDescs()
 	for _, tx := range descs {
-		mp.RemoveTransaction(tx.Tx, true)
+		mp.RemoveTransaction(tx.Tx, false)
 	}
 
 	return "Done", nil
@@ -5941,7 +5941,7 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 func handleClearBtcL2Pool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.GetCrossChainDBCmd)
 
-	s.cfg.DB.View(func(tx database.Tx) error {
+	s.cfg.DB.Update(func(tx database.Tx) error {
 		meta := tx.Metadata()
 		if c.Clear&1 != 0 { // INCOMINGPOOL
 			bucketName := []byte(common.INCOMINGPOOL)

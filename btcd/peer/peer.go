@@ -226,11 +226,11 @@ type MessageListeners struct {
 	// circumstances such as keeping track of server-wide byte counts.
 	OnWrite func(p *Peer, bytesWritten int, msg wire.Message, err error)
 
-	OnFinalized func(p *Peer, msg *wire.MsgFinalized)
-	OnFinal     func(p *Peer, msg *wire.MsgReFinal)
+	// OnFinalized func(p *Peer, msg *wire.MsgFinalized)
+	// OnFinal     func(p *Peer, msg *wire.MsgReFinal)
 
-	OnGetChainMap func(p *Peer, msg *wire.MsgGetChainMap)
-	OnChainMap    func(p *Peer, msg *wire.MsgChainMap)
+	// OnGetChainMap func(p *Peer, msg *wire.MsgGetChainMap)
+	// OnChainMap    func(p *Peer, msg *wire.MsgChainMap)
 
 	PushGetBlock func(p *Peer)
 }
@@ -1584,20 +1584,19 @@ out:
 			}
 
 		case *wire.MsgMemPool:
-			//			log.Infof("inHandler MsgMemPool")
-			if p.cfg.Listeners.OnMemPool != nil {
+			if p.cfg.Listeners.OnMemPool != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnMemPool(p, msg)
 			}
 
 		case *wire.MsgTx:
 			//			log.Infof("inHandler MsgTx")
-			if p.cfg.Listeners.OnTx != nil {
+			if p.cfg.Listeners.OnTx != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnTx(p, msg)
 			}
 
 		case *wire.MsgSignatures:
 			log.Tracef("inHandler MsgSignatures")
-			if p.cfg.Listeners.OnSignatures != nil {
+			if p.cfg.Listeners.OnSignatures != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnSignatures(p, msg)
 			}
 
@@ -1608,7 +1607,6 @@ out:
 			}
 
 		case *wire.MingingRightBlock:
-			//			log.Infof("inHandler MingingRightBlock")
 			if p.cfg.Listeners.OnMinerBlock != nil {
 				p.cfg.Listeners.OnMinerBlock(p, msg, buf)
 			}
@@ -1633,79 +1631,79 @@ out:
 
 		case *wire.MsgGetData:
 			log.Tracef("inHandler %s MsgGetData: %s", msg.InvList[0].Type.String(), msg.InvList[0].Hash.String())
-			if p.cfg.Listeners.OnGetData != nil {
+			if p.cfg.Listeners.OnGetData != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnGetData(p, msg)
 			}
 
 		case *wire.MsgGetBlocks:
 			//			log.Infof("inHandler MsgGetBlocks")
-			if p.cfg.Listeners.OnGetBlocks != nil {
+			if p.cfg.Listeners.OnGetBlocks != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnGetBlocks(p, msg)
 			}
 
 		case *wire.MsgGetMinerBlocks:
 			//			log.Infof("inHandler MsgGetMinerBlocks")
-			if p.cfg.Listeners.OnGetMinerBlocks != nil {
+			if p.cfg.Listeners.OnGetMinerBlocks != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnGetMinerBlocks(p, msg)
 			}
 
 		case *wire.MsgGetHeaders:
 			//			log.Infof("inHandler MsgGetHeaders")
-			if p.cfg.Listeners.OnGetHeaders != nil {
+			if p.cfg.Listeners.OnGetHeaders != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnGetHeaders(p, msg)
 			}
 
 		case *wire.MsgGetCFilters:
 			//			log.Infof("inHandler MsgGetCFilters")
-			if p.cfg.Listeners.OnGetCFilters != nil {
+			if p.cfg.Listeners.OnGetCFilters != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnGetCFilters(p, msg)
 			}
 
 		case *wire.MsgGetCFHeaders:
 			//			log.Infof("inHandler MsgGetCFHeaders")
-			if p.cfg.Listeners.OnGetCFHeaders != nil {
+			if p.cfg.Listeners.OnGetCFHeaders != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnGetCFHeaders(p, msg)
 			}
 
 		case *wire.MsgGetCFCheckpt:
 			//			log.Infof("inHandler MsgGetCFCheckpt")
-			if p.cfg.Listeners.OnGetCFCheckpt != nil {
+			if p.cfg.Listeners.OnGetCFCheckpt != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnGetCFCheckpt(p, msg)
 			}
 
 		case *wire.MsgCFilter:
 			//			log.Infof("inHandler MsgCFilter")
-			if p.cfg.Listeners.OnCFilter != nil {
+			if p.cfg.Listeners.OnCFilter != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnCFilter(p, msg)
 			}
 
 		case *wire.MsgCFHeaders:
 			//			log.Infof("inHandler MsgCFHeaders")
-			if p.cfg.Listeners.OnCFHeaders != nil {
+			if p.cfg.Listeners.OnCFHeaders != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnCFHeaders(p, msg)
 			}
 
 		case *wire.MsgFeeFilter:
 			//			log.Infof("inHandler MsgFeeFilter")
-			if p.cfg.Listeners.OnFeeFilter != nil {
+			if p.cfg.Listeners.OnFeeFilter != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnFeeFilter(p, msg)
 			}
 
 		case *wire.MsgFilterAdd:
 			//			log.Infof("inHandler MsgFilterAdd")
-			if p.cfg.Listeners.OnFilterAdd != nil {
+			if p.cfg.Listeners.OnFilterAdd != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnFilterAdd(p, msg)
 			}
 
 		case *wire.MsgFilterClear:
 			//			log.Infof("inHandler MsgFilterClear")
-			if p.cfg.Listeners.OnFilterClear != nil {
+			if p.cfg.Listeners.OnFilterClear != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnFilterClear(p, msg)
 			}
 
 		case *wire.MsgFilterLoad:
 			//			log.Infof("inHandler MsgFilterLoad")
-			if p.cfg.Listeners.OnFilterLoad != nil {
+			if p.cfg.Listeners.OnFilterLoad != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnFilterLoad(p, msg)
 			}
 
@@ -1717,7 +1715,7 @@ out:
 
 		case *wire.MsgReject:
 			log.Tracef("inHandler MsgReject")
-			if p.cfg.Listeners.OnReject != nil {
+			if p.cfg.Listeners.OnReject != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnReject(p, msg)
 			}
 
@@ -1765,31 +1763,6 @@ out:
 				consensus.HandleMessage(p, msg)
 			}
 
-		case *wire.MsgFinalized:
-			if p.cfg.Listeners.OnFinalized != nil {
-				p.cfg.Listeners.OnFinalized(p, msg)
-			}
-
-		case *wire.MsgReFinal:
-			if p.cfg.Listeners.OnFinal != nil {
-				p.cfg.Listeners.OnFinal(p, msg)
-			}
-
-		case *wire.MsgGetChainMap:
-			// if p.cfg.IsSvp {
-			//	continue
-			// }
-			if p.cfg.Listeners.OnGetChainMap != nil {
-				p.cfg.Listeners.OnGetChainMap(p, msg)
-			}
-
-		case *wire.MsgChainMap:
-			// if p.cfg.IsSvp {
-			// 	continue
-			// }
-			if p.cfg.Listeners.OnChainMap != nil {
-				p.cfg.Listeners.OnChainMap(p, msg)
-			}
 
 		default:
 			//			log.Infof("inHandler default")

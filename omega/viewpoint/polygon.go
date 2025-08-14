@@ -11,6 +11,7 @@ package viewpoint
 import (
 	"btcd/blockchain/bccompress"
 	"btcd/database"
+	"btcd/wire/common"
 	"btcutil"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -800,7 +801,7 @@ func (view *ViewPointSet) AddPolygon(tx *btcutil.Tx) bool {
 				if out.IsSeparator() {
 					continue
 				}
-				if out.TokenType == 3 && out.Value.(*token.HashToken).Hash.IsEqual(&th) {
+				if out.TokenType == common.PolyGonType && out.Value.(*token.HashToken).Hash.IsEqual(&th) {
 					ccw = true
 					break
 				}

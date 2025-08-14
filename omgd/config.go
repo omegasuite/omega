@@ -181,6 +181,7 @@ type config struct {
 	Clear           int      `long:"clear" description:"Clear DBs"`
 	Blacklist       []string `long:"blacklist" description:"Put address in blacklist"`
 	RpcLimit        int      `long:"rpclimit" description:"Return size limit (KB) of RPC calls"`
+	Passive         bool
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on
@@ -449,6 +450,7 @@ func loadConfig(sec string, omegaNet uint32) (*config, []string, error) {
 		AddChain:             "",
 		Clear:                0,
 		RpcLimit:             1000, // RPC return size 1000 K
+		Passive:              false,
 	}
 
 	if uint32(omegaNet) != 0 {

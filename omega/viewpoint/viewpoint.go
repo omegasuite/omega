@@ -12,6 +12,7 @@ import (
 	"encoding/binary"
 
 	"btcd/database"
+	"btcd/wire/common"
 	"btcutil"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -185,7 +186,7 @@ func (view *ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Spe
 					return AssertError(fmt.Sprintf("view missing input %v", in.PreviousOutPoint))
 				}
 
-				if entry.TokenType == 3 {
+				if entry.TokenType == common.PolyGonType {
 					p := view.Polygon.LookupEntry(entry.Amount.(*token.HashToken).Hash)
 					if p == nil {
 						view.FetchPolygonEntry(&entry.Amount.(*token.HashToken).Hash)
@@ -201,7 +202,7 @@ func (view *ViewPointSet) ConnectTransactions(block *btcutil.Block, stxos *[]Spe
 			if out.IsSeparator() {
 				continue
 			}
-			if out.TokenType == 3 {
+			if out.TokenType == common.PolyGonType {
 				view.Polygon.LookupEntry(out.Token.Value.(*token.HashToken).Hash).reference(view)
 			}
 		}

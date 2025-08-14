@@ -47,13 +47,13 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 			return fmt.Errorf("cross chain transferring to local chain")
 		}
 
-		if _, ok := chainmap.ChainMap[tdest]; tdest != 0 && !ok {
+		if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[tdest]; tdest != 0 && !ok {
 			b.SrvReq <- ReqChain(tdest)
 			return fmt.Errorf("Cross chain TokenType not found")
 		}
 
 		if dest != 0 {
-			if _, ok := chainmap.ChainMap[dest]; !ok {
+			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dest]; !ok {
 				b.SrvReq <- ReqChain(dest)
 				return fmt.Errorf("Cross chain TokenType not found")
 			}
@@ -62,10 +62,10 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 				return fmt.Errorf("Local Tokentype in a cross chain tx")
 			}
 
-			if tdest != 0 && tdest != b.ChainParams.ChainID && !chainmap.ChainMap[dest].PassThru(chaincfg.DefaultChainID, tdest) {
+			if tdest != 0 && tdest != b.ChainParams.ChainID && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dest, chaincfg.DefaultChainID, tdest) {
 				return fmt.Errorf("Invalid cross chain destination")
 			}
-			if !chainmap.ChainMap[chaincfg.DefaultChainID].PassThru(src, dest) {
+			if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(chaincfg.DefaultChainID, src, dest) {
 				return fmt.Errorf("Invalid cross chain destination")
 			}
 
@@ -77,7 +77,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		if dest == 0 {
 			dest = b.ChainParams.ChainID
 		}
-		pks, fee := chainmap.ChainMap[b.ChainParams.ChainID].CtxFees(dest)
+		pks, fee := chainmap.AllChains[b.ChainParams.ChainID].CtxFees(chainmap.AllChains[b.ChainParams.ChainID].ChainMap[chaincfg.DefaultChainID], dest)
 		for i, p := range pks {
 			d := common.LittleEndian.Uint32(p[21:]) >> 8
 			if f, ok := minerFees[d]; ok {
@@ -260,7 +260,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		}
 	}
 	if !b.IsSVP {
-		m := chainmap.ChainMap[b.ChainParams.ChainID]
+		m := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[b.ChainParams.ChainID]
 		if m == nil {
 			b.SrvReq <- ReqChain(b.ChainParams.ChainID)
 		}
@@ -303,7 +303,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 						if destchain == 0 {
 							destchain = b.ChainParams.ChainID
 						}
-						if !m.PassThru(srcchain, destchain) {
+						if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, srcchain, destchain) {
 							return false, fmt.Errorf("Mix of cross chain and regular txout"), -1
 						}
 					}

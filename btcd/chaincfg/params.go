@@ -288,7 +288,7 @@ var MainNetParams = Params{
 	GlobalParams: GlobalParams{
 		Name:        "mainnet",
 		Net:         uint32(common.MainNet),
-		DefaultPort: "7788",
+		DefaultPort: "9788",
 		DNSSeeds: []DNSSeed{
 			{"omegasuite.org", false},
 		},
@@ -315,7 +315,7 @@ var MainNetParams = Params{
 		},
 		ViolationReportDeadline: 100,
 		ChainID:                 DefaultChainID, // Omega
-		RpcPort:                 "7789",
+		RpcPort:                 "9789",
 	},
 
 	GenesisHash:      GenesisHash[uint32(common.MainNet)],

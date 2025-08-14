@@ -10,6 +10,7 @@ package validate
 
 import (
 	"btcd/wire"
+	"btcd/wire/common"
 	"btcutil"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -70,7 +71,7 @@ func ScanDefinitions(msgTx *wire.MsgTx) (error, map[chainhash.Hash]*token.RightD
 			refd := false
 			h := v.Hash()
 			for _, to := range msgTx.TxOut {
-				if to.IsSeparator() || (to.TokenType != 3 && to.TokenType != 1) {
+				if to.IsSeparator() || (to.TokenType != common.PolyGonType && to.TokenType != 1) {
 					continue
 				}
 				n := to.Value.(*token.HashToken).Hash
@@ -293,7 +294,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error
 			if utxo == nil {
 				return fmt.Errorf("PreviousOutPoint does not exist: %s", d.PreviousOutPoint.String())
 			}
-			if utxo.TokenType != 3 {
+			if utxo.TokenType != common.PolyGonType {
 				continue
 			}
 			plg, err := views.FetchPolygonEntry(&utxo.Amount.(*token.HashToken).Hash)
@@ -357,7 +358,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error
 				if out.IsSeparator() {
 					continue
 				}
-				if out.TokenType == 3 && out.Value.(*token.HashToken).Hash.IsEqual(&th) {
+				if out.TokenType == common.PolyGonType && out.Value.(*token.HashToken).Hash.IsEqual(&th) {
 					ccw = true
 					break
 				}
@@ -501,7 +502,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error
 						continue
 					}
 					utxo := views.Utxo.LookupEntry(txIn.PreviousOutPoint)
-					if utxo.TokenType != 3 {
+					if utxo.TokenType != common.PolyGonType {
 						continue
 					}
 					h := &utxo.Amount.(*token.HashToken).Hash

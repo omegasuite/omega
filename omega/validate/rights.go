@@ -10,6 +10,7 @@ package validate
 
 import (
 	"btcd/wire"
+	"btcd/wire/common"
 	"btcutil"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -513,7 +514,7 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 			if txOut.IsSeparator() {
 				continue
 			}
-			if txOut.TokenType == 3 && checkPolygon {
+			if txOut.TokenType == common.PolyGonType && checkPolygon {
 				if polyhash.IsEqual(&zerohash) {
 					polyhash = txOut.Token.Value.(*token.HashToken).Hash
 				} else if !txOut.Token.Value.(*token.HashToken).Hash.IsEqual(&polyhash) {
@@ -528,7 +529,7 @@ func QuickCheckRight(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ver uint32) 
 				continue
 			}
 			txin := views.Utxo.LookupEntry(txIn.PreviousOutPoint).ToTxOut()
-			if txin.TokenType == 3 && checkPolygon {
+			if txin.TokenType == common.PolyGonType && checkPolygon {
 				if txin.Rights == nil {
 					str := fmt.Sprintf("Tx %s input contains zero rights.", tx.Hash().String())
 					return false, ruleError(1, str)

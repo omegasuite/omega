@@ -11,6 +11,7 @@ package validate
 import (
 	"fmt"
 
+	"btcd/wire/common"
 	"btcutil"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"omega/token"
@@ -582,7 +583,7 @@ func CheckGeometryIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet) bool 
 
 	for io, tks := range tokens {
 		for _, emt := range tks {
-			if emt.tokenType != 3 {
+			if emt.tokenType != common.PolyGonType {
 				// ioTokens will include all types, here we are only interested in polygons
 				continue
 			}

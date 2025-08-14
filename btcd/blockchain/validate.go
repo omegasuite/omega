@@ -1690,7 +1690,7 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 		if txOut.Crossing() {
 			dest := common.LittleEndian.Uint32(txOut.PkScript[21:]) >> 8
 			if origin != 0 && dest != 0 {
-				if !chainmap.ChainMap[dest].PassThru(chainParams.ChainID, origin) {
+				if !chainmap.AllChains[chainParams.ChainID].PassThru(dest, chainParams.ChainID, origin) {
 					str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", rtype>>40,
 						common.LittleEndian.Uint32(txOut.PkScript[21:])>>8)
 					return 0, nil, ruleError(ErrBadTxOutValue, str)
@@ -1831,7 +1831,7 @@ func (b *BlockChain) normalizeTxo(txo *wire.TxOut) {
 }
 
 func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
-	chain := chainmap.ChainMap[b.ChainParams.ChainID]
+	chain := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[b.ChainParams.ChainID]
 	if chain == nil {
 		b.SrvReq <- ReqChain(b.ChainParams.ChainID)
 		// return fmt.Errorf("chain info does not exist")
@@ -1894,7 +1894,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 
 			if txo.IsCrossChain() {
 				dc = txo.DestChain()
-				if t, ok := chainmap.ChainMap[dc&0x3FFFFF]; t == nil || !ok {
+				if t, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dc&0x3FFFFF]; t == nil || !ok {
 					b.SrvReq <- ReqChain(dc & 0x3FFFFF)
 					return fmt.Errorf("Dest chain unknown %d", dc)
 				}
@@ -1904,21 +1904,21 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 			}
 
 			tc := uint32(txo.TokenType >> 40)
-			if chain == nil || (src != 0 && !chain.PassThru(src, dc)) {
+			if chain == nil || (src != 0 && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, src, dc)) {
 				return fmt.Errorf("cross chain path does not go thru this chain")
 			}
-			if tc != 0 && tc != b.ChainParams.ChainID && !chainmap.ChainMap[dc].PassThru(src, dc) {
+			if tc != 0 && tc != b.ChainParams.ChainID && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dc, src, dc) {
 				return fmt.Errorf("invalid cross chain destination")
 			}
 
 			if tc != 0 && tc != b.ChainParams.ChainID && tc != dc {
-				if src != uint32(tc) && !chainmap.ChainMap[dc].PassThru(src, tc) {
+				if src != uint32(tc) && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dc, src, tc) {
 					return fmt.Errorf("Cross chain tx not in propgation path")
 				}
 			}
 
 			if src != 0 || txo.IsCrossChain() {
-				path, fees = chain.CtxFees(dc)
+				path, fees = chainmap.AllChains[b.ChainParams.ChainID].CtxFees(chain, dc)
 				for i, p := range path {
 					r := common.LittleEndian.Uint32(p[21:]) >> 8
 					if t, ok := need[r]; !ok {

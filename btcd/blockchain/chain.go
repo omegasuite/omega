@@ -235,13 +235,14 @@ func (b *BlockChain) InitCollateral() {
 	}
 
 	rot := b.BestSnapshot().LastRotation
+	b.collaterals = make([]wire.OutPoint, 0, b.ChainParams.ViolationReportDeadline)
 	for i := 0; i < int(b.ChainParams.ViolationReportDeadline); i++ {
 		mb, _ := b.Miners.BlockByHeight(int32(rot) - int32(i))
 		if mb == nil || mb.MsgBlock().Utxos == nil {
-			return
+			continue
 		}
 		c := *mb.MsgBlock().Utxos
-		b.collaterals[int(b.ChainParams.ViolationReportDeadline)-1-i] = c
+		b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
 		b.LockedCollaterals[c] = struct{}{}
 	}
 }
@@ -804,22 +805,30 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		b.ExecOps(mrb, uint32(rot))
 	}
 
-	for i := 0; i < m; i++ {
-		c := b.collaterals[0]
-		delete(b.LockedCollaterals, c)
+	if !b.IsSVP {
+		for i := 0; i < m; i++ {
+			n := int32(len(b.collaterals))
 
-		b.collaterals = b.collaterals[1:]
+			if n == b.ChainParams.ViolationReportDeadline {
+				c := b.collaterals[0]
+				delete(b.LockedCollaterals, c)
 
-		mb, _ := b.Miners.BlockByHeight(int32(rot) + int32(i) + 1)
-		if mb == nil || mb.MsgBlock().Utxos == nil {
-			b.collaterals = append(b.collaterals, wire.OutPoint{})
-			continue
+				b.collaterals = b.collaterals[1:]
+			}
+
+			mb, _ := b.Miners.BlockByHeight(int32(rot) + int32(i) + 1)
+			if mb == nil || mb.MsgBlock().Utxos == nil {
+				// b.collaterals = append(b.collaterals, wire.OutPoint{})
+				continue
+			}
+			c := *mb.MsgBlock().Utxos
+			b.collaterals = append(b.collaterals, c)
 		}
-		c = *mb.MsgBlock().Utxos
-		b.collaterals = append(b.collaterals, c)
-	}
-	for _, c := range b.collaterals {
-		b.LockedCollaterals[c] = struct{}{}
+		if m != 0 {
+			for _, c := range b.collaterals {
+				b.LockedCollaterals[c] = struct{}{}
+			}
+		}
 	}
 
 	// Prune fully spent entries and mark all entries in the view unmodified
@@ -1008,21 +1017,33 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 			b.UnExecOps(mrb, uint32(block.Height()))
 		}
 	}
-
-	for i := 0; i < m; i++ {
-		c := b.collaterals[b.ChainParams.ViolationReportDeadline-1]
-		delete(b.LockedCollaterals, c)
-		b.collaterals = b.collaterals[:b.ChainParams.ViolationReportDeadline-1]
-		mb, _ := b.Miners.BlockByHeight(int32(rot) - b.ChainParams.ViolationReportDeadline - int32(i))
-		if mb == nil || mb.MsgBlock().Utxos == nil {
-			b.collaterals = append([]wire.OutPoint{wire.OutPoint{}}, b.collaterals...)
-			continue
+	if !b.IsSVP {
+		n := int32(len(b.collaterals))
+		bot := int32(rot) - b.ChainParams.ViolationReportDeadline
+		for i := 0; i < m; i++ {
+			if n == 0 {
+				continue
+			}
+			c := b.collaterals[n-1]
+			delete(b.LockedCollaterals, c)
+			mb, _ := b.Miners.BlockByHeight(int32(rot) - int32(i))
+			if mb != nil && mb.MsgBlock().Utxos != nil && *mb.MsgBlock().Utxos == c {
+				b.collaterals = b.collaterals[:n-1]
+			}
+			mb, _ = b.Miners.BlockByHeight(bot)
+			bot--
+			if mb == nil || mb.MsgBlock().Utxos == nil {
+				// b.collaterals = append([]wire.OutPoint{wire.OutPoint{}}, b.collaterals...)
+				continue
+			}
+			c = *mb.MsgBlock().Utxos
+			b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
 		}
-		c = *mb.MsgBlock().Utxos
-		b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
-	}
-	for _, c := range b.collaterals {
-		b.LockedCollaterals[c] = struct{}{}
+		if m > 0 {
+			for _, c := range b.collaterals {
+				b.LockedCollaterals[c] = struct{}{}
+			}
+		}
 	}
 
 	// Prune fully spent entries and mark all entries in the view unmodified
@@ -1779,14 +1800,14 @@ func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) {
 			if err != nil {
 				continue
 			}
-			if _, ok := chainmap.ChainMap[meta.ChainId]; !ok {
+			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[meta.ChainId]; !ok {
 				b.SrvReq <- ReqChain(meta.ChainId)
 				continue
 			}
-			if chainmap.ChainMap[meta.ChainId].Height != uint32(block.Height()) {
+			if chainmap.AllChains[b.ChainParams.ChainID].ChainMap[meta.ChainId].Height != uint32(block.Height()) {
 				continue
 			}
-			chainmap.RemoveChain(meta.ChainId)
+			chainmap.AllChains[b.ChainParams.ChainID].RemoveChain(meta.ChainId)
 		}
 	}
 }
@@ -1804,7 +1825,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 			if err != nil {
 				continue
 			}
-			if _, ok := chainmap.ChainMap[cd.ChainID]; ok {
+			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[cd.ChainID]; ok {
 				b.SrvReq <- ReqChain(cd.ChainID)
 				continue
 			}
@@ -1838,7 +1859,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 			}
 			if agreed >= common.NewChainConsensus {
 				// add it to chainmap
-				chainmap.AddChain(cd)
+				chainmap.AllChains[b.ChainParams.ChainID].AddChain(cd)
 			}
 		}
 	}
@@ -3043,10 +3064,10 @@ func New(config *Config) (*BlockChain, error) {
 		Miner:               config.Miner,
 		PrivKey:             config.PrivKey,
 		//		BlackedList:         make([]*wire.Violations,0),
-		MinerTPH:          make(map[[20]byte]*TPHRecord),
-		ConsensusRange:    [2]int32{-1, -1},
-		AddrUsage:         config.AddrUsage,
-		collaterals:       make([]wire.OutPoint, params.ViolationReportDeadline),
+		MinerTPH:       make(map[[20]byte]*TPHRecord),
+		ConsensusRange: [2]int32{-1, -1},
+		AddrUsage:      config.AddrUsage,
+		// collaterals:       make([]wire.OutPoint, params.ViolationReportDeadline),
 		LockedCollaterals: make(map[wire.OutPoint]struct{}),
 		IsPacking:         false,
 		BTfile:            f,
