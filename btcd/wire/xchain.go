@@ -12,30 +12,39 @@ import (
 )
 
 type MsgXrossL2 struct {
-	Utxo OutPoint
-	Txo  TxOut
+	Utxo      OutPoint // outpoint of original txout
+	RawScript []byte   // original pkscript
+	Txo       TxOut    // txout for L2
 }
 
 func (t *MsgXrossL2) Serialize() []byte {
-	res := make([]byte, 36, 100)
+	res := make([]byte, 40, 100)
 	copy(res, t.Utxo.Hash[:])
 	common.LittleEndian.PutUint32(res[32:], t.Utxo.Index)
 
+	common.LittleEndian.PutUint32(res[36:], uint32(len(t.RawScript)))
+
+	res = append(res, t.RawScript...)
 	res = append(res, t.Txo.Serialize()...)
 	return res
 }
 
 func (t *MsgXrossL2) DeSerialize(d []byte) (int, error) {
-	copy(t.Utxo.Hash[:], d)
-	if len(d) < 36 {
+	if len(d) < 40 {
 		return 0, fmt.Errorf("Not enough data")
 	}
+	copy(t.Utxo.Hash[:], d)
 	t.Utxo.Index = common.LittleEndian.Uint32(d[32:])
-	n := t.Txo.DeSerialize(d[36:])
+
+	n := common.LittleEndian.Uint32(d[36:])
+	t.RawScript = make([]byte, n)
+	copy(t.RawScript, d[40:40+n])
+
+	m := t.Txo.DeSerialize(d[40+n:])
 	if n < 0 {
 		return 0, fmt.Errorf("Bad data")
 	}
-	return n + 36, nil
+	return m + int(n) + 40, nil
 }
 
 type XchainData struct {

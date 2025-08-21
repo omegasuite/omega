@@ -8,7 +8,6 @@ package chaincfg
 import (
 	"errors"
 	"math/big"
-
 	"time"
 
 	"btcd/wire"
@@ -172,12 +171,6 @@ type GlobalParams struct { // The params that must be the same for every node in
 	// networks and should not be set on a main network.
 	//	ReduceMinDifficulty bool
 
-	// MinDiffReductionTime is the amount of time after which the minimum
-	// required difficulty should be reduced when a block hasn't been found.
-	//
-	// NOTE: This only applies if ReduceMinDifficulty is true.
-	MinDiffReductionTime time.Duration
-
 	// These fields are related to voting on consensus rule changes as
 	// defined by BIP0009.
 	//
@@ -262,7 +255,7 @@ type Params struct {
 	// HDCoinType uint32
 
 	// ContractExecLimit is a policy by each node to limit step a contract may execute
-	ContractExecLimit int64
+	ContractExecLimit uint32
 
 	// SigVeriConcurrency is the number of concurrent verifiers for signature veridfication
 	SigVeriConcurrency int
@@ -294,12 +287,11 @@ var MainNetParams = Params{
 		},
 		PowLimitBits:             0x1e000ff0,
 		CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
-		SubsidyReductionInterval: 210240 * wire.MINER_RORATE_FREQ,
+		SubsidyReductionInterval: 2102400 * wire.MINER_RORATE_FREQ,
 		MinimalAward:             0,
 		TargetTimespan:           time.Hour * 24 * 14, // adjust every 14 days
-		TargetTimePerBlock:       time.Minute * 10,    // 10 minutes/block
+		TargetTimePerBlock:       time.Minute * 1,     // 1 minutes/block
 		RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
-		MinDiffReductionTime:     0,
 		// Consensus rule change deployments.
 		//
 		// The miner confirmation window is defined as:
@@ -479,10 +471,9 @@ var TestNet3Params = Params{
 		CoinbaseMaturity:         10,
 		SubsidyReductionInterval: 210240 * wire.MINER_RORATE_FREQ,
 		MinimalAward:             0,
-		TargetTimespan:           time.Hour * 2,   // 2 hours
-		TargetTimePerBlock:       time.Minute * 4, // 4 minutes
-		RetargetAdjustmentFactor: 4,               // 25% less, 400% more
-		MinDiffReductionTime:     time.Minute * 3, // TargetTimePerBlock * 2
+		TargetTimespan:           time.Hour * 2, // 2 hours
+		TargetTimePerBlock:       time.Minute,   // 1 minutes
+		RetargetAdjustmentFactor: 4,             // 25% less, 400% more
 		// Consensus rule change deployments.
 		//
 		// The miner confirmation window is defined as:

@@ -142,7 +142,7 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 		block := (*btcutil.Block)(blk.(*orphanBlock))
 		if prevNode := b.NodeByHash(&block.MsgBlock().Header.PrevBlock); prevNode != nil {
 			block.SetHeight(prevNode.Height + 1)
-			if !b.IsSVP && !b.MatchInpool(block) {
+			if !b.MatchInpool(block) {
 				return false, nil
 			}
 
@@ -413,7 +413,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 					}
 				}
 			}
-			if !b.IsSVP && exists {
+			if exists {
 				return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
 			}
 		} // re-examine it otherwise
@@ -490,7 +490,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return isMainChain, false, nil, -1, nil
 	}
 
-	if !b.IsSVP && !b.MatchInpool(block) {
+	if !b.MatchInpool(block) {
 		return false, true, nil, -1, nil
 		//		if flags&BFNoOrphan != 0 {
 		//			return false, true, nil, -1, nil

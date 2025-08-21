@@ -48,13 +48,11 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		}
 
 		if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[tdest]; tdest != 0 && !ok {
-			b.SrvReq <- ReqChain(tdest)
 			return fmt.Errorf("Cross chain TokenType not found")
 		}
 
 		if dest != 0 {
 			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dest]; !ok {
-				b.SrvReq <- ReqChain(dest)
 				return fmt.Errorf("Cross chain TokenType not found")
 			}
 
@@ -260,10 +258,6 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		}
 	}
 	if !b.IsSVP {
-		m := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[b.ChainParams.ChainID]
-		if m == nil {
-			b.SrvReq <- ReqChain(b.ChainParams.ChainID)
-		}
 		initems := make(map[chainhash.Hash]*wire.XchainData)
 		b.db.View(func(dbtx database.Tx) error {
 			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))

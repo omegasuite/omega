@@ -381,9 +381,6 @@ type server struct {
 
 	// protocol data
 	prot *Protocol
-
-	// server requests
-	srvReq chan interface{}
 }
 
 // serverPeer extends the peer to maintain state shared by the server and
@@ -3176,7 +3173,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 	// Create a new block chain instance with the appropriate configuration.
 	var err error
-	s.srvReq = make(chan interface{}, 50)
 	if !prot.cfg.Passive {
 		s.chain, err = minerchain.New(&blockchain.Config{
 			DB:          s.db,
@@ -3191,7 +3187,6 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			PrivKey:      prot.cfg.privateKeys,
 			AddrUsage:    s.addrUseIndex.Usage,
 			IsSVP:        prot.IsSvp,
-			SrvReq:       s.srvReq,
 			//		HashCache:    s.hashCache,
 		})
 		if err != nil {

@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"btcd/chaincfg"
 	"btcd/database"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 )
 
 // BlockStatus is a bit field representing the validation state of the block.
@@ -72,7 +72,7 @@ type NodeData interface {
 	GetBits() uint32
 	SetBits(uint32)
 	GetVersion() uint32
-	GetContractExec() int64
+	GetContractExec() uint32
 }
 
 // BlockNode represents a block within the block chain and is primarily used to

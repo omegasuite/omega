@@ -1263,18 +1263,18 @@ func (b *BlockChain) initChainState() error {
 		// Initialize the state related to the best block.
 		numTxns, blockSize := uint64(0), uint64(0)
 
-		if !b.IsSVP {
-			// Load the raw block bytes for the best block.
-			blockBytes, err := dbTx.FetchBlock(&state.hash)
-			if err != nil {
-				return err
-			}
-			err = block.Deserialize(bytes.NewReader(blockBytes))
-			if err != nil {
-				return err
-			}
-			blockSize = uint64(len(blockBytes))
+		//if !b.IsSVP {
+		// Load the raw block bytes for the best block.
+		blockBytes, err := dbTx.FetchBlock(&state.hash)
+		if err != nil {
+			return err
 		}
+		err = block.Deserialize(bytes.NewReader(blockBytes))
+		if err != nil {
+			return err
+		}
+		blockSize = uint64(len(blockBytes))
+		//}
 
 		// As a final consistency check, we'll run through all the
 		// nodes which are ancestors of the current chain tip, and mark
@@ -1295,9 +1295,9 @@ func (b *BlockChain) initChainState() error {
 			}
 		}
 
-		if !b.IsSVP {
-			numTxns = uint64(len(block.Transactions))
-		}
+		//if !b.IsSVP {
+		numTxns = uint64(len(block.Transactions))
+		//}
 
 		b.stateSnapshot = newBestState(tip, blockSize,
 			numTxns, state.totalTxns, tip.CalcPastMedianTime(), // state.bits,
@@ -1327,10 +1327,10 @@ type blockchainNodeData struct {
 	Nonce        int32
 	Timestamp    int64
 	MerkleRoot   chainhash.Hash
-	ContractExec int64
+	ContractExec uint32
 }
 
-func (d *blockchainNodeData) GetContractExec() int64 {
+func (d *blockchainNodeData) GetContractExec() uint32 {
 	return d.ContractExec
 }
 
@@ -1951,9 +1951,6 @@ func (b *BlockChain) validCrossChainScript(script []byte) bool {
 	if script[21] == ovm.OP_PAYCROSSCHAIN {
 		chain := common.LittleEndian.Uint32(script[21:]) >> 8
 		_, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[chain&0x3FFFFF]
-		if !ok {
-			b.SrvReq <- ReqChain(chain & 0x3FFFFF)
-		}
 		return ok
 	}
 	return true

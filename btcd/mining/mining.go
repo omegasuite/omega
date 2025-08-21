@@ -32,10 +32,6 @@ const (
 	// MinHighPriority is the minimum priority value that allows a
 	// transaction to be considered high priority.
 	MinHighPriority = btcutil.HaoPerBitcoin * 144.0 / 250
-
-	// blockHeaderOverhead is the max number of bytes it takes to serialize
-	// a block header and max possible transaction count.
-	blockHeaderOverhead = wire.MaxBlockHeaderPayload + common.MaxVarIntPayload
 )
 
 // TxDesc is a descriptor about a transaction in a transaction source along with
@@ -1290,7 +1286,7 @@ mempoolLoop:
 		PrevBlock:    best.Hash,
 		MerkleRoot:   *merkles[len(merkles)-1],
 		Timestamp:    ts,
-		ContractExec: contractExec,
+		ContractExec: uint32(contractExec),
 		Nonce:        nonce,
 	}
 

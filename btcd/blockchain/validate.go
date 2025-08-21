@@ -108,21 +108,23 @@ func IsCoinBase(tx *btcutil.Tx) bool {
 }
 
 func (b *BlockChain) isCoinBase(tx *btcutil.Tx) bool {
-	if b.IsSVP {
-		// A coin base must only have one transaction input.
-		msgTx := tx.MsgTx()
-		if len(msgTx.TxIn) != 1 {
-			return false
-		}
+	/*
+		if b.IsSVP {
+			// A coin base must only have one transaction input.
+			msgTx := tx.MsgTx()
+			if len(msgTx.TxIn) != 1 {
+				return false
+			}
 
-		// The previous output of a coin base must have a zero hash. Index is height of the block.
-		prevOut := &msgTx.TxIn[0].PreviousOutPoint
-		if !prevOut.Hash.IsEqual(&chainhash.Hash{}) { // prevOut.Index != math.MaxUint32 ||
-			return false
-		}
+			// The previous output of a coin base must have a zero hash. Index is height of the block.
+			prevOut := &msgTx.TxIn[0].PreviousOutPoint
+			if !prevOut.Hash.IsEqual(&chainhash.Hash{}) { // prevOut.Index != math.MaxUint32 ||
+				return false
+			}
 
-		return true
-	}
+			return true
+		}
+	*/
 	return IsCoinBase(tx)
 }
 
@@ -519,35 +521,35 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 		}
 
 		awardto := make(map[[20]byte]struct{})
-		if !b.IsSVP {
-			awd := make(map[uint64]int64)
-			for _, txo := range block.MsgBlock().Transactions[0].TxOut {
-				if txo.IsSeparator() {
-					break
-				}
-				if txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.BTCCoinTyp {
-					return fmt.Errorf("Coinbase output tokentype %d is not correct.", txo.TokenType), false
-				}
-				if _, ok := awd[txo.TokenType]; !ok {
-					_, awd[txo.TokenType] = txo.Value.Value()
-				}
+		//if !b.IsSVP {
+		awd := make(map[uint64]int64)
+		for _, txo := range block.MsgBlock().Transactions[0].TxOut {
+			if txo.IsSeparator() {
+				break
 			}
-			for _, txo := range block.MsgBlock().Transactions[0].TxOut {
-				if txo.IsSeparator() {
-					break
-				}
-				dif := txo.Value.(*token.NumToken).Val - awd[txo.TokenType]
-				if dif < 0 {
-					dif = -dif
-				}
-				if dif > 1 {
-					return fmt.Errorf("Award is not evenly distributed among quanlified miners."), false
-				}
-				var tw [20]byte
-				copy(tw[:], txo.PkScript[1:21])
-				awardto[tw] = struct{}{}
+			if txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.BTCCoinTyp {
+				return fmt.Errorf("Coinbase output tokentype %d is not correct.", txo.TokenType), false
+			}
+			if _, ok := awd[txo.TokenType]; !ok {
+				_, awd[txo.TokenType] = txo.Value.Value()
 			}
 		}
+		for _, txo := range block.MsgBlock().Transactions[0].TxOut {
+			if txo.IsSeparator() {
+				break
+			}
+			dif := txo.Value.(*token.NumToken).Val - awd[txo.TokenType]
+			if dif < 0 {
+				dif = -dif
+			}
+			if dif > 1 {
+				return fmt.Errorf("Award is not evenly distributed among quanlified miners."), false
+			}
+			var tw [20]byte
+			copy(tw[:], txo.PkScript[1:21])
+			awardto[tw] = struct{}{}
+		}
+		//}
 
 		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
 			mb := mbs[i-(rotate-wire.CommitteeSize+1)]
@@ -555,17 +557,17 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 				continue
 			}
 
-			if !b.IsSVP {
-				if _, err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
-					if _, ok := awardto[mb.MsgBlock().Miner]; ok {
-						return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
-					}
-				} else {
-					if _, ok := awardto[mb.MsgBlock().Miner]; !ok {
-						return nil, true
-					}
+			//if !b.IsSVP {
+			if _, err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
+				if _, ok := awardto[mb.MsgBlock().Miner]; ok {
+					return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
+				}
+			} else {
+				if _, ok := awardto[mb.MsgBlock().Miner]; !ok {
+					return nil, true
 				}
 			}
+			//}
 
 			committee[mb.MsgBlock().Miner] = struct{}{}
 			delete(awardto, mb.MsgBlock().Miner)
@@ -581,7 +583,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			}
 		}
 
-		if !b.IsSVP && len(awardto) != 0 {
+		if len(awardto) != 0 {
 			return nil, true
 		}
 
@@ -967,16 +969,16 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 		// previous block.
 		blockHeight := prevNode.Height + 1
 
-		if !b.IsSVP {
-			// Ensure all transactions in the block are finalized.
-			for _, tx := range block.Transactions() {
-				if !IsFinalizedTransaction(tx, blockHeight, blockTime) {
-					str := fmt.Sprintf("block contains unfinalized "+
-						"transaction %v", tx.Hash())
-					return ruleError(ErrUnfinalizedTx, str)
-				}
+		//if !b.IsSVP {
+		// Ensure all transactions in the block are finalized.
+		for _, tx := range block.Transactions() {
+			if !IsFinalizedTransaction(tx, blockHeight, blockTime) {
+				str := fmt.Sprintf("block contains unfinalized "+
+					"transaction %v", tx.Hash())
+				return ruleError(ErrUnfinalizedTx, str)
 			}
 		}
+		//}
 
 		coinbaseTx := block.Transactions()[0]
 		if len(coinbaseTx.MsgTx().TxIn) == 0 || blockHeight != int32(coinbaseTx.MsgTx().TxIn[0].PreviousOutPoint.Index) {
@@ -1204,7 +1206,7 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views *vie
 			lastHaoIn := totalIns[utxo.TokenType]
 			totalIns[utxo.TokenType] += originTxHao
 			if totalIns[utxo.TokenType] < lastHaoIn ||
-				((utxo.TokenType == common.FeeCoinTyp || utxo.TokenType == common.BTCCHAINID) && totalIns[utxo.TokenType] > btcutil.MaxHao) {
+				(utxo.TokenType == common.FeeCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) {
 				str := fmt.Sprintf("total value of all transaction "+
 					"inputs is %v which is higher than max "+
 					"allowed value of %v", totalIns[utxo.TokenType],
@@ -1832,10 +1834,6 @@ func (b *BlockChain) normalizeTxo(txo *wire.TxOut) {
 
 func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 	chain := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[b.ChainParams.ChainID]
-	if chain == nil {
-		b.SrvReq <- ReqChain(b.ChainParams.ChainID)
-		// return fmt.Errorf("chain info does not exist")
-	}
 	for _, tx := range block.MsgBlock().Transactions[1:] {
 		path, fees := make([][]byte, 0), make([]int64, 0)
 		// check if cross chain tx fee is paid
@@ -1895,7 +1893,6 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 			if txo.IsCrossChain() {
 				dc = txo.DestChain()
 				if t, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dc&0x3FFFFF]; t == nil || !ok {
-					b.SrvReq <- ReqChain(dc & 0x3FFFFF)
 					return fmt.Errorf("Dest chain unknown %d", dc)
 				}
 				if dc == b.ChainParams.MainChainID {
@@ -1940,9 +1937,9 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 		}
 	}
 
-	if b.IsSVP {
-		return nil
-	}
+	//if b.IsSVP {
+	//	return nil
+	//}
 
 	return b.db.View(func(dbTx database.Tx) error {
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
@@ -2334,16 +2331,16 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		return err
 	}
 
-	if !b.IsSVP {
-		err = CheckAdditionalDefinitions(transactions[0], node.Height, views, b.ChainParams)
-		if err != nil {
-			return err
-		}
-		err = views.ConnectTransaction(transactions[0], node.Height, stxos)
-		if err != nil {
-			return err
-		}
+	//if !b.IsSVP {
+	err = CheckAdditionalDefinitions(transactions[0], node.Height, views, b.ChainParams)
+	if err != nil {
+		return err
 	}
+	err = views.ConnectTransaction(transactions[0], node.Height, stxos)
+	if err != nil {
+		return err
+	}
+	//}
 
 	ck := b.LatestCheckpoint()
 	if ck != nil && node.Height <= ck.Height {
@@ -2363,12 +2360,12 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			return err
 		}
 
-		if !b.IsSVP {
-			err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
-			if err != nil {
-				return err
-			}
+		//if !b.IsSVP {
+		err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
+		if err != nil {
+			return err
 		}
+		//}
 
 		err = CheckTransactionIntegrity(tx, views, block.MsgBlock().Header.Version)
 		if err != nil {
@@ -2431,11 +2428,9 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		// provably unspendable as available utxos.  Also, the passed
 		// spent txos slice is updated to contain an entry for each
 		// spent txout in the order each transaction spends them.
-		if !b.IsSVP {
-			err = views.ConnectTransaction(tx, node.Height, stxos)
-			if err != nil {
-				return err
-			}
+		err = views.ConnectTransaction(tx, node.Height, stxos)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -2450,7 +2445,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// entry in the block header. This also has the effect of caching all
 	// of the transaction hashes in the block to speed up future hash
 	// checks. We do this check here after contract execution has been validated.
-	merkles := BuildMerkleTreeStore(block.Transactions(), false, block.MsgBlock().Header.Version&^0xFFFF)
+	merkles := BuildMerkleTreeStore(block.Transactions(), false, block.MsgBlock().Header.Version)
 	calculatedMerkleRoot := merkles[len(merkles)-1]
 	header := block.MsgBlock().Header
 	if !header.MerkleRoot.IsEqual(calculatedMerkleRoot) {
@@ -2560,7 +2555,7 @@ func (b *BlockChain) checkConnectSVPBlock(node *chainutil.BlockNode, block *btcu
 	// entry in the block header. This also has the effect of caching all
 	// of the transaction hashes in the block to speed up future hash
 	// checks. We do this check here after contract execution has been validated.
-	merkles := BuildMerkleTreeStore(block.Transactions(), false, block.MsgBlock().Header.Version&^0xFFFF)
+	merkles := BuildMerkleTreeStore(block.Transactions(), false, block.MsgBlock().Header.Version)
 	calculatedMerkleRoot := merkles[len(merkles)-1]
 	header := block.MsgBlock().Header
 	if !header.MerkleRoot.IsEqual(calculatedMerkleRoot) {

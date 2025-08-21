@@ -738,8 +738,6 @@ func main() {
 
 		if i > 0 {
 			go retrievedefs(protocols[0], protocols[i])
-		} else {
-			go checkfinal()
 		}
 		time.Sleep(3 * time.Second)
 	}
@@ -751,47 +749,6 @@ func main() {
 	wg.Wait()
 
 	return
-}
-
-var btcHeight int32
-
-func checkfinal() {
-	interrupt := interruptListener()
-	ticker := time.NewTicker(time.Second * 15)
-
-	for {
-		select {
-		case <-interrupt:
-			return
-		case <-ticker.C:
-			protocols[0].db.Update(func(dbtx database.Tx) error {
-				bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-				cursor := bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					xdata := wire.XchainData{}
-					if err := xdata.DeSerialize(cursor.Value()); err != nil || xdata.Finalized != 0 {
-						continue
-					}
-					//if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
-					//	fmt.Printf("bad XchainData")
-					//}
-					// for _, p := range protocols[1:] {
-					if xdata.ChainID&0x400000 != 0 {
-						switch xdata.ChainID {
-						case common.BTCCHAINID:
-							if btcHeight >= xdata.Height+7 {
-								xdata.Finalized = -int32(time.Now().Unix() + 120)
-								bucket.Put(cursor.Key(), xdata.Serialize())
-								break
-							}
-						}
-					}
-					// }
-				}
-				return nil
-			})
-		}
-	}
 }
 
 func retrievedefs(p *Protocol, q *Protocol) {

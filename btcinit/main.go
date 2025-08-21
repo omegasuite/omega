@@ -183,27 +183,45 @@ func main() {
 	fmt.Printf("," + "\n}")
 
 	addresses := map[common.OmegaNet][2]string{
-		common.MainNet: {"1MsbUzMXZVVVxQ9ySYHvhoq4Ky6zeNwCej"},
+		common.MainNet: {"1MPWTKPU242yZVduk3tKUgqTkV3cLRAPaC"},
 		common.TestNet: {"n2PYn3SWNWvkjWdbA7GJXj3PBxhhZqM8D8"},
 	}
 	/*
-		Bitcoin Address (Compressed)        1MsbUzMXZVVVxQ9ySYHvhoq4Ky6zeNwCej
-		Bitcoin Testnet Address (Compressed)        n2PYn3SWNWvkjWdbA7GJXj3PBxhhZqM8D8
-		Public Key Bytes (Compressed)       02808C7D7D6B96DB22EB00D2CF44A0F3CCCD79ED4A787BA9C1D9E1BB1B51698C0D
-		Public Key Base64 (Compressed)      AoCMfX1rltsi6wDSz0Sg88zNee1KeHupwdnhuxtRaYwN
+		Bitcoin Address (Compressed)        1MPWTKPU242yZVduk3tKUgqTkV3cLRAPaC
+		Bitcoin Testnet Address (Compressed)        n1uTkNUSq5UELc7XTcrhJc3ncUeKEVr3V2
+		Public Key Bytes (Compressed)       02767A9EA25CC13263932658BC9103B7E05A5D2F34488196AB6203CAD6342DECBF
+		Public Key Base64 (Compressed)      AnZ6nqJcwTJjkyZYvJEDt+BaXS80SIGWq2IDytY0Ley/
 
-		Bitcoin Address (Uncompressed)      1GNqnebmBQyBE1DkZf7VgMo9Ur8EruLGg6
-		Bitcoin Testnet Address (Uncompressed)      mvto5hgjzSQS17hNHE5sWH1ULqiwhDz1Eg
-		Public Key Bytes (Uncompressed)     04808C7D7D6B96DB22EB00D2CF44A0F3CCCD79ED4A787BA9C1D9E1BB1B51698C0
-		D02E3DABC778B1A75DD58F5D2EF8605ED5368B50ACEBA46437F1FAEF3D566F104
-		Public Key Base64 (Uncompressed)    BICMfX1rltsi6wDSz0Sg88zNee1KeHupwdnhuxtRaYwNAuPavHeLGnXdWPXS74YF7VNotQrOukZDfx+u89Vm8QQ=
+		Bitcoin Address (Uncompressed)      1BkXnJrXpTRYMcWMuR7d3WKAJ1NqRNKbsi
+		Bitcoin Testnet Address (Uncompressed)      mrGV5MwWdUro8iyycz5zsRXV9zyYN7wWpw
+		Public Key Bytes (Uncompressed)     04767A9EA25CC13263932658BC9103B7E05A5D2F34488196AB6203CAD6342DECB
+		                                    FA943E8685CFDC43F1D6E4D3FBB9C27F76C86D070D27C21EC2637428AE9A6671E
+		Public Key Base64 (Uncompressed)    BHZ6nqJcwTJjkyZYvJEDt+BaXS80SIGWq2IDytY0Ley/qUPoaFz9xD8dbk0/u5wn92yG0HDSfCHsJjdCiummZx4=
 
-		Private Key WIFC (Compressed)       L5aGAxizFoBrNk42Qw4fYUdDT47KcwsJjqQuJZXAepG4A6asTZ3f
-		Private Key WIF (Uncompressed)      5Ki4teYiX62Z2kjpu6TCuSk6YH7RA3v5vfA3LPKcieScc9sg9Ti
-		Private Key Bytes                   F9458AF3932D2E019FF4AFC3B9D0012649A5E3529366D831FB4DB0D4F33F17B8
-		Private Key Base64                  +UWK85MtLgGf9K/DudABJkml41KTZtgx+02w1PM/F7g=
-		Bitcoin TestNet Address Private Key WIF (Uncompressed)        93UhUPNG7K6gzpF7XSM7n3J4BwU8KDTHGc1zR1g84PBfPH6RLUn
-		Bitcoin TestNet Address Private Key WIF (Compressed)        cVwFdsiqgrt7YBXHoLsnuo8H5HQjHPxzosZNQyyg9vv4QqeMcR9o
+		Private Key WIFC (Compressed)       L5bLivE8B9rArfUqFqsZz3vX2Kzb3th7RFPYESx8gqxeYJwRZ3fC
+		Private Key WIF (Uncompressed)      5KiK4cAmg1C98B5Vc5jGdVJZdYwjc6NKg2Sx7DgE53V1oYgurUa
+		Private Key Bytes                   F9D3928B1B5D0D7CF619C90B351C7A169088E28682F22E9299DC9C39CEA739E6
+		Private Key Base64                  +dOSixtdDXz2GckLNRx6FpCI4oaC8i6SmdycOc6nOeY=
+		Bitcoin TestNet Address Private Key WIF (Uncompressed)        93UweLzKGEGH6EanERdBW5rXHDJSmFuX1yJuBr2jQnE4aYdVVSc
+		Bitcoin TestNet Address Private Key WIF (Compressed)        cVxLBqDycDYS26x6eFghMNRaeZHziLnoVHY1LsQeBxceo42Y7Ed8
+
+			Bitcoin Address (Compressed)        1MsbUzMXZVVVxQ9ySYHvhoq4Ky6zeNwCej
+			Bitcoin Testnet Address (Compressed)        n2PYn3SWNWvkjWdbA7GJXj3PBxhhZqM8D8
+			Public Key Bytes (Compressed)       02808C7D7D6B96DB22EB00D2CF44A0F3CCCD79ED4A787BA9C1D9E1BB1B51698C0D
+			Public Key Base64 (Compressed)      AoCMfX1rltsi6wDSz0Sg88zNee1KeHupwdnhuxtRaYwN
+
+			Bitcoin Address (Uncompressed)      1GNqnebmBQyBE1DkZf7VgMo9Ur8EruLGg6
+			Bitcoin Testnet Address (Uncompressed)      mvto5hgjzSQS17hNHE5sWH1ULqiwhDz1Eg
+			Public Key Bytes (Uncompressed)     04808C7D7D6B96DB22EB00D2CF44A0F3CCCD79ED4A787BA9C1D9E1BB1B51698C0
+			D02E3DABC778B1A75DD58F5D2EF8605ED5368B50ACEBA46437F1FAEF3D566F104
+			Public Key Base64 (Uncompressed)    BICMfX1rltsi6wDSz0Sg88zNee1KeHupwdnhuxtRaYwNAuPavHeLGnXdWPXS74YF7VNotQrOukZDfx+u89Vm8QQ=
+
+			Private Key WIFC (Compressed)       L5aGAxizFoBrNk42Qw4fYUdDT47KcwsJjqQuJZXAepG4A6asTZ3f
+			Private Key WIF (Uncompressed)      5Ki4teYiX62Z2kjpu6TCuSk6YH7RA3v5vfA3LPKcieScc9sg9Ti
+			Private Key Bytes                   F9458AF3932D2E019FF4AFC3B9D0012649A5E3529366D831FB4DB0D4F33F17B8
+			Private Key Base64                  +UWK85MtLgGf9K/DudABJkml41KTZtgx+02w1PM/F7g=
+			Bitcoin TestNet Address Private Key WIF (Uncompressed)        93UhUPNG7K6gzpF7XSM7n3J4BwU8KDTHGc1zR1g84PBfPH6RLUn
+			Bitcoin TestNet Address Private Key WIF (Compressed)        cVwFdsiqgrt7YBXHoLsnuo8H5HQjHPxzosZNQyyg9vv4QqeMcR9o
 	*/
 
 	params := map[common.OmegaNet]*chaincfg.Params{
