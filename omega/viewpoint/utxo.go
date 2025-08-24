@@ -115,7 +115,7 @@ func (entry *UtxoEntry) Spend() {
 // Amount returns the amount of the output.
 func (entry *UtxoEntry) NumAmount() int64 {
 	if entry.TokenType&1 != 0 {
-		panic("Incorrect TokenType. -- UtxoEntry.NumAmount()")
+		return 0
 	}
 	return entry.Amount.(*token.NumToken).Val
 }

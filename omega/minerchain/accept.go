@@ -201,62 +201,55 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 		if c == 0 {
 			c = 1
 		}
-		if !m.IsSVP {
-			v, err := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
-			if err != nil {
-				return err
-			}
-			h1 := int64(v / c)
-			if h1 < 1 {
-				h1 = 1
-			}
 
-			prev, _ := m.DBBlockByHash(&header.PrevBlock)
-			minscore := prev.MsgBlock().MeanTPH >> 3
-			if minscore == 0 {
-				minscore = 1
-			}
-
-			r := m.TPSreportFromDB(header.Miner, h) // max most recent 100 records
-			for i := len(r); i < 100; i++ {
-				r = append(r, blockchain.TPSrv{Val: minscore})
-			}
-			sort.Slice(r, func(i, j int) bool {
-				return r[i].Val < r[j].Val
-			})
-
-			sum := uint32(0)
-			for k := 25; k < 75; k++ {
-				sum += r[k].Val
-			}
-			sum /= 50
-
-			h2 := int64(1)
-			if sum <= minscore {
-				h2 = 1
-			} else {
-				h2 = int64(sum / minscore)
-			}
-
-			if factor > 0 {
-				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-				target = target.Mul(target, big.NewInt(h1+h2))
-			} else {
-				target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
-			}
-
-			if target.Cmp(powLimit) > 0 {
-				target = powLimit
-			}
-		} else {
-			if factor > 0 {
-				hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
-			} else {
-				target = target.Mul(target, big.NewInt(-factor))
-			}
+		v, err := m.blockChain.CheckCollateral(wire.NewMinerBlock(header), &header.BestBlock, flags)
+		if err != nil {
+			return err
+		}
+		h1 := int64(v / c)
+		if h1 < 1 {
+			h1 = 1
 		}
 
-		if !m.IsSVP && hashNum.Cmp(target) > 0 {
+		prev, _ := m.DBBlockByHash(&header.PrevBlock)
+		minscore := prev.MsgBlock().MeanTPH >> 3
+		if minscore == 0 {
+			minscore = 1
+		}
+
+		r := m.TPSreportFromDB(header.Miner, h) // max most recent 100 records
+		for i := len(r); i < 100; i++ {
+			r = append(r, blockchain.TPSrv{Val: minscore})
+		}
+		sort.Slice(r, func(i, j int) bool {
+			return r[i].Val < r[j].Val
+		})
+
+		sum := uint32(0)
+		for k := 25; k < 75; k++ {
+			sum += r[k].Val
+		}
+		sum /= 50
+
+		h2 := int64(1)
+		if sum <= minscore {
+			h2 = 1
+		} else {
+			h2 = int64(sum / minscore)
+		}
+
+		if factor > 0 {
+			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
+			target = target.Mul(target, big.NewInt(h1+h2))
+		} else {
+			target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
+		}
+
+		if target.Cmp(powLimit) > 0 {
+			target = powLimit
+		}
+
+		if hashNum.Cmp(target) > 0 {
 			str := fmt.Sprintf("block hash of %064x is higher than "+
 				"expected max of %064x", hashNum, target)
 			return ruleError(ErrHighHash, str)
@@ -296,14 +289,12 @@ hit:
 
 	if d-wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP
-	} else if d < wire.DESIRABLE_MINER_CANDIDATES/2 {
-		m := wire.DESIRABLE_MINER_CANDIDATES/2 - d
-		if m > 10 {
-			m = 10
+	} else if d < wire.DESIRABLE_MINER_CANDIDATES {
+		m := wire.DESIRABLE_MINER_CANDIDATES - d
+		if m > wire.SCALEFACTORCAP {
+			m = wire.SCALEFACTORCAP
 		}
 		return (-1) << m
-	} else if d <= wire.DESIRABLE_MINER_CANDIDATES {
-		return 1
 	}
 
 	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)

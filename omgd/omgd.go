@@ -660,7 +660,7 @@ func main() {
 	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
 
-	if _, ok := chainmap.AllChains[chaincfg.DefaultChainID].ChainMap[chaincfg.DefaultParentChainID]; !ok {
+	if _, ok := chainmap.AllChains[chaincfg.DefaultChainID].ChainMap[chaincfg.DefaultParentChainID]; !ok && chaincfg.DefaultChainID != chainmap.ROOT {
 		// create a svp server for parent
 		fmt.Printf("loading parent options")
 		pcfg, _, err := loadConfig("Parent Options", 0) // chain main options
@@ -738,6 +738,8 @@ func main() {
 
 		if i > 0 {
 			go retrievedefs(protocols[0], protocols[i])
+		} else {
+			go checkfinal()
 		}
 		time.Sleep(3 * time.Second)
 	}
@@ -749,6 +751,49 @@ func main() {
 	wg.Wait()
 
 	return
+}
+
+func checkfinal() {
+	interrupt := interruptListener()
+	ticker := time.NewTicker(time.Second * 15)
+
+	for {
+		select {
+		case <-interrupt:
+			return
+		case <-ticker.C:
+			chain := chainmap.AllChains[protocols[0].Server.chainParams.ChainID]
+			protocols[0].db.View(func(dbtx database.Tx) error {
+				bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+				cursor := bucket.Cursor()
+				for ok := cursor.First(); ok; ok = cursor.Next() {
+					xdata := wire.XchainData{}
+					if err := xdata.DeSerialize(cursor.Value()); err != nil || xdata.Finalized != 0 {
+						continue
+					}
+					for _, p := range protocols[1:] {
+						if xdata.ChainID&0x400000 != 0 {
+							/*
+								switch xdata.ChainID {
+								case common.BTCCHAINID:
+									if btcHeight >= xdata.Height+7 {
+										xdata.Finalized = -int32(time.Now().Unix() + 120)
+										bucket.Put(cursor.Key(), xdata.Serialize())
+										break
+									}
+								}
+							*/
+						} else {
+							if chain.PassThru(p.Server.chainParams.ChainID, protocols[0].Server.chainParams.MainChainID, xdata.ChainID) {
+								p.Server.Randcast(wire.NewMsgFinalized(xdata.ChainID, xdata.Hash), nil)
+							}
+						}
+					}
+				}
+				return nil
+			})
+		}
+	}
 }
 
 func retrievedefs(p *Protocol, q *Protocol) {

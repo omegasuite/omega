@@ -226,8 +226,8 @@ type MessageListeners struct {
 	// circumstances such as keeping track of server-wide byte counts.
 	OnWrite func(p *Peer, bytesWritten int, msg wire.Message, err error)
 
-	// OnFinalized func(p *Peer, msg *wire.MsgFinalized)
-	// OnFinal     func(p *Peer, msg *wire.MsgReFinal)
+	OnFinalized func(p *Peer, msg *wire.MsgFinalized)
+	OnFinal     func(p *Peer, msg *wire.MsgReFinal)
 
 	// OnGetChainMap func(p *Peer, msg *wire.MsgGetChainMap)
 	// OnChainMap    func(p *Peer, msg *wire.MsgChainMap)
@@ -1763,6 +1763,15 @@ out:
 				consensus.HandleMessage(p, msg)
 			}
 
+		case *wire.MsgFinalized:
+			if p.cfg.Listeners.OnFinalized != nil {
+				p.cfg.Listeners.OnFinalized(p, msg)
+			}
+
+		case *wire.MsgReFinal:
+			if p.cfg.Listeners.OnFinal != nil {
+				p.cfg.Listeners.OnFinal(p, msg)
+			}
 
 		default:
 			//			log.Infof("inHandler default")

@@ -286,7 +286,7 @@ var MainNetParams = Params{
 			{"omegasuite.org", false},
 		},
 		PowLimitBits:             0x1e000ff0,
-		CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
+		CoinbaseMaturity:         1000 * wire.MINER_RORATE_FREQ,
 		SubsidyReductionInterval: 2102400 * wire.MINER_RORATE_FREQ,
 		MinimalAward:             0,
 		TargetTimespan:           time.Hour * 24 * 14, // adjust every 14 days
@@ -296,8 +296,8 @@ var MainNetParams = Params{
 		//
 		// The miner confirmation window is defined as:
 		//   target proof of work timespan / target proof of work spacing
-		RuleChangeActivationThreshold: 1916, // 95% of MinerConfirmationWindow
-		MinerConfirmationWindow:       2016, //
+		RuleChangeActivationThreshold: 19160, // 95% of MinerConfirmationWindow
+		MinerConfirmationWindow:       20160, //
 		Forfeit: forfeitureContract{
 			Contract: [21]byte{0x88, 0x1a, 0x52, 0x0f, 0xa9, 0x4d, 0x8e, 0x07,
 				0x3b, 0x0b, 0x46, 0x79, 0x43, 0x5b, 0x55, 0x09, 0xa5, 0xc6, 0x84, 0x7d, 0xb3},
@@ -378,9 +378,9 @@ var RegressionNetParams = Params{
 		PowLimitBits:             0x207fffff,
 		CoinbaseMaturity:         10,
 		SubsidyReductionInterval: 150 * wire.MINER_RORATE_FREQ,
-		MinimalAward:             73242,
+		MinimalAward:             0,
 		TargetTimespan:           time.Hour * 24 * 14, // 14 days
-		TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
+		TargetTimePerBlock:       time.Minute * 1,    // 10 minutes
 		RetargetAdjustmentFactor: 4,                   // 25% less, 400% more
 		MinDiffReductionTime:     time.Minute * 20,    // TargetTimePerBlock * 2
 		// Consensus rule change deployments.
@@ -469,7 +469,7 @@ var TestNet3Params = Params{
 		},
 		PowLimitBits:             0x1f0fffff, // 0x1d3fffff
 		CoinbaseMaturity:         10,
-		SubsidyReductionInterval: 210240 * wire.MINER_RORATE_FREQ,
+		SubsidyReductionInterval: 2102400 * wire.MINER_RORATE_FREQ,
 		MinimalAward:             0,
 		TargetTimespan:           time.Hour * 2, // 2 hours
 		TargetTimePerBlock:       time.Minute,   // 1 minutes
@@ -564,7 +564,7 @@ var SimNetParams = Params{
 		PowLimitBits:             0x207fffff,
 		CoinbaseMaturity:         100 * wire.MINER_RORATE_FREQ,
 		SubsidyReductionInterval: 210000 * wire.MINER_RORATE_FREQ,
-		MinimalAward:             73242,
+		MinimalAward:             0,
 		TargetTimespan:           time.Hour * 24 * 14, // 14 days
 		TargetTimePerBlock:       time.Minute * 10,    // 10 minutes
 		RetargetAdjustmentFactor: 4,                   // 25% less, 400% more

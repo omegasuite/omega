@@ -1663,6 +1663,7 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 	totalHaoOut := make(map[uint64]int64)
 
 	mincontractDeployFee := 0
+	crosschainfees := make(map[uint32]int64)
 
 	for _, txOut := range tx.MsgTx().TxOut {
 		if txOut.IsSeparator() || txOut.TokenType&3 != 0 {
@@ -1689,18 +1690,34 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 			dtype = dtype & 0xFFFFFFFFFF
 			origin = 0
 		}
-		if txOut.Crossing() {
+		if txOut.IsCrossChain() {
 			dest := common.LittleEndian.Uint32(txOut.PkScript[21:]) >> 8
 			if origin != 0 && dest != 0 {
-				if !chainmap.AllChains[chainParams.ChainID].PassThru(dest, chainParams.ChainID, origin) {
+				if !chainmap.AllChains[chainParams.ChainID].PassThru(chainParams.ChainID, dest, origin) {
 					str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", rtype>>40,
 						common.LittleEndian.Uint32(txOut.PkScript[21:])>>8)
 					return 0, nil, ruleError(ErrBadTxOutValue, str)
 				}
-			} else if dest == 0 && txOut.PkScript[21] != ovm.OP_PAYMINER {
-				str := fmt.Sprintf("Crosschain tx must have a destination")
-				return 0, nil, ruleError(ErrBadTxOutValue, str)
 			}
+			path, pf := chainmap.AllChains[chainParams.ChainID].CtxFees(chainmap.AllChains[chainParams.ChainID].ChainMap[chainParams.ChainID], dest)
+			for i, f := range pf {
+				s := common.LittleEndian.Uint32(path[i][21:]) >> 8
+				t := int64(0)
+				if s, ok := crosschainfees[uint32(s)]; ok {
+					t = s
+				}
+				crosschainfees[s] = t - f
+			}
+		} else if txOut.PkScript[21] == ovm.OP_PAYMINER {
+			dest := common.LittleEndian.Uint32(txOut.PkScript[21:]) >> 8
+			if dest == 0 {
+				dest = chainParams.ChainID
+			}
+			t := int64(0)
+			if s, ok := crosschainfees[dest]; ok {
+				t = s
+			}
+			crosschainfees[dest] = t + txOut.Value.(*token.NumToken).Val
 		}
 
 		if _, ok := totalHaoOut[dtype]; ok {
@@ -1711,6 +1728,11 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 		if txOut.IsContractCall() && len(txOut.PkScript) > 25 && bytes.Compare(txOut.PkScript[21:25], []byte{0, 0, 0, 0}) == 0 {
 			// Contract creation
 			mincontractDeployFee += (len(txOut.PkScript) - 25) * chainParams.MinContractDeployFee
+		}
+	}
+	for _, f := range crosschainfees {
+		if f != 0 {
+			return 0, nil, ruleError(ErrBadTxOutValue, "Incorrect tx fees in crosschain tx")
 		}
 	}
 
@@ -1895,7 +1917,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 				if t, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dc&0x3FFFFF]; t == nil || !ok {
 					return fmt.Errorf("Dest chain unknown %d", dc)
 				}
-				if dc == b.ChainParams.MainChainID {
+				if dc == b.ChainParams.ChainID {
 					return fmt.Errorf("Can not cross chain to self")
 				}
 			}
@@ -1937,9 +1959,9 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 		}
 	}
 
-	//if b.IsSVP {
-	//	return nil
-	//}
+	if b.IsSVP {
+		return nil
+	}
 
 	return b.db.View(func(dbTx database.Tx) error {
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
@@ -2013,7 +2035,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 				}
 				dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
 				if dest == 0 {
-					dest = b.ChainParams.MainChainID
+					dest = b.ChainParams.ChainID
 				}
 
 				assetKey, dest, srckey, tokensrc := b.makeAssetKey(txo)
@@ -2461,37 +2483,39 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	// errors here because those error conditions would have already been
 	// caught by checkTransactionSanity.
 	//	totalHaoOut := int64(0)
-	totalAward := int64(0)
+	if !b.IsSVP {
+		totalAward := int64(0)
 
-	for _, txOut := range transactions[0].MsgTx().TxOut {
-		if txOut.IsSeparator() {
-			break
+		for _, txOut := range transactions[0].MsgTx().TxOut {
+			if txOut.IsSeparator() {
+				break
+			}
+			if txOut.TokenType != common.FeeCoinTyp && txOut.TokenType != common.BTCCoinTyp {
+				str := fmt.Sprintf("coinbase transaction for block %s awards $d type token", block.Hash().String(),
+					txOut.TokenType)
+				return ruleError(ErrBadCoinbaseValue, str)
+			}
+			if txOut.TokenType == common.FeeCoinTyp {
+				totalAward += txOut.Value.(*token.NumToken).Val
+			}
+			//		totalHaoOut += txOut.Value.(*token.NumToken).Val
 		}
-		if txOut.TokenType != common.FeeCoinTyp && txOut.TokenType != common.BTCCoinTyp {
-			str := fmt.Sprintf("coinbase transaction for block %s awards $d type token", block.Hash().String(),
-				txOut.TokenType)
+
+		award := CalcBlockSubsidy(node.Height, b.ChainParams)
+		if award < b.ChainParams.MinimalAward {
+			award = b.ChainParams.MinimalAward
+		}
+
+		expectedHaoOut := award + totalFees //  + adj
+		if totalAward > expectedHaoOut {
+			var w bytes.Buffer
+			block.Transactions()[0].MsgTx().Serialize(&w)
+			s := hex.EncodeToString(w.Bytes())
+			str := fmt.Sprintf("coinbase transaction for block %s pays %v "+
+				"which is more than expected value of %v\nblock has %d txs\n%s", block.Hash().String(),
+				totalAward, expectedHaoOut, len(block.MsgBlock().Transactions), s)
 			return ruleError(ErrBadCoinbaseValue, str)
 		}
-		if txOut.TokenType == common.FeeCoinTyp {
-			totalAward += txOut.Value.(*token.NumToken).Val
-		}
-		//		totalHaoOut += txOut.Value.(*token.NumToken).Val
-	}
-
-	award := CalcBlockSubsidy(node.Height, b.ChainParams)
-	if award < b.ChainParams.MinimalAward {
-		award = b.ChainParams.MinimalAward
-	}
-
-	expectedHaoOut := award + totalFees //  + adj
-	if totalAward > expectedHaoOut {
-		var w bytes.Buffer
-		block.Transactions()[0].MsgTx().Serialize(&w)
-		s := hex.EncodeToString(w.Bytes())
-		str := fmt.Sprintf("coinbase transaction for block %s pays %v "+
-			"which is more than expected value of %v\nblock has %d txs\n%s", block.Hash().String(),
-			totalAward, expectedHaoOut, len(block.MsgBlock().Transactions), s)
-		return ruleError(ErrBadCoinbaseValue, str)
 	}
 
 	//	if totalHaoOut-totalAward > totalFees {

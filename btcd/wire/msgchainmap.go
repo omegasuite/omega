@@ -109,6 +109,14 @@ func (t *ChainDescriptor) OmcDecode(r io.Reader) error {
 	if err != nil {
 		return err
 	}
+
+	// patch: removing trailing ,
+	bts := []byte(t.Genesis)
+	for bts[len(bts)-1] == ',' {
+		bts = bts[:len(bts)-1]
+	}
+	t.Genesis = string(bts)
+
 	t.MrGenesis, err = common.ReadVarString(r, 0)
 	if err != nil {
 		return err

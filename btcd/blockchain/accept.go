@@ -60,7 +60,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 				return fmt.Errorf("Local Tokentype in a cross chain tx")
 			}
 
-			if tdest != 0 && tdest != b.ChainParams.ChainID && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dest, chaincfg.DefaultChainID, tdest) {
+			if tdest != 0 && tdest != b.ChainParams.ChainID && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(chaincfg.DefaultChainID, dest, tdest) {
 				return fmt.Errorf("Invalid cross chain destination")
 			}
 			if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(chaincfg.DefaultChainID, src, dest) {

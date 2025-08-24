@@ -35,9 +35,9 @@ var RootMeta = []*ChainDescriptor{
 		MRChain:        true,
 		Parent:         0,
 		ChainID:        ROOT,
-		Genesis:        "000000305e53c709d2cee79b972414e5ab43f46e52e303b036541f9b2156bda3,",
-		MrGenesis:      "0000000c8ece44d2fb2d6be96c0de146806c062011b3e3665835ed399ffd2465",
-		GlobalParams:   "{\"Name\":\"mainnet\",\"Net\":1314411859,\"DefaultPort\":\"9788\",\"RpcPort\":\"9789\",\"DNSSeeds\":[{\"Host\":\"omegasuite.org\",\"HasFiltering\":false}],\"PowLimitBits\":503320560,\"CoinbaseMaturity\":20000,\"SubsidyReductionInterval\":42048000,\"MinimalAward\":0,\"TargetTimespan\":1209600000000000,\"TargetTimePerBlock\":600000000000,\"RetargetAdjustmentFactor\":4,\"MinDiffReductionTime\":0,\"RuleChangeActivationThreshold\":1916,\"MinerConfirmationWindow\":2016,\"Forfeit\":{\"Contract\":[136,26,82,15,169,77,142,7,59,11,70,121,67,91,85,9,165,198,132,125,179],\"Opening\":[124,239,138,115],\"Filing\":[178,24,22,90],\"Claim\":[68,144,2,248]},\"ViolationReportDeadline\":100,\"ChainID\":1}",
+		Genesis:        "00000021466b04786717d6b2452e73628652ebb3b21541656ba251dedabcf5b5",
+		MrGenesis:      "00000004523a178139f583fed2aee7d012ebe8afc341e945f6d6c8090db4a383",
+		GlobalParams:   "{\"Name\":\"mainnet\",\"Net\":1314411859,\"DefaultPort\":\"9788\",\"RpcPort\":\"9789\",\"DNSSeeds\":[{\"Host\":\"omegasuite.org\",\"HasFiltering\":false}],\"PowLimitBits\":503320560,\"CoinbaseMaturity\":20000,\"SubsidyReductionInterval\":42048000,\"MinimalAward\":0,\"TargetTimespan\":1209600000000000,\"TargetTimePerBlock\":60000000000,\"RetargetAdjustmentFactor\":4,\"RuleChangeActivationThreshold\":19160,\"MinerConfirmationWindow\":20160,\"Forfeit\":{\"Contract\":[136,26,82,15,169,77,142,7,59,11,70,121,67,91,85,9,165,198,132,125,179],\"Opening\":[124,239,138,115],\"Filing\":[178,24,22,90],\"Claim\":[68,144,2,248]},\"ViolationReportDeadline\":100,\"ChainID\":1}",
 	},
 	&ChainDescriptor{
 		Magic:          0x4e585574,       // test net
@@ -47,9 +47,9 @@ var RootMeta = []*ChainDescriptor{
 		MRChain:        true,
 		Parent:         0,
 		ChainID:        ROOT,
-		Genesis:        "003b7c24ab8d47386f6acb9ce1ac87c8861db46340747f50b83ca3f2f8de6585",
-		MrGenesis:      "000634587726987c5624c4f6b0b952499c03983a245df6ad83a8bc88b6e89d61",
-		GlobalParams:   "{\"Name\":\"testnet\",\"Net\":1314411892,\"DefaultPort\":\"7788\",\"RpcPort\":\"7789\",\"DNSSeeds\":[{\"Host\":\"omegasuite.org\",\"HasFiltering\":false}],\"PowLimitBits\":521142271,\"CoinbaseMaturity\":10,\"SubsidyReductionInterval\":42048000,\"MinimalAward\":0,\"TargetTimespan\":7200000000000,\"TargetTimePerBlock\":240000000000,\"RetargetAdjustmentFactor\":4,\"MinDiffReductionTime\":180000000000,\"RuleChangeActivationThreshold\":75,\"MinerConfirmationWindow\":100,\"Forfeit\":{\"Contract\":[136,235,165,125,186,142,136,62,150,43,31,19,231,176,243,127,109,59,72,72,252],\"Opening\":[124,239,138,115],\"Filing\":[178,24,22,90],\"Claim\":[68,144,2,248]},\"ViolationReportDeadline\":10,\"ChainID\":1}",
+		Genesis:        "00008fe8e80659516de85859541a664e8cf6e2303f7114a5e9116fd87f1828f4",
+		MrGenesis:      "00034329829c304386050584e979589148d3540f665d5075b268377b20b5d9bc",
+		GlobalParams:   "{\"Name\":\"testnet\",\"Net\":1314411892,\"DefaultPort\":\"7788\",\"RpcPort\":\"7789\",\"DNSSeeds\":[{\"Host\":\"omegasuite.org\",\"HasFiltering\":false}],\"PowLimitBits\":521142271,\"CoinbaseMaturity\":10,\"SubsidyReductionInterval\":42048000,\"MinimalAward\":0,\"TargetTimespan\":7200000000000,\"TargetTimePerBlock\":60000000000,\"RetargetAdjustmentFactor\":4,\"RuleChangeActivationThreshold\":75,\"MinerConfirmationWindow\":100,\"Forfeit\":{\"Contract\":[136,235,165,125,186,142,136,62,150,43,31,19,231,176,243,127,109,59,72,72,252],\"Opening\":[124,239,138,115],\"Filing\":[178,24,22,90],\"Claim\":[68,144,2,248]},\"ViolationReportDeadline\":10,\"ChainID\":1}",
 	},
 }
 
@@ -142,7 +142,10 @@ func (t *ChainDescriptor) FeeAmount() int64 {
 }
 
 func (m *FOCMap) PassThru(tid, src, dest uint32) bool {
-	t := m.ChainMap[tid]
+	t, ok := m.ChainMap[tid]
+	if !ok {
+		return false
+	}
 	if tid == src || tid == dest {
 		return true
 	}

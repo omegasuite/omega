@@ -1879,6 +1879,20 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 				continue
 			}
 
+			// tmp patch
+			realdest := int32(-1)
+			for _, txo := range xtx.Txs {
+				dst := txo.Txo.DestChain()
+				if realdest == -1 && txo.Txo.PkScript[21] != ovm.OP_PAYMINER {
+					realdest = int32(dst)
+				}
+			}
+			if realdest != 0 && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, xtx.ChainID, uint32(realdest)) {
+				bucket.Delete(cursor.Key())
+				continue
+			}
+			// done patch
+
 			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
 			mtx.LockTime = nextBlockHeight + 1
 			txin := wire.NewTxIn(&wire.OutPoint{Hash: xtx.Hash, Index: wire.CrossChainFalg | xtx.ChainID}, uint32(xtx.Height))
@@ -1896,11 +1910,6 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 				}
 			*/
 
-			if len(xtx.Txs) > 0 {
-				dst := xtx.Txs[0].Txo.DestChain()
-				fmt.Printf(" TokenType=%x Val=%d To: %d\n", xtx.Txs[0].Txo.TokenType, xtx.Txs[0].Txo.Value.(*token.NumToken).Val, dst)
-			}
-
 			for _, txo := range xtx.Txs {
 				// should have been done when tx is put in pool
 				/*
@@ -1917,6 +1926,12 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 						txo.Txo.TokenType &= 0xFFFFFFFFFF
 					}
 				*/
+				dst := txo.Txo.DestChain()
+				fee := ""
+				if txo.Txo.PkScript[21] == ovm.OP_PAYMINER {
+					fee = "as miner fee"
+				}
+				fmt.Printf(" TokenType=%x Val=%d To: %d %s\n", txo.Txo.TokenType, txo.Txo.Value.(*token.NumToken).Val, dst, fee)
 
 				mtx.AddTxOut(&txo.Txo)
 				if common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) == (b.ChainParams.ChainID<<8 | ovm.OP_PAYMINER) {

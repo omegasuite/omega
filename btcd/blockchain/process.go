@@ -490,7 +490,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return isMainChain, false, nil, -1, nil
 	}
 
-	if !b.MatchInpool(block) {
+	if !b.IsSVP && !b.MatchInpool(block) {
 		return false, true, nil, -1, nil
 		//		if flags&BFNoOrphan != 0 {
 		//			return false, true, nil, -1, nil

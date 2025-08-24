@@ -51,6 +51,7 @@ import (
 	"btcutil"
 	"btcutil/bloom"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"omega/chainmap"
 	"omega/viewpoint"
 )
 
@@ -1310,6 +1311,108 @@ func (sp *serverPeer) OnWrite(_ *peer.Peer, bytesWritten int, msg wire.Message, 
 	sp.server.AddBytesSent(uint64(bytesWritten))
 }
 
+type finalsrc struct {
+	ChainId uint32 // id of the chain
+	Block   chainhash.Hash
+}
+
+var finrequestes map[finalsrc]*serverPeer
+
+func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
+	if finrequestes == nil {
+		finrequestes = make(map[finalsrc]*serverPeer)
+	}
+	if sp.server.chainParams.ChainID != msg.ChainId {
+		// forwarding
+		for _, p := range protocols {
+			if p.Server.chainParams.ChainID == sp.server.chainParams.ChainID {
+				continue
+			}
+			chain := chainmap.AllChains[protocols[0].Server.chainParams.ChainID]
+			if chain.PassThru(p.Server.chainParams.ChainID, sp.server.chainParams.ChainID, msg.ChainId) {
+				finrequestes[finalsrc{
+					ChainId: msg.ChainId,
+					Block:   msg.Block,
+				}] = sp
+				p.Server.Randcast(msg, nil)
+				return
+			}
+		}
+		return
+	}
+
+	reply := &wire.MsgReFinal{
+		ChainId: msg.ChainId,
+		Block:   msg.Block,
+	}
+	block, err := sp.server.chain.BlockByHash(&msg.Block)
+	if err != nil || block == nil {
+		return
+	}
+	state := sp.server.chain.BestSnapshot()
+
+	if state.Height-60 > block.Height() {
+		if sp.server.chain.InBestChain(&msg.Block) {
+			reply.ETA = 0
+		} else {
+			reply.ETA = -1
+		}
+	} else {
+		reply.ETA = (block.Height() + 60 - state.Height) * 4
+	}
+
+	// Push the result.
+	sp.QueueMessage(reply, nil)
+}
+
+func (sp *serverPeer) OnFinal(_ *peer.Peer, msg *wire.MsgReFinal) {
+	if msg.ETA > 0 {
+		return
+	}
+
+	fs := finalsrc{
+		ChainId: msg.ChainId,
+		Block:   msg.Block,
+	}
+
+	if s, ok := finrequestes[fs]; ok {
+		if s.Connected() {
+			s.QueueMessage(msg, nil)
+		}
+		delete(finrequestes, fs)
+	}
+
+	protocols[0].db.Update(func(dbtx database.Tx) error {
+		bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+
+		var k [36]byte
+		copy(k[:], msg.Block[:])
+		common.LittleEndian.PutUint32(k[32:], uint32(msg.ChainId|wire.CrossChainFalg))
+		xdata := wire.XchainData{}
+
+		d := bucket.Get(k[:])
+		if d == nil || len(d) == 0 {
+			return nil
+		}
+
+		if err := xdata.DeSerialize(d); err != nil || xdata.Finalized != 0 {
+			return nil
+		}
+		//if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
+		//	fmt.Printf("bad XchainData")
+		//}
+
+		if msg.ETA == 0 {
+			xdata.Finalized = -int32(time.Now().Unix() + 120)
+			bucket.Put(k[:], xdata.Serialize())
+		} else {
+			bucket.Delete(k[:])
+		}
+
+		return nil
+	})
+}
+
 func (sp *serverPeer) OnReject(p *peer.Peer, msg *wire.MsgReject) {
 }
 
@@ -2322,8 +2425,8 @@ func newPeerConfig(sp *serverPeer, svp bool) *peer.Config {
 			OnAlert:        sp.OnAlert,
 			OnSignatures:   sp.OnSignatures,
 
-			//OnFinalized:   sp.OnFinalized,
-			//OnFinal:       sp.OnFinal,
+			OnFinalized: sp.OnFinalized,
+			OnFinal:     sp.OnFinal,
 			//OnGetChainMap: sp.OnGetChainMap,
 			//OnChainMap:    sp.OnChainMap,
 		},
@@ -2795,7 +2898,7 @@ func (s *server) Start() {
 	// Start the CPU miner if generation is enabled.
 	//	if cfg.Generate {
 	btcdLog.Infof("Start minging blocks.")
-	if s.cpuMiner != nil && s.prot.cfg.Generate {
+	if s.cpuMiner != nil && (s.prot.cfg.Generate || !s.prot.cfg.DisablePOWMining) {
 		s.cpuMiner.Start()
 	}
 	//	}

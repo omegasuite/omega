@@ -15,30 +15,35 @@ import (
 // for the main network. ----
 var GenesisMerkleRoot = map[uint32]chainhash.Hash{
 	0x4e585553: omega.MainNetGenesisMerkleRoot,
-	0x47435474: omega.MainNetGenesisMerkleRoot47435474,
+	0x4743546d: omega.MainNetGenesisMerkleRoot4743546d,
+	0x484f564d: omega.MainNetGenesisMerkleRoot484f564d,
 }
 
 // GenesisBlock defines the genesis block of the block chain which serves as the
 // public transaction ledger for the main network.
 var GenesisBlock = map[uint32]*wire.MsgBlock{
 	0x4e585553: &omega.MainNetGenesisBlock,
-	0x47435474: &omega.MainNetGenesisBlock47435474,
+	0x4743546d: &omega.MainNetGenesisBlock4743546d,
+	0x484f564d: &omega.MainNetGenesisBlock484f564d,
 }
 
 var GenesisMinerBlock = map[uint32]*wire.MingingRightBlock{
 	0x4e585553: &omega.MainNetGenesisMinerBlock,
-	0x47435474: &omega.MainNetGenesisMinerBlock47435474,
+	0x4743546d: &omega.MainNetGenesisMinerBlock4743546d,
+	0x484f564d: &omega.MainNetGenesisMinerBlock484f564d,
 }
 
 // GenesisHash is the hash of the first block in the block chain for the main
 // network (genesis block). ----
 var GenesisHash = map[uint32]*chainhash.Hash{
 	0x4e585553: &omega.MainNetGenesisHash[0],
-	0x47435474: &omega.MainNetGenesisHash47435474[0],
+	0x4743546d: &omega.MainNetGenesisHash4743546d[0],
+	0x484f564d: &omega.MainNetGenesisHash484f564d[0],
 }
 var GenesisMinerHash = map[uint32]*chainhash.Hash{
 	0x4e585553: &omega.MainNetGenesisHash[1],
-	0x47435474: &omega.MainNetGenesisHash47435474[1],
+	0x4743546d: &omega.MainNetGenesisHash4743546d[1],
+	0x484f564d: &omega.MainNetGenesisHash484f564d[1],
 }
 
 // RegTestGenesisHash is the hash of the first block in the block chain for the
@@ -65,10 +70,12 @@ var RegTestGenesisMerkleRoot = map[uint32]chainhash.Hash{
 var TestNet3GenesisHash = map[uint32]*chainhash.Hash{
 	0x4e585574: &omega.TestNetGenesisHash[0],
 	0x47435474: &omega.TestNetGenesisHash47435474[0],
+	0x484f5674: &omega.TestNetGenesisHash484f5674[0],
 }
 var TestNet3GenesisMinerHash = map[uint32]*chainhash.Hash{
 	0x4e585574: &omega.TestNetGenesisHash[1],
 	0x47435474: &omega.TestNetGenesisHash47435474[1],
+	0x484f5674: &omega.TestNetGenesisHash484f5674[1],
 }
 
 // TestNet3GenesisBlock defines the genesis block of the block chain which
@@ -76,10 +83,12 @@ var TestNet3GenesisMinerHash = map[uint32]*chainhash.Hash{
 var TestNet3GenesisBlock = map[uint32]*wire.MsgBlock{
 	0x4e585574: &omega.TestNetGenesisBlock,
 	0x47435474: &omega.TestNetGenesisBlock47435474,
+	0x484f5674: &omega.TestNetGenesisBlock484f5674,
 }
 var TestNet3GenesisMinerBlock = map[uint32]*wire.MingingRightBlock{
 	0x4e585574: &omega.TestNetGenesisMinerBlock,
 	0x47435474: &omega.TestNetGenesisMinerBlock47435474,
+	0x484f5674: &omega.TestNetGenesisMinerBlock484f5674,
 }
 
 // SimNetGenesisHash is the hash of the first block in the block chain for the

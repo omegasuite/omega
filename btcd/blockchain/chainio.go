@@ -1991,15 +1991,19 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 					continue
 				}
 
+				dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8 // destination of this txo
+				if txo.PkScript[21] == ovm.OP_PAYMINER && dest == 0 {
+					continue
+				}
+
 				if !b.validCrossChainScript(txo.PkScript) {
 					return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
 				}
-				dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8 // destination of this tx
 				if dest == b.ChainParams.ChainID || dest == 0 {
 					continue
 				}
 
-				if !chainmap.AllChains[b.ChainParams.MainChainID].PassThru(b.ChainParams.MainChainID, xchain.ChainID, dest) {
+				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, xchain.ChainID, dest) {
 					// if it will not pass through the main chain, ignore it, otherwise add the tx to main chain
 					continue
 				}

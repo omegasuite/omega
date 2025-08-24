@@ -217,11 +217,12 @@ func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 { // *big.I
 
 	if d-wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 		return int64(1) << wire.SCALEFACTORCAP
-	} else if d < wire.DESIRABLE_MINER_CANDIDATES/2 {
-		m := wire.DESIRABLE_MINER_CANDIDATES/2 - d
+	} else if d < wire.DESIRABLE_MINER_CANDIDATES {
+		m := wire.DESIRABLE_MINER_CANDIDATES - d
+		if m > wire.SCALEFACTORCAP {
+			m = wire.SCALEFACTORCAP
+		}
 		return (-1) << m
-	} else if d <= wire.DESIRABLE_MINER_CANDIDATES {
-		return 1
 	}
 
 	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)

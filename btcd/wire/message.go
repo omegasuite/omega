@@ -48,8 +48,8 @@ const (
 	CmdPing           = "ping"
 	CmdPong           = "pong"
 	CmdAlert          = "alert"
-	//CmdFinalized      = "finalized"
-	//CmdFinal          = "final"
+	CmdFinalized      = "finalized"
+	CmdFinal          = "final"
 	//CmdGetChainMap    = "getcmap"
 	//CmdChainMap       = "chainmap"
 	CmdMemPool      = "mempool"
@@ -181,6 +181,11 @@ func makeEmptyMessage(command string) (Message, error) {
 	case CmdAlert:
 		msg = &MsgAlert{}
 
+	case CmdFinalized:
+		msg = &MsgFinalized{}
+
+	case CmdFinal:
+		msg = &MsgReFinal{}
 	case CmdMemPool:
 		msg = &MsgMemPool{}
 

@@ -425,11 +425,14 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 		// in difficulty target, so we will less likely run into long waiting list
 		if d-wire.DESIRABLE_MINER_CANDIDATES > wire.SCALEFACTORCAP {
 			dt = dt >> wire.SCALEFACTORCAP
-		} else if d > wire.DESIRABLE_MINER_CANDIDATES {
-			dt = dt >> (d - wire.DESIRABLE_MINER_CANDIDATES)
-		} else if d < wire.DESIRABLE_MINER_CANDIDATES/2 {
-			m := wire.DESIRABLE_MINER_CANDIDATES/2 - d
+		} else if d < wire.DESIRABLE_MINER_CANDIDATES {
+			m := wire.DESIRABLE_MINER_CANDIDATES - d
+			if m > wire.SCALEFACTORCAP {
+				m = wire.SCALEFACTORCAP
+			}
 			dt = dt << m
+		} else {
+			dt = dt >> (d - wire.DESIRABLE_MINER_CANDIDATES)
 		}
 
 		// do we need to cancel adjustments for collateral & TPS scores? no.

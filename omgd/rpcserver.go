@@ -665,8 +665,11 @@ func handleGetXChTxFee(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	path, fees := chainmap.AllChains[chaincfg.DefaultChainID].CtxFees(node, uint32(target))
 
 	pks := make([]string, len(path))
-	for i, s := range path {
-		pks[i] = hex.EncodeToString(s)
+	for i, ss := range path {
+		if s.cfg.Cfg.TestNet {
+			ss[0] = 0x6f
+		}
+		pks[i] = hex.EncodeToString(ss)
 	}
 
 	reply := &btcjson.XChTxFee{
