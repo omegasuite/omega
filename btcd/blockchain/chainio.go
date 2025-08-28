@@ -1170,8 +1170,8 @@ func (b *BlockChain) initChainState() error {
 				blockHash := header.BlockHash()
 				if !blockHash.IsEqual(b.ChainParams.GenesisHash) {
 					return AssertError(fmt.Sprintf("initChainState: Expected "+
-						"first entry in block Index to be genesis block, "+
-						"found %s", blockHash))
+						"first entry in block Index to be genesis block %s, "+
+						"found %s", blockHash, b.ChainParams.GenesisHash))
 				}
 				parentheight = 0
 			} else if header.PrevBlock == lastNode.Hash {
@@ -1966,7 +1966,7 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 				xchain = &wire.XchainData{
 					ChainID:   tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
 					Hash:      tx.TxIn[0].PreviousOutPoint.Hash,
-					Height:    int32(tx.TxIn[0].PreviousOutPoint.Index),
+					Height:    int32(tx.TxIn[0].SignatureIndex),
 					Txs:       []*wire.MsgXrossL2{},
 					Finalized: 0,
 				}
@@ -2005,6 +2005,11 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 
 				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, xchain.ChainID, dest) {
 					// if it will not pass through the main chain, ignore it, otherwise add the tx to main chain
+					continue
+				}
+
+				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.MainChainID, b.ChainParams.ChainID, dest) {
+					// if it will not pass through us from the main chain to dest, ignore it
 					continue
 				}
 

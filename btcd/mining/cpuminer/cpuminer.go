@@ -425,10 +425,10 @@ func (m *CPUMiner) generateBlocks() {
 
 out:
 	for ; true; m.g.Chain.IsPacking = false {
-		if !m.cfg.Generate && nopow {
-			m.wg.Done()
-			return
-		}
+		//if !m.cfg.Generate && nopow {
+		//	m.wg.Done()
+		//	return
+		//}
 
 		// Quit when the miner is stopped.
 		select {
@@ -534,7 +534,7 @@ out:
 		committee, in := m.g.Committee()
 
 		var adr [20]byte
-		powMode := true
+		powMode := !m.cfg.Generate
 		var sigaddr *btcec.PrivateKey
 
 		if m.cfg.Generate && in && len(m.cfg.SignAddress) != 0 && len(committee) == wire.CommitteeSize {
@@ -547,16 +547,24 @@ out:
 					break
 				}
 			}
+		} else {
+			powMode = true
 		}
+
 		m.generating = !powMode
 
-		if m.cfg.Generate && in && powMode {
-			log.Errorf("error: expected private key not found")
-		}
+		//if m.cfg.Generate && in && powMode {
+		//	log.Errorf("error: expected private key not found")
+		//}
 
 		if powMode {
 			// pick one from address list
 			payToAddr = m.cfg.MiningAddrs[rand.Int()%len(m.cfg.MiningAddrs)]
+		}
+
+		if payToAddr == nil {
+			time.Sleep(5 * time.Second)
+			continue
 		}
 
 		// Create a new block template using the available transactions
@@ -741,10 +749,10 @@ out:
 
 		mh := m.g.Chain.Miners.BestSnapshot().Height
 
-		if m.cfg.DisablePOWMining || !m.cfg.Generate {
-			time.Sleep(time.Second * wire.TimeGap)
-			continue
-		}
+		//if m.cfg.DisablePOWMining || !m.cfg.Generate {
+		//	time.Sleep(time.Second * wire.TimeGap)
+		//	continue
+		//}
 
 		if time.Now().Unix()-lastblkrcv < 2*wire.TimeGap || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
 			time.Sleep(time.Second * wire.TimeGap)

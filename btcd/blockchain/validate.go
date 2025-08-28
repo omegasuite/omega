@@ -2204,7 +2204,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	coinBase := btcutil.NewTx(transactions[0].MsgTx().Stripped())
 	coinBase.SetIndex(transactions[0].Index())
 
-	if Vm != nil {
+	if Vm != nil && !b.IsSVP {
 		Vm.SetViewPoint(views)
 
 		coinBaseHash := *transactions[0].Hash()
@@ -2255,7 +2255,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			}
 		}
 
-		if Vm != nil {
+		if Vm != nil && !b.IsSVP {
 			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
 			newtx.SetIndex(tx.Index())
 			newtx.HasIns, newtx.HasDefs, newtx.HasOuts = false, false, false
@@ -2284,7 +2284,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 
-	if Vm != nil {
+	if Vm != nil && !b.IsSVP {
 		if !transactions[0].Match(coinBase) {
 			transactions[0] = coinBase
 			unmached = unmached + "Mismatch contract execution result in coinbase."

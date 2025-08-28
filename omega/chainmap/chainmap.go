@@ -35,8 +35,8 @@ var RootMeta = []*ChainDescriptor{
 		MRChain:        true,
 		Parent:         0,
 		ChainID:        ROOT,
-		Genesis:        "00000021466b04786717d6b2452e73628652ebb3b21541656ba251dedabcf5b5",
-		MrGenesis:      "00000004523a178139f583fed2aee7d012ebe8afc341e945f6d6c8090db4a383",
+		Genesis:        "00000035d7d4fe64711fc0737c4fba314a75884c02b64db7032537c8ddc774d7",
+		MrGenesis:      "0000000efcf76ce079cedeccaa5cde15fff96db1aedcd85a7c3271a29b017966",
 		GlobalParams:   "{\"Name\":\"mainnet\",\"Net\":1314411859,\"DefaultPort\":\"9788\",\"RpcPort\":\"9789\",\"DNSSeeds\":[{\"Host\":\"omegasuite.org\",\"HasFiltering\":false}],\"PowLimitBits\":503320560,\"CoinbaseMaturity\":20000,\"SubsidyReductionInterval\":42048000,\"MinimalAward\":0,\"TargetTimespan\":1209600000000000,\"TargetTimePerBlock\":60000000000,\"RetargetAdjustmentFactor\":4,\"RuleChangeActivationThreshold\":19160,\"MinerConfirmationWindow\":20160,\"Forfeit\":{\"Contract\":[136,26,82,15,169,77,142,7,59,11,70,121,67,91,85,9,165,198,132,125,179],\"Opening\":[124,239,138,115],\"Filing\":[178,24,22,90],\"Claim\":[68,144,2,248]},\"ViolationReportDeadline\":100,\"ChainID\":1}",
 	},
 	&ChainDescriptor{
