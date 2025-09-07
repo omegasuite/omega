@@ -670,6 +670,8 @@ func main() {
 		c := chainmap.ChainDescriptor{}
 		json.Unmarshal([]byte(pcfg.AddChain), &c)
 		chainmap.AllChains[chaincfg.DefaultChainID].AddChain(&c)
+		// terminate to cause reboot with new map
+		shutdownRequestChannel <- struct{}{}
 	}
 
 	for _, c := range chainmap.AllChains[chaincfg.DefaultChainID].ChainMap {

@@ -637,9 +637,8 @@ func handleGetChainMap(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 	reply := make([]chainmap.ChainDescriptor, 0)
 	if target != nil {
-		node, ok := chainmap.AllChains[chaincfg.DefaultChainID].ChainMap[*target]
-		if ok {
-			reply = append(reply, *node)
+		for _, m := range chainmap.AllChains[*target].ChainMap {
+			reply = append(reply, *m)
 		}
 	} else {
 		for _, m := range chainmap.AllChains[chaincfg.DefaultChainID].ChainMap {

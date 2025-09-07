@@ -1570,19 +1570,15 @@ func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ve
 }
 
 func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, map[uint64]int64, error) {
-	if tx.MsgTx().IsBtcL2() { // A BTC=>L2 tx
-		return 0, nil, nil
-	}
+	//if tx.MsgTx().IsBtcL2() { // A BTC=>L2 tx
+	//	return 0, nil, nil
+	//}
 
 	directPay := make(map[uint64]int64)
 	directFee := int64(0)
 
 	for _, txOut := range tx.MsgTx().TxOut {
-		if txOut.IsSeparator() || txOut.TokenType&3 != 0 {
-			continue
-		}
-
-		if txOut.Value == nil {
+		if txOut.IsSeparator() || txOut.TokenType&3 != 0 || txOut.Value == nil {
 			continue
 		}
 
@@ -1598,7 +1594,7 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 	}
 
 	if tx.MsgTx().IsCrossChain() { // A Cross chain TX
-		return 0, directPay, nil
+		return directFee, directPay, nil
 	}
 
 	// Coinbase transactions have no inputs.
@@ -1610,8 +1606,9 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 	// minbtcreq := int64(0)
 
 	if tx.MsgTx().IsCrossChain() {
-		return 0, nil, nil
+		return directFee, directPay, nil
 	}
+
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.IsSepadding() {
 			continue
@@ -1673,15 +1670,6 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 		if txOut.Value == nil {
 			continue
 		}
-		/*
-			if bytes.Compare(txOut.PkScript[21:25], []byte{wire.OP_PAYMINER, 0, 0, 0}) == 0 {
-				continue
-			}
-			if bytes.Compare(txOut.PkScript[22:25], []byte{0x2, 0x0, 0x40}) == 0 { // BTC chainid = 0x400002, byte 21 could be PKH or PKS
-				// min 0.00005 BTC required
-				minbtcreq += 5000
-			}
-		*/
 
 		rtype := txOut.TokenType
 		origin := uint32(txOut.TokenType >> 40)
@@ -1692,13 +1680,15 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 		}
 		if txOut.IsCrossChain() {
 			dest := common.LittleEndian.Uint32(txOut.PkScript[21:]) >> 8
-			if origin != 0 && dest != 0 {
-				if !chainmap.AllChains[chainParams.ChainID].PassThru(chainParams.ChainID, dest, origin) {
-					str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", rtype>>40,
-						common.LittleEndian.Uint32(txOut.PkScript[21:])>>8)
-					return 0, nil, ruleError(ErrBadTxOutValue, str)
+			/*
+				if origin != 0 && dest != origin {
+					if !chainmap.AllChains[chainParams.ChainID].PassThru(dest, chainParams.ChainID, origin) {
+						str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", rtype>>40,
+							common.LittleEndian.Uint32(txOut.PkScript[21:])>>8)
+						return 0, nil, ruleError(ErrBadTxOutValue, str)
+					}
 				}
-			}
+			*/
 			path, pf := chainmap.AllChains[chainParams.ChainID].CtxFees(chainmap.AllChains[chainParams.ChainID].ChainMap[chainParams.ChainID], dest)
 			for i, f := range pf {
 				s := common.LittleEndian.Uint32(path[i][21:]) >> 8
@@ -1974,6 +1964,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 			xtx := &wire.XchainData{
 				ChainID: tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
 				Hash:    tx.TxIn[0].PreviousOutPoint.Hash,
+				Height:  int32(tx.TxIn[0].SignatureIndex),
 				Txs:     make([]*wire.MsgXrossL2, 0),
 			}
 			for _, txo := range tx.TxOut {
@@ -2248,7 +2239,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	var unmached string
 
 	for i, tx := range transactions[1:] {
-		if runScripts && !tx.MsgTx().IsBtcL2() && !tx.MsgTx().IsCrossChain() {
+		if runScripts && !b.IsSVP && !tx.MsgTx().IsBtcL2() && !tx.MsgTx().IsCrossChain() {
 			err = ovm.VerifySigs(tx, b.ChainParams, 0, views)
 			if err != nil {
 				return err

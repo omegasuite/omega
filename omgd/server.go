@@ -3291,7 +3291,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			AddrUsage:    s.addrUseIndex.Usage,
 			IsSVP:        prot.IsSvp,
 			//		HashCache:    s.hashCache,
-		})
+		}, shutdownRequestChannel)
 		if err != nil {
 			return nil, err
 		}

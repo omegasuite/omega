@@ -38,7 +38,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 			return fmt.Errorf("cross chain tx with contract call")
 		}
 
-		tdest := uint32(txo.TokenType >> 40)
+		origin := uint32(txo.TokenType >> 40)
 		dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
 		if !txo.IsCrossChain() {
 			dest = 0
@@ -47,7 +47,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 			return fmt.Errorf("cross chain transferring to local chain")
 		}
 
-		if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[tdest]; tdest != 0 && !ok {
+		if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[origin]; origin != 0 && !ok {
 			return fmt.Errorf("Cross chain TokenType not found")
 		}
 
@@ -56,13 +56,22 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 				return fmt.Errorf("Cross chain TokenType not found")
 			}
 
-			if tdest == 0 {
+			if origin == 0 {
 				return fmt.Errorf("Local Tokentype in a cross chain tx")
 			}
 
-			if tdest != 0 && tdest != b.ChainParams.ChainID && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(chaincfg.DefaultChainID, dest, tdest) {
-				return fmt.Errorf("Invalid cross chain destination")
+			// asset are on the path towards its birth place and the path goes thru us
+			if origin != 0 && origin != b.ChainParams.ChainID && dest != origin && src != origin {
+				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dest, src, origin) {
+					return fmt.Errorf("Invalid cross chain destination")
+				}
+				if src != b.ChainParams.ChainID && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dest, b.ChainParams.ChainID, origin) {
+					str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", origin,
+						common.LittleEndian.Uint32(txo.PkScript[21:])>>8)
+					return ruleError(ErrBadTxOutValue, str)
+				}
 			}
+
 			if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(chaincfg.DefaultChainID, src, dest) {
 				return fmt.Errorf("Invalid cross chain destination")
 			}
@@ -213,18 +222,15 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		return false, err, -1
 	}
 
-	if flags&BFNoConnect == BFNoConnect {
-		// now we have passed all the tests
-		return true, nil, -1
-	}
-
-	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
-		return false, fmt.Errorf("insifficient signatures"), -1
-	}
-	if block.MsgBlock().Header.Nonce < 0 {
-		for _, sig := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
-			if len(sig) < 33 {
-				return false, fmt.Errorf("incorrect signatures"), -1
+	if flags&BFNoConnect != BFNoConnect {
+		if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
+			return false, fmt.Errorf("insifficient signatures"), -1
+		}
+		if block.MsgBlock().Header.Nonce < 0 {
+			for _, sig := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+				if len(sig) < 33 {
+					return false, fmt.Errorf("incorrect signatures"), -1
+				}
 			}
 		}
 	}
@@ -257,6 +263,11 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 			return false, fmt.Errorf("Coinbase tx can not be a cross chain transaction"), -1
 		}
 	}
+
+	if b.IsSVP && flags&BFNoConnect == BFNoConnect {
+		return false, fmt.Errorf("BFNoConnect in SVP"), -1
+	}
+
 	if !b.IsSVP {
 		initems := make(map[chainhash.Hash]*wire.XchainData)
 		b.db.View(func(dbtx database.Tx) error {
@@ -320,9 +331,11 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	// from the much more expensive connection logic.  It is also
 	// necessary to blocks that never become part of the main chain or
 	// blocks that fail to connect available for forfeture and compensation.
-	err = b.db.Update(func(dbTx database.Tx) error {
-		return dbStoreBlock(dbTx, block)
-	})
+	if flags&BFNoConnect != BFNoConnect {
+		err = b.db.Update(func(dbTx database.Tx) error {
+			return dbStoreBlock(dbTx, block)
+		})
+	}
 
 	if err != nil {
 		return false, err, -1
@@ -330,7 +343,9 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 
 	if newNode == nil {
 		newNode = NewBlockNode(blockHeader, prevNode)
-		newNode.Status = chainutil.StatusDataStored
+		if flags&BFNoConnect != BFNoConnect {
+			newNode.Status = chainutil.StatusDataStored
+		}
 		b.Index.AddNode(newNode)
 	} else {
 		newNode.Height = block.Height()
@@ -338,13 +353,17 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 			return false, err, -1
 		}
 		b.Index.UnsetStatusFlags(newNode, chainutil.BlockStatus(0xFF))
-		b.Index.SetStatusFlags(newNode, chainutil.StatusDataStored)
+		if flags&BFNoConnect != BFNoConnect {
+			b.Index.SetStatusFlags(newNode, chainutil.StatusDataStored)
+		}
 		newNode.Parent = prevNode
 		b.Index.AddNodeDirect(newNode)
 
 		flags |= BFAlreadyInChain
 	}
-	err = b.Index.FlushToDB(dbStoreBlockNode)
+	if flags&BFNoConnect != BFNoConnect {
+		err = b.Index.FlushToDB(dbStoreBlockNode)
+	}
 	if err != nil {
 		return false, err, -1
 	}
@@ -367,6 +386,9 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 				return false, err, -1
 			}
 		}
+	}
+	if flags&BFNoConnect == BFNoConnect {
+		return isMainChain, nil, -1
 	}
 
 	// Notify the caller that the new block was accepted into the block

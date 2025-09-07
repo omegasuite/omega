@@ -649,8 +649,20 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 			"spent transaction out information")
 	}
 
+	// whatever b is, cross chain data always goes to mainchain db
+	ab := b
+	if b.IsSVP {
+		ab = b.MainChain
+	}
+	err := ab.db.View(func(dbTx database.Tx) error {
+		return b.dbCheckCrossChain(dbTx, block)
+	})
+	if err != nil {
+		return err
+	}
+
 	// Write any block status changes to DB before updating best state.
-	err := b.Index.FlushToDB(dbStoreBlockNode)
+	err = b.Index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
 		return err
 	}
@@ -779,13 +791,9 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		return err
 	}
 
-	// whatever b is, cross chain data always goes to mainchain db
-	ab := b
-	if b.IsSVP {
-		ab = b.MainChain
-	}
 	err = ab.db.Update(func(dbTx database.Tx) error {
-		return b.dbPutCrossChain(dbTx, block)
+		b.dbPutCrossChain(dbTx, block)
+		return nil
 	})
 
 	if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
@@ -1540,60 +1548,63 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 			return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
 		}
 
-		coinBase.MsgTx().Strip()
+		if !b.IsSVP {
 
-		//		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
-		//		coinBase.SetIndex(block.Transactions()[0].Index())
-		coinBaseHash := coinBase.Hash()
-		Vm.SetCoinBaseOp(
-			func(txo wire.TxOut) wire.OutPoint {
-				if !coinBase.HasOuts {
-					// this servers as a separater. only TokenType is serialized
-					to := wire.TxOut{}
-					to.Token = token.Token{TokenType: token.DefTypeSeparator}
-					coinBase.MsgTx().AddTxOut(&to)
-					coinBase.HasOuts = true
+			coinBase.MsgTx().Strip()
+
+			//		coinBase := btcutil.NewTx(block.MsgBlock().Transactions[0].Stripped())
+			//		coinBase.SetIndex(block.Transactions()[0].Index())
+			coinBaseHash := coinBase.Hash()
+			Vm.SetCoinBaseOp(
+				func(txo wire.TxOut) wire.OutPoint {
+					if !coinBase.HasOuts {
+						// this servers as a separater. only TokenType is serialized
+						to := wire.TxOut{}
+						to.Token = token.Token{TokenType: token.DefTypeSeparator}
+						coinBase.MsgTx().AddTxOut(&to)
+						coinBase.HasOuts = true
+					}
+					coinBase.MsgTx().AddTxOut(&txo)
+					op := wire.OutPoint{*coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
+					return op
+				})
+			Vm.BlockNumber = func() uint64 {
+				return uint64(block.Height())
+			}
+			Vm.BlockTime = func() uint32 {
+				return uint32(block.MsgBlock().Header.Timestamp.Unix())
+			}
+			Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
+
+			Vm.StepLimit = block.MsgBlock().Header.ContractExec
+			Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
+
+			for i, tx := range block.Transactions() {
+				if i == 0 {
+					continue
 				}
-				coinBase.MsgTx().AddTxOut(&txo)
-				op := wire.OutPoint{*coinBaseHash, uint32(len(coinBase.MsgTx().TxOut) - 1)}
-				return op
-			})
-		Vm.BlockNumber = func() uint64 {
-			return uint64(block.Height())
-		}
-		Vm.BlockTime = func() uint32 {
-			return uint32(block.MsgBlock().Header.Timestamp.Unix())
-		}
-		Vm.BlockVersion = func() uint32 { return block.MsgBlock().Header.Version }
+				newtx := btcutil.NewTx(tx.MsgTx().Stripped())
+				newtx.SetIndex(tx.Index())
+				_, err := Vm.ExecContract(newtx, block.Height())
+				if err != nil {
+					//				Vm.AbortRollback()
+					log.Infof("ExecContract error: " + err.Error())
+					return detachable, attachable, err
+				}
 
-		Vm.StepLimit = block.MsgBlock().Header.ContractExec
-		Vm.GetCoinBase = func() *btcutil.Tx { return coinBase }
-
-		for i, tx := range block.Transactions() {
-			if i == 0 {
-				continue
+				if !tx.Match(newtx) {
+					log.Infof("Mismatch contract execution result")
+					return detachable, attachable, fmt.Errorf("Mismatch contract execution result")
+				}
 			}
-			newtx := btcutil.NewTx(tx.MsgTx().Stripped())
-			newtx.SetIndex(tx.Index())
-			_, err := Vm.ExecContract(newtx, block.Height())
-			if err != nil {
-				//				Vm.AbortRollback()
-				log.Infof("ExecContract error: " + err.Error())
-				return detachable, attachable, err
+			if !block.Transactions()[0].Match(coinBase) {
+				log.Infof("Mismatch coinbase contract execution result")
+				return detachable, attachable, fmt.Errorf("Mismatch coinbase contract execution result")
 			}
-
-			if !tx.Match(newtx) {
-				log.Infof("Mismatch contract execution result")
-				return detachable, attachable, fmt.Errorf("Mismatch contract execution result")
+			if Vm.StepLimit != 0 {
+				log.Infof("Incorrect contract execution cost.")
+				return detachable, attachable, fmt.Errorf("Incorrect contract execution cost.")
 			}
-		}
-		if !block.Transactions()[0].Match(coinBase) {
-			log.Infof("Mismatch coinbase contract execution result")
-			return detachable, attachable, fmt.Errorf("Mismatch coinbase contract execution result")
-		}
-		if Vm.StepLimit != 0 {
-			log.Infof("Incorrect contract execution cost.")
-			return detachable, attachable, fmt.Errorf("Incorrect contract execution cost.")
 		}
 		//}
 
@@ -1846,7 +1857,10 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 			}
 			if agreed >= common.NewChainConsensus {
 				// add it to chainmap
-				chainmap.AllChains[b.ChainParams.ChainID].AddChain(cd)
+				if chainmap.AllChains[b.ChainParams.ChainID].AddChain(cd) {
+					// terminate to cause reboot with new map
+					terminator <- struct{}{}
+				}
 			}
 		}
 	}
@@ -1934,7 +1948,8 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 				fmt.Printf(" TokenType=%x Val=%d To: %d %s\n", txo.Txo.TokenType, txo.Txo.Value.(*token.NumToken).Val, dst, fee)
 
 				mtx.AddTxOut(&txo.Txo)
-				if common.LittleEndian.Uint32(txo.Txo.PkScript[21:]) == (b.ChainParams.ChainID<<8 | ovm.OP_PAYMINER) {
+				d := common.LittleEndian.Uint32(txo.Txo.PkScript[21:])
+				if d == (b.ChainParams.ChainID<<8|ovm.OP_PAYMINER) || d == ovm.OP_PAYMINER {
 					if f, ok := chfee[txo.Txo.TokenType]; ok {
 						chfee[txo.Txo.TokenType] = f + txo.Txo.Token.Value.(*token.NumToken).Val
 					} else {
@@ -1984,7 +1999,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 	// most common case.
 	parentHash := &block.MsgBlock().Header.PrevBlock
 	parent := b.NodeByHash(parentHash)
-	if parentHash.IsEqual(&b.BestChain.Tip().Hash) && b.consistent(block, parent) {
+	if parentHash.IsEqual(&b.BestChain.Tip().Hash) && b.consistent(block, parent, flags&BFNoConnect == BFNoConnect) {
 		// Skip checks if node has already been fully validated.
 		fastAdd = fastAdd || b.Index.NodeStatus(node).KnownValid()
 
@@ -2015,6 +2030,10 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			//} else {
 			err = b.checkConnectBlock(node, block, views, &stxos, Vm)
 			//}
+			if flags&BFNoConnect == BFNoConnect {
+				return true, nil
+			}
+
 			if err == nil {
 				b.Index.SetStatusFlags(node, chainutil.StatusValid)
 			} else if _, ok := err.(RuleError); ok {
@@ -2028,6 +2047,10 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			if err != nil {
 				return false, err
 			}
+		}
+
+		if flags&BFNoConnect == BFNoConnect {
+			return true, nil
 		}
 
 		// In the fast add case the code to check the block connection
@@ -3007,8 +3030,11 @@ type Config struct {
 
 type ReqChain uint32
 
+var terminator chan struct{}
+
 // New returns a BlockChain instance using the provided configuration details.
-func New(config *Config) (*BlockChain, error) {
+func New(config *Config, terminate chan struct{}) (*BlockChain, error) {
+	terminator = terminate
 	// Enforce required config fields.
 	if config.DB == nil {
 		return nil, AssertError("blockchain.New database is nil")

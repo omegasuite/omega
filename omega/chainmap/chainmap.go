@@ -172,6 +172,7 @@ func LoadChainMap(db database.DB, net common.OmegaNet, chainid uint32) {
 	if AllChains == nil {
 		AllChains = make(map[uint32]*FOCMap)
 	}
+
 	m := FOCMap{}
 	m.dmdb = db
 	useNet = net
@@ -240,7 +241,7 @@ func (m *FOCMap) AddChain(c *ChainDescriptor) bool {
 	}
 
 	if _, ok := m.ChainMap[c.ChainID]; ok {
-		return true
+		return false
 	}
 
 	for _, d := range m.ChainMap {
@@ -267,6 +268,7 @@ func (m *FOCMap) AddChain(c *ChainDescriptor) bool {
 
 		return nil
 	})
+
 	return true
 }
 

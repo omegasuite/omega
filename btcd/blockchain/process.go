@@ -256,14 +256,14 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 		dxchain := make(map[wire.OutPoint]*wire.XchainData)
 
 		for _, tx := range block.MsgBlock().Transactions[1:] {
-			if len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
+			if !tx.IsCrossChain() { // len(tx.TxIn) != 1 || tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg == 0 {
 				continue
 			}
 
 			xtx := &wire.XchainData{
 				ChainID:   tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
 				Hash:      tx.TxIn[0].PreviousOutPoint.Hash,
-				Height:    int32(tx.TxIn[0].PreviousOutPoint.Index),
+				Height:    int32(tx.TxIn[0].SignatureIndex),
 				Txs:       []*wire.MsgXrossL2{},
 				Finalized: 0,
 			}
@@ -285,7 +285,7 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 			xtx := &wire.XchainData{}
 			tntx := bucket.Get(key.ToBytes())
 			if tntx == nil || len(tntx) == 0 {
-				return fmt.Errorf("cross chain tx does not exist in INCOMINGPOOL")
+				return fmt.Errorf("cross chain tx %s from %d does not exist in INCOMINGPOOL", key.Hash.String(), key.Index&^wire.CrossChainFalg)
 			}
 			if err := xtx.DeSerialize(tntx); err != nil || xtx.Finalized == 0 {
 				return fmt.Errorf("INCOMINGPOOL deserialization error or the source block is not finalized")
@@ -482,14 +482,6 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	isMainChain := false
 
-	// don't check POW if we are to extending a side chain and this is a comittee block
-	// leave the work to reorg
-	if flags&BFNoConnect == BFNoConnect {
-		// this mark an pre-consus block
-		//		b.AddOrphanBlock(block)
-		return isMainChain, false, nil, -1, nil
-	}
-
 	if !b.IsSVP && !b.MatchInpool(block) {
 		return false, true, nil, -1, nil
 		//		if flags&BFNoOrphan != 0 {
@@ -499,7 +491,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		//		return false, true, nil, -1, orp
 	}
 
-	if prevNode == b.BestChain.Tip() {
+	if prevNode == b.BestChain.Tip() && flags&BFNoConnect != BFNoConnect {
 		// only check proof of work if it extends the best chain. if the block
 		// would cause a reorg, pow check will be done in reorg
 		behaviorFlags := BFNone
@@ -518,7 +510,11 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 			}
 			return false, true, nil, -1, nil
 		}
-	} else {
+	} else if prevNode != b.BestChain.Tip() {
+		if flags&BFNoConnect == BFNoConnect {
+			return false, false, fmt.Errorf("Prev node is not best chain tip in BFNoConnect mode"), -1, nil
+		}
+
 		switch {
 		case block.MsgBlock().Header.Nonce == -1:
 			if prevNode.Data.GetNonce() > -wire.MINER_RORATE_FREQ && prevNode.Data.GetNonce() < 0 {
@@ -533,7 +529,8 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	}
 
 	isMainChain, err, missing := b.maybeAcceptBlock(block, flags)
-	if missing > 0 {
+
+	if missing > 0 || flags&BFNoConnect == BFNoConnect {
 		return false, false, err, missing, nil
 	}
 	if err != nil {
@@ -597,13 +594,17 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 	// there are no more.
 	b.ProcessOrphans(blockHash, BFNone) // flags)
 
-	log.Infof("ProcessBlock finished with height = %d Miner height = %d Orphans = %d", b.BestSnapshot().Height,
+	net := "main"
+	if b.IsSVP {
+		net = "SVP"
+	}
+	log.Infof("%s: ProcessBlock finished with height = %d Miner height = %d Orphans = %d", net, b.BestSnapshot().Height,
 		b.Miners.BestSnapshot().Height, b.Orphans.Count())
 
 	return isMainChain, false, nil, -1, nil
 }
 
-func (b *BlockChain) consistent(block *btcutil.Block, parent *chainutil.BlockNode) bool {
+func (b *BlockChain) consistent(block *btcutil.Block, parent *chainutil.BlockNode, nocon bool) bool {
 	//	state := b.BestSnapshot()
 	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
 		mstate := b.Miners.BestSnapshot()
@@ -657,6 +658,10 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent *chainutil.BlockNod
 		}
 
 		miners[blk.MsgBlock().Miner] = struct{}{}
+	}
+
+	if nocon {
+		return true
 	}
 
 	for _, sign := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {

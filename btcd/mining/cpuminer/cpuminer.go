@@ -760,7 +760,7 @@ out:
 		}
 
 		time.Sleep(time.Second * 20)
-		log.Info("Try to solve block")
+		log.Info("Try to solve block after 20 second w/o new block")
 
 		// Attempt to solve the block.  The function will exit early
 		// with false when conditions that trigger a stale block, so

@@ -642,8 +642,8 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 
 	// Check transactions in INCOMINGPOOL, include mature transactions here
 	if (nonce < 0 && rand.Int()%100 > 5) || (nonce > 0 && rand.Int()%100 < 5) {
-		inp, md := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight), int32(ts.Unix()))
-		minerDirect = md
+		inp, _ := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight), int32(ts.Unix()))
+		//		minerDirect = md
 		blockTxns = append(blockTxns, inp...)
 	}
 

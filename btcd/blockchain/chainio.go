@@ -1923,7 +1923,8 @@ func (b *BlockChain) validCrossChainScript(script []byte) bool {
 				return false
 			}
 		case ovm.OP_PAYMINER:
-			if script[0] != b.ChainParams.PubKeyHashAddrID {
+			// we should test it always, but in testnet there was an error in data, so we work around temporarily
+			if b.ChainParams.Net != uint32(common.TestNet) && script[0] != b.ChainParams.PubKeyHashAddrID {
 				return false
 			}
 		}
@@ -1956,7 +1957,134 @@ func (b *BlockChain) validCrossChainScript(script []byte) bool {
 	return true
 }
 
-func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) error {
+func (b *BlockChain) dbCheckCrossChain(dbTx database.Tx, block *btcutil.Block) error {
+	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			for _, txo := range tx.TxOut {
+				if txo.IsSeparator() {
+					continue
+				}
+				if txo.IsContractCall() {
+					continue
+				}
+				if txo.PkScript[21] != ovm.OP_PAYMINER && txo.PkScript[21] != ovm.OP_PAYCROSSCHAIN {
+					continue
+				}
+
+				dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8 // destination of this txo
+				if txo.PkScript[21] == ovm.OP_PAYMINER && dest == 0 {
+					continue
+				}
+
+				if !b.validCrossChainScript(txo.PkScript) {
+					return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
+				}
+				if dest == b.ChainParams.ChainID || dest == 0 {
+					continue
+				}
+
+				xchainid := b.ChainParams.ChainID
+				if tx.IsCrossChain() {
+					xchainid = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+				}
+
+				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, xchainid, dest) {
+					// if it will not pass through the main chain, ignore it, otherwise add the tx to main chain
+					continue
+				}
+
+				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.MainChainID, b.ChainParams.ChainID, dest) {
+					// if it will not pass through us from the main chain to dest, ignore it
+					continue
+				}
+			}
+		}
+	} else {
+		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			if !tx.IsCrossChain() {
+				continue
+			}
+			// it should have been verified that tx is consistent with what is in db
+			d := bucket.Get(tx.TxIn[0].PreviousOutPoint.ToBytes())
+			if d == nil || len(d) == 0 {
+				// already processed
+				return fmt.Errorf("Cross chain tx not found in INCOMINGPOOL")
+			}
+			xchain := &wire.XchainData{}
+			xchain.DeSerialize(d)
+			for _, txo := range tx.TxOut {
+				matched := false
+				for i, to := range xchain.Txs {
+					if to.Txo.Match(txo) {
+						xchain.Txs = append(xchain.Txs[:i], xchain.Txs[i+1:]...)
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					return fmt.Errorf("Cross chain tx not match INCOMINGPOOL")
+				}
+			}
+			if len(xchain.Txs) > 0 {
+				return fmt.Errorf("Cross chain tx not match INCOMINGPOOL")
+			}
+		}
+
+		bucket = dbTx.Metadata().Bucket([]byte(common.XCAssets))
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			svp := uint32(0)
+			if tx.IsCrossChain() {
+				svp = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+			}
+			for _, txo := range tx.TxOut {
+				if txo.IsSeparator() || (svp == 0 && txo.DestChain() == 0) {
+					continue
+				}
+				assetKey, dest, srckey, tokensrc := b.makeAssetKey(txo)
+
+				out := dest != tokensrc
+
+				val := bucket.Get(assetKey)
+				sval := bucket.Get(srckey)
+				v, d, vs := int64(0), int64(0), int64(0)
+				switch txo.TokenType & 3 {
+				case 0, 2:
+					d = txo.Value.(*token.NumToken).Val
+				case 1, 3:
+					d = 1
+				}
+
+				if val != nil {
+					v = int64(common.LittleEndian.Uint64(val))
+				}
+				if sval != nil {
+					vs = int64(common.LittleEndian.Uint64(sval))
+				}
+				if out {
+					v += d
+					vs += d
+				} else {
+					if v >= d {
+						v -= d
+					} else {
+						// TBD: this should have been done earlier
+						return fmt.Errorf("back value excees out value")
+					}
+					if vs >= d {
+						vs -= d
+					} else {
+						// TBD: this should have been done earlier
+						return fmt.Errorf("back value excees out value")
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 		for _, tx := range block.MsgBlock().Transactions[1:] {
@@ -1996,9 +2124,6 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 					continue
 				}
 
-				if !b.validCrossChainScript(txo.PkScript) {
-					return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
-				}
 				if dest == b.ChainParams.ChainID || dest == 0 {
 					continue
 				}
@@ -2140,15 +2265,9 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 				} else {
 					if v >= d {
 						v -= d
-					} else {
-						// TBD: this should have been done earlier
-						return fmt.Errorf("back value excees out value")
 					}
 					if vs >= d {
 						vs -= d
-					} else {
-						// TBD: this should have been done earlier
-						return fmt.Errorf("back value excees out value")
 					}
 				}
 
@@ -2169,7 +2288,6 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) err
 			}
 		}
 	}
-	return nil
 }
 
 func (b *BlockChain) dbRestoreCrossChain(dbTx database.Tx, block *btcutil.Block) error {

@@ -293,7 +293,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 		}
 	}
 
-	x, y, p := attachNodes.Front(), txattachNodes.Front(), forkNode
+	x, y, z, p := attachNodes.Front(), txattachNodes.Front(), txattachNodes.Back(), forkNode
 
 	if detachNodes.Len() == 0 &&
 		x.Value.(*chainutil.BlockNode).Height == forkNode.Height+1 &&
@@ -327,7 +327,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 		}
 		n := x.Value.(*chainutil.BlockNode)
 		if !contain {
-			contain = b.blockChain.SideChainContains(y, NodetoHeader(n).BestBlock)
+			contain = b.blockChain.SideChainContains(z, NodetoHeader(n).BestBlock)
 		}
 		if !contain {
 			skipList(attachNodes, x)
@@ -1446,7 +1446,7 @@ func (b *MinerChain) LocateHeaders(locator chainhash.BlockLocator, hashStop *cha
 }
 
 // New returns a BlockChain instance using the provided configuration details.
-func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
+func New(config *blockchain.Config, terminate chan struct{}) (*blockchain.BlockChain, error) {
 	// Enforce required config fields.
 	if config.DB == nil || config.MinerDB == nil {
 		return nil, AssertError("blockchain.New database is nil")
@@ -1459,7 +1459,7 @@ func New(config *blockchain.Config) (*blockchain.BlockChain, error) {
 		return nil, AssertError("blockchain.New timesource is nil")
 	}
 
-	s, err := blockchain.New(config)
+	s, err := blockchain.New(config, terminate)
 	if err != nil {
 		return nil, err
 	}
