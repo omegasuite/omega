@@ -1352,6 +1352,8 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 
 	views.SetBestHash(&newBest.Hash)
 
+	mtip := uint32(b.Miners.Tip().Height())
+
 	for e := attachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 
@@ -1371,6 +1373,15 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 			skipped = true
 			attachable++
 			continue
+		}
+
+		if block.MsgBlock().Header.Nonce > 0 {
+			// A POW block should not cause rotation passing current MR tip
+			if rotate+wire.POWRotate > mtip {
+				skipList(attachNodes, e)
+				skipped = true
+				break
+			}
 		}
 
 		shift := 0

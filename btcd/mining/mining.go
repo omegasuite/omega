@@ -952,7 +952,7 @@ mempoolLoop:
 				for _, txo := range tx.MsgTx().TxOut {
 					if txo.IsSeparator() || txo.PkScript[0] == g.chainParams.ContractAddrID {
 						qualified = true
-					} else if txo.TokenType == common.FeeCoinTyp || txo.TokenType == common.BTCCoinTyp {
+					} else if txo.TokenType == common.FeeCoinTyp || txo.TokenType == common.ZENTCoinTyp {
 						sum += txo.Token.Value.(*token.NumToken).Val
 					} else {
 						qualified = true

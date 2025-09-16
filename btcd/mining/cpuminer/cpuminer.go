@@ -537,7 +537,7 @@ out:
 		powMode := !m.cfg.Generate
 		var sigaddr *btcec.PrivateKey
 
-		if m.cfg.Generate && in && len(m.cfg.SignAddress) != 0 && len(committee) == wire.CommitteeSize {
+		if m.cfg.Generate && in && len(m.cfg.SignAddress) != 0 && len(committee) > wire.CommitteeSize/2 {
 			for j, pt := range m.cfg.SignAddress {
 				copy(adr[:], pt.ScriptAddress())
 				if _, ok := committee[adr]; ok {
@@ -549,6 +549,11 @@ out:
 			}
 		} else {
 			powMode = true
+		}
+
+		if powMode && m.cfg.DisablePOWMining {
+			time.Sleep(5 * time.Second)
+			continue
 		}
 
 		m.generating = !powMode
@@ -607,6 +612,11 @@ out:
 				}
 			}
 		} else {
+			if bs.LastRotation+wire.POWRotate > uint32(m.g.Chain.Miners.Tip().Height()) {
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
 			nonce = 1
 		}
 

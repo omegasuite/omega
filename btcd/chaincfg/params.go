@@ -320,8 +320,8 @@ var MainNetParams = Params{
 	GenesisBlock:         GenesisBlock[uint32(common.MainNet)],
 	GenesisMinerBlock:    GenesisMinerBlock[uint32(common.MainNet)],
 	ChainCurrentStd:      time.Hour * 24,
-	MinBorderFee:         100000,
-	MinContractDeployFee: 100000,
+	MinBorderFee:         1000,
+	MinContractDeployFee: 1000,
 	//	ReduceMinDifficulty:      false,
 	GenerateSupported: false,
 
@@ -501,8 +501,8 @@ var TestNet3Params = Params{
 	GenesisBlock:         TestNet3GenesisBlock[uint32(common.TestNet)],
 	GenesisMinerBlock:    TestNet3GenesisMinerBlock[uint32(common.TestNet)],
 	ChainCurrentStd:      time.Hour * 24000,
-	MinBorderFee:         100000,
-	MinContractDeployFee: 1e5,
+	MinBorderFee:         100,
+	MinContractDeployFee: 1e3,
 	//	ReduceMinDifficulty:      true,
 	GenerateSupported: true,
 

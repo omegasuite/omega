@@ -5705,7 +5705,8 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 	c := cmd.(*btcjson.GetCrossChainDBCmd)
 
 	res := &btcjson.GetCrossChainDBResult{
-		IncomingPool: make([]*wire.XchainData, 0),
+		IncomingPool:   make([]*btcjson.XchainDataResult, 0),
+		Rollback:       make([][]*btcjson.XchainDataResult, 0),
 		//Btc2L2Pool:   make([]*wire.XchainData, 0),
 		//L2BtcPool:    make([]*wire.XchainData, 0),
 		//		BridgeSigners: make([]*treasury.Signers, 0),
@@ -5722,81 +5723,143 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 			for ok := cursor.First(); ok; ok = cursor.Next() {
 				xchain := &wire.XchainData{}
 				xchain.DeSerialize(cursor.Value())
-				res.IncomingPool = append(res.IncomingPool, xchain)
+				xd := &btcjson.XchainDataResult{}
+				xd.Convert(xchain)
+				res.IncomingPool = append(res.IncomingPool, xd)
 			}
 		}
 		/*
-			if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
-				fmt.Printf("BTCL2POOL\n")
-				bucket := meta.Bucket([]byte(common.BTCL2POOL))
-				cursor := bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					xchain := &wire.XchainData{}
-					xchain.DeSerialize(cursor.Value())
-					res.Btc2L2Pool = append(res.Btc2L2Pool, xchain)
-				}
+		if c.Clear&2 != 0 { // BTCL2POOL, L2BTCPOOL
+			fmt.Printf("BTCL2POOL\n")
+			bucket := meta.Bucket([]byte(common.BTCL2POOL))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				xchain := &wire.XchainData{}
+				xchain.DeSerialize(cursor.Value())
+				xd := &btcjson.XchainDataResult{}
+				xd.Convert(xchain)
+				res.Btc2L2Pool = append(res.Btc2L2Pool, xd)
+			}
 
-				bucket = meta.Bucket([]byte(common.L2BTCPOOL))
+			bucket = meta.Bucket([]byte(common.L2BTCPOOL))
+			cursor = bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				xchain := &wire.XchainData{}
+				xchain.DeSerialize(cursor.Value())
+				xd := &btcjson.XchainDataResult{}
+				xd.Convert(xchain)
+				res.L2BtcPool = append(res.L2BtcPool, xd)
+			}
+		}
+		if c.Clear&4 != 0 { // BRIDGESIGNERS
+			fmt.Printf("BRIDGESIGNERS\n")
+			bucket := meta.Bucket([]byte(common.BRIDGESIGNERS))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				var addr [20]byte
+				copy(addr[:], cursor.Key())
+
+				t := &treasury.Signers{}
+				copy(t.Address[:], addr[:])
+				t.Pledged = make([]*treasury.PlgAsset, 0)
+
+				_, err := t.Deserialize(cursor.Value())
+				if err != nil {
+					continue
+				}
+				s := &btcjson.SignersResult{}
+				s.Convert(t)
+				res.BridgeSigners = append(res.BridgeSigners, s)
+			}
+		}
+		if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+			fmt.Printf("XBTCAssets\n")
+			bucket := meta.Bucket([]byte(common.XBTCAssets))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				var outp wire.OutPoint
+				key := cursor.Key()
+				outp.Hash.SetBytes(key[:32])
+				outp.Index = common.LittleEndian.Uint32(key[32:])
+				plg := &treasury.Asset{}
+				_, err := plg.Deserialize(cursor.Value())
+				if err != nil {
+					return err
+				}
+				p := &btcjson.Asset{}
+				p.Convert(plg)
+				res.XBTCAssets = append(res.XBTCAssets, p)
+			}
+			fmt.Printf("XCAssets\n")
+			bucket = meta.Bucket([]byte(common.XCAssets))
+			cursor = bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				r := &btcjson.XCAssetResult{
+					Key:   hex.EncodeToString(cursor.Key()),
+					Value: int64(common.LittleEndian.Uint64(cursor.Value())),
+				}
+				res.XCAssets = append(res.XCAssets, r)
+			}
+		}
+		if c.Clear&16 != 0 { // REEDEEM
+			bucket := meta.Bucket([]byte(common.REDEEMDB))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				res.RedeemDB[string(cursor.Key())] = hex.EncodeToString(cursor.Value())
+			}
+		}
+		if c.Clear&32 != 0 { // REEDEEM
+			bucket := meta.Bucket([]byte(common.RetiredBRIDGESIGNERS))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				var addr [20]byte
+				copy(addr[:], cursor.Key())
+
+				t := &treasury.Signers{}
+				copy(t.Address[:], addr[:])
+				t.Pledged = make([]*treasury.PlgAsset, 0)
+
+				_, err := t.Deserialize(cursor.Value())
+				if err != nil {
+					continue
+				}
+				s := &btcjson.SignersResult{}
+				s.Convert(t)
+				res.RetiredSigners = append(res.BridgeSigners, s)
+			}
+			/*
+				bucket = meta.Bucket([]byte(common.BTCRET))
 				cursor = bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					xchain := &wire.XchainData{}
-					xchain.DeSerialize(cursor.Value())
-					res.L2BtcPool = append(res.L2BtcPool, xchain)
-				}
-			}
-			if c.Clear&4 != 0 { // BRIDGESIGNERS
-				fmt.Printf("BRIDGESIGNERS\n")
-				bucket := meta.Bucket([]byte(common.BRIDGESIGNERS))
-				cursor := bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					var addr [20]byte
-					copy(addr[:], cursor.Key())
-
-					t := &treasury.Signers{}
-					copy(t.Address[:], addr[:])
-					t.Pledged = make([]*treasury.PlgAsset, 0)
-
-					_, err := t.Deserialize(cursor.Value())
-					if err != nil {
-						continue
-					}
-					res.BridgeSigners = append(res.BridgeSigners, t)
-				}
-			}
-			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
-				fmt.Printf("XBTCAssets\n")
-				bucket := meta.Bucket([]byte(common.XBTCAssets))
-				cursor := bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					var outp wire.OutPoint
-					key := cursor.Key()
-					outp.Hash.SetBytes(key[:32])
-					outp.Index = common.LittleEndian.Uint32(key[32:])
-					plg := &treasury.Asset{}
-					_, err := plg.Deserialize(cursor.Value())
-					if err != nil {
-						return err
-					}
-					res.XBTCAssets = append(res.XBTCAssets, plg)
-				}
-				/*
-					bucket = meta.Bucket([]byte(common.XCAssets))
-					cursor = bucket.Cursor()
-					n := 0
-					for ok := cursor.First(); ok; ok = cursor.Next() {
-						n++
-					}
-					fmt.Printf("XCAssets has %d items\n", n)
-				* /
-			}
-			if c.Clear&16 != 0 { // REEDEEM
-				bucket := meta.Bucket([]byte(common.REDEEMDB))
-				cursor := bucket.Cursor()
 				for ok := cursor.First(); ok; ok = cursor.Next() {
 					res.RedeemDB[string(cursor.Key())] = hex.EncodeToString(cursor.Value())
 				}
-			}
 		*/
+		if c.Clear&64 != 0 { // INCOMINGPOOL
+			bucket := meta.Bucket([]byte(common.ROLLBACKPOOL))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				rbd := cursor.Value()
+				xbd := make([]*btcjson.XchainDataResult, 0)
+				if rbd != nil {
+					n, m := common.LittleEndian.Uint32(rbd), uint32(4)
+					for i := uint32(0); i < n; i++ {
+						l := common.LittleEndian.Uint32(rbd[m:])
+						m += 4
+						data := rbd[m : m+l]
+						m += l
+						xchain := &wire.XchainData{}
+						if xchain.DeSerialize(data) != nil {
+							return fmt.Errorf("bad XchainData")
+						}
+						s := &btcjson.XchainDataResult{}
+						s.Convert(xchain)
+						xbd = append(xbd, s)
+					}
+				}
+				res.Rollback = append(res.Rollback, xbd)
+			}
+		}
+
 		return nil
 	})
 	return res, nil

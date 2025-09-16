@@ -293,9 +293,9 @@ func (b *MinerChain) initChainState() error {
 			if lastNode == nil {
 				blockHash := header.Hash()
 				if !blockHash.IsEqual(b.chainParams.GenesisMinerHash) {
-					return AssertError(fmt.Sprintf("initChainState: Expected "+
-						"first entry in block index to be genesis block, "+
-						"found %s", blockHash))
+					return AssertError(fmt.Sprintf("MR initChainState: Expected "+
+						"first entry in block index to be genesis block %s, "+
+						"found %s", b.chainParams.GenesisMinerHash, blockHash))
 				}
 			} else if header.MsgBlock().PrevBlock == lastNode.Hash {
 				// Since we iterate block headers in order of height, if the

@@ -103,7 +103,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		if dest == 0 {
 			dest = b.ChainParams.ChainID
 		}
-		if txo.TokenType != common.BTCCoinTyp && (txo.TokenType != 0 || dest != chainmap.ROOT) {
+		if txo.TokenType != common.ZENTCoinTyp && (txo.TokenType != 0 || dest != chainmap.ROOT) {
 			return fmt.Errorf("incorrect cross chain tx fee tokentype")
 		}
 		if f, ok := minerFees[dest]; ok {
@@ -373,6 +373,13 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	}
 
 	isMainChain := false
+
+	if block.MsgBlock().Header.Nonce > 0 {
+		// A POW block should not cause rotation passing current MR tip
+		if b.BestChain.Height()+wire.POWRotate > b.Miners.Tip().Height() {
+			return false, fmt.Errorf("POW rotation overflow"), -1
+		}
+	}
 
 	if block.Height() > b.BestChain.Height() {
 		// if it is a POW block and we are in committee, we keep the committee going

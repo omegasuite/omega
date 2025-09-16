@@ -1924,7 +1924,7 @@ func (b *BlockChain) validCrossChainScript(script []byte) bool {
 			}
 		case ovm.OP_PAYMINER:
 			// we should test it always, but in testnet there was an error in data, so we work around temporarily
-			if b.ChainParams.Net != uint32(common.TestNet) && script[0] != b.ChainParams.PubKeyHashAddrID {
+			if b.ChainParams.Name == "mainnet" && script[0] != b.ChainParams.PubKeyHashAddrID {
 				return false
 			}
 		}
@@ -2087,9 +2087,19 @@ func (b *BlockChain) dbCheckCrossChain(dbTx database.Tx, block *btcutil.Block) e
 func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
+		bxchain := &wire.XchainData{
+			ChainID:   b.ChainParams.ChainID,
+			Hash:      *block.Hash(),
+			Height:    block.Height(),
+			Txs:       []*wire.MsgXrossL2{},
+			Finalized: 0,
+		}
+		var xchain *wire.XchainData
 		for _, tx := range block.MsgBlock().Transactions[1:] {
-			var xchain *wire.XchainData
 			txhash := tx.TxHash()
+			ichain := bxchain
+			xchain = &wire.XchainData{}
+			xchain.Txs = nil
 			if tx.IsCrossChain() {
 				xchain = &wire.XchainData{
 					ChainID:   tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
@@ -2098,14 +2108,7 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 					Txs:       []*wire.MsgXrossL2{},
 					Finalized: 0,
 				}
-			} else {
-				xchain = &wire.XchainData{
-					ChainID:   b.ChainParams.ChainID,
-					Hash:      *block.Hash(),
-					Height:    block.Height(),
-					Txs:       []*wire.MsgXrossL2{},
-					Finalized: 0,
-				}
+				ichain = xchain
 			}
 
 			for i, txo := range tx.TxOut {
@@ -2155,7 +2158,7 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 					t.Txo.TokenType |= uint64(b.ChainParams.ChainID) << 40
 				}
 
-				xchain.Txs = append(xchain.Txs, t)
+				ichain.Txs = append(ichain.Txs, t)
 			}
 
 			if len(xchain.Txs) > 0 {
@@ -2172,6 +2175,20 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 				}
 				bucket.Put(k, xchain.Serialize())
 			}
+		}
+		if len(bxchain.Txs) > 0 {
+			key := wire.OutPoint{
+				Hash:  bxchain.Hash,
+				Index: bxchain.ChainID | wire.CrossChainFalg,
+			}
+			k := key.ToBytes()
+			d := bucket.Get(k)
+			dchain := &wire.XchainData{}
+			if d != nil && len(d) > 0 {
+				dchain.DeSerialize(d)
+				bxchain.Txs = append(bxchain.Txs, dchain.Txs...)
+			}
+			bucket.Put(k, bxchain.Serialize())
 		}
 	} else {
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))

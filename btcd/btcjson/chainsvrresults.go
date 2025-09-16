@@ -7,6 +7,7 @@ package btcjson
 
 import (
 	"btcd/wire"
+	"encoding/hex"
 	"encoding/json"
 )
 
@@ -316,14 +317,67 @@ type ScriptPubKeyResult struct {
 	Addresses []string `json:"addresses,omitempty"`
 }
 
+type XchainDataResult struct {
+	ChainID   uint32        // source chain id
+	Hash      string        // source block
+	Height    int32         // source height
+	Txs       []*MsgXrossL2 // source txs
+	Finalized int32         // whether the source block is finalized. note, it could have passed several intermediate chains before get here
+	//BtxTxHash *string        // hash of BtxTx corresponding to originating omega block txs, only for BOVM to BTC xfers
+	//BtxTx     *btcwire.MsgTx // destination BTC txs
+	//TxHashes  []*string      // Hash of MsgXrossL2 txs (representing a source txo), it will appear in 2 1-of-2 multisig to identify original tx
+	//Status    byte           // state: 0 -- initial, 1 - I have signed it, 2 - all signed and sent to BTC, 3 - BTC confirmed, 4 - BTC finalized
+}
+
+func (self *XchainDataResult) Convert(p *wire.XchainData) {
+	self.Hash = p.Hash.String()
+	//self.BtxTx = p.BtxTx
+	self.ChainID = p.ChainID
+	self.Height = p.Height
+	if p.Txs != nil {
+		self.Txs = make([]*MsgXrossL2, len(p.Txs))
+		for i, t := range p.Txs {
+			_, v := t.Txo.Value.Value()
+
+			wad := hex.EncodeToString(t.Txo.PkScript)
+
+			self.Txs[i] = &MsgXrossL2{
+				Utxo:     t.Utxo.String(),
+				Value:    v,
+				PkScript: wad,
+			}
+		}
+	}
+	/*
+		if p.BtxTxHash != nil {
+			s := p.BtxTxHash.String()
+			self.BtxTxHash = &s
+		}
+		self.Status = p.Status
+		self.Finalized = p.Finalized
+		if p.TxHashes != nil {
+			self.TxHashes = make([]*string, len(p.TxHashes))
+			for i, h := range p.TxHashes {
+				s := h.String()
+				self.TxHashes[i] = &s
+			}
+		}
+	*/
+}
+
+type XCAssetResult struct {
+	Key   string // source block
+	Value int64
+}
 type GetCrossChainDBResult struct {
-	IncomingPool []*wire.XchainData `json:"incomingpool"`
-	Btc2L2Pool   []*wire.XchainData `json:"btc2l2pool"`
-	L2BtcPool    []*wire.XchainData `json:"l2btcpool"`
+	IncomingPool []*XchainDataResult   `json:"incomingpool"`
+	Rollback     [][]*XchainDataResult `json:"rollback"`
+	Btc2L2Pool   []*XchainDataResult   `json:"btc2l2pool"`
+	L2BtcPool    []*XchainDataResult   `json:"l2btcpool"`
 	// BridgeSigners []*treasury.Signers `json:"bridgesigners"`
 	// XBTCAssets    []*treasury.Asset   `json:"xbtcassets"`
-	XCAssets []*wire.XchainData `json:"xcassets"`
-	RedeemDB map[string]string  `json:"redeemdb"`
+	XCAssets []*XCAssetResult  `json:"xcassets"`
+	RedeemDB map[string]string `json:"redeemdb"`
 }
 
 // GetTxOutResult models the data from the gettxout command.

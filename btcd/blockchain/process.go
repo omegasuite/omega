@@ -142,7 +142,7 @@ func (b *BlockChain) ProcessOrphans(hash *chainhash.Hash, flags BehaviorFlags) e
 		block := (*btcutil.Block)(blk.(*orphanBlock))
 		if prevNode := b.NodeByHash(&block.MsgBlock().Header.PrevBlock); prevNode != nil {
 			block.SetHeight(prevNode.Height + 1)
-			if !b.MatchInpool(block) {
+			if !b.IsSVP && !b.MatchInpool(block) {
 				return false, nil
 			}
 

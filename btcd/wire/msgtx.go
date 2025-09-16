@@ -1381,6 +1381,7 @@ func (msg *MsgTx) RemapDef(to token.Definition) token.Definition {
 }
 
 func (msg *MsgTx) IsBtcL2() bool { // whether it is a TX from BTC to L2 xfer
-	return len(msg.TxIn) == 1 && msg.TxIn[0].PreviousOutPoint.Index == 0xFFFFFF &&
-		!msg.TxIn[0].PreviousOutPoint.Hash.IsEqual(&chainhash.Hash{})
+	return len(msg.TxIn) == 1 &&
+		!msg.TxIn[0].PreviousOutPoint.Hash.IsEqual(&chainhash.Hash{}) &&
+		msg.TxIn[0].PreviousOutPoint.Index == common.BTCCHAINID|CrossChainFalg
 }

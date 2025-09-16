@@ -750,9 +750,9 @@ func (b *MinerChain) reorganizeChain(detachNodes, attachNodes *list.List) error 
 		newBest = n
 	}
 
-	if detachNodes.Len() > len(attachBlocks) {
-		return fmt.Errorf("Detach (%d) more than attach (%d).", detachNodes.Len(), len(attachBlocks))
-	}
+	//if detachNodes.Len() > len(attachBlocks) {
+	//	return fmt.Errorf("Detach (%d) more than attach (%d).", detachNodes.Len(), len(attachBlocks))
+	//}
 
 	// Disconnect blocks from the main chain.
 	for i, e := 0, detachNodes.Front(); e != nil; i, e = i+1, e.Next() {
@@ -1516,6 +1516,39 @@ func New(config *blockchain.Config, terminate chan struct{}) (*blockchain.BlockC
 	b.blockChain = s
 	s.Miners = b
 
+	for _, v := range os.Args {
+		if v == "--chainback" {
+			hash := s.BestChain.Tip().Hash
+			h := s.BestChain.Height()
+			t := s.BestChain.Tip()
+			detachNodes := list.New()
+
+			detachNodes.PushBack(t)
+			s.ChainLock.Lock()
+			s.ReorganizeChain(detachNodes, list.New())
+			s.ChainLock.Unlock()
+
+			s.Index.SetStatusFlags(t, chainutil.StatusValid)
+
+			config.DB.Update(func(tx database.Tx) error {
+				bucket := tx.Metadata().Bucket(hashIndexBucketName)
+				bucket.Delete(hash[:])
+
+				blockIndexBucket := tx.Metadata().Bucket(blockIndexBucketName)
+				key := blockchain.BlockIndexKey(&hash, uint32(0xFFFFFFFF))
+				blockIndexBucket.Delete(key) // remove invalid data that might be there
+
+				key = blockchain.BlockIndexKey(&hash, uint32(h))
+				blockIndexBucket.Delete(key) // remove invalid data that might be there
+
+				return nil
+			})
+			config.DB.Close()
+			config.MinerDB.Close()
+			return nil, fmt.Errorf("databased changed. please restart")
+		}
+	}
+
 	// verify chain state is not corrupted
 	//	best := s.BestSnapshot()
 	mbest := b.BestSnapshot()
@@ -1623,40 +1656,6 @@ func New(config *blockchain.Config, terminate chan struct{}) (*blockchain.BlockC
 			detachNodes.PushBack(n)
 		}
 		detachNodes.PushBack(rp)
-	}
-
-	if ok {
-		for _, v := range os.Args {
-			if v == "--chainback" {
-				hash := s.BestChain.Tip().Hash
-				h := s.BestChain.Height()
-				t := s.BestChain.Tip()
-
-				detachNodes.PushBack(t)
-				s.ChainLock.Lock()
-				s.ReorganizeChain(detachNodes, list.New())
-				s.ChainLock.Unlock()
-
-				s.Index.SetStatusFlags(t, chainutil.StatusValid)
-
-				config.DB.Update(func(tx database.Tx) error {
-					bucket := tx.Metadata().Bucket(hashIndexBucketName)
-					bucket.Delete(hash[:])
-
-					blockIndexBucket := tx.Metadata().Bucket(blockIndexBucketName)
-					key := blockchain.BlockIndexKey(&hash, uint32(0xFFFFFFFF))
-					blockIndexBucket.Delete(key) // remove invalid data that might be there
-
-					key = blockchain.BlockIndexKey(&hash, uint32(h))
-					blockIndexBucket.Delete(key) // remove invalid data that might be there
-
-					return nil
-				})
-				config.DB.Close()
-				config.MinerDB.Close()
-				return nil, fmt.Errorf("databased changed. please restart")
-			}
-		}
 	}
 
 	if !ok {

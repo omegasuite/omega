@@ -273,7 +273,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 				"value of %v", hao)
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if (txOut.TokenType == common.FeeCoinTyp || txOut.TokenType == common.BTCCoinTyp) && hao > btcutil.MaxHao {
+		if (txOut.TokenType == common.FeeCoinTyp || txOut.TokenType == common.ZENTCoinTyp) && hao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v", hao,
 				btcutil.MaxHao)
@@ -293,7 +293,7 @@ func CheckTransactionSanity(tx *btcutil.Tx) error {
 			str := fmt.Sprintf("transaction output is negative")
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if (txOut.TokenType == common.FeeCoinTyp || txOut.TokenType == common.BTCCoinTyp) && totals[txOut.TokenType] > btcutil.MaxHao {
+		if (txOut.TokenType == common.FeeCoinTyp || txOut.TokenType == common.ZENTCoinTyp) && totals[txOut.TokenType] > btcutil.MaxHao {
 			str := fmt.Sprintf("total value of all transaction "+
 				"outputs is %v which is higher than max "+
 				"allowed value of %v", totals[txOut.TokenType],
@@ -527,7 +527,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			if txo.IsSeparator() {
 				break
 			}
-			if txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.BTCCoinTyp {
+			if txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.ZENTCoinTyp {
 				return fmt.Errorf("Coinbase output tokentype %d is not correct.", txo.TokenType), false
 			}
 			if _, ok := awd[txo.TokenType]; !ok {
@@ -1086,7 +1086,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 				"value of %v", btcutil.Amount(originTxHao))
 			return ruleError(ErrBadTxOutValue, str)
 		}
-		if (utxo.TokenType == common.FeeCoinTyp || utxo.TokenType == common.BTCCoinTyp) && originTxHao > btcutil.MaxHao {
+		if (utxo.TokenType == common.FeeCoinTyp || utxo.TokenType == common.ZENTCoinTyp) && originTxHao > btcutil.MaxHao {
 			str := fmt.Sprintf("transaction output value of %v is "+
 				"higher than max allowed value of %v",
 				btcutil.Amount(originTxHao),
@@ -1100,7 +1100,7 @@ func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.Vie
 		lastHaoIn := totalIns[utxo.TokenType]
 		totalIns[utxo.TokenType] += originTxHao
 		if totalIns[utxo.TokenType] < lastHaoIn ||
-			(utxo.TokenType == common.BTCCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) ||
+			(utxo.TokenType == common.ZENTCoinTyp && totalIns[utxo.TokenType] > btcutil.MaxHao) ||
 			(utxo.TokenType == common.FeeCoinTyp && totalIns[common.FeeCoinTyp] > btcutil.MaxHao) {
 			str := fmt.Sprintf("total value of all transaction "+
 				"inputs is %v which is higher than max "+
@@ -1192,7 +1192,7 @@ func CheckAdditionalTransactionInputs(tx *btcutil.Tx, txHeight int32, views *vie
 					"value of %v", btcutil.Amount(originTxHao))
 				return ruleError(ErrBadTxOutValue, str)
 			}
-			if (utxo.TokenType == common.FeeCoinTyp || utxo.TokenType == common.BTCCoinTyp) && originTxHao > btcutil.MaxHao {
+			if (utxo.TokenType == common.FeeCoinTyp || utxo.TokenType == common.ZENTCoinTyp) && originTxHao > btcutil.MaxHao {
 				str := fmt.Sprintf("transaction output value of %v is "+
 					"higher than max allowed value of %v",
 					btcutil.Amount(originTxHao),
@@ -1598,7 +1598,7 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 	}
 
 	// Coinbase transactions have no inputs.
-	// allow two kinds tx fees: omega (common.BTCCoinTyp) and ANEX (16)
+	// allow two kinds tx fees: omega (common.ZENTCoinTyp) and ANEX (16)
 	utxoView := views.Utxo
 
 	txHash := tx.Hash()
@@ -1774,11 +1774,11 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 
 	/*
 		btcInHao := int64(0)
-		if _, ok := totalIns[common.BTCCoinTyp]; ok {
-			btcInHao += totalIns[common.BTCCoinTyp]
+		if _, ok := totalIns[common.ZENTCoinTyp]; ok {
+			btcInHao += totalIns[common.ZENTCoinTyp]
 		}
-		if _, ok := totalHaoOut[common.BTCCoinTyp]; ok {
-			btcInHao -= totalHaoOut[common.BTCCoinTyp]
+		if _, ok := totalHaoOut[common.ZENTCoinTyp]; ok {
+			btcInHao -= totalHaoOut[common.ZENTCoinTyp]
 		}
 	*/
 
@@ -1887,8 +1887,8 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 
 			dc := b.ChainParams.ChainID
 			if txo.PkScript[21] == ovm.OP_PAYMINER {
-				if txo.TokenType != common.BTCCoinTyp && (txo.TokenType != 0 || b.ChainParams.ChainID != chainmap.ROOT) {
-					return fmt.Errorf("cross chain tx fee must be paid in %x\n", common.BTCCoinTyp)
+				if txo.TokenType != common.ZENTCoinTyp && (txo.TokenType != 0 || b.ChainParams.ChainID != chainmap.ROOT) {
+					return fmt.Errorf("cross chain tx fee must be paid in %x\n", common.ZENTCoinTyp)
 				}
 				dc = common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
 				if dc == 0 {
@@ -2481,7 +2481,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			if txOut.IsSeparator() {
 				break
 			}
-			if txOut.TokenType != common.FeeCoinTyp && txOut.TokenType != common.BTCCoinTyp {
+			if txOut.TokenType != common.FeeCoinTyp && txOut.TokenType != common.ZENTCoinTyp {
 				str := fmt.Sprintf("coinbase transaction for block %s awards $d type token", block.Hash().String(),
 					txOut.TokenType)
 				return ruleError(ErrBadCoinbaseValue, str)

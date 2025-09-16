@@ -28,8 +28,8 @@ const (
 	// binaryFreeListMaxItems is the number of buffers to keep in the free
 	// list to use for binary serialization and deserialization.
 	BinaryFreeListMaxItems = 1024
-	FeeCoinTyp             = 0             // type of coin for tx fee
-	BTCCoinTyp             = 0x10000000000 // should be 0x40020000000000, for testing purpose use nxus coin
+	FeeCoinTyp             = 0 // type of coin for tx fee
+	ZENTCoinTyp            = 0x10000000000
 	NewChainPool           = 100
 	NewChainConsensus      = 75
 	PolyGonType            = 0x3
@@ -57,7 +57,8 @@ const (
 	INCOMINGPOOL string = "IncomingPool" // bucket for assets pending incoming transfer
 	ROLLBACKPOOL string = "ROLLBACKPOOL" // key in INCOMINGPOOL bucket for the current SVP chain height
 
-	XCAssets string = "XCAssets" // bucket for cross chain assets
+	XCAssets   string = "XCAssets" // bucket for cross chain assets
+	BTCCHAINID        = 0x400003   // BTC L2 chain id = 3
 )
 
 // MaxMessagePayload is the maximum bytes a message can be regardless of other
