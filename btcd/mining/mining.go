@@ -1431,8 +1431,8 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 
 	if g.chainParams.ChainID != chainmap.ROOT {
 		// get parent chain, find out what parent has in chainmap and we don't, add it to instructions
-		parent := chainmap.AllChains[chaincfg.DefaultParentChainID]
-		me := chainmap.AllChains[chaincfg.DefaultChainID]
+		parent := chainmap.AllChains[g.chainParams.ParentChainId]
+		me := chainmap.AllChains[g.chainParams.ChainID]
 
 		if parent != nil {
 			msgBlock.Instructions = make([]*wire.Instruction, 0)

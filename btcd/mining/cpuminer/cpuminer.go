@@ -537,7 +537,7 @@ out:
 		powMode := !m.cfg.Generate
 		var sigaddr *btcec.PrivateKey
 
-		if m.cfg.Generate && in && len(m.cfg.SignAddress) != 0 && len(committee) > wire.CommitteeSize/2 {
+		if m.cfg.Generate && in && len(m.cfg.SignAddress) != 0 && len(committee) == wire.CommitteeSize {
 			for j, pt := range m.cfg.SignAddress {
 				copy(adr[:], pt.ScriptAddress())
 				if _, ok := committee[adr]; ok {

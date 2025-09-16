@@ -7,7 +7,6 @@ package blockchain
 
 import (
 	"btcd/blockchain/chainutil"
-	"btcd/chaincfg"
 	"btcd/database"
 	"btcd/wire"
 	"btcd/wire/common"
@@ -31,11 +30,17 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 	minerFees := make(map[uint32]int64)
 
 	for _, txo := range tx.TxOut {
-		if txo.IsSeparator() || txo.PkScript[21] == ovm.OP_PAYMINER || (!txo.IsCrossChain() && !xt) {
+		if txo.IsSeparator() {
 			continue
 		}
 		if txo.IsContractCall() {
-			return fmt.Errorf("cross chain tx with contract call")
+			if xt {
+				return fmt.Errorf("cross chain tx with contract call")
+			}
+			continue
+		}
+		if (!txo.IsCrossChain() && !xt) || txo.PkScript[21] == ovm.OP_PAYMINER {
+			continue
 		}
 
 		origin := uint32(txo.TokenType >> 40)
@@ -72,7 +77,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 				}
 			}
 
-			if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(chaincfg.DefaultChainID, src, dest) {
+			if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.MainChainID, src, dest) {
 				return fmt.Errorf("Invalid cross chain destination")
 			}
 
@@ -84,7 +89,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		if dest == 0 {
 			dest = b.ChainParams.ChainID
 		}
-		pks, fee := chainmap.AllChains[b.ChainParams.ChainID].CtxFees(chainmap.AllChains[b.ChainParams.ChainID].ChainMap[chaincfg.DefaultChainID], dest)
+		pks, fee := chainmap.AllChains[b.ChainParams.ChainID].CtxFees(chainmap.AllChains[b.ChainParams.ChainID].ChainMap[b.ChainParams.MainChainID], dest)
 		for i, p := range pks {
 			d := common.LittleEndian.Uint32(p[21:]) >> 8
 			if f, ok := minerFees[d]; ok {
@@ -96,7 +101,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 	}
 
 	for _, txo := range tx.TxOut {
-		if txo.IsSeparator() || txo.PkScript[21] != ovm.OP_PAYMINER {
+		if txo.IsSeparator() || txo.IsContractCall() || txo.PkScript[21] != ovm.OP_PAYMINER {
 			continue
 		}
 		dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
@@ -376,7 +381,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 
 	if block.MsgBlock().Header.Nonce > 0 {
 		// A POW block should not cause rotation passing current MR tip
-		if b.BestChain.Height()+wire.POWRotate > b.Miners.Tip().Height() {
+		if b.stateSnapshot.LastRotation+wire.POWRotate > uint32(b.Miners.Tip().Height()) {
 			return false, fmt.Errorf("POW rotation overflow"), -1
 		}
 	}

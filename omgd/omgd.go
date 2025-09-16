@@ -74,7 +74,7 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 		}
 	}
 
-	cid := uint32(chaincfg.DefaultChainID)
+	cid := activeNetParams.ChainID // uint32(chaincfg.DefaultChainID)
 	if globalParams != nil {
 		cid = globalParams.ChainID
 	}
@@ -607,7 +607,7 @@ func main() {
 
 	protocols = make([]*Protocol, 0)
 
-	fmt.Printf("DefaultParentChainID = %d\n", chaincfg.DefaultParentChainID)
+	fmt.Printf("DefaultParentChainID = %d\n", activeNetParams.ParentChainId)
 
 	db, err := loadBlockDB(tcfg)
 	if err != nil {
@@ -623,7 +623,7 @@ func main() {
 		}
 	*/
 
-	fmt.Printf("DefaultParentChainID = %d\n", chaincfg.DefaultParentChainID)
+	fmt.Printf("DefaultParentChainID = %d\n", activeNetParams.ParentChainId)
 
 	// main chain
 	fmt.Printf("loading main options, magic = %x\n", tcfg.NetMagic)
@@ -660,7 +660,7 @@ func main() {
 	p.activeNetParams.MainChainID = p.activeNetParams.ChainID
 	protocols = append(protocols, p)
 
-	if _, ok := chainmap.AllChains[chaincfg.DefaultChainID].ChainMap[chaincfg.DefaultParentChainID]; !ok && chaincfg.DefaultChainID != chainmap.ROOT {
+	if _, ok := chainmap.AllChains[p.activeNetParams.MainChainID].ChainMap[p.activeNetParams.ParentChainId]; !ok && p.activeNetParams.MainChainID != chainmap.ROOT {
 		// create a svp server for parent
 		fmt.Printf("loading parent options")
 		pcfg, _, err := loadConfig("Parent Options", 0) // chain main options
@@ -669,16 +669,16 @@ func main() {
 		}
 		c := chainmap.ChainDescriptor{}
 		json.Unmarshal([]byte(pcfg.AddChain), &c)
-		chainmap.AllChains[chaincfg.DefaultChainID].AddChain(&c)
+		chainmap.AllChains[p.activeNetParams.MainChainID].AddChain(&c)
 		// terminate to cause reboot with new map
 		shutdownRequestChannel <- struct{}{}
 	}
 
-	for _, c := range chainmap.AllChains[chaincfg.DefaultChainID].ChainMap {
+	for _, c := range chainmap.AllChains[Server.chainParams.MainChainID].ChainMap {
 		if c.ChainID == Server.chainParams.ChainID {
 			continue
 		}
-		if c.ChainID != chaincfg.DefaultParentChainID && c.Parent != Server.chainParams.ChainID {
+		if c.ChainID != Server.chainParams.ParentChainId && c.Parent != Server.chainParams.ChainID {
 			continue
 		}
 		time.Sleep(1 * time.Second)

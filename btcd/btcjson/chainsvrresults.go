@@ -9,6 +9,7 @@ import (
 	"btcd/wire"
 	"encoding/hex"
 	"encoding/json"
+	"strconv"
 )
 
 // GetBlockHeaderVerboseResult models the data from the getblockheader command when
@@ -337,14 +338,22 @@ func (self *XchainDataResult) Convert(p *wire.XchainData) {
 	if p.Txs != nil {
 		self.Txs = make([]*MsgXrossL2, len(p.Txs))
 		for i, t := range p.Txs {
-			_, v := t.Txo.Value.Value()
+			h, v := t.Txo.Value.Value()
 
 			wad := hex.EncodeToString(t.Txo.PkScript)
 
 			self.Txs[i] = &MsgXrossL2{
-				Utxo:     t.Utxo.String(),
-				Value:    v,
-				PkScript: wad,
+				Utxo:      t.Utxo.String(),
+				Value:     strconv.FormatInt(v, 10),
+				PkScript:  wad,
+				TokenType: int64(t.Txo.TokenType),
+				Rights:    "",
+			}
+			if t.Txo.TokenType&1 != 0 {
+				self.Txs[i].Value = h.String()
+			}
+			if t.Txo.TokenType&2 != 0 {
+				self.Txs[i].Rights = t.Txo.Rights.String()
 			}
 		}
 	}

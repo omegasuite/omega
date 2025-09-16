@@ -1578,7 +1578,7 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 	directFee := int64(0)
 
 	for _, txOut := range tx.MsgTx().TxOut {
-		if txOut.IsSeparator() || txOut.TokenType&3 != 0 || txOut.Value == nil {
+		if txOut.IsSeparator() || txOut.TokenType&3 != 0 || txOut.Value == nil || txOut.IsContractCall() {
 			continue
 		}
 
@@ -1698,7 +1698,7 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 				}
 				crosschainfees[s] = t - f
 			}
-		} else if txOut.PkScript[21] == ovm.OP_PAYMINER {
+		} else if !txOut.IsContractCall() && len(txOut.PkScript) > 21 && txOut.PkScript[21] == ovm.OP_PAYMINER {
 			dest := common.LittleEndian.Uint32(txOut.PkScript[21:]) >> 8
 			if dest == 0 {
 				dest = chainParams.ChainID
@@ -1836,10 +1836,10 @@ func (b *BlockChain) normalizeTxo(txo *wire.TxOut) {
 	if txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
 		copy(txo.PkScript[21:], txo.PkScript[25:])
 		txo.PkScript = txo.PkScript[:len(txo.PkScript)-4]
-	} else if txo.PkScript[21] == ovm.OP_PAYMINER && dc == chaincfg.DefaultChainID {
+	} else if txo.PkScript[21] == ovm.OP_PAYMINER && dc == b.ChainParams.MainChainID {
 		txo.PkScript[22], txo.PkScript[23], txo.PkScript[24] = 0, 0, 0
 	}
-	if (txo.TokenType>>40) == chaincfg.DefaultChainID && dc == chaincfg.DefaultChainID {
+	if uint32(txo.TokenType>>40) == b.ChainParams.MainChainID && dc == b.ChainParams.MainChainID {
 		txo.TokenType &= 0xFFFFFFFFFF
 	}
 }
@@ -1852,7 +1852,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 		iscrosschain := tx.IsCrossChain()
 		payminer := false
 		for _, txo := range tx.TxOut {
-			if txo.IsSeparator() {
+			if txo.IsSeparator() || txo.IsContractCall() {
 				continue
 			}
 			iscrosschain = iscrosschain || txo.IsCrossChain()
@@ -1868,17 +1868,16 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 		}
 
 		src := uint32(0)
-		if tx.IsCrossChain() {
+		xc := tx.IsCrossChain()
+		if xc {
 			src = tx.TxIn[0].PreviousOutPoint.Index ^ wire.CrossChainFalg
 		}
 
 		paid := make(map[uint32]int64)
 		need := make(map[uint32]int64)
 
-		xc := tx.IsCrossChain()
-
 		for _, txo := range tx.TxOut {
-			if txo.IsSeparator() {
+			if txo.IsSeparator() || txo.IsContractCall() {
 				continue
 			}
 			if !xc && txo.PkScript[21] != ovm.OP_PAYCROSSCHAIN && txo.PkScript[21] != ovm.OP_PAYMINER {

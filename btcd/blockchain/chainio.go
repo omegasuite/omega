@@ -7,7 +7,6 @@ package blockchain
 
 import (
 	"btcd/blockchain/chainutil"
-	"btcd/chaincfg"
 	"btcd/wire/common"
 	"bytes"
 	"encoding/binary"
@@ -2131,7 +2130,7 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 					continue
 				}
 
-				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, xchain.ChainID, dest) {
+				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, ichain.ChainID, dest) {
 					// if it will not pass through the main chain, ignore it, otherwise add the tx to main chain
 					continue
 				}
@@ -2150,7 +2149,7 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 				}
 
 				st := uint32(t.Txo.TokenType >> 40)
-				if dest == chaincfg.DefaultChainID {
+				if dest == b.ChainParams.MainChainID {
 					b.normalizeTxo(&t.Txo)
 				}
 
@@ -2369,7 +2368,7 @@ func (b *BlockChain) dbRestoreCrossChain(dbTx database.Tx, block *btcutil.Block)
 				svp = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
 			}
 			for _, txo := range tx.TxOut {
-				if txo.IsSeparator() || (svp == 0 && txo.DestChain() == 0) {
+				if txo.IsSeparator() || txo.IsContractCall() || (svp == 0 && txo.DestChain() == 0) {
 					continue
 				}
 				if !b.validCrossChainScript(txo.PkScript) {

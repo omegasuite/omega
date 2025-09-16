@@ -305,7 +305,7 @@ var MainNetParams = Params{
 			Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
 			Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
 		},
-		ViolationReportDeadline: 100,
+		ViolationReportDeadline: wire.DESIRABLE_MINER_CANDIDATES + 100,
 		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "9789",
 	},
@@ -487,7 +487,7 @@ var TestNet3Params = Params{
 			Filing:  [4]byte{0xb2, 0x18, 0x16, 0x5a},
 			Claim:   [4]byte{0x44, 0x90, 0x02, 0xf8},
 		},
-		ViolationReportDeadline: 10,
+		ViolationReportDeadline: wire.DESIRABLE_MINER_CANDIDATES + 10,
 		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "7789",
 	},

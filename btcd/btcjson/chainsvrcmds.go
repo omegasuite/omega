@@ -278,10 +278,12 @@ type GetAddedNodeInfoCmd struct {
 }
 
 type MsgXrossL2 struct {
-	Utxo     string
-	Value    int64
-	PkScript string
-	Redeem   string
+	Utxo      string
+	TokenType int64
+	Value     string
+	Rights    string
+	PkScript  string
+	Redeem    string
 }
 
 type BTCL2Data struct {
