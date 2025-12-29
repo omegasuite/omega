@@ -86,7 +86,7 @@ type Config struct {
 	// mining.  This is useful because there is no point in mining when not
 	// connected to any peers since there would no be anyone to send any
 	// found blocks to.
-	ConnectedCount func() int32
+	ConnectedCount func(byte2 byte) int32
 
 	// IsCurrent defines the function to use to obtain whether or not the
 	// block chain is current.  This is used by the automatic persistent
@@ -95,9 +95,6 @@ type Config struct {
 	// not current since any solved blocks would be on a side chain and and
 	// up orphaned anyways.
 	IsCurrent func() bool
-
-	// call back to add priv key to .conf
-	AppendPrivKey func(*btcec.PrivateKey) bool
 
 	Generate bool
 }
@@ -121,10 +118,8 @@ type CPUMiner struct {
 	//	queryHashesPerSec chan float64
 	//	updateHashes      chan uint64
 	//	speedMonitorQuit  chan struct{}
-	quit         chan struct{}
-	connch       chan int32
-	miningkeys   chan *btcec.PrivateKey
-	addkeyresult chan bool
+	quit   chan struct{}
+	connch chan int32
 
 	// the block being mined by committee
 	minedBlock *btcutil.Block
@@ -392,9 +387,50 @@ func (m *CPUMiner) CurrentBlock(h *chainhash.Hash) *btcutil.Block {
 	return consensus.ServeBlock(h)
 }
 
-func (m *CPUMiner) AddMiningKey(miningAddr *btcec.PrivateKey) bool {
-	m.miningkeys <- miningAddr
-	return <-m.addkeyresult
+func (m *CPUMiner) AddMiningKey(miningAddr *btcec.PrivateKey) btcutil.Address {
+	pkaddr, err := btcutil.NewAddressPubKey(miningAddr.PubKey().SerializeCompressed(), m.cfg.ChainParams)
+	if err == nil {
+		addr := pkaddr.AddressPubKeyHash()
+		s := addr.String()
+
+		for _, t := range m.cfg.SignAddress {
+			if s == t.String() {
+				return nil
+			}
+		}
+
+		m.cfg.PrivKeys = append(m.cfg.PrivKeys, miningAddr)
+		m.cfg.SignAddress = append(m.cfg.SignAddress, addr)
+		return addr
+	}
+	return nil
+}
+
+func (m *CPUMiner) DropMiningKey(miningAddr *btcec.PrivateKey) btcutil.Address {
+	pkaddr, err := btcutil.NewAddressPubKey(miningAddr.PubKey().SerializeCompressed(), m.cfg.ChainParams)
+	if err == nil {
+		addr := pkaddr.AddressPubKeyHash()
+		s := addr.String()
+		match := false
+		for i, t := range m.cfg.SignAddress {
+			if s == t.String() {
+				match = true
+				m.cfg.SignAddress = append(m.cfg.SignAddress[:i], m.cfg.SignAddress[i+1:]...)
+			}
+		}
+		if !match {
+			return nil
+		}
+
+		for i, t := range m.cfg.PrivKeys {
+			if t.Equal(miningAddr) {
+				m.cfg.PrivKeys = append(m.cfg.PrivKeys[:i], m.cfg.PrivKeys[i+1:]...)
+				break
+			}
+		}
+		return addr
+	}
+	return nil
 }
 
 // generateBlocks is a worker that is controlled by the miningWorkerController.
@@ -422,6 +458,7 @@ func (m *CPUMiner) generateBlocks() {
 
 	nopow := false
 	leader := int32(0)
+	powwait := 20 * time.Second
 
 out:
 	for ; true; m.g.Chain.IsPacking = false {
@@ -448,44 +485,17 @@ out:
 
 		case <-consensus.POWStopper:
 
-		case k := <-m.miningkeys:
-			pkaddr, err := btcutil.NewAddressPubKey(k.PubKey().SerializeCompressed(), m.cfg.ChainParams)
-			if err == nil {
-				addr := pkaddr.AddressPubKeyHash()
-				mtch := false
-				s := addr.String()
-
-				for _, t := range m.cfg.SignAddress {
-					if s == t.String() {
-						mtch = true
-					}
-				}
-				if mtch {
-					m.addkeyresult <- true
-				} else {
-					if m.cfg.AppendPrivKey(k) {
-						m.cfg.PrivKeys = append(m.cfg.PrivKeys, k)
-						m.cfg.SignAddress = append(m.cfg.SignAddress, addr)
-						m.addkeyresult <- true
-					} else {
-						m.addkeyresult <- false
-					}
-				}
-			} else {
-				m.addkeyresult <- false
-			}
-
 		default:
 			// Non-blocking select to fall through
 		}
 
-		//		log.Infof("generate Block go!")
+		log.Infof("generate Tx Block go!")
 
 		// Wait until there is a connection to at least one other peer
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
-		if ccnt := m.cfg.ConnectedCount(); ccnt == 0 {
-			//			log.Infof("Sleep 5 sec because there is no connected peer.")
+		if ccnt := m.cfg.ConnectedCount(0); ccnt == 0 {
+			//			log.Infof("Sleep 5 sec because there is not enough inbound connected peers.")
 			m.Stale = true
 			time.Sleep(time.Second * 5)
 			m.generating = false
@@ -546,6 +556,9 @@ out:
 					powMode = false
 					break
 				}
+			}
+			if payToAddr == nil && !m.cfg.DisablePOWMining {
+				powMode = true
 			}
 		} else {
 			powMode = true
@@ -612,7 +625,7 @@ out:
 				}
 			}
 		} else {
-			if bs.LastRotation+wire.POWRotate > uint32(m.g.Chain.Miners.Tip().Height()) {
+			if bs.LastRotation+wire.POWRotate+20 > uint32(m.g.Chain.Miners.BestSnapshot().Height) {
 				time.Sleep(5 * time.Second)
 				continue
 			}
@@ -645,6 +658,7 @@ out:
 		}
 
 		if !powMode {
+			powwait = 20 * time.Second
 			rank := int32(0)
 			if wire.CommitteeSize == 1 {
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
@@ -769,8 +783,20 @@ out:
 			continue
 		}
 
-		time.Sleep(time.Second * 20)
-		log.Info("Try to solve block after 20 second w/o new block")
+		select {
+		case <-time.After(powwait):
+
+		case <-m.connch:
+			powwait = 20 * time.Second
+			continue
+		case <-consensus.POWStopper:
+			powwait = 20 * time.Second
+			continue
+		case <-m.quit:
+			break out
+		}
+
+		log.Info("Try to solve block after %d second w/o new block", powwait)
 
 		// Attempt to solve the block.  The function will exit early
 		// with false when conditions that trigger a stale block, so
@@ -782,15 +808,18 @@ out:
 			select {
 			case <-m.connch:
 				lastblkrcv = time.Now().Unix()
+				powwait = 20 * time.Second
 				continue
 
 			case <-consensus.POWStopper:
+				powwait = 20 * time.Second
 				continue
 
 			case <-m.quit:
 				break out
 
 			default:
+				powwait *= 2
 				wb := *template.Block.(*wire.MsgBlock)
 				wb.Header.Nonce = b
 				block := btcutil.NewBlock(&wb)
@@ -801,6 +830,7 @@ out:
 					m.g.Chain.Miners.BestSnapshot().Height)
 			}
 		} else {
+			powwait = 20 * time.Second
 			log.Info("No New block produced")
 		}
 	}
@@ -1078,9 +1108,7 @@ func New(cfg *Config) *CPUMiner {
 		updateNumWorkers: make(chan struct{}),
 		//		queryHashesPerSec: make(chan float64),
 		//		updateHashes:      make(chan uint64),
-		connch:       make(chan int32, 1000),
-		miningkeys:   make(chan *btcec.PrivateKey),
-		addkeyresult: make(chan bool),
+		connch: make(chan int32, 1000),
 	}
 
 	consensus.POWStopper = make(chan struct{}, 3*wire.MINER_RORATE_FREQ)

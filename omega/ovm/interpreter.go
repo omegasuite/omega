@@ -381,7 +381,7 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 	}
 
 	//	debugging = true
-	var printInst = in.evm.chainConfig.Net == uint32(common.TestNet) && strings.Contains(in.evm.chainConfig.ExternalIPs[0], ":8383") // debugging
+	var printInst = in.evm.chainConfig.Net == uint32(common.TestNet) && (len(in.evm.chainConfig.ExternalIPs) == 0 || strings.Contains(in.evm.chainConfig.ExternalIPs[0], ":8383")) // debugging
 
 	// The Interpreter main run loop (contextual). This loop runs until either an
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during

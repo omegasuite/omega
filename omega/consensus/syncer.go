@@ -187,9 +187,9 @@ func (self *Syncer) repeater() {
 		}
 	}
 
+	privKey := miner.server.GetPrivKey(self.Me)
 	if self.sigGiven != -1 {
 		// resend signatures
-		privKey := miner.server.GetPrivKey(self.Me)
 		if privKey == nil {
 			return
 		}
@@ -241,7 +241,10 @@ func (self *Syncer) repeater() {
 		} else {
 			log.Infof("Repeater: cast my candidacy %d", self.agreed)
 			msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
-			msg.Sign(miner.server.GetPrivKey(self.Me))
+			if privKey == nil {
+				return
+			}
+			msg.Sign(privKey)
 
 			miner.Broadcast(msg, nil)
 			//			self.CommitteeCastMG(msg)
@@ -255,7 +258,10 @@ func (self *Syncer) repeater() {
 
 		d.Reply = "cnst"
 		d.Better = fmp
-		d.Sign(miner.server.GetPrivKey(self.Me))
+		if privKey == nil {
+			return
+		}
+		d.Sign(privKey)
 		log.Infof("Repeater: Consent candicacy by %x", from)
 		miner.Broadcast(&d, nil)
 		//		self.CommitteeMsgMG(from, &d)
@@ -308,7 +314,10 @@ func (self *Syncer) repeater() {
 		lmg := self.forest[self.Names[int32(m)]].know
 
 		if len(lmg.K) < 2 || lmg.K[len(lmg.K)-1] != self.Myself {
-			lmg.AddK(self.Myself, miner.server.GetPrivKey(self.Me))
+			if privKey == nil {
+				return
+			}
+			lmg.AddK(self.Myself, privKey)
 			lmg.From = self.Me
 		}
 
@@ -661,7 +670,7 @@ loop:
 			if tkcnt == 0 {
 				break loop
 			}
-			tkcnt--
+			// tkcnt--
 			//			if !alive {
 			self.repeater()
 			//			}
@@ -853,6 +862,7 @@ func (self *Syncer) Consensus(msg *wire.MsgConsensus) bool {
 
 	privKey := miner.server.GetPrivKey(self.Me)
 	if privKey == nil {
+		log.Infof("Privkey does not exist for me %x @ 1", self.Me)
 		return false
 	}
 
@@ -1006,7 +1016,12 @@ func (self *Syncer) makeRelease(better int32) *wire.MsgRelease {
 		Height: self.Height,
 		From:   self.Me,
 	}
-	d.Sign(miner.server.GetPrivKey(self.Me))
+	pv := miner.server.GetPrivKey(self.Me)
+	if pv != nil {
+		d.Sign(pv)
+	} else {
+		log.Infof("Privkey does not exist for me %x @ 2", self.Me)
+	}
 	return d
 }
 
@@ -1059,9 +1074,13 @@ func (self *Syncer) yield(better int32) bool {
 			d.Reply = "cnst"
 			d.Better = better
 			d.M = self.forest[self.Names[better]].hash
-			d.Sign(miner.server.GetPrivKey(self.Me))
-
-			self.CommitteeMsgMG(self.Names[better], &d)
+			pv := miner.server.GetPrivKey(self.Me)
+			if pv != nil {
+				d.Sign(pv)
+				self.CommitteeMsgMG(self.Names[better], &d)
+			} else {
+				log.Infof("Privkey does not exist for me %x @ 3", self.Me)
+			}
 			self.agreed = better
 			self.asked[better] = nil
 		}
@@ -1109,11 +1128,14 @@ func (self *Syncer) candidateResp(msg *wire.MsgCandidateResp) {
 				// peer is misbehaving, because we should agree on who is better
 				//				self.dupKnowledge(self.Members[msg.From])
 				msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
-				msg.Sign(miner.server.GetPrivKey(self.Me))
-
-				//					log.Infof("candidateResp: reaffirm candidacy")
-
-				self.CommitteeMsgMG(msg.F, msg) // ask again
+				pv := miner.server.GetPrivKey(self.Me)
+				if pv != nil {
+					msg.Sign(pv)
+					//					log.Infof("candidateResp: reaffirm candidacy")
+					self.CommitteeMsgMG(msg.F, msg) // ask again
+				} else {
+					log.Infof("Privkey does not exist for me %x @ 4", self.Me)
+				}
 			} else if self.knowledges.Insufficient() {
 				// if we don't have enough left to form a consensus for us
 				self.CommitteeMsgMG(msg.From, self.makeRelease(self.agreed))
@@ -1208,11 +1230,13 @@ func (self *Syncer) candidacy() bool {
 
 	msg := wire.NewMsgCandidate(self.Height, self.Me, self.forest[self.Me].hash)
 
-	msg.Sign(miner.server.GetPrivKey(self.Me))
-
-	//	log.Infof("candidacy: Announce candicacy")
-
-	self.CommitteeCastMG(msg)
+	pv := miner.server.GetPrivKey(self.Me)
+	if pv != nil {
+		msg.Sign(pv)
+		self.CommitteeCastMG(msg)
+	} else {
+		log.Infof("Privkey does not exist for me %x @ 5", self.Me)
+	}
 
 	return true
 }
@@ -1232,9 +1256,14 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 	if self.sigGiven != -1 && self.sigGiven != fmp {
 		d.Reply = "rjct"
 		d.Better = -1
-		d.Sign(miner.server.GetPrivKey(self.Me))
-		self.CommitteeMsgMG(self.Names[fmp], &d)
-		self.asked[fmp] = nil
+		pv := miner.server.GetPrivKey(self.Me)
+		if pv != nil {
+			d.Sign(pv)
+			self.CommitteeMsgMG(self.Names[fmp], &d)
+			self.asked[fmp] = nil
+		} else {
+			log.Infof("Privkey does not exist for me %x @ 6", self.Me)
+		}
 		return
 	}
 	if self.sigGiven != -1 {
@@ -1263,9 +1292,13 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 		d.Reply = "cnst"
 		d.Better = fmp
 		self.agreed = fmp
-		d.Sign(miner.server.GetPrivKey(self.Me))
-
-		self.CommitteeMsgMG(self.Names[fmp], &d)
+		pv := miner.server.GetPrivKey(self.Me)
+		if pv != nil {
+			d.Sign(pv)
+			self.CommitteeMsgMG(self.Names[fmp], &d)
+		} else {
+			log.Infof("Privkey does not exist for me %x @ 7", self.Me)
+		}
 		//		self.repeats = 0
 		return
 	}
@@ -1279,9 +1312,13 @@ func (self *Syncer) Candidate(msg *wire.MsgCandidate) {
 	//		}
 	d.Better = self.agreed
 	d.M = self.forest[self.Names[self.agreed]].hash
-	d.Sign(miner.server.GetPrivKey(self.Me))
-
-	self.CommitteeMsgMG(self.Names[fmp], &d)
+	pv := miner.server.GetPrivKey(self.Me)
+	if pv != nil {
+		d.Sign(pv)
+		self.CommitteeMsgMG(self.Names[fmp], &d)
+	} else {
+		log.Infof("Privkey does not exist for me %x @ 8", self.Me)
+	}
 }
 
 func CreateSyncer(h int32) *Syncer {

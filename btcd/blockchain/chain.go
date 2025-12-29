@@ -86,6 +86,12 @@ func newBestState(node *chainutil.BlockNode, blockSize, numTxns,
 	}
 }
 
+type ConfirmedMsg struct {
+	Blk *wire.MsgBlock
+	Tx  *wire.MsgTx
+	Err error
+}
+
 type TPSrv struct {
 	Reporter [20]byte
 	Height   uint32
@@ -108,16 +114,20 @@ type MinerChain interface {
 	Subscribe(callback NotificationCallback)
 	Tip() *wire.MinerBlock
 	DisconnectTip()
-	CalcNextBlockVersion() (uint32, error)
+	CalcNextBlockVersion(newblk bool) (uint32, error)
 	IsDeploymentActive(uint32) (bool, error)
 	HaveBlock(hash *chainhash.Hash) (bool, error)
 	NextRequiredDifficulty(lastNode *chainutil.BlockNode, newBlockTime time.Time) (uint32, uint32, error)
-	NextBlockVersion(prevNode *chainutil.BlockNode) (uint32, error)
+	NextBlockVersion(prevNode *chainutil.BlockNode, newblk bool) (uint32, error)
 	NodetoHeader(node *chainutil.BlockNode) wire.MingingRightBlock
 	TphReport(rpts int, last *chainutil.BlockNode, me [20]byte) []uint32
 	DSReport(*wire.Violations)
 	FastReorganizeChain(attachNodes *list.List) error
 	TPSreportFromDB([20]byte, uint32) []TPSrv
+	AddMiningKey(string) btcutil.Address
+	DropMiningKey(string) btcutil.Address
+	AddCollateral(chainhash.Hash, uint32)
+	DropCollateral(chainhash.Hash, uint32)
 }
 
 // BlockChain provides functions for working with the bitcoin block chain.
@@ -237,6 +247,7 @@ func (b *BlockChain) InitCollateral() {
 	for i := 0; i < int(b.ChainParams.ViolationReportDeadline); i++ {
 		mb, _ := b.Miners.BlockByHeight(int32(rot) - int32(i))
 		if mb == nil || mb.MsgBlock().Utxos == nil {
+			b.collaterals = append([]wire.OutPoint{{}}, b.collaterals...)
 			continue
 		}
 		c := *mb.MsgBlock().Utxos
@@ -813,25 +824,26 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 
 	//if !b.IsSVP {
 	for i := 0; i < m; i++ {
-		n := int32(len(b.collaterals))
-		if n > 0 {
-			c := b.collaterals[0]
-			delete(b.LockedCollaterals, c)
-		}
+		//n := int32(len(b.collaterals))
+		//if n > 0 {
+		//	c := b.collaterals[0]
+		//	delete(b.LockedCollaterals, c)
+		//}
 
-		if n == b.ChainParams.ViolationReportDeadline {
+		if int32(len(b.collaterals)) == b.ChainParams.ViolationReportDeadline {
 			b.collaterals = b.collaterals[1:]
 		}
 
 		mb, _ := b.Miners.BlockByHeight(int32(rot) + int32(i) + 1)
 		if mb == nil || mb.MsgBlock().Utxos == nil {
-			// b.collaterals = append(b.collaterals, wire.OutPoint{})
+			b.collaterals = append(b.collaterals, wire.OutPoint{})
 			continue
 		}
 		c := *mb.MsgBlock().Utxos
 		b.collaterals = append(b.collaterals, c)
 	}
 	if m != 0 {
+		b.LockedCollaterals = make(map[wire.OutPoint]struct{})
 		for _, c := range b.collaterals {
 			b.LockedCollaterals[c] = struct{}{}
 		}
@@ -1028,25 +1040,28 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	n := int32(len(b.collaterals))
 	bot := int32(rot) - b.ChainParams.ViolationReportDeadline
 	for i := 0; i < m; i++ {
-		if n == 0 {
-			continue
-		}
-		c := b.collaterals[n-1]
-		delete(b.LockedCollaterals, c)
-		mb, _ := b.Miners.BlockByHeight(int32(rot) - int32(i))
-		if mb != nil && mb.MsgBlock().Utxos != nil && *mb.MsgBlock().Utxos == c {
+		//if n == 0 {
+		//	continue
+		//}
+		// c := b.collaterals[n-1]
+		// delete(b.LockedCollaterals, c)
+		//mb, _ := b.Miners.BlockByHeight(int32(rot) - int32(i))
+		//if mb != nil && mb.MsgBlock().Utxos != nil && *mb.MsgBlock().Utxos == c {
+		if n > 0 {
 			b.collaterals = b.collaterals[:n-1]
+			n--
 		}
-		mb, _ = b.Miners.BlockByHeight(bot)
+		mb, _ := b.Miners.BlockByHeight(bot)
 		bot--
 		if mb == nil || mb.MsgBlock().Utxos == nil {
-			// b.collaterals = append([]wire.OutPoint{wire.OutPoint{}}, b.collaterals...)
+			b.collaterals = append([]wire.OutPoint{wire.OutPoint{}}, b.collaterals...)
 			continue
 		}
-		c = *mb.MsgBlock().Utxos
+		c := *mb.MsgBlock().Utxos
 		b.collaterals = append([]wire.OutPoint{c}, b.collaterals...)
 	}
 	if m > 0 {
+		b.LockedCollaterals = make(map[wire.OutPoint]struct{})
 		for _, c := range b.collaterals {
 			b.LockedCollaterals[c] = struct{}{}
 		}
@@ -1120,11 +1135,16 @@ func (b *BlockChain) SignedBy(x *list.Element, miners []*[20]byte) bool {
 	}
 
 	var block *btcutil.Block
-	b.db.View(func(dbTx database.Tx) error {
+	if b.db.View(func(dbTx database.Tx) error {
 		var err error
 		block, err = dbFetchBlockByNode(dbTx, n)
 		return err
-	})
+	}) != nil {
+		return false
+	}
+	if block == nil {
+		return false
+	}
 
 	return b.signedBy(block, miners)
 }

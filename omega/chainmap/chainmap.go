@@ -53,8 +53,6 @@ var RootMeta = []*ChainDescriptor{
 	},
 }
 
-var useNet = common.MainNet
-
 type FOCMap struct {
 	ChainMap map[uint32]*ChainDescriptor
 	dmdb     database.DB
@@ -168,14 +166,13 @@ func (m *FOCMap) PassThru(tid, src, dest uint32) bool {
 	return p != q
 }
 
-func LoadChainMap(db database.DB, net common.OmegaNet, chainid uint32) {
+func LoadChainMap(db database.DB, testnet bool, chainid uint32) {
 	if AllChains == nil {
 		AllChains = make(map[uint32]*FOCMap)
 	}
 
 	m := FOCMap{}
 	m.dmdb = db
-	useNet = net
 	m.ChainMap = make(map[uint32]*ChainDescriptor)
 
 	AllChains[chainid] = &m
@@ -219,7 +216,7 @@ func LoadChainMap(db database.DB, net common.OmegaNet, chainid uint32) {
 		if _, ok := m.ChainMap[ROOT]; !ok || bad {
 			m.ChainMap = map[uint32]*ChainDescriptor{}
 			net := 0
-			if useNet == common.TestNet {
+			if testnet {
 				net = 1
 			}
 			m.ChainMap[ROOT] = RootMeta[net]

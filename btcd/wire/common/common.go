@@ -59,6 +59,9 @@ const (
 
 	XCAssets   string = "XCAssets" // bucket for cross chain assets
 	BTCCHAINID        = 0x400003   // BTC L2 chain id = 3
+
+	MiningKeys        string = "MiningKeys"        // key in INCOMINGPOOL bucket for the current SVP chain height
+	MiningCollaterals string = "MiningCollaterals" // key in INCOMINGPOOL bucket for the current SVP chain height
 )
 
 // MaxMessagePayload is the maximum bytes a message can be regardless of other

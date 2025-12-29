@@ -545,7 +545,8 @@ func (s *server) NewConsusBlock(m *btcutil.Block) {
 	if isMainchain, orphan, err, _, _ := s.chain.ProcessBlock(m, blockchain.BFNone); err == nil && !orphan && isMainchain {
 		consensusLog.Debugf("consensus reached! sigs = %d", len(m.MsgBlock().Transactions[0].SignatureScripts))
 	} else {
-		s.chain.SendNotification(blockchain.NTBlockRejected, m)
+		s.chain.SendNotification(blockchain.NTBlockRejected,
+			&blockchain.ConfirmedMsg{Blk: m.MsgBlock(), Tx: nil, Err: err})
 		if err != nil {
 			consensusLog.Infof("consensus failed to process ProcessBlock!!! %s", err.Error())
 		}
@@ -556,9 +557,11 @@ func (s *server) NewConsusBlock(m *btcutil.Block) {
 func (s *server) GetPrivKey(who [20]byte) *btcec.PrivateKey {
 	for i, k := range s.signAddress {
 		if bytes.Compare(who[:], k.ScriptAddress()) == 0 {
-			return protocols[0].cfg.privateKeys[i]
+			return s.chain.PrivKey[i]
+			//			return protocols[0].cfg.privateKeys[i]
 		}
 	}
+	btcdLog.Infof("GetPrivKey: no key for %x in %d address and %d privkeys", who, len(s.signAddress), len(s.chain.PrivKey))
 	return nil
 }
 

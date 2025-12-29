@@ -10,6 +10,7 @@ package minerchain
 
 import (
 	"btcd/database"
+	"btcutil"
 	"bytes"
 	"fmt"
 	"math/big"
@@ -208,15 +209,18 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 	// Return the previous block's difficulty requirements if this block
 	// is not at a difficulty retarget interval.
 	if (lastNode.Height+1)%b.blocksPerRetarget != 0 {
-		// For networks that support it, allow special reduction of the
-		// required difficulty once too much time has elapsed without
-		// mining a block.
 		if b.nextAdjustHeight < 0 || b.nextAdjustHeight != (lastNode.Height+1)-((lastNode.Height+1)%b.blocksPerRetarget)+b.blocksPerRetarget {
+			// this happend only in first two rounds of the blockchain
 			b.nextAdjustHeight = (lastNode.Height + 1) - ((lastNode.Height + 1) % b.blocksPerRetarget) + b.blocksPerRetarget
-			for i := 0; i < 2016; i++ {
+			for i := int32(0); i < b.blocksPerRetarget; i++ {
+				// for i := 0; i < 2016; i++ {
 				b.collaterals[i] = 0
 			}
 		}
+
+		// For networks that support it, allow special reduction of the
+		// required difficulty once too much time has elapsed without
+		// mining a block.
 		firstNode := lastNode.RelativeAncestor(b.blocksPerRetarget - 1)
 		if firstNode == nil {
 			return lastNode.Data.(*blockchainNodeData).block.Bits, coll, nil
@@ -260,7 +264,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 						fd := false
 						for _, tx := range blk.Transactions() {
 							if tx.Hash().IsEqual(&op.Hash) {
-								b.collaterals[j] = int(tx.MsgTx().TxOut[op.Index].Value.(*token.NumToken).Val / 1e8)
+								b.collaterals[j] = int(tx.MsgTx().TxOut[op.Index].Value.(*token.NumToken).Val / btcutil.HaoPerBitcoin)
 								fd = true
 								break
 							}
@@ -272,7 +276,7 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 						// Deserialize the transaction
 						var msgTx wire.MsgTx
 						err = msgTx.Deserialize(bytes.NewReader(txBytes))
-						b.collaterals[j] = int(msgTx.TxOut[op.Index].Value.(*token.NumToken).Val / 1e8)
+						b.collaterals[j] = int(msgTx.TxOut[op.Index].Value.(*token.NumToken).Val / btcutil.HaoPerBitcoin)
 					}
 				}
 			}

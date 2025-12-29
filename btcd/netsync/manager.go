@@ -2109,6 +2109,8 @@ out:
 				if !passiveMode {
 					sm.handleTxMsg(msg)
 					msg.reply <- struct{}{}
+				} else if msg.reply != nil {
+					msg.reply <- struct{}{}
 				}
 
 			case *sigMsg:
@@ -2137,17 +2139,23 @@ out:
 						msg.signatures,
 					}
 					sm.broadcast(msg.peer, &b, nil, false)
+				} else if msg.reply != nil {
+					msg.reply <- struct{}{}
 				}
 
 			case *blockMsg:
 				if !passiveMode {
 					sm.handleBlockMsg(msg)
 					msg.reply <- struct{}{}
+				} else if msg.reply != nil {
+					msg.reply <- struct{}{}
 				}
 
 			case *minerBlockMsg:
 				if !passiveMode {
 					sm.handleMinerBlockMsg(msg)
+					msg.reply <- struct{}{}
+				} else if msg.reply != nil {
 					msg.reply <- struct{}{}
 				}
 
@@ -2191,6 +2199,8 @@ out:
 							}
 						}
 					}
+				} else if msg.reply != nil {
+					msg.reply <- processBlockResponse{}
 				}
 
 			case processConsusMsg:

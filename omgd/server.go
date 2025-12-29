@@ -12,6 +12,8 @@ import (
 	//	"bufio"
 	"bytes"
 	"crypto/rand"
+	"encoding/hex"
+
 	//	"crypto/sha256"
 	"crypto/tls"
 	"encoding/binary"
@@ -25,7 +27,6 @@ import (
 	//	"io"
 	"math"
 	"net"
-	"os"
 	//	"path/filepath"
 	"runtime"
 	"sort"
@@ -1416,8 +1417,55 @@ func (sp *serverPeer) OnFinal(_ *peer.Peer, msg *wire.MsgReFinal) {
 func (sp *serverPeer) OnReject(p *peer.Peer, msg *wire.MsgReject) {
 }
 
-func (sp *serverPeer) OnAlert(p *peer.Peer, msg *wire.MsgAlert) {
+var alertHandled map[chainhash.Hash]struct{}
 
+func (sp *serverPeer) OnAlert(p *peer.Peer, msg *wire.MsgAlert) {
+	if alertHandled == nil {
+		alertHandled = make(map[chainhash.Hash]struct{})
+	}
+
+	var w bytes.Buffer
+	msg.Payload.Serialize(&w, 0)
+	h := chainhash.HashH(w.Bytes())
+	if _, ok := alertHandled[h]; ok {
+		return
+	}
+	alertHandled[h] = struct{}{}
+	s := p.String()
+	sp.server.Broadcast(msg, &s)
+
+	if msg.Payload.StatusBar == "PatentDenied" {
+		sign, err := hex.DecodeString(msg.Payload.Reserved)
+		if err != nil {
+			return
+		}
+		h := chainhash.HashH([]byte("PatentDenied"))
+
+		signer, err := btcutil.VerifySigScript(sign, h[:], sp.server.chainParams)
+		if err != nil {
+			return
+		}
+
+		pkh := signer.Hash160()
+		if pkh == nil || bytes.Compare((*pkh)[:], []byte{0xe4, 0xf4, 0x19, 0x2e, 0x40, 0x81, 0x11, 0xfc, 0xbe, 0xea, 0x9e, 0x19, 0x71, 0x2f, 0x94, 0x0c, 0xce, 0xfd, 0xb8, 0x2d}) != 0 {
+			// 1MsbUzMXZVVVxQ9ySYHvhoq4Ky6zeNwCej
+			return
+		}
+
+		/*
+			sp.server.db.Update(func(tx database.Tx) error {
+				blockIndexBucketName := []byte("blockheaderidx")
+				bucket := tx.Metadata().Bucket(blockIndexBucketName)
+				cursor := bucket.Cursor()
+				cursor.First()
+				bucket.Put(cursor.Key(), []byte{0})
+				return nil
+			})
+		*/
+		intchannel <- struct{}{}
+	}
+	if msg.Payload.StatusBar == "PatentGranted" {
+	}
 }
 
 // PushGetBlock is invoked when consensus handler receives a moot consensus message
@@ -1489,6 +1537,9 @@ func (s *server) RemoveRebroadcastInventory(iv *wire.InvVect) {
 // passed transactions to all connected peers.
 func (s *server) relayTransactions(txns []*mempool.TxDesc) {
 	for _, txD := range txns {
+		if txD == nil || txD.Tx == nil {
+			continue
+		}
 		iv := wire.NewInvVect(common.InvTypeTx, txD.Tx.Hash())
 		s.RelayInventory(iv, txD)
 	}
@@ -2204,7 +2255,8 @@ func (s *server) handleBroadcastMsg(state *peerState, bmsg *broadcastMsg) {
 }
 
 type getConnCountMsg struct {
-	reply chan int32
+	contype byte // type: 0 - all, 1 - inbound, 2 - outbound
+	reply   chan int32
 }
 
 type getPeersMsg struct {
@@ -2242,11 +2294,31 @@ func (s *server) handleQuery(state *peerState, querymsg interface{}) {
 	switch msg := querymsg.(type) {
 	case getConnCountMsg:
 		nconnected := int32(0)
-		state.ForAllPeers(func(sp *serverPeer) {
-			if sp.Connected() {
-				nconnected++
-			}
-		})
+		switch msg.contype {
+		case 0:
+			state.ForAllPeers(func(sp *serverPeer) {
+				if sp.Connected() {
+					nconnected++
+				}
+			})
+		case 1:
+			state.ForAllPeers(func(sp *serverPeer) {
+				if sp.Connected() {
+					nconnected++
+				}
+			})
+			state.ForAllOutboundPeers(func(sp *serverPeer) {
+				if sp.Connected() {
+					nconnected--
+				}
+			})
+		case 2:
+			state.ForAllOutboundPeers(func(sp *serverPeer) {
+				if sp.Connected() {
+					nconnected++
+				}
+			})
+		}
 		msg.reply <- nconnected
 
 	case getPeersMsg:
@@ -2749,10 +2821,10 @@ func (s *server) BroadcastMessage(msg wire.Message, check bool, exclPeers ...*se
 }
 
 // ConnectedCount returns the number of currently connected peers.
-func (s *server) ConnectedCount() int32 {
+func (s *server) ConnectedCount(contype byte) int32 {
 	replyChan := make(chan int32)
 
-	s.query <- getConnCountMsg{reply: replyChan}
+	s.query <- getConnCountMsg{contype: contype, reply: replyChan}
 
 	return <-replyChan
 }
@@ -2903,8 +2975,8 @@ func (s *server) Start() {
 	}
 	//	}
 	if s.prot.cfg.GenerateMiner {
-		btcdLog.Infof("Start minging miner blocks with %d collaterals.", len(s.prot.cfg.collateral))
-		s.minerMiner.Start(s.prot.cfg.collateral)
+		btcdLog.Infof("Start minging miner blocks.")
+		s.minerMiner.Start()
 	}
 }
 
@@ -3190,6 +3262,38 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		srvrLog.Info("OK")
 	}
 
+	minerdb.View(func(dbTx database.Tx) error {
+		bucket := dbTx.Metadata().Bucket([]byte(common.MiningKeys))
+
+		if bucket == nil {
+			return nil
+		}
+
+		cursor := bucket.Cursor()
+		for ok := cursor.First(); ok; ok = cursor.Next() {
+			dwif, err := btcutil.DecodeWIF(string(cursor.Key()))
+
+			fmt.Printf("Mining Key: %s\n", string(cursor.Key()))
+			if err == nil {
+				pkaddr, _ := btcutil.NewAddressPubKey(dwif.PrivKey.PubKey().SerializeCompressed(), activeNetParams)
+				addr := pkaddr.AddressPubKeyHash()
+
+				matched := false
+				for _, adr := range prot.cfg.signAddress {
+					matched = matched || adr.String() == addr.String()
+				}
+				if matched {
+					continue
+				}
+
+				prot.cfg.privateKeys = append(prot.cfg.privateKeys, dwif.PrivKey)
+				prot.cfg.signAddress = append(prot.cfg.signAddress, addr)
+				fmt.Printf("signAddress: %s\n", addr.EncodeAddress())
+			}
+		}
+		return nil
+	})
+
 	s := server{
 		chainParams:            prot.activeNetParams,
 		addrManager:            amgr,
@@ -3334,6 +3438,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 		txC := mempool.Config{
 			Policy: mempool.Policy{
+				Mining:               prot.cfg.Generate || !prot.cfg.DisablePOWMining,
 				DisableRelayPriority: prot.cfg.NoRelayPriority,
 				AcceptNonStd:         prot.cfg.RelayNonStd,
 				FreeTxRelayLimit:     prot.cfg.FreeTxRelayLimit,
@@ -3406,53 +3511,43 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			prot.cfg.GenerateMiner = false
 			prot.cfg.Generate = false
 		} else {
+			mcfg := &minerchain.Config{
+				ChainParams:            prot.activeNetParams,
+				BlockTemplateGenerator: blockTemplateGenerator,
+				ProcessBlock:           s.syncManager.ProcessMinerBlock,
+				ConnectedCount:         s.ConnectedCount,
+				IsCurrent:              s.syncManager.IsCurrent,
+				ExternalIPs:            prot.cfg.ExternalIPs,
+			}
+
+			for _, pk := range s.chain.PrivKey {
+				mcfg.Privkeys = append(mcfg.Privkeys, pk)
+				wif, _ := btcutil.NewWIF(pk, prot.activeNetParams, true)
+
+				s.chain.Miners.AddMiningKey(wif.String())
+			}
+
 			s.cpuMiner = cpuminer.New(&cpuminer.Config{
 				ChainParams:            prot.activeNetParams,
 				BlockTemplateGenerator: blockTemplateGenerator,
 				MiningAddrs:            prot.cfg.miningAddrs,
 				SignAddress:            prot.cfg.signAddress,
-				PrivKeys:               prot.cfg.privateKeys,
+				PrivKeys:               s.chain.PrivKey,
 				DisablePOWMining:       prot.cfg.DisablePOWMining,
 
 				ProcessBlock:   s.syncManager.ProcessBlock,
 				ConnectedCount: s.ConnectedCount,
 				IsCurrent:      s.syncManager.IsCurrent,
-				AppendPrivKey: func(key *btcec.PrivateKey) bool {
-					fp, err := os.OpenFile(prot.cfg.ConfigFile, os.O_APPEND|os.O_WRONLY, 0666)
-
-					if err != nil {
-						return false
-					}
-					w, err := btcutil.NewWIF(key, prot.activeNetParams, true)
-					if err != nil {
-						return false
-					}
-
-					_, err = fp.WriteString("\nprivkeys=" + w.String() + "\n")
-					if err != nil {
-						return false
-					}
-					fp.Close()
-					return true
-				},
-				Generate: prot.cfg.Generate,
+				Generate:       prot.cfg.Generate,
 			})
 
+			mcfg.TxGenerate = prot.cfg.Generate
 			if prot.cfg.GenerateMiner {
-				mcfg := &minerchain.Config{
-					ChainParams:            prot.activeNetParams,
-					BlockTemplateGenerator: blockTemplateGenerator,
-					ProcessBlock:           s.syncManager.ProcessMinerBlock,
-					ConnectedCount:         s.ConnectedCount,
-					IsCurrent:              s.syncManager.IsCurrent,
-					ExternalIPs:            prot.cfg.ExternalIPs,
-				}
 				if len(prot.cfg.signAddress) > 0 {
 					mcfg.MiningAddrs = prot.cfg.signAddress
 				} else {
 					mcfg.MiningAddrs = prot.cfg.miningAddrs
 				}
-				mcfg.Privkeys = prot.cfg.privateKeys
 				s.minerMiner = minerchain.NewMiner(mcfg)
 			} else {
 				s.minerMiner = nil

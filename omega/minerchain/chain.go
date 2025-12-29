@@ -12,6 +12,7 @@ import (
 	"btcd/wire/common"
 	"container/list"
 	"fmt"
+	"github.com/omegasuite/btcd/btcec"
 	"math/big"
 	"os"
 	"sort"
@@ -160,9 +161,11 @@ type MinerChain struct {
 
 	TxIndex blockchain.IndexManager
 
+	// Minig keys & collaterals
+	MinkingKeys []*btcec.PrivateKey
 	// temp data for adjustment
 
-	collaterals      [2016]int
+	collaterals      [20160]int
 	nextAdjustHeight int32
 	IsSVP            bool
 }
@@ -1495,6 +1498,8 @@ func New(config *blockchain.Config, terminate chan struct{}) (*blockchain.BlockC
 	if err := b.initChainState(); err != nil {
 		return nil, err
 	}
+
+	b.nextAdjustHeight = (b.stateSnapshot.Height + 1) - ((b.stateSnapshot.Height + 1) % b.blocksPerRetarget) + b.blocksPerRetarget
 
 	for _, v := range os.Args {
 		if v == "--minerback" {

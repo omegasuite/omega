@@ -13,7 +13,7 @@ import (
 	"btcd/blockchain/chainutil"
 
 	"btcd/chaincfg"
-	//	"github.com/omegasuite/btcd/wire"
+	"btcd/wire"
 )
 
 const (
@@ -103,8 +103,8 @@ func (c deploymentChecker) Condition(node *chainutil.BlockNode) bool {
 	return version&conditionMask == conditionMask
 }
 
-func (b *MinerChain) NextBlockVersion(prevNode *chainutil.BlockNode) (uint32, error) {
-	return b.calcNextBlockVersion(prevNode)
+func (b *MinerChain) NextBlockVersion(prevNode *chainutil.BlockNode, newBlk bool) (uint32, error) {
+	return b.calcNextBlockVersion(prevNode, newBlk)
 }
 
 // calcNextBlockVersion calculates the expected version of the block after the
@@ -116,11 +116,14 @@ func (b *MinerChain) NextBlockVersion(prevNode *chainutil.BlockNode) (uint32, er
 // while this function accepts any block node.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (uint32, error) {
+func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode, newBlk bool) (uint32, error) {
 	// Set the appropriate bits for each actively defined rule deployment
 	// that is either in the process of being voted on, or locked in for the
 	// activation at the next threshold window change.
-	expectedVersion := uint32(0) // wire.CodeVersion	// uint32(0x20000)		// current version
+	expectedVersion := uint32(0)
+	if newBlk {
+		expectedVersion = wire.CodeVersion
+	}
 	for id := 0; id < len(b.chainParams.Deployments); id++ {
 		deployment := &b.chainParams.Deployments[id]
 
@@ -154,10 +157,10 @@ func (b *MinerChain) calcNextBlockVersion(prevNode *chainutil.BlockNode) (uint32
 // rule change deployments.
 //
 // This function is safe for concurrent access.
-func (b *MinerChain) CalcNextBlockVersion() (uint32, error) {
+func (b *MinerChain) CalcNextBlockVersion(newBlk bool) (uint32, error) {
 	//	log.Infof("CalcNextBlockVersion: ChainLock.RLock")
 	b.chainLock.Lock()
-	version, err := b.calcNextBlockVersion(b.BestChain.Tip())
+	version, err := b.calcNextBlockVersion(b.BestChain.Tip(), newBlk)
 	b.chainLock.Unlock()
 	//	log.Infof("CalcNextBlockVersion: ChainLock.Unlock")
 
@@ -229,7 +232,7 @@ func (b *MinerChain) warnUnknownVersions(node *chainutil.BlockNode) error {
 	// Warn if enough previous blocks have unexpected versions.
 	numUpgraded := uint32(0)
 	for i := uint32(0); i < unknownVerNumToCheck && node != nil; i++ {
-		expectedVersion, err := b.calcNextBlockVersion(node.Parent)
+		expectedVersion, err := b.calcNextBlockVersion(node.Parent, false)
 		/*
 			if (expectedVersion >> vbNumBits) > (wire.CodeVersion >> vbNumBits) {
 				log.Error("New rules are in effect. You are running an older version of the software.")

@@ -16,8 +16,10 @@ import (
 	"btcd/blockchain"
 	"btcd/blockchain/chainutil"
 	"btcd/chaincfg"
+	"btcd/database"
 	"btcd/mining"
 	"btcd/wire"
+	"btcd/wire/common"
 	"btcutil"
 	"math/big"
 	"math/rand"
@@ -73,6 +75,8 @@ type Config struct {
 	MiningAddrs []btcutil.Address
 	Privkeys    []*btcec.PrivateKey
 
+	TxGenerate bool // is Tx generation is enabled
+
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
 	// rules and handling as any other block coming from the network.
@@ -84,7 +88,7 @@ type Config struct {
 	// mining.  This is useful because there is no point in mining when not
 	// connected to any peers since there would no be anyone to send any
 	// found blocks to.
-	ConnectedCount func() int32
+	ConnectedCount func(byte2 byte) int32
 
 	// IsCurrent defines the function to use to obtain whether or not the
 	// block chain is current.  This is used by the automatic persistent
@@ -387,6 +391,79 @@ func (m *CPUMiner) ChangeMiningKey(miningAddr btcutil.Address) {
 	m.miningkeys <- miningAddr
 }
 
+func (m *CPUMiner) DropCollateral(h chainhash.Hash, index uint32) {
+	m.g.Chain.Miners.DropCollateral(h, index)
+	p := wire.OutPoint{
+		Hash:  h,
+		Index: index,
+	}
+
+	m.submitBlockLock.Lock()
+	defer m.submitBlockLock.Unlock()
+
+	for k, t := range m.g.Collateral {
+		for i, q := range t {
+			if q.Equal(&p) {
+				m.g.Collateral[k] = append(t[:i], t[i+1:]...)
+				return
+			}
+		}
+	}
+}
+
+func (m *CPUMiner) Collaterals() []*wire.OutPoint {
+	m.submitBlockLock.Lock()
+	defer m.submitBlockLock.Unlock()
+
+	c := make([]*wire.OutPoint, 0)
+	for _, s := range m.g.Collateral {
+		c = append(c, s...)
+	}
+	return c
+}
+
+func (m *CPUMiner) AddCollateral(h chainhash.Hash, index uint32) {
+	p := wire.OutPoint{
+		Hash:  h,
+		Index: index,
+	}
+	e, err := m.g.Chain.FetchUtxoEntry(p)
+	if err != nil {
+		return
+	}
+	var addr [20]byte
+	copy(addr[:], e.PkScript()[1:])
+
+	m.submitBlockLock.Lock()
+	if t, ok := m.g.Collateral[addr]; ok {
+		t = append(t, &p)
+		m.g.Collateral[addr] = t
+	} else {
+		m.g.Collateral[addr] = []*wire.OutPoint{&p}
+	}
+	m.submitBlockLock.Unlock()
+}
+
+func (m *CPUMiner) MiningKeys() []btcutil.Address {
+	return m.cfg.MiningAddrs
+}
+
+func (m *CPUMiner) AddMiningKey(wif string) {
+	addr := m.g.Chain.Miners.AddMiningKey(wif)
+	m.cfg.MiningAddrs = append(m.cfg.MiningAddrs, addr)
+}
+
+func (m *CPUMiner) DropMiningKey(wif string) {
+	addr := m.g.Chain.Miners.DropMiningKey(wif)
+	s := addr.String()
+	for i, d := range m.cfg.MiningAddrs {
+		if d.String() == s {
+			m.cfg.MiningAddrs = append(m.cfg.MiningAddrs[:i], m.cfg.MiningAddrs[i+1:]...)
+			return
+		}
+	}
+}
+
 // generateBlocks is a worker that is controlled by the miningWorkerController.
 // It is self contained in that it creates block templates and attempts to solve
 // them while detecting when it is performing stale work and reacting
@@ -407,20 +484,27 @@ func (m *CPUMiner) generateBlocks(quit chan struct{}, numWorkers uint32) {
 		pendingMiner[mr.MsgBlock().Miner] = struct{}{}
 	}
 
+	conchecl := byte(0)
+	if m.cfg.TxGenerate {
+		// we ensure the node is reachable by checking inbound connections only instead of all type connections
+		conchecl = 1
+	}
+
 out:
 	for {
 		// Quit when the miner is stopped.
 		select {
 		case <-quit:
 			break out
-
-		case k := <-m.miningkeys:
-			if len(m.cfg.MiningAddrs) == 0 {
-				m.cfg.MiningAddrs = make([]btcutil.Address, 1)
-			} else {
-				m.cfg.MiningAddrs = m.cfg.MiningAddrs[:1]
-			}
-			m.cfg.MiningAddrs[0] = k
+		/*
+			case k := <-m.miningkeys:
+				if len(m.cfg.MiningAddrs) == 0 {
+					m.cfg.MiningAddrs = make([]btcutil.Address, 1)
+				} else {
+					m.cfg.MiningAddrs = m.cfg.MiningAddrs[:1]
+				}
+				m.cfg.MiningAddrs[0] = k
+		*/
 
 		default:
 			// Non-blocking select to fall through
@@ -429,9 +513,10 @@ out:
 		// Wait until there is a connection to at least one other peer
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
-		if m.cfg.ConnectedCount() == 0 {
+
+		if m.cfg.ConnectedCount(conchecl) < 3 {
 			m.Stale = true
-			//			log.Info("miner.generateBlocks: sleep because of no connection")
+			//			log.Info("miner.generateBlocks: sleep because of not enough inbound connections")
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -450,10 +535,12 @@ out:
 		isCurrent := m.cfg.IsCurrent()
 		curHeight := m.g.Chain.Miners.BestSnapshot().Height
 
-		if curHeight == 0 && !isCurrent {
-			time.Sleep(time.Second * 10)
-			curHeight = m.g.Chain.Miners.BestSnapshot().Height
-		}
+		/*
+			if curHeight == 0 && !isCurrent {
+				time.Sleep(time.Second * 10)
+				curHeight = m.g.Chain.Miners.BestSnapshot().Height
+			}
+		*/
 
 		if curHeight != 0 && !isCurrent {
 			m.submitBlockLock.Unlock()
@@ -470,20 +557,22 @@ out:
 		// the longest MR chain refers to a stalled TX side chain, we should
 		// switch to a side chain.
 
-		chainChoice, d := m.g.Chain.Miners.(*MinerChain).choiceOfChain()
+		chainChoice, _ := m.g.Chain.Miners.(*MinerChain).choiceOfChain()
 
 		//		h := m.g.Chain.BestSnapshot().LastRotation	// .LastRotation(h0)
 		//		d := curHeight - int32(h)
-		if d > wire.DESIRABLE_MINER_CANDIDATES+10 {
-			m.submitBlockLock.Unlock()
-			m.Stale = true
-			log.Infof("miner.generateBlocks: sleep because of too many candidates %d", d)
-			select {
-			case <-m.quit:
-			case <-time.After(time.Second * time.Duration(5*(d-3-wire.DESIRABLE_MINER_CANDIDATES))):
+		/*
+			if d > wire.DESIRABLE_MINER_CANDIDATES+10 {
+				m.submitBlockLock.Unlock()
+				m.Stale = true
+				log.Infof("miner.generateBlocks: sleep because of too many candidates %d", d)
+				select {
+				case <-m.quit:
+				case <-time.After(time.Second * time.Duration(5*(d-3-wire.DESIRABLE_MINER_CANDIDATES))):
+				}
+				continue
 			}
-			continue
-		}
+		*/
 
 		// Choose a payment address at random.
 		rand.Seed(time.Now().Unix())
@@ -524,7 +613,40 @@ out:
 
 		signAddr := m.cfg.MiningAddrs[rnd]
 
-		template, err = m.g.NewMinerBlockTemplate(chainChoice, signAddr)
+		var uc *wire.OutPoint
+
+		uc = nil
+
+		var minerAddress [20]byte
+		copy(minerAddress[:], signAddr.ScriptAddress())
+
+		usable := make(map[wire.OutPoint]struct{})
+		for _, c := range m.g.Collateral[minerAddress] {
+			usable[*c] = struct{}{}
+		}
+
+		for p, i := chainChoice, int32(0); i <= m.cfg.ChainParams.ViolationReportDeadline && p != nil; i++ {
+			if q := m.g.Chain.Miners.NodetoHeader(p).Utxos; q != nil {
+				delete(usable, *q)
+			}
+			p = p.Parent
+		}
+
+		k := len(usable)
+
+		if k > 0 {
+			k = rand.Intn(k)
+
+			for c, _ := range usable {
+				if k == 0 {
+					uc = &c
+					break
+				}
+				k--
+			}
+		}
+
+		template, err = m.g.NewMinerBlockTemplate(chainChoice, signAddr, uc)
 
 		if err != nil {
 			log.Infof("miner.NewMinerBlockTemplate error: %s", err.Error())
@@ -534,7 +656,7 @@ out:
 			m.submitBlockLock.Unlock()
 			m.Stale = true
 			log.Infof("miner.generateBlocks: sleep on err != nil || template == nil, curHeight = %d", curHeight)
-			time.Sleep(time.Second * 5)
+			// time.Sleep(time.Second * 5)
 			continue
 		}
 
@@ -708,12 +830,43 @@ out:
 // already been started will have no effect.
 //
 // This function is safe for concurrent access.
-func (m *CPUMiner) Start(collateral []*wire.OutPoint) {
+func (m *CPUMiner) Start() {
 	m.Lock()
 	defer m.Unlock()
 
-	if collateral != nil {
-		m.g.Collateral = collateral
+	if m.g.Chain != nil {
+		m.submitBlockLock.Lock()
+		m.g.Chain.Miners.(*MinerChain).db.View(func(dbTx database.Tx) error {
+			bucket := dbTx.Metadata().Bucket([]byte(common.MiningCollaterals))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				op := cursor.Key()
+				p := wire.OutPoint{}
+				copy(p.Hash[:], op)
+				p.Index = common.LittleEndian.Uint32(op[32:])
+
+				e, err := m.g.Chain.FetchUtxoEntry(p)
+				if err != nil || e == nil {
+					continue
+				}
+				var addr [20]byte
+
+				pks := e.PkScript()
+				if pks == nil {
+					continue
+				}
+				copy(addr[:], pks[1:])
+
+				if t, ok := m.g.Collateral[addr]; ok {
+					t = append(t, &p)
+					m.g.Collateral[addr] = t
+				} else {
+					m.g.Collateral[addr] = []*wire.OutPoint{&p}
+				}
+			}
+			return nil
+		})
+		m.submitBlockLock.Unlock()
 	}
 
 	// Nothing to do if the miner is already running or if running in

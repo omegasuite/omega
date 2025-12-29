@@ -160,8 +160,6 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"getblockchaininfo":     handleGetBlockChainInfo, // Changed: get info. for both chains
 	"gbi":                   handleGetBlockChainInfo, // Changed: get info. for both chains
 	//	"alert":			     handleAlert,
-	"addminingkey":  handleAddMiningKey,
-	"addcollateral": handleAddCollateral,
 
 	"getblockcount":   handleGetBlockCount,
 	"gbc":             handleGetBlockCount,
@@ -242,6 +240,16 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 
 	"getxchtxfee": handleGetXChTxFee,
 	"getchainmap": handleGetChainMap,
+
+	// mining ops
+	"addminingkey":   handleAddMiningKey,
+	"addcollateral":  handleAddCollateral,
+	"dropminingkey":  handleDropMiningKey,
+	"dropcollateral": handleDropCollateral,
+
+	"listminingaddr": handleListMiningAddr,
+	"listcollateral": handleListCollateral,
+	"keyaddress":     handleKeyAddress,
 }
 
 // list of commands that we recognize, but for which btcd has no support because
@@ -401,6 +409,9 @@ var rpcLimited = map[string]struct{}{
 	"ping":                {},
 	"getxchtxfee":         {},
 	"getchainmap":         {},
+	"listminingaddr":      {},
+	"listcollateral":      {},
+	"keyaddress":          {},
 }
 
 /*
@@ -2010,13 +2021,13 @@ func handleContractCall(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 	vm.BlockNumber = func() uint64 { return uint64(best.Height) }
 	vm.BlockVersion = func() uint32 { return wire.CodeVersion }
 
-	mb := s.cfg.Chain.Miners.NodeByHeight(int32(best.LastRotation))
-	if mb == nil {
-		return nil, &btcjson.RPCError{
-			Code:    btcjson.ErrRPCMisc,
-			Message: "Chain stalled.",
-		}
+	r := int32(best.LastRotation)
+	var mb *chainutil.BlockNode
+	for mb == nil {
+		mb = s.cfg.Chain.Miners.NodeByHeight(r)
+		r--
 	}
+
 	if mb.Data.GetContractExec() > vm.StepLimit {
 		vm.StepLimit = mb.Data.GetContractExec()
 	}
@@ -2346,24 +2357,130 @@ func softForkStatus(state minerchain.ThresholdState) (string, error) {
 func handleAddCollateral(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	c := cmd.(*btcjson.AddCollateralCmd)
 
-	_, err := chainhash.NewHashFromStr(c.Hash)
+	h, err := chainhash.NewHashFromStr(c.Hash)
 	if err != nil {
 		return nil, rpcDecodeHexError(c.Hash)
 	}
 
-	fp, err := os.OpenFile(s.cfg.Cfg.ConfigFile, os.O_APPEND|os.O_WRONLY, 0666)
-
-	if err != nil {
-		return "failed", nil
+	if s.cfg.MinerMiner != nil {
+		s.cfg.MinerMiner.AddCollateral(*h, c.Index)
 	}
 
-	_, err = fp.WriteString("\nCollateral=" + c.Hash + ":" + fmt.Sprintf("%d", c.Index) + "\n")
-	if err != nil {
-		return "failed", nil
-	}
-	fp.Close()
+	s.cfg.MinerDB.Update(func(dbTx database.Tx) error {
+		bucket := dbTx.Metadata().Bucket([]byte(common.MiningCollaterals))
+
+		var key [36]byte
+		copy(key[:], h[:])
+		common.LittleEndian.PutUint32(key[32:], c.Index)
+		bucket.Put(key[:], []byte{1})
+
+		return nil
+	})
 
 	return "OK", nil
+}
+
+func handleDropCollateral(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.AddCollateralCmd)
+
+	h, err := chainhash.NewHashFromStr(c.Hash)
+	if err != nil {
+		return nil, rpcDecodeHexError(c.Hash)
+	}
+
+	if s.cfg.MinerMiner != nil {
+		s.cfg.MinerMiner.DropCollateral(*h, c.Index)
+	}
+	s.cfg.MinerDB.Update(func(dbTx database.Tx) error {
+		bucket := dbTx.Metadata().Bucket([]byte(common.MiningCollaterals))
+		var key [36]byte
+		copy(key[:], h[:])
+		common.LittleEndian.PutUint32(key[32:], c.Index)
+		bucket.Delete(key[:])
+		return nil
+	})
+
+	return "OK", nil
+}
+
+func handleListMiningAddr(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	var keys []btcutil.Address
+	addresses := make([]string, 0)
+
+	if s.cfg.MinerMiner != nil {
+		keys = s.cfg.MinerMiner.MiningKeys()
+		for _, k := range keys {
+			addresses = append(addresses, k.EncodeAddress())
+		}
+	} else {
+		s.cfg.MinerDB.Update(func(dbTx database.Tx) error {
+			bucket := dbTx.Metadata().Bucket([]byte(common.MiningKeys))
+
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				dwif, err := btcutil.DecodeWIF(string(cursor.Key()))
+				if err == nil {
+					pk := dwif.SerializePubKey()
+					adr, _ := btcutil.NewAddressPubKeyHash(btcutil.Hash160(pk), s.cfg.ChainParams)
+					addresses = append(addresses, adr.EncodeAddress())
+				}
+			}
+
+			return nil
+		})
+	}
+	return addresses, nil
+}
+
+func handleKeyAddress(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.VerifySigCmd)
+
+	wif, err := btcutil.DecodeWIF(c.HexTx)
+	if err != nil {
+		return nil, err
+	}
+
+	if !wif.IsForNet(s.cfg.ChainParams) {
+		s := "key network doesn't match wallet's"
+		return nil, errors.New(s)
+	}
+
+	pk := wif.SerializePubKey()
+	adr, err := btcutil.NewAddressPubKeyHash(btcutil.Hash160(pk), s.cfg.ChainParams)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]string, 2)
+
+	result[0], result[1] = adr.EncodeAddress(), hex.EncodeToString(pk)
+
+	return result, nil
+}
+
+func handleListCollateral(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	addresses := make([]string, 0)
+	if s.cfg.MinerMiner != nil {
+		coll := s.cfg.MinerMiner.Collaterals()
+		for _, k := range coll {
+			addresses = append(addresses, k.String())
+		}
+	} else {
+		s.cfg.MinerDB.Update(func(dbTx database.Tx) error {
+			bucket := dbTx.Metadata().Bucket([]byte(common.MiningCollaterals))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				op := cursor.Key()
+				p := wire.OutPoint{}
+				copy(p.Hash[:], op)
+				p.Index = common.LittleEndian.Uint32(op[32:])
+				addresses = append(addresses, p.String())
+			}
+			return nil
+		})
+	}
+
+	return addresses, nil
 }
 
 // handleAddMiningKey implements the addminingkey command.
@@ -2375,30 +2492,63 @@ func handleAddMiningKey(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 		//		if !s.cfg.ShareMining {
 		//			return result, nil
 		//		}
-		if s.cfg.CPUMiner != nil && s.cfg.CPUMiner.IsMining() {
-			dwif, err := btcutil.DecodeWIF(c.Key)
-			if err == nil {
-				if s.cfg.CPUMiner.AddMiningKey(dwif.PrivKey) {
-					result.Status = 1
-				} else {
-					result.Status = -2
-				}
-			} else {
-				result.Status = -3
-				return result, err
-			}
-		}
-	} else if s.cfg.MinerMiner != nil && s.cfg.MinerMiner.IsMining() {
-		if addr, err := btcutil.DecodeAddress(c.Key, s.cfg.ChainParams); err == nil {
-			s.cfg.MinerMiner.ChangeMiningKey(addr)
-			result.Status = 1
-		} else {
-			result.Status = -4
+		dwif, err := btcutil.DecodeWIF(c.Key)
+		if err != nil {
+			result.Status = -3
 			return result, err
 		}
-	} else if s.cfg.MinerMiner == nil {
-		result.Status = -5
+		if s.cfg.CPUMiner != nil {
+			if s.cfg.CPUMiner.AddMiningKey(dwif.PrivKey) != nil {
+				result.Status = 1
+			} else {
+				result.Status = -2
+			}
+		}
+		if s.cfg.MinerMiner != nil {
+			s.cfg.MinerMiner.AddMiningKey(c.Key)
+		}
+
+		s.cfg.MinerDB.Update(func(dbTx database.Tx) error {
+			bucket := dbTx.Metadata().Bucket([]byte(common.MiningKeys))
+
+			bucket.Put([]byte(c.Key), []byte{1})
+			return nil
+		})
 	}
+
+	return result, nil
+}
+
+func handleDropMiningKey(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.AddMiningKeyCmd)
+	result := &btcjson.AddMiningKeyResult{Status: -1}
+
+	if c.KeyType { // true for private key, false for public key
+		dwif, err := btcutil.DecodeWIF(c.Key)
+		if err != nil {
+			result.Status = -3
+			return result, err
+		}
+		if s.cfg.CPUMiner != nil {
+			for i, t := range s.cfg.Chain.PrivKey {
+				if dwif.PrivKey.Equal(t) {
+					s.cfg.Chain.PrivKey = append(s.cfg.Chain.PrivKey[:i], s.cfg.Chain.PrivKey[i+1:]...)
+					break
+				}
+			}
+		}
+		if s.cfg.MinerMiner != nil {
+			s.cfg.MinerMiner.DropMiningKey(c.Key)
+		}
+
+		s.cfg.MinerDB.Update(func(dbTx database.Tx) error {
+			bucket := dbTx.Metadata().Bucket([]byte(common.MiningKeys))
+
+			bucket.Delete([]byte(c.Key))
+			return nil
+		})
+	}
+
 	return result, nil
 }
 
@@ -5649,7 +5799,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		return nil, internalRPCError(errStr, "")
 	}
 
-	ch := make(chan *wire.MsgTx, 1)
+	ch := make(chan *blockchain.ConfirmedMsg, 1)
 	if *c.WaitConfirm != 0 {
 		s.statusLock.Lock()
 		x := uint32(0xFFFFFFFF)
@@ -5687,16 +5837,20 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 
 		if t := <-ch; t != nil {
 			cf.Stop()
-			if t.Version == wire.TxExpire && tx.MsgTx().LockTime < t.LockTime {
+			if t.Tx.Version == wire.TxExpire && tx.MsgTx().LockTime < t.Tx.LockTime {
 				return nil, internalRPCError("TX rejected after expiration.", "")
 			}
-			if t.Version == 0 {
-				return nil, internalRPCError("TX rejected after processing.", "")
+			if t.Tx.Version == 0 {
+				return nil, internalRPCError("TX rejected after processing.", t.Err.Error())
 			}
 		} else {
 			msg += fmt.Sprintf("\nNo confirmation after %d seconds.", *c.WaitConfirm)
 		}
 	}
+
+	time.AfterFunc(300*time.Second, func() {
+		s.cfg.TxMemPool.TrimPool()
+	})
 
 	return msg, nil
 }
@@ -6037,7 +6191,7 @@ func handleSetGenerate(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 		if s.cfg.MinerMiner != nil && c.IsMiner {
 			s.cfg.MinerMiner.SetNumWorkers(int32(genProcLimit))
-			s.cfg.MinerMiner.Start(nil)
+			s.cfg.MinerMiner.Start()
 		}
 	}
 	return nil, nil
@@ -6214,7 +6368,7 @@ func handleShutdown(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 }
 
 type confirmMsg struct {
-	ch     chan *wire.MsgTx
+	ch     chan *blockchain.ConfirmedMsg
 	expire uint32
 }
 
@@ -6330,6 +6484,9 @@ func (s *rpcServer) RequestedProcessShutdown() <-chan struct{} {
 // whenever new transactions are added to the mempool.
 func (s *rpcServer) NotifyNewTransactions(txns []*mempool.TxDesc) {
 	for _, txD := range txns {
+		if txD == nil || txD.Tx == nil {
+			continue
+		}
 		// Notify websocket clients about mempool transactions.
 		s.ntfnMgr.NotifyMempoolTx(txD.Tx, true)
 
@@ -6980,14 +7137,14 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 			s.ntfnMgr.NotifyBlockConnected(blk)
 			s.statusLock.Lock()
 			for _, tx := range blk.Transactions() {
-				if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
-					ch.ch <- tx.MsgTx()
-					delete(s.sendcmdconfirmation, *tx.Hash())
+				if ch, ok := s.sendcmdconfirmation[tx.MsgTx().TxHash()]; ok {
+					ch.ch <- &blockchain.ConfirmedMsg{Blk: blk.MsgBlock(), Tx: tx.MsgTx(), Err: nil}
+					delete(s.sendcmdconfirmation, tx.MsgTx().TxHash())
 				}
 			}
 			for h, c := range s.sendcmdconfirmation {
 				if c.expire < uint32(blk.Height()) {
-					c.ch <- &wire.MsgTx{Version: wire.TxExpire, LockTime: uint32(blk.Height())}
+					c.ch <- &blockchain.ConfirmedMsg{Blk: nil, Tx: &wire.MsgTx{Version: wire.TxExpire, LockTime: uint32(blk.Height())}, Err: nil}
 					delete(s.sendcmdconfirmation, h)
 				}
 			}
@@ -7020,10 +7177,18 @@ func (s *rpcServer) handleBlockchainNotification(notification *blockchain.Notifi
 	case blockchain.NTBlockRejected:
 		switch notification.Data.(type) {
 		case *btcutil.Tx:
-			tx := *notification.Data.(*btcutil.Tx)
+			tx := notification.Data.(*btcutil.Tx)
 			if ch, ok := s.sendcmdconfirmation[*tx.Hash()]; ok {
-				ch.ch <- &wire.MsgTx{Version: 0}
+				ch.ch <- &blockchain.ConfirmedMsg{Blk: nil, Tx: &wire.MsgTx{Version: 0}, Err: nil}
 				delete(s.sendcmdconfirmation, *tx.Hash())
+			}
+		case *blockchain.ConfirmedMsg:
+			tx := notification.Data.(*blockchain.ConfirmedMsg).Tx
+			if tx != nil {
+				if ch, ok := s.sendcmdconfirmation[tx.TxHash()]; ok {
+					ch.ch <- notification.Data.(*blockchain.ConfirmedMsg)
+					delete(s.sendcmdconfirmation, tx.TxHash())
+				}
 			}
 		}
 	}

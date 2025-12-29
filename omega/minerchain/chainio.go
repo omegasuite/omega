@@ -9,6 +9,8 @@
 package minerchain
 
 import (
+	"btcd/wire/common"
+	"btcutil"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -184,6 +186,14 @@ func (b *MinerChain) createChainState() error {
 			return err
 		}
 
+		if _, err = meta.CreateBucket([]byte(common.MiningKeys)); err != nil {
+			return err
+		}
+
+		if _, err = meta.CreateBucket([]byte(common.MiningCollaterals)); err != nil {
+			return err
+		}
+
 		// Save the genesis block to the block index database.
 		if err = dbStoreBlockNode(dbTx, node); err != nil {
 			return err
@@ -206,6 +216,61 @@ func (b *MinerChain) createChainState() error {
 	})
 
 	return err
+}
+
+func (b *MinerChain) AddCollateral(h chainhash.Hash, index uint32) {
+	b.db.Update(func(dbTx database.Tx) error {
+		bucket := dbTx.Metadata().Bucket([]byte(common.MiningCollaterals))
+
+		var key [36]byte
+		copy(key[:], h[:])
+		common.LittleEndian.PutUint32(key[32:], index)
+		bucket.Put(key[:], []byte{1})
+
+		return nil
+	})
+}
+
+func (b *MinerChain) DropCollateral(h chainhash.Hash, index uint32) {
+	b.db.Update(func(dbTx database.Tx) error {
+		bucket := dbTx.Metadata().Bucket([]byte(common.MiningCollaterals))
+
+		var key [36]byte
+		copy(key[:], h[:])
+		common.LittleEndian.PutUint32(key[32:], index)
+		bucket.Delete(key[:])
+
+		return nil
+	})
+}
+
+func (b *MinerChain) AddMiningKey(wif string) btcutil.Address {
+	dwif, err := btcutil.DecodeWIF(wif)
+	if err == nil {
+		b.MinkingKeys = append(b.MinkingKeys, dwif.PrivKey)
+		dwif.CompressPubKey = true
+		pk := dwif.SerializePubKey()
+		adr, _ := btcutil.NewAddressPubKeyHash(btcutil.Hash160(pk), b.chainParams)
+		return adr
+	}
+	return nil
+}
+
+func (b *MinerChain) DropMiningKey(wif string) btcutil.Address {
+	dwif, err := btcutil.DecodeWIF(wif)
+	if err == nil {
+		for i, k := range b.MinkingKeys {
+			if dwif.PrivKey.Equal(k) {
+				b.MinkingKeys = append(b.MinkingKeys[:i], b.MinkingKeys[i+1:]...)
+				break
+			}
+		}
+		dwif.CompressPubKey = true
+		pk := dwif.SerializePubKey()
+		adr, _ := btcutil.NewAddressPubKeyHash(btcutil.Hash160(pk), b.chainParams)
+		return adr
+	}
+	return nil
 }
 
 // initChainState attempts to load and initialize the chain state from the
@@ -245,6 +310,14 @@ func (b *MinerChain) initChainState() error {
 			return err
 		}
 	}
+	b.db.Update(func(dbTx database.Tx) error {
+		dbTx.Metadata().CreateBucket([]byte(common.MiningKeys))
+		return nil
+	})
+	b.db.Update(func(dbTx database.Tx) error {
+		dbTx.Metadata().CreateBucket([]byte(common.MiningCollaterals))
+		return nil
+	})
 
 	// Attempt to load the chain state from the database.
 	exec := func(dbTx database.Tx) error {

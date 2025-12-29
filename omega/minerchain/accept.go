@@ -360,16 +360,16 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 	// Ensure the difficulty specified in the block header matches
 	// the calculated difficulty based on the previous block and
 	// difficulty retarget rules.
-	expectedDifficulty, coll, _ := b.calcNextRequiredDifficulty(prevNode, header.Timestamp)
-
-	blockDifficulty := header.Bits
-	if blockDifficulty != expectedDifficulty {
-		str := "block difficulty of %d is not the expected value of %d"
-		str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
-		return ruleError(ErrUnexpectedDifficulty, str)
-	}
-
 	if !b.IsSVP {
+		expectedDifficulty, coll, _ := b.calcNextRequiredDifficulty(prevNode, header.Timestamp)
+
+		blockDifficulty := header.Bits
+		if blockDifficulty != expectedDifficulty {
+			str := "block difficulty of %d is not the expected value of %d"
+			str = fmt.Sprintf(str, blockDifficulty, expectedDifficulty)
+			return ruleError(ErrUnexpectedDifficulty, str)
+		}
+
 		if header.Collateral != coll {
 			str := "block collateral of %d is not the expected value of %d"
 			str = fmt.Sprintf(str, header.Collateral, coll)
@@ -483,9 +483,9 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		}
 	}
 
-	nextBlockVersion, err := b.NextBlockVersion(prevNode)
+	nextBlockVersion, err := b.NextBlockVersion(prevNode, false)
 	if err != nil || (header.Version&0xFFFF0000) < (nextBlockVersion&0xFFFF0000) ||
-		header.Version > nextBlockVersion {
+		(header.Version > nextBlockVersion && header.Version > wire.CodeVersion) {
 		//		(header.Version & 0xFFFF0000) > ((nextBlockVersion + 0xFFFF) & 0xFFFF0000) ||
 		//		(header.Version > nextBlockVersion && (header.Version & 0xFFFF0000) == (nextBlockVersion & 0xFFFF0000)){
 		// fail if: 1. major version is less than expected

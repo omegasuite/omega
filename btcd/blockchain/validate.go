@@ -393,7 +393,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 		}
 
 		// parent is not the tip, go back to find correct rotation
-		for p := b.BestChain.Tip(); p != nil && p != fork; p = b.ParentNode(p) {
+		for p := b.BestChain.Tip(); p != nil && p != fork && p.Height > fork.Height; p = b.ParentNode(p) {
 			switch {
 			case p.Data.GetNonce() > 0:
 				rotate -= wire.POWRotate

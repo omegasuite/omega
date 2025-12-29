@@ -152,7 +152,7 @@ func (cm *rpcConnManager) DisconnectByAddr(addr string) error {
 // This function is safe for concurrent access and is part of the
 // rpcserverConnManager interface implementation.
 func (cm *rpcConnManager) ConnectedCount() int32 {
-	return cm.server.ConnectedCount()
+	return cm.server.ConnectedCount(0)
 }
 
 // NetTotals returns the sum of all bytes received and sent across the network

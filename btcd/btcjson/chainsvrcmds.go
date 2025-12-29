@@ -1344,4 +1344,10 @@ func init() {
 	MustRegisterCmd("verifytxoutproof", (*VerifyTxOutProofCmd)(nil), flags)
 	MustRegisterCmd("verifysig", (*VerifySigCmd)(nil), flags)
 	MustRegisterCmd("getchainmap", (*GetChainMapCmd)(nil), flags)
+
+	MustRegisterCmd("dropminingkey", (*AddMiningKeyCmd)(nil), flags)
+	MustRegisterCmd("dropcollateral", (*AddCollateralCmd)(nil), flags)
+	MustRegisterCmd("listminingaddr", (*GetBlockChainInfoCmd)(nil), flags)
+	MustRegisterCmd("listcollateral", (*GetBlockChainInfoCmd)(nil), flags)
+	MustRegisterCmd("keyaddress", (*VerifySigCmd)(nil), flags)
 }

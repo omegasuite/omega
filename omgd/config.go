@@ -12,7 +12,6 @@ import (
 	_ "btcd/database/ffldb"
 	"btcd/mempool"
 	"btcd/peer"
-	"btcd/wire"
 	"btcd/wire/common"
 	"btcutil"
 	"bufio"
@@ -162,8 +161,6 @@ type config struct {
 
 	minRelayTxFee   btcutil.Amount
 	whitelists      []*net.IPNet
-	Collateral      []string `long:"Collateral" description:"Mining collateral"`
-	collateral      []*wire.OutPoint
 	ExitOnStall     bool   `long:"exitonstall" description:"Exit program when no activity in 30 minutes."`
 	ChainCurrentStd int    `long:"chaincurrentstd" description:"Hours beyond which chain is considered not current"`
 	MemLimit        uint32 `long:"memlimit" description:"Memory limit (K), exceeding it will cause program to exit gracefully"`
@@ -436,7 +433,7 @@ func loadConfig(sec string, omegaNet uint32) (*config, []string, error) {
 		SigCacheMaxSize:      defaultSigCacheMaxSize,
 		Generate:             defaultGenerate,
 		GenerateMiner:        defaultGenerate,
-		DisablePOWMining:     false,
+		DisablePOWMining:     true,
 		TxIndex:              defaultTxIndex,
 		AddrIndex:            defaultAddrIndex,
 		ChainCurrentStd:      24,
@@ -895,23 +892,6 @@ func applyConfig(cfg *config) error {
 				cfg.miningAddrs = append(cfg.miningAddrs, addr)
 				cfg.signAddress = append(cfg.signAddress, addr)
 				cfg.privateKeys = append(cfg.privateKeys, privKey)
-			}
-		}
-	}
-
-	cfg.collateral = make([]*wire.OutPoint, 0, len(cfg.Collateral))
-	for _, c := range cfg.Collateral {
-		i := strings.Index(c, ":")
-		if i > 0 {
-			rs := []byte(c)
-			h, _ := chainhash.NewHashFromStr(string(rs[:i]))
-			if h != nil {
-				var d uint32
-				fmt.Sscanf(string(rs[i+1:]), "%d", &d)
-				cfg.collateral = append(cfg.collateral, &wire.OutPoint{
-					Hash:  *h,
-					Index: d,
-				})
 			}
 		}
 	}

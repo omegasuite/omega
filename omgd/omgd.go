@@ -78,7 +78,7 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 	if globalParams != nil {
 		cid = globalParams.ChainID
 	}
-	chainmap.LoadChainMap(db, common.OmegaNet(tcfg.NetMagic), cid)
+	chainmap.LoadChainMap(db, tcfg.TestNet, cid)
 
 	prot := &Protocol{
 		cfg:     tcfg,
@@ -564,6 +564,8 @@ func main() {
 		}()
 	}
 
+	tcfg.TestNet = activeNetParams.Name == "testnet"
+
 	// Write cpu profile if requested.
 	if tcfg.CPUProfile != "" {
 		f, err := os.Create(tcfg.CPUProfile)
@@ -701,14 +703,13 @@ func main() {
 		vcfg.privateKeys = nil
 		vcfg.PrivKeys = nil
 		vcfg.MiningAddrs = nil
-		vcfg.Collateral = nil
 		vcfg.AddrIndex = false
 		vcfg.BlocksOnly = false
-		vcfg.collateral = nil
 		vcfg.DisablePOWMining = true
 		vcfg.miningAddrs = nil
 		vcfg.TxIndex = false
 		vcfg.AddrIndex = false
+		vcfg.TestNet = tcfg.TestNet
 		//		vcfg.NoCFilters = true
 		vcfg.signAddress = nil
 

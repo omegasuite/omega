@@ -372,7 +372,7 @@ type BlkTmplGenerator struct {
 	timeSource  chainutil.MedianTimeSource
 
 	// only used by minerchain
-	Collateral []*wire.OutPoint
+	Collateral map[[20]byte][]*wire.OutPoint
 	Pledge     map[wire.OutPoint]struct{}
 	//	sigCache    *txscript.SigCache
 	//	hashCache   *txscript.HashCache
@@ -396,9 +396,7 @@ func NewBlkTmplGenerator(policy *Policy, params *chaincfg.Params,
 		txSource:    txSource,
 		Chain:       chain,
 		timeSource:  timeSource,
-		Collateral:  nil,
-		//		sigCache:    sigCache,
-		//		hashCache:   hashCache,
+		Collateral:  make(map[[20]byte][]*wire.OutPoint),
 	}
 }
 
@@ -663,14 +661,15 @@ mempoolLoop:
 
 		if txDesc.Tried > 10 {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Tx not packed after 10 attempts")})
 			continue
 		}
 		txDesc.Tried++
 
 		ok := true
 		for _, txo := range tx.MsgTx().TxOut {
-			if txo.IsSeparator() {
+			if txo.IsSeparator() || txo.IsContractCall() {
 				continue
 			}
 			if len(txo.PkScript) > 21 && txo.PkScript[21] == ovm.OP_PAYCROSSCHAIN {
@@ -678,7 +677,7 @@ mempoolLoop:
 					ok = false
 					break
 				}
-				if (txo.TokenType >> 40) == 0 {
+				if (txo.TokenType>>40) == 0 && g.chainParams.ChainID != chainmap.ROOT {
 					ok = false
 					break
 				}
@@ -686,7 +685,8 @@ mempoolLoop:
 		}
 		if !ok {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Incorrect cross chain tx fee")})
 			log.Infof("Reject bad tx %s", tx.Hash())
 			continue
 		}
@@ -701,14 +701,16 @@ mempoolLoop:
 
 		if (tx.MsgTx().Version&wire.TxExpire) != 0 && tx.MsgTx().LockTime < uint32(nextBlockHeight) {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Tx expired")})
 			log.Infof("Reject expired tx %s", tx.Hash())
 			continue
 		}
 
-		if g.Chain.CheckCrossChainTx(tx.MsgTx()) != nil {
+		if err = g.Chain.CheckCrossChainTx(tx.MsgTx()); err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: err})
 			log.Infof("Reject expired tx %s", tx.Hash())
 			continue
 		}
@@ -721,7 +723,8 @@ mempoolLoop:
 					continue
 				}
 				g.txSource.RemoveTransaction(tx, true)
-				g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+				g.Chain.SendNotification(blockchain.NTBlockRejected,
+					&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Local policy: Reject tx with contract %s for lacking expiration time")})
 				log.Infof("Local policy: Reject tx with contract %s for lacking expiration time", tx.Hash())
 				rjct = true
 				break
@@ -733,7 +736,8 @@ mempoolLoop:
 
 		if tx.MsgTx().IsForfeit() {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Reject standalone Forfeiture tx %s", tx.Hash())})
 
 			log.Infof("Reject standalone Forfeiture tx %s", tx.Hash())
 			continue
@@ -755,7 +759,8 @@ mempoolLoop:
 		}
 		if locked {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Reject tx %s that spends locked UTXO %s", tx.Hash(), locks)})
 
 			// we should roll back result of last contract execution here
 			log.Infof("Reject tx %s that spends locked UTXO %s", tx.Hash(), locks)
@@ -796,7 +801,11 @@ mempoolLoop:
 				if entry == nil || entry.IsSpent() {
 					if !g.txSource.HaveTransaction(originHash) {
 						g.txSource.RemoveTransaction(tx, true)
-						g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+						g.Chain.SendNotification(blockchain.NTBlockRejected,
+							&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Remove tx %s because it "+
+								"references output %s "+
+								"which is not available",
+								tx.Hash(), txIn.PreviousOutPoint)})
 
 						log.Tracef("Remove tx %s because it "+
 							"references output %s "+
@@ -1013,7 +1022,8 @@ mempoolLoop:
 
 		if len(tx.MsgTx().TxIn) > 1000 || len(tx.MsgTx().TxOut) > 1000 {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Remove tx %s becase TxIn/TxOut count exceeds 1000", tx.Hash())})
 
 			log.Infof("Remove tx %s becase TxIn/TxOut count exceeds 1000", tx.Hash())
 			logSkippedDeps(tx, deps)
@@ -1023,7 +1033,8 @@ mempoolLoop:
 		err = blockchain.CheckBlacklist(tx, views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: err})
 
 			logSkippedDeps(tx, deps)
 
@@ -1034,7 +1045,8 @@ mempoolLoop:
 		vmerr := ovm.VerifySigs(tx, g.chainParams, 0, views)
 		if vmerr != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: vmerr})
 
 			// we should roll back result of last contract execution here
 			log.Infof("Remove tx %s due to error in VerifySigs: %v", tx.Hash(), err)
@@ -1059,7 +1071,8 @@ mempoolLoop:
 
 			//			if vmerr.Level() == omega.FatalLevel {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: vmerr})
 
 			log.Infof("Remove tx %s due to error in ExecContract: %v", tx.Hash(), vmerr)
 			logSkippedDeps(tx, deps)
@@ -1083,7 +1096,8 @@ mempoolLoop:
 			views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: err})
 
 			logSkippedDeps(tx, deps)
 			if executed {
@@ -1100,7 +1114,8 @@ mempoolLoop:
 		err = blockchain.CheckTransactionIntegrity(tx, views, s.MsgBlock().Version&^0xFFFF)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: err})
 
 			logSkippedDeps(tx, deps)
 			if executed {
@@ -1117,7 +1132,8 @@ mempoolLoop:
 		fees, directPay, err := blockchain.CheckTransactionFees(tx, storage, views, g.chainParams)
 		if err != nil {
 			g.txSource.RemoveTransaction(tx, true)
-			g.Chain.SendNotification(blockchain.NTBlockRejected, tx)
+			g.Chain.SendNotification(blockchain.NTBlockRejected,
+				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: err})
 
 			logSkippedDeps(tx, deps)
 			if executed {
@@ -1321,7 +1337,7 @@ mempoolLoop:
 	}, nil
 }
 
-func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payToAddress btcutil.Address) (*BlockTemplate, error) {
+func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payToAddress btcutil.Address, uc *wire.OutPoint) (*BlockTemplate, error) {
 	// Extend the most recently known best block
 	// instead of extending the longest MR chain, we will try to entend
 	// a best chain that will allow us to refer the tip of TX chain as
@@ -1345,9 +1361,13 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		return nil, err
 	}
 
+	if coll > 0 && uc == nil {
+		return nil, fmt.Errorf("No collateral available")
+	}
+
 	// Calculate the next expected block version based on the state of the
 	// rule change deployments.
-	nextBlockVersion, err := g.Chain.Miners.NextBlockVersion(last)
+	nextBlockVersion, err := g.Chain.Miners.NextBlockVersion(last, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1368,37 +1388,6 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 	for bestblk != nil && bestblk.Data.GetNonce() > 0 && bestblk.Height > 0 {
 		bestblk = g.Chain.ParentNode(bestblk)
 		ch = bestblk.Hash
-	}
-
-	var uc *wire.OutPoint
-
-	uc = nil
-	usable := make(map[wire.OutPoint]struct{})
-	for _, c := range g.Collateral {
-		usable[*c] = struct{}{}
-	}
-
-	for p, i := last, int32(0); i <= g.chainParams.ViolationReportDeadline && p != nil; i++ {
-		if q := g.Chain.Miners.NodetoHeader(p).Utxos; q != nil {
-			delete(usable, *q)
-		}
-		p = p.Parent
-	}
-
-	k := len(usable)
-	if k == 0 && coll > 0 {
-		return nil, fmt.Errorf("No qualified collateral available out of %d collaterals.", len(g.Collateral))
-	}
-	if k > 0 {
-		k = rand.Intn(k)
-
-		for c, _ := range usable {
-			if k == 0 {
-				uc = &c
-				break
-			}
-			k--
-		}
 	}
 
 	// the rule is new ContractLimit must not less than prev ContractLimit
@@ -1482,7 +1471,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		}
 	}
 
-	copy(msgBlock.Miner[:], payToAddress.ScriptAddress())
+	copy(msgBlock.Miner[:], payToAddress.ScriptAddress()[:])
 
 	msgBlock.TphReports = g.Chain.Miners.TphReport(wire.MinTPSReports, last, msgBlock.Miner)
 	sum := uint32(0)

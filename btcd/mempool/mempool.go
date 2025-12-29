@@ -140,6 +140,8 @@ type Policy struct {
 	// MinRelayTxFee defines the minimum transaction fee in OMC/kB to be
 	// considered a non-zero fee.
 	MinRelayTxFee btcutil.Amount
+
+	Mining bool
 }
 
 // TxDesc is a descriptor containing a transaction in the mempool along with
@@ -1056,7 +1058,6 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 
 	log.Debugf("Accepted transaction %v (pool size: %v)", txHash,
 		len(mp.pool))
-
 	return nil, txD, nil
 }
 
@@ -1184,6 +1185,16 @@ func (mp *TxPool) ProcessOrphans(acceptedTx *btcutil.Tx) []*TxDesc {
 	return acceptedTxns
 }
 
+func (mp *TxPool) TrimPool() {
+	if mp.cfg.Policy.Mining {
+		return
+	}
+	sourceTxns := mp.MiningDescs()
+	for _, txDesc := range sourceTxns {
+		mp.RemoveTransaction(txDesc.Tx, true)
+	}
+}
+
 // ProcessTransaction is the main workhorse for handling insertion of new
 // free-standing transactions into the memory pool.  It includes functionality
 // such as rejecting duplicate transactions, ensuring transactions follow all
@@ -1219,9 +1230,10 @@ func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool
 
 		// Add the parent transaction first so remote nodes
 		// do not add orphans.
-		acceptedTxs[0] = txD
-		copy(acceptedTxs[1:], newTxs)
 
+		acceptedTxs[0] = txD
+
+		copy(acceptedTxs[1:], newTxs)
 		return acceptedTxs, nil
 	}
 

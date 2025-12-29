@@ -1340,9 +1340,11 @@ out:
 			case sccHandlerStart:
 				// Warn on unbalanced callback signalling.
 				if handlerActive {
-					log.Warn("Received handler start " +
-						"control command while a " +
-						"handler is already active")
+					/*
+						log.Warn("Received handler start " +
+							"control command while a " +
+							"handler is already active")
+					*/
 					continue
 				}
 

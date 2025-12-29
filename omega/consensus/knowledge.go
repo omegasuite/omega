@@ -146,9 +146,14 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 	tosend := false
 
 	if len(lmg.K) < 2 || lmg.K[len(lmg.K)-1] != me {
-		lmg.AddK(me, miner.server.GetPrivKey(self.syncer.Me))
-		lmg.From = self.syncer.Me
-		tosend = true
+		pv := miner.server.GetPrivKey(self.syncer.Me)
+		if pv != nil {
+			lmg.AddK(me, pv)
+			lmg.From = self.syncer.Me
+			tosend = true
+		} else {
+			log.Infof("Privkey does not exist for me %x @ k", self.syncer.Me)
+		}
 	}
 
 	ng, res := self.gain(mp, lmg.K)

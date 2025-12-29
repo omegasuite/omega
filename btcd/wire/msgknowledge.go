@@ -6,10 +6,10 @@
 package wire
 
 import (
+	"btcd/wire/common"
 	"bytes"
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"btcd/wire/common"
 	"io"
 )
 
@@ -38,6 +38,9 @@ func (msg *MsgKnowledge) Sign(key *btcec.PrivateKey) {
 }
 
 func (msg *MsgKnowledge) AddK(k int32, key *btcec.PrivateKey) {
+	if key == nil {
+		return
+	}
 	msg.K = append(msg.K, k)
 	sig, _ := key.Sign(msg.DoubleHashB())
 
