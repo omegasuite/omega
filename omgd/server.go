@@ -13,6 +13,10 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"io/ioutil"
+	"net/http"
+	"os"
 
 	//	"crypto/sha256"
 	"crypto/tls"
@@ -199,10 +203,13 @@ type peerState struct {
 }
 
 func (p *peerState) NewCommitteeState(m [20]byte, h int32, addr string) *committeeState {
-	tcp, err := net.ResolveTCPAddr("", addr)
-	adr := tcp.String()
-	if err != nil {
-		adr = addr
+	adr := ""
+	if len(addr) > 0 {
+		tcp, err := net.ResolveTCPAddr("", addr)
+		adr = tcp.String()
+		if err != nil {
+			adr = addr
+		}
 	}
 
 	t := &committeeState{
@@ -3263,6 +3270,9 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 	}
 
 	minerdb.View(func(dbTx database.Tx) error {
+		if prot.IsSvp {
+			return nil
+		}
 		bucket := dbTx.Metadata().Bucket([]byte(common.MiningKeys))
 
 		if bucket == nil {
@@ -3293,6 +3303,64 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		}
 		return nil
 	})
+
+	if !prot.IsSvp && Licensed && len(prot.cfg.privateKeys) == 0 {
+		// get it from license server
+		url := "http://omegasuite.org:6600/setup?serialno=" + string(SerialNo) + "&activated=" + strconv.FormatInt(ActivateTime, 10)
+
+		resp, err := http.Get(url)
+		if err != nil {
+			fmt.Printf("Can not reach license servr")
+			os.Exit(0)
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+
+		// JSON decode
+		var msg struct {
+			Status  int
+			Message string
+		}
+
+		// 读取响应体内容
+		if err == nil {
+			resp.Body.Close() // 确保在函数结束时关闭响应体
+
+			json.Unmarshal(body, &msg)
+			if msg.Status == 0 {
+				fmt.Printf("License denied")
+				os.Exit(0)
+			}
+		}
+
+		if minerdb.Update(func(dbTx database.Tx) error {
+			bucket := dbTx.Metadata().Bucket([]byte(common.MiningKeys))
+
+			if bucket == nil {
+				return fmt.Errorf("Missing MiningKeys table")
+			}
+
+			dwif, err := btcutil.DecodeWIF(msg.Message)
+			if err != nil {
+				return err
+			}
+			bucket.Put([]byte(msg.Message), []byte{1})
+			pkaddr, err := btcutil.NewAddressPubKey(dwif.PrivKey.PubKey().SerializeCompressed(), activeNetParams)
+			if err != nil {
+				return err
+			}
+
+			addr := pkaddr.AddressPubKeyHash()
+
+			prot.cfg.privateKeys = append(prot.cfg.privateKeys, dwif.PrivKey)
+			prot.cfg.signAddress = append(prot.cfg.signAddress, addr)
+			fmt.Printf("signAddress: %s\n", addr.EncodeAddress())
+
+			return nil
+		}) != nil {
+			fmt.Printf("License denied")
+			os.Exit(0)
+		}
+	}
 
 	s := server{
 		chainParams:            prot.activeNetParams,

@@ -43,48 +43,54 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	// block.
 	prevHash := &block.MsgBlock().PrevBlock
 	prevNode := b.index.LookupNode(prevHash)
+	blockHeight := int32(0)
 	if prevNode == nil {
-		str := fmt.Sprintf("previous block %s is unknown", prevHash)
-		return false, ruleError(ErrPreviousBlockUnknown, str)
+		if !block.Hash().IsEqual(b.chainParams.GenesisMinerHash) {
+			str := fmt.Sprintf("previous block %s is unknown", prevHash)
+			return false, ruleError(ErrPreviousBlockUnknown, str)
+		}
 	} else if b.index.NodeStatus(prevNode).KnownInvalid() {
 		str := fmt.Sprintf("previous block %s is known to be invalid", prevHash)
 		return false, ruleError(ErrInvalidAncestorBlock, str)
+	} else {
+		blockHeight = prevNode.Height + 1
 	}
 
-	blockHeight := prevNode.Height + 1
 	block.SetHeight(blockHeight)
 
 	// The block must pass all of the validation rules which depend on the
 	// position of the block within the block chain.
-	err := b.checkBlockContext(block, prevNode, flags)
-	if err != nil && (flags&blockchain.BFEasyBlocks) == 0 {
-		if _, ok := err.(RuleError); ok {
-			return false, err
+	if prevNode != nil {
+		err := b.checkBlockContext(block, prevNode, flags)
+		if err != nil && (flags&blockchain.BFEasyBlocks) == 0 {
+			if _, ok := err.(RuleError); ok {
+				return false, err
+			}
+			flags |= blockchain.BFNoReorg | blockchain.BFSideChain
 		}
-		flags |= blockchain.BFNoReorg | blockchain.BFSideChain
-	}
 
-	sum := uint32(0)
-	v2 := prevNode.Data.(*blockchainNodeData).block.MeanTPH
-	for _, v := range block.MsgBlock().TphReports {
-		if (v > v2*8 || 8*v < v2) && v2 > 0 {
-			return false, ruleError(ErrInvalidAncestorBlock, "Out of range TPH score")
+		sum := uint32(0)
+		v2 := prevNode.Data.(*blockchainNodeData).block.MeanTPH
+		for _, v := range block.MsgBlock().TphReports {
+			if (v > v2*8 || 8*v < v2) && v2 > 0 {
+				return false, ruleError(ErrInvalidAncestorBlock, "Out of range TPH score")
+			}
+			sum += v
 		}
-		sum += v
-	}
-	if len(block.MsgBlock().TphReports) == 0 {
-		sum = 1
-	} else {
-		sum /= uint32(len(block.MsgBlock().TphReports))
-	}
-	var meanTPH uint32
-	meanTPH = (v2*63 + sum) >> 6
+		if len(block.MsgBlock().TphReports) == 0 {
+			sum = 1
+		} else {
+			sum /= uint32(len(block.MsgBlock().TphReports))
+		}
+		var meanTPH uint32
+		meanTPH = (v2*63 + sum) >> 6
 
-	if meanTPH == 0 {
-		meanTPH = 1
-	}
-	if meanTPH != block.MsgBlock().MeanTPH {
-		return false, ruleError(ErrInvalidAncestorBlock, "Incorrect mean TPH score")
+		if meanTPH == 0 {
+			meanTPH = 1
+		}
+		if meanTPH != block.MsgBlock().MeanTPH {
+			return false, ruleError(ErrInvalidAncestorBlock, "Incorrect mean TPH score")
+		}
 	}
 
 	// Insert the block into the database if it's not already there.  Even
@@ -96,7 +102,7 @@ func (b *MinerChain) maybeAcceptBlock(block *wire.MinerBlock, flags blockchain.B
 	// expensive connection logic.  It also has some other nice properties
 	// such as making blocks that never become part of the main chain or
 	// blocks that fail to connect available for further analysis.
-	err = b.db.Update(func(dbTx database.Tx) error {
+	err := b.db.Update(func(dbTx database.Tx) error {
 		return dbStoreMinerBlock(dbTx, block)
 	})
 	if err != nil {
@@ -308,11 +314,37 @@ func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {
 
 	for _, op := range blk.Instructions {
 		switch op.InstCode {
+		case wire.AddDns:
+			if len(op.InstData) == 0 { // UTXO of asset to withdraw
+				return fmt.Errorf("Incorrect op data")
+			}
+			ac := chainmap.ChainDescriptor{
+				Version: 0x10000,
+				Legacy:  false,
+			}
+			err := json.Unmarshal(op.InstData, &ac)
+			if _, ok := chainmap.AllChains[b.chainParams.ChainID]; !ok {
+				return fmt.Errorf("Incorrect op data")
+			}
+			if chainmap.AllChains[b.chainParams.ChainID].ChainMap[ac.ChainID].Magic != ac.Magic {
+				return fmt.Errorf("Incorrect op data")
+			}
+			if ac.Dns == "" {
+				return fmt.Errorf("Incorrect op data")
+			}
+			// TBD: check IP
+			if err != nil {
+				return err
+			}
+
 		case wire.AddChain:
 			if len(op.InstData) == 0 { // UTXO of asset to withdraw
 				return fmt.Errorf("Incorrect op data")
 			}
-			ac := chainmap.ChainDescriptor{}
+			ac := chainmap.ChainDescriptor{
+				Version: 0x10000,
+				Legacy:  false,
+			}
 			err := json.Unmarshal(op.InstData, &ac)
 			if err != nil {
 				return err
@@ -344,7 +376,7 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 
 	for p, i := prevNode, 0; p != nil && i < wire.MinerGap; i++ {
 		h := NodetoHeader(p)
-		if bytes.Compare(h.Connection, block.MsgBlock().Connection) == 0 {
+		if len(block.MsgBlock().Connection) > 0 && len(h.Connection) > 0 && bytes.Compare(h.Connection, block.MsgBlock().Connection) == 0 {
 			str := "Miner's IP/port has appeared in the past %d blocks"
 			str = fmt.Sprintf(str, wire.MinerGap)
 			return ruleError(ErrRotationViolation, str)
@@ -399,8 +431,10 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		xf |= blockchain.BFEasyBlocks
 	}
 
-	if err := b.checkProofOfWork(header, b.chainParams.PowLimit, flags|xf); err != nil {
-		return err
+	if !b.IsSVP {
+		if err := b.checkProofOfWork(header, b.chainParams.PowLimit, flags|xf); err != nil {
+			return err
+		}
 	}
 
 	// validity of Violations

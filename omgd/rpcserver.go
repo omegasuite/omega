@@ -6360,6 +6360,7 @@ func handleShutdown(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 						break checkip
 					}
 				}
+				// TBD: should also check privkeys here
 			}
 		}
 	}

@@ -1430,6 +1430,41 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 					continue
 				}
 				if me != nil && me.ChainMap[ac.ChainID] != nil {
+					param1 := chaincfg.GlobalParams{}
+					json.Unmarshal([]byte(ac.GlobalParams), &param1)
+					param2 := chaincfg.GlobalParams{}
+					json.Unmarshal([]byte(me.ChainMap[ac.ChainID].GlobalParams), &param2)
+					for _, d1 := range param1.DNSSeeds {
+						exist := ""
+						for _, d2 := range param2.DNSSeeds {
+							if d1.Host == d2.Host {
+								exist = d1.Host
+								break
+							}
+						}
+						if exist != "" {
+							md, err := json.Marshal(ac)
+							if err != nil {
+								continue
+							}
+
+							md, err = json.Marshal(struct {
+								ChainID uint32
+								Magic   uint32
+								Dns     string
+							}{
+								ChainID: ac.ChainID,
+								Magic:   ac.Magic,
+								Dns:     exist,
+							})
+							if err == nil {
+								msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
+									InstCode: wire.AddDns,
+									InstData: md,
+								}}
+							}
+						}
+					}
 					continue
 				}
 
@@ -1467,6 +1502,41 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 					InstCode: wire.AddChain,
 					InstData: md,
 				}}
+			}
+		}
+	} else if g.chainParams.AddDns != nil {
+		exist := false
+		ac := g.chainParams.AddDns.(*chainmap.ChainDescriptor)
+		for cid, c := range chainmap.AllChains[chainmap.ROOT].ChainMap {
+			if ac.Magic == c.Magic && ac.ChainID == cid {
+				exist = true
+			}
+		}
+		if exist {
+			param := chaincfg.GlobalParams{}
+			json.Unmarshal([]byte(chainmap.AllChains[chainmap.ROOT].ChainMap[ac.ChainID].GlobalParams), &param)
+			exist = false
+			for _, d := range param.DNSSeeds {
+				if d.Host == ac.Dns {
+					exist = true
+				}
+			}
+			if !exist {
+				md, err := json.Marshal(struct {
+					ChainID uint32
+					Magic   uint32
+					Dns     string
+				}{
+					ChainID: ac.ChainID,
+					Magic:   ac.Magic,
+					Dns:     ac.Dns,
+				})
+				if err == nil {
+					msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
+						InstCode: wire.AddDns,
+						InstData: md,
+					}}
+				}
 			}
 		}
 	}
@@ -1605,6 +1675,9 @@ func (g *BlkTmplGenerator) Committee() (map[[20]byte]struct{}, bool) {
 				}
 			}
 		}
+	}
+	if len(g.chainParams.ExternalIPs) == 0 {
+		return adrs, true
 	}
 
 	if !in {

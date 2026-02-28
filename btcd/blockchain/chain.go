@@ -649,7 +649,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 
 	// Make sure it's extending the end of the best chain.
 	prevHash := &block.MsgBlock().Header.PrevBlock
-	if !prevHash.IsEqual(&b.BestChain.Tip().Hash) {
+	if !prevHash.IsEqual(&zerohash) && !prevHash.IsEqual(&b.BestChain.Tip().Hash) {
 		return AssertError("connectBlock must be called with a block " +
 			"that extends the main chain")
 	}
@@ -699,6 +699,10 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		state.LastRotation = uint32(-node.Data.GetNonce() - wire.MINER_RORATE_FREQ)
 		m = 1
 		log.Infof("Update LastRotation to %d", state.LastRotation)
+	}
+
+	if block.Height() == 0 {
+		state.LastRotation = 0
 	}
 
 	//if b.IsSVP {
@@ -1807,93 +1811,127 @@ func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm
 	return views, Vm
 }
 
-type addchaindata struct {
-	Name            string `json:"name"`
-	ChainId         uint32 `json:"chainid"`
-	Dns             string `json:"dns"`
-	Port            string `json:"port"`
-	Rpcport         string `json:"rpcport"`
-	Magic           string `json:"magic"`
-	Gensishash      string `json:"gensishash"`
-	Minergensishash string `json:"minergensishash"`
-	Parent          uint32 `json:"parent"`
-}
-
-func (m *addchaindata) Match(c *addchaindata) bool {
-	return m.ChainId == c.ChainId && m.Name == c.Name && m.Dns == c.Dns &&
-		m.Port == c.Port && m.Rpcport == c.Rpcport && m.Magic == c.Magic &&
-		m.Gensishash == c.Gensishash && m.Minergensishash == c.Minergensishash && m.Parent == c.Parent
-}
-
 func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) {
 	for _, op := range block.MsgBlock().Instructions {
 		switch op.InstCode {
-		case wire.AddChain:
-			// should drop chain if this is where we add chain
-			var meta addchaindata
-			err := json.Unmarshal(op.InstData, &meta)
+		case wire.AddDns:
+			meta := &chainmap.ChainDescriptor{
+				Version: 0x10000,
+				Legacy:  false,
+			}
+			err := json.Unmarshal(op.InstData, meta)
 			if err != nil {
 				continue
 			}
-			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[meta.ChainId]; !ok {
+			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[meta.ChainID]; !ok {
 				continue
 			}
-			if chainmap.AllChains[b.ChainParams.ChainID].ChainMap[meta.ChainId].Height != uint32(block.Height()) {
+			chainmap.AllChains[b.ChainParams.ChainID].RemoveDns(meta)
+
+		case wire.AddChain:
+			// should drop chain if this is where we add chain
+			cd := &chainmap.ChainDescriptor{
+				Version: 0x10000,
+				Legacy:  false,
+			}
+			err := json.Unmarshal(op.InstData, &cd)
+			if err != nil {
 				continue
 			}
-			chainmap.AllChains[b.ChainParams.ChainID].RemoveChain(meta.ChainId)
+			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[cd.ChainID]; !ok {
+				continue
+			}
+			if chainmap.AllChains[b.ChainParams.ChainID].ChainMap[cd.ChainID].Height != uint32(block.Height()) {
+				continue
+			}
+			chainmap.AllChains[b.ChainParams.ChainID].RemoveChain(cd.ChainID)
 		}
 	}
 }
 
 func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
+	terminating := false
 	for _, op := range block.MsgBlock().Instructions {
+		cd := &chainmap.ChainDescriptor{
+			Version: 0x10000,
+			Legacy:  false,
+		}
+		err := json.Unmarshal(op.InstData, cd)
+		if err != nil {
+			continue
+		}
+
 		switch op.InstCode {
-		case wire.AddChain:
-			cd := &chainmap.ChainDescriptor{}
-			err := json.Unmarshal(op.InstData, cd)
-			if err != nil {
+		case wire.AddDns:
+			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[cd.ChainID]; !ok {
 				continue
 			}
+			if chainmap.AllChains[b.ChainParams.ChainID].ChainMap[cd.ChainID].Magic != cd.Magic {
+				continue
+			}
+
+		case wire.AddChain:
 			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[cd.ChainID]; ok {
 				continue
 			}
-			cd.MRChain = cd.MrGenesis != ""
-			cd.Height = uint32(block.Height())
+		}
 
-			// if 100 MR block all having this inst, then add it
-			mr := b.Miners
-			top := int32(height)
-			agreed := 0
-			for i := 0; i < common.NewChainPool; i++ {
-				blk, err := mr.BlockByHeight(top)
-				top--
-				if err != nil || blk == nil || top == 0 {
-					break
+		// if 100 MR block all having this inst, then add it
+		mr := b.Miners
+		top := int32(height)
+		agreed := 0
+
+		cd.MRChain = cd.MrGenesis != ""
+		cd.Height = uint32(block.Height())
+
+		for i := 0; i < common.NewChainPool; i++ {
+			blk, err := mr.BlockByHeight(top)
+			top--
+			if err != nil || blk == nil || top == 0 {
+				break
+			}
+			for _, op2 := range blk.MsgBlock().Instructions {
+				if op.InstCode != op2.InstCode {
+					continue
 				}
-				for _, op2 := range blk.MsgBlock().Instructions {
-					switch op2.InstCode {
-					case wire.AddChain:
-						meta2 := &wire.ChainDescriptor{}
-						err = json.Unmarshal(op2.InstData, &meta2)
-						if err != nil {
-							continue
-						}
-						if meta2.Match((*wire.ChainDescriptor)(cd)) {
-							agreed++
-							break
-						}
+				meta2 := &wire.ChainDescriptor{}
+				err = json.Unmarshal(op2.InstData, &meta2)
+				if err != nil {
+					continue
+				}
+
+				switch op2.InstCode {
+				case wire.AddDns:
+					if meta2.Magic == cd.Magic && meta2.ChainID == cd.ChainID && meta2.Dns == cd.Dns {
+						agreed++
+						break
+					}
+
+				case wire.AddChain:
+					if meta2.Match((*wire.ChainDescriptor)(cd)) {
+						agreed++
+						break
 					}
 				}
 			}
+
 			if agreed >= common.NewChainConsensus {
 				// add it to chainmap
-				if chainmap.AllChains[b.ChainParams.ChainID].AddChain(cd) {
-					// terminate to cause reboot with new map
-					terminator <- struct{}{}
+				switch op.InstCode {
+				case wire.AddDns:
+					chainmap.AllChains[b.ChainParams.ChainID].AddDns(cd)
+
+				case wire.AddChain:
+					if chainmap.AllChains[b.ChainParams.ChainID].AddChain(cd) {
+						terminating = true
+					}
 				}
 			}
 		}
+	}
+	if terminating {
+		// terminate to cause reboot with new map
+		terminator <- struct{}{}
 	}
 }
 
@@ -2030,7 +2068,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 	// most common case.
 	parentHash := &block.MsgBlock().Header.PrevBlock
 	parent := b.NodeByHash(parentHash)
-	if parentHash.IsEqual(&b.BestChain.Tip().Hash) && b.consistent(block, parent, flags&BFNoConnect == BFNoConnect) {
+	if parent == nil || (parentHash.IsEqual(&b.BestChain.Tip().Hash) && b.consistent(block, parent, flags&BFNoConnect == BFNoConnect)) {
 		// Skip checks if node has already been fully validated.
 		fastAdd = fastAdd || b.Index.NodeStatus(node).KnownValid()
 
@@ -2041,7 +2079,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		if cnl == 0 {
 			cnl = b.ChainParams.ContractExecLimit
 		}
-		if block.MsgBlock().Header.ContractExec > cnl && b.ChainParams.Net == uint32(common.MainNet) {
+		if !b.IsSVP && block.MsgBlock().Header.ContractExec > cnl && b.ChainParams.Net == uint32(common.MainNet) {
 			// contract execution must not exceed block limit
 			str := fmt.Sprintf("Contract execution steps exceeds block limit in %v", *block.Hash())
 			return false, ruleError(ErrExcessContractExec, str)
@@ -3152,8 +3190,10 @@ func New(config *Config, terminate chan struct{}) (*BlockChain, error) {
 	}
 
 	bestNode := b.BestChain.Tip()
-	log.Infof("Chain state (height %d, hash %v, totaltx %d)",
-		bestNode.Height, bestNode.Hash, b.stateSnapshot.TotalTxns)
+	if bestNode != nil {
+		log.Infof("Chain state (height %d, hash %v, totaltx %d)",
+			bestNode.Height, bestNode.Hash, b.stateSnapshot.TotalTxns)
+	}
 
 	return &b, nil
 }

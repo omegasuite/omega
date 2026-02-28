@@ -697,22 +697,25 @@ out:
 				adj = 1
 			}
 
-			sz := len(block.MsgBlock().Transactions)
+			// isempty := len(block.MsgBlock().Transactions) < int(m.cfg.BlockTemplateGenerator.Policy.MinBlockWeight)
 			block.ClearSize()
 
 			// if block is too small, wait upto wire.TimeGap
-			nt := wire.TimeGap - (time.Now().Unix() - lastblkgen)
+			nt := int64(wire.TimeGap)
+			if len(block.MsgBlock().Transactions) < int(m.cfg.BlockTemplateGenerator.Policy.MinBlockWeight) {
+				nt = wire.EmptyBlockGap
+			}
+			nt -= time.Now().Unix() - lastblkgen
 
 			if m.g.Chain.ChainParams.Net == uint32(common.MainNet) {
-				wanted := m.cfg.BlockTemplateGenerator.Policy.MinBlockWeight
-				if sz < int(wanted)/2 && nt > 4 {
-					time.Sleep(time.Duration(nt) / 4 * time.Second)
+				if nt > 4 {
+					time.Sleep(time.Duration(nt/4) * time.Second)
 					continue
-				} else if sz < int(wanted)/2 && nt > 0 {
+				} else if nt > 0 {
 					time.Sleep(time.Duration(nt) * time.Second)
 					continue
 				}
-			} else if sz <= 1 && nt > 1 {
+			} else if nt > 1 {
 				time.Sleep(time.Duration(nt) * time.Second)
 				continue
 			}

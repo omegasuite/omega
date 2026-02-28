@@ -384,7 +384,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 
 	header := &block.MsgBlock().Header
 
-	if parent.Hash != best.Hash {
+	if parent != nil && !parent.Hash.IsEqual(&best.Hash) {
 		pn := b.NodeByHash(&parent.Hash)
 		fork := b.FindFork(pn)
 
@@ -411,6 +411,8 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 				rotate++
 			}
 		}
+	} else if parent == nil && !block.Hash().IsEqual(b.ChainParams.GenesisHash) {
+		return nil, true
 	}
 
 	if header.Nonce > 0 {
@@ -2517,29 +2519,31 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 
 	// We obtain the MTP of the *previous* block in order to
 	// determine if transactions in the current block are final.
-	medianTime := node.Parent.CalcPastMedianTime()
+	if node.Parent != nil {
+		medianTime := node.Parent.CalcPastMedianTime()
 
-	// we also enforce the relative sequence number based
-	// lock-times within the inputs of all transactions in this
-	// candidate block.
-	for _, tx := range block.Transactions() {
-		if tx.MsgTx().IsCrossChain() {
-			continue
-		}
-		// A transaction can only be included within a block
-		// once the sequence locks of *all* its inputs are
-		// active.
-		sequenceLock, err := b.calcSequenceLock(node, tx, views.Utxo,
-			false)
-		if err != nil {
-			return err
-		}
-		if !SequenceLockActive(sequenceLock, node.Height,
-			medianTime) {
-			str := fmt.Sprintf("block contains " +
-				"transaction whose input sequence " +
-				"locks are not met")
-			return ruleError(ErrUnfinalizedTx, str)
+		// we also enforce the relative sequence number based
+		// lock-times within the inputs of all transactions in this
+		// candidate block.
+		for _, tx := range block.Transactions() {
+			if tx.MsgTx().IsCrossChain() {
+				continue
+			}
+			// A transaction can only be included within a block
+			// once the sequence locks of *all* its inputs are
+			// active.
+			sequenceLock, err := b.calcSequenceLock(node, tx, views.Utxo,
+				false)
+			if err != nil {
+				return err
+			}
+			if !SequenceLockActive(sequenceLock, node.Height,
+				medianTime) {
+				str := fmt.Sprintf("block contains " +
+					"transaction whose input sequence " +
+					"locks are not met")
+				return ruleError(ErrUnfinalizedTx, str)
+			}
 		}
 	}
 

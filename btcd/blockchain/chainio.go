@@ -775,26 +775,43 @@ func dbPutBestState(dbTx database.Tx, snapshot *BestState) error {
 // the genesis block, so it must only be called on an uninitialized database.
 func (b *BlockChain) createChainState() error {
 	// Create a new node from the genesis block and set it as the best node.
-	genesisBlock := btcutil.NewBlock(b.ChainParams.GenesisBlock)
-	genesisBlock.SetHeight(0)
-	header := &genesisBlock.MsgBlock().Header
-	node := NewBlockNode(header, nil)
-	node.Data.SetBits(b.ChainParams.PowLimitBits)
-	node.Status = chainutil.StatusDataStored | chainutil.StatusValid
-	b.BestChain.SetTip(node)
-
-	// Add the new node to the Index which is used for faster lookups.
-	b.Index.AddNodeUL(node)
-
+	var node *chainutil.BlockNode
+	var genesisBlock *btcutil.Block
 	// Initialize the state related to the best block.  Since it is the
 	// genesis block, use its timestamp for the median time.
-	numTxns := uint64(len(genesisBlock.MsgBlock().Transactions))
-	blockSize := uint64(genesisBlock.MsgBlock().SerializeSize())
 
-	// set rotation to 0 or committee size?
-	b.stateSnapshot = newBestState(node, blockSize, numTxns,
-		numTxns, time.Unix(node.Data.TimeStamp(), 0), // b.ChainParams.PowLimitBits,
-		0)
+	if b.ChainParams.GenesisBlock != nil {
+		genesisBlock = btcutil.NewBlock(b.ChainParams.GenesisBlock)
+		genesisBlock.SetHeight(0)
+		header := &genesisBlock.MsgBlock().Header
+		node = NewBlockNode(header, nil)
+		node.Data.SetBits(b.ChainParams.PowLimitBits)
+		node.Status = chainutil.StatusDataStored | chainutil.StatusValid
+		b.BestChain.SetTip(node)
+
+		// Add the new node to the Index which is used for faster lookups.
+		b.Index.AddNodeUL(node)
+
+		numTxns := uint64(len(genesisBlock.MsgBlock().Transactions))
+		blockSize := uint64(genesisBlock.MsgBlock().SerializeSize())
+
+		// set rotation to 0 or committee size?
+		b.stateSnapshot = newBestState(node, blockSize, numTxns,
+			numTxns, time.Unix(node.Data.TimeStamp(), 0), // b.ChainParams.PowLimitBits,
+			0)
+	} else {
+		b.stateSnapshot = &BestState{
+			Hash:   chainhash.Hash{},
+			Height: 0,
+			//		Bits:         bits,
+			LastRotation: 0,
+
+			BlockSize:  0,
+			NumTxns:    0,
+			TotalTxns:  0,
+			MedianTime: time.Now(),
+		}
+	}
 
 	// Create the initial the database chain state including creating the
 	// necessary Index buckets and inserting the genesis block.
@@ -900,34 +917,38 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
-		// Save the genesis block to the block Index database.
-		if err = dbStoreBlockNode(dbTx, node); err != nil {
-			return err
-		}
-
-		// Add the genesis block hash to height and height to hash
-		// mappings to the Index.
-		err = DbPutBlockIndex(dbTx, &node.Hash, node.Height)
-		if err != nil {
-			return err
-		}
-
 		// Store the current best chain state into the database.
 		if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
 			return err
 		}
 
-		// Store the initial Tx, bur not the coin base Tx.
-		txs := genesisBlock.Transactions()
-		views := b.NewViewPointSet()
+		if node != nil {
+			// Save the genesis block to the block Index database.
+			if err = dbStoreBlockNode(dbTx, node); err != nil {
+				return err
+			}
 
-		views.SetBestHash(genesisBlock.Hash())
-		if err = viewpoint.DbPutGensisTransaction(dbTx, txs[0], views); err != nil {
-			return err
+			// Add the genesis block hash to height and height to hash
+			// mappings to the Index.
+			err = DbPutBlockIndex(dbTx, &node.Hash, node.Height)
+			if err != nil {
+				return err
+			}
+
+			// Store the initial Tx, bur not the coin base Tx.
+			txs := genesisBlock.Transactions()
+			views := b.NewViewPointSet()
+
+			views.SetBestHash(genesisBlock.Hash())
+			if err = viewpoint.DbPutGensisTransaction(dbTx, txs[0], views); err != nil {
+				return err
+			}
+
+			// Store the genesis block into the database.
+			return dbStoreBlock(dbTx, genesisBlock)
 		}
 
-		// Store the genesis block into the database.
-		return dbStoreBlock(dbTx, genesisBlock)
+		return nil
 	})
 
 	return err
@@ -1122,6 +1143,16 @@ func (b *BlockChain) initChainState() error {
 			return err
 		}
 
+		b.stateSnapshot = &BestState{
+			Hash:         state.hash,
+			Height:       int32(state.height),
+			LastRotation: state.rotation,
+			BlockSize:    0,
+			NumTxns:      state.totalTxns,
+			TotalTxns:    state.totalTxns,
+			MedianTime:   time.Now(),
+		}
+
 		var cutoff = uint32(0)
 		if state.height > 200000 {
 			cutoff = state.height - 200000
@@ -1248,6 +1279,10 @@ func (b *BlockChain) initChainState() error {
 				}
 				lastNode = node
 			}
+		}
+
+		if i == 0 {
+			return nil
 		}
 
 		// Set the best chain view to the stored best state.

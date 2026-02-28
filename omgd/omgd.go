@@ -8,6 +8,10 @@ package main
 import (
 	"btcd/chaincfg"
 	"bytes"
+	"encoding/hex"
+	"regexp"
+	"strings"
+
 	//	"encoding/hex"
 	"btcd/wire"
 	"btcd/wire/common"
@@ -32,6 +36,7 @@ import (
 	"btcd/blockchain/indexers"
 	"btcd/database"
 	"btcd/limits"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 )
 
 const (
@@ -41,6 +46,11 @@ const (
 	blockDbNamePrefix = "blocks"
 	minerDbNamePrefix = "miners"
 )
+
+const Licensed = false
+
+var SerialNo []byte    // serial number
+var ActivateTime int64 // first time it is run
 
 type Protocol struct {
 	cfg             *config
@@ -54,7 +64,7 @@ type Protocol struct {
 
 var protocols []*Protocol
 
-func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalParams, svp bool) (*Protocol, bool) {
+func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, svp bool) (*Protocol, bool) {
 	// Get a channel that will be closed when a shutdown signal has been
 	// triggered either from an OS signal such as SIGINT (Ctrl+C) or from
 	// another subsystem such as the RPC server.
@@ -72,6 +82,13 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 			btcdLog.Errorf("%v", err)
 			return nil, true
 		}
+	}
+
+	globalParams := &chaincfg.GlobalParams{}
+	if cd == nil {
+		globalParams = nil
+	} else {
+		json.Unmarshal([]byte(cd.GlobalParams), globalParams)
 	}
 
 	cid := activeNetParams.ChainID // uint32(chaincfg.DefaultChainID)
@@ -122,10 +139,15 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 	}
 
 	prot.activeNetParams = activeNetParams
-	if globalParams != nil {
-		prot.activeNetParams.GlobalParams = *globalParams
-		//		prot.activeNetParams.PowLimit = blockchain.CompactToBig(globalParams.PowLimitBits)
+
+	if prot.IsSvp {
+		prot.activeNetParams = &chaincfg.Params{}
+		*prot.activeNetParams = *activeNetParams
+		if globalParams != nil {
+			prot.activeNetParams.GlobalParams = *globalParams
+		}
 	}
+
 	if tcfg.TestNet {
 		prot.activeNetParams.GenesisHash = chaincfg.TestNet3GenesisHash[tcfg.NetMagic]
 		prot.activeNetParams.GenesisBlock = chaincfg.TestNet3GenesisBlock[tcfg.NetMagic]
@@ -136,6 +158,47 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 		prot.activeNetParams.GenesisBlock = chaincfg.GenesisBlock[tcfg.NetMagic]
 		prot.activeNetParams.GenesisMinerHash = chaincfg.GenesisMinerHash[tcfg.NetMagic]
 		prot.activeNetParams.GenesisMinerBlock = chaincfg.GenesisMinerBlock[tcfg.NetMagic]
+	}
+
+	if prot.activeNetParams.GenesisHash == nil {
+		var h chainhash.Hash
+		bh, _ := hex.DecodeString(cd.Genesis)
+		for i := 0; i < 32; i++ {
+			h[i] = bh[31-i]
+		}
+		prot.activeNetParams.GenesisHash = &h
+	}
+	if prot.activeNetParams.GenesisMinerHash == nil && cd.MRChain {
+		var h chainhash.Hash
+		bh, _ := hex.DecodeString(cd.MrGenesis)
+		for i := 0; i < 32; i++ {
+			h[i] = bh[31-i]
+		}
+		prot.activeNetParams.GenesisMinerHash = &h
+	}
+
+	if prot.IsSvp && globalParams != nil {
+		if globalParams.PowLimit != nil {
+			prot.activeNetParams.PowLimit = globalParams.PowLimit
+		}
+		if len(globalParams.Checkpoints) > 0 {
+			prot.activeNetParams.Checkpoints = globalParams.Checkpoints
+		}
+		if len(globalParams.Deployments) > 0 {
+			prot.activeNetParams.Deployments = globalParams.Deployments
+		}
+		if globalParams.MinBorderFee != 0 {
+			prot.activeNetParams.MinBorderFee = globalParams.MinBorderFee
+		}
+		if globalParams.MinContractDeployFee != 0 {
+			prot.activeNetParams.MinContractDeployFee = globalParams.MinContractDeployFee
+		}
+		if globalParams.MinRelayTxFee != 0 {
+			prot.activeNetParams.MinRelayTxFee = globalParams.MinRelayTxFee
+		}
+		if globalParams.ContractExecFee != 0 {
+			prot.activeNetParams.ContractExecFee = globalParams.ContractExecFee
+		}
 	}
 
 	prot.activeNetParams.MinRelayTxFee = int64(tcfg.minRelayTxFee)
@@ -196,7 +259,10 @@ func prepareServer(tcfg *config, pdb database.DB, globalParams *chaincfg.GlobalP
 
 	prot.activeNetParams.AddChain = nil
 	if tcfg.AddChain != "" {
-		nc := &chainmap.ChainDescriptor{}
+		nc := &chainmap.ChainDescriptor{
+			Version: 0x10000,
+			Legacy:  false,
+		}
 		err := json.Unmarshal([]byte(tcfg.AddChain), nc)
 		if err != nil {
 			btcdLog.Errorf("Unable to parse AddChain commanf %s", tcfg.AddChain)
@@ -529,10 +595,16 @@ func main() {
 	// Use all processor cores.
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	tcfg, _, err := loadConfig("Main Options", 0) // chain main options
+	activeNetParams = &chaincfg.Params{}
+	*activeNetParams = chaincfg.MainNetParams
+	chaincfg.ActiveNetParams = activeNetParams
+
+	tcfg, _, err := loadConfig("Main Options", 0, nil, nil) // chain main options
 	if err != nil {
 		os.Exit(1)
 	}
+
+	rootddata, rootlog := tcfg.DataDir, tcfg.LogDir
 
 	setMagic(tcfg)
 
@@ -617,6 +689,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	if Licensed {
+		if db.Update(func(tx database.Tx) error {
+			SerialNo = tx.Metadata().Get([]byte("SerialNo"))
+			if SerialNo == nil || len(SerialNo) == 0 {
+				return fmt.Errorf("No SerialNo")
+			}
+			t := tx.Metadata().Get([]byte("ActivateTime"))
+			if t == nil || len(t) == 0 {
+				var s [8]byte
+				ActivateTime = time.Now().Unix()
+				common.LittleEndian.PutUint64(s[:], uint64(ActivateTime))
+				tx.Metadata().Put([]byte("SerialNo"), s[:])
+			} else {
+				ActivateTime = int64(common.LittleEndian.Uint64(t))
+			}
+			return nil
+		}) != nil {
+			fmt.Printf("Missing SerialNo")
+			os.Exit(0)
+		}
+	}
+
 	/*
 		if _, ok := chainmap.AllChains[chaincfg.DefaultChainID].ChainMap[chaincfg.DefaultParentChainID]; chaincfg.DefaultParentChainID != 0 && !ok {
 			getChainmap(tcfg, db)
@@ -664,13 +758,20 @@ func main() {
 
 	if _, ok := chainmap.AllChains[p.activeNetParams.MainChainID].ChainMap[p.activeNetParams.ParentChainId]; !ok && p.activeNetParams.MainChainID != chainmap.ROOT {
 		// create a svp server for parent
-		fmt.Printf("loading parent options")
-		pcfg, _, err := loadConfig("Parent Options", 0) // chain main options
-		if err != nil {
+		// fmt.Printf("loading parent options")
+		// pcfg, _, err := loadConfig("Parent Options", 0) // chain main options
+		// if err != nil {
+		//	os.Exit(1)
+		//}
+		if tcfg.ParentChain == "" {
+			fmt.Printf("Missing parent descriptions")
 			os.Exit(1)
 		}
-		c := chainmap.ChainDescriptor{}
-		json.Unmarshal([]byte(pcfg.AddChain), &c)
+		c := chainmap.ChainDescriptor{
+			Version: 0x10000,
+			Legacy:  false,
+		}
+		json.Unmarshal([]byte(tcfg.ParentChain), &c)
 		chainmap.AllChains[p.activeNetParams.MainChainID].AddChain(&c)
 		// terminate to cause reboot with new map
 		shutdownRequestChannel <- struct{}{}
@@ -693,10 +794,22 @@ func main() {
 
 		fmt.Printf("loading SVP options, ChainID = %d magic = %x\n", c.ChainID, uint32(dparams.Net))
 
-		vcfg, _, err := loadConfig(svpid, dparams.Net)
+		vcfg := &config{}
+
+		re := regexp.MustCompile("/|\\\\")
+		parts := re.Split(rootddata, -1)
+		parts = append(parts[:len(parts)-2], svpid, parts[len(parts)-2])
+		vcfg.DataDir = strings.Join(parts, "/")
+
+		parts = re.Split(rootlog, -1)
+		parts = append(parts[:len(parts)-2], svpid, parts[len(parts)-2])
+		vcfg.LogDir = strings.Join(parts, "/")
+
+		vcfg, _, err = loadConfig(svpid, dparams.Net, vcfg, dparams)
 		if vcfg == nil || err != nil {
 			os.Exit(1)
 		}
+
 		vcfg.NetMagic = dparams.Net
 		vcfg.GenerateMiner = false
 		vcfg.Generate = false
@@ -716,7 +829,7 @@ func main() {
 		fmt.Printf("datadir = %s\n", vcfg.DataDir)
 
 		// svp chain
-		q, quit := prepareServer(vcfg, nil, dparams, true)
+		q, quit := prepareServer(vcfg, nil, c, true)
 		if quit || q == nil {
 			if q != nil {
 				cleanup(q)

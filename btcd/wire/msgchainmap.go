@@ -11,17 +11,19 @@ import (
 )
 
 type ChainDescriptor struct {
-	Magic          uint32
-	MRChain        bool
-	Genesis        string
-	MrGenesis      string
-	Parent         uint32
-	ChainID        uint32
-	Dns            string
-	DefaultPort    string
-	DefaultRPCPort string
-	Height         uint32
-	GlobalParams   string
+	Version        uint32 `json:"version"`
+	Magic          uint32 `json:"magic"`
+	MRChain        bool   `json:"mrchain"`
+	Genesis        string `json:"genesis"`
+	MrGenesis      string `json:"mrgenesis"`
+	Parent         uint32 `json:"parent"`
+	ChainID        uint32 `json:"chainid"`
+	Dns            string `json:"dns"`
+	DefaultPort    string `json:"defaultport"`
+	DefaultRPCPort string `json:"defaultrpcport"`
+	Height         uint32 `json:"height"`
+	GlobalParams   string `json:"globalparams"`
+	Legacy         bool   `json:"legacy"`
 }
 
 func (t *ChainDescriptor) Match(s *ChainDescriptor) bool {
@@ -48,7 +50,7 @@ func (t *ChainDescriptor) OmcEncode(w io.Writer) error {
 	} else {
 		b = 0
 	}
-	err := common.WriteElements(w, t.Magic, b)
+	err := common.WriteElements(w, t.Version, t.Magic, b)
 	if err != nil {
 		return err
 	}
@@ -89,12 +91,36 @@ func (t *ChainDescriptor) OmcEncode(w io.Writer) error {
 		return err
 	}
 
+	err = common.WriteElements(w, t.Legacy)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
+const TempChainMapVersionFix = true
+
 func (t *ChainDescriptor) OmcDecode(r io.Reader) error {
 	var b byte
-	err := common.ReadElements(r, &t.Magic, &b)
+
+	err := common.ReadElements(r, &t.Version)
+	if err != nil {
+		return err
+	}
+
+	if TempChainMapVersionFix && t.Version != 0x10000 {
+		// temp patch
+		t.Magic = t.Version
+		t.Version = 0x10000
+	} else {
+		err = common.ReadElements(r, &t.Magic)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = common.ReadElements(r, &b)
 	if err != nil {
 		return err
 	}
@@ -155,10 +181,14 @@ func (t *ChainDescriptor) OmcDecode(r io.Reader) error {
 	}
 	t.DefaultRPCPort = string(buf)
 
+	t.Legacy = false
+
 	t.GlobalParams, err = common.ReadVarString(r, 0)
 	if err != nil {
 		return err
 	}
+
+	common.ReadElements(r, &t.Legacy)
 
 	return nil
 }

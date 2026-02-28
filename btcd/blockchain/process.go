@@ -333,48 +333,48 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 
 	blockHeader := &block.MsgBlock().Header
 	prevHash := &blockHeader.PrevBlock
-	if prevHash.IsEqual(&zerohash) { // && !blockHash.IsEqual(b.ChainParams.GenesisHash) {
-		return true, false, nil, -1, nil
-	}
-	prevHashExists, err := b.blockExists(prevHash)
-	if err != nil {
-		return false, false, err, -1, nil
-	}
-	if !prevHashExists {
-		log.Infof("block %s: prevHash block %s does not exist", block.Hash().String(), prevHash.String())
-		var orp *chainhash.Hash
-		orp = nil
-		if flags&BFNoConnect == 0 {
-			if block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index > uint32(b.BestChain.Height())+500 {
-				err := fmt.Errorf("Skipping future block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
-				return false, false, err, -1, nil
-			} else {
-				log.Infof("Adding orphan block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
-				if flags&BFNoOrphan == 0 {
-					orp = b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+	prevNode := b.NodeByHash(prevHash)
+	blockHeight := int32(0)
+
+	if b.BestChain.Tip() != nil {
+		if prevHash.IsEqual(&zerohash) { // && !blockHash.IsEqual(b.ChainParams.GenesisHash) {
+			return true, false, nil, -1, nil
+		}
+		prevHashExists, err := b.blockExists(prevHash)
+		if err != nil {
+			return false, false, err, -1, nil
+		}
+		if !prevHashExists {
+			log.Infof("block %s: prevHash block %s does not exist", block.Hash().String(), prevHash.String())
+			var orp *chainhash.Hash
+			orp = nil
+			if flags&BFNoConnect == 0 {
+				if block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index > uint32(b.BestChain.Height())+500 {
+					err := fmt.Errorf("Skipping future block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
+					return false, false, err, -1, nil
+				} else {
+					log.Infof("Adding orphan block %s with parent %s height appear %d", block.Hash().String(), prevHash.String(), block.MsgBlock().Transactions[0].TxIn[0].PreviousOutPoint.Index)
+					if flags&BFNoOrphan == 0 {
+						orp = b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+					}
 				}
 			}
+			return false, true, nil, -1, orp
 		}
-		return false, true, nil, -1, orp
-	}
-
-	prevNode := b.NodeByHash(prevHash)
-
-	if prevNode == nil {
-		str := fmt.Sprintf("previous block %s is unknown", prevHash)
-		return false, false, ruleError(ErrPreviousBlockUnknown, str), -1, nil
-	} else if b.Index.NodeStatus(prevNode).KnownInvalid() {
+		if prevNode == nil {
+			str := fmt.Sprintf("previous block %s is unknown", prevHash)
+			return false, false, ruleError(ErrPreviousBlockUnknown, str), -1, nil
+		}
+		blockHeight = prevNode.Height + 1
+		if blockHeight <= int32(b.Index.Cutoff) {
+			if prevNode.Height <= 0 {
+				return false, false, ruleError(ErrInvalidAncestorBlock, "Block height is in locked area"), -1, prevHash
+			}
+			return false, false, ruleError(ErrInvalidAncestorBlock, "Block height is in locked area"), -1, nil
+		}
+	} else if prevNode != nil && b.Index.NodeStatus(prevNode).KnownInvalid() {
 		str := fmt.Sprintf("previous block %s is known to be invalid", prevHash)
 		return false, false, ruleError(ErrInvalidAncestorBlock, str), -1, prevHash
-	}
-
-	blockHeight := prevNode.Height + 1
-
-	if blockHeight <= int32(b.Index.Cutoff) {
-		if prevNode.Height <= 0 {
-			return false, false, ruleError(ErrInvalidAncestorBlock, "Block height is in locked area"), -1, prevHash
-		}
-		return false, false, ruleError(ErrInvalidAncestorBlock, "Block height is in locked area"), -1, nil
 	}
 
 	block.SetHeight(blockHeight)

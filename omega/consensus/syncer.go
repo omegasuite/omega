@@ -1487,14 +1487,16 @@ func (self *Syncer) setCommittee() {
 
 		for _, n := range miner.name {
 			if bytes.Compare(n[:], blk.MsgBlock().Miner[:]) == 0 {
-				inc := false
-				for _, ip := range miner.cfg.ExternalIPs {
-					if ip == string(blk.MsgBlock().Connection) {
-						inc = true
+				if len(blk.MsgBlock().Connection) > 0 {
+					inc := false
+					for _, ip := range miner.cfg.ExternalIPs {
+						if ip == string(blk.MsgBlock().Connection) {
+							inc = true
+						}
 					}
-				}
-				if !inc {
-					continue
+					if !inc {
+						continue
+					}
 				}
 
 				copy(self.Me[:], n[:])

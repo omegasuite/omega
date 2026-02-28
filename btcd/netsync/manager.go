@@ -555,6 +555,29 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 			return true
 		}
 
+		if mlocator == nil || locator == nil {
+			gdmsg := wire.NewMsgGetData()
+			iv := &wire.InvVect{
+				Type: common.InvTypeMinerBlock,
+				Hash: *sm.chain.ChainParams.GenesisMinerHash,
+			}
+
+			if mlocator == nil {
+				gdmsg.AddInvVect(iv)
+			}
+
+			iv = &wire.InvVect{
+				Type: common.InvTypeWitnessBlock,
+				Hash: *sm.chain.ChainParams.GenesisHash,
+			}
+			if locator == nil {
+				gdmsg.AddInvVect(iv)
+			}
+
+			bestPeer.QueueMessage(gdmsg, nil)
+			return true
+		}
+
 		mbest := sm.chain.Miners.BestSnapshot()
 
 		deferexec := time.Second * 0
@@ -1615,6 +1638,22 @@ func (sm *SyncManager) handleInvMsg(imsg *invMsg) {
 
 	b1 := sm.chain.BestSnapshot()
 	b2 := sm.chain.Miners.BestSnapshot()
+
+	if sm.chain.Miners.Tip() == nil && sm.chain.ChainParams.GenesisMinerHash != nil {
+		iv := &wire.InvVect{
+			Type: common.InvTypeMinerBlock,
+			Hash: *sm.chain.ChainParams.GenesisMinerHash,
+		}
+		state.requestQueue = append(state.requestQueue, iv)
+	}
+
+	if sm.chain.BestChain.Tip() == nil {
+		iv := &wire.InvVect{
+			Type: common.InvTypeWitnessBlock,
+			Hash: *sm.chain.ChainParams.GenesisHash,
+		}
+		state.requestQueue = append(state.requestQueue, iv)
+	}
 
 	// Request the advertised inventory if we don't already have it.  Also,
 	// request parent blocks of orphans if we receive one we already have.

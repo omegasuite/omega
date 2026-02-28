@@ -485,10 +485,10 @@ func (m *CPUMiner) generateBlocks(quit chan struct{}, numWorkers uint32) {
 	}
 
 	conchecl := byte(0)
-	if m.cfg.TxGenerate {
-		// we ensure the node is reachable by checking inbound connections only instead of all type connections
-		conchecl = 1
-	}
+	//	if m.cfg.TxGenerate {
+	// we ensure the node is reachable by checking inbound connections only instead of all type connections
+	//		conchecl = 1
+	//	}
 
 out:
 	for {
@@ -514,14 +514,15 @@ out:
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
 
-		if m.cfg.ConnectedCount(conchecl) < 3 {
+		if m.cfg.ConnectedCount(conchecl) < 1 { // 2 {
 			m.Stale = true
-			//			log.Info("miner.generateBlocks: sleep because of not enough inbound connections")
+			log.Info("miner.generateBlocks: sleep because of not enough connections")
 			time.Sleep(time.Second * 5)
 			continue
 		}
 
 		if len(m.cfg.MiningAddrs) == 0 || m.g.Chain.IsPacking {
+			log.Info("miner.generateBlocks: sleep because of packing")
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -704,14 +705,17 @@ out:
 			}
 		}
 
+		block.MsgBlock().Connection = []byte{}
 		if len(m.cfg.ExternalIPs) > 0 {
 			block.MsgBlock().Connection = []byte(m.cfg.ExternalIPs[0])
-		} else {
-			m.submitBlockLock.Unlock()
-			m.Stale = true
-			log.Infof("miner.generateBlocks: sleep because no connection info is set = %d", curHeight)
-			time.Sleep(time.Second * 5)
-			continue
+			/*
+				} else {
+					m.submitBlockLock.Unlock()
+					m.Stale = true
+					log.Infof("miner.generateBlocks: sleep because no connection info is set = %d", curHeight)
+					time.Sleep(time.Second * 5)
+					continue
+			*/
 		}
 
 		m.submitBlockLock.Unlock()

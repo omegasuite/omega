@@ -138,19 +138,30 @@ func dbPutBestState(dbTx database.Tx, snapshot *blockchain.BestState) error {
 // the genesis block, so it must only be called on an uninitialized database.
 func (b *MinerChain) createChainState() error {
 	// Create a new node from the genesis block and set it as the best node.
-	genesisBlock := wire.NewMinerBlock(b.chainParams.GenesisMinerBlock)
-	genesisBlock.SetHeight(0)
-	header := genesisBlock.MsgBlock()
-	node := NewBlockNode(header, nil)
-	node.Status = chainutil.StatusDataStored | chainutil.StatusValid
-	b.BestChain.SetTip(node)
+	var node *chainutil.BlockNode
+	var genesisBlock *wire.MinerBlock
+	if b.chainParams.GenesisMinerBlock != nil {
+		genesisBlock = wire.NewMinerBlock(b.chainParams.GenesisMinerBlock)
+		genesisBlock.SetHeight(0)
+		header := genesisBlock.MsgBlock()
+		node = NewBlockNode(header, nil)
+		node.Status = chainutil.StatusDataStored | chainutil.StatusValid
+		b.BestChain.SetTip(node)
 
-	// Add the new node to the index which is used for faster lookups.
-	b.index.AddNodeUL(node)
+		// Add the new node to the index which is used for faster lookups.
+		b.index.AddNodeUL(node)
 
-	// Initialize the state related to the best block.  Since it is the
-	// genesis block, use its timestamp for the median time.
-	b.stateSnapshot = newBestState(node, time.Unix(node.Data.TimeStamp(), 0))
+		// Initialize the state related to the best block.  Since it is the
+		// genesis block, use its timestamp for the median time.
+		b.stateSnapshot = newBestState(node, time.Unix(node.Data.TimeStamp(), 0))
+	} else {
+		b.stateSnapshot = &blockchain.BestState{
+			Hash:       chainhash.Hash{},
+			Height:     0,
+			Bits:       0,
+			MedianTime: time.Now(),
+		}
+	}
 
 	// Create the initial the database chain state including creating the
 	// necessary index buckets and inserting the genesis block.
@@ -194,6 +205,15 @@ func (b *MinerChain) createChainState() error {
 			return err
 		}
 
+		// Store the current best chain state into the database.
+		if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
+			return err
+		}
+
+		if node == nil {
+			return nil
+		}
+
 		// Save the genesis block to the block index database.
 		if err = dbStoreBlockNode(dbTx, node); err != nil {
 			return err
@@ -203,11 +223,6 @@ func (b *MinerChain) createChainState() error {
 		// mappings to the index.
 		err = blockchain.DbPutBlockIndex(dbTx, &node.Hash, node.Height)
 		if err != nil {
-			return err
-		}
-
-		// Store the current best chain state into the database.
-		if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {
 			return err
 		}
 
@@ -332,6 +347,13 @@ func (b *MinerChain) initChainState() error {
 			return err
 		}
 
+		b.stateSnapshot = &blockchain.BestState{
+			Hash:       state.hash,
+			Height:     int32(state.height),
+			Bits:       0,
+			MedianTime: time.Now(),
+		}
+
 		// Load all of the headers from the data for the known best
 		// chain and construct the block index accordingly.  Since the
 		// number of nodes are already known, perform a single alloc
@@ -393,6 +415,10 @@ func (b *MinerChain) initChainState() error {
 
 			lastNode = node
 			i++
+		}
+
+		if i == 0 {
+			return nil
 		}
 
 		// Set the best chain view to the stored best state.

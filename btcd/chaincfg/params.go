@@ -192,6 +192,15 @@ type GlobalParams struct { // The params that must be the same for every node in
 	ViolationReportDeadline int32
 
 	ChainID uint32
+
+	PowLimit *big.Int
+	// Checkpoints ordered from oldest to newest.
+	Checkpoints          []Checkpoint
+	Deployments          []ConsensusDeployment
+	MinBorderFee         int
+	MinContractDeployFee int // Min fee per byte for contract deployment
+	MinRelayTxFee        int64
+	ContractExecFee      int64 // contract execution cost as Haos per 10K steps
 }
 
 // Params defines a Bitcoin network by its parameters.  These parameters may be
@@ -228,7 +237,7 @@ type Params struct {
 	// Checkpoints ordered from oldest to newest.
 	Checkpoints []Checkpoint
 
-	Deployments [DefinedDeployments]ConsensusDeployment
+	Deployments []ConsensusDeployment
 
 	// Mempool parameters
 	// RelayNonStdTxs bool
@@ -274,6 +283,7 @@ type Params struct {
 	MainChainID uint32
 
 	AddChain interface{}
+	AddDns   interface{}
 }
 
 // MainNetParams defines the network parameters for the main Omega network.
@@ -284,6 +294,9 @@ var MainNetParams = Params{
 		DefaultPort: "9788",
 		DNSSeeds: []DNSSeed{
 			{"omegasuite.org", false},
+			{"78.141.214.76", false},
+			{"207.246.106.17", false},
+			{"78.141.236.245", false},
 		},
 		PowLimitBits:             0x1e000ff0,
 		CoinbaseMaturity:         1000 * wire.MINER_RORATE_FREQ,
@@ -328,7 +341,7 @@ var MainNetParams = Params{
 	// Checkpoints ordered from oldest to newest.
 	Checkpoints: []Checkpoint{},
 
-	Deployments: [DefinedDeployments]ConsensusDeployment{
+	Deployments: []ConsensusDeployment{
 		DeploymentTestDummy: {
 			PrevVersion: 0,
 			FeatureMask: 0,
@@ -509,7 +522,7 @@ var TestNet3Params = Params{
 	// Checkpoints ordered from oldest to newest.
 	Checkpoints: []Checkpoint{},
 
-	Deployments: [DefinedDeployments]ConsensusDeployment{
+	Deployments: []ConsensusDeployment{
 		DeploymentTestDummy: {
 			PrevVersion: 0,
 			FeatureMask: 0,

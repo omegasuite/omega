@@ -174,6 +174,7 @@ type config struct {
 	Accounts        bool   `long:"accounts" description:"list omega accounts & balance"`
 	NetMagic        uint32
 	AddChain        string   `long:"addchain" description:"Add a blockchain to FOC"`
+	ParentChain     string   `long:"parentchain" description:"Description of parent blockchain in FOC"`
 	Clear           int      `long:"clear" description:"Clear DBs"`
 	Blacklist       []string `long:"blacklist" description:"Put address in blacklist"`
 	RpcLimit        int      `long:"rpclimit" description:"Return size limit (KB) of RPC calls"`
@@ -409,7 +410,7 @@ func newConfigParser(cfg *config, so *serviceOptions, options flags.Options) *fl
 // The above results in btcd functioning properly without any config settings
 // while still allowing the user to override settings with config files and
 // command line options.  Command line options always take precedence.
-func loadConfig(sec string, omegaNet uint32) (*config, []string, error) {
+func loadConfig(sec string, omegaNet uint32, p *config, params *chaincfg.GlobalParams) (*config, []string, error) {
 	// Default config.
 	cfg := config{
 		ConfigFile:           defaultConfigFile,
@@ -447,6 +448,9 @@ func loadConfig(sec string, omegaNet uint32) (*config, []string, error) {
 		Clear:                0,
 		RpcLimit:             1000, // RPC return size 1000 K
 		Passive:              false,
+	}
+	if p != nil {
+		cfg.DataDir, cfg.LogDir = p.DataDir, p.LogDir
 	}
 
 	if uint32(omegaNet) != 0 {
@@ -562,18 +566,15 @@ func loadConfig(sec string, omegaNet uint32) (*config, []string, error) {
 		return nil, nil, err
 	}
 
-	// Count number of network flags passed; assign active network params
-	// while we're at it
-	activeNetParams = &chaincfg.Params{}
-	*activeNetParams = chaincfg.MainNetParams
-
-	if cfg.TestNet {
+	if cfg.TestNet && params == nil {
 		*activeNetParams = chaincfg.TestNet3Params
 	}
 
-	chaincfg.ActiveNetParams = activeNetParams
+	if params == nil {
+		params = &activeNetParams.GlobalParams
+	}
 
-	err = applyConfig(&cfg)
+	err = applyConfig(&cfg, params)
 
 	// Warn about missing config file only after all other configuration is
 	// done.  This prevents the warning on help messages and invalid
@@ -585,7 +586,7 @@ func loadConfig(sec string, omegaNet uint32) (*config, []string, error) {
 	return &cfg, remainingArgs, err
 }
 
-func applyConfig(cfg *config) error {
+func applyConfig(cfg *config, params *chaincfg.GlobalParams) error {
 	// Append the network type to the data directory so it is "namespaced"
 	// per network.  In addition to the block database, there are other
 	// pieces of data that are saved to disk such as address manager state.
@@ -712,7 +713,7 @@ func applyConfig(cfg *config) error {
 	// we are to connect to.
 	if len(cfg.Listeners) == 0 {
 		cfg.Listeners = []string{
-			net.JoinHostPort("", activeNetParams.DefaultPort),
+			net.JoinHostPort("", params.DefaultPort),
 		}
 	}
 
@@ -754,15 +755,15 @@ func applyConfig(cfg *config) error {
 		}
 		cfg.RPCListeners = make([]string, 0, len(addrs))
 		for _, addr := range addrs {
-			addr = net.JoinHostPort(addr, activeNetParams.RpcPort)
+			addr = net.JoinHostPort(addr, params.RpcPort)
 			cfg.RPCListeners = append(cfg.RPCListeners, addr)
 		}
 	}
 
 	if cfg.DisableRPC {
-		activeNetParams.RpcPort = ""
+		params.RpcPort = ""
 	} else if len(cfg.RPCListeners) != 0 {
-		activeNetParams.RpcPort = strings.Split(cfg.RPCListeners[0], ":")[1]
+		params.RpcPort = strings.Split(cfg.RPCListeners[0], ":")[1]
 	}
 
 	if cfg.RPCMaxConcurrentReqs < 0 {
@@ -910,11 +911,11 @@ func applyConfig(cfg *config) error {
 
 	// Add default port to all listener addresses if needed and remove
 	// duplicate addresses.
-	cfg.Listeners = normalizeAddresses(cfg.Listeners, activeNetParams.DefaultPort)
+	cfg.Listeners = normalizeAddresses(cfg.Listeners, params.DefaultPort)
 
 	// Add default port to all rpc listener addresses if needed and remove
 	// duplicate addresses.
-	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, activeNetParams.RpcPort)
+	cfg.RPCListeners = normalizeAddresses(cfg.RPCListeners, params.RpcPort)
 	/*
 		// Only allow TLS to be disabled if the RPC is bound to localhost
 		// addresses.
@@ -949,8 +950,8 @@ func applyConfig(cfg *config) error {
 
 	// Add default port to all added peer addresses if needed and remove
 	// duplicate addresses.
-	cfg.AddPeers = normalizeAddresses(cfg.AddPeers, activeNetParams.DefaultPort)
-	cfg.ConnectPeers = normalizeAddresses(cfg.ConnectPeers, activeNetParams.DefaultPort)
+	cfg.AddPeers = normalizeAddresses(cfg.AddPeers, params.DefaultPort)
+	cfg.ConnectPeers = normalizeAddresses(cfg.ConnectPeers, params.DefaultPort)
 
 	// --noonion and --onion do not mix.
 	if cfg.NoOnion && cfg.OnionProxy != "" {

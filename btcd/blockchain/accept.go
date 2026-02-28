@@ -222,31 +222,34 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 
 	// The block must pass all of the validation rules which depend on the
 	// position of the block within the block chain.
-	err := b.checkBlockContext(block, prevNode, flags)
-	if err != nil {
-		return false, err, -1
-	}
-
-	if flags&BFNoConnect != BFNoConnect {
-		if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
-			return false, fmt.Errorf("insifficient signatures"), -1
+	var err error
+	if prevNode != nil {
+		err = b.checkBlockContext(block, prevNode, flags)
+		if err != nil {
+			return false, err, -1
 		}
-		if block.MsgBlock().Header.Nonce < 0 {
-			for _, sig := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
-				if len(sig) < 33 {
-					return false, fmt.Errorf("incorrect signatures"), -1
+
+		if flags&BFNoConnect != BFNoConnect {
+			if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
+				return false, fmt.Errorf("insifficient signatures"), -1
+			}
+			if block.MsgBlock().Header.Nonce < 0 {
+				for _, sig := range block.MsgBlock().Transactions[0].SignatureScripts[1:] {
+					if len(sig) < 33 {
+						return false, fmt.Errorf("incorrect signatures"), -1
+					}
 				}
 			}
 		}
-	}
 
-	if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
-		// make sure the rotate in Miner block is there
-		if prevNode.Data.GetNonce() != -wire.MINER_RORATE_FREQ+1 {
-			return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ+1), -1
-		}
-		if mb, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ); err != nil || mb == nil {
-			return false, err, -block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ
+		if block.MsgBlock().Header.Nonce <= -wire.MINER_RORATE_FREQ {
+			// make sure the rotate in Miner block is there
+			if prevNode.Data.GetNonce() != -wire.MINER_RORATE_FREQ+1 {
+				return false, fmt.Errorf("this is a rotation node and previous nonce is not %d", -wire.MINER_RORATE_FREQ+1), -1
+			}
+			if mb, err := b.Miners.BlockByHeight(-block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ); err != nil || mb == nil {
+				return false, err, -block.MsgBlock().Header.Nonce - wire.MINER_RORATE_FREQ
+			}
 		}
 	}
 
@@ -275,7 +278,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 
 	if !b.IsSVP {
 		initems := make(map[chainhash.Hash]*wire.XchainData)
-		b.db.View(func(dbtx database.Tx) error {
+		err = b.db.View(func(dbtx database.Tx) error {
 			bucket := dbtx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 			for _, tx := range block.MsgBlock().Transactions[1:] {
 				if !tx.IsCrossChain() {
@@ -318,12 +321,8 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 						}
 					}
 				}
-
-				if err != nil {
-					return false, err, -1
-				}
 			}
-			if err := b.validateCrossChain(tx); err != nil {
+			if err = b.validateCrossChain(tx); err != nil {
 				return false, err, -1
 			}
 		}

@@ -391,7 +391,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 func (b *MinerChain) connectBlock(node *chainutil.BlockNode, block *wire.MinerBlock) error {
 	// Make sure it's extending the end of the best chain.
 	prevHash := &block.MsgBlock().PrevBlock
-	if !prevHash.IsEqual(&b.BestChain.Tip().Hash) {
+	if node.Height != 0 && !prevHash.IsEqual(&b.BestChain.Tip().Hash) {
 		return AssertError("connectBlock must be called with a block " +
 			"that extends the main chain")
 	}
@@ -856,9 +856,9 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 	// most common case.
 	parentHash := &block.MsgBlock().PrevBlock
 	parent := b.index.LookupNode(parentHash)
-	if flags&blockchain.BFSideChain == 0 && parentHash.IsEqual(&b.BestChain.Tip().Hash) &&
+	if flags&blockchain.BFSideChain == 0 && (parent == nil || parentHash.IsEqual(&b.BestChain.Tip().Hash) &&
 		b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) &&
-		b.blockChain.MainChainHasBlock(&block.MsgBlock().BestBlock) {
+		b.blockChain.MainChainHasBlock(&block.MsgBlock().BestBlock)) {
 		// Skip checks if node has already been fully validated.
 		fastAdd = fastAdd || b.index.NodeStatus(node).KnownValid()
 
@@ -898,7 +898,7 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 		return true, nil
 	}
 
-	if flags&blockchain.BFNoReorg != 0 {
+	if parent != nil || flags&blockchain.BFNoReorg != 0 {
 		return false, nil
 	}
 
@@ -1013,7 +1013,13 @@ func (b *MinerChain) IsCurrent() bool {
 		// otherwise.
 		minus24Hours := b.timeSource.AdjustedTime().Add(-1 * b.chainParams.ChainCurrentStd).Unix()
 
-		return b.BestChain.Tip().Data.TimeStamp() >= minus24Hours
+		tip := b.BestChain.Tip()
+
+		if tip == nil {
+			return false
+		}
+
+		return tip.Data.TimeStamp() >= minus24Hours
 	}
 	return true
 }
@@ -1387,7 +1393,11 @@ func (b *MinerChain) LocateBlocks(locator chainhash.BlockLocator, hashStop *chai
 }
 
 func (b *MinerChain) Tip() *wire.MinerBlock {
-	h := NodetoHeader(b.BestChain.Tip())
+	tip := b.BestChain.Tip()
+	if tip == nil {
+		return nil
+	}
+	h := NodetoHeader(tip)
 	return wire.NewMinerBlock(&h)
 }
 
@@ -1499,8 +1509,6 @@ func New(config *blockchain.Config, terminate chan struct{}) (*blockchain.BlockC
 		return nil, err
 	}
 
-	b.nextAdjustHeight = (b.stateSnapshot.Height + 1) - ((b.stateSnapshot.Height + 1) % b.blocksPerRetarget) + b.blocksPerRetarget
-
 	for _, v := range os.Args {
 		if v == "--minerback" {
 			detachNodes := list.New()
@@ -1560,6 +1568,12 @@ func New(config *blockchain.Config, terminate chan struct{}) (*blockchain.BlockC
 
 	mtop := b.BestChain.Tip()
 	ok := true
+
+	if mtop == nil {
+		return s, nil
+	}
+
+	b.nextAdjustHeight = (b.stateSnapshot.Height + 1) - ((b.stateSnapshot.Height + 1) % b.blocksPerRetarget) + b.blocksPerRetarget
 
 	// Start from the end of the main chain and work backwards until
 	// the node whose bestblock is in the tx main chain
@@ -1893,7 +1907,7 @@ func (g *MinerChain) reportNotice(n *blockchain.Notification) {
 
 			checked := make(map[[20]byte]struct{})
 			node := g.NodeByHash(&block.MsgBlock().PrevBlock)
-			if node == nil { // it is in a side chain, no need to record it
+			if node == nil && !block.MsgBlock().PrevBlock.IsEqual(&chainhash.Hash{}) { // it is in a side chain, no need to record it
 				if g.index.LookupNode(&block.MsgBlock().PrevBlock) == nil {
 					panic("Irrecoverable error in chain data")
 				}

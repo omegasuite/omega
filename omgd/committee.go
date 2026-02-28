@@ -37,6 +37,12 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 		}
 		next = true
 
+		if len(s.address) == 0 && len(s.peers) == 0 {
+			p.ForAllPeers(func(sp *serverPeer) {
+				s.peers = append(s.peers, sp)
+			})
+		}
+
 		sent := false
 		for _, sp := range s.peers {
 			if !sent && sp.Connected() {
@@ -44,10 +50,12 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 				sp.QueueMessageWithEncoding(msg.msg, msg.done, wire.SignatureEncoding)
 				sent = true
 				s.msgsent++
-				break
+				if len(s.address) != 0 {
+					break
+				}
 			}
 		}
-		if !sent {
+		if !sent && len(s.address) != 0 {
 			// get a new connections and send it
 			s.peers = s.peers[:0]
 			p.ForAllPeers(func(sp *serverPeer) {
@@ -72,7 +80,7 @@ func (p *peerState) CommitteeOut(s *committeeState) {
 			})
 			if len(s.peers) > 0 {
 				next = false
-			} else {
+			} else if len(s.address) > 0 {
 				tcp, err := net.ResolveTCPAddr("", s.address)
 				if err != nil {
 					btcdLog.Infof("CommitteeOut: can not resolve %s", s.address)
@@ -162,14 +170,13 @@ func (s *server) MyPlaceInCommittee(r int32) int32 {
 		miner := mb.MsgBlock().Miner
 		for _, sa := range s.signAddress {
 			if bytes.Compare(miner[:], sa.ScriptAddress()) == 0 {
-				in := false
+				if len(mb.MsgBlock().Connection) == 0 {
+					return i
+				}
 				for _, ip := range s.chainParams.ExternalIPs {
 					if ip == string(mb.MsgBlock().Connection) {
-						in = true
+						return i
 					}
-				}
-				if in {
-					return i
 				}
 			}
 		}
@@ -218,14 +225,16 @@ func (s *server) makeConnection(conn []byte, miner [20]byte, j int32) { //}, me 
 		mb, _ := s.chain.Miners.BlockByHeight(j)
 		if bytes.Compare(miner[:], mb.MsgBlock().Miner[:]) != 0 {
 			btcdLog.Infof("Error: inconsistent miner %x & height %d in makeConnection", miner, j)
+		} else { // if len(mb.MsgBlock().Connection) > 0 {
+			m = s.peerState.NewCommitteeState(miner, j, string(mb.MsgBlock().Connection))
+			s.peerState.committee[miner] = m
 		}
-
-		m = s.peerState.NewCommitteeState(miner, j, string(mb.MsgBlock().Connection))
-		s.peerState.committee[miner] = m
 	}
 
 	s.peerState.forAllPeers(func(ob *serverPeer) {
-		if !found && bytes.Compare(ob.Peer.Miner[:], miner[:]) == 0 && ob.Connected() {
+		if len(conn) == 0 {
+			m.peers = append(m.peers, ob)
+		} else if !found && bytes.Compare(ob.Peer.Miner[:], miner[:]) == 0 && ob.Connected() {
 			m.peers = append(m.peers, ob)
 			ob.Peer.Committee = j
 			found = true
@@ -304,7 +313,7 @@ func (s *server) handleCommitteRotation(r int32) {
 	}
 
 	for j := best.LastRotation; j < uint32(r); j++ {
-		if mb, _ := b.Miners.BlockByHeight(int32(j)); mb != nil {
+		if mb, _ := b.Miners.BlockByHeight(int32(j)); mb != nil && len(mb.MsgBlock().Connection) != 0 {
 			if na, _ := s.addrManager.DeserializeNetAddress(string(mb.MsgBlock().Connection)); na != nil {
 				s.addrManager.PhaseoutCommittee(na)
 			}

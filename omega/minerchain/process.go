@@ -237,9 +237,10 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	if err != nil {
 		return false, false, err, nil
 	}
-	if len(block.MsgBlock().Connection) == 0 {
-		return false, false, fmt.Errorf("Empty Connection"), nil
-	}
+
+	// if len(block.MsgBlock().Connection) == 0 {
+	//	return false, false, fmt.Errorf("Empty Connection"), nil
+	//}
 
 	// Find the previous checkpoint and perform some additional checks based
 	// on the checkpoint.  This provides a few nice properties such as
@@ -252,31 +253,38 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// Handle orphan blocks.
 	prevHash := &blockHeader.PrevBlock
 
-	prevHashExists := b.index.HaveBlock(prevHash)
+	var zerohash chainhash.Hash
+	if prevHash.IsEqual(&zerohash) && b.BestChain.Tip() != nil { // && !blockHash.IsEqual(b.ChainParams.GenesisHash) {
+		return true, false, nil, nil
+	}
 
 	//	if err != nil {
 	//		return false, false, err, nil
 	//	}
-	if !prevHashExists {
-		log.Infof("block prevHash does not Exists Adding orphan block %s with parent %s", blockHash.String(), prevHash.String())
-		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+	prevHashExists := false
+	if b.BestChain.Tip() != nil {
+		prevHashExists = b.index.HaveBlock(prevHash)
+		if !prevHashExists {
+			log.Infof("block prevHash does not Exists Adding orphan block %s with parent %s", blockHash.String(), prevHash.String())
+			b.Orphans.AddOrphanBlock((*orphanBlock)(block))
 
-		return false, true, nil, &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeMinerBlock, *prevHash}}}
+			return false, true, nil, &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeMinerBlock, *prevHash}}}
+		}
 	}
 
 	bestblk := b.blockChain.NodeByHash(&block.MsgBlock().BestBlock) //.HaveBlock(&block.MsgBlock().BestBlock)
-	if bestblk == nil {
+	if prevHashExists && bestblk == nil {
 		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
 		log.Infof("best block %s does not exist", block.MsgBlock().BestBlock.String())
 		return false, false, ruleError(ErrMissingBestBlock, "best block does not exist"), &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
-	if bestblk.Data.GetNonce() >= 0 && bestblk.Height > 0 {
+	if bestblk != nil && bestblk.Data.GetNonce() >= 0 && bestblk.Height > 0 {
 		log.Infof("best block is not a signed block")
 		return false, false, ruleError(ErrMissingBestBlock, "best block is not a signed block"), &wire.MsgGetData{InvList: []*wire.InvVect{{common.InvTypeWitnessBlock, block.MsgBlock().BestBlock}}}
 	}
 
 	parent := b.index.LookupNode(prevHash)
-	if !b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) {
+	if prevHashExists && !b.blockChain.SameChain(block.MsgBlock().BestBlock, NodetoHeader(parent).BestBlock) {
 		log.Infof("block and parent tx reference not in the same chain.")
 		//		b.Orphans.AddOrphanBlock((*orphanBlock)(block))
 		return false, false, fmt.Errorf("block and parent tx reference not in the same chain."), nil
@@ -291,17 +299,19 @@ func (b *MinerChain) ProcessBlock(block *wire.MinerBlock, flags blockchain.Behav
 	// it may not be larger than twice of the max ContractExec and prev
 	// ContractLimit if that is less than chain param, it could be 0
 	// implying the chain param value
-	lastBlk := parent.Data.(*blockchainNodeData).block
-	contractlim := block.MsgBlock().ContractLimit
-	if contractlim == 0 {
-		contractlim = b.chainParams.ContractExecLimit
-	}
-	limita := b.blockChain.MaxContractExec(lastBlk.BestBlock, block.MsgBlock().BestBlock)
-	if contractlim < limita || contractlim < lastBlk.ContractLimit*95/100 {
-		return false, false, fmt.Errorf("ContractLimit is too low"), nil
-	}
-	if contractlim > 2*limita && contractlim > lastBlk.ContractLimit && contractlim > b.chainParams.ContractExecLimit {
-		return false, false, fmt.Errorf("ContractLimit is too big"), nil
+	if parent != nil && !b.IsSVP {
+		lastBlk := parent.Data.(*blockchainNodeData).block
+		contractlim := block.MsgBlock().ContractLimit
+		if contractlim == 0 {
+			contractlim = b.chainParams.ContractExecLimit
+		}
+		limita := b.blockChain.MaxContractExec(lastBlk.BestBlock, block.MsgBlock().BestBlock)
+		if contractlim < limita || contractlim < lastBlk.ContractLimit*95/100 {
+			return false, false, fmt.Errorf("ContractLimit is too low"), nil
+		}
+		if contractlim > 2*limita && contractlim > lastBlk.ContractLimit && contractlim > b.chainParams.ContractExecLimit {
+			return false, false, fmt.Errorf("ContractLimit is too big"), nil
+		}
 	}
 
 	// The block has passed all context independent checks and appears sane
