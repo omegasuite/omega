@@ -1509,8 +1509,18 @@ func New(config *blockchain.Config, terminate chan struct{}) (*blockchain.BlockC
 		return nil, err
 	}
 
+	back, cid := false, ""
+
 	for _, v := range os.Args {
+		if back {
+			cid = v
+		}
 		if v == "--minerback" {
+			back = true
+		}
+	}
+	if back {
+		if (cid == "" && !b.IsSVP) || (b.IsSVP && cid == fmt.Sprintf("%x", b.chainParams.Net)) {
 			detachNodes := list.New()
 			detachNodes.PushBack(b.BestChain.Tip())
 
@@ -1529,8 +1539,18 @@ func New(config *blockchain.Config, terminate chan struct{}) (*blockchain.BlockC
 	b.blockChain = s
 	s.Miners = b
 
+	back, cid = false, ""
+
 	for _, v := range os.Args {
+		if back {
+			cid = v
+		}
 		if v == "--chainback" {
+			back = true
+		}
+	}
+	if back {
+		if (cid == "" && !b.IsSVP) || (b.IsSVP && cid == fmt.Sprintf("%x", b.chainParams.Net)) {
 			hash := s.BestChain.Tip().Hash
 			h := s.BestChain.Height()
 			t := s.BestChain.Tip()

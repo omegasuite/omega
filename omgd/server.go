@@ -3304,7 +3304,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		return nil
 	})
 
-	if !prot.IsSvp && Licensed && len(prot.cfg.privateKeys) == 0 {
+	if !prot.IsSvp && common.Licensed && len(prot.cfg.privateKeys) == 0 {
 		// get it from license server
 		url := "http://omegasuite.org:6600/setup?serialno=" + string(SerialNo) + "&activated=" + strconv.FormatInt(ActivateTime, 10)
 
@@ -3326,10 +3326,13 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			resp.Body.Close() // 确保在函数结束时关闭响应体
 
 			json.Unmarshal(body, &msg)
-			if msg.Status == 0 {
+			if msg.Status <= 0 {
 				fmt.Printf("License denied")
 				os.Exit(0)
 			}
+		} else {
+			fmt.Printf("License denied")
+			os.Exit(0)
 		}
 
 		if minerdb.Update(func(dbTx database.Tx) error {
@@ -3359,6 +3362,67 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		}) != nil {
 			fmt.Printf("License denied")
 			os.Exit(0)
+		}
+	}
+
+	if !prot.IsSvp && common.Licensed && ActivateTime != 0 {
+		// get it from license server
+		// url := "http://omegasuite.org:6600/getcollateral?serialno=" + string(SerialNo) + "&activated=" + strconv.FormatInt(ActivateTime, 10)
+		url := "http://localhost:6600/getcollateral?serialno=" + string(SerialNo) + "&activated=" + strconv.FormatInt(ActivateTime, 10)
+
+		resp, err := http.Get(url)
+		if err != nil {
+			fmt.Printf("Can not reach license servr")
+			os.Exit(0)
+		}
+		body, err := ioutil.ReadAll(resp.Body)
+
+		// JSON decode
+		var msg struct {
+			Status  int
+			Message string
+		}
+
+		// 读取响应体内容
+		if err == nil {
+			resp.Body.Close() // 确保在函数结束时关闭响应体
+
+			json.Unmarshal(body, &msg)
+			if msg.Status == 0 {
+				fmt.Printf("License denied")
+				os.Exit(0)
+			}
+		}
+
+		txs := make([]string, 0)
+		if len(msg.Message) > 0 {
+			json.Unmarshal([]byte(msg.Message), &txs)
+			if len(txs) > 0 {
+				minerdb.Update(func(dbTx database.Tx) error {
+					bucket := dbTx.Metadata().Bucket([]byte(common.MiningCollaterals))
+
+					for _, tx := range txs {
+						utxo := strings.Split(tx, ":")
+						if len(utxo) != 2 {
+							continue
+						}
+
+						txid, _ := hex.DecodeString(utxo[0])
+						if len(txid) != 32 {
+							continue
+						}
+						var key [36]byte
+						copy(key[:], txid[:])
+
+						index, _ := strconv.Atoi(utxo[1])
+
+						common.LittleEndian.PutUint32(key[32:], uint32(index))
+						bucket.Put(key[:], []byte{1})
+					}
+
+					return nil
+				})
+			}
 		}
 	}
 

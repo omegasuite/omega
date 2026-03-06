@@ -1669,15 +1669,19 @@ func (g *BlkTmplGenerator) Committee() (map[[20]byte]struct{}, bool) {
 	for n := h - wire.CommitteeSize + 1; n <= h; n++ {
 		if m, _ := g.Chain.Miners.BlockByHeight(int32(n)); m != nil {
 			adrs[m.MsgBlock().Miner] = struct{}{}
-			for _, ip := range g.chainParams.ExternalIPs {
-				if ip == string(m.MsgBlock().Connection) {
-					in = true
+			if len(g.chainParams.ExternalIPs) > 0 {
+				for _, ip := range g.chainParams.ExternalIPs {
+					if ip == string(m.MsgBlock().Connection) {
+						in = true
+					}
 				}
+			} else {
+				in = true
 			}
 		}
 	}
 	if len(g.chainParams.ExternalIPs) == 0 {
-		return adrs, true
+		return adrs, in
 	}
 
 	if !in {

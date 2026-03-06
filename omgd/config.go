@@ -866,7 +866,7 @@ func applyConfig(cfg *config, params *chaincfg.GlobalParams) error {
 	cfg.privateKeys = make([]*btcec.PrivateKey, 0, len(cfg.PrivKeys))
 	cfg.signAddress = make([]btcutil.Address, 0, len(cfg.PrivKeys))
 
-	if len(cfg.PrivKeys) > 0 {
+	if !common.Licensed && len(cfg.PrivKeys) > 0 {
 		for _, pk := range cfg.PrivKeys {
 			dwif, err := btcutil.DecodeWIF(pk)
 			if err == nil {

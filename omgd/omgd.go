@@ -47,8 +47,6 @@ const (
 	minerDbNamePrefix = "miners"
 )
 
-const Licensed = false
-
 var SerialNo []byte    // serial number
 var ActivateTime int64 // first time it is run
 
@@ -203,7 +201,7 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 
 	prot.activeNetParams.MinRelayTxFee = int64(tcfg.minRelayTxFee)
 
-	if tcfg.Generate && len(tcfg.privateKeys) == 0 {
+	if !common.Licensed && tcfg.Generate && len(tcfg.privateKeys) == 0 {
 		// read from stdin. for security.
 		// expect user to do something like: echo privkey | btcd
 		fmt.Printf("Private Key in GIF ... ")
@@ -689,7 +687,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if Licensed {
+	if common.Licensed {
 		if db.Update(func(tx database.Tx) error {
 			SerialNo = tx.Metadata().Get([]byte("SerialNo"))
 			if SerialNo == nil || len(SerialNo) == 0 {
@@ -700,7 +698,7 @@ func main() {
 				var s [8]byte
 				ActivateTime = time.Now().Unix()
 				common.LittleEndian.PutUint64(s[:], uint64(ActivateTime))
-				tx.Metadata().Put([]byte("SerialNo"), s[:])
+				tx.Metadata().Put([]byte("ActivateTime"), s[:])
 			} else {
 				ActivateTime = int64(common.LittleEndian.Uint64(t))
 			}

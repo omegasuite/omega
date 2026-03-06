@@ -35,6 +35,8 @@ const (
 	PolyGonType            = 0x3
 )
 
+const Licensed = false
+
 // InvType represents the allowed types of inventory vectors.  See InvVect.
 type InvType uint32
 

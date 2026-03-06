@@ -163,12 +163,11 @@ func (self *Syncer) repeater() {
 	}
 
 	self.forestLock.Lock()
-
 	self.debugging()
+	self.forestLock.Unlock()
 
 	// enough sigs to conclude?
 	if self.agreed != -1 && len(self.signed) >= wire.CommitteeSigs && !self.Done {
-		self.forestLock.Unlock()
 		self.Done = true
 		close(self.quit)
 		return
@@ -276,14 +275,17 @@ func (self *Syncer) repeater() {
 		}
 	}
 
-	if _, ok := self.forest[self.Me]; ok { // && len(self.commands) < (wire.CommitteeSize - 1) * 10 {
+	self.forestLock.Lock()
+	_, ok := self.forest[self.Me]
+	self.forestLock.Unlock()
+
+	if ok && len(self.commands) < (wire.CommitteeSize-1)*10 {
 		k := self.NewKnowledgeMsg()
 
 		self.commands <- k
 
 		miner.Broadcast(k, nil)
 	}
-	self.forestLock.Unlock()
 
 	miner.syncMutex.Lock()
 	for _, tree := range self.forest {
@@ -1487,15 +1489,17 @@ func (self *Syncer) setCommittee() {
 
 		for _, n := range miner.name {
 			if bytes.Compare(n[:], blk.MsgBlock().Miner[:]) == 0 {
-				if len(blk.MsgBlock().Connection) > 0 {
-					inc := false
-					for _, ip := range miner.cfg.ExternalIPs {
-						if ip == string(blk.MsgBlock().Connection) {
-							inc = true
+				if len(miner.cfg.ExternalIPs) > 0 {
+					if len(blk.MsgBlock().Connection) > 0 {
+						inc := false
+						for _, ip := range miner.cfg.ExternalIPs {
+							if ip == string(blk.MsgBlock().Connection) {
+								inc = true
+							}
 						}
-					}
-					if !inc {
-						continue
+						if !inc {
+							continue
+						}
 					}
 				}
 
@@ -1578,15 +1582,20 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	self.setCommittee()
 
 	self.forestLock.Lock()
-	if r, ok := self.forest[adr]; !ok || r.block == nil {
-		self.commands <- &tree{
-			creator: adr,
-			fees:    uint64(fees),
-			hash:    *block.Hash(),
-			block:   block,
+	r, ok := self.forest[adr]
+	self.forestLock.Unlock()
+
+	if !ok || r.block == nil {
+		if len(self.commands) > (wire.CommitteeSize-1)*10 {
+			<-self.commands
+			self.commands <- &tree{
+				creator: adr,
+				fees:    uint64(fees),
+				hash:    *block.Hash(),
+				block:   block,
+			}
 		}
 	}
-	self.forestLock.Unlock()
 
 	if miner.server.BestSnapshot().Hash != block.MsgBlock().Header.PrevBlock {
 		miner.server.ChainSync(block.MsgBlock().Header.PrevBlock, adr)

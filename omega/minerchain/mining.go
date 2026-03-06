@@ -514,7 +514,7 @@ out:
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
 
-		if m.cfg.ConnectedCount(conchecl) < 1 { // 2 {
+		if m.cfg.ConnectedCount(conchecl) < 2 {
 			m.Stale = true
 			log.Info("miner.generateBlocks: sleep because of not enough connections")
 			time.Sleep(time.Second * 5)
@@ -645,6 +645,14 @@ out:
 				}
 				k--
 			}
+		}
+
+		if common.Licensed && uc == nil {
+			m.submitBlockLock.Unlock()
+			m.Stale = true
+			log.Infof("miner.generateBlocks: sleep for lack of collateral")
+			// time.Sleep(time.Second * 5)
+			continue
 		}
 
 		template, err = m.g.NewMinerBlockTemplate(chainChoice, signAddr, uc)
