@@ -3306,7 +3306,8 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 	if !prot.IsSvp && common.Licensed && len(prot.cfg.privateKeys) == 0 {
 		// get it from license server
-		url := "http://omegasuite.org:6600/setup?serialno=" + string(SerialNo) + "&activated=" + strconv.FormatInt(ActivateTime, 10)
+		// url := "http://omegasuite.org:6600/setup?serialno=" + string(SerialNo) + "&activated=" + strconv.FormatInt(ActivateTime, 10)
+		url := "http://localhost:6600/setup?serialno=" + string(SerialNo) + "&activated=" + strconv.FormatInt(ActivateTime, 10)
 
 		resp, err := http.Get(url)
 		if err != nil {

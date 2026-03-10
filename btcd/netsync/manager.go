@@ -2277,23 +2277,27 @@ out:
 				msg.reply <- struct{}{}
 
 			case isCurrentMsg:
-				untop := false
-				for peer, _ := range sm.peerStates {
-					mstate := sm.chain.MainChain.BestSnapshot()
-					if peer.LastMinerBlock() > mstate.Height+5 {
-						untop = true
-						break
-					}
-					state := sm.chain.BestSnapshot()
-					if peer.LastBlock() > state.Height+20 {
-						untop = true
-						break
-					}
-				}
-				if untop {
+				if sm.chain == nil || sm.chain.MainChain == nil {
 					msg.reply <- false
 				} else {
-					msg.reply <- sm.current(0) && sm.current(1)
+					untop := false
+					for peer, _ := range sm.peerStates {
+						mstate := sm.chain.MainChain.BestSnapshot()
+						if peer.LastMinerBlock() > mstate.Height+5 {
+							untop = true
+							break
+						}
+						state := sm.chain.BestSnapshot()
+						if peer.LastBlock() > state.Height+20 {
+							untop = true
+							break
+						}
+					}
+					if untop {
+						msg.reply <- false
+					} else {
+						msg.reply <- sm.current(0) && sm.current(1)
+					}
 				}
 
 			case startSyncMsg:

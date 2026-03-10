@@ -514,7 +514,7 @@ out:
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
 
-		if m.cfg.ConnectedCount(conchecl) < 2 {
+		if m.cfg.ConnectedCount(conchecl) < 3 {
 			m.Stale = true
 			log.Info("miner.generateBlocks: sleep because of not enough connections")
 			time.Sleep(time.Second * 5)
