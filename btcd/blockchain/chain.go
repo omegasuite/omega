@@ -1818,6 +1818,7 @@ func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) {
 			meta := &chainmap.ChainDescriptor{
 				Version: 0x10000,
 				Legacy:  false,
+				Final:   21,
 			}
 			err := json.Unmarshal(op.InstData, meta)
 			if err != nil {
@@ -1833,6 +1834,7 @@ func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) {
 			cd := &chainmap.ChainDescriptor{
 				Version: 0x10000,
 				Legacy:  false,
+				Final:   21,
 			}
 			err := json.Unmarshal(op.InstData, &cd)
 			if err != nil {
@@ -1855,6 +1857,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 		cd := &chainmap.ChainDescriptor{
 			Version: 0x10000,
 			Legacy:  false,
+			Final:   21,
 		}
 		err := json.Unmarshal(op.InstData, cd)
 		if err != nil {

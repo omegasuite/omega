@@ -256,10 +256,11 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 	prot.activeNetParams.SigVeriConcurrency = tcfg.Concurrency
 
 	prot.activeNetParams.AddChain = nil
-	if tcfg.AddChain != "" {
+	if tcfg.AddChain != "" && !prot.IsSvp {
 		nc := &chainmap.ChainDescriptor{
 			Version: 0x10000,
 			Legacy:  false,
+			Final:   21,
 		}
 		err := json.Unmarshal([]byte(tcfg.AddChain), nc)
 		if err != nil {
@@ -768,6 +769,7 @@ func main() {
 		c := chainmap.ChainDescriptor{
 			Version: 0x10000,
 			Legacy:  false,
+			Final:   21,
 		}
 		json.Unmarshal([]byte(tcfg.ParentChain), &c)
 		chainmap.AllChains[p.activeNetParams.MainChainID].AddChain(&c)
@@ -940,12 +942,29 @@ func retrievedefs(p *Protocol, q *Protocol) {
 func exitonstall() {
 	lastHeight := int32(0)
 	ticker := time.NewTicker(5 * time.Minute)
+	lasts := make(map[uint32]int32)
 	for {
 		<-ticker.C
 		h := Server.chain.BestChain.Height()
 		if h != lastHeight {
 			lastHeight = h
 		} else {
+			chg := false
+			for _, p := range protocols {
+				hp := p.Server.chain.BestChain.Height()
+				if hl, ok := lasts[p.activeNetParams.ChainID]; ok {
+					if hl != hp {
+						lasts[p.activeNetParams.ChainID] = hp
+						chg = true
+					}
+				} else {
+					lasts[p.activeNetParams.ChainID] = hp
+					chg = true
+				}
+			}
+			if chg {
+				continue
+			}
 			btcdLog.Infof("exitonstall requesting shutdown at %d - %d", h, lastHeight)
 
 			shutdownRequestChannel <- struct{}{}

@@ -3526,6 +3526,18 @@ func handleGetHeaders(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) 
 // that are not related to wallet functionality.
 func handleGetInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	best := s.cfg.Chain.BestSnapshot()
+	ports := make([][3]int, 0)
+
+	for _, p := range protocols {
+		var ps [3]int
+		if len(p.cfg.Listeners) == 0 || len(p.cfg.RPCListeners) == 0 {
+			continue
+		}
+		ps[0] = int(p.cfg.NetMagic)
+		ps[1], _ = strconv.Atoi(strings.Split(p.cfg.Listeners[0], ":")[1])
+		ps[2], _ = strconv.Atoi(strings.Split(p.cfg.RPCListeners[0], ":")[1])
+		ports = append(ports, ps)
+	}
 	ret := &btcjson.InfoChainResult{
 		Version:         int32(1000000*appMajor + 10000*appMinor + 100*appPatch),
 		ProtocolVersion: int32(maxProtocolVersion),
@@ -3536,6 +3548,7 @@ func handleGetInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 		Difficulty:      getDifficultyRatio(best.Bits, s.cfg.ChainParams),
 		TestNet:         s.cfg.Cfg.TestNet,
 		RelayFee:        s.cfg.Cfg.minRelayTxFee.ToOMC(),
+		Ports:           ports,
 	}
 
 	return ret, nil
@@ -3804,12 +3817,7 @@ func handleGetRawMempool(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 func handleClearMempool(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
 	mp := s.cfg.TxMemPool
 
-	// The response is simply an array of the transaction hashes if the
-	// verbose flag is not set.
-	descs := mp.TxDescs()
-	for _, tx := range descs {
-		mp.RemoveTransaction(tx.Tx, false)
-	}
+	mp.Clear()
 
 	return "Done", nil
 }

@@ -898,7 +898,7 @@ func (b *MinerChain) connectBestChain(node *chainutil.BlockNode, block *wire.Min
 		return true, nil
 	}
 
-	if parent != nil || flags&blockchain.BFNoReorg != 0 {
+	if parent == nil || flags&blockchain.BFNoReorg != 0 {
 		return false, nil
 	}
 

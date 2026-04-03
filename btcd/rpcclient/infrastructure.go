@@ -23,7 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/omegasuite/btcd/btcjson"
+	"btcd/btcjson"
 	"github.com/omegasuite/go-socks/socks"
 	"github.com/omegasuite/websocket"
 )
@@ -792,7 +792,7 @@ func newFutureError(err error) chan *Response {
 // reply or any errors.  The examined errors include an error in the
 // futureResult and the error in the reply from the server.  This will block
 // until the result is available on the passed channel.
-	// Wait for a response on the returned channel.
+// Wait for a response on the returned channel.
 func receiveFuture(f chan *Response) ([]byte, error) {
 	r := <-f
 	return r.Result, r.Err

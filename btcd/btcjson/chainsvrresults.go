@@ -336,24 +336,26 @@ func (self *XchainDataResult) Convert(p *wire.XchainData) {
 	self.ChainID = p.ChainID
 	self.Height = p.Height
 	if p.Txs != nil {
-		self.Txs = make([]*MsgXrossL2, len(p.Txs))
+		self.Txs = make([]*MsgXrossL2, 0)
 		for i, t := range p.Txs {
 			h, v := t.Txo.Value.Value()
 
 			wad := hex.EncodeToString(t.Txo.PkScript)
 
-			self.Txs[i] = &MsgXrossL2{
-				Utxo:      t.Utxo.String(),
+			j := len(self.Txs)
+
+			self.Txs = append(self.Txs, &MsgXrossL2{
+				Utxo:      i.String(),
 				Value:     strconv.FormatInt(v, 10),
 				PkScript:  wad,
 				TokenType: int64(t.Txo.TokenType),
 				Rights:    "",
-			}
+			})
 			if t.Txo.TokenType&1 != 0 {
-				self.Txs[i].Value = h.String()
+				self.Txs[j].Value = h.String()
 			}
 			if t.Txo.TokenType&2 != 0 {
-				self.Txs[i].Rights = t.Txo.Rights.String()
+				self.Txs[j].Rights = t.Txo.Rights.String()
 			}
 		}
 	}
@@ -626,16 +628,17 @@ type GetWorkResult struct {
 
 // InfoChainResult models the data returned by the chain server getinfo command.
 type InfoChainResult struct {
-	Version         int32   `json:"version"`
-	ProtocolVersion int32   `json:"protocolversion"`
-	Blocks          int32   `json:"blocks"`
-	TimeOffset      int64   `json:"timeoffset"`
-	Connections     int32   `json:"connections"`
-	Proxy           string  `json:"proxy"`
-	Difficulty      float64 `json:"difficulty"`
-	TestNet         bool    `json:"testnet"`
-	RelayFee        float64 `json:"relayfee"`
-	Errors          string  `json:"errors"`
+	Version         int32    `json:"version"`
+	ProtocolVersion int32    `json:"protocolversion"`
+	Blocks          int32    `json:"blocks"`
+	TimeOffset      int64    `json:"timeoffset"`
+	Connections     int32    `json:"connections"`
+	Proxy           string   `json:"proxy"`
+	Difficulty      float64  `json:"difficulty"`
+	TestNet         bool     `json:"testnet"`
+	RelayFee        float64  `json:"relayfee"`
+	Errors          string   `json:"errors"`
+	Ports           [][3]int `json:"ports"`
 }
 
 // TxRawResult models the data from the getrawtransaction command.

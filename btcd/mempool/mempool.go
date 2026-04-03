@@ -531,6 +531,15 @@ func (mp *TxPool) removeTransaction(tx *btcutil.Tx, removeRedeemers bool) {
 
 var bannedTxs map[chainhash.Hash]struct{}
 
+func (mp *TxPool) Clear() {
+	bannedTxs = make(map[chainhash.Hash]struct{})
+
+	descs := mp.TxDescs()
+	for _, tx := range descs {
+		mp.RemoveTransaction(tx.Tx, false)
+	}
+}
+
 func (mp *TxPool) RemoveTransaction(tx *btcutil.Tx, removeRedeemers bool) {
 	// Protect concurrent access.
 	if removeRedeemers {

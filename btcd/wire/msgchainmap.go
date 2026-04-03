@@ -24,6 +24,7 @@ type ChainDescriptor struct {
 	Height         uint32 `json:"height"`
 	GlobalParams   string `json:"globalparams"`
 	Legacy         bool   `json:"legacy"`
+	Final          uint32 `json:"final"`
 }
 
 func (t *ChainDescriptor) Match(s *ChainDescriptor) bool {
@@ -92,6 +93,11 @@ func (t *ChainDescriptor) OmcEncode(w io.Writer) error {
 	}
 
 	err = common.WriteElements(w, t.Legacy)
+	if err != nil {
+		return err
+	}
+
+	err = common.WriteElements(w, t.Final)
 	if err != nil {
 		return err
 	}
@@ -182,6 +188,7 @@ func (t *ChainDescriptor) OmcDecode(r io.Reader) error {
 	t.DefaultRPCPort = string(buf)
 
 	t.Legacy = false
+	t.Final = 21
 
 	t.GlobalParams, err = common.ReadVarString(r, 0)
 	if err != nil {
@@ -189,6 +196,7 @@ func (t *ChainDescriptor) OmcDecode(r io.Reader) error {
 	}
 
 	common.ReadElements(r, &t.Legacy)
+	common.ReadElements(r, &t.Final)
 
 	return nil
 }

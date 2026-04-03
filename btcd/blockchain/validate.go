@@ -1966,17 +1966,21 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 				ChainID: tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
 				Hash:    tx.TxIn[0].PreviousOutPoint.Hash,
 				Height:  int32(tx.TxIn[0].SignatureIndex),
-				Txs:     make([]*wire.MsgXrossL2, 0),
+				Txs:     make(map[wire.OutPoint]*wire.MsgXrossL3),
 			}
-			for _, txo := range tx.TxOut {
-				xtx.Txs = append(xtx.Txs, &wire.MsgXrossL2{
-					Utxo: wire.OutPoint{},
-					Txo:  *txo,
-				})
+			for i, txo := range tx.TxOut {
+				xtx.Txs[wire.OutPoint{
+					Hash:  tx.TxHash(),
+					Index: uint32(i),
+				}] = &wire.MsgXrossL3{
+					Txo: *txo,
+				}
 			}
 
 			if x, ok := atxs[tx.TxIn[0].PreviousOutPoint]; ok {
-				x.Txs = append(x.Txs, xtx.Txs...)
+				for h, y := range xtx.Txs {
+					x.Txs[h] = y
+				}
 			} else {
 				atxs[tx.TxIn[0].PreviousOutPoint] = xtx
 			}
@@ -2002,7 +2006,7 @@ func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 				matched := false
 				for i, to := range xtx.Txs {
 					if to.Txo.Match(&txo.Txo) {
-						xtx.Txs = append(xtx.Txs[:i], xtx.Txs[i+1:]...)
+						delete(xtx.Txs, i)
 						matched = true
 						break
 					}

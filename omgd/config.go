@@ -900,7 +900,7 @@ func applyConfig(cfg *config, params *chaincfg.GlobalParams) error {
 	// Ensure there is at least one mining address when the generate flag is
 	// set.
 
-	if cfg.GenerateMiner && len(cfg.miningAddrs) == 0 {
+	if !common.Licensed && cfg.GenerateMiner && len(cfg.miningAddrs) == 0 {
 		str := "%s: the generate flag is set, but there are no mining " +
 			"addresses specified "
 		err := fmt.Errorf(str, funcName)

@@ -248,7 +248,8 @@ func (m *MinerChain) checkProofOfWork(header *wire.MingingRightBlock, powLimit *
 			hashNum = hashNum.Mul(hashNum, big.NewInt(factor))
 			target = target.Mul(target, big.NewInt(h1+h2))
 		} else {
-			target = target.Mul(target, big.NewInt((h1+h2)*(-factor)))
+			f := big.NewInt(-factor)
+			target = target.Mul(target, f.Mul(f, big.NewInt(h1+h2)))
 		}
 
 		if target.Cmp(powLimit) > 0 {
@@ -321,6 +322,7 @@ func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {
 			ac := chainmap.ChainDescriptor{
 				Version: 0x10000,
 				Legacy:  false,
+				Final:   21,
 			}
 			err := json.Unmarshal(op.InstData, &ac)
 			if _, ok := chainmap.AllChains[b.chainParams.ChainID]; !ok {
@@ -344,6 +346,7 @@ func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {
 			ac := chainmap.ChainDescriptor{
 				Version: 0x10000,
 				Legacy:  false,
+				Final:   21,
 			}
 			err := json.Unmarshal(op.InstData, &ac)
 			if err != nil {

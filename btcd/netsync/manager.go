@@ -839,12 +839,12 @@ func (sm *SyncManager) current(t int) bool {
 
 	// No matter what chain thinks, if we are below the block we are syncing
 	// to we are not current.
-	if t == 0 && sm.chain.BestSnapshot().Height < p.LastBlock() {
-		return false
-	}
-	if t == 1 && sm.chain.Miners.BestSnapshot().Height < p.LastMinerBlock() {
-		return false
-	}
+	//if t == 0 && sm.chain.BestSnapshot().Height < p.LastHighBlock() {
+	//	return false
+	//}
+	//if t == 1 && sm.chain.Miners.BestSnapshot().Height < p.LastHighMinerBlock() {
+	//	return false
+	//}
 	return true
 }
 
@@ -2277,18 +2277,20 @@ out:
 				msg.reply <- struct{}{}
 
 			case isCurrentMsg:
-				if sm.chain == nil || sm.chain.MainChain == nil {
+				if sm.chain == nil || sm.chain.Miners == nil {
 					msg.reply <- false
 				} else {
 					untop := false
 					for peer, _ := range sm.peerStates {
-						mstate := sm.chain.MainChain.BestSnapshot()
-						if peer.LastMinerBlock() > mstate.Height+5 {
-							untop = true
-							break
+						if sm.chain.Miners != nil {
+							mstate := sm.chain.Miners.BestSnapshot()
+							if peer.LastHighMinerBlock() > mstate.Height+5 {
+								untop = true
+								break
+							}
 						}
 						state := sm.chain.BestSnapshot()
-						if peer.LastBlock() > state.Height+20 {
+						if peer.LastHighBlock() > state.Height+20 {
 							untop = true
 							break
 						}

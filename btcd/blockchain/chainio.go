@@ -1117,7 +1117,7 @@ func (b *BlockChain) initChainState() error {
 		meta.CreateBucket([]byte(common.INCOMINGPOOL))
 		meta.CreateBucket([]byte(common.XCAssets))
 		meta.CreateBucket([]byte(common.ROLLBACKPOOL))
-		meta.CreateBucket([]byte("ChainMap"))
+		meta.CreateBucket(chainmap.ChainmapBucketname)
 
 		return nil
 	})
@@ -2051,7 +2051,7 @@ func (b *BlockChain) dbCheckCrossChain(dbTx database.Tx, block *btcutil.Block) e
 				matched := false
 				for i, to := range xchain.Txs {
 					if to.Txo.Match(txo) {
-						xchain.Txs = append(xchain.Txs[:i], xchain.Txs[i+1:]...)
+						delete(xchain.Txs, i)
 						matched = true
 						break
 					}
@@ -2125,7 +2125,7 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 			ChainID:   b.ChainParams.ChainID,
 			Hash:      *block.Hash(),
 			Height:    block.Height(),
-			Txs:       []*wire.MsgXrossL2{},
+			Txs:       make(map[wire.OutPoint]*wire.MsgXrossL3),
 			Finalized: 0,
 		}
 		var xchain *wire.XchainData
@@ -2139,7 +2139,7 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 					ChainID:   tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
 					Hash:      tx.TxIn[0].PreviousOutPoint.Hash,
 					Height:    int32(tx.TxIn[0].SignatureIndex),
-					Txs:       []*wire.MsgXrossL2{},
+					Txs:       make(map[wire.OutPoint]*wire.MsgXrossL3),
 					Finalized: 0,
 				}
 				ichain = xchain
@@ -2175,11 +2175,7 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 					continue
 				}
 
-				t := &wire.MsgXrossL2{
-					Utxo: wire.OutPoint{
-						Hash:  txhash,
-						Index: uint32(i),
-					},
+				t := &wire.MsgXrossL3{
 					Txo: *txo,
 				}
 
@@ -2192,7 +2188,10 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 					t.Txo.TokenType |= uint64(b.ChainParams.ChainID) << 40
 				}
 
-				ichain.Txs = append(ichain.Txs, t)
+				ichain.Txs[wire.OutPoint{
+					Hash:  txhash,
+					Index: uint32(i),
+				}] = t
 			}
 
 			if len(xchain.Txs) > 0 {
@@ -2205,7 +2204,9 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 				dchain := &wire.XchainData{}
 				if d != nil && len(d) > 0 {
 					dchain.DeSerialize(d)
-					xchain.Txs = append(xchain.Txs, dchain.Txs...)
+					for p, x := range dchain.Txs {
+						xchain.Txs[p] = x
+					}
 				}
 				bucket.Put(k, xchain.Serialize())
 			}
@@ -2220,7 +2221,9 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 			dchain := &wire.XchainData{}
 			if d != nil && len(d) > 0 {
 				dchain.DeSerialize(d)
-				bxchain.Txs = append(bxchain.Txs, dchain.Txs...)
+				for h, x := range dchain.Txs {
+					bxchain.Txs[h] = x
+				}
 			}
 			bucket.Put(k, bxchain.Serialize())
 		}
@@ -2246,14 +2249,14 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 				ChainID:   xchain.ChainID,
 				Hash:      xchain.Hash,
 				Height:    xchain.Height,
-				Txs:       make([]*wire.MsgXrossL2, 0),
+				Txs:       make(map[wire.OutPoint]*wire.MsgXrossL3),
 				Finalized: xchain.Finalized,
 			}
 			for _, txo := range tx.TxOut {
 				for i, to := range xchain.Txs {
 					if to.Txo.Match(txo) {
-						rmchain.Txs = append(rmchain.Txs, xchain.Txs[i])
-						xchain.Txs = append(xchain.Txs[:i], xchain.Txs[i+1:]...)
+						rmchain.Txs[i] = to
+						delete(xchain.Txs, i)
 						break
 					}
 				}
@@ -2387,7 +2390,9 @@ func (b *BlockChain) dbRestoreCrossChain(dbTx database.Tx, block *btcutil.Block)
 				if len(od) > 0 {
 					ochain := &wire.XchainData{}
 					ochain.DeSerialize(od)
-					xchain.Txs = append(ochain.Txs, xchain.Txs...)
+					for h, x := range ochain.Txs {
+						xchain.Txs[h] = x
+					}
 					data = xchain.Serialize()
 				}
 

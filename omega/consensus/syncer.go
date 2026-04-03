@@ -1588,12 +1588,12 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	if !ok || r.block == nil {
 		if len(self.commands) > (wire.CommitteeSize-1)*10 {
 			<-self.commands
-			self.commands <- &tree{
-				creator: adr,
-				fees:    uint64(fees),
-				hash:    *block.Hash(),
-				block:   block,
-			}
+		}
+		self.commands <- &tree{
+			creator: adr,
+			fees:    uint64(fees),
+			hash:    *block.Hash(),
+			block:   block,
 		}
 	}
 

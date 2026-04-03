@@ -264,7 +264,7 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 				ChainID:   tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg,
 				Hash:      tx.TxIn[0].PreviousOutPoint.Hash,
 				Height:    int32(tx.TxIn[0].SignatureIndex),
-				Txs:       []*wire.MsgXrossL2{},
+				Txs:       make(map[wire.OutPoint]*wire.MsgXrossL3),
 				Finalized: 0,
 			}
 
@@ -273,11 +273,13 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 			} else {
 				dxchain[tx.TxIn[0].PreviousOutPoint] = xtx
 			}
-			for _, txo := range tx.TxOut {
-				xtx.Txs = append(xtx.Txs, &wire.MsgXrossL2{
-					Utxo: wire.OutPoint{},
-					Txo:  *txo,
-				})
+			for i, txo := range tx.TxOut {
+				xtx.Txs[wire.OutPoint{
+					Hash:  tx.TxHash(),
+					Index: uint32(i),
+				}] = &wire.MsgXrossL3{
+					Txo: *txo,
+				}
 			}
 		}
 
@@ -296,7 +298,7 @@ func (b *BlockChain) MatchInpool(block *btcutil.Block) bool {
 				for i, txo := range xtx.Txs {
 					if txo.Txo.Match(&to.Txo) {
 						matched = true
-						xtx.Txs = append(xtx.Txs[:i], xtx.Txs[i+1:]...)
+						delete(xtx.Txs, i)
 						break
 					}
 				}

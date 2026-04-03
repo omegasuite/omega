@@ -13,10 +13,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/omegasuite/btcd/btcjson"
-	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"btcd/btcjson"
 	"btcd/wire"
-	"github.com/omegasuite/btcutil"
+	"btcutil"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 )
 
 var (
@@ -1203,7 +1203,7 @@ func (c *Client) SearchTxAsync(begin, end int,
 		return newNilFutureResult()
 	}
 
-	var Verbose,skip,count int
+	var Verbose, skip, count int
 	var reverse bool
 	Verbose = 0
 	skip = begin

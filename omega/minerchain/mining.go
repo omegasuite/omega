@@ -521,7 +521,7 @@ out:
 			continue
 		}
 
-		if len(m.cfg.MiningAddrs) == 0 || m.g.Chain.IsPacking {
+		if len(m.cfg.MiningAddrs) == 0 { // || m.g.Chain.IsPacking {
 			log.Info("miner.generateBlocks: sleep because of packing")
 			time.Sleep(time.Second * 5)
 			continue

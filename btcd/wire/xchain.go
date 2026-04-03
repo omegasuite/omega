@@ -17,6 +17,11 @@ type MsgXrossL2 struct {
 	Txo       TxOut    // txout for L2
 }
 
+type MsgXrossL3 struct {
+	RawScript []byte // original pkscript
+	Txo       TxOut  // txout for L2
+}
+
 func (t *MsgXrossL2) Serialize() []byte {
 	res := make([]byte, 40, 100)
 	copy(res, t.Utxo.Hash[:])
@@ -47,11 +52,37 @@ func (t *MsgXrossL2) DeSerialize(d []byte) (int, error) {
 	return m + int(n) + 40, nil
 }
 
+func (t *MsgXrossL3) Serialize() []byte {
+	res := make([]byte, 4, 100)
+
+	common.LittleEndian.PutUint32(res[:], uint32(len(t.RawScript)))
+
+	res = append(res, t.RawScript...)
+	res = append(res, t.Txo.Serialize()...)
+	return res
+}
+
+func (t *MsgXrossL3) DeSerialize(d []byte) (int, error) {
+	if len(d) < 21 {
+		return 0, fmt.Errorf("Not enough data")
+	}
+
+	n := common.LittleEndian.Uint32(d[:])
+	t.RawScript = make([]byte, n)
+	copy(t.RawScript, d[4:4+n])
+
+	m := t.Txo.DeSerialize(d[4+n:])
+	if n < 0 {
+		return 0, fmt.Errorf("Bad data")
+	}
+	return m + int(n) + 4, nil
+}
+
 type XchainData struct {
 	ChainID   uint32         // origin chain id
 	Hash      chainhash.Hash // origin block
 	Height    int32          // origin height
-	Txs       []*MsgXrossL2
+	Txs       map[OutPoint]*MsgXrossL3
 	Finalized int32 // whether the origin block is finalized
 }
 
@@ -69,7 +100,8 @@ func (t *XchainData) Serialize() []byte {
 
 	common.WriteElement(&w, uint32(len(t.Txs)))
 
-	for _, txo := range t.Txs {
+	for h, txo := range t.Txs {
+		w.Write(h.ToBytes())
 		w.Write(txo.Serialize())
 	}
 
@@ -99,19 +131,25 @@ func (t *XchainData) DeSerialize(buf []byte) error {
 
 	n := 44
 
-	t.Txs = make([]*MsgXrossL2, h)
+	t.Txs = make(map[OutPoint]*MsgXrossL3)
 
 	for i := 0; i < int(h); i++ {
 		if n >= len(buf) {
 			return fmt.Errorf("Insufficient data")
 		}
 
-		txo := &MsgXrossL2{}
+		var p OutPoint
+		copy(p.Hash[:], buf[n:])
+		p.Index = common.LittleEndian.Uint32(buf[n+32:])
+
+		n += 36
+
+		txo := &MsgXrossL3{}
 		m, err := txo.DeSerialize(buf[n:])
 		if err != nil {
 			return err
 		}
-		t.Txs[i] = txo
+		t.Txs[p] = txo
 		n += m
 	}
 	if n >= len(buf) {

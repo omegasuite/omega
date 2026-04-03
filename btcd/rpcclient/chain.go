@@ -11,9 +11,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
-	"github.com/omegasuite/btcd/btcjson"
+	"btcd/btcjson"
+	"btcd/wire"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"github.com/omegasuite/btcd/wire"
 )
 
 // FutureGetBestBlockHashResult is a future promise to deliver the result of a
@@ -110,7 +110,7 @@ func (r FutureGetBlockResult) Receive() (*wire.MsgBlock, error) {
 	// Deserialize the block and return it.
 	var msgBlock wire.MsgBlock
 	err = msgBlock.OmcDecode(bytes.NewReader(serializedBlock), 0, wire.SignatureEncoding)
-//	err = msgBlock.Deserialize(bytes.NewReader(serializedBlock))
+	//	err = msgBlock.Deserialize(bytes.NewReader(serializedBlock))
 	if err != nil {
 		return nil, err
 	}

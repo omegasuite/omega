@@ -789,6 +789,28 @@ func (p *Peer) LastMinerBlock() int32 {
 	return lastBlock
 }
 
+func (p *Peer) LastHighBlock() int32 {
+	p.statsMtx.RLock()
+	lastBlock := p.lastBlock
+	if p.startingHeight > lastBlock {
+		lastBlock = p.startingHeight
+	}
+	p.statsMtx.RUnlock()
+
+	return lastBlock
+}
+
+func (p *Peer) LastHighMinerBlock() int32 {
+	p.statsMtx.RLock()
+	lastBlock := p.lastMinerBlock
+	if p.startingMinerHeight > lastBlock {
+		lastBlock = p.startingMinerHeight
+	}
+	p.statsMtx.RUnlock()
+
+	return lastBlock
+}
+
 // LastSend returns the last send time of the peer.
 //
 // This function is safe for concurrent access.

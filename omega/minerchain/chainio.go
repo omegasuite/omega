@@ -197,13 +197,8 @@ func (b *MinerChain) createChainState() error {
 			return err
 		}
 
-		if _, err = meta.CreateBucket([]byte(common.MiningKeys)); err != nil {
-			return err
-		}
-
-		if _, err = meta.CreateBucket([]byte(common.MiningCollaterals)); err != nil {
-			return err
-		}
+		meta.CreateBucket([]byte(common.MiningKeys))
+		meta.CreateBucket([]byte(common.MiningCollaterals))
 
 		// Store the current best chain state into the database.
 		if err = dbPutBestState(dbTx, b.stateSnapshot); err != nil {

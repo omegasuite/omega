@@ -135,7 +135,7 @@ func (t *Instruction) deserializer(r io.Reader) error {
 	if err := common.ReadElements(r, &t.InstCode); err != nil {
 		return err
 	}
-	if m, err := common.ReadVarBytes(r, 0, 1024, "InstData"); err != nil {
+	if m, err := common.ReadVarBytes(r, 0, 40960, "InstData"); err != nil {
 		return err
 	} else {
 		t.InstData = m

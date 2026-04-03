@@ -184,12 +184,9 @@ func (b *BlockChain) validateCrossChain(tx *wire.MsgTx) error {
 			for _, txo := range tx.TxOut {
 				match := false
 				for i, xto := range xdata.Txs {
-					//					if (common.LittleEndian.Uint32(xto.Txo.PkScript[21:]) >> 8) == b.ChainParams.ChainID {
-					//						b.normalizeTxo(&xto.Txo)
-					//					}
 					if txo.Match(&xto.Txo) {
 						match = true
-						xdata.Txs = append(xdata.Txs[:i], xdata.Txs[i+1:]...)
+						delete(xdata.Txs, i)
 						break
 					}
 				}
