@@ -512,7 +512,7 @@ func (g *BlockChain) compensatedTx(tx *chainhash.Hash) bool {
 	r := false
 	g.db.View(func(dbtx database.Tx) error {
 		meta := dbtx.Metadata()
-		index := meta.Bucket(compendatedBucketName)
+		index := meta.Bucket(compensatedBucketName)
 		if t := index.Get((*tx)[:]); t != nil {
 			r = true
 		}
@@ -524,7 +524,7 @@ func (g *BlockChain) compensatedTx(tx *chainhash.Hash) bool {
 func (g *BlockChain) recordCompensation(tx *chainhash.Hash) error {
 	return g.db.Update(func(dbtx database.Tx) error {
 		meta := dbtx.Metadata()
-		index := meta.Bucket(compendatedBucketName)
+		index := meta.Bucket(compensatedBucketName)
 		return index.Put((*tx)[:], []byte{1})
 	})
 }

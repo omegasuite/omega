@@ -199,6 +199,7 @@ func LoadChainMap(db database.DB, testnet bool, chainid uint32) {
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			t := &wire.ChainDescriptor{
 				Version: 0x10000,
+				Legacy:  false,
 				Final:   21,
 			}
 			if !t.Deserialize(cursor.Value()) {
@@ -206,9 +207,9 @@ func LoadChainMap(db database.DB, testnet bool, chainid uint32) {
 			}
 
 			// temp patch to add version field
-			if wire.TempChainMapVersionFix && !common.Licensed {
-				bucket.Put(cursor.Key(), t.Serialize())
-			}
+			//if wire.TempChainMapVersionFix && !common.Licensed {
+			//	bucket.Put(cursor.Key(), t.Serialize())
+			//}
 
 			k := common.LittleEndian.Uint32(cursor.Key())
 			m.ChainMap[k] = (*ChainDescriptor)(t)
@@ -349,6 +350,8 @@ func (m *FOCMap) RemoveChain(c uint32) {
 	if c == ROOT {
 		return
 	}
+
+	fmt.Printf("Remove chain %d from chainmap", c)
 
 	m.dmdb.Update(func(tx database.Tx) error {
 		bucket := tx.Metadata().Bucket(ChainmapBucketname)

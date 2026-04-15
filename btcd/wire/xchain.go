@@ -84,6 +84,11 @@ type XchainData struct {
 	Height    int32          // origin height
 	Txs       map[OutPoint]*MsgXrossL3
 	Finalized int32 // whether the origin block is finalized
+func (t *XchainData) Key() []byte {
+	var k [36]byte
+	copy(k[:], t.Hash[:])
+	common.LittleEndian.PutUint32(k[32:], t.ChainID|wire.CrossChainFalg)
+	return k[:]
 }
 
 func (t *XchainData) Serialize() []byte {

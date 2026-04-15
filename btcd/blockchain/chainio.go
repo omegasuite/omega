@@ -91,8 +91,8 @@ var (
 	// boxes are indexed by its center coords.
 	borderBoxSetBucketName = []byte("borderboxes")
 
-	// compendatedBucketName is the name of the db key used to record compendated txs
-	compendatedBucketName = []byte("comptxbucket")
+	// compensatedBucketName is the name of the db key used to record compendated txs
+	compensatedBucketName = []byte("comptxbucket")
 
 	// borderChildrenSetBucketName is the name of the db bucket used to house the
 	// border's children set.
@@ -912,8 +912,8 @@ func (b *BlockChain) createChainState() error {
 			return err
 		}
 
-		// Create the compendatedBucketName bucket
-		if _, err = meta.CreateBucket(compendatedBucketName); err != nil {
+		// Create the compensatedBucketName bucket
+		if _, err = meta.CreateBucket(compensatedBucketName); err != nil {
 			return err
 		}
 
@@ -1038,7 +1038,7 @@ func (b *BlockChain) initChainState() error {
 		initialized = dbTx.Metadata().Get(chainStateKeyName) != nil
 		hasBlockIndex = dbTx.Metadata().Bucket(blockIndexBucketName) != nil
 		//		hasminertps = dbTx.Metadata().Bucket(minerTPSBucketName) != nil
-		hascomptx = dbTx.Metadata().Bucket(compendatedBucketName) != nil
+		hascomptx = dbTx.Metadata().Bucket(compensatedBucketName) != nil
 		hasaddrusage = dbTx.Metadata().Bucket(addrUseIndexKey) != nil
 
 		if dbTx.Metadata().Bucket([]byte("RECVTXPOOL")) == nil {
@@ -1102,7 +1102,7 @@ func (b *BlockChain) initChainState() error {
 
 	if !hascomptx {
 		err := b.db.Update(func(dbTx database.Tx) error {
-			if _, err = dbTx.Metadata().CreateBucket(compendatedBucketName); err != nil {
+			if _, err = dbTx.Metadata().CreateBucket(compensatedBucketName); err != nil {
 				return err
 			}
 			return nil
@@ -1114,10 +1114,18 @@ func (b *BlockChain) initChainState() error {
 	b.db.Update(func(dbTx database.Tx) error {
 		meta := dbTx.Metadata()
 		// Create the bucket for pool of incoming tx
-		meta.CreateBucket([]byte(common.INCOMINGPOOL))
-		meta.CreateBucket([]byte(common.XCAssets))
-		meta.CreateBucket([]byte(common.ROLLBACKPOOL))
-		meta.CreateBucket(chainmap.ChainmapBucketname)
+		if meta.Bucket([]byte(common.INCOMINGPOOL)) == nil {
+			meta.CreateBucket([]byte(common.INCOMINGPOOL))
+		}
+		if meta.Bucket([]byte(common.XCAssets)) == nil {
+			meta.CreateBucket([]byte(common.XCAssets))
+		}
+		if meta.Bucket([]byte(common.ROLLBACKPOOL)) == nil {
+			meta.CreateBucket([]byte(common.ROLLBACKPOOL))
+		}
+		if meta.Bucket(chainmap.ChainmapBucketname) == nil {
+			meta.CreateBucket(chainmap.ChainmapBucketname)
+		}
 
 		return nil
 	})
