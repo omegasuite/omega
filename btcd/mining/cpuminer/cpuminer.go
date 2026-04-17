@@ -456,7 +456,6 @@ func (m *CPUMiner) generateBlocks() {
 	lastblkgen := time.Now().Unix()
 	lastblkrcv := lastblkgen
 
-	nopow := false
 	leader := int32(0)
 	powwait := 20 * time.Second
 
@@ -466,6 +465,7 @@ out:
 		//	m.wg.Done()
 		//	return
 		//}
+		nopow := false
 
 		// Quit when the miner is stopped.
 		select {
@@ -494,7 +494,7 @@ out:
 		// Wait until there is a connection to at least one other peer
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
-		if ccnt := m.cfg.ConnectedCount(0); ccnt < 3 {
+		if ccnt := m.cfg.ConnectedCount(0); ccnt < 1 {
 			//			log.Infof("Sleep 5 sec because there is not enough inbound connected peers.")
 			m.Stale = true
 			time.Sleep(time.Second * 5)

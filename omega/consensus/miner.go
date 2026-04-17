@@ -311,21 +311,22 @@ out:
 			}
 			log.Infof(" BlockInit at %d for block %s", bh, blk.block.Hash().String())
 			miner.syncMutex.Unlock()
-
-			if POWStopper != nil {
-				if len(POWStopper) < wire.CommitteeSize {
-					select {
-					case _, ok = <-POWStopper:
-						if ok {
+			/*
+				if POWStopper != nil {
+					if len(POWStopper) < wire.CommitteeSize {
+						select {
+						case _, ok = <-POWStopper:
+							if ok {
+								POWStopper <- struct{}{}
+							}
+						default:
 							POWStopper <- struct{}{}
 						}
-					default:
-						POWStopper <- struct{}{}
+					} else {
+						log.Infof("len(POWStopper) = %d", len(POWStopper))
 					}
-				} else {
-					log.Infof("len(POWStopper) = %d", len(POWStopper))
 				}
-			}
+			*/
 			snr.BlockInit(blk.block)
 
 		case <-Quit:
@@ -415,7 +416,7 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 	copy(hs[:], chainhash.HashB(w.Bytes()))
 	if _, ok := miner.castedMsg[hs]; ok {
 		miner.syncMutex.Unlock()
-		return true, nil
+		return false, nil
 	}
 	now := time.Now().Unix()
 	for h, t := range miner.castedMsg {

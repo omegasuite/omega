@@ -559,17 +559,17 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 				continue
 			}
 
-			//if !b.IsSVP {
-			if _, err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
-				if _, ok := awardto[mb.MsgBlock().Miner]; ok {
-					return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
-				}
-			} else {
-				if _, ok := awardto[mb.MsgBlock().Miner]; !ok {
-					return nil, true
+			if !b.IsSVP {
+				if _, err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
+					if _, ok := awardto[mb.MsgBlock().Miner]; ok {
+						return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
+					}
+				} else {
+					if _, ok := awardto[mb.MsgBlock().Miner]; !ok {
+						return nil, true
+					}
 				}
 			}
-			//}
 
 			committee[mb.MsgBlock().Miner] = struct{}{}
 			delete(awardto, mb.MsgBlock().Miner)

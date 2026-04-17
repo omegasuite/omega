@@ -79,15 +79,17 @@ func (t *MsgXrossL3) DeSerialize(d []byte) (int, error) {
 }
 
 type XchainData struct {
-	ChainID   uint32         // origin chain id
-	Hash      chainhash.Hash // origin block
-	Height    int32          // origin height
+	ChainID   uint32         // source chain id
+	Hash      chainhash.Hash // source block
+	Height    int32          // source height
 	Txs       map[OutPoint]*MsgXrossL3
 	Finalized int32 // whether the origin block is finalized
+}
+
 func (t *XchainData) Key() []byte {
 	var k [36]byte
 	copy(k[:], t.Hash[:])
-	common.LittleEndian.PutUint32(k[32:], t.ChainID|wire.CrossChainFalg)
+	common.LittleEndian.PutUint32(k[32:], t.ChainID|CrossChainFalg)
 	return k[:]
 }
 
