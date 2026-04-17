@@ -84,9 +84,12 @@ func (m *FOCMap) Decendant(t *ChainDescriptor, cid uint32) bool {
 }
 
 func (m *FOCMap) CtxFees(t *ChainDescriptor, dest uint32) (path [][]byte, fees []int64) {
-	srctoroot := make([]*ChainDescriptor, 1)
+	srctoroot := make([]*ChainDescriptor, 0)
 	d := t
-	srctoroot[0] = d
+	if d.Legacy {
+		return [][]byte{}, []int64{}
+	}
+	srctoroot = append(srctoroot, d)
 	for d.Parent != 0 {
 		d, _ = m.ChainMap[d.Parent]
 		srctoroot = append(srctoroot, d)
@@ -95,8 +98,10 @@ func (m *FOCMap) CtxFees(t *ChainDescriptor, dest uint32) (path [][]byte, fees [
 	if d == nil {
 		return nil, nil
 	}
-	desttoroot := make([]*ChainDescriptor, 1)
-	desttoroot[0] = d
+	desttoroot := make([]*ChainDescriptor, 0)
+	if !d.Legacy {
+		desttoroot = append(desttoroot, d)
+	}
 	for d.Parent != 0 {
 		d, _ = m.ChainMap[d.Parent]
 		desttoroot = append(desttoroot, d)

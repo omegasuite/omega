@@ -159,16 +159,28 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 	}
 
 	if prot.activeNetParams.GenesisHash == nil {
+		if cd == nil {
+			btcdLog.Errorf("missing genesis hash for net magic %x; update chaincfg testnet/mainnet genesis maps or provide a chain descriptor", tcfg.NetMagic)
+			return prot, true
+		}
 		var h chainhash.Hash
-		bh, _ := hex.DecodeString(cd.Genesis)
+		bh, err := hex.DecodeString(cd.Genesis)
+		if err != nil || len(bh) != 32 {
+			btcdLog.Errorf("invalid genesis hash in chain descriptor for net magic %x: err=%v len=%d", tcfg.NetMagic, err, len(bh))
+			return prot, true
+		}
 		for i := 0; i < 32; i++ {
 			h[i] = bh[31-i]
 		}
 		prot.activeNetParams.GenesisHash = &h
 	}
-	if prot.activeNetParams.GenesisMinerHash == nil && cd.MRChain {
+	if prot.activeNetParams.GenesisMinerHash == nil && cd != nil && cd.MRChain {
 		var h chainhash.Hash
-		bh, _ := hex.DecodeString(cd.MrGenesis)
+		bh, err := hex.DecodeString(cd.MrGenesis)
+		if err != nil || len(bh) != 32 {
+			btcdLog.Errorf("invalid genesis miner hash in chain descriptor for net magic %x: err=%v len=%d", tcfg.NetMagic, err, len(bh))
+			return prot, true
+		}
 		for i := 0; i < 32; i++ {
 			h[i] = bh[31-i]
 		}
@@ -178,6 +190,8 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 	if prot.IsSvp && globalParams != nil {
 		if globalParams.PowLimit != nil {
 			prot.activeNetParams.PowLimit = globalParams.PowLimit
+		} else if globalParams.PowLimitBits == 0 {
+			prot.activeNetParams.PowLimit = blockchain.CompactToBig(globalParams.PowLimitBits)
 		}
 		if len(globalParams.Checkpoints) > 0 {
 			prot.activeNetParams.Checkpoints = globalParams.Checkpoints

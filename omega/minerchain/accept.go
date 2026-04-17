@@ -434,10 +434,15 @@ func (b *MinerChain) checkBlockContext(block *wire.MinerBlock, prevNode *chainut
 		xf |= blockchain.BFEasyBlocks
 	}
 
-	if !b.IsSVP {
-		if err := b.checkProofOfWork(header, b.chainParams.PowLimit, flags|xf); err != nil {
-			return err
-		}
+	powFlags := flags | xf
+	if b.IsSVP {
+		// SVP nodes may lack the local state needed for full miner collateral
+		// verification, but they still must reject headers whose advertised
+		// target exceeds the chain's configured proof-of-work limit.
+		powFlags |= blockchain.BFNoPoWCheck
+	}
+	if err := b.checkProofOfWork(header, b.chainParams.PowLimit, powFlags); err != nil {
+		return err
 	}
 
 	// validity of Violations

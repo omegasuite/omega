@@ -1525,8 +1525,12 @@ func New(config *blockchain.Config, terminate chan struct{}) (*blockchain.BlockC
 			detachNodes.PushBack(b.BestChain.Tip())
 
 			b.chainLock.Lock()
-			b.reorganizeChain(detachNodes, list.New())
+			err = b.reorganizeChain(detachNodes, list.New())
 			b.chainLock.Unlock()
+
+			if err != nil {
+				return nil, err
+			}
 
 			config.DB.Close()
 			config.MinerDB.Close()
@@ -1558,8 +1562,12 @@ func New(config *blockchain.Config, terminate chan struct{}) (*blockchain.BlockC
 
 			detachNodes.PushBack(t)
 			s.ChainLock.Lock()
-			s.ReorganizeChain(detachNodes, list.New())
+			err = s.ReorganizeChain(detachNodes, list.New())
 			s.ChainLock.Unlock()
+
+			if err != nil {
+				return nil, err
+			}
 
 			s.Index.SetStatusFlags(t, chainutil.StatusValid)
 

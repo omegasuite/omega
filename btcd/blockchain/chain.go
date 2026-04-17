@@ -1966,6 +1966,7 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 			}
 
 			// tmp patch
+			/*
 			realdest := int32(-1)
 			for _, txo := range xtx.Txs {
 				dst := txo.Txo.DestChain()
@@ -1977,6 +1978,7 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 				bucket.Delete(cursor.Key())
 				continue
 			}
+			*/
 			// done patch
 
 			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
