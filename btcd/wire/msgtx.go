@@ -1323,7 +1323,14 @@ func (tx *MsgTx) ReadSignature(r io.Reader, pver uint32) error {
 	str := fmt.Sprintf("more signatures than inputs (%d, %d)", count, len(tx.TxIn))
 	if tx.IsCoinBase() {
 		// allow one for signature because coin base Tx includes signature merkle root
-		if int(count) > CommitteeSize+1 {
+		m := 0
+		for _, txo := range tx.TxOut {
+			m++
+			if txo.IsSeparator() {
+				break
+			}
+		}
+		if int(count) > m+1 {
 			return messageError("MsgTx.OmcDecode", str)
 		}
 	} else if int(count) > len(tx.TxIn) {

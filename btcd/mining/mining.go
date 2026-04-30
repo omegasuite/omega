@@ -272,7 +272,7 @@ func createCoinbaseTx(params *chaincfg.Params, nextBlockHeight int32, addrs []bt
 	val := award / int64(len(addrs))
 	for _, addr := range addrs {
 		t := token.Token{
-			TokenType: common.FeeCoinTyp,
+			TokenType: 0,
 			Value: &token.NumToken{
 				Val: val,
 			},
@@ -1221,9 +1221,9 @@ mempoolLoop:
 		m++
 	}
 
-	if f, ok := minerDirect[0]; ok {
+	if f, ok := minerDirect[common.FeeCoinTyp]; ok {
 		totalFees += f
-		delete(minerDirect, 0)
+		delete(minerDirect, common.FeeCoinTyp)
 	}
 	df := totalFees / m
 	for _, txo := range coinbaseTx.MsgTx().TxOut {
@@ -1415,7 +1415,7 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		Utxos:           uc,
 		ViolationReport: make([]*wire.Violations, 0),
 		ContractLimit:   contractlim,
-		Instructions:    nil,
+		Instructions:    make([]*wire.Instruction, 0),
 	}
 
 	if g.chainParams.ChainID != chainmap.ROOT {
@@ -1424,60 +1424,67 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		me := chainmap.AllChains[g.chainParams.ChainID]
 
 		if parent != nil {
-			msgBlock.Instructions = make([]*wire.Instruction, 0)
+			// check if we have a new chain to add
+			newChain := uint32(0x7FFFFFFF)
 			for _, ac := range parent.ChainMap {
 				if ac.ChainID == chainmap.ROOT {
 					continue
 				}
-				if me != nil && me.ChainMap[ac.ChainID] != nil {
+				if me.ChainMap[ac.ChainID] == nil {
+					if ac.ChainID < newChain {
+						newChain = ac.ChainID
+					}
+				}
+			}
+
+			if newChain < 0x7FFFFFFF {
+				ac := parent.ChainMap[newChain]
+				md, err := json.Marshal(ac)
+				if err == nil {
+					inst := wire.Instruction{
+						InstCode: wire.AddChain,
+						InstData: md,
+					}
+					msgBlock.Instructions = append(msgBlock.Instructions, &inst)
+				}
+			} else {
+				// check if we have a param changes
+				for _, ac := range parent.ChainMap {
+					if ac.ChainID == chainmap.ROOT {
+						continue
+					}
+					if me.ChainMap[ac.ChainID] == nil {
+						continue
+					}
 					param1 := chaincfg.GlobalParams{}
+					param1.CommitteeSize, param1.CommitteeSigs, param1.POWRotate = 3, 2, 2
+
 					json.Unmarshal([]byte(ac.GlobalParams), &param1)
 					param2 := chaincfg.GlobalParams{}
-					json.Unmarshal([]byte(me.ChainMap[ac.ChainID].GlobalParams), &param2)
-					for _, d1 := range param1.DNSSeeds {
-						exist := ""
-						for _, d2 := range param2.DNSSeeds {
-							if d1.Host == d2.Host {
-								exist = d1.Host
-								break
-							}
-						}
-						if exist != "" {
-							md, err := json.Marshal(ac)
-							if err != nil {
-								continue
-							}
+					param2.CommitteeSize, param2.CommitteeSigs, param2.POWRotate = 3, 2, 2
 
-							md, err = json.Marshal(struct {
-								ChainID uint32
-								Magic   uint32
-								Dns     string
-							}{
-								ChainID: ac.ChainID,
-								Magic:   ac.Magic,
-								Dns:     exist,
-							})
-							if err == nil {
-								msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
-									InstCode: wire.AddDns,
-									InstData: md,
-								}}
-							}
+					json.Unmarshal([]byte(me.ChainMap[ac.ChainID].GlobalParams), &param2)
+
+					hasnew, changed := param1.Diff(&param2)
+
+					if hasnew {
+						cc := chainmap.ChainDescriptor{
+							Version: 0x20000,
+							ChainID: param1.ChainID,
+							Magic:   param1.Net,
+						}
+
+						s, _ := json.Marshal(changed)
+						cc.GlobalParams = string(s)
+						md, err := json.Marshal(cc)
+						if err == nil {
+							msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
+								InstCode: wire.ChgParam,
+								InstData: md,
+							}}
 						}
 					}
-					continue
 				}
-
-				md, err := json.Marshal(ac)
-				if err != nil {
-					continue
-				}
-
-				inst := wire.Instruction{
-					InstCode: wire.AddChain,
-					InstData: md,
-				}
-				msgBlock.Instructions = append(msgBlock.Instructions, &inst)
 			}
 		}
 	} else if g.chainParams.AddChain != nil {
@@ -1492,6 +1499,8 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		if !exist {
 			ac.ChainID = uint32(len(chainmap.AllChains[chainmap.ROOT].ChainMap) + 1)
 			param := chaincfg.GlobalParams{}
+			param.CommitteeSize, param.CommitteeSigs, param.POWRotate = 3, 2, 2
+
 			json.Unmarshal([]byte(ac.GlobalParams), &param)
 			param.ChainID = ac.ChainID
 			s, _ := json.Marshal(param)
@@ -1504,9 +1513,9 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 				}}
 			}
 		}
-	} else if g.chainParams.AddDns != nil {
+	} else if g.chainParams.ChgParams != nil {
 		exist := false
-		ac := g.chainParams.AddDns.(*chainmap.ChainDescriptor)
+		ac := g.chainParams.ChgParams.(*chainmap.ChainDescriptor)
 		for cid, c := range chainmap.AllChains[chainmap.ROOT].ChainMap {
 			if ac.Magic == c.Magic && ac.ChainID == cid {
 				exist = true
@@ -1514,29 +1523,26 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 		}
 		if exist {
 			param := chaincfg.GlobalParams{}
+			param.CommitteeSize, param.CommitteeSigs, param.POWRotate = 3, 2, 2
+
 			json.Unmarshal([]byte(chainmap.AllChains[chainmap.ROOT].ChainMap[ac.ChainID].GlobalParams), &param)
-			exist = false
-			for _, d := range param.DNSSeeds {
-				if d.Host == ac.Dns {
-					exist = true
-				}
+
+			param2 := param
+			json.Unmarshal([]byte(ac.GlobalParams), &param2)
+
+			cc := chainmap.ChainDescriptor{
+				Version:      0x20000,
+				ChainID:      g.chainParams.ChgParams.(*wire.ChainDescriptor).ChainID,
+				Magic:        g.chainParams.ChgParams.(*wire.ChainDescriptor).Magic,
+				GlobalParams: ac.GlobalParams,
 			}
-			if !exist {
-				md, err := json.Marshal(struct {
-					ChainID uint32
-					Magic   uint32
-					Dns     string
-				}{
-					ChainID: ac.ChainID,
-					Magic:   ac.Magic,
-					Dns:     ac.Dns,
-				})
-				if err == nil {
-					msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
-						InstCode: wire.AddDns,
-						InstData: md,
-					}}
-				}
+
+			md, err := json.Marshal(cc)
+			if err == nil {
+				msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
+					InstCode: wire.ChgParam,
+					InstData: md,
+				}}
 			}
 		}
 	}
@@ -1646,7 +1652,7 @@ func (g *BlkTmplGenerator) TxSource() TxSource {
 
 func (g *BlkTmplGenerator) ActiveMiner(address btcutil.Address) bool {
 	h := g.BestSnapshot().LastRotation // .Chain.LastRotation(g.BestSnapshot().Hash)
-	n := h - wire.CommitteeSize
+	n := h - uint32(g.chainParams.CommitteeSize)
 	for n < h {
 		n++
 		m, _ := g.Chain.Miners.BlockByHeight(int32(n))
@@ -1666,7 +1672,7 @@ func (g *BlkTmplGenerator) Committee() (map[[20]byte]struct{}, bool) {
 
 	adrs, in := make(map[[20]byte]struct{}), false
 
-	for n := h - wire.CommitteeSize + 1; n <= h; n++ {
+	for n := h - uint32(g.chainParams.CommitteeSize) + 1; n <= h; n++ {
 		if m, _ := g.Chain.Miners.BlockByHeight(int32(n)); m != nil {
 			adrs[m.MsgBlock().Miner] = struct{}{}
 			if len(g.chainParams.ExternalIPs) > 0 {

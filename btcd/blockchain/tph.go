@@ -147,7 +147,7 @@ func (b *BlockChain) TphNotice(t *Notification) {
 
 		h := uint32(block.Height())
 		rot := b.Rotation(block.MsgBlock().Header.PrevBlock)
-		if rot <= wire.CommitteeSize {
+		if rot <= int32(b.ChainParams.CommitteeSize) {
 			return
 		}
 
@@ -157,7 +157,7 @@ func (b *BlockChain) TphNotice(t *Notification) {
 				return
 			}
 
-			punishable := make([][20]uint8, 0, wire.CommitteeSize)
+			punishable := make([][20]uint8, 0, b.ChainParams.CommitteeSize)
 
 			if prev.Data.GetNonce() < -wire.MINER_RORATE_FREQ {
 				// if stall immediately after a rotation, we blame the new committee member
@@ -166,7 +166,7 @@ func (b *BlockChain) TphNotice(t *Notification) {
 			} else {
 				// if interrupted by a POW node, it mean the committee is stalling.
 				// all members gets lowest score as punishment
-				for i := 0; i < wire.CommitteeSize; i++ {
+				for i := 0; i < int(b.ChainParams.CommitteeSize); i++ {
 					mb, _ := b.Miners.BlockByHeight(rot)
 					rot--
 
@@ -187,7 +187,7 @@ func (b *BlockChain) TphNotice(t *Notification) {
 			return
 		}
 
-		for i := 0; i < wire.CommitteeSize; i++ {
+		for i := 0; i < int(b.ChainParams.CommitteeSize); i++ {
 			mb, _ := b.Miners.BlockByHeight(rot)
 			rot--
 

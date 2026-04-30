@@ -227,7 +227,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		}
 
 		if flags&BFNoConnect != BFNoConnect {
-			if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
+			if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= int(b.ChainParams.CommitteeSigs) {
 				return false, fmt.Errorf("insifficient signatures"), -1
 			}
 			if block.MsgBlock().Header.Nonce < 0 {
@@ -373,11 +373,11 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		return false, nil, -1
 	}
 
-	isMainChain := false
+	isMainChain, terminate := false, false
 
 	if block.MsgBlock().Header.Nonce > 0 {
 		// A POW block should not cause rotation passing current MR tip
-		if b.stateSnapshot.LastRotation+wire.POWRotate > uint32(b.Miners.Tip().Height()) {
+		if b.stateSnapshot.LastRotation+uint32(b.ChainParams.POWRotate) > uint32(b.Miners.Tip().Height()) {
 			return false, fmt.Errorf("POW rotation overflow"), -1
 		}
 	}
@@ -389,7 +389,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 			// Connect the passed block to the chain while respecting proper chain
 			// selection according to the chain with the most proof of work.  This
 			// also handles validation of the transaction scripts.
-			isMainChain, err = b.connectBestChain(newNode, block, flags)
+			isMainChain, err, terminate = b.connectBestChain(newNode, block, flags)
 			if err != nil {
 				return false, err, -1
 			}
@@ -410,6 +410,11 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 		r := time.Now().Unix()
 		s := fmt.Sprintf("%d rcvd %d lat %d (%d)\n", block.Height(), r, r-block.MsgBlock().Header.Timestamp.Unix(), block.MsgBlock().Header.Timestamp.Unix())
 		b.BTfile.Write([]byte(s))
+	}
+
+	if terminate {
+		terminator <- struct{}{}
+		time.Sleep(time.Minute)
 	}
 
 	return isMainChain, nil, -1

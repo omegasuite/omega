@@ -164,7 +164,7 @@ func handleConnNotice(c interface{}) {
 
 		miner.syncMutex.Lock()
 		for _, s := range miner.Sync {
-			if s.Base > h-wire.CommitteeSize && s.Base <= h && !s.Runnable {
+			if s.Base > h-int32(miner.cfg.GlobalParams.CommitteeSize) && s.Base <= h && !s.Runnable {
 				s.SetCommittee()
 			}
 		}
@@ -224,7 +224,7 @@ func SetupRelay(s PeerNotifier) {
 	miner.pulling = make(map[chainhash.Hash]int64)
 	miner.allblks = make(map[chainhash.Hash]*btcutil.Block)
 	miner.knownsrc = make(map[chainhash.Hash]ReqQueue)
-	newblockch = make(chan newblock, 2*wire.CommitteeSize)
+	newblockch = make(chan newblock, 2*wire.MaxCommitteeSize)
 
 	polling := true
 
@@ -262,7 +262,7 @@ func Consensus(s PeerNotifier, dataDir string, addr []btcutil.Address, cfg *chai
 		copy(miner.name[i][:], name.ScriptAddress())
 	}
 
-	newblockch = make(chan newblock, 2*wire.CommitteeSize)
+	newblockch = make(chan newblock, 2*wire.MaxCommitteeSize)
 
 	errMootBlock = fmt.Errorf("Moot block.")
 	errInvalidBlock = fmt.Errorf("Invalid block")
@@ -298,7 +298,7 @@ out:
 				continue
 			}
 
-			if len(blk.block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
+			if len(blk.block.MsgBlock().Transactions[0].SignatureScripts) > int(miner.cfg.GlobalParams.CommitteeSigs) {
 				continue
 			}
 
@@ -312,20 +312,20 @@ out:
 			log.Infof(" BlockInit at %d for block %s", bh, blk.block.Hash().String())
 			miner.syncMutex.Unlock()
 			/*
-				if POWStopper != nil {
-					if len(POWStopper) < wire.CommitteeSize {
-						select {
-						case _, ok = <-POWStopper:
-							if ok {
-								POWStopper <- struct{}{}
-							}
-						default:
+			if POWStopper != nil {
+				if len(POWStopper) < int(miner.cfg.GlobalParams.CommitteeSize) {
+					select {
+					case _, ok = <-POWStopper:
+						if ok {
 							POWStopper <- struct{}{}
 						}
-					} else {
-						log.Infof("len(POWStopper) = %d", len(POWStopper))
+					default:
+						POWStopper <- struct{}{}
 					}
+				} else {
+					log.Infof("len(POWStopper) = %d", len(POWStopper))
 				}
+			}
 			*/
 			snr.BlockInit(blk.block)
 
@@ -459,7 +459,7 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 		return false, nil
 	}
 
-	if len(s.commands) > (wire.CommitteeSize-1)*10 {
+	if len(s.commands) > int(miner.cfg.GlobalParams.CommitteeSize-1)*10 {
 		<-s.commands
 		<-s.commands
 		log.Infof("Runnable syner %d has too many (%d) messages queued. Discard oldest one.", s.Height, len(s.commands))

@@ -356,7 +356,7 @@ out:
 				// subsequent processing of connections and
 				// failures do not ignore the request.
 				if uint32(len(conns)) < cm.cfg.TargetOutbound ||
-					connReq.Permanent || connReq.Committee >= cm.Committee-wire.CommitteeSize {
+					connReq.Permanent || connReq.Committee >= cm.Committee-int32(wire.MaxCommitteeSize) {
 					connReq.updateState(ConnPending)
 					log.Debugf("Reconnecting to %v", connReq)
 
@@ -644,7 +644,7 @@ func New(cfg *Config) (*ConnManager, error) {
 		cfg.RetryDuration = defaultRetryDuration
 	}
 	if cfg.TargetOutbound == 0 {
-		cfg.TargetOutbound = defaultTargetOutbound + wire.CommitteeSize
+		cfg.TargetOutbound = defaultTargetOutbound + uint32(wire.MaxCommitteeSize)
 	}
 	cm := ConnManager{
 		cfg:         *cfg, // Copy so caller can't mutate

@@ -168,7 +168,7 @@ func (m *CPUMiner) submitBlock(block *btcutil.Block) bool {
 	// nodes.  This will in turn relay it to the network like normal.
 	flag := blockchain.BFNone
 
-	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 {
+	if block.MsgBlock().Header.Nonce < 0 && m.cfg.ChainParams.CommitteeSize > 1 {
 		flag = blockchain.BFSubmission | blockchain.BFNoConnect
 	}
 	coinbaseTx := block.MsgBlock().Transactions[0].TxOut[0]
@@ -547,7 +547,7 @@ out:
 		powMode := !m.cfg.Generate
 		var sigaddr *btcec.PrivateKey
 
-		if m.cfg.Generate && in && len(m.cfg.SignAddress) != 0 && len(committee) == wire.CommitteeSize {
+		if m.cfg.Generate && in && len(m.cfg.SignAddress) != 0 && len(committee) == m.cfg.ChainParams.CommitteeSize {
 			for j, pt := range m.cfg.SignAddress {
 				copy(adr[:], pt.ScriptAddress())
 				if _, ok := committee[adr]; ok {
@@ -606,7 +606,7 @@ out:
 				nonce--
 			}
 
-			if wire.CommitteeSize > 1 {
+			if m.cfg.ChainParams.CommitteeSize > 1 {
 				// check collateral. kick out those not qualified.
 				payToAddress = m.coinbaseByCommittee(payToAddr)
 				if len(payToAddress) == 0 {
@@ -616,7 +616,7 @@ out:
 					payToAddr = m.cfg.MiningAddrs[rand.Int()%len(m.cfg.MiningAddrs)]
 					payToAddress = []btcutil.Address{payToAddr}
 					nonce = 1
-				} else if len(payToAddress) <= wire.CommitteeSize/2 {
+				} else if len(payToAddress) <= m.cfg.ChainParams.CommitteeSize/2 {
 					// impossible to form a qualified consensus
 					log.Infof("Change to POW mining because insufficient committee members.")
 					powMode = true
@@ -625,7 +625,7 @@ out:
 				}
 			}
 		} else {
-			if bs.LastRotation+wire.POWRotate+20 > uint32(m.g.Chain.Miners.BestSnapshot().Height) {
+			if bs.LastRotation+uint32(m.cfg.ChainParams.POWRotate)+20 > uint32(m.g.Chain.Miners.BestSnapshot().Height) {
 				time.Sleep(5 * time.Second)
 				continue
 			}
@@ -660,7 +660,7 @@ out:
 		if !powMode {
 			powwait = 20 * time.Second
 			rank := int32(0)
-			if wire.CommitteeSize == 1 {
+			if m.cfg.ChainParams.CommitteeSize == 1 {
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
 				mining.AddSignature(block, sigaddr)
 			} else {
@@ -669,7 +669,7 @@ out:
 				r := m.g.Chain.BestSnapshot().LastRotation
 				in := false
 
-				for i := r - wire.CommitteeSize + 1; i <= r && !in; i++ {
+				for i := r - uint32(m.cfg.ChainParams.CommitteeSize) + 1; i <= r && !in; i++ {
 					mb, _ := m.g.Chain.Miners.BlockByHeight(int32(i))
 					if mb == nil {
 						continue
@@ -677,7 +677,7 @@ out:
 					miner := mb.MsgBlock().Miner
 					for _, sa := range m.cfg.MiningAddrs {
 						if bytes.Compare(miner[:], sa.ScriptAddress()) == 0 {
-							rank = int32(i - (r - wire.CommitteeSize + 1))
+							rank = int32(i - (r - uint32(m.cfg.ChainParams.CommitteeSize) + 1))
 							in = true
 						}
 					}
@@ -691,9 +691,9 @@ out:
 			}
 
 			if leader >= 0 {
-				rank = (rank + wire.CommitteeSize - leader) % wire.CommitteeSize
+				rank = (rank + int32(m.cfg.ChainParams.CommitteeSize) - leader) % int32(m.cfg.ChainParams.CommitteeSize)
 			} else {
-				rank = (rank + wire.CommitteeSize) % wire.CommitteeSize
+				rank = (rank + int32(m.cfg.ChainParams.CommitteeSize)) % int32(m.cfg.ChainParams.CommitteeSize)
 				adj = 1
 			}
 
@@ -781,7 +781,7 @@ out:
 		//	continue
 		//}
 
-		if time.Now().Unix()-lastblkrcv < 2*wire.TimeGap || nopow || int32(bs.LastRotation) >= mh+wire.CommitteeSigs { // m.cfg.ChainParams.Net == common.TestNet ||
+		if time.Now().Unix()-lastblkrcv < 2*wire.TimeGap || nopow || int32(bs.LastRotation) >= mh+int32(m.cfg.ChainParams.CommitteeSigs) { // m.cfg.ChainParams.Net == common.TestNet ||
 			time.Sleep(time.Second * wire.TimeGap)
 			continue
 		}
@@ -861,7 +861,7 @@ func (m *CPUMiner) coinbaseByCommittee(me btcutil.Address) []btcutil.Address {
 	// be qualified for award, his signature will not be accepted. award
 	// will be distributed only among those whose collateral are intact.
 	qualified := false
-	for i := -int32(wire.CommitteeSize - 1); i <= 0; i++ {
+	for i := -int32(m.cfg.ChainParams.CommitteeSize - 1); i <= 0; i++ {
 		if mb, _ := m.g.Chain.Miners.BlockByHeight(int32(bh) + i); mb != nil {
 			if _, err := m.g.Chain.CheckCollateral(mb, nil, blockchain.BFNone); err != nil {
 				log.Infof("CheckCollateral failed")
@@ -877,7 +877,7 @@ func (m *CPUMiner) coinbaseByCommittee(me btcutil.Address) []btcutil.Address {
 		}
 	}
 
-	if qualified && good >= wire.CommitteeSigs {
+	if qualified && good >= int64(m.cfg.ChainParams.CommitteeSigs) {
 		return addresses
 	} else {
 		return nil

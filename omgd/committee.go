@@ -19,7 +19,7 @@ import (
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 )
 
-const advanceCommitteeConnection = wire.CommitteeSize // # of miner blocks we should prepare for connection
+const advanceCommitteeConnection = wire.MaxCommitteeSize // # of miner blocks we should prepare for connection
 const maxFailedAttempts = 25
 
 // This must be a go routine
@@ -159,7 +159,7 @@ func (s *server) MyPlaceInCommittee(r int32) int32 {
 
 	minerTop := s.chain.Miners.BestSnapshot().Height
 
-	for i := r - wire.CommitteeSize + 1; i < r+advanceCommitteeConnection; i++ {
+	for i := r - int32(s.chainParams.CommitteeSize) + 1; i < r+advanceCommitteeConnection; i++ {
 		// scan wire.CommitteeSize records before and after r to determine
 		// if we are in the committee
 		if i < 0 || i >= minerTop {
@@ -320,7 +320,7 @@ func (s *server) handleCommitteRotation(r int32) {
 		}
 	}
 
-	s.phaseoutCommittee(r - 2*wire.CommitteeSize)
+	s.phaseoutCommittee(r - 2*int32(s.chainParams.CommitteeSize))
 
 	me := s.MyPlaceInCommittee(r)
 	if me == 0 {
@@ -338,9 +338,9 @@ func (s *server) handleCommitteRotation(r int32) {
 
 	// block me is myself, check CommitteeSize miners before and advanceCommitteeConnection
 	// miners afetr me to connect to them
-	bot := me - wire.CommitteeSize + 1
+	bot := me - int32(s.chainParams.CommitteeSize) + 1
 	if r > me {
-		bot = r - wire.CommitteeSize + 1
+		bot = r - int32(s.chainParams.CommitteeSize) + 1
 	}
 
 	for j := bot; j < me+advanceCommitteeConnection; j++ {

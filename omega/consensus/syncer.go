@@ -69,8 +69,8 @@ type Syncer struct {
 	// a node collected more than 1/2 agrees consents may annouce the fact by broadcasting
 	// the agreements it collected.
 
-	asked    [wire.CommitteeSize]*wire.MsgCandidate // those who have asked to be a candidate, and not released
-	agrees   map[int32]struct{}                     // those who I have agree to be a candidate
+	asked    [wire.MaxCommitteeSize]*wire.MsgCandidate // those who have asked to be a candidate, and not released
+	agrees   map[int32]struct{}                        // those who I have agree to be a candidate
 	blocks   map[chainhash.Hash]*btcutil.Block
 	agreed   int32 // the one who I have agreed. can not back out until released by
 	sigGiven int32 // who I have given my signature. can never change once given.
@@ -167,7 +167,7 @@ func (self *Syncer) repeater() {
 	self.forestLock.Unlock()
 
 	// enough sigs to conclude?
-	if self.agreed != -1 && len(self.signed) >= wire.CommitteeSigs && !self.Done {
+	if self.agreed != -1 && len(self.signed) >= int(miner.cfg.CommitteeSigs) && !self.Done {
 		self.Done = true
 		close(self.quit)
 		return
@@ -279,7 +279,7 @@ func (self *Syncer) repeater() {
 	_, ok := self.forest[self.Me]
 	self.forestLock.Unlock()
 
-	if ok && len(self.commands) < (wire.CommitteeSize-1)*10 {
+	if ok && len(self.commands) < int(miner.cfg.GlobalParams.CommitteeSize-1)*10 {
 		k := self.NewKnowledgeMsg()
 
 		self.commands <- k
@@ -379,11 +379,11 @@ func (self *Syncer) Release(msg *wire.MsgRelease) {
 		delete(self.blocks, f.hash)
 		delete(self.forest, msg.From)
 	}
-	for i := 0; i < wire.CommitteeSize; i++ {
+	for i := 0; i < int(miner.cfg.GlobalParams.CommitteeSize); i++ {
 		self.knowledges.Knowledge[i][self.Members[msg.From]] = 0
 		self.knowledges.Knowledge[self.Members[msg.From]][i] = 0
 		m := ^(int64(1) << self.Members[msg.From])
-		for j := 0; j < wire.CommitteeSize; j++ {
+		for j := 0; j < int(miner.cfg.GlobalParams.CommitteeSize); j++ {
 			self.knowledges.Knowledge[i][j] &= m
 		}
 	}
@@ -506,10 +506,10 @@ func (self *Syncer) process(cmd interface{}) bool {
 					block:   nil,
 				}
 				w := self.Members[k.Finder]
-				for i := 0; i < wire.CommitteeSize; i++ {
+				for i := 0; i < int(miner.cfg.GlobalParams.CommitteeSize); i++ {
 					self.knowledges.Knowledge[w][i] = 0
 					self.knowledges.Knowledge[i][w] = 0
-					for j := 0; j < wire.CommitteeSize; j++ {
+					for j := 0; j < int(miner.cfg.GlobalParams.CommitteeSize); j++ {
 						self.knowledges.Knowledge[i][j] &= ^(1 << w)
 					}
 				}
@@ -700,7 +700,7 @@ loop:
 			if self.sigGiven != -1 {
 				owner := self.Names[self.sigGiven]
 				if self.Runnable && self.forest[owner] != nil && self.forest[owner].block != nil &&
-					len(self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
+					len(self.forest[owner].block.MsgBlock().Transactions[0].SignatureScripts) > miner.cfg.CommitteeSigs {
 					miner.server.NewConsusBlock(self.forest[owner].block)
 				}
 			}
@@ -786,7 +786,7 @@ func (self *Syncer) Signature(msg *wire.MsgSignature) bool {
 	}
 
 	if _, ok := self.signed[msg.From]; ok {
-		return len(self.signed) >= wire.CommitteeSigs
+		return len(self.signed) >= miner.cfg.CommitteeSigs
 	}
 
 	tree := int32(-1)
@@ -837,7 +837,7 @@ func (self *Syncer) Signature(msg *wire.MsgSignature) bool {
 		msg.Signature[:])
 	self.signed[msg.From] = struct{}{}
 
-	return len(self.signed) >= wire.CommitteeSigs
+	return len(self.signed) >= miner.cfg.CommitteeSigs
 }
 
 func (self *Syncer) Consensus(msg *wire.MsgConsensus) bool {
@@ -913,7 +913,7 @@ func (self *Syncer) Consensus(msg *wire.MsgConsensus) bool {
 			msg.Signature[:])
 		self.signed[msg.From] = struct{}{}
 
-		if len(self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
+		if len(self.forest[msg.From].block.MsgBlock().Transactions[0].SignatureScripts) > miner.cfg.CommitteeSigs {
 			return true
 			//			log.Info("passing NewConsusBlock & quit")
 			//			miner.server.NewConsusBlock(self.forest[msg.From].block)
@@ -923,7 +923,7 @@ func (self *Syncer) Consensus(msg *wire.MsgConsensus) bool {
 }
 
 func (self *Syncer) reckconsensus() {
-	if self.agreed != self.Myself || self.sigGiven != self.Myself || len(self.agrees)+1 < wire.CommitteeSigs {
+	if self.agreed != self.Myself || self.sigGiven != self.Myself || len(self.agrees)+1 < miner.cfg.CommitteeSigs {
 		return
 	}
 
@@ -957,7 +957,7 @@ func (self *Syncer) reckconsensus() {
 }
 
 func (self *Syncer) ckconsensus(bc bool) bool {
-	if self.agreed != self.Myself || len(self.agrees) < wire.CommitteeSigs {
+	if self.agreed != self.Myself || len(self.agrees) < miner.cfg.CommitteeSigs {
 		return false
 	}
 
@@ -1185,7 +1185,7 @@ func (self *Syncer) candidacy() bool {
 
 	better := self.Myself
 
-	for i := 0; i < wire.CommitteeSize; i++ {
+	for i := 0; i < miner.cfg.GlobalParams.CommitteeSize; i++ {
 		if self.asked[int32(i)] != nil && int32(i) != better && self.better(int32(i), better) && self.knowledges.Qualified(int32(i)) {
 			// there is a better candidate
 			// someone else is the best, send him knowledge about him that he does not know
@@ -1353,16 +1353,16 @@ func CreateSyncer(h int32) *Syncer {
 	//	p.mutex = sync.Mutex{}
 
 	//	p.consents = make(map[[20]byte]int32, wire.CommitteeSize)
-	p.forest = make(map[[20]byte]*tree, wire.CommitteeSize)
+	p.forest = make(map[[20]byte]*tree, miner.cfg.GlobalParams.CommitteeSize)
 
 	p.Runnable = false
 	//	p.Me = miner.name
 
 	//	p.SetCommittee()
-	p.knowRevd = make([]int32, wire.CommitteeSize)
-	p.candRevd = make([]int32, wire.CommitteeSize)
-	p.consRevd = make([]int32, wire.CommitteeSize)
-	for i := 0; i < wire.CommitteeSize; i++ {
+	p.knowRevd = make([]int32, miner.cfg.GlobalParams.CommitteeSize)
+	p.candRevd = make([]int32, miner.cfg.GlobalParams.CommitteeSize)
+	p.consRevd = make([]int32, miner.cfg.GlobalParams.CommitteeSize)
+	for i := 0; i < miner.cfg.GlobalParams.CommitteeSize; i++ {
 		p.knowRevd[i], p.candRevd[i], p.consRevd[i] = -1, -1, -1
 	}
 
@@ -1474,18 +1474,18 @@ func (self *Syncer) setCommittee() {
 	c := int32(best.LastRotation)
 
 	self.Committee = c
-	self.Base = c - wire.CommitteeSize + 1
+	self.Base = c - int32(miner.cfg.GlobalParams.CommitteeSize) + 1
 
 	in := false
 
 	self.forestLock.Lock()
-	for i := c - wire.CommitteeSize + 1; i <= c; i++ {
+	for i := c - int32(miner.cfg.GlobalParams.CommitteeSize) + 1; i <= c; i++ {
 		blk, _ := miner.server.MinerBlockByHeight(i)
 		if blk == nil {
 			continue
 		}
 
-		who := i - (c - wire.CommitteeSize + 1)
+		who := i - (c - int32(miner.cfg.GlobalParams.CommitteeSize) + 1)
 
 		for _, n := range miner.name {
 			if bytes.Compare(n[:], blk.MsgBlock().Miner[:]) == 0 {
@@ -1550,7 +1550,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 		log.Errorf("block does not contain enough signatures. %d", len(block.MsgBlock().Transactions[0].SignatureScripts))
 		return
 	}
-	if len(block.MsgBlock().Transactions[0].SignatureScripts) > wire.CommitteeSigs {
+	if len(block.MsgBlock().Transactions[0].SignatureScripts) > miner.cfg.GlobalParams.CommitteeSigs {
 		log.Infof("it is a consensus block. Skip it.")
 		return
 	}
@@ -1575,7 +1575,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 		}
 	}
 
-	if len(block.MsgBlock().Transactions[0].TxOut) < wire.CommitteeSigs {
+	if len(block.MsgBlock().Transactions[0].TxOut) < miner.cfg.GlobalParams.CommitteeSigs {
 		return
 	}
 
@@ -1586,7 +1586,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 	self.forestLock.Unlock()
 
 	if !ok || r.block == nil {
-		if len(self.commands) > (wire.CommitteeSize-1)*10 {
+		if len(self.commands) > (miner.cfg.GlobalParams.CommitteeSize-1)*10 {
 			<-self.commands
 		}
 		self.commands <- &tree{
@@ -1646,7 +1646,7 @@ func (self *Syncer) print() {
 	candRevd := "Candidacy anouncement received from: "
 	consRevd := "Consensus anouncement received from: "
 
-	for i := 0; i < wire.CommitteeSize; i++ {
+	for i := 0; i < miner.cfg.GlobalParams.CommitteeSize; i++ {
 		knowRevd += fmt.Sprintf("%d ", self.knowRevd[i])
 		candRevd += fmt.Sprintf("%d ", self.candRevd[i])
 		consRevd += fmt.Sprintf("%d ", self.consRevd[i])
@@ -1661,7 +1661,7 @@ func (self *Syncer) print() {
 }
 
 func (self *Syncer) DebugInfo() {
-	if !self.Done && len(self.commands) < (wire.CommitteeSize-1)*10 {
+	if !self.Done && len(self.commands) < (miner.cfg.GlobalParams.CommitteeSize-1)*10 {
 		self.commands <- &debugtype{}
 	}
 }

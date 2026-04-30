@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"btcd/blockchain"
 	//	"encoding/hex"
 	"btcd/wire"
 	"btcd/wire/common"
@@ -83,6 +84,10 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 	}
 
 	globalParams := &chaincfg.GlobalParams{}
+	globalParams.CommitteeSize = 3
+	globalParams.CommitteeSigs = 2
+	globalParams.POWRotate = 2
+
 	if cd == nil {
 		globalParams = nil
 	} else {
@@ -787,8 +792,9 @@ func main() {
 		}
 		json.Unmarshal([]byte(tcfg.ParentChain), &c)
 		chainmap.AllChains[p.activeNetParams.MainChainID].AddChain(&c)
-		// terminate to cause reboot with new map
+		btcdLog.Infof("terminate to cause reboot with new map")
 		shutdownRequestChannel <- struct{}{}
+		time.Sleep(10 * time.Minute)
 	}
 
 	for _, c := range chainmap.AllChains[Server.chainParams.MainChainID].ChainMap {
@@ -800,6 +806,10 @@ func main() {
 		}
 		time.Sleep(1 * time.Second)
 		dparams := &chaincfg.GlobalParams{}
+		dparams.CommitteeSize = 3
+		dparams.CommitteeSigs = 2
+		dparams.POWRotate = 2
+
 		if err := json.Unmarshal([]byte(c.GlobalParams), dparams); err != nil {
 			os.Exit(1)
 		}

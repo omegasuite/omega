@@ -872,8 +872,8 @@ func (sm *SyncManager) handleBlockMsg(bmsg *blockMsg) {
 
 	// if it is a block being processed by the committee, veryfy it is from the peer
 	// producing, i.e. the address in coinbase signature is the peer's
-	if wire.CommitteeSize > 1 && bmsg.block.MsgBlock().Header.Nonce < 0 &&
-		len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
+	if sm.chainParams.CommitteeSize > 1 && bmsg.block.MsgBlock().Header.Nonce < 0 &&
+		len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) <= sm.chainParams.CommitteeSigs {
 		//		if len(bmsg.block.MsgBlock().Transactions[0].SignatureScripts) < 2 {
 		//			log.Errorf("handleBlockMsg: blocked because of insufficient signatures. Require 2 items in coinbase signatures.")
 		//			return
@@ -2617,7 +2617,7 @@ func (sm *SyncManager) SyncPeerID() int32 {
 func (sm *SyncManager) ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) (bool, error) {
 	reply := make(chan processBlockResponse, 1)
 
-	if block.MsgBlock().Header.Nonce < 0 && wire.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
+	if block.MsgBlock().Header.Nonce < 0 && sm.chainParams.CommitteeSize > 1 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= sm.chainParams.CommitteeSigs {
 		log.Debugf("procssing a comittee block, height = %d", block.Height())
 		sm.msgChan <- processBlockMsg{block: block, flags: flags | blockchain.BFSubmission, reply: reply}
 

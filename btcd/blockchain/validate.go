@@ -79,15 +79,11 @@ func IsCoinBaseTx(msgTx *wire.MsgTx) bool {
 		return false
 	}
 
-	if len(msgTx.TxDef) != 0 {
-		return false
-	}
-
 	for _, to := range msgTx.TxOut {
 		if to.IsSeparator() {
-			continue
+			break
 		}
-		if to.TokenType != common.FeeCoinTyp {
+		if to.TokenType != 0 {
 			return false
 		}
 	}
@@ -355,7 +351,7 @@ func (b *BlockChain) Rotation(hash chainhash.Hash) int32 {
 	for ; p != nil && !p.Hash.IsEqual(&hash); p = b.ParentNode(p) {
 		switch {
 		case p.Data.GetNonce() > 0:
-			rotate -= wire.POWRotate
+			rotate -= int32(b.ChainParams.POWRotate)
 
 		case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 			rotate = -(p.Data.GetNonce() + wire.MINER_RORATE_FREQ) - 1
@@ -396,7 +392,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 		for p := b.BestChain.Tip(); p != nil && p != fork && p.Height > fork.Height; p = b.ParentNode(p) {
 			switch {
 			case p.Data.GetNonce() > 0:
-				rotate -= wire.POWRotate
+				rotate -= uint32(b.ChainParams.POWRotate)
 
 			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate--
@@ -405,7 +401,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 		for p := pn; p != nil && p != fork; p = b.ParentNode(p) {
 			switch {
 			case p.Data.GetNonce() > 0:
-				rotate += wire.POWRotate
+				rotate += uint32(b.ChainParams.POWRotate)
 
 			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate++
@@ -492,11 +488,11 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			}
 		}
 
-		if wire.CommitteeSize > 1 && flags&(BFNoConnect|BFSubmission) != 0 {
+		if b.ChainParams.CommitteeSize > 1 && flags&(BFNoConnect|BFSubmission) != 0 {
 			return fmt.Errorf("Unexpected flags"), true
 		}
 
-		if len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
+		if len(block.MsgBlock().Transactions[0].SignatureScripts) <= int(b.ChainParams.CommitteeSigs) {
 			return fmt.Errorf("Insufficient signature"), false
 		}
 		if len(block.MsgBlock().Transactions[0].SignatureScripts[1]) < btcec.PubKeyBytesLenCompressed {
@@ -512,14 +508,14 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 		var imin = false
 		var meme btcutil.Address
 
-		var mbs [wire.CommitteeSize]*wire.MinerBlock
+		var mbs [wire.MaxCommitteeSize]*wire.MinerBlock
 
-		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
+		for i := rotate - uint32(b.ChainParams.CommitteeSize) + 1; i <= rotate; i++ {
 			mb, _ := b.Miners.BlockByHeight(int32(i))
 			if mb == nil {
 				continue
 			}
-			mbs[i-(rotate-wire.CommitteeSize+1)] = mb
+			mbs[i-(rotate-uint32(b.ChainParams.CommitteeSize)+1)] = mb
 		}
 
 		awardto := make(map[[20]byte]struct{})
@@ -529,7 +525,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			if txo.IsSeparator() {
 				break
 			}
-			if txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.ZENTCoinTyp {
+			if txo.TokenType != 0 {
 				return fmt.Errorf("Coinbase output tokentype %d is not correct.", txo.TokenType), false
 			}
 			if _, ok := awd[txo.TokenType]; !ok {
@@ -553,8 +549,8 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 		}
 		//}
 
-		for i := rotate - wire.CommitteeSize + 1; i <= rotate; i++ {
-			mb := mbs[i-(rotate-wire.CommitteeSize+1)]
+		for i := rotate - uint32(b.ChainParams.CommitteeSize) + 1; i <= rotate; i++ {
+			mb := mbs[i-(rotate-uint32(b.ChainParams.CommitteeSize)+1)]
 			if mb == nil {
 				continue
 			}
@@ -614,7 +610,7 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 				append(block.MsgBlock().Transactions[0].SignatureScripts[:tbr[k]], block.MsgBlock().Transactions[0].SignatureScripts[tbr[k]+1:]...)
 		}
 
-		if nsigned < wire.CommitteeSigs {
+		if nsigned < int(b.ChainParams.CommitteeSigs) {
 			return fmt.Errorf("Insufficient number of Miner signatures."), false
 		}
 	}
@@ -885,11 +881,11 @@ func (b *BlockChain) checkBlockHeaderContext(header *wire.BlockHeader, prevNode 
 		p := prevNode
 		for ; p != nil && p.Data.GetNonce() > -wire.MINER_RORATE_FREQ; p = p.Parent {
 			if p.Data.GetNonce() > 0 {
-				dr += wire.POWRotate
+				dr += int32(b.ChainParams.POWRotate)
 			}
 		}
 		if p == nil {
-			rotate = dr - wire.POWRotate
+			rotate = dr - int32(b.ChainParams.POWRotate)
 		} else {
 			rotate = -p.Data.GetNonce() - wire.MINER_RORATE_FREQ + dr
 		}
@@ -2368,79 +2364,81 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	payMiner := make(map[uint64]int64)
 
 	for i, tx := range transactions[1:] {
-		err := CheckTransactionInputs(tx, node.Height, views, b.ChainParams)
-		if err != nil {
-			return err
-		}
-
-		err = CheckAdditionalTransactionInputs(tx, node.Height, views, b.ChainParams)
-		if err != nil {
-			return err
-		}
-
-		//if !b.IsSVP {
-		err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
-		if err != nil {
-			return err
-		}
-		//}
-
-		err = CheckTransactionIntegrity(tx, views, block.MsgBlock().Header.Version)
-		if err != nil {
-			return err
-		}
-
-		txFee, payDirect, err := CheckTransactionFees(tx, storages[i], views, b.ChainParams)
-		if err != nil {
-			return err
-		}
-
-		// check locked collateral
-		for _, txin := range tx.MsgTx().TxIn {
-			if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-				continue
+		if block.Height() > 0 {
+			err := CheckTransactionInputs(tx, node.Height, views, b.ChainParams)
+			if err != nil {
+				return err
 			}
-			if txin.PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
-				continue
-			}
-			if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; ok {
-				return fmt.Errorf("Try to spend locked collateral")
-			}
-		}
 
-		// Sum the total fees and ensure we don't overflow the
-		// accumulator.
-		lastTotalFees := totalFees
-		totalFees += txFee
+			err = CheckAdditionalTransactionInputs(tx, node.Height, views, b.ChainParams)
+			if err != nil {
+				return err
+			}
 
-		if len(payDirect) > 0 {
-			for typ, amt := range payDirect {
-				if amt <= 0 {
-					return ruleError(ErrBadFees, "direct miner fee for tx "+tx.Hash().String()+" in block "+block.Hash().String()+" is negative or 0")
+			//if !b.IsSVP {
+			err = CheckAdditionalDefinitions(tx, node.Height, views, b.ChainParams)
+			if err != nil {
+				return err
+			}
+			//}
+
+			err = CheckTransactionIntegrity(tx, views, block.MsgBlock().Header.Version)
+			if err != nil {
+				return err
+			}
+
+			txFee, payDirect, err := CheckTransactionFees(tx, storages[i], views, b.ChainParams)
+			if err != nil {
+				return err
+			}
+
+			// check locked collateral
+			for _, txin := range tx.MsgTx().TxIn {
+				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+					continue
 				}
-				if m, ok := payMiner[typ]; ok {
-					if amt+m < m {
-						return ruleError(ErrBadFees, "total fees for block "+
-							"overflows accumulator")
+				if txin.PreviousOutPoint.Index&wire.CrossChainFalg != 0 {
+					continue
+				}
+				if _, ok := b.LockedCollaterals[txin.PreviousOutPoint]; ok {
+					return fmt.Errorf("Try to spend locked collateral")
+				}
+			}
+
+			// Sum the total fees and ensure we don't overflow the
+			// accumulator.
+			lastTotalFees := totalFees
+			totalFees += txFee
+
+			if len(payDirect) > 0 {
+				for typ, amt := range payDirect {
+					if amt <= 0 {
+						return ruleError(ErrBadFees, "direct miner fee for tx "+tx.Hash().String()+" in block "+block.Hash().String()+" is negative or 0")
 					}
-					payMiner[typ] = m + amt
-				} else {
-					payMiner[typ] = amt
+					if m, ok := payMiner[typ]; ok {
+						if amt+m < m {
+							return ruleError(ErrBadFees, "total fees for block "+
+								"overflows accumulator")
+						}
+						payMiner[typ] = m + amt
+					} else {
+						payMiner[typ] = amt
+					}
 				}
 			}
-		}
-		if totalFees < lastTotalFees {
-			return ruleError(ErrBadFees, "total fees for block overflows accumulator")
-		}
-
-		/*
-			lastbtcTotalFees := totalbtcFees
-			totalbtcFees += txbtcfee
-			if totalbtcFees < lastbtcTotalFees {
-				return ruleError(ErrBadFees, "total fees for block "+
-					"overflows accumulator")
+			if totalFees < lastTotalFees {
+				return ruleError(ErrBadFees, "total fees for block overflows accumulator")
 			}
-		*/
+
+			/*
+				lastbtcTotalFees := totalbtcFees
+				totalbtcFees += txbtcfee
+				if totalbtcFees < lastbtcTotalFees {
+					return ruleError(ErrBadFees, "total fees for block "+
+						"overflows accumulator")
+				}
+			*/
+		}
 
 		// Add all of the outputs for this transaction which are not
 		// provably unspendable as available utxos.  Also, the passed
@@ -2453,6 +2451,12 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	}
 
 	block.Btctxfees = totalbtcFees
+
+	if block.Height() == 0 {
+		views.Utxo.SetBestHash(&node.Hash)
+
+		return nil
+	}
 
 	err = b.CheckForfeit(block, node.Parent, views)
 	if err != nil {
@@ -2486,12 +2490,12 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			if txOut.IsSeparator() {
 				break
 			}
-			if txOut.TokenType != common.FeeCoinTyp && txOut.TokenType != common.ZENTCoinTyp {
+			if txOut.TokenType != 0 {
 				str := fmt.Sprintf("coinbase transaction for block %s awards $d type token", block.Hash().String(),
 					txOut.TokenType)
 				return ruleError(ErrBadCoinbaseValue, str)
 			}
-			if txOut.TokenType == common.FeeCoinTyp {
+			if txOut.TokenType == 0 {
 				totalAward += txOut.Value.(*token.NumToken).Val
 			}
 			//		totalHaoOut += txOut.Value.(*token.NumToken).Val

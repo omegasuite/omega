@@ -491,7 +491,7 @@ func (b *MinerChain) validateVioldationReports(block *wire.MinerBlock) error {
 				matched = true // keep going to check dup of h
 			}
 		matching:
-			for j, w := int32(0), mynode; j < b.chainParams.ViolationReportDeadline; j++ {
+			for j, w := int32(0), mynode; j < b.chainParams.ViolationReportDeadline && w != nil; j++ {
 				y := w.Data.(*blockchainNodeData).block
 				if j > 0 {
 					// check h is a new report

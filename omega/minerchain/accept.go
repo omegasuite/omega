@@ -278,7 +278,7 @@ hit:
 	for p := m.blockChain.NodeByHash(&best); p != nil; p = m.blockChain.ParentNode(p) {
 		switch {
 		case p.Data.GetNonce() > 0:
-			d += wire.POWRotate
+			d += int32(m.chainParams.POWRotate)
 
 		case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 			h = -(p.Data.GetNonce() + wire.MINER_RORATE_FREQ)
@@ -315,7 +315,7 @@ func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {
 
 	for _, op := range blk.Instructions {
 		switch op.InstCode {
-		case wire.AddDns:
+		case wire.ChgParam:
 			if len(op.InstData) == 0 { // UTXO of asset to withdraw
 				return fmt.Errorf("Incorrect op data")
 			}
@@ -331,10 +331,11 @@ func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {
 			if chainmap.AllChains[b.chainParams.ChainID].ChainMap[ac.ChainID].Magic != ac.Magic {
 				return fmt.Errorf("Incorrect op data")
 			}
-			if ac.Dns == "" {
-				return fmt.Errorf("Incorrect op data")
-			}
-			// TBD: check IP
+			/*
+				if ac.Dns == "" {
+					return fmt.Errorf("Incorrect op data")
+				}
+			*/
 			if err != nil {
 				return err
 			}

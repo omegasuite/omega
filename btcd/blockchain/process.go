@@ -427,105 +427,112 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 		return false, true, ruleError(ErrDuplicateBlock, str), -1, nil
 	}
 
-	// Perform preliminary sanity checks on the block and its transactions.
-	err = b.checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
-	if err != nil {
-		return false, false, err, -1, nil
-	}
-
-	for _, tx := range block.MsgBlock().Transactions {
-		for _, txo := range tx.TxOut {
-			if !txo.IsSeparator() && txo.Crossing() {
-				if txo.PkScript[0] != b.ChainParams.PubKeyHashAddrID && (txo.PkScript[24]&0x80) != 0 {
-					// only PKH xfer is not allowed in layer 2 chain
-					str := fmt.Sprintf("Invalid cross chain tx type in tx %s", blockHash.String())
-					return false, true, ruleError(ErrDuplicateBlock, str), -1, nil
-				}
-			}
-		}
-	}
-
-	if block.Size() > wire.MaxBlockPayload {
-		str := fmt.Sprintf("serialized block is too big - got %d, "+
-			"max %d", block.Size(), wire.MaxBlockPayload)
-		return false, false, ruleError(ErrBlockTooBig, str), -1, nil
-	}
-
-	// Find the previous checkpoint and perform some additional checks based
-	// on the checkpoint.  This provides a few nice properties such as
-	// preventing old side chain blocks before the last checkpoint,
-	// rejecting easy to mine, but otherwise bogus, blocks that could be
-	// used to eat memory, and ensuring expected (versus claimed) proof of
-	// work requirements since the previous checkpoint are met.
-	checkpointNode, err := b.findPreviousCheckpoint()
-	if err != nil {
-		return false, false, err, -1, nil
-	}
-	if checkpointNode != nil {
-		// Ensure the block timestamp is after the checkpoint timestamp.
-		checkpointTime := time.Unix(checkpointNode.Data.TimeStamp(), 0)
-		if blockHeader.Timestamp.Before(checkpointTime) {
-			str := fmt.Sprintf("block %v has timestamp %v before "+
-				"last checkpoint timestamp %v", blockHash,
-				blockHeader.Timestamp, checkpointTime)
-			return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1, nil
-		}
-	}
-
-	for _, tx := range block.MsgBlock().Transactions[1:] {
-		for _, txo := range tx.TxOut {
-			if !txo.IsSeparator() && txo.IsCrossChain() {
-				if len(txo.PkScript) < 26 || !b.validCrossChainScript(txo.PkScript) {
-					return false, false, fmt.Errorf("Cross chain PkScript length is less than 25b in %s", tx.TxHash().String()), -1, nil
-				}
-			}
-		}
-	}
-
 	isMainChain := false
 
-	if !b.IsSVP && !b.MatchInpool(block) {
-		return false, true, nil, -1, nil
-		//		if flags&BFNoOrphan != 0 {
-		//			return false, true, nil, -1, nil
-		//		}
-		//		orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-		//		return false, true, nil, -1, orp
-	}
-
-	if prevNode == b.BestChain.Tip() && flags&BFNoConnect != BFNoConnect {
-		// only check proof of work if it extends the best chain. if the block
-		// would cause a reorg, pow check will be done in reorg
-		behaviorFlags := BFNone
-		if b.ChainParams.Net == uint32(common.TestNet) || b.ChainParams.Net == uint32(common.SimNet) || b.ChainParams.Net == uint32(common.RegNet) {
-			behaviorFlags |= BFEasyBlocks
+	// Perform preliminary sanity checks on the block and its transactions.
+	if blockHeight == 0 {
+		if !blockHash.IsEqual(b.ChainParams.GenesisHash) {
+			//			chainmap.AllChains[chainmap.ROOT].ChainMap[b.ChainParams.ChainID].Genesis {
+			return false, false, err, -1, nil
 		}
-		err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags|behaviorFlags)
+	} else {
+		err = b.checkBlockSanity(block, b.ChainParams.PowLimit, b.timeSource, flags)
 		if err != nil {
-			return isMainChain, true, err, -1, nil
+			return false, false, err, -1, nil
 		}
-		if mkorphan {
-			log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
-			if flags&BFNoOrphan == 0 {
-				orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
-				return isMainChain, true, nil, -1, orp
+
+		for _, tx := range block.MsgBlock().Transactions {
+			for _, txo := range tx.TxOut {
+				if !txo.IsSeparator() && txo.Crossing() {
+					if txo.PkScript[0] != b.ChainParams.PubKeyHashAddrID && (txo.PkScript[24]&0x80) != 0 {
+						// only PKH xfer is not allowed in layer 2 chain
+						str := fmt.Sprintf("Invalid cross chain tx type in tx %s", blockHash.String())
+						return false, true, ruleError(ErrDuplicateBlock, str), -1, nil
+					}
+				}
 			}
+		}
+
+		if block.Size() > wire.MaxBlockPayload {
+			str := fmt.Sprintf("serialized block is too big - got %d, "+
+				"max %d", block.Size(), wire.MaxBlockPayload)
+			return false, false, ruleError(ErrBlockTooBig, str), -1, nil
+		}
+
+		// Find the previous checkpoint and perform some additional checks based
+		// on the checkpoint.  This provides a few nice properties such as
+		// preventing old side chain blocks before the last checkpoint,
+		// rejecting easy to mine, but otherwise bogus, blocks that could be
+		// used to eat memory, and ensuring expected (versus claimed) proof of
+		// work requirements since the previous checkpoint are met.
+		checkpointNode, err := b.findPreviousCheckpoint()
+		if err != nil {
+			return false, false, err, -1, nil
+		}
+		if checkpointNode != nil {
+			// Ensure the block timestamp is after the checkpoint timestamp.
+			checkpointTime := time.Unix(checkpointNode.Data.TimeStamp(), 0)
+			if blockHeader.Timestamp.Before(checkpointTime) {
+				str := fmt.Sprintf("block %v has timestamp %v before "+
+					"last checkpoint timestamp %v", blockHash,
+					blockHeader.Timestamp, checkpointTime)
+				return false, false, ruleError(ErrCheckpointTimeTooOld, str), -1, nil
+			}
+		}
+
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			for _, txo := range tx.TxOut {
+				if !txo.IsSeparator() && txo.IsCrossChain() {
+					if len(txo.PkScript) < 26 || !b.validCrossChainScript(txo.PkScript) {
+						return false, false, fmt.Errorf("Cross chain PkScript length is less than 25b in %s", tx.TxHash().String()), -1, nil
+					}
+				}
+			}
+		}
+
+		if !b.IsSVP && !b.MatchInpool(block) {
 			return false, true, nil, -1, nil
-		}
-	} else if prevNode != b.BestChain.Tip() {
-		if flags&BFNoConnect == BFNoConnect {
-			return false, false, fmt.Errorf("Prev node is not best chain tip in BFNoConnect mode"), -1, nil
+			//		if flags&BFNoOrphan != 0 {
+			//			return false, true, nil, -1, nil
+			//		}
+			//		orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+			//		return false, true, nil, -1, orp
 		}
 
-		switch {
-		case block.MsgBlock().Header.Nonce == -1:
-			if prevNode.Data.GetNonce() > -wire.MINER_RORATE_FREQ && prevNode.Data.GetNonce() < 0 {
-				return isMainChain, false, fmt.Errorf("Bad nonce sequence"), -1, nil
+		if prevNode == b.BestChain.Tip() && flags&BFNoConnect != BFNoConnect {
+			// only check proof of work if it extends the best chain. if the block
+			// would cause a reorg, pow check will be done in reorg
+			behaviorFlags := BFNone
+			if b.ChainParams.Net == uint32(common.TestNet) || b.ChainParams.Net == uint32(common.SimNet) || b.ChainParams.Net == uint32(common.RegNet) {
+				behaviorFlags |= BFEasyBlocks
+			}
+			err, mkorphan := b.checkProofOfWork(block, prevNode, b.ChainParams.PowLimit, flags|behaviorFlags)
+			if err != nil {
+				return isMainChain, true, err, -1, nil
+			}
+			if mkorphan {
+				log.Infof("checkProofOfWork failed. Make block %s an orphan at %d", block.Hash().String(), block.Height())
+				if flags&BFNoOrphan == 0 {
+					orp := b.Orphans.AddOrphanBlock((*orphanBlock)(block))
+					return isMainChain, true, nil, -1, orp
+				}
+				return false, true, nil, -1, nil
+			}
+		} else if prevNode != b.BestChain.Tip() {
+			if flags&BFNoConnect == BFNoConnect {
+				return false, false, fmt.Errorf("Prev node is not best chain tip in BFNoConnect mode"), -1, nil
 			}
 
-		case block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ:
-			if 1-wire.MINER_RORATE_FREQ != prevNode.Data.GetNonce() {
-				return isMainChain, false, fmt.Errorf("Bad nonce sequence"), -1, nil
+			switch {
+			case block.MsgBlock().Header.Nonce == -1:
+				if prevNode.Data.GetNonce() > -wire.MINER_RORATE_FREQ && prevNode.Data.GetNonce() < 0 {
+					return isMainChain, false, fmt.Errorf("Bad nonce sequence"), -1, nil
+				}
+
+			case block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ:
+				if 1-wire.MINER_RORATE_FREQ != prevNode.Data.GetNonce() {
+					return isMainChain, false, fmt.Errorf("Bad nonce sequence"), -1, nil
+				}
 			}
 		}
 	}
@@ -552,7 +559,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 			for p := b.BestChain.Tip(); p != nil && p.Height != block.Height(); p = b.ParentNode(p) {
 				switch {
 				case p.Data.GetNonce() > 0:
-					rotate -= wire.POWRotate
+					rotate -= uint32(b.ChainParams.POWRotate)
 
 				case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 					rotate--
@@ -571,7 +578,7 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 				if _, ok := signers[name]; ok {
 					// double signer
 					mb, _ := b.Miners.BlockByHeight(int32(rt))
-					for i := 0; i < wire.CommitteeSize; i++ {
+					for i := 0; i < int(b.ChainParams.CommitteeSize); i++ {
 						if mb.MsgBlock().Miner == name {
 							b.Miners.DSReport(&wire.Violations{
 								Height:  block.Height(), // Height of Tx blocks
@@ -615,7 +622,8 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent *chainutil.BlockNod
 		}
 	}
 
-	if wire.CommitteeSize == 1 || block.MsgBlock().Header.Nonce > 0 {
+	// if wire.CommitteeSize == 1 || block.MsgBlock().Header.Nonce > 0 {
+	if block.MsgBlock().Header.Nonce > 0 {
 		return true
 	}
 
@@ -633,7 +641,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent *chainutil.BlockNod
 		for p := b.BestChain.Tip(); p != nil && p != fork; p = b.ParentNode(p) {
 			switch {
 			case p.Data.GetNonce() > 0:
-				rotate -= wire.POWRotate
+				rotate -= uint32(b.ChainParams.POWRotate)
 
 			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate--
@@ -642,7 +650,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent *chainutil.BlockNod
 		for p := pn; p != nil && p != fork; p = b.ParentNode(p) {
 			switch {
 			case p.Data.GetNonce() > 0:
-				rotate += wire.POWRotate
+				rotate += uint32(b.ChainParams.POWRotate)
 
 			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				rotate++
@@ -653,7 +661,7 @@ func (b *BlockChain) consistent(block *btcutil.Block, parent *chainutil.BlockNod
 	// examine signers are in committee
 	miners := make(map[[20]byte]struct{})
 
-	for i := int32(0); i < wire.CommitteeSize; i++ {
+	for i := int32(0); i < int32(b.ChainParams.CommitteeSize); i++ {
 		blk, _ := b.Miners.BlockByHeight(int32(rotate) - i)
 		if blk == nil {
 			return false

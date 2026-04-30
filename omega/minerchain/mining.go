@@ -689,7 +689,7 @@ out:
 
 				// check dup report
 				inrange := false
-				for p, i := chainChoice, int32(0); i < m.cfg.ChainParams.ViolationReportDeadline; i++ {
+				for p, i := chainChoice, int32(0); i < m.cfg.ChainParams.ViolationReportDeadline && p != nil; i++ {
 					if v.MRBlock == p.Data.(*blockchainNodeData).block.BlockHash() {
 						inrange = true
 					}
@@ -714,7 +714,7 @@ out:
 		}
 
 		block.MsgBlock().Connection = []byte{}
-		if len(m.cfg.ExternalIPs) > 0 {
+		if len(m.cfg.ExternalIPs) > 0 && m.cfg.ChainParams.CommitteeSize > 1 {
 			block.MsgBlock().Connection = []byte(m.cfg.ExternalIPs[0])
 			/*
 				} else {

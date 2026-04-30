@@ -6356,7 +6356,7 @@ func handleShutdown(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (i
 			r := s.cfg.Chain.BestSnapshot().LastRotation
 			check = false
 		checkip:
-			for i := int32(0); i < wire.CommitteeSize; i++ {
+			for i := int32(0); i < int32(s.cfg.ChainParams.CommitteeSize); i++ {
 				m, _ := s.cfg.Chain.Miners.BlockByHeight(int32(r) - i)
 				if m == nil {
 					continue

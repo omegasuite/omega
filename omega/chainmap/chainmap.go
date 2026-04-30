@@ -13,6 +13,7 @@ import (
 	"btcd/database"
 	"btcd/wire"
 	"btcd/wire/common"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"omega/ovm"
@@ -255,8 +256,236 @@ func LoadChainMap(db database.DB, testnet bool, chainid uint32) {
 	})
 }
 
+func (m *FOCMap) ChgParam(cd *ChainDescriptor) bool {
+	if m.ChainMap[cd.ChainID].Version+0x10000 != cd.Version {
+		return false
+	}
+	m.ChainMap[cd.ChainID].Version = cd.Version
+
+	s := chaincfg.GlobalParams{}
+	json.Unmarshal([]byte(m.ChainMap[cd.ChainID].GlobalParams), &s)
+
+	t := chaincfg.GlobalParams{}
+	json.Unmarshal([]byte(cd.GlobalParams), &t)
+
+	if len(t.DNSSeeds) > 0 {
+		s.DNSSeeds = append(s.DNSSeeds, t.DNSSeeds...)
+	}
+
+	if t.PowLimitBits != 0 {
+		s.PowLimitBits ^= t.PowLimitBits
+	}
+	if t.CoinbaseMaturity != 0 {
+		s.CoinbaseMaturity ^= t.CoinbaseMaturity
+	}
+	if t.SubsidyReductionInterval != 0 {
+		s.SubsidyReductionInterval ^= t.SubsidyReductionInterval
+	}
+	if t.MinimalAward != 0 {
+		s.MinimalAward ^= t.MinimalAward
+	}
+	if t.TargetTimespan != 0 {
+		s.TargetTimespan ^= t.TargetTimespan
+	}
+	if t.TargetTimePerBlock != 0 {
+		s.TargetTimePerBlock ^= t.TargetTimePerBlock
+	}
+	if t.RetargetAdjustmentFactor != 0 {
+		s.RetargetAdjustmentFactor ^= t.RetargetAdjustmentFactor
+	}
+	if t.RuleChangeActivationThreshold != 0 {
+		s.RuleChangeActivationThreshold ^= t.RuleChangeActivationThreshold
+	}
+	if t.MinerConfirmationWindow != 0 {
+		s.MinerConfirmationWindow ^= t.MinerConfirmationWindow
+	}
+	if t.ViolationReportDeadline != 0 {
+		s.ViolationReportDeadline ^= t.ViolationReportDeadline
+	}
+	if bytes.Compare(t.Forfeit.Contract[:], []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}) != 0 {
+		for i, d := range t.Forfeit.Contract {
+			s.Forfeit.Contract[i] ^= d
+		}
+		for i, d := range t.Forfeit.Claim {
+			s.Forfeit.Claim[i] ^= d
+		}
+		for i, d := range t.Forfeit.Filing {
+			s.Forfeit.Filing[i] ^= d
+		}
+		for i, d := range t.Forfeit.Opening {
+			s.Forfeit.Opening[i] ^= d
+		}
+	}
+	if t.CommitteeSize != 0 {
+		s.CommitteeSize ^= t.CommitteeSize
+	}
+	if t.CommitteeSigs != 0 {
+		s.CommitteeSigs ^= t.CommitteeSigs
+	}
+	if t.POWRotate != 0 {
+		s.POWRotate ^= t.POWRotate
+	}
+	if t.PowLimit != nil {
+		s.PowLimit = s.PowLimit.Add(s.PowLimit, t.PowLimit)
+	}
+	if t.MinBorderFee != 0 {
+		s.MinBorderFee ^= t.MinBorderFee
+	}
+	if t.MinContractDeployFee != 0 {
+		s.MinContractDeployFee ^= t.MinContractDeployFee
+	}
+	if t.MinRelayTxFee != 0 {
+		s.MinRelayTxFee ^= t.MinRelayTxFee
+	}
+	if t.ContractExecFee != 0 {
+		s.ContractExecFee ^= t.ContractExecFee
+	}
+	if t.MinBorderFee != 0 {
+		s.MinBorderFee ^= t.MinBorderFee
+	}
+
+	if len(t.Checkpoints) > 0 {
+		s.Checkpoints = append(s.Checkpoints, t.Checkpoints...)
+	}
+	if len(t.Deployments) > 0 {
+		s.Deployments = append(s.Deployments, t.Deployments...)
+	}
+
+	ms, _ := json.Marshal(t)
+
+	m.ChainMap[cd.ChainID].GlobalParams = string(ms)
+
+	m.dmdb.Update(func(tx database.Tx) error {
+		bucketname := []byte("ChainMap")
+		bucket := tx.Metadata().Bucket(bucketname)
+
+		var cid [4]byte
+		common.LittleEndian.PutUint32(cid[:], cd.ChainID)
+
+		bucket.Put(cid[:], (*wire.ChainDescriptor)(m.ChainMap[cd.ChainID]).Serialize())
+
+		return nil
+	})
+	return true
+}
+
+func (m *FOCMap) RevertParam(cd *ChainDescriptor) bool {
+	if m.ChainMap[cd.ChainID].Version != cd.Version {
+		return false
+	}
+
+	m.ChainMap[cd.ChainID].Version -= 0x10000
+	s := chaincfg.GlobalParams{}
+	json.Unmarshal([]byte(m.ChainMap[cd.ChainID].GlobalParams), &s)
+
+	t := chaincfg.GlobalParams{}
+	json.Unmarshal([]byte(cd.GlobalParams), &t)
+
+	if len(t.DNSSeeds) > 0 {
+		s.DNSSeeds = s.DNSSeeds[:len(s.DNSSeeds)-len(t.DNSSeeds)]
+	}
+
+	if t.PowLimitBits != 0 {
+		s.PowLimitBits ^= t.PowLimitBits
+	}
+	if t.CoinbaseMaturity != 0 {
+		s.CoinbaseMaturity ^= t.CoinbaseMaturity
+	}
+	if t.SubsidyReductionInterval != 0 {
+		s.SubsidyReductionInterval ^= t.SubsidyReductionInterval
+	}
+	if t.MinimalAward != 0 {
+		s.MinimalAward ^= t.MinimalAward
+	}
+	if t.TargetTimespan != 0 {
+		s.TargetTimespan ^= t.TargetTimespan
+	}
+	if t.TargetTimePerBlock != 0 {
+		s.TargetTimePerBlock ^= t.TargetTimePerBlock
+	}
+	if t.RetargetAdjustmentFactor != 0 {
+		s.RetargetAdjustmentFactor ^= t.RetargetAdjustmentFactor
+	}
+	if t.RuleChangeActivationThreshold != 0 {
+		s.RuleChangeActivationThreshold ^= t.RuleChangeActivationThreshold
+	}
+	if t.MinerConfirmationWindow != 0 {
+		s.MinerConfirmationWindow ^= t.MinerConfirmationWindow
+	}
+	if t.ViolationReportDeadline != 0 {
+		s.ViolationReportDeadline ^= t.ViolationReportDeadline
+	}
+	if bytes.Compare(t.Forfeit.Contract[1:], []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}) != 0 {
+		for i, d := range t.Forfeit.Contract {
+			s.Forfeit.Contract[i] ^= d
+		}
+		for i, d := range t.Forfeit.Claim {
+			s.Forfeit.Claim[i] ^= d
+		}
+		for i, d := range t.Forfeit.Filing {
+			s.Forfeit.Filing[i] ^= d
+		}
+		for i, d := range t.Forfeit.Opening {
+			s.Forfeit.Opening[i] ^= d
+		}
+	}
+	if t.CommitteeSize != 0 {
+		s.CommitteeSize ^= t.CommitteeSize
+	}
+	if t.CommitteeSigs != 0 {
+		s.CommitteeSigs ^= t.CommitteeSigs
+	}
+	if t.POWRotate != 0 {
+		s.POWRotate ^= t.POWRotate
+	}
+	if t.PowLimit != nil {
+		s.PowLimit = s.PowLimit.Sub(s.PowLimit, t.PowLimit)
+	}
+	if t.MinBorderFee != 0 {
+		s.MinBorderFee ^= t.MinBorderFee
+	}
+	if t.MinContractDeployFee != 0 {
+		s.MinContractDeployFee ^= t.MinContractDeployFee
+	}
+	if t.MinRelayTxFee != 0 {
+		s.MinRelayTxFee ^= t.MinRelayTxFee
+	}
+	if t.ContractExecFee != 0 {
+		s.ContractExecFee ^= t.ContractExecFee
+	}
+	if t.MinBorderFee != 0 {
+		s.MinBorderFee ^= t.MinBorderFee
+	}
+
+	if len(t.Checkpoints) > 0 {
+		s.Checkpoints = s.Checkpoints[:len(s.Checkpoints)-len(t.Checkpoints)]
+	}
+	if len(t.Deployments) > 0 {
+		s.Deployments = s.Deployments[:len(s.Deployments)-len(t.Deployments)]
+	}
+
+	ms, _ := json.Marshal(t)
+
+	m.ChainMap[cd.ChainID].GlobalParams = string(ms)
+
+	m.dmdb.Update(func(tx database.Tx) error {
+		bucketname := []byte("ChainMap")
+		bucket := tx.Metadata().Bucket(bucketname)
+
+		var cid [4]byte
+		common.LittleEndian.PutUint32(cid[:], cd.ChainID)
+
+		bucket.Put(cid[:], (*wire.ChainDescriptor)(m.ChainMap[cd.ChainID]).Serialize())
+
+		return nil
+	})
+	return true
+}
+
 func (m *FOCMap) AddDns(cd *ChainDescriptor) bool {
 	param := chaincfg.GlobalParams{}
+	param.CommitteeSize, param.CommitteeSigs, param.POWRotate = 3, 2, 2
+
 	json.Unmarshal([]byte(m.ChainMap[cd.ChainID].GlobalParams), &param)
 	exist := false
 	for _, d := range param.DNSSeeds {
@@ -305,6 +534,10 @@ func (m *FOCMap) AddChain(c *ChainDescriptor) bool {
 	}
 
 	params := &chaincfg.GlobalParams{}
+	params.CommitteeSize = 3
+	params.CommitteeSigs = 2
+	params.POWRotate = 2
+
 	err := json.Unmarshal([]byte(c.GlobalParams), params)
 	if err != nil {
 		panic("bad GlobalParams data")
@@ -327,13 +560,17 @@ func (m *FOCMap) AddChain(c *ChainDescriptor) bool {
 
 func (m *FOCMap) RemoveDns(c *ChainDescriptor) {
 	param := chaincfg.GlobalParams{}
+	param.CommitteeSize = 3
+	param.CommitteeSigs = 2
+	param.POWRotate = 2
+
 	json.Unmarshal([]byte(m.ChainMap[c.ChainID].GlobalParams), &param)
 	for i, d := range param.DNSSeeds {
 		if d.Host == c.Dns {
 			param.DNSSeeds = append(param.DNSSeeds[:i], param.DNSSeeds[i+1:]...)
 		}
 	}
-	t, _ := json.Marshal(param.DNSSeeds)
+	t, _ := json.Marshal(param)
 	m.ChainMap[c.ChainID].GlobalParams = string(t)
 	m.dmdb.Update(func(tx database.Tx) error {
 		bucket := tx.Metadata().Bucket(ChainmapBucketname)

@@ -443,7 +443,7 @@ func (b *BlockChain) TotalRotate(lst *list.List) int32 {
 	for e := lst.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 		if n.Data.GetNonce() > 0 {
-			s += wire.POWRotate
+			s += int32(b.ChainParams.POWRotate)
 		} else if n.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			s++
 		}
@@ -639,25 +639,25 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 //
 // This function MUST be called with the chain state lock held (for writes).
 func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Block,
-	view *viewpoint.ViewPointSet, stxos []viewpoint.SpentTxOut, vm *ovm.OVM) error {
-	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= wire.CommitteeSigs {
-		return fmt.Errorf("insifficient signatures")
+	view *viewpoint.ViewPointSet, stxos []viewpoint.SpentTxOut, vm *ovm.OVM) (error, bool) {
+	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts) <= int(b.ChainParams.CommitteeSigs) {
+		return fmt.Errorf("insifficient signatures"), false
 	}
 	if block.MsgBlock().Header.Nonce < 0 && len(block.MsgBlock().Transactions[0].SignatureScripts[1]) < btcec.PubKeyBytesLenCompressed {
-		return fmt.Errorf("incorrect signatures")
+		return fmt.Errorf("incorrect signatures"), false
 	}
 
 	// Make sure it's extending the end of the best chain.
 	prevHash := &block.MsgBlock().Header.PrevBlock
 	if !prevHash.IsEqual(&zerohash) && !prevHash.IsEqual(&b.BestChain.Tip().Hash) {
 		return AssertError("connectBlock must be called with a block " +
-			"that extends the main chain")
+			"that extends the main chain"), false
 	}
 
 	// Sanity check the correct number of stxos are provided.
 	if len(stxos) != block.CountSpentOutputs() {
 		return AssertError("connectBlock called with inconsistent " +
-			"spent transaction out information")
+			"spent transaction out information"), false
 	}
 
 	// whatever b is, cross chain data always goes to mainchain db
@@ -669,13 +669,13 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		return b.dbCheckCrossChain(dbTx, block)
 	})
 	if err != nil {
-		return err
+		return err, false
 	}
 
 	// Write any block status changes to DB before updating best state.
 	err = b.Index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
-		return err
+		return err, false
 	}
 
 	// Generate a new best state snapshot that will be used to update the
@@ -692,8 +692,8 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	m, rot := 0, state.LastRotation
 
 	if node.Data.GetNonce() > 0 {
-		state.LastRotation += wire.POWRotate
-		m = wire.POWRotate
+		state.LastRotation += uint32(b.ChainParams.POWRotate)
+		m = b.ChainParams.POWRotate
 		log.Infof("Update LastRotation to %d", state.LastRotation)
 	} else if node.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 		state.LastRotation = uint32(-node.Data.GetNonce() - wire.MINER_RORATE_FREQ)
@@ -803,7 +803,7 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	})
 
 	if err != nil {
-		return err
+		return err, false
 	}
 
 	err = ab.db.Update(func(dbTx database.Tx) error {
@@ -811,19 +811,21 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 		return nil
 	})
 
+	terminate := false
+
 	if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
 		// a rotation block, needs to execute ops in 1 MR block
 		mrb, _ := b.Miners.BlockByHeight(-(wire.MINER_RORATE_FREQ + block.MsgBlock().Header.Nonce))
-		b.ExecOps(mrb, uint32(-(wire.MINER_RORATE_FREQ + block.MsgBlock().Header.Nonce)))
+		terminate = b.ExecOps(mrb, uint32(-(wire.MINER_RORATE_FREQ+block.MsgBlock().Header.Nonce))) || terminate
 	} else if block.MsgBlock().Header.Nonce > 0 {
 		// a POW block, needs to execute ops in 2 MR blocks
 		rot := int32(b.BestSnapshot().LastRotation)
 		mrb, _ := b.Miners.BlockByHeight(rot - 1)
 		if mrb != nil {
-			b.ExecOps(mrb, uint32(rot-1))
+			terminate = b.ExecOps(mrb, uint32(rot-1)) || terminate
 		}
 		mrb, _ = b.Miners.BlockByHeight(rot)
-		b.ExecOps(mrb, uint32(rot))
+		terminate = b.ExecOps(mrb, uint32(rot)) || terminate
 	}
 
 	//if !b.IsSVP {
@@ -885,18 +887,18 @@ func (b *BlockChain) connectBlock(node *chainutil.BlockNode, block *btcutil.Bloc
 	b.SendNotification(NTBlockConnected, block)
 	b.ChainLock.Lock()
 
-	return nil
+	return nil, terminate
 }
 
 // disconnectBlock handles disconnecting the passed node/block from the end of
 // the main (best) chain.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.Block, view *viewpoint.ViewPointSet) error {
+func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.Block, view *viewpoint.ViewPointSet) (error, bool) {
 	// Make sure the node being disconnected is the end of the best chain.
 	if !node.Hash.IsEqual(&b.BestChain.Tip().Hash) {
 		return AssertError("disconnectBlock must be called with the " +
-			"block at the end of the main chain")
+			"block at the end of the main chain"), false
 	}
 
 	// Load the previous block since some details for it are needed below.
@@ -908,13 +910,13 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		return err
 	})
 	if err != nil {
-		return err
+		return err, false
 	}
 
 	// Write any block status changes to DB before updating best state.
 	err = b.Index.FlushToDB(dbStoreBlockNode)
 	if err != nil {
-		return err
+		return err, false
 	}
 
 	// Generate a new best state snapshot that will be used to update the
@@ -930,8 +932,8 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 
 	m, rot := 0, rotation
 	if node.Data.GetNonce() >= 0 {
-		rotation -= wire.POWRotate
-		m = wire.POWRotate
+		rotation -= uint32(b.ChainParams.POWRotate)
+		m = b.ChainParams.POWRotate
 	} else if node.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 		rotation--
 		m = 1
@@ -1019,25 +1021,27 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 		return nil
 	})
 	if err != nil {
-		return err
+		return err, false
 	}
+
+	terminate := false
 
 	if block.MsgBlock().Header.Nonce < -wire.MINER_RORATE_FREQ {
 		// a rotation block, needs to execute ops in 1 MR block
 		mrb, _ := b.Miners.BlockByHeight(-(wire.MINER_RORATE_FREQ + block.MsgBlock().Header.Nonce))
 		if mrb != nil {
-			b.UnExecOps(mrb, uint32(block.Height()))
+			terminate = b.UnExecOps(mrb, uint32(block.Height())) || terminate
 		}
 	} else if block.MsgBlock().Header.Nonce > 0 {
 		// a POW block, needs to execute ops in 2 MR blocks
 		rot := int32(b.BestSnapshot().LastRotation)
 		mrb, _ := b.Miners.BlockByHeight(rot)
 		if mrb != nil {
-			b.UnExecOps(mrb, uint32(block.Height()))
+			terminate = b.UnExecOps(mrb, uint32(block.Height())) || terminate
 			mrb, _ = b.Miners.BlockByHeight(rot - 1)
 		}
 		if mrb != nil {
-			b.UnExecOps(mrb, uint32(block.Height()))
+			terminate = b.UnExecOps(mrb, uint32(block.Height())) || terminate
 		}
 	}
 	// if !b.IsSVP {
@@ -1103,14 +1107,14 @@ func (b *BlockChain) disconnectBlock(node *chainutil.BlockNode, block *btcutil.B
 	b.SendNotification(NTBlockDisconnected, block)
 	b.ChainLock.Lock()
 
-	return nil
+	return nil, terminate
 }
 
 func (b *BlockChain) Advance(x *list.Element) int32 {
 	m := x.Value.(*chainutil.BlockNode)
 	shift := int32(0)
 	if m.Data.GetNonce() > 0 {
-		shift = wire.POWRotate
+		shift = int32(b.ChainParams.POWRotate)
 	} else if m.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 		shift = 1
 	}
@@ -1255,6 +1259,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	// Track the old and new best chains heads.
 	oldBest := tip
 	newBest := tip
+	terminate := false
 
 	// All of the blocks to detach and related spend journal entries needed
 	// to unspend transaction outputs in the blocks being disconnected must
@@ -1330,7 +1335,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		if n.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			rotate--
 		} else if n.Data.GetNonce() > 0 {
-			rotate -= wire.POWRotate
+			rotate -= uint32(b.ChainParams.POWRotate)
 		}
 
 		newBest = b.ParentNode(n)
@@ -1357,9 +1362,9 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	// issues before ever modifying the chain.
 
 	// examine signers are in committee
-	miners := make([]*[20]byte, wire.CommitteeSize)
-	for i := int32(0); i < wire.CommitteeSize; i++ {
-		if blk, _ := b.Miners.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
+	miners := make([]*[20]byte, b.ChainParams.CommitteeSize)
+	for i := int(0); i < b.ChainParams.CommitteeSize; i++ {
+		if blk, _ := b.Miners.BlockByHeight(int32(int(rotate) - b.ChainParams.CommitteeSize + i + 1)); blk != nil {
 			//if !b.IsSVP {
 			if _, err := b.CheckCollateral(blk, &newBest.Hash, BFNone); err != nil {
 				continue
@@ -1401,7 +1406,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 
 		if block.MsgBlock().Header.Nonce > 0 {
 			// A POW block should not cause rotation passing current MR tip
-			if rotate+wire.POWRotate > mtip {
+			if rotate+uint32(b.ChainParams.POWRotate) > mtip {
 				skipList(attachNodes, e)
 				skipped = true
 				break
@@ -1410,13 +1415,13 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 
 		shift := 0
 		if n.Data.GetNonce() > 0 {
-			shift = wire.POWRotate
+			shift = b.ChainParams.POWRotate
 		} else if n.Data.GetNonce() <= -wire.MINER_RORATE_FREQ {
 			shift = 1
 		}
 		if check && shift > 0 {
 			j := 0
-			for k := shift; k < wire.CommitteeSize; k++ {
+			for k := shift; k < int(b.ChainParams.CommitteeSize); k++ {
 				miners[j] = miners[k]
 				j++
 			}
@@ -1540,9 +1545,11 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		//}
 
 		// Update the database and chain state.
-		if err := b.disconnectBlock(n, block, views); err != nil {
+		err, t := b.disconnectBlock(n, block, views)
+		if err != nil {
 			return 0, 0, err
 		}
+		terminate = terminate || t
 
 		Vm.BlockNumber = func() uint64 {
 			return uint64(block.Height())
@@ -1657,11 +1664,12 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		//}
 
 		// Update the database and chain state.
-		err = b.connectBlock(n, block, views, stxos, Vm)
+		err, t := b.connectBlock(n, block, views, stxos, Vm)
 		if err != nil {
 			log.Infof("connectBlock error: " + err.Error())
 			return detachable, attachable, err // should panic. this should never happend and would potentially corrupt the database
 		}
+		terminate = terminate || t
 
 		Vm.Commit() // commit state change & establish a rollback point
 
@@ -1679,6 +1687,11 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		&oldBest.Hash, oldBest.Height)
 	log.Infof("REORGANIZE: New best chain head is %v (height %v)",
 		newBest.Hash, newBest.Height)
+
+	if terminate {
+		terminator <- struct{}{}
+		time.Sleep(time.Minute)
+	}
 
 	return detachable, attachable, nil
 }
@@ -1811,10 +1824,11 @@ func (b *BlockChain) Canvas(block *btcutil.Block) (*viewpoint.ViewPointSet, *ovm
 	return views, Vm
 }
 
-func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) {
+func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) bool {
+	terminating := false
 	for _, op := range block.MsgBlock().Instructions {
 		switch op.InstCode {
-		case wire.AddDns:
+		case wire.ChgParam:
 			meta := &chainmap.ChainDescriptor{
 				Version: 0x10000,
 				Legacy:  false,
@@ -1827,7 +1841,11 @@ func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) {
 			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[meta.ChainID]; !ok {
 				continue
 			}
-			chainmap.AllChains[b.ChainParams.ChainID].RemoveDns(meta)
+			if meta.Version == 0x10000 {
+				chainmap.AllChains[b.ChainParams.ChainID].RemoveDns(meta)
+			} else if meta.Version >= 0x20000 {
+				terminating = chainmap.AllChains[b.ChainParams.ChainID].RevertParam(meta)
+			}
 
 		case wire.AddChain:
 			// should drop chain if this is where we add chain
@@ -1847,11 +1865,13 @@ func (b *BlockChain) UnExecOps(block *wire.MinerBlock, height uint32) {
 				continue
 			}
 			chainmap.AllChains[b.ChainParams.ChainID].RemoveChain(cd.ChainID)
+			terminating = true
 		}
 	}
+	return terminating
 }
 
-func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
+func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) bool {
 	terminating := false
 	for _, op := range block.MsgBlock().Instructions {
 		cd := &chainmap.ChainDescriptor{
@@ -1863,9 +1883,13 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 		if err != nil {
 			continue
 		}
+		param1 := chaincfg.GlobalParams{}
+		if cd.GlobalParams != "" {
+			json.Unmarshal([]byte(cd.GlobalParams), &param1)
+		}
 
 		switch op.InstCode {
-		case wire.AddDns:
+		case wire.ChgParam:
 			if _, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[cd.ChainID]; !ok {
 				continue
 			}
@@ -1897,17 +1921,28 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 				if op.InstCode != op2.InstCode {
 					continue
 				}
-				meta2 := &wire.ChainDescriptor{}
+				meta2 := &wire.ChainDescriptor{
+					Version: 0x10000,
+				}
 				err = json.Unmarshal(op2.InstData, &meta2)
 				if err != nil {
 					continue
 				}
 
 				switch op2.InstCode {
-				case wire.AddDns:
-					if meta2.Magic == cd.Magic && meta2.ChainID == cd.ChainID && meta2.Dns == cd.Dns {
-						agreed++
-						break
+				case wire.ChgParam:
+					if meta2.Version == cd.Version && meta2.Magic == cd.Magic && meta2.ChainID == cd.ChainID {
+						if meta2.Version == 0x10000 && meta2.Dns == cd.Dns {
+							agreed++
+							break
+						} else if meta2.Version >= 0x20000 && meta2.Version == cd.Version {
+							param2 := chaincfg.GlobalParams{}
+							json.Unmarshal([]byte(meta2.GlobalParams), &param2)
+							if param2.Fit(&param1) {
+								agreed++
+								break
+							}
+						}
 					}
 
 				case wire.AddChain:
@@ -1921,21 +1956,32 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) {
 			if agreed >= common.NewChainConsensus {
 				// add it to chainmap
 				switch op.InstCode {
-				case wire.AddDns:
-					chainmap.AllChains[b.ChainParams.ChainID].AddDns(cd)
+				case wire.ChgParam:
+					if cd.Version == 0x10000 {
+						chainmap.AllChains[b.ChainParams.ChainID].AddDns(cd)
+						if b.ChainParams.ParentChainId == cd.ChainID ||
+							cd.Parent == b.ChainParams.ChainID {
+							terminating = true
+						}
+					} else if cd.Version >= 0x20000 {
+						if chainmap.AllChains[b.ChainParams.ChainID].ChgParam(cd) && (b.ChainParams.ParentChainId == cd.ChainID ||
+							cd.Parent == b.ChainParams.ChainID) {
+							terminating = true
+						}
+					}
 
 				case wire.AddChain:
 					if chainmap.AllChains[b.ChainParams.ChainID].AddChain(cd) {
-						terminating = true
+						if b.ChainParams.ParentChainId == cd.ChainID ||
+							cd.Parent == b.ChainParams.ChainID {
+							terminating = true
+						}
 					}
 				}
 			}
 		}
 	}
-	if terminating {
-		// terminate to cause reboot with new map
-		terminator <- struct{}{}
-	}
+	return terminating
 }
 
 func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32) ([]*btcutil.Tx, map[uint64]int64) {
@@ -1967,17 +2013,17 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 
 			// tmp patch
 			/*
-			realdest := int32(-1)
-			for _, txo := range xtx.Txs {
-				dst := txo.Txo.DestChain()
-				if realdest == -1 && txo.Txo.PkScript[21] != ovm.OP_PAYMINER {
-					realdest = int32(dst)
+				realdest := int32(-1)
+				for _, txo := range xtx.Txs {
+					dst := txo.Txo.DestChain()
+					if realdest == -1 && txo.Txo.PkScript[21] != ovm.OP_PAYMINER {
+						realdest = int32(dst)
+					}
 				}
-			}
-			if realdest != 0 && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, xtx.ChainID, uint32(realdest)) {
-				bucket.Delete(cursor.Key())
-				continue
-			}
+				if realdest != 0 && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, xtx.ChainID, uint32(realdest)) {
+					bucket.Delete(cursor.Key())
+					continue
+				}
 			*/
 			// done patch
 
@@ -2055,7 +2101,7 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 //     This is useful when using checkpoints.
 //
 // This function MUST be called with the chain state lock held (for writes).
-func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.Block, flags BehaviorFlags) (bool, error) {
+func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.Block, flags BehaviorFlags) (bool, error, bool) {
 	fastAdd := flags&BFFastAdd == BFFastAdd
 
 	flushIndexState := func() {
@@ -2073,6 +2119,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 	// most common case.
 	parentHash := &block.MsgBlock().Header.PrevBlock
 	parent := b.NodeByHash(parentHash)
+	terminate := false
 	if parent == nil || (parentHash.IsEqual(&b.BestChain.Tip().Hash) && b.consistent(block, parent, flags&BFNoConnect == BFNoConnect)) {
 		// Skip checks if node has already been fully validated.
 		fastAdd = fastAdd || b.Index.NodeStatus(node).KnownValid()
@@ -2087,7 +2134,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		if !b.IsSVP && block.MsgBlock().Header.ContractExec > cnl && b.ChainParams.Net == uint32(common.MainNet) {
 			// contract execution must not exceed block limit
 			str := fmt.Sprintf("Contract execution steps exceeds block limit in %v", *block.Hash())
-			return false, ruleError(ErrExcessContractExec, str)
+			return false, ruleError(ErrExcessContractExec, str), false
 		}
 
 		// Perform several checks to verify the block can be connected
@@ -2105,7 +2152,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			err = b.checkConnectBlock(node, block, views, &stxos, Vm)
 			//}
 			if flags&BFNoConnect == BFNoConnect {
-				return true, nil
+				return true, nil, false
 			}
 
 			if err == nil {
@@ -2113,18 +2160,18 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			} else if _, ok := err.(RuleError); ok {
 				b.Index.SetStatusFlags(node, chainutil.StatusValidateFailed)
 			} else {
-				return false, err
+				return false, err, false
 			}
 
 			flushIndexState()
 
 			if err != nil {
-				return false, err
+				return false, err, false
 			}
 		}
 
 		if flags&BFNoConnect == BFNoConnect {
-			return true, nil
+			return true, nil, false
 		}
 
 		// In the fast add case the code to check the block connection
@@ -2135,17 +2182,18 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			//if !b.IsSVP {
 			err := views.FetchInputUtxos(block)
 			if err != nil {
-				return false, err
+				return false, err, false
 			}
 			err = views.ConnectTransactions(block, &stxos)
 			if err != nil {
-				return false, err
+				return false, err, false
 			}
 			//}
 		}
 
 		// Connect the block to the main chain.
-		err := b.connectBlock(node, block, views, stxos, Vm)
+		var err error
+		err, terminate = b.connectBlock(node, block, views, stxos, Vm)
 		if err != nil {
 			// If we got hit with a rule error, then we'll mark
 			// that status of the block as invalid and flush the
@@ -2158,7 +2206,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 
 			flushIndexState()
 
-			return false, err
+			return false, err, terminate
 		}
 
 		// If this is fast add, or this block node isn't yet marked as
@@ -2169,7 +2217,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 			flushIndexState()
 		}
 
-		return true, nil
+		return true, nil, terminate
 	}
 
 	if fastAdd {
@@ -2193,7 +2241,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 				node.Hash, fork.Height, fork.Hash)
 		}
 
-		return false, nil
+		return false, nil, terminate
 	}
 
 	// We're extending (or creating) a side chain and the cumulative work
@@ -2206,7 +2254,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 	detachNodes, attachNodes := b.getReorganizeNodes(node)
 
 	if attachNodes.Len() == 0 {
-		return false, nil
+		return false, nil, terminate
 	}
 	if detachNodes.Len() > 100000 {
 		panic(fmt.Errorf("Don't support roll back more than 10000 blocks. You should reload the entire chain."))
@@ -2227,7 +2275,7 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		log.Warnf("Error flushing block Index changes to disk: %v", writeErr)
 	}
 
-	return err == nil, err
+	return err == nil, err, terminate
 }
 
 // findFork returns the final common block between the provided node and the
@@ -2297,7 +2345,7 @@ func (b *BlockChain) isCurrent() bool {
 		return false
 	}
 
-	if b.ChainParams.Name == "mainnet" && b.BestChain.Height() > wire.CommitteeSize {
+	if b.ChainParams.Name == "mainnet" && b.BestChain.Height() > int32(b.ChainParams.CommitteeSize) {
 		// Not current if the latest best block has a timestamp before 24 hours
 		// ago.
 		//

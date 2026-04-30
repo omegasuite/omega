@@ -22,7 +22,7 @@ type Knowledgebase struct {
 }
 
 func (k *Knowledgebase) Malice(c int32) {
-	k.Knowledge[c] = make([]int64, wire.CommitteeSize)
+	k.Knowledge[c] = make([]int64, miner.cfg.GlobalParams.CommitteeSize)
 }
 
 /*
@@ -52,10 +52,10 @@ func (k * Knowledgebase) ProcessTree(t int32) {
 
 func CreateKnowledge(s *Syncer) *Knowledgebase {
 	var k Knowledgebase
-	k = Knowledgebase{s, make([][]int64, wire.CommitteeSize), 0, 0}
+	k = Knowledgebase{s, make([][]int64, miner.cfg.GlobalParams.CommitteeSize), 0, 0}
 
 	for i := range k.Knowledge {
-		k.Knowledge[i] = make([]int64, wire.CommitteeSize)
+		k.Knowledge[i] = make([]int64, miner.cfg.GlobalParams.CommitteeSize)
 	}
 	return &k
 }
@@ -81,11 +81,11 @@ func (self *Knowledgebase) Rejected(who int32) {
 }
 
 func (self *Knowledgebase) Insufficient() bool {
-	m := wire.CommitteeSize
+	m := miner.cfg.GlobalParams.CommitteeSize
 	for t := self.rejections; t != 0; t >>= 1 {
 		if t&1 != 0 {
 			m--
-			if m < wire.CommitteeSigs {
+			if m < miner.cfg.GlobalParams.CommitteeSigs {
 				return true
 			}
 		}
@@ -113,17 +113,17 @@ func (self *Knowledgebase) Qualified(who int32) bool {
 		rej = ^0
 	}
 
-	for i := int32(0); i < wire.CommitteeSize; i++ {
+	for i := int32(0); i < int32(miner.cfg.GlobalParams.CommitteeSize); i++ {
 		s := 0
 		for k := uint(0); k < 64; k += 4 {
 			s += Mapping16[(((self.Knowledge[j][i] & rej) >> k) & 0xF)]
 		}
-		if s >= wire.CommitteeSigs {
+		if s >= int(miner.cfg.GlobalParams.CommitteeSigs) {
 			qualified++
 		}
 	}
 
-	return qualified >= wire.CommitteeSigs
+	return qualified >= int(miner.cfg.GlobalParams.CommitteeSigs)
 }
 
 func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
@@ -163,7 +163,7 @@ func (self *Knowledgebase) ProcKnowledge(msg *wire.MsgKnowledge) bool {
 			continue
 		}
 		imp := improve(msg.K, int32(i))
-		if tosend && len(lmg.K) < 3*wire.CommitteeSize && ((ng&(1<<i)) != 0 || imp || q == 0) { // || (q&res) != res {
+		if tosend && len(lmg.K) < 3*int(miner.cfg.GlobalParams.CommitteeSize) && ((ng&(1<<i)) != 0 || imp || q == 0) { // || (q&res) != res {
 			self.sendout(&lmg, mp, me, int32(i))
 		}
 	}
@@ -194,7 +194,7 @@ func (self *Knowledgebase) ProcKnowledgeDone(msg *wire.MsgKnowledge) bool {
 */
 
 func improve(k []int32, to int32) bool {
-	newknowledge := make([]int64, wire.CommitteeSize)
+	newknowledge := make([]int64, miner.cfg.GlobalParams.CommitteeSize)
 
 	c := int64(0)
 	for _, viewer := range k {
@@ -204,7 +204,7 @@ func improve(k []int32, to int32) bool {
 
 	c |= 1 << to
 
-	for i := 0; i < wire.CommitteeSize; i++ {
+	for i := 0; i < int(miner.cfg.GlobalParams.CommitteeSize); i++ {
 		if newknowledge[i]&c != 0 && newknowledge[i] != c {
 			return true
 		}

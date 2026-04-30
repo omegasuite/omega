@@ -6,6 +6,7 @@
 package chaincfg
 
 import (
+	"bytes"
 	"errors"
 	"math/big"
 	"time"
@@ -121,6 +122,13 @@ type forfeitureContract struct {
 	Claim    [4]byte
 }
 
+func (self *forfeitureContract) Equal(t *forfeitureContract) bool {
+	return bytes.Compare(self.Contract[:], t.Contract[:]) == 0 &&
+		bytes.Compare(self.Opening[:], t.Opening[:]) == 0 &&
+		bytes.Compare(self.Filing[:], t.Filing[:]) == 0 &&
+		bytes.Compare(self.Claim[:], t.Claim[:]) == 0
+}
+
 type GlobalParams struct { // The params that must be the same for every node in the blockchain
 	// Name defines a human-readable identifier for the network.
 	Name string
@@ -191,7 +199,10 @@ type GlobalParams struct { // The params that must be the same for every node in
 	Forfeit                 forfeitureContract
 	ViolationReportDeadline int32
 
-	ChainID uint32
+	ChainID       uint32
+	CommitteeSize int
+	CommitteeSigs int
+	POWRotate     int
 
 	PowLimit *big.Int
 	// Checkpoints ordered from oldest to newest.
@@ -201,6 +212,207 @@ type GlobalParams struct { // The params that must be the same for every node in
 	MinContractDeployFee int // Min fee per byte for contract deployment
 	MinRelayTxFee        int64
 	ContractExecFee      int64 // contract execution cost as Haos per 10K steps
+}
+
+func (param1 *GlobalParams) Diff(param2 *GlobalParams) (bool, *GlobalParams) {
+	changed := GlobalParams{
+		DNSSeeds: []DNSSeed{},
+	}
+	hasnew := false
+	for _, d1 := range param1.DNSSeeds {
+		exist := false
+		for _, d2 := range param2.DNSSeeds {
+			if d1.Host == d2.Host {
+				exist = true
+				break
+			}
+		}
+		if !exist {
+			hasnew = true
+			changed.DNSSeeds = append(changed.DNSSeeds, d1)
+		}
+	}
+
+	if param1.PowLimitBits != param2.PowLimitBits {
+		changed.PowLimitBits = param1.PowLimitBits
+		hasnew = true
+	}
+	if param1.CoinbaseMaturity != param2.CoinbaseMaturity {
+		changed.CoinbaseMaturity = param1.CoinbaseMaturity
+		hasnew = true
+	}
+	if param1.SubsidyReductionInterval != param2.SubsidyReductionInterval {
+		changed.SubsidyReductionInterval = param1.SubsidyReductionInterval
+		hasnew = true
+	}
+	if param1.MinimalAward != param2.MinimalAward {
+		changed.MinimalAward = param1.MinimalAward
+		hasnew = true
+	}
+	if param1.TargetTimespan != param2.TargetTimespan {
+		changed.TargetTimespan = param1.TargetTimespan
+		hasnew = true
+	}
+	if param1.TargetTimePerBlock != param2.TargetTimePerBlock {
+		changed.TargetTimePerBlock = param1.TargetTimePerBlock
+		hasnew = true
+	}
+	if param1.RetargetAdjustmentFactor != param2.RetargetAdjustmentFactor {
+		changed.RetargetAdjustmentFactor = param1.RetargetAdjustmentFactor
+		hasnew = true
+	}
+	if param1.RuleChangeActivationThreshold != param2.RuleChangeActivationThreshold {
+		changed.RuleChangeActivationThreshold = param1.RuleChangeActivationThreshold
+		hasnew = true
+	}
+	if param1.MinerConfirmationWindow != param2.MinerConfirmationWindow {
+		changed.MinerConfirmationWindow = param1.MinerConfirmationWindow
+		hasnew = true
+	}
+	if param1.CommitteeSize != param2.CommitteeSize {
+		changed.CommitteeSize = param1.CommitteeSize
+		hasnew = true
+	}
+	if param1.CommitteeSigs != param2.CommitteeSigs {
+		changed.CommitteeSigs = param1.CommitteeSigs
+		hasnew = true
+	}
+	if param1.POWRotate != param2.POWRotate {
+		changed.POWRotate = param1.POWRotate
+		hasnew = true
+	}
+	if param1.PowLimit != param2.PowLimit {
+		changed.PowLimit = param1.PowLimit
+		hasnew = true
+	}
+	if param1.MinBorderFee != param2.MinBorderFee {
+		changed.MinBorderFee = param1.MinBorderFee
+		hasnew = true
+	}
+	if param1.MinContractDeployFee != param2.MinContractDeployFee {
+		changed.MinContractDeployFee = param1.MinContractDeployFee
+		hasnew = true
+	}
+	if param1.MinRelayTxFee != param2.MinRelayTxFee {
+		changed.MinRelayTxFee = param1.MinRelayTxFee
+		hasnew = true
+	}
+	if param1.ContractExecFee != param2.ContractExecFee {
+		changed.ContractExecFee = param1.ContractExecFee
+		hasnew = true
+	}
+	if param1.ViolationReportDeadline != param2.ViolationReportDeadline {
+		changed.ViolationReportDeadline = param1.ViolationReportDeadline
+		hasnew = true
+	}
+	if !param1.Forfeit.Equal(&param2.Forfeit) {
+		changed.Forfeit = param1.Forfeit
+		hasnew = true
+	}
+	if len(param1.Checkpoints) > len(param2.Checkpoints) {
+		changed.Checkpoints = param1.Checkpoints[len(param2.Checkpoints):]
+		hasnew = true
+	}
+	if len(param1.Deployments) > len(param2.Deployments) {
+		changed.Deployments = param1.Deployments[len(param2.Deployments):]
+		hasnew = true
+	}
+	return hasnew, &changed
+}
+
+func (t *GlobalParams) Fit(s *GlobalParams) bool {
+	if len(t.DNSSeeds) > 0 {
+		for i, d := range t.DNSSeeds {
+			if d.Host != s.DNSSeeds[i].Host {
+				return false
+			}
+		}
+	}
+
+	if t.PowLimitBits != 0 && t.PowLimitBits != s.PowLimitBits {
+		return false
+	}
+	if t.CoinbaseMaturity != 0 && t.CoinbaseMaturity != s.CoinbaseMaturity {
+		return false
+	}
+	if t.SubsidyReductionInterval != 0 && t.SubsidyReductionInterval != s.SubsidyReductionInterval {
+		return false
+	}
+	if t.MinimalAward != 0 && t.MinimalAward != s.MinimalAward {
+		return false
+	}
+	if t.TargetTimespan != 0 && t.TargetTimespan != s.TargetTimespan {
+		return false
+	}
+
+	if t.TargetTimePerBlock != 0 && t.TargetTimePerBlock != s.TargetTimePerBlock {
+		return false
+	}
+	if t.RetargetAdjustmentFactor != 0 && t.RetargetAdjustmentFactor != s.RetargetAdjustmentFactor {
+		return false
+	}
+	if t.RuleChangeActivationThreshold != 0 && t.RuleChangeActivationThreshold != s.RuleChangeActivationThreshold {
+		return false
+	}
+	if t.MinerConfirmationWindow != 0 && t.MinerConfirmationWindow != s.MinerConfirmationWindow {
+		return false
+	}
+	if t.ViolationReportDeadline != 0 && t.ViolationReportDeadline != s.ViolationReportDeadline {
+		return false
+	}
+	if !t.Forfeit.Equal(&s.Forfeit) {
+		return false
+	}
+	if t.CommitteeSize != 0 && t.CommitteeSize != s.CommitteeSize {
+		return false
+	}
+	if t.CommitteeSigs != 0 && t.CommitteeSigs != s.CommitteeSigs {
+		return false
+	}
+	if t.POWRotate != 0 && t.POWRotate != s.POWRotate {
+		return false
+	}
+	if t.PowLimit != nil && t.PowLimit.Cmp(s.PowLimit) != 0 {
+		return false
+	}
+	if t.MinBorderFee != 0 && t.MinBorderFee != s.MinBorderFee {
+		return false
+	}
+	if t.MinContractDeployFee != 0 && t.MinContractDeployFee != s.MinContractDeployFee {
+		return false
+	}
+	if t.MinRelayTxFee != 0 && t.MinRelayTxFee != s.MinRelayTxFee {
+		return false
+	}
+	if t.ContractExecFee != 0 && t.ContractExecFee != s.ContractExecFee {
+		return false
+	}
+	if t.MinBorderFee != 0 && t.MinBorderFee != s.MinBorderFee {
+		return false
+	}
+
+	if len(t.Checkpoints) > 0 {
+		for i, c := range t.Checkpoints {
+			if !c.Hash.IsEqual(s.Checkpoints[i].Hash) {
+				return false
+			}
+			if c.Height != s.Checkpoints[i].Height {
+				return false
+			}
+		}
+	}
+	if len(t.Deployments) > 0 {
+		for i, c := range t.Deployments {
+			if c.ExpireTime != s.Deployments[i].ExpireTime ||
+				c.PrevVersion != s.Deployments[i].PrevVersion ||
+				c.StartTime != s.Deployments[i].StartTime ||
+				c.FeatureMask != s.Deployments[i].FeatureMask {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 // Params defines a Bitcoin network by its parameters.  These parameters may be
@@ -282,8 +494,8 @@ type Params struct {
 
 	MainChainID uint32
 
-	AddChain interface{}
-	AddDns   interface{}
+	AddChain  interface{}
+	ChgParams interface{}
 }
 
 // MainNetParams defines the network parameters for the main Omega network.
@@ -321,6 +533,9 @@ var MainNetParams = Params{
 		ViolationReportDeadline: wire.DESIRABLE_MINER_CANDIDATES + 100,
 		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "9789",
+		CommitteeSize:           3,
+		CommitteeSigs:           2,
+		POWRotate:               2,
 	},
 
 	GenesisHash:      GenesisHash[uint32(common.MainNet)],
@@ -503,6 +718,9 @@ var TestNet3Params = Params{
 		ViolationReportDeadline: wire.DESIRABLE_MINER_CANDIDATES + 10,
 		ChainID:                 DefaultChainID, // Omega
 		RpcPort:                 "7789",
+		CommitteeSize:           3,
+		CommitteeSigs:           2,
+		POWRotate:               2,
 	},
 
 	GenesisHash:      TestNet3GenesisHash[uint32(common.TestNet)],

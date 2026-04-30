@@ -985,7 +985,7 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 				r = 0
 
 			case p.Data.GetNonce() > 0:
-				d += wire.POWRotate
+				d += int32(sp.server.chainParams.POWRotate)
 
 			case p.Data.GetNonce() <= -wire.MINER_RORATE_FREQ:
 				r = -(p.Data.GetNonce() + wire.MINER_RORATE_FREQ)
@@ -1017,7 +1017,7 @@ func (sp *serverPeer) OnGetBlocks(p *peer.Peer, msg *wire.MsgGetBlocks) {
 			if i < len(hashList) {
 				h, _ := chain.HeaderByHash(&th)
 				if h.Nonce > 0 {
-					rot += wire.POWRotate
+					rot += int32(sp.server.chainParams.POWRotate)
 				} else if h.Nonce <= -wire.MINER_RORATE_FREQ {
 					rot = -(h.Nonce + wire.MINER_RORATE_FREQ)
 				}

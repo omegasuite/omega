@@ -287,9 +287,9 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	rotate := int32(best.LastRotation) - b.blockChain.TotalRotate(txdetachNodes)
 
 	// examine signers are in committee
-	miners := make([]*[20]byte, wire.CommitteeSize)
-	for i := int32(0); i < wire.CommitteeSize; i++ {
-		if blk, _ := b.BlockByHeight(int32(rotate) - wire.CommitteeSize + i + 1); blk != nil {
+	miners := make([]*[20]byte, b.chainParams.CommitteeSize)
+	for i := int32(0); i < int32(b.chainParams.CommitteeSize); i++ {
+		if blk, _ := b.BlockByHeight(int32(rotate) - int32(b.chainParams.CommitteeSize) + i + 1); blk != nil {
 			if _, err := b.blockChain.CheckCollateral(blk, &blk.MsgBlock().BestBlock, blockchain.BFNone); b.IsSVP || err == nil {
 				miners[i] = &blk.MsgBlock().Miner
 			}
@@ -305,12 +305,12 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	}
 
 	for x != nil && rotate >= p.Height {
-		if p.Height > rotate-wire.CommitteeSize {
+		if p.Height > rotate-int32(b.chainParams.CommitteeSize) {
 			hdr := NodetoHeader(p)
 			if _, err := b.blockChain.CheckCollateral(wire.NewMinerBlock(&hdr), &hdr.BestBlock, blockchain.BFNone); b.IsSVP || err == nil {
-				miners[p.Height-(rotate-wire.CommitteeSize+1)] = &hdr.Miner
+				miners[p.Height-(rotate-int32(b.chainParams.CommitteeSize)+1)] = &hdr.Miner
 			} else {
-				miners[p.Height-(rotate-wire.CommitteeSize+1)] = nil
+				miners[p.Height-(rotate-int32(b.chainParams.CommitteeSize)+1)] = nil
 			}
 		}
 		x = x.Next()
@@ -348,7 +348,7 @@ func (b *MinerChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 		if shift > 0 {
 			contain = false
 			j := 0
-			for k := shift; k < wire.CommitteeSize; k++ {
+			for k := shift; k < int32(b.chainParams.CommitteeSize); k++ {
 				miners[j] = miners[k]
 				j++
 			}
