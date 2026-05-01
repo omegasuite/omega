@@ -12,7 +12,6 @@ import (
 	"regexp"
 	"strings"
 
-	"btcd/blockchain"
 	//	"encoding/hex"
 	"btcd/wire"
 	"btcd/wire/common"
@@ -193,16 +192,8 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 	}
 
 	if prot.IsSvp && globalParams != nil {
-		if globalParams.PowLimit != nil {
-			prot.activeNetParams.PowLimit = globalParams.PowLimit
-		} else if globalParams.PowLimitBits == 0 {
-			prot.activeNetParams.PowLimit = blockchain.CompactToBig(globalParams.PowLimitBits)
-		}
 		if len(globalParams.Checkpoints) > 0 {
 			prot.activeNetParams.Checkpoints = globalParams.Checkpoints
-		}
-		if len(globalParams.Deployments) > 0 {
-			prot.activeNetParams.Deployments = globalParams.Deployments
 		}
 		if globalParams.MinBorderFee != 0 {
 			prot.activeNetParams.MinBorderFee = globalParams.MinBorderFee

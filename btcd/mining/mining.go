@@ -1501,16 +1501,18 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 			param := chaincfg.GlobalParams{}
 			param.CommitteeSize, param.CommitteeSigs, param.POWRotate = 3, 2, 2
 
-			json.Unmarshal([]byte(ac.GlobalParams), &param)
-			param.ChainID = ac.ChainID
-			s, _ := json.Marshal(param)
-			ac.GlobalParams = string(s)
-			md, err := json.Marshal(ac)
+			err = json.Unmarshal([]byte(ac.GlobalParams), &param)
 			if err == nil {
-				msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
-					InstCode: wire.AddChain,
-					InstData: md,
-				}}
+				param.ChainID = ac.ChainID
+				s, _ := json.Marshal(param)
+				ac.GlobalParams = string(s)
+				md, err := json.Marshal(ac)
+				if err == nil {
+					msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
+						InstCode: wire.AddChain,
+						InstData: md,
+					}}
+				}
 			}
 		}
 	} else if g.chainParams.ChgParams != nil {

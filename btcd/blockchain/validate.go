@@ -2387,11 +2387,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				return err
 			}
 
-			txFee, payDirect, err := CheckTransactionFees(tx, storages[i], views, b.ChainParams)
-			if err != nil {
-				return err
-			}
-
 			// check locked collateral
 			for _, txin := range tx.MsgTx().TxIn {
 				if txin.PreviousOutPoint.Hash.IsEqual(&zerohash) {
@@ -2405,29 +2400,37 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 				}
 			}
 
-			// Sum the total fees and ensure we don't overflow the
-			// accumulator.
-			lastTotalFees := totalFees
-			totalFees += txFee
+			if !b.IsSVP {
+				txFee, payDirect, err := CheckTransactionFees(tx, storages[i], views, b.ChainParams)
+				if err != nil {
+					return err
+				}
 
-			if len(payDirect) > 0 {
-				for typ, amt := range payDirect {
-					if amt <= 0 {
-						return ruleError(ErrBadFees, "direct miner fee for tx "+tx.Hash().String()+" in block "+block.Hash().String()+" is negative or 0")
-					}
-					if m, ok := payMiner[typ]; ok {
-						if amt+m < m {
-							return ruleError(ErrBadFees, "total fees for block "+
-								"overflows accumulator")
+				// Sum the total fees and ensure we don't overflow the
+				// accumulator.
+				lastTotalFees := totalFees
+				totalFees += txFee
+
+				if len(payDirect) > 0 {
+					for typ, amt := range payDirect {
+						if amt <= 0 {
+							return ruleError(ErrBadFees, "direct miner fee for tx "+tx.Hash().String()+" in block "+block.Hash().String()+" is negative or 0")
 						}
-						payMiner[typ] = m + amt
-					} else {
-						payMiner[typ] = amt
+						if m, ok := payMiner[typ]; ok {
+							if amt+m < m {
+								return ruleError(ErrBadFees, "total fees for block "+
+									"overflows accumulator")
+							}
+							payMiner[typ] = m + amt
+						} else {
+							payMiner[typ] = amt
+						}
 					}
 				}
-			}
-			if totalFees < lastTotalFees {
-				return ruleError(ErrBadFees, "total fees for block overflows accumulator")
+
+				if totalFees < lastTotalFees {
+					return ruleError(ErrBadFees, "total fees for block overflows accumulator")
+				}
 			}
 
 			/*

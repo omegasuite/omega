@@ -325,9 +325,6 @@ func (m *FOCMap) ChgParam(cd *ChainDescriptor) bool {
 	if t.POWRotate != 0 {
 		s.POWRotate ^= t.POWRotate
 	}
-	if t.PowLimit != nil {
-		s.PowLimit = s.PowLimit.Add(s.PowLimit, t.PowLimit)
-	}
 	if t.MinBorderFee != 0 {
 		s.MinBorderFee ^= t.MinBorderFee
 	}
@@ -346,9 +343,6 @@ func (m *FOCMap) ChgParam(cd *ChainDescriptor) bool {
 
 	if len(t.Checkpoints) > 0 {
 		s.Checkpoints = append(s.Checkpoints, t.Checkpoints...)
-	}
-	if len(t.Deployments) > 0 {
-		s.Deployments = append(s.Deployments, t.Deployments...)
 	}
 
 	ms, _ := json.Marshal(t)
@@ -438,9 +432,6 @@ func (m *FOCMap) RevertParam(cd *ChainDescriptor) bool {
 	if t.POWRotate != 0 {
 		s.POWRotate ^= t.POWRotate
 	}
-	if t.PowLimit != nil {
-		s.PowLimit = s.PowLimit.Sub(s.PowLimit, t.PowLimit)
-	}
 	if t.MinBorderFee != 0 {
 		s.MinBorderFee ^= t.MinBorderFee
 	}
@@ -459,9 +450,6 @@ func (m *FOCMap) RevertParam(cd *ChainDescriptor) bool {
 
 	if len(t.Checkpoints) > 0 {
 		s.Checkpoints = s.Checkpoints[:len(s.Checkpoints)-len(t.Checkpoints)]
-	}
-	if len(t.Deployments) > 0 {
-		s.Deployments = s.Deployments[:len(s.Deployments)-len(t.Deployments)]
 	}
 
 	ms, _ := json.Marshal(t)

@@ -204,10 +204,10 @@ type GlobalParams struct { // The params that must be the same for every node in
 	CommitteeSigs int
 	POWRotate     int
 
-	PowLimit *big.Int
+	// PowLimit *big.Int
 	// Checkpoints ordered from oldest to newest.
-	Checkpoints          []Checkpoint
-	Deployments          []ConsensusDeployment
+	Checkpoints []Checkpoint
+	// Deployments          []ConsensusDeployment
 	MinBorderFee         int
 	MinContractDeployFee int // Min fee per byte for contract deployment
 	MinRelayTxFee        int64
@@ -281,10 +281,6 @@ func (param1 *GlobalParams) Diff(param2 *GlobalParams) (bool, *GlobalParams) {
 		changed.POWRotate = param1.POWRotate
 		hasnew = true
 	}
-	if param1.PowLimit != param2.PowLimit {
-		changed.PowLimit = param1.PowLimit
-		hasnew = true
-	}
 	if param1.MinBorderFee != param2.MinBorderFee {
 		changed.MinBorderFee = param1.MinBorderFee
 		hasnew = true
@@ -313,10 +309,7 @@ func (param1 *GlobalParams) Diff(param2 *GlobalParams) (bool, *GlobalParams) {
 		changed.Checkpoints = param1.Checkpoints[len(param2.Checkpoints):]
 		hasnew = true
 	}
-	if len(param1.Deployments) > len(param2.Deployments) {
-		changed.Deployments = param1.Deployments[len(param2.Deployments):]
-		hasnew = true
-	}
+
 	return hasnew, &changed
 }
 
@@ -372,9 +365,6 @@ func (t *GlobalParams) Fit(s *GlobalParams) bool {
 	if t.POWRotate != 0 && t.POWRotate != s.POWRotate {
 		return false
 	}
-	if t.PowLimit != nil && t.PowLimit.Cmp(s.PowLimit) != 0 {
-		return false
-	}
 	if t.MinBorderFee != 0 && t.MinBorderFee != s.MinBorderFee {
 		return false
 	}
@@ -397,16 +387,6 @@ func (t *GlobalParams) Fit(s *GlobalParams) bool {
 				return false
 			}
 			if c.Height != s.Checkpoints[i].Height {
-				return false
-			}
-		}
-	}
-	if len(t.Deployments) > 0 {
-		for i, c := range t.Deployments {
-			if c.ExpireTime != s.Deployments[i].ExpireTime ||
-				c.PrevVersion != s.Deployments[i].PrevVersion ||
-				c.StartTime != s.Deployments[i].StartTime ||
-				c.FeatureMask != s.Deployments[i].FeatureMask {
 				return false
 			}
 		}
