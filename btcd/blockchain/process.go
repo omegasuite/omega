@@ -398,6 +398,9 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 			return false, false, ruleError(ErrDuplicateBlock, errorCodeStrings[ErrDuplicateBlock]), -1, nil
 		}
 		node := b.NodeByHash(blockHash)
+		if node == nil {
+			return false, false, err, -1, nil
+		}
 		if !b.Index.NodeStatus(node).KnownInvalid() && node.Height == block.Height() {
 			if block.Height() > b.BestChain.Height() {
 				// do we need to reorg?

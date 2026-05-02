@@ -554,6 +554,9 @@ func (b *BlockChain) getReorganizeNodes(node *chainutil.BlockNode) (*list.List, 
 	attachNodes := list.New()
 	detachNodes := list.New()
 
+	if node == nil || node.Parent == nil {
+		return detachNodes, attachNodes
+	}
 	// Do not reorganize to a known invalid chain. Ancestors deeper than the
 	// direct parent are checked below but this is a quick check before doing
 	// more unnecessary work.
@@ -1934,13 +1937,11 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) bool {
 					if meta2.Version == cd.Version && meta2.Magic == cd.Magic && meta2.ChainID == cd.ChainID {
 						if meta2.Version == 0x10000 && meta2.Dns == cd.Dns {
 							agreed++
-							break
 						} else if meta2.Version >= 0x20000 && meta2.Version == cd.Version {
 							param2 := chaincfg.GlobalParams{}
 							json.Unmarshal([]byte(meta2.GlobalParams), &param2)
 							if param2.Fit(&param1) {
 								agreed++
-								break
 							}
 						}
 					}
@@ -1948,7 +1949,6 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) bool {
 				case wire.AddChain:
 					if meta2.Match((*wire.ChainDescriptor)(cd)) {
 						agreed++
-						break
 					}
 				}
 			}
