@@ -1949,6 +1949,8 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) bool {
 				case wire.AddChain:
 					if meta2.Match((*wire.ChainDescriptor)(cd)) {
 						agreed++
+					} else {
+						log.Info("Mismatch")
 					}
 				}
 			}
@@ -1978,9 +1980,12 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) bool {
 						}
 					}
 				}
+				break
 			}
 		}
+		log.Infof("Agree = %d", agreed)
 	}
+
 	return terminating
 }
 
