@@ -526,6 +526,8 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		spendTransaction(views, btx, nextBlockHeight)
 	}
 
+	crtxStart := len(blockTxns)
+
 	// Check transactions in BTCL2Pool, include mature transactions here
 	/*
 		views.Db.View(func(dbtx database.Tx) error {
@@ -636,6 +638,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 		}
 	}
 
+	totalFees := int64(0)
 	minerDirect := make(map[uint64]int64) // direct payment to miners of this blockchain
 
 	// Check transactions in INCOMINGPOOL, include mature transactions here
@@ -866,7 +869,6 @@ mempoolLoop:
 	//		blockchain.GetTransactionWeight(coinbaseTx))
 	blockWeight := uint32(1) // blockchain.GetTransactionWeight(coinbaseTx))
 	blockSigOpCost := coinbaseSigOpCost
-	totalFees := int64(0)
 
 	coinBaseHash := chainhash.Hash{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
 		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
@@ -907,9 +909,20 @@ mempoolLoop:
 	blksz := wire.MaxBlockHeaderPayload
 	// totalbtcfees := int64(0)
 
+	for _, tx := range blockTxns[crtxStart:] {
+		fees, directPay, _ := blockchain.CheckTransactionFees(tx, 0, views, g.chainParams)
+		for typ, amt := range directPay {
+			if m, ok := minerDirect[typ]; ok {
+				minerDirect[typ] = m + amt
+			} else {
+				minerDirect[typ] = amt
+			}
+		}
+		totalFees += fees
+	}
+
 	// Choose which transactions make it into the block.
 	//	var skiprest = false // whether to skip rest contracts
-
 	for priorityQueue.Len() > 0 {
 		nt := time.Now()
 		if nt.UnixNano()-startTime > 40000*1e6 {
@@ -1225,31 +1238,58 @@ mempoolLoop:
 		totalFees += f
 		delete(minerDirect, common.FeeCoinTyp)
 	}
+
 	df := totalFees / m
-	for _, txo := range coinbaseTx.MsgTx().TxOut {
-		if txo.IsSeparator() {
-			break
+	if df != 0 {
+		for _, txo := range coinbaseTx.MsgTx().TxOut {
+			if txo.IsSeparator() {
+				break
+			}
+			txo.TokenType = common.FeeCoinTyp
+			txo.Value.(*token.NumToken).Val += df
 		}
-		txo.Value.(*token.NumToken).Val += df
 	}
 
-	if len(minerDirect) > 0 {
+	if f, ok := minerDirect[common.ZENTCoinTyp]; ok {
+		// In non-BOVM chain, it is possible to get here, so we keep it
+		df = f / m
 		btcout := []*wire.TxOut{}
-		for typ, amt := range minerDirect {
-			df = amt / m
-			for _, txo := range coinbaseTx.MsgTx().TxOut {
-				if txo.IsSeparator() {
-					break
-				}
-				t := &wire.TxOut{PkScript: txo.PkScript}
-				t.Token.Copy(&txo.Token)
-				t.Token.TokenType = typ
-				t.Token.Value = &token.NumToken{Val: df}
-				btcout = append(btcout, t)
+		for _, txo := range coinbaseTx.MsgTx().TxOut {
+			if txo.IsSeparator() {
+				break
 			}
+			t := &wire.TxOut{PkScript: txo.PkScript}
+			t.Token.Copy(&txo.Token)
+			t.Token.TokenType = common.ZENTCoinTyp
+			t.Token.Value = &token.NumToken{Val: df}
+			btcout = append(btcout, t)
 		}
 		coinbaseTx.MsgTx().TxOut = append(coinbaseTx.MsgTx().TxOut, btcout...)
+		delete(minerDirect, common.ZENTCoinTyp)
 	}
+
+	/*
+		if len(minerDirect) > 0 {
+			btcout := []*wire.TxOut{}
+			for typ, amt := range minerDirect {
+				if chainmap.AllChains[g.chainParams.ChainID].ChainMap[uint32(typ>>40)].Legacy {
+					continue
+				}
+				df = amt / m
+				for _, txo := range coinbaseTx.MsgTx().TxOut {
+					if txo.IsSeparator() {
+						break
+					}
+					t := &wire.TxOut{PkScript: txo.PkScript}
+					t.Token.Copy(&txo.Token)
+					t.Token.TokenType = typ
+					t.Token.Value = &token.NumToken{Val: df}
+					btcout = append(btcout, t)
+				}
+			}
+			coinbaseTx.MsgTx().TxOut = append(coinbaseTx.MsgTx().TxOut, btcout...)
+		}
+	*/
 	/*
 		if totalbtcfees != 0 {
 			df = totalbtcfees / m

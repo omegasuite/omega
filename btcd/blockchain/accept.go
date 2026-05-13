@@ -89,13 +89,15 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		if dest == 0 {
 			dest = b.ChainParams.ChainID
 		}
-		pks, fee := chainmap.AllChains[b.ChainParams.ChainID].CtxFees(chainmap.AllChains[b.ChainParams.ChainID].ChainMap[b.ChainParams.MainChainID], dest)
-		for i, p := range pks {
-			d := common.LittleEndian.Uint32(p[21:]) >> 8
-			if f, ok := minerFees[d]; ok {
-				minerFees[d] = f + fee[i]
-			} else {
-				minerFees[d] = fee[i]
+		if !chainmap.FromLegacy(tx) {
+			pks, fee := chainmap.AllChains[b.ChainParams.ChainID].CtxFees(chainmap.AllChains[b.ChainParams.ChainID].ChainMap[b.ChainParams.MainChainID], dest)
+			for i, p := range pks {
+				d := common.LittleEndian.Uint32(p[21:]) >> 8
+				if f, ok := minerFees[d]; ok {
+					minerFees[d] = f + fee[i]
+				} else {
+					minerFees[d] = fee[i]
+				}
 			}
 		}
 	}
@@ -108,7 +110,11 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		if dest == 0 {
 			dest = b.ChainParams.ChainID
 		}
-		if txo.TokenType != common.ZENTCoinTyp && (txo.TokenType != 0 || dest != chainmap.ROOT) {
+		if chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dest].Legacy {
+			if uint32(txo.TokenType>>40) != dest {
+				return fmt.Errorf("incorrect cross chain tx fee tokentype")
+			}
+		} else if txo.TokenType != common.ZENTCoinTyp && (txo.TokenType != 0 || dest != chainmap.ROOT) {
 			return fmt.Errorf("incorrect cross chain tx fee tokentype")
 		}
 		if f, ok := minerFees[dest]; ok {
@@ -118,7 +124,7 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		}
 	}
 	for _, f := range minerFees {
-		if f != 0 {
+		if f > 0 {
 			return fmt.Errorf("incorrect cross chain tx fee amount")
 		}
 	}

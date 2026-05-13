@@ -16,12 +16,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"omega/ovm"
+	"github.com/omegasuite/btcd/chaincfg/chainhash"
 )
 
 // chainmap is a map of blockchains in FOC.
 const (
 	ROOT                    = 1 // Chain ID of root blockchain, i.e. the Omega
+	BOVM                    = 4
 	CrossChainTxFeePerChain = 1e5
 )
 
@@ -148,7 +149,7 @@ func (t *ChainDescriptor) FeeScript() []byte {
 	}
 	s[1] = 1
 	common.LittleEndian.PutUint32(s[22:], t.ChainID)
-	s[21] = ovm.OP_PAYMINER
+	s[21] = 0x44 // ovm.OP_PAYMINER
 	return s[:25]
 }
 
@@ -156,6 +157,8 @@ func (t *ChainDescriptor) FeeAmount() int64 {
 	// for now, flat 100 Satoshi. in the future, it would be chain dependent
 	return CrossChainTxFeePerChain
 }
+
+var LegacyXChainFee func(chainid uint32, native bool) int64
 
 func (m *FOCMap) PassThru(tid, src, dest uint32) bool {
 	t, ok := m.ChainMap[tid]
@@ -184,7 +187,8 @@ func (m *FOCMap) PassThru(tid, src, dest uint32) bool {
 	return p != q
 }
 
-func LoadChainMap(db database.DB, testnet bool, chainid uint32) {
+func LoadChainMap(db database.DB, testnet bool, chainid uint32, legacyXChainFee func(chainid uint32, native bool) int64) {
+	LegacyXChainFee = legacyXChainFee
 	if AllChains == nil {
 		AllChains = make(map[uint32]*FOCMap)
 	}
@@ -598,4 +602,18 @@ func (m *FOCMap) RemoveChain(c uint32) {
 
 func Close() {
 	// m.dmdb.Close()
+}
+
+func FromLegacy(tx *wire.MsgTx) bool { // whether it is a TX from BTC to L2 xfer
+	f := len(tx.TxIn) == 1 &&
+		!tx.TxIn[0].PreviousOutPoint.Hash.IsEqual(&chainhash.Hash{}) &&
+		(tx.TxIn[0].PreviousOutPoint.Index&wire.CrossChainFalg != 0)
+	if !f {
+		return false
+	}
+	if t, ok := AllChains[ROOT].ChainMap[tx.TxIn[0].PreviousOutPoint.Index&^wire.CrossChainFalg]; ok {
+		return t.Legacy
+	}
+
+	return false
 }

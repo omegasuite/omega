@@ -14,6 +14,7 @@ import (
 	"btcutil"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"omega/chainmap"
 	"omega/token"
 	"omega/viewpoint"
 )
@@ -270,7 +271,7 @@ func (s *MatchLoop) Add(cs string, loopcs string, loop *token.LoopDef) {
 }
 
 func CheckTransactionInputs(tx *btcutil.Tx, views *viewpoint.ViewPointSet) error {
-	if tx.MsgTx().IsBtcL2() {
+	if chainmap.FromLegacy(tx.MsgTx()) {
 		return nil
 	}
 	// add definitions

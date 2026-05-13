@@ -19,6 +19,7 @@ import (
 	"github.com/omegasuite/btcd/btcec"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
 	"omega"
+	"omega/chainmap"
 	"omega/token"
 	"omega/validate"
 	"omega/viewpoint"
@@ -774,7 +775,7 @@ func (ovm *OVM) ExecContract(tx *btcutil.Tx, txHeight int32) (bool, omega.Err) {
 				break
 			}
 		}
-		if needsv && !tx.MsgTx().IsBtcL2() {
+		if needsv && !chainmap.FromLegacy(tx.MsgTx()) {
 			err := VerifySigs(tx, ovm.chainConfig, intx, ovm.views)
 			if err != nil {
 				return false, err

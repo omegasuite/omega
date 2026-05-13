@@ -6,12 +6,11 @@
 package btcutil
 
 import (
+	"btcd/wire"
 	"bytes"
 	"fmt"
-	"io"
-
-	"btcd/wire"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"io"
 )
 
 // OutOfRangeError describes an error due to accessing an element that is out
@@ -40,7 +39,6 @@ type Block struct {
 	blockHeight              int32           // Height in the main block chain
 	transactions             []*Tx           // Height
 	txnsGenerated            bool            // ALL wrapped transactions generated
-	Btctxfees                int64           // total btc tx fees in this block, we need it here because it does not appear in coinbase tx
 }
 
 // MsgBlock returns the underlying wire.MsgBlock for the Block.
@@ -56,9 +54,6 @@ func (block *Block) CountSpentOutputs() int {
 	// Exclude the coinbase transaction since it can't spend anything.
 	var numSpent int
 	for _, tx := range block.Transactions()[1:] {
-		if tx.MsgTx().IsBtcL2() {
-			continue
-		}
 		if tx.msgTx.IsCrossChain() {
 			continue
 		}
@@ -261,7 +256,6 @@ func NewBlock(msgBlock *wire.MsgBlock) *Block {
 	return &Block{
 		msgBlock:    msgBlock,
 		blockHeight: BlockHeightUnknown,
-		Btctxfees:   -1,
 	}
 }
 
@@ -300,7 +294,6 @@ func NewBlockFromReader(r io.Reader) (*Block, error) {
 	b := Block{
 		msgBlock:    &msgBlock,
 		blockHeight: BlockHeightUnknown,
-		Btctxfees:   -1,
 	}
 	return &b, nil
 }
@@ -325,6 +318,5 @@ func NewBlockFromBlockAndBytes(msgBlock *wire.MsgBlock, serializedBlock []byte) 
 		msgBlock:        msgBlock,
 		serializedBlock: serializedBlock,
 		blockHeight:     BlockHeightUnknown,
-		Btctxfees:       -1,
 	}
 }

@@ -224,6 +224,9 @@ type BlockChain struct {
 
 	// tmp data
 	BTfile *os.File
+
+	// fee estimator
+	LegacyXChainFee func(uint32, bool) int64
 }
 
 type XchMsg struct {
@@ -321,7 +324,7 @@ func (b *BlockChain) calcSequenceLock(node *chainutil.BlockNode, tx *btcutil.Tx,
 	mTx := tx.MsgTx()
 
 	// comp tx is not subject to seq lock rule
-	if mTx.Version&wire.TxTypeMask == wire.ForfeitTxVersion || b.isCoinBase(tx) || tx.MsgTx().IsBtcL2() {
+	if mTx.Version&wire.TxTypeMask == wire.ForfeitTxVersion || b.isCoinBase(tx) || chainmap.FromLegacy(tx.MsgTx()) {
 		return sequenceLock, nil
 	}
 

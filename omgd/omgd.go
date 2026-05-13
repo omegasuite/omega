@@ -97,7 +97,7 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 	if globalParams != nil {
 		cid = globalParams.ChainID
 	}
-	chainmap.LoadChainMap(db, tcfg.TestNet, cid)
+	chainmap.LoadChainMap(db, tcfg.TestNet, cid, nil)
 
 	prot := &Protocol{
 		cfg:     tcfg,
@@ -820,26 +820,18 @@ func main() {
 		parts = append(parts[:len(parts)-2], svpid, parts[len(parts)-2])
 		vcfg.LogDir = strings.Join(parts, "/")
 
+		vcfg.Listeners = []string{}
+		vcfg.RPCListeners = []string{}
+
 		vcfg, _, err = loadConfig(svpid, dparams.Net, vcfg, dparams)
 		if vcfg == nil || err != nil {
 			os.Exit(1)
 		}
 
-		vcfg.NetMagic = dparams.Net
-		vcfg.GenerateMiner = false
-		vcfg.Generate = false
-		vcfg.privateKeys = nil
-		vcfg.PrivKeys = nil
-		vcfg.MiningAddrs = nil
-		vcfg.AddrIndex = false
-		vcfg.BlocksOnly = false
-		vcfg.DisablePOWMining = true
-		vcfg.miningAddrs = nil
-		vcfg.TxIndex = false
-		vcfg.AddrIndex = false
-		vcfg.TestNet = tcfg.TestNet
-		//		vcfg.NoCFilters = true
-		vcfg.signAddress = nil
+		vcfg.NetMagic, vcfg.GenerateMiner, vcfg.Generate, vcfg.privateKeys = dparams.Net, false, false, nil
+		vcfg.PrivKeys, vcfg.MiningAddrs, vcfg.AddrIndex, vcfg.BlocksOnly = nil, nil, false, false
+		vcfg.DisablePOWMining, vcfg.miningAddrs, vcfg.TxIndex, vcfg.AddrIndex = true, nil, false, false
+		vcfg.TestNet, vcfg.signAddress = tcfg.TestNet, nil
 
 		fmt.Printf("datadir = %s\n", vcfg.DataDir)
 

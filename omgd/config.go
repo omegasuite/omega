@@ -748,22 +748,25 @@ func applyConfig(cfg *config, params *chaincfg.GlobalParams) error {
 	}
 
 	// Default RPC to listen on localhost only.
-	if !cfg.DisableRPC && len(cfg.RPCListeners) == 0 {
-		addrs, err := net.LookupHost("localhost")
-		if err != nil {
-			return err
+	if !cfg.DisableRPC {
+		if len(cfg.RPCListeners) == 0 {
+			addrs, err := net.LookupHost("localhost")
+			if err != nil {
+				return err
+			}
+			cfg.RPCListeners = make([]string, 0, len(addrs))
+			for _, addr := range addrs {
+				addr = net.JoinHostPort(addr, params.RpcPort)
+				cfg.RPCListeners = append(cfg.RPCListeners, addr)
+			}
+		} else {
+			sp := strings.Split(cfg.RPCListeners[0], ":")
+			if len(sp) > 1 {
+				params.RpcPort = sp[len(sp)-1]
+			}
 		}
-		cfg.RPCListeners = make([]string, 0, len(addrs))
-		for _, addr := range addrs {
-			addr = net.JoinHostPort(addr, params.RpcPort)
-			cfg.RPCListeners = append(cfg.RPCListeners, addr)
-		}
-	}
-
-	if cfg.DisableRPC {
+	} else {
 		params.RpcPort = ""
-	} else if len(cfg.RPCListeners) != 0 {
-		params.RpcPort = strings.Split(cfg.RPCListeners[0], ":")[1]
 	}
 
 	if cfg.RPCMaxConcurrentReqs < 0 {

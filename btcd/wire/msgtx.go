@@ -437,6 +437,10 @@ func (s *MsgTx) IsCrossChain() bool {
 	return len(s.TxIn) == 1 && !s.TxIn[0].PreviousOutPoint.Hash.IsEqual(&chainhash.Hash{}) && s.TxIn[0].PreviousOutPoint.Index&CrossChainFalg != 0
 }
 
+func (s *MsgTx) CrossChainOrigin() uint32 {
+	return s.TxIn[0].PreviousOutPoint.Index ^ CrossChainFalg
+}
+
 func (s *MsgTx) Match(t *MsgTx) bool {
 	if len(s.TxIn) != len(t.TxIn) || len(s.TxDef) != len(t.TxDef) || len(s.TxOut) != len(t.TxOut) {
 		return false
@@ -1387,8 +1391,11 @@ func (msg *MsgTx) RemapDef(to token.Definition) token.Definition {
 	return token.RemapDef(msg.TxDef, to)
 }
 
+/*
 func (msg *MsgTx) IsBtcL2() bool { // whether it is a TX from BTC to L2 xfer
 	return len(msg.TxIn) == 1 &&
-		!msg.TxIn[0].PreviousOutPoint.Hash.IsEqual(&chainhash.Hash{}) &&
-		msg.TxIn[0].PreviousOutPoint.Index == common.BTCCHAINID|CrossChainFalg
+		!msg.TxIn[0].PreviousOutPoint.Hash.IsEqual(&chainhash.Hash{}) && (msg.TxIn[0].PreviousOutPoint.Index == uint32(common.Btcchainid)|CrossChainFalg ||
+		msg.TxIn[0].PreviousOutPoint.Index == uint32(common.Ethchainid)|CrossChainFalg ||
+		msg.TxIn[0].PreviousOutPoint.Index == uint32(common.Bscchainid)|CrossChainFalg)
 }
+*/

@@ -518,14 +518,14 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			mbs[i-(rotate-uint32(b.ChainParams.CommitteeSize)+1)] = mb
 		}
 
-		awardto := make(map[[20]byte]struct{})
+		awardto := make(map[[28]byte]struct{})
 		//if !b.IsSVP {
 		awd := make(map[uint64]int64)
 		for _, txo := range block.MsgBlock().Transactions[0].TxOut {
 			if txo.IsSeparator() {
 				break
 			}
-			if txo.TokenType != 0 {
+			if txo.TokenType != 0 && txo.TokenType != common.FeeCoinTyp && txo.TokenType != common.ZENTCoinTyp {
 				return fmt.Errorf("Coinbase output tokentype %d is not correct.", txo.TokenType), false
 			}
 			if _, ok := awd[txo.TokenType]; !ok {
@@ -543,11 +543,11 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 			if dif > 1 {
 				return fmt.Errorf("Award is not evenly distributed among quanlified miners."), false
 			}
-			var tw [20]byte
+			var tw [28]byte
 			copy(tw[:], txo.PkScript[1:21])
+			common.LittleEndian.PutUint64(tw[20:], txo.TokenType)
 			awardto[tw] = struct{}{}
 		}
-		//}
 
 		for i := rotate - uint32(b.ChainParams.CommitteeSize) + 1; i <= rotate; i++ {
 			mb := mbs[i-(rotate-uint32(b.ChainParams.CommitteeSize)+1)]
@@ -555,20 +555,26 @@ func (b *BlockChain) checkProofOfWork(block *btcutil.Block, parent *chainutil.Bl
 				continue
 			}
 
-			if !b.IsSVP {
-				if _, err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
-					if _, ok := awardto[mb.MsgBlock().Miner]; ok {
-						return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
+			var tw [28]byte
+			copy(tw[:], mb.MsgBlock().Miner[:])
+			for w, _ := range awd {
+				common.LittleEndian.PutUint64(tw[20:], w)
+				if !b.IsSVP {
+					if _, ok := committee[mb.MsgBlock().Miner]; !ok {
+						if _, err := b.CheckCollateral(mb, &parent.Hash, BFNone); err != nil {
+							if _, ok := awardto[tw]; ok {
+								return fmt.Errorf("Coinbase award to miner with insufficient collateral."), false
+							}
+							continue
+						}
 					}
-				} else {
-					if _, ok := awardto[mb.MsgBlock().Miner]; !ok {
-						return nil, true
+					if _, ok := awardto[tw]; !ok {
+						return fmt.Errorf("Missing coinbase award to a required miner."), false
 					}
 				}
+				committee[mb.MsgBlock().Miner] = struct{}{}
+				delete(awardto, tw)
 			}
-
-			committee[mb.MsgBlock().Miner] = struct{}{}
-			delete(awardto, mb.MsgBlock().Miner)
 
 			if !imin {
 				for j, me := range b.Miner {
@@ -749,6 +755,15 @@ func (b *BlockChain) checkBlockSanity(block *btcutil.Block, powLimit *big.Int, t
 	if !b.isCoinBase(transactions[0]) {
 		return ruleError(ErrFirstTxNotCoinbase, "first transaction in "+
 			"block is not a coinbase")
+	}
+
+	for _, txo := range transactions[0].MsgTx().TxOut {
+		if txo.IsSeparator() {
+			continue
+		}
+		if txo.Crossing() {
+			return ruleError(ErrFirstTxNotCoinbase, "Cross chain txo in coinbase")
+		}
 	}
 
 	// All forfeiture txs must be immediately after coinbase
@@ -1013,7 +1028,7 @@ func (b *BlockChain) checkBlockContext(block *btcutil.Block, prevNode *chainutil
 // CheckTransactionSanity function prior to calling this function.
 func CheckTransactionInputs(tx *btcutil.Tx, txHeight int32, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) error {
 	// Coinbase transactions have no inputs.
-	if len(tx.MsgTx().TxIn) == 0 || tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
+	if len(tx.MsgTx().TxIn) == 0 || tx.MsgTx().IsCrossChain() {
 		return nil
 	}
 	if tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) { // coinbase
@@ -1471,7 +1486,7 @@ func CheckAdditionalDefinitions(tx *btcutil.Tx, txHeight int32, views *viewpoint
 }
 
 func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, version uint32) error {
-	if tx.MsgTx().IsBtcL2() || tx.MsgTx().IsCrossChain() {
+	if tx.MsgTx().IsCrossChain() {
 		return nil
 	}
 	if len(tx.MsgTx().TxIn) != 0 && tx.MsgTx().TxIn[0].PreviousOutPoint.Hash.IsEqual(&zerohash) { // coinbase
@@ -1516,6 +1531,7 @@ func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ve
 		inputs = append(inputs, x.ToTxOut().Token)
 	}
 	rem := len(inputs)
+
 	for _, txOut := range tx.MsgTx().TxOut {
 		t := txOut.TokenType
 		if txOut.IsSeparator() {
@@ -1568,9 +1584,9 @@ func CheckTransactionIntegrity(tx *btcutil.Tx, views *viewpoint.ViewPointSet, ve
 }
 
 func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPointSet, chainParams *chaincfg.Params) (int64, map[uint64]int64, error) {
-	//if tx.MsgTx().IsBtcL2() { // A BTC=>L2 tx
-	//	return 0, nil, nil
-	//}
+	if chainmap.FromLegacy(tx.MsgTx()) { // A BTC=>L2 tx
+		return 0, nil, nil
+	}
 
 	directPay := make(map[uint64]int64)
 	directFee := int64(0)
@@ -1602,10 +1618,6 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 	txHash := tx.Hash()
 	totalIns := make(map[uint64]int64)
 	// minbtcreq := int64(0)
-
-	if tx.MsgTx().IsCrossChain() {
-		return directFee, directPay, nil
-	}
 
 	for _, txIn := range tx.MsgTx().TxIn {
 		if txIn.IsSepadding() {
@@ -1661,11 +1673,7 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 	crosschainfees := make(map[uint32]int64)
 
 	for _, txOut := range tx.MsgTx().TxOut {
-		if txOut.IsSeparator() || txOut.TokenType&3 != 0 {
-			continue
-		}
-
-		if txOut.Value == nil {
+		if txOut.IsSeparator() || txOut.TokenType&3 != 0 || txOut.Value == nil {
 			continue
 		}
 
@@ -1687,14 +1695,24 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 					}
 				}
 			*/
-			path, pf := chainmap.AllChains[chainParams.ChainID].CtxFees(chainmap.AllChains[chainParams.ChainID].ChainMap[chainParams.ChainID], dest)
-			for i, f := range pf {
-				s := common.LittleEndian.Uint32(path[i][21:]) >> 8
-				t := int64(0)
-				if s, ok := crosschainfees[uint32(s)]; ok {
-					t = s
+			if !chainmap.FromLegacy(tx.MsgTx()) { // it may happen in future
+				path, pf := chainmap.AllChains[chainParams.ChainID].CtxFees(chainmap.AllChains[chainParams.ChainID].ChainMap[chainParams.ChainID], dest)
+				for i, f := range pf {
+					s := common.LittleEndian.Uint32(path[i][21:]) >> 8
+					t := int64(0)
+					if v, ok := crosschainfees[s]; ok {
+						t = v
+					}
+					crosschainfees[s] = t - f
 				}
-				crosschainfees[s] = t - f
+				if chainmap.AllChains[chainParams.ChainID].ChainMap[dest].Legacy {
+					t := int64(0)
+					if v, ok := crosschainfees[dest]; ok {
+						t = v
+					}
+					f := chainmap.LegacyXChainFee(dest, (txOut.TokenType&0xffffffffff) == 0)
+					crosschainfees[dest] = t - f
+				}
 			}
 		} else if !txOut.IsContractCall() && len(txOut.PkScript) > 21 && txOut.PkScript[21] == ovm.OP_PAYMINER {
 			dest := common.LittleEndian.Uint32(txOut.PkScript[21:]) >> 8
@@ -1718,8 +1736,9 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 			mincontractDeployFee += (len(txOut.PkScript) - 25) * chainParams.MinContractDeployFee
 		}
 	}
+
 	for _, f := range crosschainfees {
-		if f != 0 {
+		if f < 0 {
 			return 0, nil, ruleError(ErrBadTxOutValue, "Incorrect tx fees in crosschain tx")
 		}
 	}
@@ -1844,105 +1863,170 @@ func (b *BlockChain) normalizeTxo(txo *wire.TxOut) {
 
 func (b *BlockChain) checkCrossChain(block *btcutil.Block) error {
 	chain := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[b.ChainParams.ChainID]
+	// what is pai to miner of this chain
+	payingMiner := make(map[uint64]int64)
 	for _, tx := range block.MsgBlock().Transactions[1:] {
-		path, fees := make([][]byte, 0), make([]int64, 0)
+		// check miner fees in coinbase agree wth payminer in txs
+		// path, fees := make([][]byte, 0), make([]int64, 0)
 		// check if cross chain tx fee is paid
 		iscrosschain := tx.IsCrossChain()
-		payminer := false
-		for _, txo := range tx.TxOut {
-			if txo.IsSeparator() || txo.IsContractCall() {
-				continue
-			}
-			iscrosschain = iscrosschain || txo.IsCrossChain()
-			payminer = payminer || txo.PkScript[21] == ovm.OP_PAYMINER
-		}
-		if !iscrosschain {
-			if payminer {
-				return fmt.Errorf("Pay miner in a none cross chain tx")
-			}
-			return nil
-		} else if !payminer {
-			return fmt.Errorf("Not paying miner in a cross chain tx")
-		}
-
-		src := uint32(0)
-		xc := tx.IsCrossChain()
-		if xc {
+		src := b.ChainParams.ChainID
+		if iscrosschain {
 			src = tx.TxIn[0].PreviousOutPoint.Index ^ wire.CrossChainFalg
-		}
-
-		paid := make(map[uint32]int64)
-		need := make(map[uint32]int64)
-
-		for _, txo := range tx.TxOut {
-			if txo.IsSeparator() || txo.IsContractCall() {
+			if chainmap.AllChains[b.ChainParams.ChainID].ChainMap[src].Legacy {
 				continue
 			}
-			if !xc && txo.PkScript[21] != ovm.OP_PAYCROSSCHAIN && txo.PkScript[21] != ovm.OP_PAYMINER {
+		}
+		/*
+			for _, txo := range tx.TxOut {
+				if txo.IsSeparator() || txo.IsContractCall() {
+					continue
+				}
+				iscrosschain = iscrosschain || txo.IsCrossChain()
+				if common.LittleEndian.Uint32(txo.PkScript[21:25]) == 0x44000000 {	// OP_PAYMINER for this chain
+					if s, ok := payingMiner[txo.TokenType]; ok {
+						payingMiner[txo.TokenType] = s + txo.Value.(*token.NumToken).Val
+					} else {
+						payingMiner[txo.TokenType] = txo.Value.(*token.NumToken).Val
+					}
+				}
+			}
+		*/
+
+		/*
+			if !iscrosschain {
+				if len(payminer) > 0 {
+					return fmt.Errorf("Pay miner in a none cross chain tx")
+				}
+				return nil
+			} else if len(payminer) == 0 {
+				return fmt.Errorf("Not paying miner in a cross chain tx")
+			}
+		*/
+
+		// what is paid & needed alone the cross chain path
+		// paid := make(map[uint32]int64)
+		// need := make(map[uint32]int64)
+
+		for _, txo := range tx.TxOut {
+			if txo.IsSeparator() || !txo.Crossing() {
 				continue
+			}
+
+			if common.LittleEndian.Uint32(txo.PkScript[21:25]) == 0x44000000 { // OP_PAYMINER for this chain
+				if s, ok := payingMiner[txo.TokenType]; ok {
+					payingMiner[txo.TokenType] = s + txo.Value.(*token.NumToken).Val
+				} else {
+					payingMiner[txo.TokenType] = txo.Value.(*token.NumToken).Val
+				}
 			}
 
 			dc := b.ChainParams.ChainID
 			if txo.PkScript[21] == ovm.OP_PAYMINER {
-				if txo.TokenType != common.ZENTCoinTyp && (txo.TokenType != 0 || b.ChainParams.ChainID != chainmap.ROOT) {
-					return fmt.Errorf("cross chain tx fee must be paid in %x\n", common.ZENTCoinTyp)
-				}
 				dc = common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8
 				if dc == 0 {
 					dc = b.ChainParams.ChainID
 				}
-				if t, ok := paid[dc]; !ok {
-					paid[dc] = txo.Token.Value.(*token.NumToken).Val
-				} else {
-					paid[dc] = txo.Token.Value.(*token.NumToken).Val + t
+				if chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dc].Legacy {
+					if (txo.TokenType >> 40) != uint64(dc) {
+						return fmt.Errorf("incorrect cross chain payminer tokentype")
+					}
+				} else if txo.TokenType != common.ZENTCoinTyp && (txo.TokenType != 0 || dc != chainmap.ROOT) {
+					return fmt.Errorf("cross chain tx fee must be paid in ZENT\n")
 				}
+
+				/*
+					if t, ok := paid[dc]; !ok {
+						paid[dc] = txo.Token.Value.(*token.NumToken).Val
+					} else {
+						paid[dc] = txo.Token.Value.(*token.NumToken).Val + t
+					}
+				*/
 				continue
 			}
 
-			if txo.IsCrossChain() {
-				dc = txo.DestChain()
-				if t, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dc&0x3FFFFF]; t == nil || !ok {
-					return fmt.Errorf("Dest chain unknown %d", dc)
-				}
-				if dc == b.ChainParams.ChainID {
-					return fmt.Errorf("Can not cross chain to self")
-				}
+			// OP_PAYCROSSCHAIN
+			dc = txo.DestChain()
+			if dc == b.ChainParams.ChainID || dc == 0 {
+				return fmt.Errorf("Can not cross chain to self")
+			}
+			if t, ok := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dc]; t == nil || !ok {
+				return fmt.Errorf("Dest chain unknown %d", dc)
 			}
 
-			tc := uint32(txo.TokenType >> 40)
-			if chain == nil || (src != 0 && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, src, dc)) {
+			if chain == nil || !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, src, dc) {
 				return fmt.Errorf("cross chain path does not go thru this chain")
 			}
-			if tc != 0 && tc != b.ChainParams.ChainID && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dc, src, dc) {
-				return fmt.Errorf("invalid cross chain destination")
-			}
+			// tc := uint32(txo.TokenType >> 40)
+			//if tc != 0 && tc != b.ChainParams.ChainID && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dc, src, dc) {
+			//	return fmt.Errorf("invalid cross chain destination")
+			//}
 
-			if tc != 0 && tc != b.ChainParams.ChainID && tc != dc {
-				if src != uint32(tc) && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dc, src, tc) {
-					return fmt.Errorf("Cross chain tx not in propgation path")
+			//if tc != 0 && tc != b.ChainParams.ChainID && tc != dc {
+			//	if src != uint32(tc) && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dc, src, tc) {
+			//		return fmt.Errorf("Cross chain tx not in propgation path")
+			//	}
+			//}
+
+			/* it has been check in TransactionFee
+			path, fees = chainmap.AllChains[b.ChainParams.ChainID].CtxFees(chain, dc)
+			for i, p := range path {
+				r := common.LittleEndian.Uint32(p[21:]) >> 8
+				if t, ok := need[r]; !ok {
+					need[r] = fees[i]
+				} else {
+					need[r] = fees[i] + t
 				}
 			}
-
-			if src != 0 || txo.IsCrossChain() {
-				path, fees = chainmap.AllChains[b.ChainParams.ChainID].CtxFees(chain, dc)
-				for i, p := range path {
-					r := common.LittleEndian.Uint32(p[21:]) >> 8
-					if t, ok := need[r]; !ok {
-						need[r] = fees[i]
-					} else {
-						need[r] = fees[i] + t
-					}
+			if chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dc].Legacy {
+				if t, ok := need[dc]; !ok {
+					need[dc] = b.LegacyXChainFee(dc)
+				} else {
+					need[dc] = t + b.LegacyXChainFee(dc)
 				}
 			}
+			*/
 		}
-		for r, f := range need {
-			if paid[r] < f {
-				return fmt.Errorf("Cross chain tx fee not paid or insufficient")
+		/*
+			for r, f := range need {
+				if m, ok := paid[r]; !ok || m < f {
+					return fmt.Errorf("Cross chain tx fee not paid or insufficient")
+				}
+				delete(paid, r)
 			}
-			delete(paid, r)
+		*/
+		// if len(paid) > 0 {
+		//	return fmt.Errorf("Payment to miner not in cross chain path")
+		//}
+	}
+
+	if b.ChainParams.ChainID != chainmap.ROOT && b.ChainParams.ChainID != chainmap.BOVM && payingMiner[common.ZENTCoinTyp] != 0 {
+		// For ZENT chain, miner pay has been combined into coinbase award
+		// check ZENT in coinbase, which should at the end
+		nminer := make(map[[25]byte]struct{})
+		for _, txo := range block.Transactions()[0].MsgTx().TxOut {
+			if txo.IsSeparator() || txo.TokenType != 0 {
+				break
+			}
+			var h [25]byte
+			copy(h[:], txo.PkScript)
+			nminer[h] = struct{}{}
 		}
-		if len(paid) > 0 {
-			return fmt.Errorf("Payment to miner not in cross chain path")
+		coinbase := block.Transactions()[0].MsgTx()
+		df := payingMiner[common.ZENTCoinTyp] / int64(len(nminer))
+		for i := len(coinbase.TxOut) - len(nminer); i < len(coinbase.TxOut); i++ {
+			if coinbase.TxOut[i].TokenType != common.ZENTCoinTyp {
+				return fmt.Errorf("Missing miner fee award")
+			}
+			if coinbase.TxOut[i].Token.Value.(*token.NumToken).Val > df {
+				return fmt.Errorf("Incorrect miner fee award amount")
+			}
+			var h [25]byte
+			copy(h[:], coinbase.TxOut[i].PkScript)
+			if _, ok := nminer[h]; !ok {
+				return fmt.Errorf("Incorrect miner fee award receipient")
+			}
+			delete(nminer, h)
 		}
 	}
 
@@ -2240,7 +2324,7 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	var unmached string
 
 	for i, tx := range transactions[1:] {
-		if runScripts && !b.IsSVP && !tx.MsgTx().IsBtcL2() && !tx.MsgTx().IsCrossChain() {
+		if runScripts && !b.IsSVP && !tx.MsgTx().IsCrossChain() {
 			err = ovm.VerifySigs(tx, b.ChainParams, 0, views)
 			if err != nil {
 				return err
@@ -2320,9 +2404,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 	}
 
 	totalFees := int64(0)
-	totalbtcFees := int64(0)
-
-	block.Btctxfees = 0
 
 	//	views.Rights = viewpoint.NewRightViewpoint()
 	//	views.Polygon = viewpoint.NewPolygonViewpoint()
@@ -2453,8 +2534,6 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 	}
 
-	block.Btctxfees = totalbtcFees
-
 	if block.Height() == 0 {
 		views.Utxo.SetBestHash(&node.Hash)
 
@@ -2493,12 +2572,13 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 			if txOut.IsSeparator() {
 				break
 			}
-			if txOut.TokenType != 0 {
-				str := fmt.Sprintf("coinbase transaction for block %s awards $d type token", block.Hash().String(),
-					txOut.TokenType)
-				return ruleError(ErrBadCoinbaseValue, str)
-			}
-			if txOut.TokenType == 0 {
+			if txOut.TokenType != common.FeeCoinTyp {
+				if txOut.TokenType != 0 || txOut.Value.(*token.NumToken).Val != 0 {
+					str := fmt.Sprintf("coinbase transaction for block %s awards $d type token", block.Hash().String(),
+						txOut.TokenType)
+					return ruleError(ErrBadCoinbaseValue, str)
+				}
+			} else {
 				totalAward += txOut.Value.(*token.NumToken).Val
 			}
 			//		totalHaoOut += txOut.Value.(*token.NumToken).Val
@@ -2510,6 +2590,11 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		}
 
 		expectedHaoOut := award + totalFees //  + adj
+
+		if m, ok := payMiner[common.ZENTCoinTyp]; ok && common.FeeCoinTyp == common.ZENTCoinTyp {
+			expectedHaoOut += m
+			delete(payMiner, common.ZENTCoinTyp)
+		}
 		if totalAward > expectedHaoOut {
 			var w bytes.Buffer
 			block.Transactions()[0].MsgTx().Serialize(&w)
