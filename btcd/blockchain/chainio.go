@@ -2000,48 +2000,51 @@ func (b *BlockChain) validCrossChainScript(script []byte) bool {
 }
 
 func (b *BlockChain) dbCheckCrossChain(dbTx database.Tx, block *btcutil.Block) error {
-	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
-		for _, tx := range block.MsgBlock().Transactions[1:] {
-			for _, txo := range tx.TxOut {
-				if txo.IsSeparator() {
-					continue
-				}
-				if txo.IsContractCall() {
-					continue
-				}
-				if txo.PkScript[21] != ovm.OP_PAYMINER && txo.PkScript[21] != ovm.OP_PAYCROSSCHAIN {
-					continue
-				}
+	/*
+		if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
+			for _, tx := range block.MsgBlock().Transactions[1:] {
+				for _, txo := range tx.TxOut {
+					if txo.IsSeparator() {
+						continue
+					}
+					if txo.IsContractCall() {
+						continue
+					}
+					if txo.PkScript[21] != ovm.OP_PAYMINER && txo.PkScript[21] != ovm.OP_PAYCROSSCHAIN {
+						continue
+					}
 
-				dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8 // destination of this txo
-				if txo.PkScript[21] == ovm.OP_PAYMINER && dest == 0 {
-					continue
-				}
+					dest := common.LittleEndian.Uint32(txo.PkScript[21:]) >> 8 // destination of this txo
+					if txo.PkScript[21] == ovm.OP_PAYMINER && dest == 0 {
+						continue
+					}
 
-				if !b.validCrossChainScript(txo.PkScript) {
-					return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
-				}
-				if dest == b.ChainParams.ChainID || dest == 0 {
-					continue
-				}
+					if !b.validCrossChainScript(txo.PkScript) {
+						return fmt.Errorf("Invalid cross chain script %v", txo.PkScript)
+					}
+					if dest == b.ChainParams.ChainID || dest == 0 {
+						continue
+					}
 
-				xchainid := b.ChainParams.ChainID
-				if tx.IsCrossChain() {
-					xchainid = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
-				}
+					xchainid := b.ChainParams.ChainID
+					if tx.IsCrossChain() {
+						xchainid = tx.TxIn[0].PreviousOutPoint.Index &^ wire.CrossChainFalg
+					}
 
-				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, xchainid, dest) {
-					// if it will not pass through the main chain, ignore it, otherwise add the tx to main chain
-					continue
-				}
+					if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.MainChainID, xchainid, dest) {
+						// if it will not pass through the main chain, ignore it, otherwise add the tx to main chain
+						continue
+					}
 
-				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.MainChainID, b.ChainParams.ChainID, dest) {
-					// if it will not pass through us from the main chain to dest, ignore it
-					continue
+					if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.MainChainID, b.ChainParams.ChainID, dest) {
+						// if it will not pass through us from the main chain to dest, ignore it
+						continue
+					}
 				}
 			}
-		}
-	} else {
+		} else {
+	*/
+	if !b.IsSVP { // if we are svp, send only the tx whose destination is main chain
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			if !tx.IsCrossChain() {
@@ -2173,7 +2176,7 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 					continue
 				}
 
-				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, ichain.ChainID, dest) {
+				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.MainChainID, ichain.ChainID, dest) {
 					// if it will not pass through the main chain, ignore it, otherwise add the tx to main chain
 					continue
 				}

@@ -67,14 +67,16 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 
 			// asset are on the path towards its birth place and the path goes thru us
 			if origin != 0 && origin != b.ChainParams.ChainID && dest != origin && src != origin {
-				if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dest, src, origin) {
+				if !chainmap.AllChains[b.ChainParams.ChainID].Permission(origin, src, dest) {
 					return fmt.Errorf("Invalid cross chain destination")
 				}
-				if src != b.ChainParams.ChainID && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dest, b.ChainParams.ChainID, origin) {
-					str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", origin,
-						common.LittleEndian.Uint32(txo.PkScript[21:])>>8)
-					return ruleError(ErrBadTxOutValue, str)
-				}
+				/*
+					if src != b.ChainParams.ChainID && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(dest, b.ChainParams.ChainID, origin) {
+						str := fmt.Sprintf("A cross chain tx of foreign type token %d must go back to its origin %d", origin,
+							common.LittleEndian.Uint32(txo.PkScript[21:])>>8)
+						return ruleError(ErrBadTxOutValue, str)
+					}
+				*/
 			}
 
 			if !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.MainChainID, src, dest) {

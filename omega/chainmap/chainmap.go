@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
+	"slices"
 )
 
 // chainmap is a map of blockchains in FOC.
@@ -159,6 +160,47 @@ func (t *ChainDescriptor) FeeAmount() int64 {
 }
 
 var LegacyXChainFee func(chainid uint32, native bool) int64
+
+func (m *FOCMap) findPath(src, dest uint32) []uint32 {
+	path1, path2 := []uint32{}, []uint32{}
+
+	for t := src; t != 0; {
+		path1 = append(path1, t)
+		t = m.ChainMap[t].Parent
+	}
+	for t := dest; t != 0; {
+		path2 = append(path2, t)
+		t = m.ChainMap[t].Parent
+	}
+	mm, n := len(path1)-1, len(path2)-1
+	for mm >= 0 && n >= 0 && path1[mm] == path2[n] {
+		mm--
+		n--
+	}
+	path1 = path1[:mm+2]
+	path2 = path2[:n+1]
+
+	slices.Reverse(path2)
+
+	return append(path1, path2...)
+}
+
+func (m *FOCMap) Permission(asset, src, dest uint32) bool {
+	// whether it is a pemissible cross chain xfer
+	path1 := m.findPath(asset, src)
+	path2 := m.findPath(src, dest)
+
+	if slices.Index(path1, path2[1]) < 0 {
+		return true
+	}
+
+	for i := 1; i < len(path2); i++ {
+		if slices.Index(path1, path2[i]) < 0 {
+			return false
+		}
+	}
+	return true
+}
 
 func (m *FOCMap) PassThru(tid, src, dest uint32) bool {
 	t, ok := m.ChainMap[tid]
