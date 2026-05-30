@@ -198,6 +198,9 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 		if globalParams.MinBorderFee != 0 {
 			prot.activeNetParams.MinBorderFee = globalParams.MinBorderFee
 		}
+		if globalParams.MinCCTXFee != 0 {
+			prot.activeNetParams.MinCCTXFee = globalParams.MinCCTXFee
+		}
 		if globalParams.MinContractDeployFee != 0 {
 			prot.activeNetParams.MinContractDeployFee = globalParams.MinContractDeployFee
 		}
@@ -785,7 +788,10 @@ func main() {
 		chainmap.AllChains[p.activeNetParams.MainChainID].AddChain(&c)
 		btcdLog.Infof("terminate to cause reboot with new map")
 		shutdownRequestChannel <- struct{}{}
-		time.Sleep(10 * time.Minute)
+		chainmap.Close()
+
+		time.Sleep(10 * time.Second)
+		os.Exit(1)
 	}
 
 	for _, c := range chainmap.AllChains[Server.chainParams.MainChainID].ChainMap {
@@ -841,7 +847,6 @@ func main() {
 			if q != nil {
 				cleanup(q)
 			}
-			chainmap.Close()
 			for _, r := range protocols {
 				cleanup(r)
 			}

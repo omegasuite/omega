@@ -38,7 +38,7 @@ const (
 	// orphanTTL is the maximum amount of time an orphan is allowed to
 	// stay in the orphan pool before it expires and is evicted during the
 	// next scan.
-	orphanTTL = time.Minute * 15
+	orphanTTL = time.Minute * 5
 
 	// orphanExpireScanInterval is the minimum amount of time in between
 	// scans of the orphan pool to evict expired transactions.
@@ -193,6 +193,19 @@ var _ mining.TxSource = (*TxPool)(nil)
 
 var zerohash chainhash.Hash
 
+func (mp *TxPool) removeExpired(height int32) {
+	// Nothing to do if passed tx is not an orphan.
+	now := time.Now()
+	for _, otx := range mp.orphans {
+		if otx.tx.MsgTx().Version&0x40 == 0 {
+			continue
+		}
+		if otx.tx.MsgTx().LockTime < uint32(height) || now.After(otx.expiration) {
+			mp.removeOrphan(otx.tx, true)
+		}
+	}
+}
+
 // removeOrphan is the internal function which implements the public
 // RemoveOrphan.  See the comment for RemoveOrphan for more details.
 //
@@ -248,6 +261,12 @@ func (mp *TxPool) removeOrphan(tx *btcutil.Tx, removeRedeemers bool) {
 func (mp *TxPool) RemoveOrphan(tx *btcutil.Tx) {
 	mp.mtx.Lock()
 	mp.removeOrphan(tx, false)
+	mp.mtx.Unlock()
+}
+
+func (mp *TxPool) RemoveExpired(height int32) {
+	mp.mtx.Lock()
+	mp.removeExpired(height)
 	mp.mtx.Unlock()
 }
 

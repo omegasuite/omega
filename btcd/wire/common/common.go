@@ -938,10 +938,10 @@ const (
 // bnStrings is a map of omega networks back to their constant names for
 // pretty printing.
 var bnStrings = map[OmegaNet]string{
-	MainNet: "GctMain",
-	RegNet:  "GctReg",
-	TestNet: "GctTest",
-	SimNet:  "GctSim",
+	MainNet: "NxsMain",
+	RegNet:  "NxsReg",
+	TestNet: "NxsTest",
+	SimNet:  "NxsSim",
 }
 
 // String returns the OmegaNet in human-readable form.

@@ -1705,14 +1705,6 @@ func CheckTransactionFees(tx *btcutil.Tx, storage int64, views *viewpoint.ViewPo
 					}
 					crosschainfees[s] = t - f
 				}
-				if chainmap.AllChains[chainParams.ChainID].ChainMap[dest].Legacy {
-					t := int64(0)
-					if v, ok := crosschainfees[dest]; ok {
-						t = v
-					}
-					f := chainmap.LegacyXChainFee(dest, (txOut.TokenType&0xffffffffff) == 0)
-					crosschainfees[dest] = t - f
-				}
 			}
 		} else if !txOut.IsContractCall() && len(txOut.PkScript) > 21 && txOut.PkScript[21] == ovm.OP_PAYMINER {
 			dest := common.LittleEndian.Uint32(txOut.PkScript[21:]) >> 8

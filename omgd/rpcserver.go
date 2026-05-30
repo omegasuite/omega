@@ -664,7 +664,14 @@ func handleGetXChTxFee(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	c := cmd.(*btcjson.GetXChTxFeeCmd)
 	target := c.Target
 
-	node := chainmap.AllChains[s.cfg.ChainParams.MainChainID].ChainMap[s.cfg.ChainParams.MainChainID]
+	srcnode := chainmap.AllChains[s.cfg.ChainParams.MainChainID].ChainMap[s.cfg.ChainParams.MainChainID]
+	if srcnode == nil {
+		return &btcjson.XChTxFee{
+			Path: nil, // pkscripts containing chain id
+			Fees: nil, // fees
+		}, nil
+	}
+	node := chainmap.AllChains[s.cfg.ChainParams.MainChainID].ChainMap[target]
 	if node == nil {
 		return &btcjson.XChTxFee{
 			Path: nil, // pkscripts containing chain id
@@ -672,7 +679,7 @@ func handleGetXChTxFee(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 		}, nil
 	}
 
-	path, fees := chainmap.AllChains[s.cfg.ChainParams.MainChainID].CtxFees(node, uint32(target))
+	path, fees := chainmap.AllChains[s.cfg.ChainParams.MainChainID].CtxFees(srcnode, uint32(target))
 
 	pks := make([]string, len(path))
 	for i, ss := range path {

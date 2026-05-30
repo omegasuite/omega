@@ -65,6 +65,7 @@ var RootMeta = []*ChainDescriptor{
 
 type FOCMap struct {
 	ChainMap map[uint32]*ChainDescriptor
+	Params   map[uint32]*chaincfg.GlobalParams
 	dmdb     database.DB
 }
 
@@ -135,10 +136,10 @@ func (m *FOCMap) CtxFees(t *ChainDescriptor, dest uint32) (path [][]byte, fees [
 
 	path, fees = make([][]byte, 0), make([]int64, 0)
 	for i := 0; i < len(srctoroot); i++ {
-		if srctoroot[i].Legacy {
-			continue
-		}
-		path, fees = append(path, srctoroot[i].FeeScript()), append(fees, srctoroot[i].FeeAmount())
+		// if srctoroot[i].Legacy {
+		//	continue
+		// }
+		path, fees = append(path, srctoroot[i].FeeScript()), append(fees, int64(m.Params[srctoroot[i].ChainID].MinCCTXFee))
 	}
 	return path, fees
 }
@@ -152,11 +153,6 @@ func (t *ChainDescriptor) FeeScript() []byte {
 	common.LittleEndian.PutUint32(s[22:], t.ChainID)
 	s[21] = 0x44 // ovm.OP_PAYMINER
 	return s[:25]
-}
-
-func (t *ChainDescriptor) FeeAmount() int64 {
-	// for now, flat 100 Satoshi. in the future, it would be chain dependent
-	return CrossChainTxFeePerChain
 }
 
 var LegacyXChainFee func(chainid uint32, native bool) int64
@@ -238,6 +234,7 @@ func LoadChainMap(db database.DB, testnet bool, chainid uint32, legacyXChainFee 
 	m := FOCMap{}
 	m.dmdb = db
 	m.ChainMap = make(map[uint32]*ChainDescriptor)
+	m.Params = make(map[uint32]*chaincfg.GlobalParams)
 
 	AllChains[chainid] = &m
 
@@ -254,17 +251,32 @@ func LoadChainMap(db database.DB, testnet bool, chainid uint32, legacyXChainFee 
 				Legacy:  false,
 				Final:   21,
 			}
-			if !t.Deserialize(cursor.Value()) {
-				break
+			k := common.LittleEndian.Uint32(cursor.Key())
+			v := cursor.Value()
+			if !t.Deserialize(v) {
+				if chainid != ROOT {
+					if tt, ok := AllChains[ROOT].ChainMap[k]; ok {
+						bucket.Put(cursor.Key(), (*wire.ChainDescriptor)(tt).Serialize())
+						*t = *((*wire.ChainDescriptor)(tt))
+					} else {
+						continue
+					}
+				} else {
+					continue
+				}
 			}
 
-			// temp patch to add version field
-			//if wire.TempChainMapVersionFix && !common.Licensed {
-			//	bucket.Put(cursor.Key(), t.Serialize())
-			//}
+			gp := chaincfg.GlobalParams{}
+			json.Unmarshal([]byte(t.GlobalParams), &gp)
+			if gp.MinCCTXFee == 0 && !t.Legacy {
+				gp.MinCCTXFee = CrossChainTxFeePerChain
+				m, _ := json.Marshal(&gp)
+				t.GlobalParams = string(m)
+				bucket.Put(cursor.Key(), t.Serialize())
+			}
 
-			k := common.LittleEndian.Uint32(cursor.Key())
 			m.ChainMap[k] = (*ChainDescriptor)(t)
+			m.Params[k] = &gp
 			s, _ := json.Marshal(t)
 			fmt.Printf("chain data: %s\n", s)
 		}
@@ -386,6 +398,9 @@ func (m *FOCMap) ChgParam(cd *ChainDescriptor) bool {
 	if t.MinBorderFee != 0 {
 		s.MinBorderFee ^= t.MinBorderFee
 	}
+	if t.MinCCTXFee != 0 {
+		s.MinCCTXFee ^= t.MinCCTXFee
+	}
 
 	if len(t.Checkpoints) > 0 {
 		s.Checkpoints = append(s.Checkpoints, t.Checkpoints...)
@@ -493,7 +508,9 @@ func (m *FOCMap) RevertParam(cd *ChainDescriptor) bool {
 	if t.MinBorderFee != 0 {
 		s.MinBorderFee ^= t.MinBorderFee
 	}
-
+	if t.MinCCTXFee != 0 {
+		s.MinCCTXFee ^= t.MinCCTXFee
+	}
 	if len(t.Checkpoints) > 0 {
 		s.Checkpoints = s.Checkpoints[:len(s.Checkpoints)-len(t.Checkpoints)]
 	}
@@ -571,6 +588,9 @@ func (m *FOCMap) AddChain(c *ChainDescriptor) bool {
 	params.CommitteeSize = 3
 	params.CommitteeSigs = 2
 	params.POWRotate = 2
+	if !c.Legacy {
+		params.MinCCTXFee = CrossChainTxFeePerChain
+	}
 
 	err := json.Unmarshal([]byte(c.GlobalParams), params)
 	if err != nil {
@@ -585,6 +605,7 @@ func (m *FOCMap) AddChain(c *ChainDescriptor) bool {
 
 		bucket.Put(cid[:], (*wire.ChainDescriptor)(c).Serialize())
 		m.ChainMap[c.ChainID] = c
+		m.Params[c.ChainID] = params
 
 		return nil
 	})
@@ -643,7 +664,9 @@ func (m *FOCMap) RemoveChain(c uint32) {
 }
 
 func Close() {
-	// m.dmdb.Close()
+	for _, m := range AllChains {
+		m.dmdb.Close()
+	}
 }
 
 func FromLegacy(tx *wire.MsgTx) bool { // whether it is a TX from BTC to L2 xfer

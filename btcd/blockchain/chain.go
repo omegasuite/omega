@@ -2135,6 +2135,10 @@ func (b *BlockChain) connectBestChain(node *chainutil.BlockNode, block *btcutil.
 		best := b.BestSnapshot()
 		mb := b.Miners.NodeByHeight(int32(best.LastRotation))
 
+		if mb == nil {
+			return false, fmt.Errorf("Missing miner block"), false
+		}
+
 		cnl := mb.Data.GetContractExec()
 		if cnl == 0 {
 			cnl = b.ChainParams.ContractExecLimit

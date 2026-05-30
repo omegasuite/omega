@@ -209,6 +209,7 @@ type GlobalParams struct { // The params that must be the same for every node in
 	Checkpoints []Checkpoint
 	// Deployments          []ConsensusDeployment
 	MinBorderFee         int
+	MinCCTXFee           int // Min cross chain miner fee
 	MinContractDeployFee int // Min fee per byte for contract deployment
 	MinRelayTxFee        int64
 	ContractExecFee      int64 // contract execution cost as Haos per 10K steps
@@ -283,6 +284,10 @@ func (param1 *GlobalParams) Diff(param2 *GlobalParams) (bool, *GlobalParams) {
 	}
 	if param1.MinBorderFee != param2.MinBorderFee {
 		changed.MinBorderFee = param1.MinBorderFee
+		hasnew = true
+	}
+	if param1.MinCCTXFee != param2.MinCCTXFee {
+		changed.MinCCTXFee = param1.MinCCTXFee
 		hasnew = true
 	}
 	if param1.MinContractDeployFee != param2.MinContractDeployFee {
@@ -378,6 +383,9 @@ func (t *GlobalParams) Fit(s *GlobalParams) bool {
 		return false
 	}
 	if t.MinBorderFee != 0 && t.MinBorderFee != s.MinBorderFee {
+		return false
+	}
+	if t.MinCCTXFee != 0 && t.MinCCTXFee != s.MinCCTXFee {
 		return false
 	}
 

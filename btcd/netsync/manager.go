@@ -2429,6 +2429,7 @@ func (sm *SyncManager) handleBlockchainNotification(notification *blockchain.Not
 				acceptedTxs := sm.txMemPool.ProcessOrphans(tx)
 				sm.peerNotifier.AnnounceNewTransactions(acceptedTxs)
 			}
+			sm.txMemPool.RemoveExpired(block.Height())
 
 			// Register block with the fee estimator, if it exists.
 			if sm.feeEstimator != nil {

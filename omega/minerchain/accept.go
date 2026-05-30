@@ -328,8 +328,10 @@ func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {
 			if _, ok := chainmap.AllChains[b.chainParams.ChainID]; !ok {
 				return fmt.Errorf("Incorrect op data")
 			}
-			if chainmap.AllChains[b.chainParams.ChainID].ChainMap[ac.ChainID].Magic != ac.Magic {
-				return fmt.Errorf("Incorrect op data")
+			if _, ok := chainmap.AllChains[b.chainParams.ChainID].ChainMap[ac.ChainID]; ok {
+				if chainmap.AllChains[b.chainParams.ChainID].ChainMap[ac.ChainID].Magic != ac.Magic {
+					return fmt.Errorf("Incorrect op data")
+				}
 			}
 			/*
 				if ac.Dns == "" {
