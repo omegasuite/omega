@@ -274,6 +274,11 @@ func LoadChainMap(db database.DB, testnet bool, chainid uint32, legacyXChainFee 
 				t.GlobalParams = string(m)
 				bucket.Put(cursor.Key(), t.Serialize())
 			}
+			if gp.CommitteeSize == 0 {
+				gp.CommitteeSize = 3
+				gp.POWRotate = 2
+				gp.CommitteeSigs = 2
+			}
 
 			m.ChainMap[k] = (*ChainDescriptor)(t)
 			m.Params[k] = &gp
@@ -406,9 +411,10 @@ func (m *FOCMap) ChgParam(cd *ChainDescriptor) bool {
 		s.Checkpoints = append(s.Checkpoints, t.Checkpoints...)
 	}
 
-	ms, _ := json.Marshal(t)
+	ms, _ := json.Marshal(s)
 
 	m.ChainMap[cd.ChainID].GlobalParams = string(ms)
+	m.ChainMap[cd.ChainID].Version += 0x10000
 
 	m.dmdb.Update(func(tx database.Tx) error {
 		bucketname := []byte("ChainMap")

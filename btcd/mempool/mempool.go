@@ -6,7 +6,9 @@
 package mempool
 
 import (
+	"bytes"
 	"container/list"
+	"encoding/hex"
 	"fmt"
 	"github.com/omegasuite/btcd/btcec"
 
@@ -102,6 +104,10 @@ type Config struct {
 	FeeEstimator *FeeEstimator
 }
 
+const NcxContract = "11ebf9cb23f655bcc1c4c9b155ff37952030b38e"
+
+var NcxContractBytes [25]byte
+
 // Policy houses the policy (configuration parameters) which is used to
 // control the mempool.
 type Policy struct {
@@ -173,6 +179,7 @@ type TxPool struct {
 	mtx           sync.RWMutex
 	cfg           Config
 	pool          map[chainhash.Hash]*TxDesc
+	realpool      map[chainhash.Hash]*TxDesc
 	orphans       map[chainhash.Hash]*orphanTx
 	orphansByPrev map[wire.OutPoint]map[chainhash.Hash]*btcutil.Tx
 	outpoints     map[wire.OutPoint]*btcutil.Tx
@@ -197,11 +204,9 @@ func (mp *TxPool) removeExpired(height int32) {
 	// Nothing to do if passed tx is not an orphan.
 	now := time.Now()
 	for _, otx := range mp.orphans {
-		if otx.tx.MsgTx().Version&0x40 == 0 {
-			continue
-		}
-		if otx.tx.MsgTx().LockTime < uint32(height) || now.After(otx.expiration) {
+		if (otx.tx.MsgTx().Version&0x40 != 0 && otx.tx.MsgTx().LockTime < uint32(height)) || now.After(otx.expiration) {
 			mp.removeOrphan(otx.tx, true)
+			delete(mp.realpool, *otx.tx.Hash())
 		}
 	}
 }
@@ -426,7 +431,7 @@ func (mp *TxPool) removeOrphanDoubleSpends(tx *btcutil.Tx) {
 //
 // This function MUST be called with the mempool lock held (for reads).
 func (mp *TxPool) isTransactionInPool(hash *chainhash.Hash) bool {
-	if _, exists := mp.pool[*hash]; exists {
+	if _, exists := mp.realpool[*hash]; exists {
 		return true
 	}
 
@@ -537,6 +542,7 @@ func (mp *TxPool) removeTransaction(tx *btcutil.Tx, removeRedeemers bool) {
 			delete(mp.outpoints, txIn.PreviousOutPoint)
 		}
 		delete(mp.pool, *txHash)
+		delete(mp.realpool, *txHash)
 		atomic.StoreInt64(&mp.lastUpdated, time.Now().Unix())
 	}
 }
@@ -593,6 +599,20 @@ func (mp *TxPool) RemoveDoubleSpends(tx *btcutil.Tx) {
 	mp.mtx.Unlock()
 }
 
+func isNcxOrder(tx *btcutil.Tx) bool {
+	orderCnt := 0
+	for _, txo := range tx.MsgTx().TxOut {
+		if len(txo.PkScript) != 25+8*8+25 {
+			continue
+		}
+		if bytes.Compare(txo.PkScript[:25], NcxContractBytes[:]) != 0 {
+			continue
+		}
+		orderCnt++
+	}
+	return orderCnt == 1
+}
+
 // addTransaction adds the passed transaction to the memory pool.  It should
 // not be called directly as it doesn't perform any validation.  This is a
 // helper for maybeAcceptTransaction.
@@ -609,30 +629,35 @@ func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.
 			Fee:      fee,
 			FeePerKB: fee * 1000 / blockchain.GetTransactionWeight(tx),
 			Tried:    0,
+			Ncx:      isNcxOrder(tx),
 		},
 		StartingPriority: mining.CalcPriority(tx.MsgTx(), utxoView, height),
 	}
 
 	mp.pool[*tx.Hash()] = txD
-	for _, txIn := range tx.MsgTx().TxIn {
-		if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
-			continue
+	if !txD.Ncx {
+		mp.realpool[*tx.Hash()] = txD
+
+		for _, txIn := range tx.MsgTx().TxIn {
+			if txIn.PreviousOutPoint.Hash.IsEqual(&zerohash) {
+				continue
+			}
+			mp.outpoints[txIn.PreviousOutPoint] = tx
 		}
-		mp.outpoints[txIn.PreviousOutPoint] = tx
+
+		// Add unconfirmed address index entries associated with the transaction
+		// if enabled.
+		if mp.cfg.AddrIndex != nil {
+			mp.cfg.AddrIndex.AddUnconfirmedTx(tx, utxoView)
+		}
+
+		// Record this tx for fee estimation if enabled.
+		if mp.cfg.FeeEstimator != nil {
+			mp.cfg.FeeEstimator.ObserveTransaction(txD)
+		}
 	}
+
 	atomic.StoreInt64(&mp.lastUpdated, time.Now().Unix())
-
-	// Add unconfirmed address index entries associated with the transaction
-	// if enabled.
-	if mp.cfg.AddrIndex != nil {
-		mp.cfg.AddrIndex.AddUnconfirmedTx(tx, utxoView)
-	}
-
-	// Record this tx for fee estimation if enabled.
-	if mp.cfg.FeeEstimator != nil {
-		mp.cfg.FeeEstimator.ObserveTransaction(txD)
-	}
-
 	return txD
 }
 
@@ -698,7 +723,7 @@ func (mp *TxPool) fetchInputUtxos(tx *btcutil.Tx) (*viewpoint.ViewPointSet, erro
 			continue
 		}
 
-		if poolTxDesc, exists := mp.pool[prevOut.Hash]; exists {
+		if poolTxDesc, exists := mp.realpool[prevOut.Hash]; exists {
 			// AddTxOut ignores out of range index values, so it is
 			// safe to call without bounds checking here.
 			view.AddTxOut(poolTxDesc.Tx, prevOut.Index, mining.UnminedHeight)
@@ -716,7 +741,7 @@ func (mp *TxPool) fetchInputUtxos(tx *btcutil.Tx) (*viewpoint.ViewPointSet, erro
 func (mp *TxPool) FetchTransaction(txHash *chainhash.Hash) (*btcutil.Tx, error) {
 	// Protect concurrent access.
 	mp.mtx.RLock()
-	txDesc, exists := mp.pool[*txHash]
+	txDesc, exists := mp.realpool[*txHash]
 	mp.mtx.RUnlock()
 
 	if exists {
@@ -1084,8 +1109,7 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	// Add to transaction pool.
 	txD := mp.addTransaction(utxoView, tx, bestHeight, txFee)
 
-	log.Debugf("Accepted transaction %v (pool size: %v)", txHash,
-		len(mp.pool))
+	log.Debugf("Accepted transaction %v (pool size: %v)", txHash, len(mp.pool))
 	return nil, txD, nil
 }
 
@@ -1234,6 +1258,7 @@ func (mp *TxPool) TrimPool() {
 // the passed one being accepted.
 //
 // This function is safe for concurrent access.
+
 func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool, tag Tag, fulllValidate bool) ([]*TxDesc, error) {
 	log.Tracef("Processing transaction %v", tx.Hash())
 
@@ -1294,21 +1319,21 @@ func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool
 // This function is safe for concurrent access.
 func (mp *TxPool) Count() int {
 	mp.mtx.RLock()
-	count := len(mp.pool)
+	count := len(mp.realpool)
 	mp.mtx.RUnlock()
 
 	return count
 }
 
 // TxHashes returns a slice of hashes for all of the transactions in the memory
-// pool.
+// pool. (not including Ncx Orders)
 //
 // This function is safe for concurrent access.
 func (mp *TxPool) TxHashes() []*chainhash.Hash {
 	mp.mtx.RLock()
-	hashes := make([]*chainhash.Hash, len(mp.pool))
+	hashes := make([]*chainhash.Hash, len(mp.realpool))
 	i := 0
-	for hash := range mp.pool {
+	for hash, _ := range mp.realpool {
 		hashCopy := hash
 		hashes[i] = &hashCopy
 		i++
@@ -1324,9 +1349,9 @@ func (mp *TxPool) TxHashes() []*chainhash.Hash {
 // This function is safe for concurrent access.
 func (mp *TxPool) TxDescs() []*TxDesc {
 	mp.mtx.RLock()
-	descs := make([]*TxDesc, len(mp.pool))
+	descs := make([]*TxDesc, len(mp.realpool))
 	i := 0
-	for _, desc := range mp.pool {
+	for _, desc := range mp.realpool {
 		descs[i] = desc
 		i++
 	}
@@ -1342,9 +1367,9 @@ func (mp *TxPool) TxDescs() []*TxDesc {
 // concurrent access as required by the interface contract.
 func (mp *TxPool) MiningDescs() []*mining.TxDesc {
 	mp.mtx.RLock()
-	descs := make([]*mining.TxDesc, len(mp.pool))
+	descs := make([]*mining.TxDesc, len(mp.realpool))
 	i := 0
-	for _, desc := range mp.pool {
+	for _, desc := range mp.realpool {
 		descs[i] = &desc.TxDesc
 		i++
 	}
@@ -1361,11 +1386,10 @@ func (mp *TxPool) RawMempoolVerbose() map[string]*btcjson.GetRawMempoolVerboseRe
 	mp.mtx.RLock()
 	defer mp.mtx.RUnlock()
 
-	result := make(map[string]*btcjson.GetRawMempoolVerboseResult,
-		len(mp.pool))
+	result := make(map[string]*btcjson.GetRawMempoolVerboseResult, len(mp.realpool))
 	bestHeight := mp.cfg.BestHeight()
 
-	for _, desc := range mp.pool {
+	for _, desc := range mp.realpool {
 		// Calculate the current priority based on the inputs to
 		// the transaction.  Use zero if one or more of the
 		// input transactions can't be found for some reason.
@@ -1417,9 +1441,15 @@ func (mp *TxPool) LastUpdated() time.Time {
 func New(cfg *Config) *TxPool {
 	bannedTxs = make(map[chainhash.Hash]struct{})
 
+	NcxContractBytes[0] = 0x88
+	b, _ := hex.DecodeString(NcxContract)
+	copy(NcxContractBytes[1:], b)
+	copy(NcxContractBytes[21:], []byte{0x70, 0xa1, 0x7f, 0xfa})
+
 	return &TxPool{
 		cfg:            *cfg,
 		pool:           make(map[chainhash.Hash]*TxDesc),
+		realpool:       make(map[chainhash.Hash]*TxDesc),
 		orphans:        make(map[chainhash.Hash]*orphanTx),
 		orphansByPrev:  make(map[wire.OutPoint]map[chainhash.Hash]*btcutil.Tx),
 		nextExpireScan: time.Now().Add(orphanExpireScanInterval),

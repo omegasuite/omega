@@ -304,7 +304,7 @@ hit:
 		return (-1) << m
 	}
 
-	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
+	return int64(d - wire.DESIRABLE_MINER_CANDIDATES + 1)
 }
 
 func (b *MinerChain) ValidateOps(block *wire.MinerBlock) error {

@@ -55,6 +55,9 @@ type TxDesc struct {
 
 	// Tried is the number of times the entry was tried to add to a block.
 	Tried uint32
+
+	// NCX: whether the order is an NCX order, therefore is not to be added to a block alone
+	Ncx bool
 }
 
 // TxSource represents a source of transactions to consider for inclusion in

@@ -419,6 +419,7 @@ func (self *Syncer) process(cmd interface{}) bool {
 		self.nmsg[0]++
 		tree := cmd.(*tree)
 		if self.sigGiven >= 0 {
+			log.Infof("already signed a block")
 			return false
 		}
 		if tree.block != nil {
@@ -437,6 +438,7 @@ func (self *Syncer) process(cmd interface{}) bool {
 			len(tree.block.MsgBlock().Transactions[1].TxIn) > 1 &&
 			tree.block.MsgBlock().Transactions[1].TxIn[0].SignatureIndex == 0xFFFFFFFF {
 			log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
+			return false
 		}
 
 		self.handeling = "New tree"
@@ -498,30 +500,33 @@ func (self *Syncer) process(cmd interface{}) bool {
 			log.Infof("MsgKnowledge originated from %d with %v", self.Members[k.Finder], k.K)
 
 			if bytes.Compare(self.forest[k.Finder].hash[:], k.M[:]) != 0 {
-				// reset it
-				self.forest[k.Finder] = &tree{
-					creator: k.Finder,
-					fees:    0,
-					hash:    k.M,
-					block:   nil,
-				}
-				w := self.Members[k.Finder]
-				for i := 0; i < int(miner.cfg.GlobalParams.CommitteeSize); i++ {
-					self.knowledges.Knowledge[w][i] = 0
-					self.knowledges.Knowledge[i][w] = 0
-					for j := 0; j < int(miner.cfg.GlobalParams.CommitteeSize); j++ {
-						self.knowledges.Knowledge[i][j] &= ^(1 << w)
+				log.Infof("MsgKnowledge rejected for mismatch of M")
+				return false
+				/*
+					self.forest[k.Finder] = &tree{
+						creator: k.Finder,
+						fees:    0,
+						hash:    k.M,
+						block:   nil,
 					}
-				}
-				if self.agreed == w {
-					self.agreed = -1
-					self.sigGiven = -1
-					self.agrees = make(map[int32]struct{})
-					self.signed = make(map[[20]byte]struct{})
-				}
-				miner.syncMutex.Lock()
-				pull(k.M, self.Height, nil)
-				miner.syncMutex.Unlock()
+					w := self.Members[k.Finder]
+					for i := 0; i < int(miner.cfg.GlobalParams.CommitteeSize); i++ {
+						self.knowledges.Knowledge[w][i] = 0
+						self.knowledges.Knowledge[i][w] = 0
+						for j := 0; j < int(miner.cfg.GlobalParams.CommitteeSize); j++ {
+							self.knowledges.Knowledge[i][j] &= ^(1 << w)
+						}
+					}
+					if self.agreed == w {
+						self.agreed = -1
+						self.sigGiven = -1
+						self.agrees = make(map[int32]struct{})
+						self.signed = make(map[[20]byte]struct{})
+					}
+					miner.syncMutex.Lock()
+					pull(k.M, self.Height, nil)
+					miner.syncMutex.Unlock()
+				*/
 			}
 
 			if self.forest[k.Finder].know == nil || len(k.K) > len(self.forest[k.Finder].know.K) {
@@ -1567,6 +1572,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 			if eq < 0 {
 				eq = txo.Value.(*token.NumToken).Val
 			} else if eq != txo.Value.(*token.NumToken).Val {
+				log.Errorf("block rejected for uneven distribution of award at %s", block.Hash())
 				return
 			}
 			fees += eq
@@ -1589,6 +1595,7 @@ func (self *Syncer) BlockInit(block *btcutil.Block) {
 		if len(self.commands) > (miner.cfg.GlobalParams.CommitteeSize-1)*10 {
 			<-self.commands
 		}
+		log.Infof("send tree for processing %s", block.Hash())
 		self.commands <- &tree{
 			creator: adr,
 			fees:    uint64(fees),

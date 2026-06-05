@@ -229,7 +229,7 @@ func (m *CPUMiner) factorPOW(prevh int32, best chainhash.Hash) int64 { // *big.I
 		return (-1) << m
 	}
 
-	return int64(1) << (d - wire.DESIRABLE_MINER_CANDIDATES)
+	return int64(d - wire.DESIRABLE_MINER_CANDIDATES + 1)
 }
 
 // solveBlock attempts to find some combination of a nonce, extra nonce, and

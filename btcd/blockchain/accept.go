@@ -121,7 +121,8 @@ func (b *BlockChain) CheckCrossChainTx(tx *wire.MsgTx) error {
 		}
 		if f, ok := minerFees[dest]; ok {
 			minerFees[dest] = f - txo.Token.Value.(*token.NumToken).Val
-		} else {
+		} else if !chainmap.AllChains[b.ChainParams.ChainID].ChainMap[dest].Legacy {
+			// a loophole for escaping sag fees
 			return fmt.Errorf("incorrect cross chain tx fee destination")
 		}
 	}

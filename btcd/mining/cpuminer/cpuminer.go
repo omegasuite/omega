@@ -494,8 +494,9 @@ out:
 		// Wait until there is a connection to at least one other peer
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
-		if ccnt := m.cfg.ConnectedCount(0); ccnt < 1 {
-			//			log.Infof("Sleep 5 sec because there is not enough inbound connected peers.")
+		ccnt := m.cfg.ConnectedCount(0)
+		if ccnt < 1 {
+			log.Infof("Sleep 5 sec because there is not enough inbound connected peers.")
 			m.Stale = true
 			time.Sleep(time.Second * 5)
 			m.generating = false
@@ -515,12 +516,10 @@ out:
 		// a block that is in the process of becoming stale.
 
 		isCurrent := m.cfg.IsCurrent()
-		//		log.Infof("isCurrent = %v.", isCurrent)
 
 		bs := m.g.BestSnapshot()
 		curHeight := bs.Height
 		//		log.Infof("curHeight = %d.", curHeight)
-
 		if curHeight != 0 && !isCurrent {
 			m.Stale = true
 			log.Infof("generateBlocks: sleep on curHeight != 0 && !isCurrent @ height %d", curHeight)
@@ -564,9 +563,19 @@ out:
 			powMode = true
 		}
 
-		if powMode && m.cfg.DisablePOWMining {
-			time.Sleep(5 * time.Second)
-			continue
+		if powMode {
+			if m.cfg.DisablePOWMining {
+				continue
+			}
+
+			// power saving. we wait for 30 sec. before hashing.
+			// if a new block is received, we won't do hashing at this height
+			select {
+			case <-time.After(90 * time.Second):
+
+			case <-m.connch:
+				continue
+			}
 		}
 
 		m.generating = !powMode
@@ -625,7 +634,7 @@ out:
 				}
 			}
 		} else {
-			if bs.LastRotation+uint32(m.cfg.ChainParams.POWRotate)+20 > uint32(m.g.Chain.Miners.BestSnapshot().Height) {
+			if ccnt < 3 || bs.LastRotation+uint32(m.cfg.ChainParams.POWRotate)+20 > uint32(m.g.Chain.Miners.BestSnapshot().Height) {
 				time.Sleep(5 * time.Second)
 				continue
 			}
@@ -781,25 +790,27 @@ out:
 		//	continue
 		//}
 
-		if time.Now().Unix()-lastblkrcv < 2*wire.TimeGap || nopow || int32(bs.LastRotation) >= mh+int32(m.cfg.ChainParams.CommitteeSigs) { // m.cfg.ChainParams.Net == common.TestNet ||
+		if nopow || int32(bs.LastRotation) >= mh+int32(m.cfg.ChainParams.CommitteeSigs) { // m.cfg.ChainParams.Net == common.TestNet ||
 			time.Sleep(time.Second * wire.TimeGap)
 			continue
 		}
 
-		select {
-		case <-time.After(powwait):
+		/*
+			select {
+			case <-time.After(powwait):
 
-		case <-m.connch:
-			powwait = 20 * time.Second
-			continue
-		case <-consensus.POWStopper:
-			powwait = 20 * time.Second
-			continue
-		case <-m.quit:
-			break out
-		}
+			case <-m.connch:
+				powwait = 20 * time.Second
+				continue
+			case <-consensus.POWStopper:
+				powwait = 20 * time.Second
+				continue
+			case <-m.quit:
+				break out
+			}
 
-		log.Info("Try to solve block after %d second w/o new block", powwait)
+			log.Info("Try to solve block after %d second w/o new block", powwait)
+		*/
 
 		// Attempt to solve the block.  The function will exit early
 		// with false when conditions that trigger a stale block, so
@@ -822,6 +833,10 @@ out:
 				break out
 
 			default:
+				if time.Now().Unix()-lastblkrcv < 3*wire.TimeGap {
+					continue
+				}
+				lastblkrcv = time.Now().Unix()
 				powwait *= 2
 				wb := *template.Block.(*wire.MsgBlock)
 				wb.Header.Nonce = b

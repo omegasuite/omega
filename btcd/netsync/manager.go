@@ -2284,13 +2284,13 @@ out:
 					for peer, _ := range sm.peerStates {
 						if sm.chain.Miners != nil {
 							mstate := sm.chain.Miners.BestSnapshot()
-							if peer.LastHighMinerBlock() > mstate.Height+5 {
+							if peer.LastHighMinerBlock() > mstate.Height+5 && time.Now().After(mstate.MedianTime.Add(2*time.Hour)) {
 								untop = true
 								break
 							}
 						}
 						state := sm.chain.BestSnapshot()
-						if peer.LastHighBlock() > state.Height+20 {
+						if peer.LastHighBlock() > state.Height+20 && time.Now().After(state.MedianTime.Add(2*time.Hour)) {
 							untop = true
 							break
 						}

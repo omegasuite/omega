@@ -83,14 +83,17 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 	}
 
 	globalParams := &chaincfg.GlobalParams{}
-	globalParams.CommitteeSize = 3
-	globalParams.CommitteeSigs = 2
-	globalParams.POWRotate = 2
 
 	if cd == nil {
 		globalParams = nil
 	} else {
 		json.Unmarshal([]byte(cd.GlobalParams), globalParams)
+
+		if globalParams.CommitteeSize == 0 {
+			globalParams.CommitteeSize = 3
+			globalParams.CommitteeSigs = 2
+			globalParams.POWRotate = 2
+		}
 	}
 
 	cid := activeNetParams.ChainID // uint32(chaincfg.DefaultChainID)
@@ -803,12 +806,15 @@ func main() {
 		}
 		time.Sleep(1 * time.Second)
 		dparams := &chaincfg.GlobalParams{}
-		dparams.CommitteeSize = 3
-		dparams.CommitteeSigs = 2
-		dparams.POWRotate = 2
 
 		if err := json.Unmarshal([]byte(c.GlobalParams), dparams); err != nil {
 			os.Exit(1)
+		}
+
+		if dparams.CommitteeSize == 0 {
+			dparams.CommitteeSize = 3
+			dparams.CommitteeSigs = 2
+			dparams.POWRotate = 2
 		}
 
 		svpid := fmt.Sprintf("%x", uint32(dparams.Net))

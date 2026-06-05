@@ -106,6 +106,10 @@ func ProcessBlock(block *btcutil.Block, flags blockchain.BehaviorFlags) {
 		return
 	}
 
+	if miner.server != nil && miner.server.BestSnapshot().Height+1 != block.Height() {
+		return
+	}
+
 	flags |= blockchain.BFNoConnect
 	log.Infof("Consensus.ProcessBlock for block %s at %d, flags=%x", block.Hash().String(), block.Height(), flags)
 
@@ -302,6 +306,10 @@ out:
 				continue
 			}
 
+			if miner.server.BestSnapshot().Height+1 != bh {
+				continue
+			}
+
 			miner.syncMutex.Lock()
 			snr, ok := miner.Sync[bh]
 			if !ok {
@@ -312,20 +320,20 @@ out:
 			log.Infof(" BlockInit at %d for block %s", bh, blk.block.Hash().String())
 			miner.syncMutex.Unlock()
 			/*
-			if POWStopper != nil {
-				if len(POWStopper) < int(miner.cfg.GlobalParams.CommitteeSize) {
-					select {
-					case _, ok = <-POWStopper:
-						if ok {
+				if POWStopper != nil {
+					if len(POWStopper) < int(miner.cfg.GlobalParams.CommitteeSize) {
+						select {
+						case _, ok = <-POWStopper:
+							if ok {
+								POWStopper <- struct{}{}
+							}
+						default:
 							POWStopper <- struct{}{}
 						}
-					default:
-						POWStopper <- struct{}{}
+					} else {
+						log.Infof("len(POWStopper) = %d", len(POWStopper))
 					}
-				} else {
-					log.Infof("len(POWStopper) = %d", len(POWStopper))
 				}
-			}
 			*/
 			snr.BlockInit(blk.block)
 
@@ -430,6 +438,10 @@ func HandleMessage(p ReqQueue, m Message) (bool, *chainhash.Hash) {
 	s, ok := miner.Sync[h]
 
 	if !ok {
+		if miner.server.BestSnapshot().Height+1 != h {
+			miner.syncMutex.Unlock()
+			return false, nil
+		}
 		miner.Sync[h] = CreateSyncer(h)
 		s = miner.Sync[h]
 	} else if s.Done {
