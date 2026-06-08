@@ -15,6 +15,7 @@ import (
 type MsgFinalized struct {
 	ChainId uint32 // id of the chain
 	Block   chainhash.Hash
+	Height  uint32
 }
 
 type MsgReFinal struct {
@@ -33,7 +34,12 @@ func (msg *MsgFinalized) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding
 		return err
 	}
 
-	return common.ReadElement(r, &msg.Block)
+	err = common.ReadElement(r, &msg.Block)
+	if err != nil {
+		return err
+	}
+
+	return common.ReadElement(r, &msg.Height)
 }
 
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
@@ -46,7 +52,12 @@ func (msg *MsgFinalized) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding
 		return err
 	}
 
-	return common.WriteElement(w, msg.Block)
+	err = common.WriteElement(w, msg.Block)
+	if err != nil {
+		return err
+	}
+
+	return common.WriteElement(w, msg.Height)
 }
 
 // Command returns the protocol command string for the message.  This is part
@@ -65,10 +76,11 @@ func (msg *MsgFinalized) MaxPayloadLength(pver uint32) uint32 {
 
 // NewMsgAlert returns a new bitcoin alert message that conforms to the Message
 // interface.  See MsgAlert for details.
-func NewMsgFinalized(chain uint32, tx chainhash.Hash) *MsgFinalized {
+func NewMsgFinalized(chain uint32, tx chainhash.Hash, height uint32) *MsgFinalized {
 	return &MsgFinalized{
 		ChainId: chain,
 		Block:   tx,
+		Height:  height,
 	}
 }
 

@@ -2061,14 +2061,20 @@ func (sm *SyncManager) CachedBlock(h chainhash.Hash) *btcutil.Block {
 }
 
 func (sm *SyncManager) Broadcast(m wire.Message, ps *string) {
-	sm.broadcast(nil, m, ps, false)
+	sm.broadcast(nil, m, ps, false, nil)
+}
+
+func (sm *SyncManager) Abovecast(m wire.Message, height uint32) {
+	sm.broadcast(nil, m, nil, false, func(p *peerpkg.Peer) bool {
+		return p.LastHighBlock() >= int32(height)
+	})
 }
 
 func (sm *SyncManager) Randcast(m wire.Message, ps *string) {
-	sm.broadcast(nil, m, ps, true)
+	sm.broadcast(nil, m, ps, true, nil)
 }
 
-func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string, random bool) {
+func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string, random bool, picker func(p *peerpkg.Peer) bool) {
 	var h chainhash.Hash
 	var w bytes.Buffer
 
@@ -2093,6 +2099,9 @@ func (sm *SyncManager) broadcast(p *peerpkg.Peer, m wire.Message, ps *string, ra
 		sm.castedMsg[h] = now
 		for peer, _ := range sm.peerStates {
 			if random && i != n && !f {
+				continue
+			}
+			if picker != nil && !picker(peer) {
 				continue
 			}
 			i++
@@ -2177,7 +2186,7 @@ out:
 						msg.hash,
 						msg.signatures,
 					}
-					sm.broadcast(msg.peer, &b, nil, false)
+					sm.broadcast(msg.peer, &b, nil, false, nil)
 				} else if msg.reply != nil {
 					msg.reply <- struct{}{}
 				}

@@ -103,9 +103,9 @@ func (m *FOCMap) CtxFees(t *ChainDescriptor, dest uint32) (path [][]byte, fees [
 		return nil, nil
 	}
 	desttoroot := make([]*ChainDescriptor, 0)
-	if !d.Legacy {
+	//if !d.Legacy {
 		desttoroot = append(desttoroot, d)
-	}
+	//}
 	for d.Parent != 0 {
 		d, _ = m.ChainMap[d.Parent]
 		desttoroot = append(desttoroot, d)

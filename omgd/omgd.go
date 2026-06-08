@@ -919,7 +919,11 @@ func checkfinal() {
 							*/
 						} else {
 							if chain.PassThru(p.Server.chainParams.ChainID, protocols[0].Server.chainParams.MainChainID, xdata.ChainID) {
-								p.Server.Randcast(wire.NewMsgFinalized(xdata.ChainID, xdata.Hash), nil)
+								if p.Server.chainParams.ChainID == xdata.ChainID {
+									p.Server.Abovecast(wire.NewMsgFinalized(xdata.ChainID, xdata.Hash, uint32(xdata.Height)), uint32(xdata.Height))
+								} else {
+									p.Server.Randcast(wire.NewMsgFinalized(xdata.ChainID, xdata.Hash, uint32(xdata.Height)), nil)
+								}
 							}
 						}
 					}

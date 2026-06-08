@@ -1342,7 +1342,11 @@ func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
 					ChainId: msg.ChainId,
 					Block:   msg.Block,
 				}] = sp
-				p.Server.Randcast(msg, nil)
+				if p.Server.chainParams.ChainID == msg.ChainId {
+					p.Server.Abovecast(msg, msg.Height)
+				} else {
+					p.Server.Randcast(msg, nil)
+				}
 				return
 			}
 		}
@@ -1368,7 +1372,7 @@ func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
 			reply.ETA = -1
 		}
 	} else {
-		reply.ETA = (block.Height() + 60 - state.Height) * 4
+		reply.ETA = (block.Height() - state.Height) * 4
 	}
 
 	// Push the result.
@@ -2587,6 +2591,10 @@ func (s *server) outboundPeerConnected(c *connmgr.ConnReq, conn net.Conn) {
 
 func (s *server) Broadcast(m wire.Message, ps *string) {
 	s.syncManager.Broadcast(m, ps)
+}
+
+func (s *server) Abovecast(m wire.Message, height uint32) {
+	s.syncManager.Abovecast(m, height)
 }
 
 func (s *server) Randcast(m wire.Message, ps *string) {

@@ -1695,6 +1695,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 		newBest.Hash, newBest.Height)
 
 	if terminate {
+		log.Infof("Request termination in REORGANIZE")
 		terminator <- struct{}{}
 		time.Sleep(time.Minute)
 	}
@@ -1966,11 +1967,13 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) bool {
 						chainmap.AllChains[b.ChainParams.ChainID].AddDns(cd)
 						if b.ChainParams.ParentChainId == cd.ChainID ||
 							cd.Parent == b.ChainParams.ChainID {
+							log.Infof("wire.ChgParam cause terminating. chain=%d", cd.ChainID)
 							terminating = true
 						}
 					} else if cd.Version >= 0x20000 {
 						if chainmap.AllChains[b.ChainParams.ChainID].ChgParam(cd) && (b.ChainParams.ParentChainId == cd.ChainID ||
 							cd.Parent == b.ChainParams.ChainID) {
+							log.Infof("wire.ChgParam cause terminating. chain=%d", cd.ChainID)
 							terminating = true
 						}
 					}
@@ -1979,6 +1982,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) bool {
 					if chainmap.AllChains[b.ChainParams.ChainID].AddChain(cd) {
 						if b.ChainParams.ParentChainId == cd.ChainID ||
 							cd.Parent == b.ChainParams.ChainID {
+							log.Infof("wire.AddChain cause terminating. chain=%d", cd.ChainID)
 							terminating = true
 						}
 					}
