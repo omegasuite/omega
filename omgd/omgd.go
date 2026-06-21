@@ -272,6 +272,7 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 	prot.activeNetParams.SigVeriConcurrency = tcfg.Concurrency
 
 	prot.activeNetParams.AddChain = nil
+	prot.activeNetParams.ChgParams = nil
 	if tcfg.AddChain != "" && !prot.IsSvp {
 		nc := &chainmap.ChainDescriptor{
 			Version: 0x10000,
@@ -284,6 +285,15 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 			return nil, false
 		}
 		prot.activeNetParams.AddChain = nc
+	}
+	if tcfg.ChgParams != "" && !prot.IsSvp {
+		nc := &chainmap.ChainDescriptor{}
+		err := json.Unmarshal([]byte(tcfg.ChgParams), nc)
+		if err != nil {
+			btcdLog.Errorf("Unable to parse AddChain commanf %s", tcfg.ChgParams)
+			return nil, false
+		}
+		prot.activeNetParams.ChgParams = nc
 	}
 
 	// Create server and start it.
@@ -331,7 +341,8 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 				continue
 			}
 			for t, amt := range bal {
-				fmt.Printf("%s, %x => %f\n", address.EncodeAddress(), t, float64(amt)/1e8)
+				at := address.EncodeAddress()
+				fmt.Printf("%s, %x => %f\n", at, t, float64(amt)/1e8)
 			}
 		}
 		fmt.Printf("Total %d addresses\n", len(accounts))
@@ -902,7 +913,7 @@ func checkfinal() {
 				cursor := bucket.Cursor()
 				for ok := cursor.First(); ok; ok = cursor.Next() {
 					xdata := wire.XchainData{}
-					if err := xdata.DeSerialize(cursor.Value()); err != nil || xdata.Finalized != 0 {
+					if err := xdata.DeSerialize(cursor.Value()); err != nil {
 						continue
 					}
 					for _, p := range protocols[1:] {
@@ -911,7 +922,7 @@ func checkfinal() {
 								switch xdata.ChainID {
 								case common.BTCCHAINID:
 									if btcHeight >= xdata.Height+7 {
-										xdata.Finalized = -int32(time.Now().Unix() + 120)
+									xdata.Finalized = -int32(1)
 										bucket.Put(cursor.Key(), xdata.Serialize())
 										break
 									}

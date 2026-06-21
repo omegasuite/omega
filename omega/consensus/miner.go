@@ -516,6 +516,11 @@ func VerifySig(m Message) bool {
 		tmsg.Signatures = make([][]byte, 0)
 		copy(tmsg.From[:], tmsg.Finder[:])
 
+		if len(m.(*wire.MsgKnowledge).Signatures) != len(m.(*wire.MsgKnowledge).K) {
+			log.Infof("VerifySig VerifySigScript fail. msg = %x\n", m)
+			return false
+		}
+
 		for j, i := range m.(*wire.MsgKnowledge).K {
 			sig := m.(*wire.MsgKnowledge).Signatures[j]
 

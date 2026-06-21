@@ -6,7 +6,6 @@
 package wire
 
 import (
-	"fmt"
 	"io"
 )
 
@@ -24,28 +23,12 @@ type MsgPong struct {
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgPong) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
-	// NOTE: <= is not a mistake here.  The BIP0031 was defined as AFTER
-	// the version unlike most others.
-	if pver <= BIP0031Version {
-		str := fmt.Sprintf("pong message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgPong.OmcDecode", str)
-	}
-
 	return readElement(r, &msg.Nonce)
 }
 
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg *MsgPong) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
-	// NOTE: <= is not a mistake here.  The BIP0031 was defined as AFTER
-	// the version unlike most others.
-	if pver <= BIP0031Version {
-		str := fmt.Sprintf("pong message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgPong.OmcEncode", str)
-	}
-
 	return writeElement(w, msg.Nonce)
 }
 
@@ -58,14 +41,7 @@ func (msg *MsgPong) Command() string {
 // MaxPayloadLength returns the maximum length the payload can be for the
 // receiver.  This is part of the Message interface implementation.
 func (msg *MsgPong) MaxPayloadLength(pver uint32) uint32 {
-	plen := uint32(0)
-	// The pong message did not exist for BIP0031Version and earlier.
-	// NOTE: > is not a mistake here.  The BIP0031 was defined as AFTER
-	// the version unlike most others.
-	if pver > BIP0031Version {
-		// Nonce 8 bytes.
-		plen += 8
-	}
+	plen := uint32(8)
 
 	return plen
 }

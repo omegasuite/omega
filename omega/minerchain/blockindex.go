@@ -19,7 +19,7 @@ type blockchainNodeData struct {
 	block *wire.MingingRightBlock
 }
 
-func (d *blockchainNodeData) GetContractExec() uint32 {
+func (d *blockchainNodeData) GetContractExec() int32 {
 	return d.block.ContractLimit
 }
 

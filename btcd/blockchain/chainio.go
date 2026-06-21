@@ -991,6 +991,10 @@ func (b *BlockChain) ShowL2DB(clearAssets int) {
 
 func (b *BlockChain) GetAccounts() map[[21]byte]map[uint64]uint64 {
 	accounts := make(map[[21]byte]map[uint64]uint64)
+	if b.ChainParams.ChainID != b.ChainParams.MainChainID && b.ChainParams.MainChainID != 0 {
+		return accounts
+	}
+
 	b.db.View(func(dbTx database.Tx) error {
 		utxoSetBucketName := []byte("utxosetv2")
 		utxoBucket := dbTx.Metadata().Bucket(utxoSetBucketName)
@@ -1004,8 +1008,12 @@ func (b *BlockChain) GetAccounts() map[[21]byte]map[uint64]uint64 {
 
 			pks := entry.PkScript()
 
+			if entry.TokenType != 0 && entry.TokenType != 0x10000000000 {
+				continue
+			}
+
 			var addr [21]byte
-			copy(addr[:], pks[:])
+			copy(addr[:], pks)
 
 			_, v := entry.Amount.Value()
 			if _, ok := accounts[addr]; ok {
@@ -1369,10 +1377,10 @@ type blockchainNodeData struct {
 	Nonce        int32
 	Timestamp    int64
 	MerkleRoot   chainhash.Hash
-	ContractExec uint32
+	ContractExec int32
 }
 
-func (d *blockchainNodeData) GetContractExec() uint32 {
+func (d *blockchainNodeData) GetContractExec() int32 {
 	return d.ContractExec
 }
 
@@ -2358,17 +2366,19 @@ func (b *BlockChain) dbPutCrossChain(dbTx database.Tx, block *btcutil.Block) {
 func (b *BlockChain) dbRestoreCrossChain(dbTx database.Tx, block *btcutil.Block) error {
 	if b.IsSVP { // if we are svp, send only the tx whose destination is main chain
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
-		for _, tx := range block.MsgBlock().Transactions[1:] {
-			var k [36]byte
-			if tx.IsCrossChain() {
-				copy(k[:], tx.TxIn[0].PreviousOutPoint.Hash[:])
-				common.LittleEndian.PutUint32(k[32:], uint32(tx.TxIn[0].PreviousOutPoint.Index))
-			} else {
-				copy(k[:], (*block.Hash())[:])
-				common.LittleEndian.PutUint32(k[32:], uint32(b.ChainParams.ChainID|wire.CrossChainFalg))
-			}
 
-			bucket.Delete(k[:])
+		key := wire.OutPoint{
+			Hash:  *block.Hash(),
+			Index: b.ChainParams.ChainID | wire.CrossChainFalg,
+		}
+		k := key.ToBytes()
+		bucket.Delete(k)
+
+		for _, tx := range block.MsgBlock().Transactions[1:] {
+			if tx.IsCrossChain() {
+				k := tx.TxIn[0].PreviousOutPoint.ToBytes()
+				bucket.Delete(k)
+			}
 		}
 	} else {
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
@@ -2392,6 +2402,12 @@ func (b *BlockChain) dbRestoreCrossChain(dbTx database.Tx, block *btcutil.Block)
 				//if xchain.Txs[0].Txo.PkScript[21] != 0x66 {
 				//	fmt.Printf("bad XchainData")
 				//}
+
+				if chainmap.AllChains[b.ChainParams.ChainID].ChainMap[xchain.ChainID].Legacy {
+					xchain.Finalized = -(chainmap.AllChains[b.ChainParams.ChainID].ChainMap[xchain.ChainID].Final + 1)
+				} else {
+					xchain.Finalized = 0
+				}
 
 				var key [36]byte
 				copy(key[:], xchain.Hash[:])

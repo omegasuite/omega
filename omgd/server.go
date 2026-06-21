@@ -81,7 +81,7 @@ const (
 var (
 	// userAgentName is the user agent name and is used to help identify
 	// ourselves to other bitcoin peers.
-	userAgentName = "omgd"
+	userAgentName = "zent"
 
 	// userAgentVersion is the user agent version and is used to help
 	// identify ourselves to other bitcoin peers.
@@ -625,8 +625,7 @@ func (sp *serverPeer) OnVersion(_ *peer.Peer, msg *wire.MsgVersion) *wire.MsgRej
 		// Request known addresses if the server address manager needs
 		// more and the peer has a protocol version new enough to
 		// include a timestamp with addresses.
-		hasTimestamp := sp.ProtocolVersion() >= wire.NetAddressTimeVersion
-		if addrManager.NeedMoreAddresses() && hasTimestamp {
+		if addrManager.NeedMoreAddresses() {
 			sp.QueueMessage(wire.NewMsgGetAddr(), nil)
 		}
 
@@ -1268,11 +1267,6 @@ func (sp *serverPeer) OnAddr(_ *peer.Peer, msg *wire.MsgAddr) {
 		return
 	}
 
-	// Ignore old style addresses which don't include a timestamp.
-	if sp.ProtocolVersion() < wire.NetAddressTimeVersion {
-		return
-	}
-
 	// A message that has no addresses is invalid.
 	if len(msg.AddrList) == 0 {
 		peerLog.Errorf("Command [%s] from %s does not contain any addresses",
@@ -1327,6 +1321,7 @@ type finalsrc struct {
 var finrequestes map[finalsrc]*serverPeer
 
 func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
+	// we are asked whether a cross chain tx is finalized in the source chain
 	if finrequestes == nil {
 		finrequestes = make(map[finalsrc]*serverPeer)
 	}
@@ -1353,6 +1348,7 @@ func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
 		return
 	}
 
+	// we are the source chain
 	reply := &wire.MsgReFinal{
 		ChainId: msg.ChainId,
 		Block:   msg.Block,
@@ -1367,11 +1363,12 @@ func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
 
 	if state.Height-threshold > block.Height() {
 		if sp.server.chain.InBestChain(&msg.Block) {
-			reply.ETA = 0
+			reply.ETA = -(0x40000000 + state.Height - threshold - block.Height())
 		} else {
 			reply.ETA = -1
 		}
 	} else {
+		// estimated time to reach final
 		reply.ETA = (block.Height() - state.Height) * 4
 	}
 
@@ -1380,6 +1377,7 @@ func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
 }
 
 func (sp *serverPeer) OnFinal(_ *peer.Peer, msg *wire.MsgReFinal) {
+	// we got a message telling wther a tx is finalized in source of cross chain xfer
 	if msg.ETA > 0 {
 		return
 	}
@@ -1409,18 +1407,20 @@ func (sp *serverPeer) OnFinal(_ *peer.Peer, msg *wire.MsgReFinal) {
 			return nil
 		}
 
-		if err := xdata.DeSerialize(d); err != nil || xdata.Finalized != 0 {
+		if err := xdata.DeSerialize(d); err != nil {
 			return nil
 		}
 		//if xdata.Txs[0].Txo.PkScript[21] != 0x66 {
 		//	fmt.Printf("bad XchainData")
 		//}
 
-		if msg.ETA == 0 {
-			xdata.Finalized = -int32(time.Now().Unix() + 120)
-			bucket.Put(k[:], xdata.Serialize())
+		if msg.ETA < -1 {
+			if xdata.Finalized > msg.ETA+0x40000000 {
+				xdata.Finalized = msg.ETA + 0x40000000
+				bucket.Put(k[:], xdata.Serialize())
+			}
 		} else {
-			bucket.Delete(k[:])
+			// bucket.Delete(k[:])
 		}
 
 		return nil
@@ -3255,6 +3255,9 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 	if prot.cfg.NoPeerBloomFilters {
 		services &^= common.SFNodeBloom
 	}
+	if prot.IsSvp {
+		services |= common.SFSPV
+	}
 
 	wrapbtcdLookup := func(host string) ([]net.IP, error) {
 		return btcdLookup(host, prot.cfg)
@@ -3696,6 +3699,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 				ProcessBlock:   s.syncManager.ProcessBlock,
 				ConnectedCount: s.ConnectedCount,
 				IsCurrent:      s.syncManager.IsCurrent,
+				AtTop:          s.syncManager.AtTop,
 				Generate:       prot.cfg.Generate,
 			})
 

@@ -33,12 +33,6 @@ func (msg *MsgSendHeaders) OmcDecode(r io.Reader, pver uint32, enc MessageEncodi
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg *MsgSendHeaders) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
-	if pver < SendHeadersVersion {
-		str := fmt.Sprintf("sendheaders message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgSendHeaders.OmcEncode", str)
-	}
-
 	return nil
 }
 

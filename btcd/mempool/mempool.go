@@ -741,7 +741,7 @@ func (mp *TxPool) fetchInputUtxos(tx *btcutil.Tx) (*viewpoint.ViewPointSet, erro
 func (mp *TxPool) FetchTransaction(txHash *chainhash.Hash) (*btcutil.Tx, error) {
 	// Protect concurrent access.
 	mp.mtx.RLock()
-	txDesc, exists := mp.realpool[*txHash]
+	txDesc, exists := mp.pool[*txHash]
 	mp.mtx.RUnlock()
 
 	if exists {
@@ -1259,7 +1259,7 @@ func (mp *TxPool) TrimPool() {
 //
 // This function is safe for concurrent access.
 
-func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool, tag Tag, fulllValidate bool) ([]*TxDesc, error) {
+func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool, tag Tag, fulllValidate bool) ([]*TxDesc, bool, error) {
 	log.Tracef("Processing transaction %v", tx.Hash())
 
 	// Protect concurrent access.
@@ -1270,7 +1270,11 @@ func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool
 	missingParents, txD, err := mp.maybeAcceptTransaction(tx, true, rateLimit,
 		true, fulllValidate)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+
+	if txD != nil && txD.Ncx {
+		return []*TxDesc{txD}, true, nil
 	}
 
 	if len(missingParents) == 0 {
@@ -1287,7 +1291,7 @@ func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool
 		acceptedTxs[0] = txD
 
 		copy(acceptedTxs[1:], newTxs)
-		return acceptedTxs, nil
+		return acceptedTxs, false, nil
 	}
 
 	// The transaction is an orphan (has inputs missing).  Reject
@@ -1305,12 +1309,12 @@ func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool
 		str := fmt.Sprintf("orphan transaction %v references "+
 			"outputs of unknown or fully-spent "+
 			"transaction %v", tx.Hash(), missingParents[0])
-		return nil, txRuleError(common.RejectDuplicate, str)
+		return nil, false, txRuleError(common.RejectDuplicate, str)
 	}
 
 	// Potentially add the orphan transaction to the orphan pool.
 	err = mp.maybeAddOrphan(tx, tag)
-	return nil, err
+	return nil, false, err
 }
 
 // Count returns the number of transactions in the main pool.  It does not

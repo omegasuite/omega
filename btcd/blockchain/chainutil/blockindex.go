@@ -72,7 +72,7 @@ type NodeData interface {
 	GetBits() uint32
 	SetBits(uint32)
 	GetVersion() uint32
-	GetContractExec() uint32
+	GetContractExec() int32
 }
 
 // BlockNode represents a block within the block chain and is primarily used to

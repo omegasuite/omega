@@ -1668,14 +1668,23 @@ func (tx *transaction) FetchBlockRegions(regions []database.BlockRegion) ([][]by
 		endOffset := region.Offset + region.Len
 		if endOffset < region.Offset || endOffset > location.blockLen {
 			region.Len -= endOffset - location.blockLen
-			fmt.Printf("block %s region offset %d, length "+
-				"%d exceeds block length of %d", region.Hash,
+			fmt.Printf("block %s region offset %s, length "+
+				"%d exceeds block length of %d", region.Hash.String(),
 				region.Offset, region.Len, location.blockLen)
-			// it seems somewhere we received a coinbase block with signature, and then
-			// a POW coinbase comes and become the final block, but region is not updated
-			// to reflect the changed tx size. It is ok to trim it back in this case.
-			// TBD Need further investigation of the cause. What if the real cause is not like this?
-			// what if the block data is wrong?
+
+			blkbytes, _ := tx.FetchBlock(region.Hash)
+			msgblk := wire.MsgBlock{}
+			msgblk.Deserialize(bytes.NewReader(blkbytes))
+
+			if len(msgblk.Transactions) > 1 {
+				fmt.Printf("block %s has %d Transactions", len(msgblk.Transactions))
+			}
+
+			continue
+			// it seems somewhere we received a block with regular txs, and then
+			// a empty block comes and become the final block, but tx region is not updated
+			// to reflect the changes. It is ok to ignore the tx region since the tx does not exist.
+			// TBD: investiage the root cause and fix it.
 			/*
 				str := fmt.Sprintf("block %s region offset %d, length "+
 					"%d exceeds block length of %d", region.Hash,

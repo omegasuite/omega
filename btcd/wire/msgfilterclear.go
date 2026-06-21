@@ -6,7 +6,6 @@
 package wire
 
 import (
-	"fmt"
 	"io"
 )
 
@@ -20,24 +19,12 @@ type MsgFilterClear struct{}
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgFilterClear) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
-	if pver < BIP0037Version {
-		str := fmt.Sprintf("filterclear message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgFilterClear.OmcDecode", str)
-	}
-
 	return nil
 }
 
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg *MsgFilterClear) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
-	if pver < BIP0037Version {
-		str := fmt.Sprintf("filterclear message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgFilterClear.OmcEncode", str)
-	}
-
 	return nil
 }
 

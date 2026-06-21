@@ -96,6 +96,8 @@ type Config struct {
 	// up orphaned anyways.
 	IsCurrent func() bool
 
+	AtTop func(int322 int32) bool
+
 	Generate bool
 }
 
@@ -343,7 +345,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 }
 
 func (m *CPUMiner) Notice(notification *blockchain.Notification) {
-	if !m.started || !m.cfg.Generate {
+	if !m.started || (!m.cfg.Generate && m.cfg.DisablePOWMining) {
 		return
 	}
 
@@ -459,13 +461,14 @@ func (m *CPUMiner) generateBlocks() {
 	leader := int32(0)
 	powwait := 20 * time.Second
 
+	tried := int32(0)
+
 out:
 	for ; true; m.g.Chain.IsPacking = false {
 		//if !m.cfg.Generate && nopow {
 		//	m.wg.Done()
 		//	return
 		//}
-		nopow := false
 
 		// Quit when the miner is stopped.
 		select {
@@ -496,7 +499,7 @@ out:
 		// transactions to work on when there are no connected peers.
 		ccnt := m.cfg.ConnectedCount(0)
 		if ccnt < 1 {
-			log.Infof("Sleep 5 sec because there is not enough inbound connected peers.")
+			log.Infof("Sleep 5 sec because there is no connected peer.")
 			m.Stale = true
 			time.Sleep(time.Second * 5)
 			m.generating = false
@@ -568,7 +571,12 @@ out:
 				continue
 			}
 
-			// power saving. we wait for 30 sec. before hashing.
+			if !m.cfg.AtTop(curHeight) {
+				time.Sleep(5 * time.Second)
+				continue
+			}
+
+			// power saving. we wait for 90 sec. before hashing.
 			// if a new block is received, we won't do hashing at this height
 			select {
 			case <-time.After(90 * time.Second):
@@ -634,8 +642,9 @@ out:
 				}
 			}
 		} else {
-			if ccnt < 3 || bs.LastRotation+uint32(m.cfg.ChainParams.POWRotate)+20 > uint32(m.g.Chain.Miners.BestSnapshot().Height) {
-				time.Sleep(5 * time.Second)
+			if ccnt+tried < 3 || bs.LastRotation+uint32(m.cfg.ChainParams.POWRotate)+20 > uint32(m.g.Chain.Miners.BestSnapshot().Height) {
+				// time.Sleep(5 * time.Second)
+				tried++
 				continue
 			}
 
@@ -740,8 +749,6 @@ out:
 			}
 			m.g.Chain.ConsensusRange[1] = template.Height
 
-			nopow = true
-
 			log.Infof("Submit block produced by %s nonce = %d at %d", payToAddr.String(), block.MsgBlock().Header.Nonce, template.Height)
 			if !m.submitBlock(block) {
 				log.Infof("Submit block failed")
@@ -776,47 +783,26 @@ out:
 
 			m.minedBlock = nil
 
-			log.Infof("Proceed to generate next block")
+			// log.Infof("Proceed to generate next block")
 			continue
 		}
 
 		m.g.Chain.IsPacking = false
 		m.minedBlock = nil
 
-		mh := m.g.Chain.Miners.BestSnapshot().Height
+		//mh := m.g.Chain.Miners.BestSnapshot().Height
 
-		//if m.cfg.DisablePOWMining || !m.cfg.Generate {
-		//	time.Sleep(time.Second * wire.TimeGap)
+		//if int32(bs.LastRotation)+int32(m.cfg.ChainParams.CommitteeSigs) >= mh { // m.cfg.ChainParams.Net == common.TestNet ||
+		// time.Sleep(time.Second * wire.TimeGap)
 		//	continue
 		//}
-
-		if nopow || int32(bs.LastRotation) >= mh+int32(m.cfg.ChainParams.CommitteeSigs) { // m.cfg.ChainParams.Net == common.TestNet ||
-			time.Sleep(time.Second * wire.TimeGap)
-			continue
-		}
-
-		/*
-			select {
-			case <-time.After(powwait):
-
-			case <-m.connch:
-				powwait = 20 * time.Second
-				continue
-			case <-consensus.POWStopper:
-				powwait = 20 * time.Second
-				continue
-			case <-m.quit:
-				break out
-			}
-
-			log.Info("Try to solve block after %d second w/o new block", powwait)
-		*/
 
 		// Attempt to solve the block.  The function will exit early
 		// with false when conditions that trigger a stale block, so
 		// a new block template can be generated.  When the return is
 		// true a solution was found, so submit the solved block.
 		b := m.solveBlock(template, curHeight+1, ticker, m.quit)
+		tried++
 
 		if b > 0 {
 			select {

@@ -30,7 +30,7 @@ import (
 
 const (
 	// MaxProtocolVersion is the max protocol version the peer supports.
-	MaxProtocolVersion = wire.FeeFilterVersion
+	MaxProtocolVersion = 80013
 
 	// DefaultTrickleInterval is the min time between attempts to send an
 	// inv message to a peer.
@@ -38,7 +38,7 @@ const (
 
 	// MinAcceptableProtocolVersion is the lowest protocol version that a
 	// connected peer may support.
-	MinAcceptableProtocolVersion = wire.MultipleAddressVersion
+	MinAcceptableProtocolVersion = 70014
 
 	// outputBufferSize is the number of elements the output channels use.
 	outputBufferSize = 50
@@ -1057,12 +1057,6 @@ func (p *Peer) PushGetHeadersMsg(locator chainhash.BlockLocator, stopHash *chain
 //
 // This function is safe for concurrent access.
 func (p *Peer) PushRejectMsg(command string, code common.RejectCode, reason string, hash *chainhash.Hash, wait bool) {
-	// Don't bother sending the reject message if the protocol version
-	// is too low.
-	if p.VersionKnown() && p.ProtocolVersion() < wire.RejectVersion {
-		return
-	}
-
 	msg := wire.NewMsgReject(command, code, reason)
 	if command == wire.CmdTx || command == wire.CmdBlock {
 		if hash == nil {
@@ -1107,15 +1101,13 @@ func (p *Peer) handlePongMsg(msg *wire.MsgPong) {
 	// and overlapping pings will be ignored. It is unlikely to occur
 	// without large usage of the ping rpc call since we ping infrequently
 	// enough that if they overlap we would have timed out the peer.
-	if p.ProtocolVersion() > wire.BIP0031Version {
-		p.statsMtx.Lock()
-		if p.lastPingNonce != 0 && msg.Nonce == p.lastPingNonce {
-			p.lastPingMicros = time.Since(p.lastPingTime).Nanoseconds()
-			p.lastPingMicros /= 1000 // convert to usec.
-			p.lastPingNonce = 0
-		}
-		p.statsMtx.Unlock()
+	p.statsMtx.Lock()
+	if p.lastPingNonce != 0 && msg.Nonce == p.lastPingNonce {
+		p.lastPingMicros = time.Since(p.lastPingTime).Nanoseconds()
+		p.lastPingMicros /= 1000 // convert to usec.
+		p.lastPingNonce = 0
 	}
+	p.statsMtx.Unlock()
 }
 
 // readMessage reads the next bitcoin message from the peer with logging.
@@ -1733,7 +1725,7 @@ out:
 
 		case *wire.MsgMerkleBlock:
 			//			log.Infof("inHandler MsgMerkleBlock")
-			if p.cfg.Listeners.OnMerkleBlock != nil {
+			if p.cfg.Listeners.OnMerkleBlock != nil && !p.cfg.IsSvp {
 				p.cfg.Listeners.OnMerkleBlock(p, msg)
 			}
 
@@ -2246,8 +2238,7 @@ func (p *Peer) readRemoteVersionMsg() error {
 	p.versionKnown = true
 	p.services = msg.Services
 	p.flagsMtx.Unlock()
-	log.Debugf("Negotiated protocol version %d for peer %s",
-		p.protocolVersion, p)
+	log.Debugf("Negotiated protocol version %d for peer %s", p.protocolVersion, p)
 
 	// Updating a bunch of stats including block based stats, and the
 	// peer's time offset.
@@ -2390,6 +2381,10 @@ func (p *Peer) writeLocalVersionMsg() error {
 func (p *Peer) negotiateInboundProtocol() error {
 	if err := p.readRemoteVersionMsg(); err != nil {
 		return err
+	}
+
+	if (p.services & common.SFSPV & p.cfg.Services) != 0 {
+		return fmt.Errorf("A SPV node may not connect to another SPV node")
 	}
 
 	return p.writeLocalVersionMsg()

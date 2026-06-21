@@ -17,9 +17,9 @@ import (
 	"regexp"
 	//	"math"
 
+	"btcd/wire/common"
 	"encoding/binary"
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
-	"btcd/wire/common"
 )
 
 const MaxMessagePayload = (1024 * 1024 * 400) // must be same as in wire.message.go
@@ -40,7 +40,8 @@ const (
 	// if the value is between 0 & 100, it is considered as 0 and the coord is a nonce
 	// to change edge hash
 	MinDefinitionPayload    = 68
-	MaxDefinitionPerMessage = (MaxMessagePayload / MinDefinitionPayload) + 1
+	MaxDefinitionPayload    = 4096
+	MaxDefinitionPerMessage = (MaxMessagePayload / MinDefinitionPayload)
 )
 
 // right flag masks
@@ -371,6 +372,10 @@ func (t *PolygonDef) Read(r io.Reader, pver uint32) error {
 		return err
 	}
 
+	if nloops > MaxDefinitionPerMessage {
+		return fmt.Errorf("Too many loops")
+	}
+
 	t.Loops = make([]LoopDef, 0, nloops)
 
 	for nloops > 0 {
@@ -537,6 +542,10 @@ func (t *RightDef) Read(r io.Reader, pver uint32) error {
 		return err
 	}
 
+	if n > MaxDefinitionPayload {
+		return fmt.Errorf("Description too long")
+	}
+
 	t.Desc = make([]byte, n)
 	io.ReadFull(r, t.Desc[:])
 	t.Attrib, _ = common.BinarySerializer.Uint8(r)
@@ -678,6 +687,10 @@ func (t *RightSetDef) Read(r io.Reader, pver uint32) error {
 	n, err := common.ReadVarInt(r, pver)
 	if err != nil {
 		return err
+	}
+
+	if n > MaxDefinitionPayload/32 {
+		return fmt.Errorf("Too may rights in a right set")
 	}
 
 	t.Rights = make([]chainhash.Hash, n)

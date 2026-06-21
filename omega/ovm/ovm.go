@@ -89,7 +89,7 @@ type Context struct {
 	AddCoinBase      AddCoinBaseFunc
 
 	// Block information
-	StepLimit    uint32             // Step LIMIT policy
+	StepLimit    int32              // Step LIMIT policy
 	BlockNumber  GetBlockNumberFunc // Provides information for NUMBER
 	BlockTime    GetBlockTimeFunc
 	BlockVersion GetBlockVersionFunc

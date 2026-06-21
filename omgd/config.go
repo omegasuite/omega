@@ -174,6 +174,7 @@ type config struct {
 	Accounts        bool   `long:"accounts" description:"list omega accounts & balance"`
 	NetMagic        uint32
 	AddChain        string   `long:"addchain" description:"Add a blockchain to FOC"`
+	ChgParams       string   `long:"chgparams" description:"Change a FOC blockchain parameters"`
 	ParentChain     string   `long:"parentchain" description:"Description of parent blockchain in FOC"`
 	Clear           int      `long:"clear" description:"Clear DBs"`
 	Blacklist       []string `long:"blacklist" description:"Put address in blacklist"`

@@ -464,7 +464,7 @@ type Params struct {
 	// HDCoinType uint32
 
 	// ContractExecLimit is a policy by each node to limit step a contract may execute
-	ContractExecLimit uint32
+	ContractExecLimit int32
 
 	// SigVeriConcurrency is the number of concurrent verifiers for signature veridfication
 	SigVeriConcurrency int

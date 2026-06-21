@@ -6,8 +6,8 @@
 package wire
 
 import (
-	"fmt"
 	"btcd/wire/common"
+	"fmt"
 	"io"
 
 	"github.com/omegasuite/btcd/chaincfg/chainhash"
@@ -45,12 +45,6 @@ func (msg *MsgMerkleBlock) AddTxHash(hash *chainhash.Hash) error {
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgMerkleBlock) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
-	if pver < BIP0037Version {
-		str := fmt.Sprintf("merkleblock message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgMerkleBlock.OmcDecode", str)
-	}
-
 	err := readBlockHeader(r, pver, &msg.Header)
 	if err != nil {
 		return err
@@ -93,12 +87,6 @@ func (msg *MsgMerkleBlock) OmcDecode(r io.Reader, pver uint32, enc MessageEncodi
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg *MsgMerkleBlock) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
-	if pver < BIP0037Version {
-		str := fmt.Sprintf("merkleblock message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgMerkleBlock.OmcEncode", str)
-	}
-
 	// Read num transaction hashes and limit to max.
 	numHashes := len(msg.Hashes)
 	if numHashes > MaxTxPerBlock {

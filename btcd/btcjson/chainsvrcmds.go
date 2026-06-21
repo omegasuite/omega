@@ -1029,6 +1029,10 @@ type VerifySigCmd struct {
 	HexTx string
 }
 
+type KeyAddressCmd struct {
+	HexTx string
+}
+
 // NewSearchRawTransactionsCmd returns a new instance which can be used to issue a
 // sendrawtransaction JSON-RPC command.
 //

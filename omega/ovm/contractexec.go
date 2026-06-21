@@ -567,7 +567,7 @@ func (ovm *OVM) TryContract(tx *btcutil.Tx, txHeight int32) ([]byte, error) {
 
 	ovm.NoLoop = false
 	//	ovm.interpreter.readOnly = false
-	ovm.writeback = false
+	ovm.writeback = true // not relly write to DB. write to StatDB only. Write to DB happens in block connect
 
 	anew := false
 	var result []byte

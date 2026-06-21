@@ -96,13 +96,13 @@ func (r FutureGetRawTransactionResult) Receive() (*btcutil.Tx, error) {
 // the returned instance.
 //
 // See GetRawTransaction for the blocking version and more details.
-func (c *Client) GetRawTransactionAsync(txHash *chainhash.Hash, includeMempool *bool) FutureGetRawTransactionResult {
+func (c *Client) GetRawTransactionAsync(txHash *chainhash.Hash, includeMempool *bool, mainchain *bool) FutureGetRawTransactionResult {
 	hash := ""
 	if txHash != nil {
 		hash = txHash.String()
 	}
 
-	cmd := btcjson.NewGetRawTransactionCmd(hash, btcjson.Int(0), includeMempool)
+	cmd := btcjson.NewGetRawTransactionCmd(hash, btcjson.Int(0), includeMempool, mainchain)
 	return c.sendCmd(cmd)
 }
 
@@ -110,8 +110,8 @@ func (c *Client) GetRawTransactionAsync(txHash *chainhash.Hash, includeMempool *
 //
 // See GetRawTransactionVerbose to obtain additional information about the
 // transaction.
-func (c *Client) GetRawTransaction(txHash *chainhash.Hash, includeMempool *bool) (*btcutil.Tx, error) {
-	return c.GetRawTransactionAsync(txHash, includeMempool).Receive()
+func (c *Client) GetRawTransaction(txHash *chainhash.Hash, includeMempool *bool, mainchain *bool) (*btcutil.Tx, error) {
+	return c.GetRawTransactionAsync(txHash, includeMempool, mainchain).Receive()
 }
 
 // FutureGetRawTransactionVerboseResult is a future promise to deliver the
@@ -142,13 +142,13 @@ func (r FutureGetRawTransactionVerboseResult) Receive() (*btcjson.TxRawResult, e
 // function on the returned instance.
 //
 // See GetRawTransactionVerbose for the blocking version and more details.
-func (c *Client) GetRawTransactionVerboseAsync(txHash *chainhash.Hash, includeMempool *bool) FutureGetRawTransactionVerboseResult {
+func (c *Client) GetRawTransactionVerboseAsync(txHash *chainhash.Hash, includeMempool *bool, mainchain *bool) FutureGetRawTransactionVerboseResult {
 	hash := ""
 	if txHash != nil {
 		hash = txHash.String()
 	}
 
-	cmd := btcjson.NewGetRawTransactionCmd(hash, btcjson.Int(1), includeMempool)
+	cmd := btcjson.NewGetRawTransactionCmd(hash, btcjson.Int(1), includeMempool, mainchain)
 	return c.sendCmd(cmd)
 }
 
@@ -156,8 +156,8 @@ func (c *Client) GetRawTransactionVerboseAsync(txHash *chainhash.Hash, includeMe
 // its hash.
 //
 // See GetRawTransaction to obtain only the transaction already deserialized.
-func (c *Client) GetRawTransactionVerbose(txHash *chainhash.Hash, includeMempool *bool) (*btcjson.TxRawResult, error) {
-	return c.GetRawTransactionVerboseAsync(txHash, includeMempool).Receive()
+func (c *Client) GetRawTransactionVerbose(txHash *chainhash.Hash, includeMempool *bool, mainchain *bool) (*btcjson.TxRawResult, error) {
+	return c.GetRawTransactionVerboseAsync(txHash, includeMempool, mainchain).Receive()
 }
 
 // FutureDecodeRawTransactionResult is a future promise to deliver the result

@@ -30,12 +30,6 @@ type MsgFilterAdd struct {
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgFilterAdd) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
-	if pver < BIP0037Version {
-		str := fmt.Sprintf("filteradd message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgFilterAdd.OmcDecode", str)
-	}
-
 	var err error
 	msg.Data, err = common.ReadVarBytes(r, pver, MaxFilterAddDataSize,
 		"filteradd data")
@@ -45,12 +39,6 @@ func (msg *MsgFilterAdd) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg *MsgFilterAdd) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
-	if pver < BIP0037Version {
-		str := fmt.Sprintf("filteradd message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgFilterAdd.OmcEncode", str)
-	}
-
 	size := len(msg.Data)
 	if size > MaxFilterAddDataSize {
 		str := fmt.Sprintf("filteradd size too large for message "+

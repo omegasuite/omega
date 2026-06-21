@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"omega/minerchain"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -159,6 +160,14 @@ type processMinerBlockMsg struct {
 // currently connected peers.
 type isCurrentMsg struct {
 	reply chan bool
+}
+
+// atTopMsg is a message type to be sent across the message channel for
+// requesting whether or not the sync manager believes height top of the
+// current blockchain.
+type atTopMsg struct {
+	reply chan bool
+	top   int32
 }
 
 // startSyncMsg is a message type to trig sync job.
@@ -782,7 +791,7 @@ func (sm *SyncManager) handleTxMsg(tmsg *txMsg) {
 
 	// Process the transaction to include validation, insertion in the
 	// memory pool, orphan handling, etc.
-	acceptedTxs, err := sm.txMemPool.ProcessTransaction(tmsg.tx,
+	acceptedTxs, _, err := sm.txMemPool.ProcessTransaction(tmsg.tx,
 		true, true, mempool.Tag(peer.ID()), false)
 
 	// Remove transaction from request maps. Either the mempool/chain
@@ -2285,6 +2294,25 @@ out:
 				sm.resetConnections(msg.all)
 				msg.reply <- struct{}{}
 
+			case atTopMsg:
+				officialServers := []string{"45.32.93.90", "207.246.106.17", "78.141.214.76", "78.141.236.245"}
+				reply := true
+				for ps, _ := range sm.peerStates {
+					if ps.LastHighBlock() > msg.top {
+						reply = false
+					} else {
+						for i, s := range officialServers {
+							if strings.Split(ps.Addr(), ":")[0] == s {
+								officialServers = append(officialServers[:i], officialServers[i+1:]...)
+							}
+						}
+					}
+				}
+				if len(officialServers) == 4 {
+					reply = false
+				}
+				msg.reply <- reply
+
 			case isCurrentMsg:
 				if sm.chain == nil || sm.chain.Miners == nil {
 					msg.reply <- false
@@ -2293,13 +2321,13 @@ out:
 					for peer, _ := range sm.peerStates {
 						if sm.chain.Miners != nil {
 							mstate := sm.chain.Miners.BestSnapshot()
-							if peer.LastHighMinerBlock() > mstate.Height+5 && time.Now().After(mstate.MedianTime.Add(2*time.Hour)) {
+							if peer.LastHighMinerBlock() > mstate.Height+100 && time.Now().After(mstate.MedianTime.Add(2*time.Hour)) {
 								untop = true
 								break
 							}
 						}
 						state := sm.chain.BestSnapshot()
-						if peer.LastHighBlock() > state.Height+20 && time.Now().After(state.MedianTime.Add(2*time.Hour)) {
+						if peer.LastHighBlock() > state.Height+500 && time.Now().After(state.MedianTime.Add(2*time.Hour)) {
 							untop = true
 							break
 						}
@@ -2664,6 +2692,12 @@ func (sm *SyncManager) ProcessMinerBlock(block *wire.MinerBlock, flags blockchai
 func (sm *SyncManager) IsCurrent() bool {
 	reply := make(chan bool)
 	sm.msgChan <- isCurrentMsg{reply: reply}
+	return <-reply
+}
+
+func (sm *SyncManager) AtTop(top int32) bool {
+	reply := make(chan bool)
+	sm.msgChan <- atTopMsg{reply: reply, top: top}
 	return <-reply
 }
 

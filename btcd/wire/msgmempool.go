@@ -6,7 +6,6 @@
 package wire
 
 import (
-	"fmt"
 	"io"
 )
 
@@ -21,24 +20,12 @@ type MsgMemPool struct{}
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgMemPool) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
-	if pver < BIP0035Version {
-		str := fmt.Sprintf("mempool message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgMemPool.OmcDecode", str)
-	}
-
 	return nil
 }
 
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg *MsgMemPool) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
-	if pver < BIP0035Version {
-		str := fmt.Sprintf("mempool message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgMemPool.OmcEncode", str)
-	}
-
 	return nil
 }
 

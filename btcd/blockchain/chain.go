@@ -1234,7 +1234,14 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	}
 
 	// protect the node referenced by the best miner
-	protect := b.Miners.Tip().MsgBlock().BestBlock
+	mntip := b.Miners.Tip()
+	protect := []*chainhash.Hash{&mntip.MsgBlock().BestBlock}
+	p, _ := b.Miners.BlockByHash(&mntip.MsgBlock().PrevBlock)
+	if p == nil {
+		protect = append(protect, nil)
+	} else {
+		protect = append(protect, &p.MsgBlock().BestBlock)
+	}
 
 	// Ensure the provided nodes match the current best chain.
 	tip := b.BestChain.Tip()
@@ -1286,14 +1293,40 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	views, Vm := b.Canvas(nil)
 	views.SetBestHash(&oldBest.Hash)
 
+	dtlist := make([]*chainutil.BlockNode, 0)
+
+	for e := detachNodes.Front(); e != nil; e = e.Next() {
+		n := e.Value.(*chainutil.BlockNode)
+		dtlist = append(dtlist, n)
+	}
+	m := len(dtlist) - 1
+	if !b.IsSVP {
+		rpl := 0
+		for e := attachNodes.Front(); e != nil && m >= 0; e = e.Next() {
+			n := e.Value.(*chainutil.BlockNode)
+			if n.Data.GetNonce() > 0 && dtlist[m].Data.GetNonce() < 0 {
+				if rpl > 0 {
+					return 0, 0, fmt.Errorf("Try to replace 2 signed blocks with POW blocks")
+				} else {
+					rpl++
+				}
+			}
+		}
+	}
+
 	for e := detachNodes.Front(); e != nil; e = e.Next() {
 		n := e.Value.(*chainutil.BlockNode)
 		if n.Parent == nil {
 			// never remove genesis block
 			continue
 		}
-		if protect.IsEqual(&n.Hash) {
-			return 0, 0, fmt.Errorf("Try to detach protected node")
+		if protect[0].IsEqual(&n.Hash) {
+			if !b.IsSVP && len(protect) == 1 {
+				return 0, 0, fmt.Errorf("Try to detach protected node")
+			}
+			protect = protect[1:]
+			// this will cause a shutdown. when reloading, some miner nodes will be disconnected.
+			terminate = true
 		}
 		var block *btcutil.Block
 		err := b.db.View(func(dbTx database.Tx) error {
@@ -2011,33 +2044,18 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 
 			fmt.Printf("INCOMINGPOOL xtx.ChainID=%x xtx.Txs=%d", xtx.ChainID, len(xtx.Txs))
 
-			if err != nil || xtx.Finalized == 0 {
+			threshold := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[xtx.ChainID].Final
+			if err != nil || xtx.Finalized+threshold > 0 {
 				continue
 			}
-			if xtx.Finalized+blocktime < 0 {
-				continue
-			}
+			//if xtx.Finalized+blocktime < 0 {
+			//	continue
+			//}
 
 			if xtx.ChainID == 0 {
 				bucket.Delete(cursor.Key())
 				continue
 			}
-
-			// tmp patch
-			/*
-				realdest := int32(-1)
-				for _, txo := range xtx.Txs {
-					dst := txo.Txo.DestChain()
-					if realdest == -1 && txo.Txo.PkScript[21] != ovm.OP_PAYMINER {
-						realdest = int32(dst)
-					}
-				}
-				if realdest != 0 && !chainmap.AllChains[b.ChainParams.ChainID].PassThru(b.ChainParams.ChainID, xtx.ChainID, uint32(realdest)) {
-					bucket.Delete(cursor.Key())
-					continue
-				}
-			*/
-			// done patch
 
 			mtx := wire.NewMsgTx(wire.TxVersion | wire.TxNoDefine)
 			mtx.LockTime = nextBlockHeight + 1
@@ -3309,9 +3327,9 @@ func (b *BlockChain) NodeByHash(h *chainhash.Hash) *chainutil.BlockNode {
 	return p
 }
 
-func (b *BlockChain) MaxContractExec(lastBlk chainhash.Hash, cbest chainhash.Hash) uint32 {
+func (b *BlockChain) MaxContractExec(lastBlk chainhash.Hash, cbest chainhash.Hash) int32 {
 	// max contractexec during this period
-	var m uint32
+	var m int32
 	var h *chainhash.Hash
 	h = &cbest
 	for p := b.NodeByHash(h); p != nil && !h.IsEqual(&lastBlk); h = &p.Hash {

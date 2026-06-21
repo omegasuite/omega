@@ -645,7 +645,7 @@ func (g *BlkTmplGenerator) NewBlockTemplate(payToAddress []btcutil.Address, nonc
 	minerDirect := make(map[uint64]int64) // direct payment to miners of this blockchain
 
 	// Check transactions in INCOMINGPOOL, include mature transactions here
-	if (nonce < 0 && rand.Int()%100 > 5) || (nonce > 0 && rand.Int()%100 < 5) {
+	if nonce < 0 && rand.Int()%100 > 20 {
 		inp, _ := g.Chain.GetFinalizedInPool(uint32(nextBlockHeight), int32(ts.Unix()))
 		//		minerDirect = md
 		blockTxns = append(blockTxns, inp...)
@@ -1345,7 +1345,7 @@ mempoolLoop:
 		PrevBlock:    best.Hash,
 		MerkleRoot:   *merkles[len(merkles)-1],
 		Timestamp:    ts,
-		ContractExec: uint32(contractExec),
+		ContractExec: contractExec,
 		Nonce:        nonce,
 	}
 

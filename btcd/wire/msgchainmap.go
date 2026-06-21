@@ -24,7 +24,7 @@ type ChainDescriptor struct {
 	Height         uint32 `json:"height"`
 	GlobalParams   string `json:"globalparams"`
 	Legacy         bool   `json:"legacy"`
-	Final          uint32 `json:"final"`
+	Final          int32  `json:"final"`
 }
 
 func (t *ChainDescriptor) Match(s *ChainDescriptor) bool {

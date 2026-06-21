@@ -654,11 +654,16 @@ func (self *Syncer) run() {
 	//	begin := time.Now().Unix()
 	//	alive := false
 	tkcnt := 20 // will quit after 20 ticks no matter what
+	term := time.After(30 * time.Second)
 
 loop:
 	for {
 		select {
 		case <-self.quit:
+			break loop
+
+		case <-term:
+			// if we don't reach agreement in 30s, quit. let pow do the work.
 			break loop
 
 		case cmd := <-self.commands:
