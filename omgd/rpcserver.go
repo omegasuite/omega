@@ -90,7 +90,7 @@ const (
 	gbtRegenerateSeconds = 60
 
 	// maxProtocolVersion is the max protocol version the server supports.
-	maxProtocolVersion = 70002
+	maxProtocolVersion = 80013
 )
 
 var (
@@ -1120,7 +1120,7 @@ func handleTryContract(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 	// value is a string and it would result in returning an empty string to
 	// the client instead of nothing (nil) in the case of an error.
 	var w bytes.Buffer
-	err = tx.MsgTx().SerializeFull(&w)
+	err = tx.MsgTx().Serialize(&w)
 	if err != nil {
 		return nil, err
 	}
@@ -2440,7 +2440,7 @@ func handleListMiningAddr(s *rpcServer, cmd interface{}, closeChan <-chan struct
 }
 
 func handleKeyAddress(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	c := cmd.(*btcjson.VerifySigCmd)
+	c := cmd.(*btcjson.KeyAddressCmd)
 
 	wif, err := btcutil.DecodeWIF(c.HexTx)
 	if err != nil {
@@ -5778,7 +5778,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		sigcheck = true
 	}
 
-	acceptedTxs, err := s.cfg.TxMemPool.ProcessTransaction(tx, false, false, 0, sigcheck)
+	acceptedTxs, ncx, err := s.cfg.TxMemPool.ProcessTransaction(tx, false, false, 0, sigcheck)
 	if err != nil {
 		// When the error is a rule error, it means the transaction was
 		// simply rejected as opposed to something actually going wrong,
@@ -5815,7 +5815,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 	}
 
 	ch := make(chan *blockchain.ConfirmedMsg, 1)
-	if *c.WaitConfirm != 0 {
+	if !ncx && *c.WaitConfirm != 0 {
 		s.statusLock.Lock()
 		x := uint32(0xFFFFFFFF)
 		if (tx.MsgTx().Version & wire.TxExpire) != 0 {
@@ -5842,7 +5842,7 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 
 	msg := tx.Hash().String()
 
-	if *c.WaitConfirm != 0 {
+	if !ncx && *c.WaitConfirm != 0 {
 		cf := time.AfterFunc(time.Duration(*c.WaitConfirm)*time.Second, func() {
 			s.statusLock.Lock()
 			delete(s.sendcmdconfirmation, *tx.Hash())
@@ -5863,9 +5863,12 @@ func handleSendRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan st
 		}
 	}
 
-	time.AfterFunc(300*time.Second, func() {
-		s.cfg.TxMemPool.TrimPool()
-	})
+	if !ncx {
+		time.AfterFunc(300*time.Second, func() {
+			// only non-mining node will clear pool because they don't get chance to remove invalid txs
+			s.cfg.TxMemPool.TrimPool()
+		})
+	}
 
 	return msg, nil
 }
@@ -5941,7 +5944,9 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 					res.BridgeSigners = append(res.BridgeSigners, s)
 				}
 			}
-			if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+		*/
+		if c.Clear&8 != 0 { // XBTCAssets, XCAssets
+			/*
 				fmt.Printf("XBTCAssets\n")
 				bucket := meta.Bucket([]byte(common.XBTCAssets))
 				cursor := bucket.Cursor()
@@ -5959,17 +5964,19 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 					p.Convert(plg)
 					res.XBTCAssets = append(res.XBTCAssets, p)
 				}
-				fmt.Printf("XCAssets\n")
-				bucket = meta.Bucket([]byte(common.XCAssets))
-				cursor = bucket.Cursor()
-				for ok := cursor.First(); ok; ok = cursor.Next() {
-					r := &btcjson.XCAssetResult{
-						Key:   hex.EncodeToString(cursor.Key()),
-						Value: int64(common.LittleEndian.Uint64(cursor.Value())),
-					}
-					res.XCAssets = append(res.XCAssets, r)
+			*/
+			fmt.Printf("XCAssets\n")
+			bucket := meta.Bucket([]byte(common.XCAssets))
+			cursor := bucket.Cursor()
+			for ok := cursor.First(); ok; ok = cursor.Next() {
+				r := &btcjson.XCAssetResult{
+					Key:   hex.EncodeToString(cursor.Key()),
+					Value: int64(common.LittleEndian.Uint64(cursor.Value())),
 				}
+				res.XCAssets = append(res.XCAssets, r)
 			}
+		}
+		/*
 			if c.Clear&16 != 0 { // REEDEEM
 				bucket := meta.Bucket([]byte(common.REDEEMDB))
 				cursor := bucket.Cursor()
@@ -6003,7 +6010,7 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 						res.RedeemDB[string(cursor.Key())] = hex.EncodeToString(cursor.Value())
 					}
 		*/
-		if c.Clear&64 != 0 { // INCOMINGPOOL
+		if c.Clear&64 != 0 { // ROLLBACKPOOL
 			bucket := meta.Bucket([]byte(common.ROLLBACKPOOL))
 			cursor := bucket.Cursor()
 			for ok := cursor.First(); ok; ok = cursor.Next() {
@@ -6022,6 +6029,7 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 						}
 						s := &btcjson.XchainDataResult{}
 						s.Convert(xchain)
+						s.Finalized = int32(common.LittleEndian.Uint32(cursor.Key()))
 						xbd = append(xbd, s)
 					}
 				}
