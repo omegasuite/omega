@@ -3397,7 +3397,7 @@ func opAddTxOut(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 		return omega.ScriptError(omega.ErrInternal, "Memory address fault")
 	}
 
-	r.Reset(stack.data[int32(num>>32)].space[num&0xFFFFFFFF : (num&0xFFFFFFFF)+100])
+	r.Reset(stack.data[int32(num>>32)].space[num&0xFFFFFFFF:])
 	if err := tk.Read(&r, 0, 0, wire.SignatureEncoding); err != nil {
 		e := omega.ScriptError(omega.ErrInternal, err.Error())
 		return e

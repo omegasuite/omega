@@ -602,7 +602,7 @@ func (mp *TxPool) RemoveDoubleSpends(tx *btcutil.Tx) {
 func isNcxOrder(tx *btcutil.Tx) bool {
 	orderCnt := 0
 	for _, txo := range tx.MsgTx().TxOut {
-		if len(txo.PkScript) != 25+8*8+25 {
+		if len(txo.PkScript) < 25+7*8+25 {
 			continue
 		}
 		if bytes.Compare(txo.PkScript[:25], NcxContractBytes[:]) != 0 {
