@@ -74,6 +74,7 @@ type Config struct {
 	SignAddress      []btcutil.Address
 	PrivKeys         []*btcec.PrivateKey
 	DisablePOWMining bool
+	Shutdown         chan struct{}
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -461,7 +462,7 @@ func (m *CPUMiner) generateBlocks() {
 	leader := int32(0)
 	powwait := 20 * time.Second
 
-	tried := int32(0)
+	tried, noconn := int32(0), 0
 
 out:
 	for ; true; m.g.Chain.IsPacking = false {
@@ -499,12 +500,20 @@ out:
 		// transactions to work on when there are no connected peers.
 		ccnt := m.cfg.ConnectedCount(0)
 		if ccnt < 1 {
+			noconn++
 			log.Infof("Sleep 5 sec because there is no connected peer.")
 			m.Stale = true
 			time.Sleep(time.Second * 5)
 			m.generating = false
+			if noconn > 90/5 {
+				// if no connection for 90 s, exist
+				m.cfg.Shutdown <- struct{}{}
+				m.wg.Done()
+				return
+			}
 			continue
 		}
+		noconn = 0
 
 		if len(m.cfg.MiningAddrs) == 0 {
 			time.Sleep(time.Second * 5)
@@ -566,6 +575,11 @@ out:
 			powMode = true
 		}
 
+		payToAddress := []btcutil.Address{payToAddr}
+
+		var template *mining.BlockTemplate
+		var err error
+
 		if powMode {
 			if m.cfg.DisablePOWMining {
 				continue
@@ -576,10 +590,15 @@ out:
 				continue
 			}
 
+			payToAddr = m.cfg.MiningAddrs[rand.Int()%len(m.cfg.MiningAddrs)]
+
 			// power saving. we wait for 90 sec. before hashing.
 			// if a new block is received, we won't do hashing at this height
 			select {
 			case <-time.After(90 * time.Second):
+
+			case <-m.quit:
+				break out
 
 			case <-m.connch:
 				continue
@@ -587,15 +606,6 @@ out:
 		}
 
 		m.generating = !powMode
-
-		//if m.cfg.Generate && in && powMode {
-		//	log.Errorf("error: expected private key not found")
-		//}
-
-		if powMode {
-			// pick one from address list
-			payToAddr = m.cfg.MiningAddrs[rand.Int()%len(m.cfg.MiningAddrs)]
-		}
 
 		if payToAddr == nil {
 			time.Sleep(5 * time.Second)
@@ -605,8 +615,6 @@ out:
 		// Create a new block template using the available transactions
 		// in the memory pool as a source of transactions to potentially
 		// include in the block.
-
-		payToAddress := []btcutil.Address{payToAddr}
 
 		nonce := pb
 		if !powMode {
@@ -653,11 +661,12 @@ out:
 
 		m.g.Chain.IsPacking = !powMode
 
-		template, err := m.g.NewBlockTemplate(payToAddress, nonce)
+		template, err = m.g.NewBlockTemplate(payToAddress, nonce)
 		if template == nil {
 			time.Sleep(5 * time.Second)
 			continue
 		}
+
 		if err != nil {
 			errStr := fmt.Sprintf("Failed to create new block template: %s", err.Error())
 			log.Infof(errStr)

@@ -106,7 +106,9 @@ type Config struct {
 
 const NcxContract = "11ebf9cb23f655bcc1c4c9b155ff37952030b38e"
 
-var NcxContractBytes [25]byte
+var NcxContractBytes [21]byte
+var NcxContractOrder [4]byte
+var NcxContractUtxo [4]byte
 
 // Policy houses the policy (configuration parameters) which is used to
 // control the mempool.
@@ -201,10 +203,17 @@ var _ mining.TxSource = (*TxPool)(nil)
 var zerohash chainhash.Hash
 
 func (mp *TxPool) removeExpired(height int32) {
-	// Nothing to do if passed tx is not an orphan.
 	now := time.Now()
+	for _, tx := range mp.realpool {
+		if tx.Tx.MsgTx().Version&0x40 != 0 && tx.Tx.MsgTx().LockTime < uint32(height) {
+			mp.removeTransaction(tx.Tx, true)
+		} else if tx.Tx.ContainContract() && tx.TxDesc.Height+10000 < height {
+			mp.removeTransaction(tx.Tx, true)
+		}
+	}
+
 	for _, otx := range mp.orphans {
-		if (otx.tx.MsgTx().Version&0x40 != 0 && otx.tx.MsgTx().LockTime < uint32(height)) || now.After(otx.expiration) {
+		if now.After(otx.expiration) {
 			mp.removeOrphan(otx.tx, true)
 			delete(mp.realpool, *otx.tx.Hash())
 		}
@@ -1448,7 +1457,9 @@ func New(cfg *Config) *TxPool {
 	NcxContractBytes[0] = 0x88
 	b, _ := hex.DecodeString(NcxContract)
 	copy(NcxContractBytes[1:], b)
-	copy(NcxContractBytes[21:], []byte{0x70, 0xa1, 0x7f, 0xfa})
+
+	copy(NcxContractOrder[:], []byte{0x70, 0xa1, 0x7f, 0xfa})
+	copy(NcxContractUtxo[:], []byte{0x0d, 0x2f, 0x3b, 0x79})
 
 	return &TxPool{
 		cfg:            *cfg,

@@ -24,8 +24,9 @@ const (
 	NOMINT     = 0x10
 
 	INHERIT = 0x20
+	NOINIT  = 0x40
 
-	PUREMASK = 0x3F
+	PUREMASK = 0x7F
 )
 
 type Address [20]byte

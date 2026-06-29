@@ -3695,6 +3695,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 				SignAddress:            prot.cfg.signAddress,
 				PrivKeys:               s.chain.PrivKey,
 				DisablePOWMining:       prot.cfg.DisablePOWMining,
+				Shutdown:               shutdownRequestChannel,
 
 				ProcessBlock:   s.syncManager.ProcessBlock,
 				ConnectedCount: s.ConnectedCount,

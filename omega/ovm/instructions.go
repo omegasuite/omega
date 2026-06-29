@@ -2563,25 +2563,32 @@ func opLibLoad(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 
 					g := newFrame()
 					g.inlib, g.gbase, g.pure = d, stack.libTop, pure
-					g.space = append(g.space, []byte{4, 0, 0, 0, 0, 0, 0, 0, OP_INIT, 0, 0, 0}...)
+					g.space = append(g.space, []byte{0, 0, 0, 0, 0, 0, 0, 0}...)
 					binary.LittleEndian.PutUint32(g.space[4:], uint32(contract.libs[d].base))
 					stack.data[stack.libTop] = g
 
-					// execute init call
-					f.space = append(f.space, []byte{4, 0, 0, 0, 0, 0, 0, 0}...)
-					binary.LittleEndian.PutUint32(f.space[4:], uint32(stack.callTop+1))
+					if pure&NOINIT == 0 {
+						// execute init call
+						g.space = append(g.space, []byte{OP_INIT, 0, 0, 0}...)
+						g.space[0] = 4
 
-					var bn [4]byte
-					binary.LittleEndian.PutUint32(bn[:], uint32(OP_INIT)) // entry point for init()
-					f.space = append(f.space, bn[:]...)
-					f.space = append(f.space, []byte{0, 0, 0, 0}...)
-					f.pc = *pc
-					f.pure = pure | stack.data[stack.callTop].pure
-					f.inlib = d
-					f.gbase = contract.libs[d].base
+						f.space = append(f.space, []byte{4, 0, 0, 0, 0, 0, 0, 0}...)
+						binary.LittleEndian.PutUint32(f.space[4:], uint32(stack.callTop+1))
 
-					stack.callTop++
-					stack.data[stack.callTop] = f
+						var bn [4]byte
+						binary.LittleEndian.PutUint32(bn[:], uint32(OP_INIT)) // entry point for init()
+						f.space = append(f.space, bn[:]...)
+						f.space = append(f.space, []byte{0, 0, 0, 0}...)
+						f.pc = *pc
+						f.pure = pure | stack.data[stack.callTop].pure
+						f.inlib = d
+						f.gbase = contract.libs[d].base
+
+						stack.callTop++
+						stack.data[stack.callTop] = f
+					} else {
+						entry = int32((*pc) + 1)
+					}
 				} else if stack.callTop != 0 || stack.libTop != 0 {
 					return omega.ScriptError(omega.ErrInternal, "Improper use of contract inheritance")
 				} else {

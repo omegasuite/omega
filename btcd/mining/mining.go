@@ -927,11 +927,11 @@ mempoolLoop:
 	// Choose which transactions make it into the block.
 	//	var skiprest = false // whether to skip rest contracts
 	for priorityQueue.Len() > 0 {
-		nt := time.Now()
-		if nt.UnixNano()-startTime > 40000*1e6 {
-			// allow 4 seconds
-			break
-		}
+		//nt := time.Now()
+		//if nt.UnixNano()-startTime > 40000*1e6 {
+		// allow 4 seconds
+		//	break
+		//}
 
 		// Grab the highest priority (or highest fee per kilobyte
 		// depending on the sort order) transaction.
