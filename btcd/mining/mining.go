@@ -666,7 +666,7 @@ mempoolLoop:
 		tx := txDesc.Tx
 
 		if txDesc.Tried > 10 {
-			g.txSource.RemoveTransaction(tx, true)
+			g.txSource.RemoveTransaction(tx, false)
 			g.Chain.SendNotification(blockchain.NTBlockRejected,
 				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Tx not packed after 10 attempts")})
 			continue

@@ -677,7 +677,7 @@ func (sp *serverPeer) OnMemPool(_ *peer.Peer, msg *wire.MsgMemPool) {
 	// the passed hint to the maximum allowed, so it's safe to pass it
 	// without double checking it here.
 	txMemPool := sp.server.txMemPool
-	txDescs := txMemPool.TxDescs()
+	txDescs := txMemPool.TxDescs(true)
 	invMsg := wire.NewMsgInvSizeHint(uint(len(txDescs)))
 
 	for _, txDesc := range txDescs {
@@ -2064,7 +2064,7 @@ func (s *server) handleAddPeerMsg(state *peerState, sp *serverPeer) bool {
 	}
 
 	// send all tx in mempool to the new peer
-	txns := s.txMemPool.TxDescs()
+	txns := s.txMemPool.TxDescs(true)
 	for _, txD := range txns {
 		iv := wire.NewInvVect(common.InvTypeTx, txD.Tx.Hash())
 

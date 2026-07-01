@@ -743,6 +743,7 @@ func NewGetPeerInfoCmd() *GetPeerInfoCmd {
 // GetRawMempoolCmd defines the getmempool JSON-RPC command.
 type GetRawMempoolCmd struct {
 	Verbose *bool `jsonrpcdefault:"false"`
+	Ncx     *bool `jsonrpcdefault:"false"`
 }
 
 // GetIssuedTokensCmd defines the getissuedtokens JSON-RPC command.

@@ -438,7 +438,6 @@ func (in *Interpreter) Run(contract *Contract, input []byte) (ret []byte, err om
 		mln := ln + 4
 		if len(stack.data[0].space) < int(ln+4) {
 			mln = uint32(len(stack.data[0].space))
-
 		}
 		if operation.returns {
 			in.returnData = stack.data[0].space[4:mln]

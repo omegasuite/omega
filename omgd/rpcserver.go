@@ -3563,7 +3563,7 @@ func handleGetInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 
 // handleGetMempoolInfo implements the getmempoolinfo command.
 func handleGetMempoolInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	mempoolTxns := s.cfg.TxMemPool.TxDescs()
+	mempoolTxns := s.cfg.TxMemPool.TxDescs(false)
 
 	var numBytes int64
 	for _, txD := range mempoolTxns {
@@ -3809,9 +3809,14 @@ func handleGetRawMempool(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		return mp.RawMempoolVerbose(), nil
 	}
 
+	ncx := false
+	if c.Ncx != nil && *c.Ncx {
+		ncx = true
+	}
+
 	// The response is simply an array of the transaction hashes if the
 	// verbose flag is not set.
-	descs := mp.TxDescs()
+	descs := mp.TxDescs(ncx)
 	hashStrings := make([]string, len(descs))
 	for i := range hashStrings {
 		hashStrings[i] = descs[i].Tx.Hash().String()
@@ -5347,7 +5352,7 @@ func handleSearchSpend(s *rpcServer, cmd interface{}, closeChan <-chan struct{})
 
 // handleRecastRawTransaction implements the recastRawTransaction command.
 func handleRecastRawTransaction(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
-	txs := s.cfg.TxMemPool.TxDescs()
+	txs := s.cfg.TxMemPool.TxDescs(true)
 	s.cfg.ConnMgr.RelayTransactions(txs)
 
 	return fmt.Sprintf("Done with %d txs", len(txs)), nil

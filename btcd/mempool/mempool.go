@@ -109,6 +109,7 @@ const NcxContract = "11ebf9cb23f655bcc1c4c9b155ff37952030b38e"
 var NcxContractBytes [21]byte
 var NcxContractOrder [4]byte
 var NcxContractUtxo [4]byte
+var NcxContractCancel [4]byte
 
 // Policy houses the policy (configuration parameters) which is used to
 // control the mempool.
@@ -568,7 +569,7 @@ var bannedTxs map[chainhash.Hash]struct{}
 func (mp *TxPool) Clear() {
 	bannedTxs = make(map[chainhash.Hash]struct{})
 
-	descs := mp.TxDescs()
+	descs := mp.TxDescs(false)
 	for _, tx := range descs {
 		mp.RemoveTransaction(tx.Tx, false)
 	}
@@ -609,17 +610,18 @@ func (mp *TxPool) RemoveDoubleSpends(tx *btcutil.Tx) {
 }
 
 func isNcxOrder(tx *btcutil.Tx) bool {
-	orderCnt := 0
-	for _, txo := range tx.MsgTx().TxOut {
-		if len(txo.PkScript) < 25+7*8+25 {
-			continue
-		}
-		if bytes.Compare(txo.PkScript[:25], NcxContractBytes[:]) != 0 {
-			continue
-		}
-		orderCnt++
+	txo := tx.MsgTx().TxOut[0]
+	if bytes.Compare(txo.PkScript[:21], NcxContractBytes[:]) != 0 || bytes.Compare(txo.PkScript[21:25], NcxContractOrder[:]) != 0 {
+		return false
 	}
-	return orderCnt == 1
+
+	orderCnt := 0
+	for _, txo = range tx.MsgTx().TxOut[1:] {
+		if bytes.Compare(txo.PkScript[:21], NcxContractBytes[:]) == 0 {
+			orderCnt++
+		}
+	}
+	return orderCnt == 0
 }
 
 // addTransaction adds the passed transaction to the memory pool.  It should
@@ -1360,17 +1362,26 @@ func (mp *TxPool) TxHashes() []*chainhash.Hash {
 // The descriptors are to be treated as read only.
 //
 // This function is safe for concurrent access.
-func (mp *TxPool) TxDescs() []*TxDesc {
+func (mp *TxPool) TxDescs(ncx bool) []*TxDesc {
 	mp.mtx.RLock()
-	descs := make([]*TxDesc, len(mp.realpool))
-	i := 0
-	for _, desc := range mp.realpool {
-		descs[i] = desc
-		i++
-	}
-	mp.mtx.RUnlock()
+	defer mp.mtx.RUnlock()
 
-	return descs
+	i := 0
+	if ncx {
+		descs := make([]*TxDesc, len(mp.pool))
+		for _, desc := range mp.pool {
+			descs[i] = desc
+			i++
+		}
+		return descs
+	} else {
+		descs := make([]*TxDesc, len(mp.realpool))
+		for _, desc := range mp.realpool {
+			descs[i] = desc
+			i++
+		}
+		return descs
+	}
 }
 
 // MiningDescs returns a slice of mining descriptors for all the transactions
@@ -1460,6 +1471,7 @@ func New(cfg *Config) *TxPool {
 
 	copy(NcxContractOrder[:], []byte{0x70, 0xa1, 0x7f, 0xfa})
 	copy(NcxContractUtxo[:], []byte{0x0d, 0x2f, 0x3b, 0x79})
+	copy(NcxContractCancel[:], []byte{0x9a, 0x77, 0xb4, 0x0a})
 
 	return &TxPool{
 		cfg:            *cfg,
