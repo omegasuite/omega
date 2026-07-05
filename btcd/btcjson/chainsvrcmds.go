@@ -1353,5 +1353,5 @@ func init() {
 	MustRegisterCmd("dropcollateral", (*AddCollateralCmd)(nil), flags)
 	MustRegisterCmd("listminingaddr", (*GetBlockChainInfoCmd)(nil), flags)
 	MustRegisterCmd("listcollateral", (*GetBlockChainInfoCmd)(nil), flags)
-	MustRegisterCmd("keyaddress", (*VerifySigCmd)(nil), flags)
+	MustRegisterCmd("keyaddress", (*KeyAddressCmd)(nil), flags)
 }

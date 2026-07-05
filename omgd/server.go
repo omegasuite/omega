@@ -2607,6 +2607,10 @@ func (s *server) peerDoneHandler(sp *serverPeer) {
 	sp.WaitForDisconnect()
 	s.donePeers <- sp
 
+	if sp.Peer.BanMe {
+		sp.connReq.BanMe()
+	}
+
 	// Only tell sync manager we are gone if we ever told it we existed.
 	if sp.VersionKnown() {
 		s.syncManager.DonePeer(sp.Peer)
@@ -2653,6 +2657,11 @@ func (s *server) peerHandler() {
 	wrapbtcdLookup := func(host string) ([]net.IP, error) {
 		return btcdLookup(host, s.prot.cfg)
 	}
+
+	if s.chainParams.DNSAddresses == nil {
+		s.chainParams.DNSAddresses = make([]string, 0)
+	}
+	connmgr.SetDNSAddress(s.chainParams, wrapbtcdLookup)
 
 	if !s.prot.cfg.DisableDNSSeed {
 		// Add peers discovered through DNS to the address manager.
@@ -2987,7 +2996,7 @@ func (s *server) Start() {
 	// Start the CPU miner if generation is enabled.
 	//	if cfg.Generate {
 	btcdLog.Infof("Start minging blocks.")
-	if s.cpuMiner != nil && (s.prot.cfg.Generate || !s.prot.cfg.DisablePOWMining) {
+	if s.cpuMiner != nil && (s.prot.cfg.Generate || s.prot.cfg.POWWaiting != 0) {
 		s.cpuMiner.Start()
 	}
 	//	}
@@ -3599,7 +3608,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 		txC := mempool.Config{
 			Policy: mempool.Policy{
-				Mining:               prot.cfg.Generate || !prot.cfg.DisablePOWMining,
+				Mining:               prot.cfg.Generate || prot.cfg.POWWaiting != 0,
 				DisableRelayPriority: prot.cfg.NoRelayPriority,
 				AcceptNonStd:         prot.cfg.RelayNonStd,
 				FreeTxRelayLimit:     prot.cfg.FreeTxRelayLimit,
@@ -3694,7 +3703,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 				MiningAddrs:            prot.cfg.miningAddrs,
 				SignAddress:            prot.cfg.signAddress,
 				PrivKeys:               s.chain.PrivKey,
-				DisablePOWMining:       prot.cfg.DisablePOWMining,
+				PowWaiting:             prot.cfg.POWWaiting,
 				Shutdown:               shutdownRequestChannel,
 
 				ProcessBlock:   s.syncManager.ProcessBlock,

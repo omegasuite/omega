@@ -519,6 +519,7 @@ type Peer struct {
 	MinerSent int32    // highest miner block we have sent
 
 	RpcPort string
+	BanMe   bool
 }
 
 var stallMtx sync.Mutex
@@ -2398,7 +2399,14 @@ func (p *Peer) negotiateOutboundProtocol() error {
 		return err
 	}
 
-	return p.readRemoteVersionMsg()
+	err := p.readRemoteVersionMsg()
+
+	if (p.services & common.SFSPV) != 0 {
+		p.BanMe = true
+		return fmt.Errorf("A main node shall not connect to a SPV node")
+	}
+
+	return err
 }
 
 // start begins processing input and output messages.
@@ -2521,7 +2529,8 @@ func newPeerBase(origCfg *Config, inbound bool) *Peer {
 		protocolVersion: cfg.ProtocolVersion,
 		lastBlock:       0,
 		lastMinerBlock:  0,
-		RpcPort:         "8789",
+		RpcPort:         "9789",
+		BanMe:           false,
 	}
 
 	return &p

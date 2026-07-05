@@ -482,8 +482,9 @@ type Params struct {
 
 	MainChainID uint32
 
-	AddChain  interface{}
-	ChgParams interface{}
+	AddChain     interface{}
+	ChgParams    interface{}
+	DNSAddresses []string
 }
 
 // MainNetParams defines the network parameters for the main Omega network.

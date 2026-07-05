@@ -1730,7 +1730,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	if terminate {
 		log.Infof("Request termination in REORGANIZE")
 		terminator <- struct{}{}
-		time.Sleep(time.Minute)
+		time.Sleep(10 * time.Second)
 	}
 
 	return detachable, attachable, nil

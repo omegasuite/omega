@@ -686,7 +686,7 @@ func (mp *TxPool) checkPoolDoubleSpend(tx *btcutil.Tx, fulllValidate bool) error
 		if txR, exists := mp.outpoints[txIn.PreviousOutPoint]; exists {
 			if fulllValidate {
 				// allow signed new tx to replace old one
-				mp.RemoveTransaction(txR, true)
+				mp.removeTransaction(txR, true)
 			} else {
 				str := fmt.Sprintf("output %v already spent by "+
 					"transaction %v in the memory pool",
@@ -1101,6 +1101,11 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 		err = ovm.VerifySigs(tx, mp.cfg.ChainParams, 0, views)
 		if err != nil {
 			return nil, nil, err
+		}
+	} else {
+		err = ovm.VerifySigs(tx, mp.cfg.ChainParams, 0, views)
+		if err == nil {
+			fulllValidate = true
 		}
 	}
 

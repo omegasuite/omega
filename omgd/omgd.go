@@ -853,7 +853,7 @@ func main() {
 
 		vcfg.NetMagic, vcfg.GenerateMiner, vcfg.Generate, vcfg.privateKeys = dparams.Net, false, false, nil
 		vcfg.PrivKeys, vcfg.MiningAddrs, vcfg.AddrIndex, vcfg.BlocksOnly = nil, nil, false, false
-		vcfg.DisablePOWMining, vcfg.miningAddrs, vcfg.TxIndex, vcfg.AddrIndex = true, nil, false, false
+		vcfg.POWWaiting, vcfg.miningAddrs, vcfg.TxIndex, vcfg.AddrIndex = 0, nil, false, false
 		vcfg.TestNet, vcfg.signAddress = tcfg.TestNet, nil
 
 		fmt.Printf("datadir = %s\n", vcfg.DataDir)

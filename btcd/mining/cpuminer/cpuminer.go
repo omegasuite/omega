@@ -70,11 +70,11 @@ type Config struct {
 
 	// MiningAddrs is a list of payment addresses to use for the generated
 	// blocks.  Each generated block will randomly choose one of them.
-	MiningAddrs      []btcutil.Address
-	SignAddress      []btcutil.Address
-	PrivKeys         []*btcec.PrivateKey
-	DisablePOWMining bool
-	Shutdown         chan struct{}
+	MiningAddrs []btcutil.Address
+	SignAddress []btcutil.Address
+	PrivKeys    []*btcec.PrivateKey
+	PowWaiting  int
+	Shutdown    chan struct{}
 
 	// ProcessBlock defines the function to call with any solved blocks.
 	// It typically must run the provided block through the same set of
@@ -346,7 +346,7 @@ func (m *CPUMiner) solveBlock(template *mining.BlockTemplate, blockHeight int32,
 }
 
 func (m *CPUMiner) Notice(notification *blockchain.Notification) {
-	if !m.started || (!m.cfg.Generate && m.cfg.DisablePOWMining) {
+	if !m.started || (!m.cfg.Generate && m.cfg.PowWaiting == 0) {
 		return
 	}
 
@@ -446,7 +446,7 @@ func (m *CPUMiner) DropMiningKey(miningAddr *btcec.PrivateKey) btcutil.Address {
 func (m *CPUMiner) generateBlocks() {
 	log.Info("Starting generate blocks")
 
-	if !m.cfg.Generate && m.cfg.DisablePOWMining {
+	if !m.cfg.Generate && m.cfg.PowWaiting == 0 {
 		m.wg.Done()
 		return
 	}
@@ -460,7 +460,6 @@ func (m *CPUMiner) generateBlocks() {
 	lastblkrcv := lastblkgen
 
 	leader := int32(0)
-	powwait := 20 * time.Second
 
 	tried, noconn := int32(0), 0
 
@@ -498,14 +497,14 @@ out:
 		// Wait until there is a connection to at least one other peer
 		// since there is no way to relay a found block or receive
 		// transactions to work on when there are no connected peers.
-		ccnt := m.cfg.ConnectedCount(0)
+		ccnt := m.cfg.ConnectedCount(2) // 2 - outbound only 1 - inbound only 0 - all
 		if ccnt < 1 {
 			noconn++
-			log.Infof("Sleep 5 sec because there is no connected peer.")
+			log.Infof("Sleep 5 sec because there is no connected outbound peer.")
 			m.Stale = true
 			time.Sleep(time.Second * 5)
 			m.generating = false
-			if noconn > 90/5 {
+			if noconn > 900/5 {
 				// if no connection for 90 s, exist
 				m.cfg.Shutdown <- struct{}{}
 				m.wg.Done()
@@ -568,7 +567,7 @@ out:
 					break
 				}
 			}
-			if payToAddr == nil && !m.cfg.DisablePOWMining {
+			if payToAddr == nil && m.cfg.PowWaiting != 0 {
 				powMode = true
 			}
 		} else {
@@ -581,7 +580,7 @@ out:
 		var err error
 
 		if powMode {
-			if m.cfg.DisablePOWMining {
+			if m.cfg.PowWaiting == 0 {
 				continue
 			}
 
@@ -595,7 +594,7 @@ out:
 			// power saving. we wait for 90 sec. before hashing.
 			// if a new block is received, we won't do hashing at this height
 			select {
-			case <-time.After(90 * time.Second):
+			case <-time.After(time.Duration(m.cfg.PowWaiting) * time.Second):
 
 			case <-m.quit:
 				break out
@@ -685,7 +684,6 @@ out:
 		}
 
 		if !powMode {
-			powwait = 20 * time.Second
 			rank := int32(0)
 			if m.cfg.ChainParams.CommitteeSize == 1 {
 				// solo miner, add signature to coinbase, otherwise will add after committee decides
@@ -817,11 +815,9 @@ out:
 			select {
 			case <-m.connch:
 				lastblkrcv = time.Now().Unix()
-				powwait = 20 * time.Second
 				continue
 
 			case <-consensus.POWStopper:
-				powwait = 20 * time.Second
 				continue
 
 			case <-m.quit:
@@ -832,7 +828,6 @@ out:
 					continue
 				}
 				lastblkrcv = time.Now().Unix()
-				powwait *= 2
 				wb := *template.Block.(*wire.MsgBlock)
 				wb.Header.Nonce = b
 				block := btcutil.NewBlock(&wb)
@@ -843,7 +838,6 @@ out:
 					m.g.Chain.Miners.BestSnapshot().Height)
 			}
 		} else {
-			powwait = 20 * time.Second
 			log.Info("No New block produced")
 		}
 	}

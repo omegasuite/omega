@@ -131,8 +131,9 @@ type config struct {
 	MaxOrphanTxs         int           `long:"maxorphantx" description:"Max number of orphan transactions to keep in memory"`
 	Generate             bool          `long:"generate" description:"Generate (mine) bitcoins using the CPU"`
 	GenerateMiner        bool          `long:"generateminer" description:"Generate (mine) miner blocks using the CPU"`
-	DisablePOWMining     bool          `long:"disablepowmining" description:"Disable generation of POW blocks"`
-
+	// obsolte, keep here only to prevent failure because config may still has it
+	DisablePOWMining   bool     `long:"disablepowmining" description:"Disable generation of POW blocks"`
+	POWWaiting         int      `long:"powwaiting" description:"waiting time before starting POW mining"`
 	MiningAddrs        []string `long:"miningaddr" description:"Add the specified payment address to the list of addresses to use for generated blocks -- At least one address is required if the generate option is set"`
 	PrivKeys           []string `long:"privkeys" description:"Set the specified private key to the list of keys to sign for generated blocks -- One key is required if the generate option is set"`
 	BlockPrioritySize  uint32   `long:"blockprioritysize" description:"Size in bytes for high-priority/low-fee transactions when creating a block"`
@@ -435,7 +436,7 @@ func loadConfig(sec string, omegaNet uint32, p *config, params *chaincfg.GlobalP
 		SigCacheMaxSize:      defaultSigCacheMaxSize,
 		Generate:             defaultGenerate,
 		GenerateMiner:        defaultGenerate,
-		DisablePOWMining:     true,
+		POWWaiting:           0,
 		TxIndex:              defaultTxIndex,
 		AddrIndex:            defaultAddrIndex,
 		ChainCurrentStd:      24,

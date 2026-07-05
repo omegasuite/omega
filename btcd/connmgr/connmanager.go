@@ -75,6 +75,12 @@ type ConnReq struct {
 	Initcallback func(ServerPeer)
 }
 
+var bannedConn map[string]struct{}
+
+func (c *ConnReq) BanMe() {
+	bannedConn[c.Addr.String()] = struct{}{}
+}
+
 // updateState updates the state of the connection request.
 func (c *ConnReq) updateState(state ConnState) {
 	c.stateMtx.Lock()
@@ -462,6 +468,10 @@ func (cm *ConnManager) Connect(c *ConnReq) {
 		return
 	}
 
+	if _, ok := bannedConn[c.Addr.String()]; ok {
+		return
+	}
+
 	if c.Permanent {
 		cm.usePerm = true
 	}
@@ -652,6 +662,9 @@ func New(cfg *Config) (*ConnManager, error) {
 		quit:        make(chan struct{}),
 		usePerm:     false,
 		pendingConn: make(map[net.Addr]struct{}),
+	}
+	if bannedConn == nil {
+		bannedConn = make(map[string]struct{})
 	}
 	return &cm, nil
 }

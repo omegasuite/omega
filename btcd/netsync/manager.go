@@ -490,6 +490,9 @@ func (sm *SyncManager) startSync(avoid *peerpkg.Peer) bool {
 		if bestPeer != nil && peer == avoid {
 			continue
 		}
+		if (peer.Services() & common.SFSPV) != 0 {
+			continue
+		}
 		/*
 			rd := rand.Intn(100) < 50
 			if bestPeer != nil {
@@ -2295,8 +2298,11 @@ out:
 				msg.reply <- struct{}{}
 
 			case atTopMsg:
-				officialServers := []string{"45.32.93.90", "207.246.106.17", "78.141.214.76", "78.141.236.245"}
-				reply := true
+				officialServers := make([]string, len(sm.chainParams.DNSAddresses))
+				for i, s := range sm.chainParams.DNSAddresses {
+					officialServers[i] = s
+				}
+				reply, seeded := true, false
 				for ps, _ := range sm.peerStates {
 					if ps.LastHighBlock() > msg.top {
 						reply = false
@@ -2304,14 +2310,12 @@ out:
 						for i, s := range officialServers {
 							if strings.Split(ps.Addr(), ":")[0] == s {
 								officialServers = append(officialServers[:i], officialServers[i+1:]...)
+								seeded = true
 							}
 						}
 					}
 				}
-				if len(officialServers) == 4 {
-					reply = false
-				}
-				msg.reply <- reply
+				msg.reply <- reply && seeded
 
 			case isCurrentMsg:
 				if sm.chain == nil || sm.chain.Miners == nil {

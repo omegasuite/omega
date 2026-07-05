@@ -30,6 +30,18 @@ type OnSeed func(addrs []*wire.NetAddress)
 // LookupFunc is the signature of the DNS lookup function.
 type LookupFunc func(string) ([]net.IP, error)
 
+func SetDNSAddress(chainParams *chaincfg.Params, lookupFn LookupFunc) {
+	chainParams.DNSAddresses = make([]string, 0, len(chainParams.DNSSeeds))
+	for _, dnsseed := range chainParams.DNSSeeds {
+		seedpeers, err := lookupFn(dnsseed.Host)
+		if err != nil || len(seedpeers) == 0 {
+			continue
+		}
+
+		chainParams.DNSAddresses = append(chainParams.DNSAddresses, seedpeers[0].String())
+	}
+}
+
 // SeedFromDNS uses DNS seeding to populate the address manager with peers.
 func SeedFromDNS(chainParams *chaincfg.Params, reqServices common.ServiceFlag,
 	lookupFn LookupFunc, seedFn OnSeed) {
@@ -57,6 +69,7 @@ func SeedFromDNS(chainParams *chaincfg.Params, reqServices common.ServiceFlag,
 			if numPeers == 0 {
 				return
 			}
+
 			addresses := make([]*wire.NetAddress, len(seedpeers))
 			// if this errors then we have *real* problems
 			intPort, _ := strconv.Atoi(chainParams.DefaultPort)
