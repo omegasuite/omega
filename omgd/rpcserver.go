@@ -3556,6 +3556,7 @@ func handleGetInfo(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (in
 		TestNet:         s.cfg.Cfg.TestNet,
 		RelayFee:        s.cfg.Cfg.minRelayTxFee.ToOMC(),
 		Ports:           ports,
+		Ncx:             s.cfg.Cfg.Ncx,
 	}
 
 	return ret, nil

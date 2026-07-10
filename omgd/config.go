@@ -181,6 +181,7 @@ type config struct {
 	Blacklist       []string `long:"blacklist" description:"Put address in blacklist"`
 	RpcLimit        int      `long:"rpclimit" description:"Return size limit (KB) of RPC calls"`
 	Passive         bool
+	Ncx             string `long:"ncx" description:"Ncx port at this node"`
 }
 
 // serviceOptions defines the configuration options for the daemon as a service on

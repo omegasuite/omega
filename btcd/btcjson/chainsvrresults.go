@@ -639,6 +639,7 @@ type InfoChainResult struct {
 	RelayFee        float64  `json:"relayfee"`
 	Errors          string   `json:"errors"`
 	Ports           [][3]int `json:"ports"`
+	Ncx             string
 }
 
 // TxRawResult models the data from the getrawtransaction command.
