@@ -3884,6 +3884,29 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		})
 	}
 
+	go func() {
+		t := time.NewTicker(3 * time.Minute)
+		for {
+			select {
+			case <-t.C:
+				for _, addr := range permanentPeers {
+					netAddr, err := addrStringToNetAddr(addr, prot.cfg)
+					if err != nil {
+						continue
+					}
+
+					go s.connManager.Connect(&connmgr.ConnReq{
+						Addr:      netAddr,
+						Permanent: true,
+					})
+				}
+
+			case <-interrupt:
+				return
+			}
+		}
+	}()
+
 	return &s, nil
 }
 

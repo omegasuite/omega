@@ -433,13 +433,15 @@ func (self *Syncer) process(cmd interface{}) bool {
 			return false
 		}
 
-		if tree.block != nil &&
-			len(tree.block.MsgBlock().Transactions) > 1 &&
-			len(tree.block.MsgBlock().Transactions[1].TxIn) > 1 &&
-			tree.block.MsgBlock().Transactions[1].TxIn[0].SignatureIndex == 0xFFFFFFFF {
-			log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
-			return false
-		}
+		/*
+			if tree.block != nil &&
+				len(tree.block.MsgBlock().Transactions) > 1 &&
+				len(tree.block.MsgBlock().Transactions[1].TxIn) > 1 &&
+				tree.block.MsgBlock().Transactions[1].TxIn[0].SignatureIndex == 0xFFFFFFFF {
+				log.Errorf("Incorrect tree. I generated dup tree hash at %d", self.Height)
+				return false
+			}
+		*/
 
 		self.handeling = "New tree"
 		c := self.Members[tree.creator]

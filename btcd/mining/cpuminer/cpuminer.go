@@ -580,11 +580,7 @@ out:
 		var err error
 
 		if powMode {
-			if m.cfg.PowWaiting == 0 {
-				continue
-			}
-
-			if !m.cfg.AtTop(curHeight) {
+			if m.cfg.PowWaiting == 0 || ccnt < 3 || !m.cfg.AtTop(curHeight) {
 				time.Sleep(5 * time.Second)
 				continue
 			}

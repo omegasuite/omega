@@ -1730,7 +1730,7 @@ func (b *BlockChain) doReorganizeChain(detachNodes, attachNodes *list.List, chec
 	if terminate {
 		log.Infof("Request termination in REORGANIZE")
 		terminator <- struct{}{}
-		time.Sleep(10 * time.Second)
+		// time.Sleep(60 * time.Second)
 	}
 
 	return detachable, attachable, nil
@@ -1977,7 +1977,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) bool {
 						} else if meta2.Version >= 0x20000 && meta2.Version == cd.Version {
 							param2 := chaincfg.GlobalParams{}
 							json.Unmarshal([]byte(meta2.GlobalParams), &param2)
-							if param2.Fit(&param1) {
+							if param1.Fit(&param2) {
 								agreed++
 							}
 						}

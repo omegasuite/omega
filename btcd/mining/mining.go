@@ -764,7 +764,7 @@ mempoolLoop:
 			}
 		}
 		if locked {
-			g.txSource.RemoveTransaction(tx, true)
+			g.txSource.RemoveTransaction(tx, false)
 			g.Chain.SendNotification(blockchain.NTBlockRejected,
 				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Reject tx %s that spends locked UTXO %s", tx.Hash(), locks)})
 
@@ -806,7 +806,7 @@ mempoolLoop:
 				entry := views.GetUtxo(txIn.PreviousOutPoint)
 				if entry == nil || entry.IsSpent() {
 					if !g.txSource.HaveTransaction(originHash) {
-						g.txSource.RemoveTransaction(tx, true)
+						g.txSource.RemoveTransaction(tx, false)
 						g.Chain.SendNotification(blockchain.NTBlockRejected,
 							&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: fmt.Errorf("Remove tx %s because it "+
 								"references output %s "+
@@ -1086,7 +1086,7 @@ mempoolLoop:
 			*coinbaseTx.MsgTx() = savedCoinBase
 
 			//			if vmerr.Level() == omega.FatalLevel {
-			g.txSource.RemoveTransaction(tx, true)
+			g.txSource.RemoveTransaction(tx, false)
 			g.Chain.SendNotification(blockchain.NTBlockRejected,
 				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: vmerr})
 
@@ -1111,7 +1111,7 @@ mempoolLoop:
 		err = blockchain.CheckAdditionalTransactionInputs(tx, nextBlockHeight,
 			views, g.chainParams)
 		if err != nil {
-			g.txSource.RemoveTransaction(tx, true)
+			g.txSource.RemoveTransaction(tx, !tx.ContainContract())
 			g.Chain.SendNotification(blockchain.NTBlockRejected,
 				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: err})
 
@@ -1129,7 +1129,7 @@ mempoolLoop:
 
 		err = blockchain.CheckTransactionIntegrity(tx, views, s.MsgBlock().Version&^0xFFFF)
 		if err != nil {
-			g.txSource.RemoveTransaction(tx, true)
+			g.txSource.RemoveTransaction(tx, !tx.ContainContract())
 			g.Chain.SendNotification(blockchain.NTBlockRejected,
 				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: err})
 
@@ -1147,7 +1147,7 @@ mempoolLoop:
 
 		fees, directPay, err := blockchain.CheckTransactionFees(tx, storage, views, g.chainParams)
 		if err != nil {
-			g.txSource.RemoveTransaction(tx, true)
+			g.txSource.RemoveTransaction(tx, !tx.ContainContract())
 			g.Chain.SendNotification(blockchain.NTBlockRejected,
 				&blockchain.ConfirmedMsg{Blk: nil, Tx: tx.MsgTx(), Err: err})
 
@@ -1491,43 +1491,44 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 					msgBlock.Instructions = append(msgBlock.Instructions, &inst)
 				}
 			} else {
-				// check if we have a param changes
-				for _, ac := range parent.ChainMap {
-					if ac.ChainID == chainmap.ROOT {
-						continue
-					}
-					if me.ChainMap[ac.ChainID] == nil {
-						continue
-					}
-					param1 := chaincfg.GlobalParams{}
-					param1.CommitteeSize, param1.CommitteeSigs, param1.POWRotate = 3, 2, 2
-
-					json.Unmarshal([]byte(ac.GlobalParams), &param1)
-					param2 := chaincfg.GlobalParams{}
-					param2.CommitteeSize, param2.CommitteeSigs, param2.POWRotate = 3, 2, 2
-
-					json.Unmarshal([]byte(me.ChainMap[ac.ChainID].GlobalParams), &param2)
-
-					hasnew, changed := param1.Diff(&param2)
-
-					if hasnew {
-						cc := chainmap.ChainDescriptor{
-							Version: 0x20000,
-							ChainID: param1.ChainID,
-							Magic:   param1.Net,
+				/*
+					for _, ac := range parent.ChainMap {
+						if ac.ChainID == chainmap.ROOT {
+							continue
 						}
+						if me.ChainMap[ac.ChainID] == nil {
+							continue
+						}
+						param1 := chaincfg.GlobalParams{}
+						param1.CommitteeSize, param1.CommitteeSigs, param1.POWRotate = 3, 2, 2
 
-						s, _ := json.Marshal(changed)
-						cc.GlobalParams = string(s)
-						md, err := json.Marshal(cc)
-						if err == nil {
-							msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
-								InstCode: wire.ChgParam,
-								InstData: md,
-							}}
+						json.Unmarshal([]byte(ac.GlobalParams), &param1)
+						param2 := chaincfg.GlobalParams{}
+						param2.CommitteeSize, param2.CommitteeSigs, param2.POWRotate = 3, 2, 2
+
+						json.Unmarshal([]byte(me.ChainMap[ac.ChainID].GlobalParams), &param2)
+
+						hasnew, changed := param1.Diff(&param2)
+
+						if hasnew {
+							cc := chainmap.ChainDescriptor{
+								Version: 0x20000,
+								ChainID: param1.ChainID,
+								Magic:   param1.Net,
+							}
+
+							s, _ := json.Marshal(changed)
+							cc.GlobalParams = string(s)
+							md, err := json.Marshal(cc)
+							if err == nil {
+								msgBlock.Instructions = []*wire.Instruction{&wire.Instruction{
+									InstCode: wire.ChgParam,
+									InstData: md,
+								}}
+							}
 						}
 					}
-				}
+				*/
 			}
 		}
 	} else if g.chainParams.AddChain != nil {

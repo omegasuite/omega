@@ -1259,7 +1259,7 @@ func (mp *TxPool) TrimPool() {
 	}
 	sourceTxns := mp.MiningDescs()
 	for _, txDesc := range sourceTxns {
-		mp.RemoveTransaction(txDesc.Tx, true)
+		mp.RemoveTransaction(txDesc.Tx, false)
 	}
 }
 

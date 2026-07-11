@@ -424,7 +424,7 @@ func (b *BlockChain) maybeAcceptBlock(block *btcutil.Block, flags BehaviorFlags)
 	if terminate {
 		log.Infof("Request termination in maybeAcceptBlock")
 		terminator <- struct{}{}
-		time.Sleep(time.Minute)
+		// time.Sleep(time.Minute)
 	}
 
 	return isMainChain, nil, -1
