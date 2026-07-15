@@ -2403,7 +2403,9 @@ func (p *Peer) negotiateOutboundProtocol() error {
 
 	if (p.services & common.SFSPV) != 0 {
 		p.BanMe = true
-		return fmt.Errorf("A main node shall not connect to a SPV node")
+		if p.ProtocolVersion() <= 80013 {
+			return fmt.Errorf("A main node shall not connect to a SPV node")
+		}
 	}
 
 	return err

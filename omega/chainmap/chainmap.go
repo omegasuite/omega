@@ -414,7 +414,6 @@ func (m *FOCMap) ChgParam(cd *ChainDescriptor) bool {
 	ms, _ := json.Marshal(s)
 
 	m.ChainMap[cd.ChainID].GlobalParams = string(ms)
-	m.ChainMap[cd.ChainID].Version += 0x10000
 
 	m.dmdb.Update(func(tx database.Tx) error {
 		bucketname := []byte("ChainMap")

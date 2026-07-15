@@ -629,7 +629,7 @@ func isNcxOrder(tx *btcutil.Tx) bool {
 // helper for maybeAcceptTransaction.
 //
 // This function MUST be called with the mempool lock held (for writes).
-func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.Tx, height int32, fee int64) *TxDesc {
+func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.Tx, height int32, fee int64, ncx bool) *TxDesc {
 	// Add the transaction to the pool and mark the referenced outpoints
 	// as spent by the pool.
 	txD := &TxDesc{
@@ -640,7 +640,7 @@ func (mp *TxPool) addTransaction(utxoView *viewpoint.UtxoViewpoint, tx *btcutil.
 			Fee:      fee,
 			FeePerKB: fee * 1000 / blockchain.GetTransactionWeight(tx),
 			Tried:    0,
-			Ncx:      isNcxOrder(tx),
+			Ncx:      ncx,
 		},
 		StartingPriority: mining.CalcPriority(tx.MsgTx(), utxoView, height),
 	}
@@ -1117,13 +1117,16 @@ func (mp *TxPool) maybeAcceptTransaction(tx *btcutil.Tx, isNew, rateLimit, rejec
 	// at this point.  There is a more in-depth check that happens later
 	// after fetching the referenced transaction inputs from the main chain
 	// which examines the actual spend data and prevents double spends.
-	err = mp.checkPoolDoubleSpend(tx, fulllValidate)
-	if err != nil {
-		return nil, nil, err
+	ncx := isNcxOrder(tx)
+	if !ncx {
+		err = mp.checkPoolDoubleSpend(tx, fulllValidate)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	// Add to transaction pool.
-	txD := mp.addTransaction(utxoView, tx, bestHeight, txFee)
+	txD := mp.addTransaction(utxoView, tx, bestHeight, txFee, ncx)
 
 	log.Debugf("Accepted transaction %v (pool size: %v)", txHash, len(mp.pool))
 	return nil, txD, nil
@@ -1283,7 +1286,7 @@ func (mp *TxPool) ProcessTransaction(tx *btcutil.Tx, allowOrphan, rateLimit bool
 	defer mp.mtx.Unlock()
 
 	// Potentially accept the transaction to the memory pool.
-	missingParents, txD, err := mp.maybeAcceptTransaction(tx, true, rateLimit,
+	missingParents, txD, err := mp.maybeAcceptTransaction(tx, false, rateLimit,
 		true, fulllValidate)
 	if err != nil {
 		return nil, false, err

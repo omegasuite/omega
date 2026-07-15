@@ -1353,10 +1353,14 @@ func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
 		ChainId: msg.ChainId,
 		Block:   msg.Block,
 	}
-	block, err := sp.server.chain.BlockByHash(&msg.Block)
+	block, err := sp.server.chain.BlockByHeight(int32(msg.Height))
 	if err != nil || block == nil {
 		return
 	}
+	if !block.Hash().IsEqual(&msg.Block) {
+		return
+	}
+
 	state := sp.server.chain.BestSnapshot()
 
 	threshold := int32(chainmap.AllChains[1].ChainMap[sp.server.chainParams.ChainID].Final)
@@ -1377,7 +1381,7 @@ func (sp *serverPeer) OnFinalized(_ *peer.Peer, msg *wire.MsgFinalized) {
 }
 
 func (sp *serverPeer) OnFinal(_ *peer.Peer, msg *wire.MsgReFinal) {
-	// we got a message telling wther a tx is finalized in source of cross chain xfer
+	// we got a message telling whether a block is finalized in source of cross chain xfer
 	if msg.ETA > 0 {
 		return
 	}

@@ -742,7 +742,7 @@ out:
 			}
 
 			if rank > 0 {
-				time.Sleep(time.Duration(rank*3+adj) * time.Second)
+				time.Sleep(time.Duration(rank+adj) * time.Second)
 			}
 
 			lastblkgen = time.Now().Unix()
