@@ -9,4 +9,6 @@ package wire
 const (
 	// ProtocolVersion is the latest protocol version this package supports.
 	ProtocolVersion uint32 = 80020
+
+	CollaterAdjust uint32 = 80020
 )
