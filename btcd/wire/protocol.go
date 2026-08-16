@@ -8,13 +8,5 @@ package wire
 // XXX pedro: we will probably need to bump this.
 const (
 	// ProtocolVersion is the latest protocol version this package supports.
-	ProtocolVersion uint32 = 80013
-
-	// SendHeadersVersion is the protocol version which added a new
-	// sendheaders message.
-	SendHeadersVersion uint32 = 70012
-
-	// FeeFilterVersion is the protocol version which added a new
-	// feefilter message.
-	FeeFilterVersion uint32 = 70013
+	ProtocolVersion uint32 = 80020
 )

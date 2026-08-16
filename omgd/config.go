@@ -906,14 +906,16 @@ func applyConfig(cfg *config, params *chaincfg.GlobalParams) error {
 	// Ensure there is at least one mining address when the generate flag is
 	// set.
 
-	if !common.Licensed && cfg.GenerateMiner && len(cfg.miningAddrs) == 0 {
-		str := "%s: the generate flag is set, but there are no mining " +
-			"addresses specified "
-		err := fmt.Errorf(str, funcName)
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, usageMessage)
-		return err
-	}
+	/*
+		if !common.Licensed && cfg.GenerateMiner && len(cfg.miningAddrs) == 0 {
+			str := "%s: the generate flag is set, but there are no mining " +
+				"addresses specified "
+			err := fmt.Errorf(str, funcName)
+			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(os.Stderr, usageMessage)
+			return err
+		}
+	*/
 
 	// Add default port to all listener addresses if needed and remove
 	// duplicate addresses.

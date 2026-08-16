@@ -828,11 +828,12 @@ type GetRawTransactionCmd struct {
 //
 // The parameters which are pointers indicate they are optional.  Passing nil
 // for optional parameters will use the default value.
-func NewGetRawTransactionCmd(txHash string, verbose *int, includeMempool *bool) *GetRawTransactionCmd {
+func NewGetRawTransactionCmd(txHash string, verbose *int, includeMempool *bool, mainchain *bool) *GetRawTransactionCmd {
 	return &GetRawTransactionCmd{
 		Txid:           txHash,
 		Verbose:        verbose,
 		IncludeMempool: includeMempool,
+		InMainChain:    mainchain,
 	}
 }
 

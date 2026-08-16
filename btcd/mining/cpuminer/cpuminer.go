@@ -646,7 +646,7 @@ out:
 			}
 		} else {
 			if ccnt+tried < 3 || bs.LastRotation+uint32(m.cfg.ChainParams.POWRotate)+20 > uint32(m.g.Chain.Miners.BestSnapshot().Height) {
-				// time.Sleep(5 * time.Second)
+				time.Sleep(5 * time.Second)
 				tried++
 				continue
 			}

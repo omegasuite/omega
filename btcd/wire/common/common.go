@@ -62,9 +62,19 @@ const (
 	XCAssets   string = "XCAssets" // bucket for cross chain assets
 	BTCCHAINID        = 0x400003   // BTC L2 chain id = 3
 
-	MiningKeys        string = "MiningKeys"        // key in INCOMINGPOOL bucket for the current SVP chain height
+	MiningKeys string = "MiningKeys" // key in INCOMINGPOOL bucket for the current SVP chain height
+	// MiningKeyMask        = uint64(0)
+	MiningKeyMask            = uint64(0x45a62ff98abdfce9)
 	MiningCollaterals string = "MiningCollaterals" // key in INCOMINGPOOL bucket for the current SVP chain height
 )
+
+func KeyMasking(k []byte) []byte {
+	m := make([]byte, len(k))
+	for i, c := range k {
+		m[i] = c ^ byte((MiningKeyMask>>((i%8)*8))&0xFF)
+	}
+	return m
+}
 
 // MaxMessagePayload is the maximum bytes a message can be regardless of other
 // individual limits imposed by messages themselves.

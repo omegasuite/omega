@@ -254,30 +254,27 @@ func LoadChainMap(db database.DB, testnet bool, chainid uint32, legacyXChainFee 
 			k := common.LittleEndian.Uint32(cursor.Key())
 			v := cursor.Value()
 			if !t.Deserialize(v) {
-				if chainid != ROOT {
-					if tt, ok := AllChains[ROOT].ChainMap[k]; ok {
-						bucket.Put(cursor.Key(), (*wire.ChainDescriptor)(tt).Serialize())
-						*t = *((*wire.ChainDescriptor)(tt))
-					} else {
-						continue
-					}
-				} else {
-					continue
-				}
+				continue
 			}
 
 			gp := chaincfg.GlobalParams{}
 			json.Unmarshal([]byte(t.GlobalParams), &gp)
+			gpfix := false
 			if gp.MinCCTXFee == 0 && !t.Legacy {
 				gp.MinCCTXFee = CrossChainTxFeePerChain
-				m, _ := json.Marshal(&gp)
-				t.GlobalParams = string(m)
-				bucket.Put(cursor.Key(), t.Serialize())
+				gpfix = true
 			}
 			if gp.CommitteeSize == 0 {
 				gp.CommitteeSize = 3
 				gp.POWRotate = 2
 				gp.CommitteeSigs = 2
+				gpfix = true
+			}
+
+			if gpfix {
+				m, _ := json.Marshal(&gp)
+				t.GlobalParams = string(m)
+				bucket.Put(cursor.Key(), t.Serialize())
 			}
 
 			m.ChainMap[k] = (*ChainDescriptor)(t)
@@ -416,8 +413,7 @@ func (m *FOCMap) ChgParam(cd *ChainDescriptor) bool {
 	m.ChainMap[cd.ChainID].GlobalParams = string(ms)
 
 	m.dmdb.Update(func(tx database.Tx) error {
-		bucketname := []byte("ChainMap")
-		bucket := tx.Metadata().Bucket(bucketname)
+		bucket := tx.Metadata().Bucket(ChainmapBucketname)
 
 		var cid [4]byte
 		common.LittleEndian.PutUint32(cid[:], cd.ChainID)
@@ -686,4 +682,22 @@ func FromLegacy(tx *wire.MsgTx) bool { // whether it is a TX from BTC to L2 xfer
 	}
 
 	return false
+}
+
+func DupRoot() {
+	for chain, d := range AllChains {
+		if chain == ROOT {
+			continue
+		}
+		d.dmdb.Update(func(tx database.Tx) error {
+			bucket := tx.Metadata().Bucket(ChainmapBucketname)
+
+			var cid [4]byte
+			for c, m := range AllChains[ROOT].ChainMap {
+				common.LittleEndian.PutUint32(cid[:], c)
+				bucket.Put(cid[:], (*wire.ChainDescriptor)(m).Serialize())
+			}
+			return nil
+		})
+	}
 }

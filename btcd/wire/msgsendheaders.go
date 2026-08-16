@@ -6,7 +6,6 @@
 package wire
 
 import (
-	"fmt"
 	"io"
 )
 
@@ -21,12 +20,6 @@ type MsgSendHeaders struct{}
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgSendHeaders) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
-	if pver < SendHeadersVersion {
-		str := fmt.Sprintf("sendheaders message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgSendHeaders.OmcDecode", str)
-	}
-
 	return nil
 }
 

@@ -2052,7 +2052,7 @@ func (b *BlockChain) dbCheckCrossChain(dbTx database.Tx, block *btcutil.Block) e
 			}
 		} else {
 	*/
-	if !b.IsSVP {
+	if !b.IsSVP { // if we are svp, send only the tx whose destination is main chain
 		bucket := dbTx.Metadata().Bucket([]byte(common.INCOMINGPOOL))
 		for _, tx := range block.MsgBlock().Transactions[1:] {
 			if !tx.IsCrossChain() {

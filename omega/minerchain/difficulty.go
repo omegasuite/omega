@@ -364,6 +364,9 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 						if uint32(v) < bcoll {
 							bcoll = uint32(v)
 						}
+						if wire.ProtocolVersion >= wire.CollaterAdjust {
+							hasnz = true
+						}
 						fd = true
 						break
 					}
@@ -379,6 +382,9 @@ func (b *MinerChain) calcNextRequiredDifficulty(lastNode *chainutil.BlockNode, n
 				v := msgTx.TxOut[op.Index].Value.(*token.NumToken).Val / 1e8
 				if uint32(v) < bcoll {
 					bcoll = uint32(v)
+				}
+				if wire.ProtocolVersion >= wire.CollaterAdjust {
+					hasnz = true
 				}
 			}
 		}

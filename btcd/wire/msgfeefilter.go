@@ -7,7 +7,6 @@ package wire
 
 import (
 	"btcd/wire/common"
-	"fmt"
 	"io"
 )
 
@@ -24,24 +23,12 @@ type MsgFeeFilter struct {
 // OmcDecode decodes r using the bitcoin protocol encoding into the receiver.
 // This is part of the Message interface implementation.
 func (msg *MsgFeeFilter) OmcDecode(r io.Reader, pver uint32, enc MessageEncoding) error {
-	if pver < FeeFilterVersion {
-		str := fmt.Sprintf("feefilter message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgFeeFilter.OmcDecode", str)
-	}
-
 	return common.ReadElement(r, &msg.MinFee)
 }
 
 // OmcEncode encodes the receiver to w using the bitcoin protocol encoding.
 // This is part of the Message interface implementation.
 func (msg *MsgFeeFilter) OmcEncode(w io.Writer, pver uint32, enc MessageEncoding) error {
-	if pver < FeeFilterVersion {
-		str := fmt.Sprintf("feefilter message invalid for protocol "+
-			"version %d", pver)
-		return messageError("MsgFeeFilter.OmcEncode", str)
-	}
-
 	return common.WriteElement(w, msg.MinFee)
 }
 

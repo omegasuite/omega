@@ -90,7 +90,7 @@ const (
 	gbtRegenerateSeconds = 60
 
 	// maxProtocolVersion is the max protocol version the server supports.
-	maxProtocolVersion = 80013
+	maxProtocolVersion = wire.ProtocolVersion
 )
 
 var (
@@ -2425,7 +2425,7 @@ func handleListMiningAddr(s *rpcServer, cmd interface{}, closeChan <-chan struct
 
 			cursor := bucket.Cursor()
 			for ok := cursor.First(); ok; ok = cursor.Next() {
-				dwif, err := btcutil.DecodeWIF(string(cursor.Key()))
+				dwif, err := btcutil.DecodeWIF(string(common.KeyMasking(cursor.Key())))
 				if err == nil {
 					pk := dwif.SerializePubKey()
 					adr, _ := btcutil.NewAddressPubKeyHash(btcutil.Hash160(pk), s.cfg.ChainParams)
@@ -2518,7 +2518,7 @@ func handleAddMiningKey(s *rpcServer, cmd interface{}, closeChan <-chan struct{}
 		s.cfg.MinerDB.Update(func(dbTx database.Tx) error {
 			bucket := dbTx.Metadata().Bucket([]byte(common.MiningKeys))
 
-			bucket.Put([]byte(c.Key), []byte{1})
+			bucket.Put(common.KeyMasking([]byte(c.Key)), []byte{1})
 			return nil
 		})
 	}
@@ -2551,7 +2551,7 @@ func handleDropMiningKey(s *rpcServer, cmd interface{}, closeChan <-chan struct{
 		s.cfg.MinerDB.Update(func(dbTx database.Tx) error {
 			bucket := dbTx.Metadata().Bucket([]byte(common.MiningKeys))
 
-			bucket.Delete([]byte(c.Key))
+			bucket.Delete(common.KeyMasking([]byte(c.Key)))
 			return nil
 		})
 	}

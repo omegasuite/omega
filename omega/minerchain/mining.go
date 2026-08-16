@@ -522,7 +522,7 @@ out:
 		}
 
 		if len(m.cfg.MiningAddrs) == 0 { // || m.g.Chain.IsPacking {
-			log.Info("miner.generateBlocks: sleep because of packing")
+			log.Info("miner.generateBlocks: sleep because no mining address is set")
 			time.Sleep(time.Second * 5)
 			continue
 		}
@@ -749,6 +749,11 @@ out:
 
 		me := m.g.Chain.Miners.(*MinerChain)
 		prev, _ := me.BlockByHash(&block.MsgBlock().PrevBlock)
+		if prev == nil {
+			log.Infof("preblock does not exist: " + block.MsgBlock().PrevBlock.String())
+			time.Sleep(time.Second * 5)
+			continue
+		}
 		minscore := prev.MsgBlock().MeanTPH >> 3
 		if minscore == 0 {
 			minscore = 1

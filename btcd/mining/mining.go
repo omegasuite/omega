@@ -1559,27 +1559,17 @@ func (g *BlkTmplGenerator) NewMinerBlockTemplate(last *chainutil.BlockNode, payT
 				}
 			}
 		}
-	} else if g.chainParams.ChgParams != nil {
-		exist := false
+	}
+
+	if g.chainParams.ChgParams != nil && len(msgBlock.Instructions) == 0 {
 		ac := g.chainParams.ChgParams.(*chainmap.ChainDescriptor)
-		for cid, c := range chainmap.AllChains[chainmap.ROOT].ChainMap {
-			if ac.Magic == c.Magic && ac.ChainID == cid {
-				exist = true
-			}
-		}
+		exist := ac.Magic == g.chainParams.Net && ac.ChainID == g.chainParams.ChainID
+
 		if exist {
-			param := chaincfg.GlobalParams{}
-			param.CommitteeSize, param.CommitteeSigs, param.POWRotate = 3, 2, 2
-
-			json.Unmarshal([]byte(chainmap.AllChains[chainmap.ROOT].ChainMap[ac.ChainID].GlobalParams), &param)
-
-			param2 := param
-			json.Unmarshal([]byte(ac.GlobalParams), &param2)
-
 			cc := chainmap.ChainDescriptor{
 				Version:      0x20000,
-				ChainID:      g.chainParams.ChgParams.(*wire.ChainDescriptor).ChainID,
-				Magic:        g.chainParams.ChgParams.(*wire.ChainDescriptor).Magic,
+				ChainID:      g.chainParams.ChgParams.(*chainmap.ChainDescriptor).ChainID,
+				Magic:        g.chainParams.ChgParams.(*chainmap.ChainDescriptor).Magic,
 				GlobalParams: ac.GlobalParams,
 			}
 

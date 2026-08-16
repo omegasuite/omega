@@ -237,8 +237,10 @@ func (b *orphanBlock) NeedUpdate(ob chainutil.Orphaned) bool {
 		if nl > ol {
 			return true
 		} else if nl == ol {
-			if len(block.Transactions[0].SignatureScripts[1]) > len(oblock.Transactions[0].SignatureScripts[1]) {
-				return true
+			for i := 1; i < nl; i++ {
+				if len(block.Transactions[0].SignatureScripts[i]) > len(oblock.Transactions[0].SignatureScripts[i]) {
+					return true
+				}
 			}
 		}
 	}
@@ -415,6 +417,8 @@ func (b *BlockChain) ProcessBlock(block *btcutil.Block, flags BehaviorFlags) (bo
 					}
 					if writeErr := b.Index.FlushToDB(dbStoreBlockNode); writeErr != nil {
 						log.Warnf("Error flushing block Index changes to disk: %v", writeErr)
+					} else {
+						return true, false, nil, -1, nil
 					}
 				}
 			}

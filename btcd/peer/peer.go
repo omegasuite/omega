@@ -30,7 +30,7 @@ import (
 
 const (
 	// MaxProtocolVersion is the max protocol version the peer supports.
-	MaxProtocolVersion = 80013
+	MaxProtocolVersion = wire.ProtocolVersion // 80020
 
 	// DefaultTrickleInterval is the min time between attempts to send an
 	// inv message to a peer.
@@ -38,7 +38,7 @@ const (
 
 	// MinAcceptableProtocolVersion is the lowest protocol version that a
 	// connected peer may support.
-	MinAcceptableProtocolVersion = 70014
+	MinAcceptableProtocolVersion = 80015
 
 	// outputBufferSize is the number of elements the output channels use.
 	outputBufferSize = 50
@@ -2401,11 +2401,9 @@ func (p *Peer) negotiateOutboundProtocol() error {
 
 	err := p.readRemoteVersionMsg()
 
-	if (p.services & common.SFSPV) != 0 {
+	if (^p.cfg.Services & p.services & common.SFSPV) != 0 {
 		p.BanMe = true
-		if p.ProtocolVersion() <= 80013 {
-			return fmt.Errorf("A main node shall not connect to a SPV node")
-		}
+		return fmt.Errorf("A main node shall not connect to a SPV node")
 	}
 
 	return err

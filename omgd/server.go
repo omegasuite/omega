@@ -3295,7 +3295,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		srvrLog.Info("OK")
 	}
 
-	minerdb.View(func(dbTx database.Tx) error {
+	minerdb.Update(func(dbTx database.Tx) error {
 		if prot.IsSvp {
 			return nil
 		}
@@ -3307,7 +3307,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 
 		cursor := bucket.Cursor()
 		for ok := cursor.First(); ok; ok = cursor.Next() {
-			dwif, err := btcutil.DecodeWIF(string(cursor.Key()))
+			dwif, err := btcutil.DecodeWIF(string(common.KeyMasking(cursor.Key())))
 
 			fmt.Printf("Mining Key: %s\n", string(cursor.Key()))
 			if err == nil {
@@ -3325,6 +3325,8 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 				prot.cfg.privateKeys = append(prot.cfg.privateKeys, dwif.PrivKey)
 				prot.cfg.signAddress = append(prot.cfg.signAddress, addr)
 				fmt.Printf("signAddress: %s\n", addr.EncodeAddress())
+			} else {
+				bucket.Delete(cursor.Key())
 			}
 		}
 		return nil
@@ -3378,7 +3380,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			if err != nil {
 				return err
 			}
-			bucket.Put([]byte(msg.Error.Message), []byte{1})
+			bucket.Put(common.KeyMasking([]byte(msg.Error.Message)), []byte{1})
 			pkaddr, err := btcutil.NewAddressPubKey(dwif.PrivKey.PubKey().SerializeCompressed(), activeNetParams)
 			if err != nil {
 				return err
@@ -3670,7 +3672,7 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 		//		s.sigCache, s.hashCache)
 		// This is the miner for Tx chain
 
-		prot.db.View(func(tx database.Tx) error {
+		prot.db.Update(func(tx database.Tx) error {
 			bucket := tx.Metadata().Bucket([]byte("blacklist"))
 			for _, s := range prot.cfg.Blacklist {
 				addr, _ := btcutil.DecodeAddress(s, prot.activeNetParams)
@@ -3769,8 +3771,11 @@ func newServer(listenAddrs []string, db, minerdb database.DB, prot *Protocol, in
 			// Signal process shutdown when the RPC server requests it.
 			go func() {
 				btcdLog.Infof("shutdownRequestChannel <- s.rpcServer.RequestedProcessShutdown")
-				<-s.rpcServer.RequestedProcessShutdown()
-				shutdownRequestChannel <- struct{}{}
+				select {
+				case <-s.rpcServer.RequestedProcessShutdown():
+					shutdownRequestChannel <- struct{}{}
+				case <-interrupt:
+				}
 			}()
 		}
 

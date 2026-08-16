@@ -2004,8 +2004,7 @@ func (b *BlockChain) ExecOps(block *wire.MinerBlock, height uint32) bool {
 							terminating = true
 						}
 					} else if cd.Version >= 0x20000 {
-						if chainmap.AllChains[b.ChainParams.ChainID].ChgParam(cd) && (b.ChainParams.ParentChainId == cd.ChainID ||
-							cd.Parent == b.ChainParams.ChainID) {
+						if chainmap.AllChains[b.ChainParams.ChainID].ChgParam(cd) {
 							log.Infof("wire.ChgParam cause terminating. chain=%d", cd.ChainID)
 							terminating = true
 						}
@@ -2041,7 +2040,9 @@ func (b *BlockChain) GetFinalizedInPool(nextBlockHeight uint32, blocktime int32)
 		for ok := cursor.First(); ok; ok = cursor.Next() {
 			xtx := &wire.XchainData{}
 			err := xtx.DeSerialize(cursor.Value())
-
+			if err != nil {
+				continue
+			}
 			fmt.Printf("INCOMINGPOOL xtx.ChainID=%x xtx.Txs=%d", xtx.ChainID, len(xtx.Txs))
 
 			threshold := chainmap.AllChains[b.ChainParams.ChainID].ChainMap[xtx.ChainID].Final

@@ -2383,12 +2383,14 @@ func (b *BlockChain) checkConnectBlock(node *chainutil.BlockNode, block *btcutil
 		return err
 	}
 
-	for _, tx := range block.Transactions()[1:] {
-		err = CheckBlacklist(tx, views, b.ChainParams)
-		if err != nil {
-			return err
+	/*
+		for _, tx := range block.Transactions()[1:] {
+			err = CheckBlacklist(tx, views, b.ChainParams)
+			if err != nil {
+				return err
+			}
 		}
-	}
+	*/
 
 	err = CheckTransactionInputs(transactions[0], node.Height, views, b.ChainParams)
 	if err != nil {
