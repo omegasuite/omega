@@ -52,13 +52,18 @@ type Interpreter struct {
 	returnData []byte // Last CALL's return Data for subsequent reuse
 }
 
+type Bp struct {
+	Contract [20]byte
+	PC       uint32
+}
+
 // smart contract debugger
 var debugNotifier chan []byte
-var debugging bool           // whether we are debugging
-var breakpoints map[int]bool // breaks at inst. PC
-var Control chan *DebugCmd   // chan for receiving Control
-var inspector chan *DebugCmd // chan for inspect inst to prog. code
-var stepping bool            // whether we are stepping
+var debugging bool                // whether we are debugging
+var breakpoints map[[24]byte]bool // breaks at inst. PC
+var Control chan *DebugCmd        // chan for receiving Control
+var inspector chan *DebugCmd      // chan for inspect inst to prog. code
+var stepping bool                 // whether we are stepping
 var stop bool
 var attaching chan struct{}
 var dbgreturn bool // where user has clicked 'up'
@@ -80,7 +85,7 @@ func DebugSetup(enable bool, comm chan []byte) {
 	debugging = enable
 	if enable {
 		debugNotifier = comm
-		breakpoints = make(map[int]bool)
+		breakpoints = make(map[[24]byte]bool)
 		Control = make(chan *DebugCmd, 10)
 		go intrepdebug()
 	} else {
@@ -140,13 +145,15 @@ func intrepdebug() {
 
 			switch ctrl.Cmd {
 			case Breakpoint:
-				inst := common.LittleEndian.Uint32(ctrl.Data)
-				breakpoints[int(inst)] = true
+				var bp [24]byte
+				copy(bp[:], ctrl.Data)
+				breakpoints[bp] = true
 				stepping = true
 
 			case Unbreak:
-				inst := common.LittleEndian.Uint32(ctrl.Data)
-				delete(breakpoints, int(inst))
+				var bp [24]byte
+				copy(bp[:], ctrl.Data)
+				delete(breakpoints, bp)
 
 			case Stepping:
 				stepping = true
@@ -251,7 +258,7 @@ func intrepdebug() {
 	}
 
 	dbgcontract, dbgstack = nil, nil
-	debugging, stop, stepping, breakpoints = false, true, false, make(map[int]bool)
+	debugging, stop, stepping, breakpoints = false, true, false, make(map[[24]byte]bool)
 }
 
 func NewSigInterpreter(evm *OVM) *Interpreter {

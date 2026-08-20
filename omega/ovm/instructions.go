@@ -3727,19 +3727,26 @@ func opNul(pc *int, evm *OVM, contract *Contract, stack *Stack) omega.Err {
 		return nil
 	}
 
-	if dbgcontract == nil {
-		c := stack.data[stack.callTop].gbase
-		setdbgcontract(contract, Address(stack.data[c].inlib), stack)
-		log.Info("contract going")
+	c := stack.data[stack.callTop].gbase
+	dbgcontract, dbgstack, dbgcodebase = contract, stack, int(contract.libs[Address(stack.data[c].inlib)].address)
+
+	if inspector == nil || dbgcontract == nil {
+		inspector = make(chan *DebugCmd, 100)
 	}
+	/*
+		if dbgcontract == nil {
+			c := stack.data[stack.callTop].gbase
+			setdbgcontract(contract, Address(stack.data[c].inlib), stack)
+			log.Info("contract going")
+		}
+	*/
 
-	if breakpoints[(*pc)-dbgcodebase] || stepping {
-		var buf [4]byte
+	var bp [24]byte
+	copy(bp[:20], stack.data[stack.callTop].inlib[:])
+	common.LittleEndian.PutUint32(bp[20:], uint32((*pc)-dbgcodebase))
 
-		log.Infof("opNul: break at %d", *pc)
-
-		common.LittleEndian.PutUint32(buf[:], uint32((*pc)-dbgcodebase))
-		Control <- &DebugCmd{Reply: nil, Data: buf[:], Cmd: Breaked}
+	if breakpoints[bp] || stepping {
+		Control <- &DebugCmd{Reply: nil, Data: bp[:], Cmd: Breaked}
 
 		log.Infof("opNul: waiting inspector")
 
