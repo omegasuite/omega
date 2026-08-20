@@ -357,7 +357,7 @@ var rpcLimited = map[string]struct{}{
 	"getmbkh":               {},
 	//	"getcfilter":            {},
 	//	"getcfilterheader":      {},
-	"clearbtcl2pool":  {}, // new
+	// "clearbtcl2pool": {}, // new
 	"getcrosschaindb": {}, // new
 
 	"getcurrentnet":    {},
