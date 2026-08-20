@@ -1668,7 +1668,7 @@ func (tx *transaction) FetchBlockRegions(regions []database.BlockRegion) ([][]by
 		endOffset := region.Offset + region.Len
 		if endOffset < region.Offset || endOffset > location.blockLen {
 			region.Len -= endOffset - location.blockLen
-			fmt.Printf("block %s region offset %s, length "+
+			fmt.Printf("block %s region offset %d, length "+
 				"%d exceeds block length of %d", region.Hash.String(),
 				region.Offset, region.Len, location.blockLen)
 
@@ -1677,7 +1677,7 @@ func (tx *transaction) FetchBlockRegions(regions []database.BlockRegion) ([][]by
 			msgblk.Deserialize(bytes.NewReader(blkbytes))
 
 			if len(msgblk.Transactions) > 1 {
-				fmt.Printf("block %s has %d Transactions", len(msgblk.Transactions))
+				fmt.Printf("block %s has %d Transactions", region.Hash.String(), len(msgblk.Transactions))
 			}
 
 			continue

@@ -279,9 +279,9 @@ func prepareServer(tcfg *config, pdb database.DB, cd *chainmap.ChainDescriptor, 
 			Legacy:  false,
 			Final:   21,
 		}
-		err := json.Unmarshal([]byte(tcfg.AddChain), nc)
+		err = json.Unmarshal([]byte(tcfg.AddChain), nc)
 		if err != nil {
-			btcdLog.Errorf("Unable to parse AddChain commanf %s", tcfg.AddChain)
+			btcdLog.Errorf("Unable to parse AddChain command %s: error: %s", tcfg.AddChain, err.Error())
 			return nil, false
 		}
 		prot.activeNetParams.AddChain = nc

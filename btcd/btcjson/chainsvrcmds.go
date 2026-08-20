@@ -754,6 +754,7 @@ type GetIssuedTokensCmd struct {
 
 type GetCrossChainDBCmd struct {
 	Clear uint32
+	Start *int32
 }
 
 // Createxferl2txoCmd defines the ceatexferl2txo JSON-RPC command.

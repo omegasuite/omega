@@ -5893,12 +5893,26 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 		//RedeemDB: make(map[string]string),
 	}
 
+	start := int32(0)
+	if c.Start != nil {
+		start = *c.Start
+	}
+	i, n := int32(-1), 0
+
 	s.cfg.DB.View(func(tx database.Tx) error {
 		meta := tx.Metadata()
 		if c.Clear&1 != 0 { // INCOMINGPOOL
 			bucket := meta.Bucket([]byte(common.INCOMINGPOOL))
 			cursor := bucket.Cursor()
 			for ok := cursor.First(); ok; ok = cursor.Next() {
+				i++
+				if i < start {
+					continue
+				}
+				if n == 1000 {
+					return nil
+				}
+				n++
 				xchain := &wire.XchainData{}
 				xchain.DeSerialize(cursor.Value())
 				xd := &btcjson.XchainDataResult{}
@@ -5975,6 +5989,14 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 			bucket := meta.Bucket([]byte(common.XCAssets))
 			cursor := bucket.Cursor()
 			for ok := cursor.First(); ok; ok = cursor.Next() {
+				i++
+				if i < start {
+					continue
+				}
+				if n == 1000 {
+					return nil
+				}
+				n++
 				r := &btcjson.XCAssetResult{
 					Key:   hex.EncodeToString(cursor.Key()),
 					Value: int64(common.LittleEndian.Uint64(cursor.Value())),
@@ -6020,6 +6042,14 @@ func handleGetCrossChainDB(s *rpcServer, cmd interface{}, closeChan <-chan struc
 			bucket := meta.Bucket([]byte(common.ROLLBACKPOOL))
 			cursor := bucket.Cursor()
 			for ok := cursor.First(); ok; ok = cursor.Next() {
+				i++
+				if i < start {
+					continue
+				}
+				if n == 1000 {
+					return nil
+				}
+				n++
 				rbd := cursor.Value()
 				xbd := make([]*btcjson.XchainDataResult, 0)
 				if rbd != nil {
